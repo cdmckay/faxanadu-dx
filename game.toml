@@ -188,3 +188,29 @@ id = "faxanadu.death-keeps-gold.set-exp-gold"
 addr = 0x95b1
 bank = 12
 bytes = "ad 37 04 8d ed 04 f0 20 0a aa bd 47"
+
+# The Pendant fix (fax_pendant.c): Player_HitSpriteWithWeapon's @_checkGlove,
+# where both sides of the reversed Pendant branch meet, before the Glove's
+# bonus. LDA DurationGlove, BMI @_updateSpriteHP, LDA Temp_00, CLC,
+# ADC WEAPON_TO_GLOVE_STRENGTH,Y, STA.
+
+[[mod_function_hook]]
+id = "faxanadu.pendant-fix.check-glove"
+addr = 0x8884
+bank = 14
+bytes = "ad 28 04 30 08 a5 00 18 79 c7 88 85"
+
+# Magic button (fax_magic.c): Up+B shown to Player_CastMagic alone, and the
+# real joypad masks back at GameLoop_CheckUseCurrentItem. Neither handles.
+
+[[mod_function_hook]]
+id = "faxanadu.magic-button.cast"
+addr = 0xba5b
+bank = 14
+bytes = "ad b3 02 10 79 20 f6 ec b0 73 a5 16"
+
+[[mod_function_hook]]
+id = "faxanadu.magic-button.restore"
+addr = 0xc478
+bank = 15
+bytes = "a5 a4 29 05 d0 1e a5 16 29 04 f0 18"
