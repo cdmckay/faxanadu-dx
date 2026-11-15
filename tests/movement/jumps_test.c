@@ -5,6 +5,10 @@
 #include "fax_jumps.c"
 #include "model.h"
 
+/* Block (fax_block.c), as fax_jumps.c asks it: up or not. */
+static bool block_up;
+bool fax_block_raised(void) { return block_up; }
+
 enum { FRAMES = 120 };
 typedef struct { Frame f[FRAMES]; } Trace;
 
@@ -180,6 +184,37 @@ static void jump_buffering(void) {
     }
 }
 
+/* Block takes A away while it is up (fax_block_input). A press kept from the
+ * air just before Block went up does not jump on landing: not with Block held
+ * through the landing, nor let go again before it. Without Block, the same
+ * press jumps (jump_buffering). */
+static void block_takes_the_press(void) {
+    load_screen(FLOOR);
+    for (int j = 1; j <= (int)BUFFER_FRAMES; j++) {
+        int press = 2 + 32 - j;                                    /* he lands on frame 2 + 31 */
+        const int let_go_at[] = { press + 2, 41 };                 /* one frame up; held past the landing */
+        for (unsigned k = 0; k < 2; k++) {
+            int let_go = let_go_at[k];
+            Trace t[2];
+            for (int on = 0; on < 2; on++) {
+                place(40, 160);
+                feature(on);
+                for (int i = 0; i < FRAMES; i++) {
+                    block_up = i > press && i < let_go;             /* up from the frame after the press */
+                    uint8_t buttons = 0;
+                    if (i == 2) buttons = B_A;                      /* jump */
+                    if (i == press) buttons = B_A;                  /* kept: he is in the air */
+                    if (i == press + 1) CHECK(!on || buffered);
+                    t[on].f[i] = step(buttons);
+                }
+                block_up = false;
+            }
+            CHECK(same(&t[0], &t[1], 0, FRAMES) && buffered_jumps == 0 && !buffered && blocked_presses == 1);
+            CHECK(t[1].f[40].y == 160 && !(t[1].f[40].flags & F_JUMPING));
+        }
+    }
+}
+
 /* On the ladder in LADDER, stepping off it to the right, or climbing down
  * off its foot; A pressed on frame `press`. */
 enum { STEP_OFF, CLIMB_OFF };
@@ -335,6 +370,7 @@ int main(void) {
     coyote_time();
     not_from_a_ceiling();
     jump_buffering();
+    block_takes_the_press();
     ladders();
     wing_boots_and_knockback();
     screen_changes();
