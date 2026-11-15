@@ -30,14 +30,20 @@
  * - Player_UseElixir: the Elixir is spent. Guru travel's Guru signal
  *   (fax_travel_listen): a spent Elixir is charged again.
  * - Player_PickUpItem: a duplicate recharges instead of being added.
- * - Game_ClearTimedItems (every spawn but a Guru journey): both ready.
- * - Game_ShowStartScreen (power-on or reset, before a new game or a mantra):
+ * - Game_ClearTimedItems (every spawn but a Guru journey): both ready, or a
+ *   continued file's cooldowns.
+ * - Game_ShowStartScreen (power-on or reset, before a new game or a file):
  *   everything forgotten.
  * Hooks do nothing inside Seamless's isolated simulation of other rooms. The
- * state is the save-state record (fax_recharge.h). See docs/GAME_INTERNALS.md. */
+ * state is the save-state record, and Save files keeps the cooldowns and the
+ * Elixir's charge in the file in play (on_save): written whenever the file
+ * is, read back when it is continued, reset by a new game. Talking to any
+ * Guru charges the Elixir before he speaks, so whichever of Save files' menu
+ * options is picked, or none. See docs/GAME_INTERNALS.md. */
 #include "fax_recharge.h"
 #include "fax_items.h"
 #include "fax_travel.h"
+#include "fax_save.h"
 #include "cyc_mod.h"
 #include "mod_runtime.h"
 #include "mod_function_hooks.h"
@@ -119,6 +125,9 @@ enum { SHOW_GAME = -1 };
 
 static bool enabled;
 static Charge charge;
+/* A continued file's cooldowns, put back at the spawn that follows. */
+typedef struct { uint8_t pending, cooldown[TIMED]; } Resume;
+static Resume resume;
 static Show drawn;                 /* what this module last queued on T: */
 static bool drawn_valid;
 static unsigned flights, freezes, refused, kept, pickups, revives, guru_recharges, spawns;   /* for TCP */
@@ -274,22 +283,27 @@ static int pick_up_hook(uint16_t addr) {
     return 1;
 }
 
-/* Game_ClearTimedItems: a respawn (or a new game, or a mantra): both ready. */
+/* Game_ClearTimedItems: a respawn, a new game, or continuing (a mantra or a
+ * file): both ready, but a continued file's cooldowns are put back. */
 static int spawn_hook(uint16_t addr) {
     (void)addr;
     if (cyc_mod_isolated()) return 0;
-    make_ready(&charge, BOOTS);
-    make_ready(&charge, GLASS);
+    for (int i = 0; i < TIMED; ++i) {
+        make_ready(&charge, i);
+        if (resume.pending) charge.cooldown[i] = resume.cooldown[i];   /* continuing a file */
+    }
+    resume = (Resume){ 0 };
     ++spawns;
     return 0;
 }
 
-/* Game_ShowStartScreen: a new game or a mantra follows; the mantra holds the
- * Elixir only if it was charged. */
+/* Game_ShowStartScreen: a new game, a mantra or a file follows. A mantra
+ * holds the Elixir only if it was charged; a file says if it is spent. */
 static int title_hook(uint16_t addr) {
     (void)addr;
     if (cyc_mod_isolated()) return 0;
     memset(&charge, 0, sizeof charge);
+    resume = (Resume){ 0 };
     drawn_valid = false;
     return 0;
 }
@@ -303,35 +317,74 @@ static void guru_met(unsigned temple) {
     ++guru_recharges;
 }
 
-/* ---- the record (fax_recharge.h) ---- */
+/* ---- the file in play (Save files, fax_save.h) ---- */
+
+/* The fields: how many of the game's seconds until each timed item is ready
+ * (0: ready; a run that has not ended counts as its whole cooldown, since
+ * continuing spawns the hero with no timed item running), and whether the
+ * Elixir is spent ("spent", or no field). Whether it is charged is the
+ * file's own special items. */
+static const char *const FIELD[TIMED] = { "recharge.wingboots", "recharge.hourglass" };
+#define FIELD_ELIXIR "recharge.elixir"
+
+static uint8_t until_ready(const Charge *c, int i, uint8_t title) {
+    return c->running[i] ? timing(title)->cooldown[i] : c->cooldown[i];
+}
+static void on_save(FaxSaveEvent event) {
+    if (!enabled) return;
+    if (event == FAX_SAVE_NEW_GAME) {
+        memset(&charge, 0, sizeof charge);
+        resume = (Resume){ 0 };
+    } else if (event == FAX_SAVE_CONTINUED) {
+        /* Continuing spawns the hero, and Game_ClearTimedItems would make
+         * both ready: spawn_hook puts these back instead. */
+        resume.pending = 1;
+        for (int i = 0; i < TIMED; ++i) {
+            long v = fax_save_get_int(FIELD[i], 0);
+            resume.cooldown[i] = (uint8_t)(v < 0 ? 0 : v > MOST_SECONDS ? MOST_SECONDS : v);
+        }
+        const char *e = fax_save_get(FIELD_ELIXIR);
+        charge.elixir_spent = e && !strcmp(e, "spent");
+    } else {
+        for (int i = 0; i < TIMED; ++i) fax_save_set_int(FIELD[i], until_ready(&charge, i, q(PLAYER_TITLE)));
+        fax_save_set(FIELD_ELIXIR, charge.elixir_spent ? "spent" : NULL);
+    }
+}
+
+/* ---- the save-state record ---- */
 
 /* Version 1: [0] 1, [1] the Wing Boots running, [2] their cooldown, [3] the
- * Hour Glass running, [4] its cooldown, [5] the Elixir spent. */
-enum { RECORD_VERSION = 1 };
-int fax_recharge_record_get(uint8_t *buf, int cap) {
-    if (cap < FAX_RECHARGE_RECORD) return -1;
-    const uint8_t rec[FAX_RECHARGE_RECORD] = { RECORD_VERSION, charge.running[BOOTS], charge.cooldown[BOOTS],
-                                               charge.running[GLASS], charge.cooldown[GLASS], charge.elixir_spent };
+ * Hour Glass running, [4] its cooldown, [5] the Elixir spent, [6] a continued
+ * file's cooldowns waiting for the spawn, [7] and [8] those cooldowns. */
+enum { RECORD_VERSION = 1, RECORD = 9 };
+static int state_get(uint8_t *buf, int cap) {
+    if (cap < RECORD) return -1;
+    const uint8_t rec[RECORD] = { RECORD_VERSION, charge.running[BOOTS], charge.cooldown[BOOTS],
+                                  charge.running[GLASS], charge.cooldown[GLASS], charge.elixir_spent,
+                                  resume.pending, resume.cooldown[BOOTS], resume.cooldown[GLASS] };
     memcpy(buf, rec, sizeof rec);
-    return FAX_RECHARGE_RECORD;
+    return RECORD;
 }
 static int record_validate(const uint8_t *buf, int len) {
-    return len == 0 || (len == FAX_RECHARGE_RECORD && buf[0] == RECORD_VERSION && buf[1] <= 1 &&
-                        buf[2] <= MOST_SECONDS && buf[3] <= 1 && buf[4] <= MOST_SECONDS && buf[5] <= 1);
+    return len == 0 || (len == RECORD && buf[0] == RECORD_VERSION && buf[1] <= 1 && buf[2] <= MOST_SECONDS &&
+                        buf[3] <= 1 && buf[4] <= MOST_SECONDS && buf[5] <= 1 && buf[6] <= 1 &&
+                        buf[7] <= MOST_SECONDS && buf[8] <= MOST_SECONDS);
 }
-bool fax_recharge_record_set(const uint8_t *buf, int len) {
-    if (!record_validate(buf, len)) return false;
+/* Length 0 (a state from before the feature) means everything ready and
+ * nothing spent. */
+static int state_set(const uint8_t *buf, int len) {
+    if (!record_validate(buf, len)) return 0;
     memset(&charge, 0, sizeof charge);
+    resume = (Resume){ 0 };
     if (len) {
         charge.running[BOOTS] = buf[1]; charge.cooldown[BOOTS] = buf[2];
         charge.running[GLASS] = buf[3]; charge.cooldown[GLASS] = buf[4];
         charge.elixir_spent = buf[5];
+        resume = (Resume){ buf[6], { buf[7], buf[8] } };
     }
     drawn_valid = false;                           /* the loaded picture has its own T: */
-    return true;
+    return 1;
 }
-static int state_get(uint8_t *buf, int cap) { return fax_recharge_record_get(buf, cap); }
-static int state_set(const uint8_t *buf, int len) { return fax_recharge_record_set(buf, len); }
 
 /* ---- activation ---- */
 
@@ -345,6 +398,7 @@ static void hooks(bool on) {
 static void deactivate(void) {
     enabled = false;
     memset(&charge, 0, sizeof charge);
+    resume = (Resume){ 0 };
     drawn_valid = false;
     flights = freezes = refused = kept = pickups = revives = guru_recharges = spawns = 0;
     hooks(false);
@@ -397,5 +451,6 @@ NES_MOD_CONSTRUCTOR(register_recharge) {
     if (!nes_mod_register_reset_callback(deactivate) ||
         !nes_mod_register_activation_plugin("faxanadu.recharge", activate) ||
         !nes_mod_register_savestate_hook("faxanadu.recharge", state_get, state_set) ||
-        !nes_mod_register_savestate_validator("faxanadu.recharge", record_validate)) abort();
+        !nes_mod_register_savestate_validator("faxanadu.recharge", record_validate) || !fax_save_listen(on_save))
+        abort();
 }

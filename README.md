@@ -38,11 +38,25 @@ Older `keybinds.ini` and F5/F6/F7 instructions below apply to the legacy host.
 2. Extract and run `FaxanaduRecomp.exe`
 3. Select your Faxanadu (USA) ROM when prompted — the path is saved for future launches
 
-**Guru travel** is on by default (Mods to turn it off). After a temple's Guru
-gives your mantra, he offers to send your spirit to any other Guru you have
-visited: A to go, B to hear the next town. HP, MP, gold and your spawn point
-are kept. The Gurus you have met are saved in `faxanadu_gurus.txt` next to the
-game.
+**Save files** is on by default (Mods to turn it off). The title screen offers
+three files, as in Zelda: pick an empty one to start a new game, or a saved one
+to continue exactly as you left it: title, gold, experience, items, quests and
+the Gurus you have met. "Erase a file" clears one. A Guru no longer gives a
+mantra: he offers to remember your journey, and the Guru you last saved with
+is where you come back when you die or continue. Talking to a Guru without
+saving leaves that where it was. Your file is also saved each time you come
+back to a temple. The files are `faxanadu_file1.txt` to `faxanadu_file3.txt`
+next to the game. The first time, your mantra in `faxanadu.srm` (and the Gurus
+in `faxanadu_gurus.txt`) goes into file 1; to bring in another mantra, enter it
+in the launcher's Mantra field or pass `--password`, and it goes into the first
+empty file.
+
+**Guru travel** is on by default (Mods to turn it off). A temple's Guru can
+send you to any other Guru you have visited: choose "Send me to another Guru."
+when he asks, or say yes after he remembers your journey. A to go, B to hear
+the next town. HP, MP, gold and your spawn point are kept. The Gurus you have
+met are kept in your save file (with Save files off, in `faxanadu_gurus.txt`
+next to the game).
 
 **Death keeps gold** is on by default (Mods to turn it off). When you die, the
 Guru brings you back with all your gold and experience, instead of your
@@ -116,6 +130,22 @@ to swing over low enemies that every sword hits, like the Zozura crawling
 outside Eolis. Now its swing reaches as low as the swords', so it hits them.
 It keeps its short reach, so the Long Sword is still an upgrade.
 
+**Block** is on by default (Mods to turn it off). Hold V on the keyboard, or B
+on a controller, with a shield (or the Battle Helmet) in hand to stand your
+ground and raise it: enemy magic from the front, and Sugata's flash from any
+side, is stopped with the shield's sound. Contact and sword damage are as
+before. The first time you get a shield or the Battle Helmet, the game adds a
+line naming your key, once (remembered in `faxanadu_block.txt` next to the
+game). Rebind it with `BlockKey` and `BlockButton` in `config.ini`, as for the
+Magic button.
+
+**Sugata's flash** is on by default (Mods to turn it off). Sugata, in the Mist,
+blinks for half a second before it flashes, and the band of the screen its
+flash will reach dims faintly. The flash greys only that band and hurts only
+there: step out of it, or hold Block. With the Magic Shield, Block turns the
+flash back on Sugata. Ointment now keeps your HP, though the flash still knocks
+you back. In the original it hit you anywhere on the screen, Ointment or not.
+
 Optional **Seamless** appears first in Mods, marked **Experimental** and
 disabled by default. It joins connected rooms, advances neighboring actors,
 and adapts the world view to your window with Fit to screen. Mouse wheel
@@ -134,8 +164,12 @@ local play only. See [details](docs/SEAMLESS-WORLD.md).
 | Start      | Enter |
 | Select     | Right Shift |
 | Magic (Up+B) | C (controller: Y) |
+| Block (hold, with a shield) | V (controller: B) |
 
 ## Mantra (Password) Features
+
+With Save files on (the default), mantras are only imported; see Save files
+above. What follows applies with Save files off.
 
 Faxanadu uses a mantra system instead of battery-backed saves. FaxanaduRecomp adds convenience features around this:
 

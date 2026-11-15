@@ -66,6 +66,42 @@ int nes_mod_register_savestate_validator(const char *id, NESModSavestateValidate
     save_validate = validate;
     return 1;
 }
+/* Save files (fax_save.c): the file in play's fields, a small key-value list. */
+static FaxSaveListener save_listener;
+static bool file_in_play;
+static struct { char key[FAX_SAVE_KEY], value[FAX_SAVE_VALUE]; } fields[8];
+static int field_count;
+bool fax_save_listen(FaxSaveListener listener) { save_listener = listener; return true; }
+static const char *field(const char *key) {
+    for (int i = 0; i < field_count; ++i) if (!strcmp(fields[i].key, key)) return fields[i].value;
+    return NULL;
+}
+static void fields_clear(void) { field_count = 0; }
+static void field_set(const char *key, const char *value) {
+    int i = 0;
+    while (i < field_count && strcmp(fields[i].key, key)) ++i;
+    if (!value) { if (i < field_count) fields[i] = fields[--field_count]; return; }
+    if (i == field_count) { CHECK(field_count < 8); snprintf(fields[field_count++].key, FAX_SAVE_KEY, "%s", key); }
+    snprintf(fields[i].value, FAX_SAVE_VALUE, "%s", value);
+}
+static long field_int(const char *key) { const char *v = field(key); return v ? strtol(v, NULL, 10) : -1; }
+const char *fax_save_get(const char *key) { return file_in_play ? field(key) : NULL; }
+bool fax_save_set(const char *key, const char *value) {
+    if (!file_in_play) return false;
+    CHECK(!strncmp(key, "recharge.", 9));    /* its own fields only */
+    field_set(key, value);
+    return true;
+}
+long fax_save_get_int(const char *key, long fallback) {
+    const char *v = fax_save_get(key);
+    return v ? strtol(v, NULL, 10) : fallback;
+}
+bool fax_save_set_int(const char *key, long value) {
+    char v[24];
+    snprintf(v, sizeof v, "%ld", value);
+    return fax_save_set(key, v);
+}
+
 /* Guru travel's listener list (fax_travel.c). */
 static FaxGuruListener guru_listener;
 void fax_travel_listen(FaxGuruListener fn, bool on) {
@@ -611,31 +647,98 @@ static void save_states(void) {
     use();
     uint8_t buf[16];
     int n = save_get(buf, sizeof buf);
-    CHECK(n == FAX_RECHARGE_RECORD && save_validate(buf, n));
+    CHECK(n == RECORD && save_validate(buf, n));
     CHECK(buf[0] == 1 && buf[1] == 0 && buf[2] >= 52 && buf[2] <= 54 && buf[3] == 1 && buf[4] == 0 && buf[5] == 1);
-    CHECK(save_get(buf, FAX_RECHARGE_RECORD - 1) == -1);
+    CHECK(buf[6] == 0 && buf[7] == 0 && buf[8] == 0);
+    CHECK(save_get(buf, RECORD - 1) == -1);
     Charge saved = charge;
     play(true);
     CHECK(save_set(buf, n) == 1 && !memcmp(&charge, &saved, sizeof charge));
-    /* The seam for save slots is the same record. */
-    uint8_t rec[FAX_RECHARGE_RECORD];
-    CHECK(fax_recharge_record_get(rec, sizeof rec) == FAX_RECHARGE_RECORD && !memcmp(rec, buf, sizeof rec));
-    play(true);
-    CHECK(fax_recharge_record_set(rec, sizeof rec) && !memcmp(&charge, &saved, sizeof charge));
     /* A state from before the feature: everything ready, nothing spent. */
     CHECK(save_validate(buf, 0) && save_set(buf, 0) == 1 && boots_ready() && glass_ready() && !charge.elixir_spent);
     /* Records it does not accept change nothing. */
-    CHECK(save_set(rec, n) == 1);
+    CHECK(save_set(buf, n) == 1);
     static const struct { int at; uint8_t value; } bad[] = {
-        { 0, 2 }, { 1, 2 }, { 2, 100 }, { 3, 7 }, { 4, 0xFF }, { 5, 2 } };
+        { 0, 2 }, { 1, 2 }, { 2, 100 }, { 3, 7 }, { 4, 0xFF }, { 5, 2 }, { 6, 2 }, { 7, 100 }, { 8, 200 } };
     for (unsigned i = 0; i < sizeof bad / sizeof bad[0]; ++i) {
-        uint8_t b[FAX_RECHARGE_RECORD];
-        memcpy(b, rec, sizeof b);
+        uint8_t b[RECORD];
+        memcpy(b, buf, sizeof b);
         b[bad[i].at] = bad[i].value;
-        CHECK(!save_validate(b, sizeof b) && !fax_recharge_record_set(b, sizeof b));
+        CHECK(!save_validate(b, sizeof b) && !save_set(b, sizeof b));
         CHECK(!memcmp(&charge, &saved, sizeof charge));
     }
-    CHECK(!save_validate(rec, FAX_RECHARGE_RECORD - 1) && !save_validate(rec, FAX_RECHARGE_RECORD + 1));
+    CHECK(!save_validate(buf, RECORD - 1) && !save_validate(buf, RECORD + 1));
+}
+
+/* Save files: the file in play keeps the cooldowns and the Elixir's charge. */
+static void save_files(void) {
+    CHECK(save_listener == on_save);
+    /* Written whenever the file is: at a Guru, mid-cooldown, with the Elixir spent. */
+    play(true);
+    file_in_play = true;
+    ram[SPECIAL_ITEMS] = BIT_ELIXIR;
+    hurt();
+    give(NULL, 0, WING_BOOTS);
+    use();
+    CHECK(frames_until(boots_down, 32 * 64) > 0);
+    seconds(12);
+    ram[SELECTED_ITEM] = HOUR_GLASS;
+    use();                                  /* still freezing when the file is written */
+    save_listener(FAX_SAVE_WRITING);
+    long boots = field_int("recharge.wingboots"), glass = field_int("recharge.hourglass");
+    CHECK(boots >= 47 && boots <= 49 && glass == 60 && !strcmp(field("recharge.elixir"), "spent"));
+    /* Quit, then continue the file: Game_ShowStartScreen forgets, the file is
+     * read back, and the spawn that follows keeps the cooldowns. */
+    title_screen();
+    CHECK(boots_ready() && !charge.elixir_spent);
+    save_listener(FAX_SAVE_CONTINUED);
+    respawn();                              /* Player_Spawn: Game_ClearTimedItems */
+    CHECK(charge.cooldown[BOOTS] == boots && charge.cooldown[GLASS] == 60 && !charge.running[BOOTS]);
+    CHECK(charge.elixir_spent && !(ram[SPECIAL_ITEMS] & BIT_ELIXIR));
+    frames(2);
+    CHECK(t_value() == 60 || t_blank());     /* the selected Hour Glass's */
+    meet_guru(0);
+    CHECK(!charge.elixir_spent && (ram[SPECIAL_ITEMS] & BIT_ELIXIR));
+    save_listener(FAX_SAVE_WRITING);
+    CHECK(field("recharge.elixir") == NULL);          /* charged: the file's special items say so */
+    /* A later death makes them ready, and the file says so at its next write. */
+    respawn();
+    CHECK(boots_ready() && glass_ready());
+    save_listener(FAX_SAVE_WRITING);
+    CHECK(field_int("recharge.wingboots") == 0 && field_int("recharge.hourglass") == 0);
+    /* A file from before the feature: no fields, everything ready. */
+    fields_clear();
+    title_screen();
+    save_listener(FAX_SAVE_CONTINUED);
+    respawn();
+    CHECK(boots_ready() && glass_ready() && !charge.elixir_spent);
+    /* A value out of range is clamped. */
+    field_set("recharge.wingboots", "500");
+    title_screen();
+    save_listener(FAX_SAVE_CONTINUED);
+    respawn();
+    CHECK(charge.cooldown[BOOTS] == MOST_SECONDS);
+    /* A new game resets them. */
+    charge.elixir_spent = 1;
+    save_listener(FAX_SAVE_NEW_GAME);
+    respawn();
+    CHECK(boots_ready() && glass_ready() && !charge.elixir_spent);
+    /* A save state keeps a continued file's cooldowns until the spawn. */
+    field_set("recharge.wingboots", "33");
+    title_screen();
+    save_listener(FAX_SAVE_CONTINUED);
+    uint8_t buf[RECORD];
+    CHECK(save_get(buf, sizeof buf) == RECORD && buf[6] == 1 && buf[7] == 33);
+    play(true);
+    CHECK(save_set(buf, RECORD) == 1);
+    respawn();
+    CHECK(charge.cooldown[BOOTS] == 33);
+    /* Turned off, it writes nothing and reads nothing. */
+    play(false);
+    fields_clear();
+    save_listener(FAX_SAVE_WRITING);
+    CHECK(field("recharge.wingboots") == NULL && field("recharge.elixir") == NULL);
+    file_in_play = false;
 }
 
 int main(void) {
@@ -653,6 +756,7 @@ int main(void) {
     new_game_and_mantra();
     isolated_runs_change_nothing();
     save_states();
+    save_files();
     printf("recharge_test: %u checks passed\n", checks);
     return 0;
 }

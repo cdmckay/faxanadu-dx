@@ -16,7 +16,11 @@
 #include "fax_falling.h"
 #include "fax_jumps.h"
 #include "fax_text_speed.h"
+#include "fax_save.h"
+#include "fax_files.h"
 #include "fax_dagger.h"
+#include "fax_block.h"
+#include "fax_sugata.h"
 #include "fax_recharge.h"
 #ifdef CYC_WITH_SDL
 #include "cyc_tcp.h"
@@ -156,6 +160,9 @@ bool faxanadu_replace_file(const char *from, const char *to) {
 }
 #endif
 
+/* The --password mantra, for Save files to import; NULL without one. */
+const char *faxanadu_cli_mantra(void) { return password_cli && password[0] ? password : NULL; }
+
 static void inject_password(void) {
     if (!password[0] || injected) return;
     unsigned max = cyc_mod_peek(0x0665), n = (unsigned)strlen(password);
@@ -182,6 +189,7 @@ static void power_on(void *ctx) {
     fax_world_reset();
     fax_travel_step();
     fax_banner_reset();
+    fax_files_power_on();
     fax_dagger_step();
     if (compile_path[0]) {
         int n = chr_override_compile_dir(compile_path);
@@ -226,9 +234,13 @@ static void frame_end(void *ctx) {
     fax_travel_step();
     fax_magic_frame_end();
     fax_banner_step();
+    fax_files_frame_end();
     fax_dagger_step();
+    fax_block_frame_end();
+    fax_sugata_frame_end();
     if (tiles_enabled || tile_dump) chr_override_frame_end();
-    if (!cyc_host_saves_enabled() || frame % 900) return;
+    /* Save files replace the mantra; faxanadu.srm is then only for importing. */
+    if (!cyc_host_saves_enabled() || frame % 900 || fax_save_enabled()) return;
     if (!(cyc_mod_peek(0x042C) | cyc_mod_peek(0x042D) | cyc_mod_peek(0x0437) | cyc_mod_peek(0x0439))) return;
     char mantra[25];
     if (generate_mantra(mantra)) save_mantra(mantra);
@@ -276,35 +288,42 @@ static void tcp_setup(void *ctx) {
     fax_falling_tcp_setup();
     fax_jumps_tcp_setup();
     fax_text_speed_tcp_setup();
+    fax_files_tcp_setup();
     fax_dagger_tcp_setup();
+    fax_block_tcp_setup();
+    fax_sugata_tcp_setup();
     fax_recharge_tcp_setup();
 }
 #endif
 static const uint32_t *present(void *ctx,int *w,int *h) {
     (void)ctx;
-    return fax_speaker_present(fax_banner_present(fax_world_present(w,h,cyc_frame_argb()),w,h),w,h);
+    return fax_files_present(fax_speaker_present(fax_banner_present(fax_sugata_present(fax_world_present(w,h,cyc_frame_argb()),w,h),w,h),w,h),w,h);
 }
 static void event(void *ctx,const void *e,int player) {
     (void)ctx;(void)player;
     fax_world_event(e);
     fax_magic_event(e);
+    fax_block_event(e);
 }
+static void input(void *ctx, uint8_t buttons[2]) { (void)ctx; fax_block_input(buttons); }
 static void load_setting(void *ctx, const char *key, const char *value) {
     (void)ctx;
-    fax_magic_load_setting(key, value);
+    if (!fax_magic_load_setting(key, value)) fax_block_load_setting(key, value);
 }
-static void save_settings(void *ctx, FILE *f) { (void)ctx; fax_magic_save_settings(f); }
+static void save_settings(void *ctx, FILE *f) { (void)ctx; fax_magic_save_settings(f); fax_block_save_settings(f); }
 #ifdef CYC_WITH_RECOMP_UI
-/* The runtime menu's Controls section: the Magic button's bindings, an
- * information row like the host's own shortcuts. */
+/* The runtime menu's Controls section: the Magic and Block buttons' bindings,
+ * information rows like the host's own shortcuts. */
 static RecompRuntimeUiItem menu_rows[] = {
     { "faxanadu.magic", "Controls", "Magic", "Casts like Up+B. Rebind it in config.ini [Game].",
+      RECOMP_RUNTIME_UI_ACTION, 0, 0, 0, NULL, 0, NULL },
+    { "faxanadu.block", "Controls", "Block", "Hold with a shield to stop magic. Rebind it in config.ini [Game].",
       RECOMP_RUNTIME_UI_ACTION, 0, 0, 0, NULL, 0, NULL },
 };
 static int menu_row_enabled(void *ctx, const RecompRuntimeUiItem *it) { (void)ctx; (void)it; return 0; }
 static const RecompRuntimeUiCallbacks menu_callbacks = { .is_enabled = menu_row_enabled };
 #endif
-static void state_loaded(void *ctx) {(void)ctx;fax_world_loaded();}
+static void state_loaded(void *ctx) {(void)ctx;fax_world_loaded();fax_block_loaded();fax_files_state_loaded();}
 const CycHostExtras *cyc_host_extras(void) {
     static const CycHostOption options[] = {
         { "--password", true, "Prefill a 1..24 character mantra (spaces allowed)" },
@@ -317,9 +336,10 @@ const CycHostExtras *cyc_host_extras(void) {
     };
 #ifdef CYC_WITH_RECOMP_UI
     menu_rows[0].label = fax_magic_controls_label();
+    menu_rows[1].label = fax_block_controls_label();
 #endif
     static const CycHostExtras extras = {
-        .present=present,.event=event,
+        .present=present,.event=event,.input=input,
         .load_setting = load_setting, .save_settings = save_settings,
 #ifdef CYC_WITH_RECOMP_UI
         .menu_items = menu_rows, .menu_item_count = sizeof(menu_rows) / sizeof(menu_rows[0]),

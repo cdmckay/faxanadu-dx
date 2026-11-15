@@ -1,14 +1,19 @@
 /* Guru travel. USA 57dd23d1, chipx86 byte-exact disassembly.
- * After the mantra (or a new title), a temple's Guru offers to send the hero's
- * spirit to another Guru the hero has visited. The ROM image is never changed
- * (save states hash it): the offer runs in the game's own interaction-script
- * interpreter and text box, steered from C at IScripts_InvokeNextAction. Two
- * script steps and one message slot sit in unused ROM, supplied through read
- * overrides, and C rewrites the slot before each line. The journey is the
- * respawn path without its penalties: HP, MP, gold, experience, timed items
- * and quests are kept, and the furthest temple stays the spawn point and the
- * mantra's. See docs/GAME_INTERNALS.md. */
+ * After the mantra (or a new title), a temple's Guru offers to send the hero to
+ * another Guru the hero has visited. With Save files and a file in play, Save
+ * files asks first (fax_files.c) and starts this part through
+ * fax_travel_begin. The ROM image is never changed (save states hash it): the
+ * offer runs in the game's own interaction-script interpreter and text box,
+ * steered from C at IScripts_InvokeNextAction. Two script steps and one
+ * message slot sit in unused ROM, supplied through read overrides, and C
+ * rewrites the slot before each line. The journey is the respawn path without
+ * its penalties: HP, MP, gold, experience, timed items and quests are kept,
+ * and so is the spawn point. The visited Gurus are kept in the file in play
+ * (its `gurus` field), or without Save files in faxanadu_gurus.txt.
+ * See docs/GAME_INTERNALS.md. */
 #include "fax_travel.h"
+#include "fax_files.h"
+#include "fax_save.h"
 #include "cyc_mod.h"
 #include "cyc_host_extras.h"
 #include "mod_runtime.h"
@@ -22,10 +27,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-enum { TEMPLES = 8, SLOT_LEN = 48 };
+enum { TEMPLES = 8, SLOT_LEN = FAX_TRAVEL_SLOT_LEN };
 
 /* RAM */
-#define TEMPLE_SPAWN_POINT 0x0439u   /* furthest temple; SET_SPAWN_POINT never lowers it */
+#define TEMPLE_SPAWN_POINT 0x0439u   /* the original's furthest temple; SET_SPAWN_POINT never lowers it */
 #define CURRENT_ROM_BANK   0x0100u
 #define ISCRIPT_ADDR       0x00DBu   /* IScriptOrCHRAddr; the next action is at it + IScriptOffset */
 #define ISCRIPT_OFFSET     0x00DDu
@@ -39,13 +44,13 @@ enum { TEMPLES = 8, SLOT_LEN = 48 };
 #define GURU_NEW_RANK_END   0xA602u   /* ISCRIPT_COMMON_GURU_NEW_RANK: 01 23, here 00 */
 #define EOLIS_GURU_HAS_RING 0xA0C6u   /* Eolis's Guru, who sets no spawn point: 03 2D, 00 */
 #define EOLIS_GURU_FIRST    0xA0BDu   /* ISCRIPT_EOLIS_GURU's first action: CHECK_FOR_ITEM Ring of Elf */
-#define SAY 0xAE00u                   /* 03 C3 00: show the slot, then END */
+#define SAY FAX_TRAVEL_SAY            /* $AE00: 03 C3 00: show the slot, then END */
 #define ASK 0xAE03u                   /* 16 C3 SAY: ask; A jumps to SAY, B goes on to ASK + 4 */
 /* Bank 13: Messages_Load counts $FF terminators from $8300. Message 193 is
  * followed by glyph data whose run ends at the $FF at $B45A, so message $C3
  * starts at $B45B, in unused ROM. */
-#define SLOT_ID 0xC3u
-#define SLOT    0xB45Bu
+#define SLOT_ID FAX_TRAVEL_SLOT_ID    /* $C3 */
+#define SLOT    FAX_TRAVEL_SLOT       /* $B45B */
 /* IScript actions */
 enum { END = 0x00, SHOW_MESSAGE = 0x03, SET_SPAWN_POINT = 0x06, QUESTION_JUMP_IF_ACCEPTED = 0x16 };
 
@@ -54,11 +59,12 @@ static const char *const town[TEMPLES] = {
 /* The Guru's lines: 16 columns, 4 lines to a box; '\n' breaks a line. */
 enum { TEXT_INTRO, TEXT_OFFER, TEXT_FAREWELL, TEXT_DEPART, TEXT_TO };   /* TEXT_TO + temple */
 static const char *const lines[] = {
-    "All Gurus\nmeditate as one.", "Shall I send\nyour spirit to\nanother Guru?",
+    "All Gurus\nmeditate as one.", "Shall I send\nyou to another\nGuru?",
     "Then go in\npeace.", "Close your eyes\nand clear your\nmind." };
 
-/* One conversation with a Guru. */
-typedef enum { IDLE, INTRO, OFFER, ASKING, FAREWELL, DEPART } Phase;
+/* One conversation with a Guru. INTRO_TOWNS is the intro before asking about
+ * the towns at once, when Save files' menu chose travel. */
+typedef enum { IDLE, INTRO, OFFER, ASKING, FAREWELL, DEPART, INTRO_TOWNS } Phase;
 typedef struct { uint8_t phase, offer, asking; } Talk;
 /* What the interpreter reads next: the address (or the one it was going to
  * read), the line for the slot (or -1) and a chosen temple (or -1). */
@@ -114,11 +120,15 @@ static int first_after(int t, uint8_t offer) {
 static Steer steer(Talk *k, uint16_t at) {
     Steer s = { at, -1, -1 };
     if (at == GURU_PASSWORD_END || at == GURU_NEW_RANK_END || at == EOLIS_GURU_HAS_RING + 2) {
+        if (fax_files_guru_choice()) return s;      /* Save files asks first, and calls fax_travel_begin */
         if (k->offer) k->phase = INTRO, s.at = SAY, s.text = TEXT_INTRO;
         else k->phase = IDLE;
     } else if (at == SAY + 2) {                      /* a line of ours has been read */
         if (k->phase == INTRO) k->phase = OFFER, s.at = ASK, s.text = TEXT_OFFER;
-        else k->phase = IDLE;                        /* the farewell or the departure: END */
+        else if (k->phase == INTRO_TOWNS) {
+            k->phase = ASKING; k->asking = (uint8_t)first_after(-1, k->offer);
+            s.at = ASK; s.text = TEXT_TO + k->asking;
+        } else k->phase = IDLE;                      /* the farewell or the departure: END */
     } else if (at == SAY) {                          /* A on ASK */
         if (k->phase == OFFER) {
             k->phase = ASKING; k->asking = (uint8_t)first_after(-1, k->offer);
@@ -185,6 +195,7 @@ static void load_visited(void) {
 }
 static void save_visited(void) {
     char path[1100], temp[1120];
+    if (fax_save_enabled()) return;                  /* the file in play keeps them (on_save) */
     if (!cyc_host_saves_enabled() || !sidecar_path("faxanadu_gurus.txt", path)) return;
     snprintf(temp, sizeof temp, "%s.tmp", path);
     FILE *f = fopen(temp, "w");
@@ -199,10 +210,28 @@ static void save_visited(void) {
 #endif
 }
 
+/* Save files: the visited Gurus are the file's `gurus` field. */
+static void on_save(FaxSaveEvent event) {
+    char text[FAX_SAVE_VALUE];
+    if (event == FAX_SAVE_NEW_GAME) visited = 1;
+    else if (event == FAX_SAVE_CONTINUED) visited = (uint8_t)(fax_save_gurus_parse(fax_save_get("gurus")) | 1u);
+    else { fax_save_gurus_format(visited, text); fax_save_set("gurus", text); }
+}
+
+/* The furthest temple: the highest visited Guru's, or the spawn point, which
+ * is the furthest temple in the original but the Guru last saved with under
+ * Save files. */
+static unsigned furthest_temple(void) {
+    unsigned furthest = cyc_mod_peek(TEMPLE_SPAWN_POINT);
+    if (furthest >= TEMPLES) furthest = 0;
+    for (unsigned t = furthest + 1; t < TEMPLES; ++t) if (visited >> t & 1) furthest = t;
+    return furthest;
+}
+
 static void meet(unsigned here) {
     if (!(visited >> here & 1)) { visited |= (uint8_t)(1u << here); save_visited(); }
     talk.phase = IDLE;
-    talk.offer = offered(here, cyc_mod_peek(TEMPLE_SPAWN_POINT), visited);
+    talk.offer = offered(here, furthest_temple(), visited);
 }
 
 /* The temple whose Guru's conversation begins with the action at `at`, or
@@ -335,7 +364,7 @@ static int state_get(uint8_t *buf, int cap) {
     return 6;
 }
 static int state_validate(const uint8_t *buf, int len) {
-    return len == 0 || (len == 6 && (buf[0] < TEMPLES || buf[0] == 0xFF) && buf[1] <= 1 && buf[2] <= DEPART &&
+    return len == 0 || (len == 6 && (buf[0] < TEMPLES || buf[0] == 0xFF) && buf[1] <= 1 && buf[2] <= INTRO_TOWNS &&
                         buf[4] < TEMPLES && (buf[5] < TEXT_TO + TEMPLES || buf[5] == 0xFF));
 }
 static int state_set(const uint8_t *buf, int len) {
@@ -345,6 +374,20 @@ static int state_set(const uint8_t *buf, int len) {
     talk = len ? (Talk){ buf[2], buf[3], buf[4] } : (Talk){ 0 };
     if (served && len && buf[5] != 0xFF) serve(buf[5]);   /* overrides are not machine state */
     return 1;
+}
+
+/* For Save files, which offers saving first while a file is in play. */
+bool fax_travel_can_offer(void) { return enabled && served && !failed && talk.offer; }
+uint16_t fax_travel_say_step(void) { return enabled && served && !failed ? SAY : 0; }
+uint16_t fax_travel_begin(bool towns) {
+    if (!fax_travel_can_offer()) return 0;
+    if (!serve(TEXT_INTRO)) {
+        fprintf(stderr, "[travel] cannot supply the Guru's line; Guru travel is off\n");
+        failed = true; talk.phase = IDLE;
+        return 0;
+    }
+    talk.phase = towns ? INTRO_TOWNS : INTRO;
+    return SAY;
 }
 
 #ifdef CYC_WITH_SDL
@@ -372,5 +415,5 @@ NES_MOD_CONSTRUCTOR(register_travel) {
         !nes_mod_register_function_entry_plugin("faxanadu.travel.new-game", 0xdb26, new_game_hook) ||
         !nes_mod_register_reset_callback(deactivate) || !nes_mod_register_activation_plugin("faxanadu.guru-travel", activate) ||
         !nes_mod_register_savestate_hook("faxanadu.travel", state_get, state_set) ||
-        !nes_mod_register_savestate_validator("faxanadu.travel", state_validate)) abort();
+        !nes_mod_register_savestate_validator("faxanadu.travel", state_validate) || !fax_save_listen(on_save)) abort();
 }
