@@ -63,6 +63,12 @@ cmake --build "$OUT/speaker" -j"$JOBS" >/dev/null
 cmake -S tests/dagger -B "$OUT/dagger" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/dagger" -j"$JOBS" >/dev/null
 "$OUT/dagger/dagger_test"
+cmake -S tests/block -B "$OUT/block" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/block" -j"$JOBS" >/dev/null
+"$OUT/block/block_test"
+cmake -S tests/sugata -B "$OUT/sugata" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/sugata" -j"$JOBS" >/dev/null
+"$OUT/sugata/sugata_test"
 cmake -S tests/respawn -B "$OUT/respawn" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/respawn" -j"$JOBS" >/dev/null
 "$OUT/respawn/respawn_test"
@@ -118,6 +124,15 @@ python3 tests/text_speed/text_speed.py --build build-cycle --rom "$ROM" --out "$
 echo "== end to end: the taller dagger, alongside them"
 python3 tests/dagger/taller_dagger.py --build build-cycle --rom "$ROM" --out "$OUT/dagger-e2e" \
   > "$OUT/dagger-e2e.log" 2>&1 & dagger=$!
+echo "== end to end: Block and Sugata's flash, by default and with Seamless on, alongside them"
+block_e2e() {  # SCRIPT NAME [ARGS...]
+  local script="$1" name="$2"; shift 2
+  python3 "$script" --build build-cycle --rom "$ROM" --out "$OUT/$name" "$@" > "$OUT/$name.log" 2>&1
+}
+block_e2e tests/block/block.py block-e2e & block=$!
+block_e2e tests/block/block.py block-e2e-seamless --game-arg=--world-view=seamless & block_seamless=$!
+block_e2e tests/sugata/sugata_flash.py sugata-e2e & sugata=$!
+block_e2e tests/sugata/sugata_flash.py sugata-e2e-seamless --game-arg=--world-view=seamless & sugata_seamless=$!
 echo "== end to end: zone respawn, by default and with Seamless on, alongside them"
 respawn_e2e() {  # NAME [ARGS...]
   local name="$1"; shift
@@ -154,6 +169,14 @@ wait "$text_speed" || failed=1
 sed 's/^/[text]     /' "$OUT/text-speed-e2e.log"
 wait "$dagger" || failed=1
 sed 's/^/[dagger]   /' "$OUT/dagger-e2e.log"
+wait "$block" || failed=1
+sed 's/^/[block]    /' "$OUT/block-e2e.log"
+wait "$block_seamless" || failed=1
+sed 's/^/[block+sw] /' "$OUT/block-e2e-seamless.log"
+wait "$sugata" || failed=1
+sed 's/^/[sugata]   /' "$OUT/sugata-e2e.log"
+wait "$sugata_seamless" || failed=1
+sed 's/^/[sugata+sw] /' "$OUT/sugata-e2e-seamless.log"
 wait "$respawn" || failed=1
 sed 's/^/[respawn]  /' "$OUT/respawn-e2e.log"
 wait "$respawn_seamless" || failed=1
