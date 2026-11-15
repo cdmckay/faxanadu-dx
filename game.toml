@@ -301,3 +301,57 @@ id = "faxanadu.text-speed.if-ready"
 addr = 0xf491
 bank = 15
 bytes = "ad 13 02 f0 cf ad 15 02 d0 ca ad 1d"
+
+# Quick shops (fax_shops.c): a shop's script and its two list actions,
+# IScriptAction_OpenShop and IScriptAction_ShowSellMenu, steered at their
+# steps: the first action, "What would you like?", the list kept up after a
+# purchase or a sale, the sell list's contents, its A, the menu's input each
+# frame, and the end of a shop's message.
+
+[[mod_function_hook]]
+id = "faxanadu.shops.next-action"
+addr = 0x826e
+bank = 12
+bytes = "20 a4 87 aa bd 93 82 48 bd 7b 82 48"
+
+[[mod_function_hook]]
+id = "faxanadu.shops.open"
+addr = 0x83d8
+bank = 12
+bytes = "a9 14 20 f5 f3 20 b0 87 20 66 f4 20"
+
+[[mod_function_hook]]
+id = "faxanadu.shops.bought"
+addr = 0x8463
+bank = 12
+bytes = "20 71 84 4c 6e 82 20 71 84 a9 06 4c"
+
+[[mod_function_hook]]
+id = "faxanadu.shops.sell-list"
+addr = 0x86bc
+bank = 12
+bytes = "ad 1f 02 d0 05 a9 12 4c 7e 83 a9 13"
+
+[[mod_function_hook]]
+id = "faxanadu.shops.sell-pick"
+addr = 0x86e0
+bank = 12
+bytes = "ae 1e 02 bd 28 02 8d 02 02 bd 30 02"
+
+[[mod_function_hook]]
+id = "faxanadu.shops.sold"
+addr = 0x86f8
+bank = 12
+bytes = "20 02 90 20 e2 81 4c 6e 82 4c b4 82"
+
+[[mod_function_hook]]
+id = "faxanadu.shops.menu"
+addr = 0x84f0
+bank = 12
+bytes = "20 56 90 a5 19 30 06 0a 30 05 4c ed"
+
+[[mod_function_hook]]
+id = "faxanadu.shops.final"
+addr = 0x838e
+bank = 12
+bytes = "4c b4 82 20 a4 87 cd 39 04 90 03 8d"

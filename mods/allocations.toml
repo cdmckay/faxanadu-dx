@@ -145,3 +145,24 @@ rom = []
 overrides = [
     { bank = 14, start = 0xB898, stock = [0x04], use = "MAYBE_WEAPON_RANGES: the dagger's Y reach, served as $08" },
 ]
+
+[[feature]]
+package = "faxanadu.enhancement.quick-shops"
+source = "fax_shops.c"
+hooks = "faxanadu.shops."
+rom = []
+# No ROM and no read overrides. Writes only the game's own variables, while a
+# shop's script runs: IScriptOrCHRAddr and IScriptOffset (the next step),
+# Menu_CursorPos, the list (DataArray, ShopItemCostsL/U, Arg_StringsCount)
+# after ShowSellMenu's scan, and the stack below S where a step is entered by
+# return. Its other sites are in the shops' list actions, which no other
+# feature hooks.
+
+[[shared_site]]
+addr = 0x826E   # IScripts_InvokeNextAction
+hooks = ["faxanadu.travel.next-action", "faxanadu.shops.next-action"]
+why = """Both observe and return 0, and each steers only its own scripts: Guru \
+travel the Gurus' (a SET_SPAWN_POINT action, Eolis's Guru, its own SAY and ASK \
+steps), Quick shops a script with the shops' layout from its first action, \
+then only its two list steps. No script is both, so at most one of them moves \
+IScriptOrCHRAddr for any action."""
