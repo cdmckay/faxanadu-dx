@@ -59,7 +59,7 @@ cmake --build "$OUT/movement" -j"$JOBS" >/dev/null
 "$OUT/movement/jumps_test"
 cmake -S tests/dagger -B "$OUT/dagger" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/dagger" -j"$JOBS" >/dev/null
-"$OUT/dagger/dagger_test" 2>&1 | grep -v "unexpected ROM layout"   # its refusal test prints that line
+"$OUT/dagger/dagger_test"
 
 echo "== game build"
 [ -f build-cycle/CMakeCache.txt ] || cmake -S . -B build-cycle -DCMAKE_BUILD_TYPE=Release -DNESRECOMP_ROM="$ROM" >/dev/null
