@@ -104,15 +104,15 @@ python3 tests/movement/forgiving_jumps.py --build build-cycle --rom "$ROM" --out
 echo "== end to end: Hold A to speed up text, alongside them"
 python3 tests/text_speed/text_speed.py --build build-cycle --rom "$ROM" --out "$OUT/text-speed-e2e" \
   > "$OUT/text-speed-e2e.log" 2>&1 & text_speed=$!
-echo "== end to end: Block, and Sugata's flash by default and with Seamless on, alongside them"
-python3 tests/block/block.py --build build-cycle --rom "$ROM" --out "$OUT/block-e2e" \
-  > "$OUT/block-e2e.log" 2>&1 & block=$!
-sugata_e2e() {  # NAME [ARGS...]
-  local name="$1"; shift
-  python3 tests/sugata/sugata_flash.py --build build-cycle --rom "$ROM" --out "$OUT/$name" "$@" > "$OUT/$name.log" 2>&1
+echo "== end to end: Block and Sugata's flash, by default and with Seamless on, alongside them"
+block_e2e() {  # SCRIPT NAME [ARGS...]
+  local script="$1" name="$2"; shift 2
+  python3 "$script" --build build-cycle --rom "$ROM" --out "$OUT/$name" "$@" > "$OUT/$name.log" 2>&1
 }
-sugata_e2e sugata-e2e & sugata=$!
-sugata_e2e sugata-e2e-seamless --game-arg=--world-view=seamless & sugata_seamless=$!
+block_e2e tests/block/block.py block-e2e & block=$!
+block_e2e tests/block/block.py block-e2e-seamless --game-arg=--world-view=seamless & block_seamless=$!
+block_e2e tests/sugata/sugata_flash.py sugata-e2e & sugata=$!
+block_e2e tests/sugata/sugata_flash.py sugata-e2e-seamless --game-arg=--world-view=seamless & sugata_seamless=$!
 failed=0
 wait "$default" || failed=1
 sed 's/^/[default]  /' "$OUT/travel-e2e.log"
@@ -138,6 +138,8 @@ wait "$text_speed" || failed=1
 sed 's/^/[text]     /' "$OUT/text-speed-e2e.log"
 wait "$block" || failed=1
 sed 's/^/[block]    /' "$OUT/block-e2e.log"
+wait "$block_seamless" || failed=1
+sed 's/^/[block+sw] /' "$OUT/block-e2e-seamless.log"
 wait "$sugata" || failed=1
 sed 's/^/[sugata]   /' "$OUT/sugata-e2e.log"
 wait "$sugata_seamless" || failed=1

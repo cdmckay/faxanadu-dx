@@ -163,10 +163,10 @@ static void it_warns_then_flashes(void) {
         frame();
         CHECK(!(ram[CURRENT_SPRITES_FLAGS + SLOT] & BEHAVIOR_READY) && !(ram[PPU_MASK] & 1));   /* nothing yet */
         CHECK(warn[SLOT] == f && band.kind == WARNING_BAND && band.center + 8 == 128);
-        CHECK(drawn == !(f & 4));                         /* blinking: hidden 4 frames in 8 */
+        CHECK(drawn == !((SUGATA_WARNING - f) & 4));      /* blinking: hidden 4 frames in 8, shown at the end */
         hidden += !drawn;
     }
-    CHECK(hidden == 15 && warnings == 1 && flashes == 0 && warned == 0);
+    CHECK(hidden == 14 && drawn && warnings == 1 && flashes == 0 && warned == 0);
     /* The flash: the game's first call, greyscale cleared at once, the band. */
     frame();
     CHECK(ram[CURRENT_SPRITES_FLAGS + SLOT] & BEHAVIOR_READY && ram[BEHAVIOR_DATA2 + SLOT] == 1);

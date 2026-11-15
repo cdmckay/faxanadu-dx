@@ -2,8 +2,8 @@ format_version = 1
 id = "faxanadu.enhancement.sugata-flash"
 version = "1.0.0"
 name = "Sugata's flash"
-author = "faxanadu-remaster"
-description = "Sugata warns before it flashes, and the flash only reaches a band around it. In the original it hit you anywhere on the screen."
+author = "Faxanadu Remastered"
+description = "Sugata warns before it flashes, and the flash only reaches a band around it, which Block stops. In the original it hit you anywhere on the screen."
 license = "MIT"
 resolver = "declarative"
 save_compatibility = "shared"
@@ -15,7 +15,7 @@ rom_crc32 = "57dd23d1"
 [[feature]]
 id = "sugata-flash"
 name = "Sugata's flash"
-description = "Sugata blinks for half a second before it flashes, and the band of screen its flash will reach dims faintly. The flash greys only that band and hurts only there: step out of it, or hold Block. With the Magic Shield, Block turns the flash back on Sugata."
+description = "Sugata blinks for half a second before it flashes, and the band of screen its flash will reach dims faintly. The flash greys only that band and hurts only there: step out of it, or hold Block. With the Magic Shield, Block turns the flash back on Sugata. Ointment keeps your HP, though the flash still knocks you back."
 group = "Combat"
 default_enabled = true
 

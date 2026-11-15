@@ -13,7 +13,10 @@
  *   - Warning: while the behavior is not yet under way, its call is skipped
  *     for SUGATA_WARNING frames, and on every other four of them
  *     SpriteUpdateHandler_Enemy_Sugata returns through
- *     SpriteUpdateHandler_Invisible, so Sugata blinks where it stands.
+ *     SpriteUpdateHandler_Invisible, so Sugata blinks where it stands. The
+ *     blink is counted back from the flash, so its last four frames show
+ *     Sugata: the picture lags its sprites by a frame or two, and a blink
+ *     ending hidden would hide Sugata in the flash's first frames.
  *   - The band: where the behavior has just set greyscale, it is cleared
  *     again and the presented picture greys only the band within reach (and
  *     dims it faintly through the warning), as the PPU's greyscale would:
@@ -29,7 +32,7 @@
  *     clear while it lasts), unlike every other hit. In reach, under Ointment,
  *     the flash does its own steps but Player_ReduceHP: the hit sound, 60
  *     frames of invincibility and knockback (Player_HandleIFrames ends the
- *     knockback when they reach $38, so it needs them), and no HP.
+ *     knockback when they reach $39, so it needs them), and no HP.
  *   Otherwise the game's damage goes on.
  * Sugata's death ends the band, as the game's death code ends its greyscale.
  * See docs/GAME_INTERNALS.md. */
@@ -134,7 +137,7 @@ static int blink_hook(uint16_t addr) {
     (void)addr;
     if (!enabled || cyc_mod_isolated()) return 0;
     unsigned s = slot();
-    if (!warn[s] || !(warn[s] & BLINK)) return 0;
+    if (!warn[s] || !((SUGATA_WARNING - warn[s]) & BLINK)) return 0;
     fax_block_return_via(INVISIBLE_DRAW);
     return 1;
 }
@@ -256,7 +259,7 @@ static size_t capacity;
 #ifdef CYC_WITH_SDL
 static char capture_path[1024];
 static int capture_kind = NO_BAND;
-static unsigned capture_at, captured;   /* a warning capture waits for this many frames of it */
+static unsigned capture_at, captured;   /* a capture waits for this many frames of its band */
 static unsigned warning_frames(void) {
     unsigned most = 0;
     for (unsigned s = 0; s < SLOTS; ++s) if (warn[s] > most) most = warn[s];
@@ -300,7 +303,8 @@ const uint32_t *fax_sugata_present(const uint32_t *picture, int *w, int *h) {
             *p = band.kind == FLASH_BAND ? grey(*p) : dim(*p);
         }
 #ifdef CYC_WITH_SDL
-    if (capture_kind == band.kind && capture_path[0] && (band.kind == FLASH_BAND || warning_frames() >= capture_at)) {
+    if (capture_kind == band.kind && capture_path[0] &&
+        (band.kind == FLASH_BAND ? FLASH_SHOWN - band.frames >= capture_at : warning_frames() >= capture_at)) {
         if (cyc_write_png(capture_path, canvas, width, height)) ++captured;
         capture_kind = NO_BAND;
     }
@@ -371,9 +375,9 @@ static void sugata_state(int id, const char *line) {
     cyc_tcp_ok(id, fields);
 }
 /* Write the presented picture to `path` the next time a band of that kind
- * ("warning" or "flash") is drawn, a warning `at` frames in or later: the
- * flash lasts a few frames, and Sugata is hidden in the warning's frames
- * 4-7, 12-15 and so on. */
+ * ("warning" or "flash") is drawn, `at` frames into it or later: the flash
+ * lasts FLASH_SHOWN frames, and Sugata is hidden in the warning's frames 4-7,
+ * 12-15 and so on. */
 static void sugata_capture(int id, const char *line) {
     char kind[16] = "";
     long at = 0;

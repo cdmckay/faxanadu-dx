@@ -104,7 +104,7 @@ def main():
         print(f"ok: out of a shop onto the Mist's screen 30, with Sugata in slot {slot}")
 
         # 1. The warning: Sugata blinks where it stands, the band dimmed.
-        hidden = capture("sugata-warning", "warning", at=6)       # frames 4-7 of 8: Sugata hidden
+        hidden = capture("sugata-warning", "warning", at=28)      # its last frames: Sugata shown
         g.until("Sugata's warning", lambda: state()["warning"] > 0, 600)
         s = state()
         assert s["warnings"] == 1 and s["flashes"] == 0 and s["band"] == "warning", s

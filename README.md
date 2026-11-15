@@ -95,19 +95,20 @@ question still waits for a fresh press of A, so holding it never skips a page
 or answers for you: let go, then press A to go on.
 
 **Block** is on by default (Mods to turn it off). Hold V on the keyboard, or B
-on a controller, with the Small, Large or Magic Shield in hand to stand your
+on a controller, with a shield (or the Battle Helmet) in hand to stand your
 ground and raise it: enemy magic from the front, and Sugata's flash from any
 side, is stopped with the shield's sound. Contact and sword damage are as
-before, and the Battle Helmet holds no shield. The first time you get a shield,
-the shopkeeper adds a line naming your key, once (remembered in
-`faxanadu_block.txt` next to the game). Rebind it with `BlockKey` and
-`BlockButton` in `config.ini`, as for the Magic button.
+before. The first time you get a shield or the Battle Helmet, the game adds a
+line naming your key, once (remembered in `faxanadu_block.txt` next to the
+game). Rebind it with `BlockKey` and `BlockButton` in `config.ini`, as for the
+Magic button.
 
 **Sugata's flash** is on by default (Mods to turn it off). Sugata, in the Mist,
 blinks for half a second before it flashes, and the band of the screen its
 flash will reach dims faintly. The flash greys only that band and hurts only
 there: step out of it, or hold Block. With the Magic Shield, Block turns the
-flash back on Sugata. In the original it hit you anywhere on the screen.
+flash back on Sugata. Ointment now keeps your HP, though the flash still knocks
+you back. In the original it hit you anywhere on the screen, Ointment or not.
 
 Optional **Seamless** appears first in Mods, marked **Experimental** and
 disabled by default. It joins connected rooms, advances neighboring actors,

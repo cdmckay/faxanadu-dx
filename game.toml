@@ -305,8 +305,8 @@ bytes = "ad 13 02 f0 cf ad 15 02 d0 ca ad 1d"
 # Sugata's flash (fax_sugata.c): SpriteBehavior_FlashScreenHitPlayer's entry
 # (the warning), its STA PPU_Mask's next instruction (the band instead of
 # greyscale) and its damage, and Sugata's draw (the blink). Its damage site is
-# shared with Block's and must come first: it decides reach and the Magic
-# Shield's reflection, and leaves the rest to Block.
+# shared with Block's and must come first: it decides reach, the Magic
+# Shield's reflection and Ointment, and leaves the rest to Block.
 
 [[mod_function_hook]]
 id = "faxanadu.sugata.behavior"
