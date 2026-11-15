@@ -70,6 +70,12 @@ different town, region, tower or castle, its name appears below the status bar
 for two seconds in the game's own text box, as the dialogue names it ("Tower of
 Suffer", "Castle of Fraternal"). Shops, houses and temples show nothing.
 
+**Speaker names** is on by default (Mods to turn it off). When someone with a
+portrait talks to you, their name sits on a tab above the dialogue box for
+the whole conversation, as the game names them: "Guru of Apolune", "King of
+Eolis", "Martial Artist", "Key Seller". People without a portrait show no
+name.
+
 **Auto keys** is on by default (Mods to turn it off). Press Up at a locked door
 and the right key from your inventory opens it, without selecting it first;
 whatever item you had selected stays selected.

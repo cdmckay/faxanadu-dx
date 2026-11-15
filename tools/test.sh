@@ -49,6 +49,9 @@ cmake --build "$OUT/zones" -j"$JOBS" >/dev/null
 cmake -S tests/keys -B "$OUT/keys" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/keys" -j"$JOBS" >/dev/null
 "$OUT/keys/keys_test"
+cmake -S tests/speaker -B "$OUT/speaker" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/speaker" -j"$JOBS" >/dev/null
+"$OUT/speaker/speaker_test"
 
 echo "== game build"
 [ -f build-cycle/CMakeCache.txt ] || cmake -S . -B build-cycle -DCMAKE_BUILD_TYPE=Release -DNESRECOMP_ROM="$ROM" >/dev/null
@@ -83,6 +86,13 @@ zones_e2e zones-e2e-seamless --game-arg=--world-view=seamless & zones_seamless=$
 echo "== end to end: auto keys and reusable tools, alongside them"
 python3 tests/keys/auto_and_reusable_keys.py --build build-cycle --rom "$ROM" --out "$OUT/keys-e2e" \
   > "$OUT/keys-e2e.log" 2>&1 & keys=$!
+echo "== end to end: speaker names, by default and with Seamless on, alongside them"
+speaker_e2e() {  # NAME [ARGS...]
+  local name="$1"; shift
+  python3 tests/speaker/speaker_names.py --build build-cycle --rom "$ROM" --out "$OUT/$name" "$@" > "$OUT/$name.log" 2>&1
+}
+speaker_e2e speaker-e2e & speaker=$!
+speaker_e2e speaker-e2e-seamless --game-arg=--world-view=seamless & speaker_seamless=$!
 failed=0
 wait "$default" || failed=1
 sed 's/^/[default]  /' "$OUT/travel-e2e.log"
@@ -100,5 +110,9 @@ wait "$zones_seamless" || failed=1
 sed 's/^/[zones+sw] /' "$OUT/zones-e2e-seamless.log"
 wait "$keys" || failed=1
 sed 's/^/[keys]     /' "$OUT/keys-e2e.log"
+wait "$speaker" || failed=1
+sed 's/^/[speaker]  /' "$OUT/speaker-e2e.log"
+wait "$speaker_seamless" || failed=1
+sed 's/^/[spkr+sw]  /' "$OUT/speaker-e2e-seamless.log"
 [ "$failed" = 0 ] || { echo "end-to-end tests failed; screenshots in $OUT/*-e2e*/" >&2; exit 1; }
 echo "all checks passed"

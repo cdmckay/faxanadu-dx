@@ -1,0 +1,24 @@
+format_version = 1
+id = "faxanadu.enhancement.speaker-names"
+version = "1.0.0"
+name = "Speaker names"
+author = "faxanadu-remaster"
+description = "Shows who is talking above the dialogue box, as the game names them: the Guru of Apolune, the King of Eolis, the Key Seller."
+license = "MIT"
+resolver = "declarative"
+save_compatibility = "shared"
+
+[[target]]
+game_id = "faxanadu-usa"
+rom_crc32 = "57dd23d1"
+
+[[feature]]
+id = "speaker-names"
+name = "Speaker names"
+description = "When someone with a portrait talks to you, their name sits on a tab above the dialogue box, in the game's own text box, for as long as the conversation lasts: \"Guru of Apolune\", \"King of Eolis\", \"Martial Artist\", \"Key Seller\". People without a portrait show no name."
+group = "Display"
+default_enabled = true
+
+[[plugin]]
+feature = "speaker-names"
+id = "faxanadu.speaker-names"
