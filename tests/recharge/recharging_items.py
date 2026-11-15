@@ -571,7 +571,8 @@ def main():
         status_shot("status-elixir-charged")
         poke({HP: 1, HP_FRACTION: 0})
         until("a Zozura's hit", lambda: ram(MESSAGE_ID) == USED_ELIXIR, 2400)
-        until("the line to type out", typed, 900)
+        until("the line to type out", lambda: ram(MESSAGE_ID) == 0, 900)   # the pause flag may be stale
+        wait(2)
         shot("elixir-used")
         page_through()
         until("HP and MP to refill", lambda: ram(HP) == 0x50 and not box_open(), 1200)
