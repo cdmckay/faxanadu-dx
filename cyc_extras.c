@@ -15,6 +15,7 @@
 #include "fax_falling.h"
 #include "fax_jumps.h"
 #include "fax_text_speed.h"
+#include "fax_respawn.h"
 #ifdef CYC_WITH_SDL
 #include "cyc_tcp.h"
 #include <SDL.h>
@@ -270,6 +271,7 @@ static void tcp_setup(void *ctx) {
     fax_falling_tcp_setup();
     fax_jumps_tcp_setup();
     fax_text_speed_tcp_setup();
+    fax_respawn_tcp_setup();
 }
 #endif
 static const uint32_t *present(void *ctx,int *w,int *h) {
