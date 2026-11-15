@@ -242,3 +242,53 @@ id = "faxanadu.reusable-tools.mattock"
 addr = 0xc4bf
 bank = 15
 bytes = "48 a9 ff 8d c1 03 20 dc c8 68 60 ad"
+
+# The falling pose (fax_falling.c): both pose routines' entry, and the fall
+# step's two ends in Player_HandleVertLadderOrJump, which tell a landing apart
+# from a fall.
+
+[[mod_function_hook]]
+id = "faxanadu.falling-pose.body"
+addr = 0xecac
+bank = 15
+bytes = "a5 a4 4a 90 07 a5 a4 30 17 a9 03 60"
+
+[[mod_function_hook]]
+id = "faxanadu.falling-pose.gear"
+addr = 0xb927
+bank = 14
+bytes = "a5 a4 4a 90 07 a5 a4 30 28 a9 03 60"
+
+[[mod_function_hook]]
+id = "faxanadu.falling-pose.set-falling"
+addr = 0xe3d1
+bank = 15
+bytes = "a5 a4 09 04 85 a4 a5 a4 29 08 d0 5d"
+
+[[mod_function_hook]]
+id = "faxanadu.falling-pose.cap-fall"
+addr = 0xe423
+bank = 15
+bytes = "f0 06 a5 a1 29 f0 85 a1 60 a5 a4 29"
+
+# Forgiving jumps (fax_jumps.c): the hero's vertical update, its ground check
+# (BEQ after the down check) and its jump check (BPL after LDX
+# Joy1_ChangedButtonMask).
+
+[[mod_function_hook]]
+id = "faxanadu.forgiving-jumps.tick"
+addr = 0xe2c8
+bank = 15
+bytes = "a5 a5 10 0a a5 16 10 06 20 52 e7 4c"
+
+[[mod_function_hook]]
+id = "faxanadu.forgiving-jumps.ground"
+addr = 0xe3b2
+bank = 15
+bytes = "f0 03 4c 3a e4 20 f6 e4 a5 b7 f0 0f"
+
+[[mod_function_hook]]
+id = "faxanadu.forgiving-jumps.jump"
+addr = 0xe44b
+bank = 15
+bytes = "10 e6 20 f6 ec b0 e7 a2 02 20 c8 e6"
