@@ -133,6 +133,20 @@ faxanatools' `messages.py` decodes and encodes them; `fax_travel.c`'s
   `MessageID` alone.
 - Between two messages the box is wiped and refilled. A screenshot taken then
   shows half of each.
+- The font is one bit a pixel in bank 13 at `TILE_GLYPHS_START` (`$8000`),
+  8 bytes a character from `$20` to `$7F` (`A` is at `$8108`). The glyph data
+  ends where the messages begin (`$8300`). `TextBox_WriteChar` copies a glyph
+  into both bit planes of a pattern tile, so text is color 3 of the box's
+  palette.
+- `TextBox_Open` frames a box with background tiles 1 (top left), 2 (top and
+  bottom), 3 (top right), 4 (sides), 5 (bottom left) and 6 (bottom right)
+  around tile 0 (black), from the playfield's background pattern table.
+  `TextBox_Closed` (`$020C`) is 0 while a box or the Select menu is open, and
+  nonzero once one has closed (also before the first).
+- The HUD and every box share one palette, `UI_AttributeDataIndex` (`$038D`,
+  0-3), which `Screen_LoadUIPalette` sets from the screen's palette
+  (`PALETTE_INDEX_TO_UI_BG_ATTRIBUTE_INDEX`, bank 11). The frame's colors
+  differ from place to place for that reason.
 
 ## Temples and spawning (bank 15)
 
@@ -373,6 +387,127 @@ the screen's right edge knocks him onto the next screen.
   hero at x=53 for a long monologue that A pages through. Up goes through the
   gate from anywhere in x=188-199.
 
+## Areas, screens and zones
+
+`Area_CurrentArea` (`$24`) is one of eight areas, each a set of screens
+(`Area_CurrentScreen`, `$63`) laid out in bank 3. **Towers and castles are not
+areas of their own**: they are screens of their region's area, through doors
+that change the palette. Only shops, houses, temples and the King's room are
+`AREA_BUILDINGS`.
+
+| Area | Screens | Holds |
+|---|---|---|
+| 0 `AREA_EOLIS` | 9 | Eolis. Screen 0 is outside the gate, where the intro plays |
+| 1 `AREA_TRUNK` | 64 | The Trunk, the Tower of Trunk, the Tower of Fortress, the Joker spring |
+| 2 `AREA_MIST` | 83 | The Mist, the Tower of Suffer, the Tower of Mist, two unnamed towers |
+| 3 `AREA_TOWNS` | 14 | The towns from Apolune to Dartmoor, two screens each |
+| 4 `AREA_BUILDINGS` | 10 layouts | Shops, houses, temples and the King's room |
+| 5 `AREA_BRANCH` | 40 | The Branch |
+| 6 `AREA_DARTMOOR` | 32 | Dartmoor, the Castle of Fraternal, King Grieve's room |
+| 7 `AREA_ZENIS` | 20 | The fortress of Zenis |
+
+Bank 3's `AREA_TABLES` points, for each area, at:
+
+- `<AREA>_SCROLL_DATA`: 4 bytes a screen, the screens to the left, right,
+  above and below (`$FF`: none). Its length / 4 is the area's screen count.
+  The links are not always both ways.
+- `<AREA>_DOOR_LOCATIONS`: 4 bytes a door to a `$FF`: the screen, the block
+  (`YX`), a door index and the start position (`YX`) on the other side. An
+  index under `$20` is a door to another screen of the same area, `$20` and
+  up a building, and `$FE` / `$FF` a door to another region.
+- `<AREA>_DOOR_DESTINATIONS`: 4 bytes a door index (index - `$20` in
+  `AREA_TOWNS`): the screen, the palette and the key it takes. For a building
+  the screen is the building's number and the palette its kind
+  (`BUILDING_PALETTES`: 0 King's room, 1 temple, 2 hospital, ... 9 magic shop).
+
+Other ways between screens and areas, in bank 15:
+
+- Off a region's edge into a town and back: `AREA_TOWN_TRANSITIONS_DATA`, 5
+  bytes each (screen, area, screen, start, palette).
+- Doors between regions (`$FE` back, `$FF` on) look up
+  `Area_Region` (`$0435`, `REGION_*`) × 2 + (index & 1) in
+  `MAYBE_REGION_TRANSITION_MAP`, `MAYBE_SCREEN_TRANSITION_MAP` and
+  `DOOR_LOOKUP_REQUIREMENTS`. `DOOR_OUTSIDE_REGION_INDEXES` turns the region
+  into an area.
+- `AREA_SCREEN_COMPARATORS`: the climb between Trunk screens `$0C` and `$16`.
+- Inside a building, `Area_CurrentArea` is 4 and `Area_CurrentScreen` the
+  building's number (the temples' are in "Temples and spawning").
+  `Game_EnterBuilding` keeps where the hero stood in `Area_SavedArea`
+  (`$03D5`), `Area_SavedScreen` (`$03D6`), `Screen_SavedPalette` (`$03D7`)
+  and `Player_SavedPosXY` (`$03D8`, block `YX`), and walking out loads exactly
+  those (`Game_ExitBuilding`). A respawn or a Guru travel journey sets them to
+  the temple's town. Edited in a save state, they put the hero anywhere
+  (`tests/zones/zone_names.py`).
+- The door out of Eolis (screen 8) takes the "J" key in hand
+  (`SelectedItem`, `$03C1`, = 7): "There is a mark of "Jack" by the key hole."
+- A screen has finished loading and is not scrolling when
+  `Screen_ReadyState` (`$0E`) is 0, `Game_InterruptHandlersEnabled` (`$13`)
+  is set and `Screen_ScrollDirection` (`$54`) is `$FF`. On the title screen
+  `$54` is 0. `Game_PausedState` (`$0120`) is 1 while Start pauses.
+
+Who and what is on each screen is in bank 11, `AREA_SPRITE_ADDRESSES`: for
+each screen, (entity, `YX`) pairs to a `$FF`, then the NPCs' interaction
+script numbers to a `$FF` (or `SCREEN_HAS_SPECIAL_EVENT` and an event).
+chipx86's labels for these lists are one area off (`SPRITE_INFO_APOLUNE` is
+area 1's); the table is indexed by area.
+
+### Zones (`fax_zone.c`)
+
+Zone names and zone respawn share this table. The names are the dialogue's
+(message numbers in bank 13); places it never names stay part of the region
+around them.
+
+| Area | Screens | Zone | Named in |
+|---|---|---|---|
+| 0 | `$01-$08` | Eolis (town) | `$2A` "the Elf town of Eolis" |
+| 1 | `$00-$0C`, `$16-$28`, `$3E-$3F` | Trunk (region) | `$59` "the spring of Trunk" |
+| 1 | `$0D-$15` | Tower of Trunk | `$3D` |
+| 1 | `$29-$3D` | Tower of Fortress | `$48`, `$50` |
+| 2 | `$00-$2F`, `$4D-$52` | Mist (region) | `$6D`, `$7D` ("Tower of Mist") |
+| 2 | `$30-$3E` | Tower of Suffer | `$66`, `$67` |
+| 2 | `$3F-$4C` | Tower of Mist | `$6D`, `$7D` |
+| 3 | `$00-$01` | Apolune | `$3B` |
+| 3 | `$02-$03` | Forepaw | `$4A` |
+| 3 | `$04-$05` | Mascon | `$60` |
+| 3 | `$06-$07` | Victim | `$70` |
+| 3 | `$08-$09` | Conflate | `$80` |
+| 3 | `$0A-$0B` | Daybreak | `$8D`, which spells it "Daydreak" |
+| 3 | `$0C-$0D` | Dartmoor (town) | `$99` "the town of Dartmoor" |
+| 5 | `$00-$27` | Branch (region) | `$81` "the World of Branch" |
+| 6 | `$00-$0F` | Dartmoor (region) | `$8C` "the door to Dartmoor" |
+| 6 | `$10-$1F` | Castle of Fraternal | `$99`, `$9D` |
+| 7 | `$00-$13` | Fortress of Zenis | `$9A` "the fortress of Zenis" |
+
+No zone: area 4 (buildings) and Eolis's screen 0. How each place was told
+apart:
+
+- The doors and edges above split each area into places, and where the
+  dialogue puts things says which is which. Apolune's "turn right and go
+  straight" reaches the door on Trunk `$0B`, and the Mattock is on `$15`.
+  Forepaw's "spring in the tower of Fortress" and its "dried up fountain"
+  are on Trunk `$3D` and `$28`. The Wing Boots ("Look for them in the Tower
+  of Suffer") are on Mist `$32`, and the tower's door is on screen 0, above
+  the Guru on screen 6. The meteorite, the Black Onyx Victim's house wants
+  back, is on Mist `$4C`.
+- Temple 3, Guru travel's "Mascon", is in the Mist on screen 6, outside the
+  town: its door opens on the Mist.
+- The Joker spring (Trunk `$3E-$3F`, behind the Joker key's door on `$1E`)
+  holds the third spring, which the game calls only "the first spring";
+  chipx86 names it `QUEST_SPRING_OF_JOKER`.
+- Mist `$4D-$4F` (door on screen 1, Q key) and `$50-$52` (door on `$20`,
+  K key) are towers the game never names.
+- The Branch's doors only switch to `PALETTE_LEFT_TRUNK`, the darker side of
+  the tree. "The tower of Pillar" (`$98`) is somewhere in it; nothing places
+  it.
+- Dartmoor's screens look like castle walls, and "The castle of Dartmoor is a
+  complex maze" (`$96`) may mean them, but the region takes the name of "the
+  door to Dartmoor" the Ring of Dworf opens. The town shares the name, so
+  walking between them shows it once.
+- King Grieve's room (Dartmoor `$15-$16`) is inside the Castle of Fraternal.
+- Mist `$0A`, `$0B`, `$23`, `$24` and Dartmoor `$0F` are linked to nothing.
+- chipx86 calls area 7 `REGION_EVIL_FORTRESS`; the dialogue says "the
+  fortress of Zenis" and "the Evil One in the fortress".
+
 ## Items and the inventory
 
 Five categories, each with a count, a selected entry and a list. Entries are
@@ -558,6 +693,16 @@ addresses, and `tools/check_allocations.py` enforces it.
   against the real one. A press lasts one frame, as a pad read does. The
   bindings are `MagicKey` and `MagicButton` in `config.ini` [Game], in the
   host's own key and button names.
+
+- **Zone names** (`fax_banner.c`, with `fax_zone.c` and `fax_text.c`).
+  Entering a zone with a different name shows it below the HUD for 2 s, in a
+  text box drawn over the presented picture (after Seamless composes its
+  own). No hooks and no ROM: it reads RAM in `frame_end` once the screen has
+  settled. A temple whose way out is not where the hero last stood means a
+  respawn or a Guru travel journey, and makes the next zone's name show. The
+  banner is held while a box is open or the game is paused. Its save-state
+  record keeps the banner as it was.
+
 - **Auto keys** (`fax_keys.c`). Up at a locked door opens it with its key from
   anywhere in the inventory. At `Game_RunDoorRequirementHandler` it lends the
   key to `SelectedItem` when the key is listed but not selected, so the game's

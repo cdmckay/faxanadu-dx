@@ -65,6 +65,11 @@ like `lefttrigger+`) in the `[Game]` section of `config.ini`, next to the game.
 `none` unbinds either. Pick one that nothing else uses. The menu's Controls
 section shows the bindings.
 
+**Zone names** is on by default (Mods to turn it off). When you enter a
+different town, region, tower or castle, its name appears below the status bar
+for two seconds in the game's own text box, as the dialogue names it ("Tower of
+Suffer", "Castle of Fraternal"). Shops, houses and temples show nothing.
+
 **Auto keys** is on by default (Mods to turn it off). Press Up at a locked door
 and the right key from your inventory opens it, without selecting it first;
 whatever item you had selected stays selected.
