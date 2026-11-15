@@ -124,7 +124,8 @@ rom = []
 # Hooks Player_CheckHandleVertMovement ($E2C8) at its entry and two branches
 # inside the hero's vertical update: the ground check ($E3B2) and the jump
 # check ($E44B). No other feature hooks these. Writes only Player_PosY (the
-# fall step of a coyote jump) and the registers at those branches.
+# fall step of a coyote jump) and the registers at those branches. Reads
+# Block's fax_block_raised(): while Block is up it keeps no press.
 
 [[feature]]
 package = "faxanadu.enhancement.text-speed"
@@ -212,6 +213,15 @@ rom = []
 # item ends (a shop's, or the Battle Helmet's pickup, ISCRIPT_GOT_BATTLE_HELMET
 # at $A698), never in a Guru's, and Guru travel writes its own line into the
 # slot again before each one it says.
+# What Block looks like: Player_DrawShield after it sets the shield's box
+# ($B9C3), Player_DrawBody ($EBEE) and Player_DrawWeapon ($B7D6), at their
+# entries, which no other feature hooks (Seamless hooks Player_DrawShield's
+# entry, $B982, and the falling pose Maybe_Player_CalcAnimFrame, $B927, a
+# different instruction each). While Block is up it writes
+# Arg_DrawSprite_PosX/Y ($27, $28) there, so the shield is drawn raised, never
+# Player_ShieldPositionX/Y, the shield's box; and as it goes up with nothing
+# raised, the palette bits of the body's sprites in the shadow OAM ($0700),
+# the slots Player_DrawBody just drew.
 
 [[feature]]
 package = "faxanadu.enhancement.sugata-flash"

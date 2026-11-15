@@ -21,8 +21,11 @@
  *   been pressed then.
  *
  * Neither applies with the Wing Boots running (A flies), in knockback, on a
- * ladder, or across a screen change. See docs/GAME_INTERNALS.md. */
+ * ladder, across a screen change, or while Block is up: Block takes A away
+ * (fax_block_input), and a press kept from just before it went up would
+ * hand A back on landing. See docs/GAME_INTERNALS.md. */
 #include "fax_jumps.h"
+#include "fax_block.h"
 #include "cyc_mod.h"
 #include "mod_runtime.h"
 #include "mod_function_hooks.h"
@@ -110,6 +113,7 @@ static int tick_hook(uint16_t addr) {
         screen = s;
     }
     if (!reached_last) armed = false;   /* he jumped or climbed in between */
+    if (fax_block_raised()) armed = buffered = false;   /* nothing kept while Block is up */
     if ((peek(JOY1_CHANGED) & A_BUTTON) && (flags & (JUMPING | FALLING_OFF)) && !(status & (WING_BOOTS | KNOCKBACK)) &&
         !(flags & CLIMBING)) {
         buffered = true;

@@ -26,6 +26,7 @@
 #define BEHAVIOR_DATA2       0x02ECu
 #define BEHAVIORS            0x02D4u
 #define TEMP_0201            0x0201u
+#define PORTRAIT             0x03C7u   /* IScript_PortraitID: $FF, none */
 enum { MAGIC_SPRITE = 0x51, MAGIC_DAMAGE = 8, CATEGORY_MAGIC = 6, SLOT = 3 };
 enum { SMALL, LARGE, MAGIC_SHIELD, HELMET, NONE = 0xFF };
 enum { A = 0x80, B = 0x40, SELECT = 0x20, START = 0x10, UP = 0x08, DOWN = 0x04, LEFT = 0x02, RIGHT = 0x01 };
@@ -68,17 +69,88 @@ static void handle_touch_enemy_magic(void) {
     ram[ENTITIES + ram[CURRENT_SPRITE_INDEX]] = 0xFF;
 }
 
+/* ---- the hero's sprites: Game_MainLoop's Screen_ResetSpritesForGamePlay,
+ * Player_DrawShield, Player_DrawBody and Player_DrawWeapon ---- */
+
+static uint8_t pose;                                       /* Maybe_Player_CalcAnimFrame: 0-3 upright, 4-6 a swing, 7 a ladder */
+static const uint8_t SHIELD_SPRITE_OFFSETS_X[16] = { 0, 8, 0, 8, 0, 8, 0, 8, 0, 8, 0, 8, 8, 0, 0, 0 };
+enum { HUD = 32, NOT_DRAWN = 0xF8, BODY_TILE = 0x00, SHIELD_TILE = 0x30, OTHER = 0x77 };
+
+/* Sprite_Draw: cols x rows tiles at Arg_DrawSprite_PosX/Y, from the next slot
+ * on (Sprites_IncNextSpriteSlot), as Y, tile, attributes, X. */
+static void sprite_draw(unsigned cols, unsigned rows, uint8_t tile, uint8_t palette) {
+    for (unsigned r = 0; r < rows; ++r)
+        for (unsigned c = 0; c < cols; ++c) {
+            uint8_t slot = ram[SPRITES_SPRITE_SLOT];
+            uint16_t o = oam_of(slot, ram[SPRITES_START_SLOT_RANGE]);
+            ram[o] = (uint8_t)(ram[ARG_DRAW_SPRITE_POS_Y] + HUD + 8 * r);
+            ram[o + 1] = (uint8_t)(tile + 2 * c + r);
+            ram[o + 2] = (uint8_t)(palette | (ram[PLAYER_FLAGS] & FACING_RIGHT));
+            ram[o + 3] = (uint8_t)(ram[ARG_DRAW_SPRITE_POS_X] + 8 * c);
+            ram[SPRITES_SPRITE_SLOT] = next_slot(slot);
+        }
+}
+/* Player_DrawShield ($B982): nothing for the Battle Helmet or none; else the
+ * box and the drawing place from the pose, and a column of 2 tiles in
+ * palette 1. */
+static void draw_shield(void) {
+    if (!(ram[PORTRAIT] & 0x80) || ram[SELECTED_SHIELD] >= HELMET) return;
+    ram[TEMP_00] = pose;
+    unsigned i = pose * 2u + (ram[PLAYER_FLAGS] & FACING_RIGHT ? 1 : 0);
+    ram[SHIELD_X] = (uint8_t)(ram[PLAYER_POS_X] + SHIELD_SPRITE_OFFSETS_X[i]);
+    ram[SHIELD_Y] = (uint8_t)(ram[POS_Y] + 8);
+    ram[ARG_DRAW_SPRITE_POS_X] = ram[SHIELD_X];
+    ram[ARG_DRAW_SPRITE_POS_Y] = ram[SHIELD_Y];
+    CHECK(SITES(DRAW_SHIELD_AT, "faxanadu.block.shield-draw"));
+    sprite_draw(1, 2, SHIELD_TILE, 1);
+}
+/* Player_DrawBody ($EBEE): 2 columns of 4 tiles at the hero, in palette 0. */
+static void draw_body(void) {
+    CHECK(SITES(DRAW_BODY, "faxanadu.block.draw-body"));
+    if (!(ram[PORTRAIT] & 0x80)) return;
+    ram[ARG_DRAW_SPRITE_POS_X] = ram[PLAYER_POS_X];
+    ram[ARG_DRAW_SPRITE_POS_Y] = ram[POS_Y];
+    sprite_draw(2, 4, BODY_TILE, 0);
+}
+/* One pass's drawing: the slots start over (sprite 0 is the status bar's),
+ * then the shield, the body and the weapon (none drawn: it is not swung). */
+static void draw_hero(void) {
+    for (unsigned i = 4; i < 256; i += 4) ram[SHADOW_OAM + i] = NOT_DRAWN;
+    ram[SHADOW_OAM] = 23; ram[SHADOW_OAM + 1] = OTHER; ram[SHADOW_OAM + 2] = 3; ram[SHADOW_OAM + 3] = 8;
+    ram[SPRITES_SPRITE_SLOT] = 1;
+    draw_shield();
+    draw_body();
+    CHECK(SITES(DRAW_WEAPON, "faxanadu.block.draw-weapon"));
+}
+/* The drawn sprites with this tile: where, and in which palette. */
+typedef struct { unsigned n; uint8_t x, y, palette[8]; } Drawn;
+static Drawn drawn(uint8_t tile) {
+    Drawn d = { 0, 0xFF, 0xFF, { 0 } };
+    for (unsigned i = 0; i < 256; i += 4) {
+        const uint8_t *o = ram + SHADOW_OAM + i;
+        if (o[0] == NOT_DRAWN || (o[1] & 0xF0) != tile) continue;
+        if (o[3] < d.x) d.x = o[3];
+        if (o[0] < d.y) d.y = o[0];
+        if (d.n < 8) d.palette[d.n] = o[2] & 3;
+        ++d.n;
+    }
+    return d;
+}
+static bool all_in(const Drawn *d, uint8_t palette) {
+    for (unsigned i = 0; i < d->n && i < 8; ++i) if (d->palette[i] != palette) return false;
+    return d->n > 0;
+}
+
 /* One pass of the sprite loop over the magic in SLOT: Sprite_GetBounds,
  * Player_CheckShieldHitByMagic, CurrentSprite_CheckHitPlayer. The magic is
- * 16x16; the hero 16x32; his shield 8 wide at his front, 8 below his top. */
+ * 16x16; the hero 16x32; his shield 8 wide at his front, 8 below his top,
+ * where Player_DrawShield put its box this frame. */
 static void sprite_loop(void) {
+    draw_hero();
     ram[CURRENT_SPRITE_INDEX] = SLOT;
     if (ram[ENTITIES + SLOT] == 0xFF) return;
     ram[SPRITE_BOX_LEFT] = ram[SPRITE_X + SLOT]; ram[SPRITE_BOX_TOP] = ram[SPRITE_Y + SLOT];
     ram[SPRITE_BOX_WIDTH] = 15; ram[SPRITE_BOX_HEIGHT] = 15;
-    /* Player_DrawShield set its position this frame. */
-    ram[SHIELD_X] = (uint8_t)(ram[PLAYER_POS_X] + (ram[PLAYER_FLAGS] & FACING_RIGHT ? 8 : 0));
-    ram[SHIELD_Y] = (uint8_t)(ram[POS_Y] + 8);
     bool swinging = ram[PLAYER_FLAGS] & 0x80;              /* animation frames 4-6 */
     if (ram[SELECTED_SHIELD] < 3 && !swinging) {
         uint8_t w = (uint8_t)(ram[SPRITE_BOX_WIDTH] + 7), h = (uint8_t)(ram[SPRITE_BOX_HEIGHT] + 0x0F);
@@ -113,6 +185,8 @@ static void scene(uint8_t shield, bool facing_right, int dx, int dy) {
     ram[HP_U] = 80; ram[INVINCIBILITY] = 0; ram[STATUS_FLAG] = 0; ram[DURATION_OINTMENT] = 0xFF;
     ram[ENTITIES + SLOT] = MAGIC_SPRITE;
     ram[SPRITE_X + SLOT] = (uint8_t)(100 + dx); ram[SPRITE_Y + SLOT] = (uint8_t)(144 + dy);
+    ram[PORTRAIT] = 0xFF;
+    pose = ram[PLAYER_FLAGS] & 0x80 ? 4 : 0;
     sound_count = 0;
 }
 static void hold(bool on) { key_held = on; }
@@ -291,6 +365,178 @@ static void the_battle_helmet(void) {
     scene(HELMET, false, -10, -10);
     sprite_loop();
     CHECK(ram[HP_U] == 80 && magic_blocked == 2 && shield_saved == 0);
+}
+
+/* ---- what Block looks like ---- */
+
+static void the_shield_is_raised(void) {
+    /* Where it goes: 6 higher and 2 further the way he faces, short of the
+     * screen's edges. */
+    uint8_t x = 108, y = 152;
+    raise_shield(&x, &y, true);
+    CHECK(x == 110 && y == 146);
+    x = 100; y = 152;
+    raise_shield(&x, &y, false);
+    CHECK(x == 98 && y == 146);
+    x = 1; y = 5;
+    raise_shield(&x, &y, false);
+    CHECK(x == 0 && y == 0);
+    x = 254; y = 6;
+    raise_shield(&x, &y, true);
+    CHECK(x == 255 && y == 0);
+    x = 253;
+    raise_shield(&x, &y, true);
+    CHECK(x == 255);
+
+    /* Not held: where the game draws it, its box and its drawing alike. */
+    fresh();
+    for (uint8_t shield = SMALL; shield <= MAGIC_SHIELD; ++shield)
+        for (int right = 0; right < 2; ++right) {
+            hold(false);
+            scene(shield, right, 60, 0);
+            draw_hero();
+            Drawn d = drawn(SHIELD_TILE);
+            uint8_t at = right ? 108 : 100;
+            CHECK(d.n == 2 && d.x == at && d.y == 152 + HUD && all_in(&d, 1));
+            CHECK(ram[SHIELD_X] == at && ram[SHIELD_Y] == 152);
+            /* Held: drawn before his face and out in front; the box stays. */
+            hold(true);
+            draw_hero();
+            d = drawn(SHIELD_TILE);
+            CHECK(d.n == 2 && d.x == (right ? 110 : 98) && d.y == 146 + HUD && all_in(&d, 1));
+            CHECK(ram[SHIELD_X] == at && ram[SHIELD_Y] == 152);
+            Drawn body = drawn(BODY_TILE);
+            CHECK(body.n == 8 && body.x == 100 && body.y == 144 + HUD && all_in(&body, 0));   /* no glint */
+            /* Let go: back where the game draws it. */
+            hold(false);
+            draw_hero();
+            d = drawn(SHIELD_TILE);
+            CHECK(d.x == at && d.y == 152 + HUD);
+        }
+    CHECK(shields_raised == 6 && glints == 0);
+    /* Walking and in a jump too (poses 1-3); not in a swing (4-6) or on a
+     * ladder (7), whose shield poses stay as they are. */
+    hold(true);
+    for (uint8_t p = 0; p < 8; ++p) {
+        scene(SMALL, false, 60, 0);
+        pose = p;
+        draw_hero();
+        Drawn d = drawn(SHIELD_TILE);
+        CHECK(p < 4 ? d.x == 98 && d.y == 146 + HUD : d.x == 100 + SHIELD_SPRITE_OFFSETS_X[p * 2] && d.y == 152 + HUD);
+    }
+    /* Drawn the same in an isolated machine (Seamless world's room edges),
+     * which counts nothing. */
+    unsigned raised = shields_raised;
+    pose = 0;
+    scene(LARGE, true, 60, 0);
+    isolated_scope = true;
+    draw_hero();
+    isolated_scope = false;
+    CHECK(drawn(SHIELD_TILE).x == 110 && shields_raised == raised);
+    /* The magic tests above ran through this drawing: the box was the game's. */
+    /* Off: as the game draws it. */
+    model_reset();
+    draw_hero();
+    CHECK(drawn(SHIELD_TILE).x == 108 && drawn(SHIELD_TILE).y == 152 + HUD);
+}
+
+/* Draws of a glint: the body's palette in each of `n` passes. */
+static void passes(unsigned n, uint8_t want[]) {
+    for (unsigned i = 0; i < n; ++i) {
+        draw_hero();
+        Drawn body = drawn(BODY_TILE);
+        CHECK(body.n == 8);
+        want[i] = all_in(&body, 1) ? 1 : all_in(&body, 0) ? 0 : 9;
+    }
+}
+
+static void a_glint_where_nothing_is_raised(void) {
+    static const uint8_t GLINT[16] = { 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0 };
+    uint8_t seen[16];
+    /* The Battle Helmet: no shield drawn. Block going up makes the body glint
+     * in the shield's palette, twice, 4 draws each; sprite 0 keeps its own. */
+    fresh();
+    pose = 0;
+    scene(HELMET, true, 60, 0);
+    passes(4, seen);
+    CHECK(!memcmp(seen, (uint8_t[4]){ 0, 0, 0, 0 }, 4) && drawn(SHIELD_TILE).n == 0);
+    hold(true);
+    passes(16, seen);
+    CHECK(!memcmp(seen, GLINT, 16) && glints == 1);
+    CHECK((ram[SHADOW_OAM + 2] & 3) == 3);
+    /* Held on, nothing more. Let go and up again: another. */
+    passes(4, seen);
+    CHECK(!memcmp(seen, (uint8_t[4]){ 0, 0, 0, 0 }, 4));
+    hold(false);
+    passes(1, seen);
+    hold(true);
+    passes(2, seen);
+    CHECK(seen[0] == 1 && seen[1] == 1 && glints == 2);
+    /* Let go in the middle: it stops at once. */
+    hold(false);
+    passes(1, seen);
+    CHECK(seen[0] == 0);
+    hold(true);
+    passes(1, seen);
+    CHECK(seen[0] == 1 && glints == 3);
+    /* The sprite slots the game rotates: the other range draws the same. */
+    hold(false);
+    passes(1, seen);
+    ram[SPRITES_START_SLOT_RANGE] = 0x20;
+    hold(true);
+    passes(16, seen);
+    CHECK(!memcmp(seen, GLINT, 16) && (ram[SHADOW_OAM + 2] & 3) == 3);
+    ram[SPRITES_START_SLOT_RANGE] = 0;
+    /* A state loaded with Block held: no glint for a button held through it. */
+    hold(false);
+    passes(1, seen);
+    hold(true);
+    passes(2, seen);
+    fax_block_loaded();
+    passes(4, seen);
+    CHECK(!memcmp(seen, (uint8_t[4]){ 0, 0, 0, 0 }, 4));
+    /* In an isolated machine: the live glint's draw, and nothing counted. */
+    hold(false);
+    passes(1, seen);
+    hold(true);
+    passes(1, seen);
+    unsigned left = glint, count = glints;
+    isolated_scope = true;
+    passes(1, seen);
+    isolated_scope = false;
+    CHECK(seen[0] == 1 && glint == left && glints == count);
+
+    /* A shield: raised, so no glint. */
+    fresh();
+    scene(SMALL, true, 60, 0);
+    passes(1, seen);
+    hold(true);
+    passes(8, seen);
+    CHECK(!memcmp(seen, (uint8_t[8]){ 0 }, 8) && glints == 0 && shields_raised == 8);
+    /* A shield in a swing or on a ladder, where it is not raised: a glint. */
+    for (uint8_t p = 4; p < 8; ++p) {
+        hold(false);
+        scene(MAGIC_SHIELD, false, 60, 0);
+        pose = p;
+        passes(1, seen);
+        hold(true);
+        passes(16, seen);
+        CHECK(!memcmp(seen, GLINT, 16) && drawn(SHIELD_TILE).x == 100 + SHIELD_SPRITE_OFFSETS_X[p * 2]);
+    }
+    CHECK(glints == 4);
+    /* No shield, or off: nothing. */
+    hold(false);
+    pose = 0;
+    scene(NONE, true, 60, 0);
+    passes(1, seen);
+    hold(true);
+    passes(4, seen);
+    CHECK(!memcmp(seen, (uint8_t[4]){ 0 }, 4) && glints == 4);
+    model_reset();
+    scene(HELMET, true, 60, 0);
+    hold(true);
+    passes(4, seen);
+    CHECK(!memcmp(seen, (uint8_t[4]){ 0 }, 4));
 }
 
 /* ---- Sugata's flash, without Sugata's flash's feature ---- */
@@ -587,6 +833,8 @@ int main(void) {
     not_from_behind();
     the_battle_helmet();
     the_flash_is_blocked_from_anywhere();
+    the_shield_is_raised();
+    a_glint_where_nothing_is_raised();
     the_first_shield_teaches_once();
     the_battle_helmet_teaches_too();
     b_on_the_thanks_still_teaches();
