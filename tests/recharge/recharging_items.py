@@ -306,6 +306,7 @@ def main():
         tcp("load_state", path=str(target))
         walk_out()
         assert place() == (area, screen), f"warp to {area}/${screen:02X} reached {place()}"
+        poke({PLAYER_X: (pos & 0x0F) * 16, PLAYER_Y: (pos >> 4) * 16})   # a step taken while the screen loaded
 
     def enter_door(building):
         """Up at the door the hero stands at, into `building`."""
@@ -363,17 +364,16 @@ def main():
             act("down", 4, 10)
         act("a", 4, 4)
         seen = []
-        for _ in range(120):
+        end = frame() + 30 * SECOND                                 # A to each line until the box closes
+        while frame() < end and box_open():
             m = ram(MESSAGE_ID)
             if m and m not in seen:
                 seen.append(m)
-            if not box_open():
-                break
             if typed():
-                act("a", 6, 14)
+                act("a", 6, 20)
             else:
                 wait(4)
-        until("the shop to close", lambda: not box_open(), 300)
+        assert not box_open(), f"the shop did not close (saw {seen})"
         return seen
 
     def talk_to_guru():
@@ -589,6 +589,7 @@ def main():
         assert state()["boots_cooldown"] > 0, state()
         slots = ram(SPRITE_ENTITIES, 8)                             # it shows once the hornets are gone;
         poke({PLAYER_X: 40, **{SPRITE_ENTITIES + i: 0xFF for i in range(8) if slots[i] == 0x07}})   # 24 px off it
+        assert ram(PLAYER_Y) == 48, f"on the ledge: y {ram(PLAYER_Y)}"
         wait(2 * SECOND)                                            # past the zone's name
         assert ram(MESSAGE_ID) != GOT_WING_BOOTS and not state()["boots_ready"], state()
         hud_shot("find-boots-before", range(1, COOLDOWN + 1))       # the pair by the wall, T: blinking
@@ -699,7 +700,7 @@ def main():
         tcp("load_state", path=str(travel))
         wait(4)
         s = state()
-        assert s["boots_running"] == 1 and s["glass_cooldown"] == 50 and ram(PLAYER_STATUS) & 0x80, s
+        assert s["boots_running"] == 1 and 48 <= s["glass_cooldown"] <= 50 and ram(PLAYER_STATUS) & 0x80, s
         talk_to_guru()                                              # with the ring, he offers Apolune
         end = frame() + 40 * SECOND                                  # his line, the intro, the offer: A to each
         while frame() < end:

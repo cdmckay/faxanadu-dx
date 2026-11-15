@@ -1038,10 +1038,11 @@ jumping or falling, `Player_Flags & $05`):
   (`$C8CD`: append to the list if there is room) after the script has shown
   "I'm holding ...". `Player_PickUpElixir` (`$C864`, script `$86`) ORs
   `SpecialItems`' bit and never calls `Player_PickUpItem`.
-- **No one gives them.** The nurse in building `$1B` (script `$37`,
-  `ISCRIPT_A226`) only talks about the Hour Glass: what it does without one,
-  "The Hour Glass will exhaust your energy" with one. The Mist house woman
-  talks of the Pendant and the meteorite.
+- **No one gives them.** The nurse in Mascon's hospital (building `$1B`,
+  script `$37`, `ISCRIPT_A226`) only talks about the Hour Glass: what it does
+  without one, "The Hour Glass will exhaust your energy" with one. The Mist
+  house woman (`ISCRIPT_OVERWORLD_MIST_HOUSE_WOMAN`) talks of the Pendant and
+  the meteorite.
 - **The Spring of Trunk takes the Elixir, it does not give it.**
   `ISCRIPT_SPRING_OF_TRUNK` asks for "your medicine"; with the Elixir it
   `CONSUME_ITEM`s it and completes `QUEST_SPRING_OF_TRUNK`, without one it
