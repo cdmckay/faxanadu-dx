@@ -1,10 +1,10 @@
 #pragma once
 /* Block (fax_block.c): hold a bindable button (V, or B on a controller) with a
- * shield in hand to stand still and stop enemy magic from the front, and
- * Sugata's flash from anywhere. The game teaches it once, after the first
- * shield. It registers its own hooks; the host passes it window events, the
- * controller bytes and its config.ini [Game] keys, and adds its TCP command
- * and Controls row. */
+ * shield (or the Battle Helmet) in hand to stand still and stop enemy magic
+ * from the front, and Sugata's flash from anywhere. The game teaches it once,
+ * after the first shield-slot item. It registers its own hooks; the host
+ * passes it window events, the controller bytes and its config.ini [Game]
+ * keys, and adds its TCP command and Controls row. */
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -24,9 +24,9 @@ void fax_block_frame_end(void);
 void fax_block_loaded(void);
 void fax_block_tcp_setup(void);
 
-/* Block is up: the feature is on, its button is held, and the shield in hand
- * stops magic (the Small, Large or Magic Shield; not the Battle Helmet, as in
- * Player_CheckShieldHitByMagic). Never inside an isolated machine. */
+/* Block is up: the feature is on, its button is held, and the shield slot
+ * holds something (the Small, Large or Magic Shield, or the Battle Helmet).
+ * Never inside an isolated machine. */
 bool fax_block_raised(void);
 /* For a hook at a site of the running game: make the next RTS go to `to`
  * first, then where it would have gone. And play one of the game's sounds,

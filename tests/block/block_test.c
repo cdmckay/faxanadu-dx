@@ -129,8 +129,9 @@ static void fresh(void) {
 /* ---- the rules ---- */
 
 static void the_rules(void) {
-    CHECK(shield_blocks(SMALL) && shield_blocks(LARGE) && shield_blocks(MAGIC_SHIELD));
-    CHECK(!shield_blocks(HELMET) && !shield_blocks(NONE));            /* as Player_CheckShieldHitByMagic */
+    /* Anything the shield slot holds raises Block, the Battle Helmet too. */
+    CHECK(shield_slot_item(SMALL) && shield_slot_item(LARGE) && shield_slot_item(MAGIC_SHIELD));
+    CHECK(shield_slot_item(HELMET) && !shield_slot_item(NONE) && !shield_slot_item(4));
     /* From the front: the shot's middle level with or ahead of the hero's. */
     CHECK(from_the_front(100, true, 120, 15) && from_the_front(100, true, 101, 15));
     CHECK(!from_the_front(100, true, 80, 15) && from_the_front(100, false, 80, 15));
@@ -178,13 +179,13 @@ static void it_stands_still(void) {
     fax_block_frame_end();
     frame(A, false);
     CHECK(latched == A);
-    /* No shield, the Battle Helmet, dead, released, or off: nothing. */
+    /* No shield, dead, released, or off: nothing. The Battle Helmet raises it. */
     ram[SELECTED_SHIELD] = NONE;
     frame(RIGHT, true);
     CHECK(latched == RIGHT && !fax_block_raised());
     ram[SELECTED_SHIELD] = HELMET;
     frame(RIGHT, true);
-    CHECK(latched == RIGHT && !fax_block_raised());
+    CHECK(latched == 0 && fax_block_raised());
     ram[SELECTED_SHIELD] = MAGIC_SHIELD;
     frame(RIGHT, true);
     CHECK(latched == 0);
@@ -259,11 +260,12 @@ static void not_from_behind(void) {
     scene(SMALL, false, 10, 0);                 /* facing left, the shot comes from the right */
     sprite_loop();
     CHECK(ram[HP_U] == 72 && last_sound() == 0x04 && magic_blocked == 0 && shield_saved == 0);
-    /* No shield, or only the Battle Helmet: Block does nothing. */
+    /* No shield: Block does nothing. */
     scene(NONE, true, 10, 0);
     sprite_loop();
     CHECK(ram[HP_U] == 72 && magic_blocked == 0);
-    scene(HELMET, true, 10, 0);
+    /* The Battle Helmet from behind: nothing either. */
+    scene(HELMET, false, 10, 0);
     sprite_loop();
     CHECK(ram[HP_U] == 72 && magic_blocked == 0);
     /* Off: as the game was. */
@@ -271,6 +273,24 @@ static void not_from_behind(void) {
     scene(SMALL, true, 10, -10);
     sprite_loop();
     CHECK(ram[HP_U] == 72);
+}
+
+static void the_battle_helmet(void) {
+    /* In the original it never stops magic: the shield check skips it, and
+     * a shot at the shield's height takes the full 8 HP. */
+    fresh();
+    scene(HELMET, true, 10, 8);
+    sprite_loop();
+    CHECK(ram[ENTITIES + SLOT] == 0xFF && ram[HP_U] == 72 && last_sound() == 0x04 && shield_saved == 0);
+    /* Raised, it stops magic from the front, at any height, through the
+     * touch handler, with the shield's sound. */
+    hold(true);
+    scene(HELMET, true, 10, 8);
+    sprite_loop();
+    CHECK(ram[ENTITIES + SLOT] == 0xFF && ram[HP_U] == 80 && sound_count == 1 && last_sound() == SOUND_SHIELD);
+    scene(HELMET, false, -10, -10);
+    sprite_loop();
+    CHECK(ram[HP_U] == 80 && magic_blocked == 2 && shield_saved == 0);
 }
 
 /* ---- Sugata's flash, without Sugata's flash's feature ---- */
@@ -313,7 +333,10 @@ static void the_flash_is_blocked_from_anywhere(void) {
     CHECK(flashes_blocked == 6);
     scene(HELMET, true, 0, 0);
     flash_damage();
-    CHECK(ram[HP_U] == 70);
+    CHECK(ram[HP_U] == 80 && flashes_blocked == 7 && last_sound() == SOUND_SHIELD);
+    scene(NONE, true, 0, 0);
+    flash_damage();
+    CHECK(ram[HP_U] == 70 && flashes_blocked == 7);
 }
 
 /* ---- the tutorial ---- */
@@ -434,9 +457,11 @@ static void not_for_a_shield_already_owned(void) {
     frame(0, true);
     buy(SMALL, false);
     CHECK(tutorials == 0);
-    /* The Battle Helmet holds no shield: it teaches nothing. */
+    /* Owning the Battle Helmet counts: a shield after it teaches nothing. */
     shop_fresh();
-    buy(HELMET, false);
+    ram[SHIELD_INVENTORY] = HELMET; ram[NUMBER_OF_SHIELDS] = 1;
+    frame(0, true);
+    buy(SMALL, false);
     CHECK(shown_count == 1 && tutorials == 0);
     /* Scripts that give nothing: nothing. */
     shop_fresh();
@@ -452,6 +477,45 @@ static void not_for_a_shield_already_owned(void) {
     CHECK(shown_count == 1 && tutorials == 0);
 }
 
+/* Player_PickUpBattleHelmet: IScript $8C ("You got the Battle Helmet"),
+ * then the helmet into ShieldInventory. */
+#define GOT_HELMET_MESSAGE 0xB6
+static void pick_up_battle_helmet(void) {
+    mapped = 12;
+    box_open = true;
+    shown_count = 0;
+    ram[ISCRIPT_ADDR] = (uint8_t)ISCRIPT_GOT_BATTLE_HELMET; ram[ISCRIPT_ADDR + 1] = ISCRIPT_GOT_BATTLE_HELMET >> 8;
+    ram[ISCRIPT_OFFSET] = 1;                 /* after the entity byte */
+    invoke_next_action();
+    CHECK(!box_open);
+    mapped = 14;
+    ram[SHIELD_INVENTORY + ram[NUMBER_OF_SHIELDS]] = HELMET;
+    ram[NUMBER_OF_SHIELDS]++;
+    frame(0, true);
+}
+
+static void the_battle_helmet_teaches_too(void) {
+    char text[80];
+    /* Picked up as the first shield-slot item: the line follows the game's. */
+    shop_fresh();
+    rom[12][ISCRIPT_GOT_BATTLE_HELMET - 0x8000 + 1] = 0x03;   /* shown here as SHOW_MESSAGE */
+    rom[12][ISCRIPT_GOT_BATTLE_HELMET - 0x8000 + 2] = GOT_HELMET_MESSAGE;
+    rom[12][ISCRIPT_GOT_BATTLE_HELMET - 0x8000 + 3] = 0x00;
+    pick_up_battle_helmet();
+    CHECK(shown_count == 2 && shown[0] == GOT_HELMET_MESSAGE && shown[1] == FAX_TRAVEL_SLOT_ID);
+    message_c3(text);
+    CHECK(!strcmp(text, "Hold V to raise\nyour shield\nagainst magic.") && tutorials == 1 && taught && owned);
+    /* With a shield already: only the game's line. */
+    shop_fresh();
+    rom[12][ISCRIPT_GOT_BATTLE_HELMET - 0x8000 + 1] = 0x03;
+    rom[12][ISCRIPT_GOT_BATTLE_HELMET - 0x8000 + 2] = GOT_HELMET_MESSAGE;
+    rom[12][ISCRIPT_GOT_BATTLE_HELMET - 0x8000 + 3] = 0x00;
+    ram[SHIELD_INVENTORY] = SMALL; ram[NUMBER_OF_SHIELDS] = 1;
+    frame(0, true);
+    pick_up_battle_helmet();
+    CHECK(shown_count == 1 && tutorials == 0);
+}
+
 static void taught_is_remembered(void) {
     char dir[] = "/tmp/block_test_XXXXXX", here[1024];
     CHECK(mkdtemp(dir) && getcwd(here, sizeof here));
@@ -462,7 +526,7 @@ static void taught_is_remembered(void) {
     buy(SMALL, false);
     FILE *f = fopen("faxanadu_block.txt", "r");
     char line_in[32] = "";
-    CHECK(f && fgets(line_in, sizeof line_in, f) && !strcmp(line_in, "taught\n"));
+    CHECK(f && fgets(line_in, sizeof line_in, f) && !strcmp(line_in, "block.taught\n") && !fgets(line_in, 32, f));
     fclose(f);
     /* The next start reads it: a first shield then says nothing. */
     shop_fresh();
@@ -472,6 +536,14 @@ static void taught_is_remembered(void) {
     remove("faxanadu_block.txt");
     shop_fresh();
     CHECK(!taught);
+    /* Another field kept there is kept, and is not this one. */
+    f = fopen("faxanadu_block.txt", "w");
+    CHECK(f && fputs("other.field\r\nblock.taughtX\n", f) >= 0 && fclose(f) == 0);
+    shop_fresh();
+    CHECK(!taught);
+    buy(SMALL, false);
+    CHECK(tutorials == 1 && remembered(TAUGHT) && remembered("other.field") && remembered("block.taughtX"));
+    remove("faxanadu_block.txt");
     /* --no-save: taught for the session only. */
     saves_on = false;
     shop_fresh();
@@ -513,8 +585,10 @@ int main(void) {
     magic_on_the_shield();
     magic_on_the_hero();
     not_from_behind();
+    the_battle_helmet();
     the_flash_is_blocked_from_anywhere();
     the_first_shield_teaches_once();
+    the_battle_helmet_teaches_too();
     b_on_the_thanks_still_teaches();
     not_for_a_shield_already_owned();
     taught_is_remembered();

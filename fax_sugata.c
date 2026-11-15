@@ -22,9 +22,15 @@
  *     finishes as the game's does. In reach, with Block up and the Magic
  *     Shield, the flash goes back to Sugata: the enemy-hit sound and
  *     SUGATA_REFLECTED HP through Player_HitEnemyWithMagic's own HP and death
- *     code (@_reduceEnemyHP, $81FD), and a Deluge's knockback. Otherwise the
- *     site is left to Block (fax_block.c), which stops it with any shield, or
- *     to the game's damage.
+ *     code (@_reduceEnemyHP, $81FD), and a Deluge's knockback. With Block up
+ *     and anything else in the shield slot, the site is left to Block
+ *     (fax_block.c), which stops it.
+ *   - Ointment: the original's flash never checks DurationOintment (bit 7
+ *     clear while it lasts), unlike every other hit. In reach, under Ointment,
+ *     the flash does its own steps but Player_ReduceHP: the hit sound, 60
+ *     frames of invincibility and knockback (Player_HandleIFrames ends the
+ *     knockback when they reach $38, so it needs them), and no HP.
+ *   Otherwise the game's damage goes on.
  * Sugata's death ends the band, as the game's death code ends its greyscale.
  * See docs/GAME_INTERNALS.md. */
 #include "fax_sugata.h"
@@ -51,6 +57,8 @@ enum { SLOTS = 8, FLASH_SHOWN = 8, BLINK = 4, HUD = 32, ROOM_H = 208 };
 #define TEMP_00                         0x0000u
 #define PPU_MASK                        0x000Bu   /* bit 0: greyscale, written to $2001 in the NMI */
 #define PLAYER_POS_X                    0x009Eu   /* the hero's left edge; he is 16 pixels wide */
+#define PLAYER_STATUS_FLAG              0x00A5u   /* $02: knockback */
+#define PLAYER_INVINCIBILITY_PHASE      0x00ADu   /* iframes, from $3C down; knockback until $38 */
 #define CURRENT_SPRITES_XPOS            0x00BAu   /* a sprite's left edge */
 #define CURRENT_SPRITES_ENTITIES        0x02CCu
 #define CURRENT_SPRITES_BEHAVIORS       0x02D4u   /* the behavior running; bit 7 once it has finished */
@@ -59,6 +67,7 @@ enum { SLOTS = 8, FLASH_SHOWN = 8, BLINK = 4, HUD = 32, ROOM_H = 208 };
 #define CURRENT_SPRITES_HIT_BY_MAGIC_IFRAMES 0x033Cu
 #define CURRENT_SPRITE_INDEX            0x0378u
 #define SELECTED_SHIELD                 0x03BFu
+#define DURATION_OINTMENT               0x0427u   /* bit 7 clear while the Ointment lasts; $FF none */
 /* Bank 14 */
 #define REDUCE_ENEMY_HP   0x81FDu   /* Player_HitEnemyWithMagic's @_reduceEnemyHP: HP - Temp_00; on a kill,
                                        Sugata's greyscale clear, experience, sound 3 and the death effect */
@@ -76,6 +85,9 @@ enum { SLOTS = 8, FLASH_SHOWN = 8, BLINK = 4, HUD = 32, ROOM_H = 208 };
 #define BEHAVIOR_READY    0x40u
 #define SHIELD_MAGIC      2u
 #define SOUND_ENEMY_HIT   0x02u     /* what a spell's hit plays (Player_HitEnemyWithMagic) */
+#define SOUND_HERO_HIT    0x04u     /* what the flash plays */
+#define KNOCKBACK         0x02u
+#define IFRAMES           0x3Cu
 #define DELUGE_KNOCKBACK  0u        /* CAST_MAGIC_HIT_BEHAVIORS[Deluge] */
 #define DELUGE_IFRAMES    4u        /* CAST_MAGIC_HIT_IFRAMES[Deluge] */
 
@@ -85,7 +97,7 @@ typedef struct { uint8_t kind, slot, center, frames; } Band;
 static bool enabled;
 static uint8_t warn[SLOTS];          /* frames of warning a slot's Sugata has given before this flash */
 static Band band;
-static unsigned warnings, warned, flashes, in_reach, out_of_reach, reflected, reflect_failed;   /* warned: flashes after a full warning */
+static unsigned warnings, warned, flashes, in_reach, out_of_reach, reflected, reflect_failed, anointed;   /* warned: flashes after a full warning */
 static int last_distance;            /* the hero's middle less Sugata's, at the last flash */
 static bool last_reached;
 
@@ -155,7 +167,8 @@ static void reflect(unsigned s) {
     ++reflected;
 }
 
-/* The flash is about to hurt: only in reach, and the Magic Shield sends it back. */
+/* The flash is about to hurt: only in reach. The Magic Shield sends it back,
+ * Block stops it (fax_block.c's site, next), and Ointment keeps the HP. */
 static int hit_hook(uint16_t addr) {
     (void)addr;
     if (!enabled || cyc_mod_isolated()) return 0;
@@ -170,9 +183,18 @@ static int hit_hook(uint16_t addr) {
         return 1;
     }
     ++in_reach;
-    if (fax_block_raised() && peek(SELECTED_SHIELD) == SHIELD_MAGIC) {
+    if (fax_block_raised()) {
+        if (peek(SELECTED_SHIELD) != SHIELD_MAGIC) return 0;
         reflect(s);
         fax_block_return_via(FLASH_FINISH);
+        return 1;
+    }
+    if (!(peek(DURATION_OINTMENT) & 0x80)) {
+        fax_block_play_sound(SOUND_HERO_HIT);
+        cyc_mod_poke(PLAYER_INVINCIBILITY_PHASE, IFRAMES);
+        cyc_mod_poke(PLAYER_STATUS_FLAG, (uint8_t)(peek(PLAYER_STATUS_FLAG) | KNOCKBACK));
+        fax_block_return_via(FLASH_FINISH);
+        ++anointed;
         return 1;
     }
     return 0;
@@ -298,7 +320,7 @@ static void deactivate(void) {
     enabled = false;
     memset(warn, 0, sizeof warn);
     band = (Band){ 0 };
-    warnings = warned = flashes = in_reach = out_of_reach = reflected = reflect_failed = 0;
+    warnings = warned = flashes = in_reach = out_of_reach = reflected = reflect_failed = anointed = 0;
     last_distance = 0; last_reached = false;
     hooks(0);
 }
@@ -342,10 +364,10 @@ static void sugata_state(int id, const char *line) {
     unsigned warning = warning_frames();
     snprintf(fields, sizeof fields,
              "\"enabled\":%s,\"warnings\":%u,\"warning\":%u,\"warned\":%u,\"flashes\":%u,\"in_reach\":%u,\"out_of_reach\":%u,"
-             "\"reflected\":%u,\"reflect_failed\":%u,\"last_distance\":%d,\"last_reached\":%s,"
+             "\"reflected\":%u,\"reflect_failed\":%u,\"anointed\":%u,\"last_distance\":%d,\"last_reached\":%s,"
              "\"band\":\"%s\",\"band_x\":[%d,%d],\"captured\":%u",
              enabled ? "true" : "false", warnings, warning, warned, flashes, in_reach, out_of_reach, reflected,
-             reflect_failed, last_distance, last_reached ? "true" : "false", kind_name(band.kind), x0, x1, captured);
+             reflect_failed, anointed, last_distance, last_reached ? "true" : "false", kind_name(band.kind), x0, x1, captured);
     cyc_tcp_ok(id, fields);
 }
 /* Write the presented picture to `path` the next time a band of that kind

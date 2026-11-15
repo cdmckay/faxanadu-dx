@@ -6,26 +6,33 @@
  * shield takes the shot (it is removed, with sound $0C), but
  * Player_HandleHitByMagic still lets SPRITE_ENTITY_DAMAGES >> (shield + 1)
  * through. Magic that misses the shield and touches the hero runs
- * Player_HandleTouchEnemyMagic, the full damage. The check skips the Battle
- * Helmet (SelectedShield 3), which holds no shield, and a swing.
+ * Player_HandleTouchEnemyMagic, the full damage. The shield check skips a
+ * swing, and SelectedShield 3 and up: the Battle Helmet, which lives in the
+ * shield slot but has no shield drawn (Player_DrawShield skips it too), so in
+ * the original it never stops magic.
  *
- * Holding Block with the Small, Large or Magic Shield raises it:
+ * Holding Block with anything in the shield slot (the Small, Large or Magic
+ * Shield, or the Battle Helmet) raises it:
  *   - the hero stands still: the controller bytes lose the d-pad, A and B
  *     while the main loop runs (not in text boxes or menus);
  *   - magic on the shield lets nothing through (Player_HandleHitByMagic is
  *     skipped), and magic that reaches the hero from the side he faces is
  *     stopped the same way: the touch handler returns through the end of
- *     Player_HandleShieldHitByMagic, which removes it with the shield's sound;
+ *     Player_HandleShieldHitByMagic, which removes it with the shield's sound.
+ *     The Battle Helmet, with no shield box, stops magic only this way, which
+ *     is the shield check's rule (from the front) without its box;
  *   - Sugata's flash (SpriteBehavior_FlashScreenHitPlayer) does no damage,
  *     from any side: its damage is skipped for the shield's sound, and the
  *     behavior finishes as the game's own does. fax_sugata.c, when on, decides
  *     range and the Magic Shield's reflection first, at the same site.
  * Contact damage and everything else is untouched.
  *
- * The first time the hero comes to own a shield that blocks (a shop or a
- * gift), the script's end is steered to one more line naming the bound key,
- * in Guru travel's SAY step and message slot (fax_travel.h). It is remembered
- * in faxanadu_block.txt beside the game, so it is said once. See
+ * The first time the hero comes to own anything for the shield slot (a shop,
+ * or the Battle Helmet's pickup, whose script runs before the helmet is
+ * added), the script's end is steered to one more line naming the bound key,
+ * in Guru travel's SAY step and message slot (fax_travel.h). That it has been
+ * said is remembered (remembered()/remember(): a sidecar file until save
+ * slots, #24, keep named fields), so it is said once. See
  * docs/GAME_INTERNALS.md. */
 #include "fax_block.h"
 #include "fax_travel.h"
@@ -69,6 +76,8 @@
 /* Bank 12 */
 #define ISCRIPTS_INVOKE_NEXT_ACTION     0x826Eu  /* reads the action at IScriptOrCHRAddr + IScriptOffset */
 #define ISCRIPT_ACTION_END_SCRIPT       0x82B4u  /* JSR IScripts_UpdatePortraitAnimation, LDA Temp_0201: close the box */
+#define ISCRIPT_GOT_BATTLE_HELMET       0xA698u  /* IScript $8C, from Player_PickUpBattleHelmet before it adds the
+                                                    helmet: GENERIC, SHOW_UNSKIPPABLE_MESSAGE $B6, END */
 /* Fixed bank */
 #define GAME_LOOP_COUNTDOWN_ITEMS       0xC88Fu  /* JSR, JSR, JSR, JMP: the timed items */
 #define MAIN_LOOP_COUNTDOWN_PUSHED      0xDB6Au  /* Game_MainLoop's JSR GameLoop_CountdownItems ($DB68), after
@@ -93,9 +102,9 @@ static bool enabled, failed;
 static bool key_held, pad_held, axis_held;
 static uint64_t frames;                 /* machine frames ended */
 static uint64_t pass;                   /* 1 + the frame in which a main-loop pass got to its timed items */
-static bool owned;                      /* a blocking shield, when the main loop last ran */
+static bool owned;                      /* a shield-slot item, when the main loop last ran */
 static uint8_t phase = QUIET;
-static bool taught;                     /* faxanadu_block.txt */
+static bool taught;                     /* remembered("block.taught") */
 static char line[80];                   /* the tutorial's line, '\n' between rows */
 static unsigned magic_blocked, shield_saved, flashes_blocked, tutorials, stood;
 static char label[80] = "Block: V / B";
@@ -105,21 +114,23 @@ static uint32_t prg(unsigned bank, uint16_t addr) { return bank * 16384u + (addr
 
 /* ---- the rules ---- */
 
-/* A shield that stops magic: the ones Player_CheckShieldHitByMagic checks. */
-static bool shield_blocks(uint8_t shield) { return shield < BATTLE_HELMET; }
+/* What the shield slot holds (SelectedShield, or a ShieldInventory entry): the
+ * Small, Large or Magic Shield, or the Battle Helmet; $FF is none. Any of
+ * them raises Block. */
+static bool shield_slot_item(uint8_t shield) { return shield <= BATTLE_HELMET; }
 
-static bool owns_blocking_shield(void) {
-    if (shield_blocks(peek(SELECTED_SHIELD))) return true;
+static bool owns_shield_slot_item(void) {
+    if (shield_slot_item(peek(SELECTED_SHIELD))) return true;
     unsigned n = peek(NUMBER_OF_SHIELDS);
     for (unsigned i = 0; i < n && i < 4; ++i)
-        if (shield_blocks(peek((uint16_t)(SHIELD_INVENTORY + i)))) return true;
+        if (shield_slot_item(peek((uint16_t)(SHIELD_INVENTORY + i)))) return true;
     return false;
 }
 
 static bool held(void) { return key_held || pad_held || axis_held; }
 
 bool fax_block_raised(void) {
-    return enabled && held() && shield_blocks(peek(SELECTED_SHIELD)) && !cyc_mod_isolated();
+    return enabled && held() && shield_slot_item(peek(SELECTED_SHIELD)) && !cyc_mod_isolated();
 }
 
 /* Magic coming from the side the hero faces: its box's middle is on that side
@@ -186,7 +197,8 @@ static int shield_hit_hook(uint16_t addr) {
 }
 
 /* Player_HandleTouchEnemyMagic: magic that reaches the hero from the front is
- * stopped as the shield stops it. */
+ * stopped as the shield stops it. With the Battle Helmet, all of it comes this
+ * way: the shield check skips the helmet. */
 static int touch_magic_hook(uint16_t addr) {
     (void)addr;
     if (!fax_block_raised() ||
@@ -256,6 +268,15 @@ static bool serve(void) {
     return true;
 }
 
+/* ---- what the game remembers: a seam for save slots ----
+ *
+ * Whether the line has been said is one named field of the player's progress.
+ * Save slots (#24) will keep named fields in the save (fax_save_get/set);
+ * until they land, a field that is set is a line naming it in
+ * faxanadu_block.txt beside the game, as Guru travel keeps faxanadu_gurus.txt.
+ * Only remembered() and remember() know where it lives: swap their bodies for
+ * fax_save_get/set then. With saves off (--no-save) nothing is kept,
+ * and the line is said once a session. */
 static bool sidecar_path(const char *name, char out[1100]) {
 #ifdef CYC_WITH_SDL
     char *base = SDL_GetBasePath();
@@ -267,23 +288,37 @@ static bool sidecar_path(const char *name, char out[1100]) {
 #endif
     return n > 0 && n < 1100;
 }
-/* faxanadu_block.txt holds "taught" once the line has been said. */
-static void load_taught(void) {
-    char path[1100], text[32] = "";
-    taught = false;
-    if (!cyc_host_saves_enabled() || !sidecar_path("faxanadu_block.txt", path)) return;
+#define SIDECAR "faxanadu_block.txt"
+static bool remembered(const char *field) {
+    char path[1100], text[64];
+    bool found = false;
+    if (!cyc_host_saves_enabled() || !sidecar_path(SIDECAR, path)) return false;
     FILE *f = fopen(path, "r");
-    if (!f) return;
-    if (fgets(text, sizeof text, f)) taught = !strncmp(text, "taught", 6);
+    if (!f) return false;
+    while (!found && fgets(text, sizeof text, f)) {
+        text[strcspn(text, "\r\n")] = 0;
+        found = !strcmp(text, field);
+    }
     fclose(f);
+    return found;
 }
-static void save_taught(void) {
-    char path[1100], temp[1120];
-    if (!cyc_host_saves_enabled() || !sidecar_path("faxanadu_block.txt", path)) return;
+static void remember(const char *field) {
+    char path[1100], temp[1120], kept[1024] = "", text[64];
+    if (remembered(field) || !cyc_host_saves_enabled() || !sidecar_path(SIDECAR, path)) return;
+    FILE *f = fopen(path, "r");                       /* the fields already kept, kept */
+    if (f) {
+        size_t n = 0;
+        while (fgets(text, sizeof text, f)) {
+            text[strcspn(text, "\r\n")] = 0;
+            size_t len = strlen(text);
+            if (len && n + len + 2 < sizeof kept) { memcpy(kept + n, text, len); n += len; kept[n++] = '\n'; kept[n] = 0; }
+        }
+        fclose(f);
+    }
     snprintf(temp, sizeof temp, "%s.tmp", path);
-    FILE *f = fopen(temp, "w");
+    f = fopen(temp, "w");
     if (!f) return;
-    bool ok = fprintf(f, "taught\n") > 0;
+    bool ok = fprintf(f, "%s%s\n", kept, field) > 0;
     if (fclose(f) != 0) ok = false;
     if (!ok) { remove(temp); return; }
 #ifdef _WIN32
@@ -293,16 +328,23 @@ static void save_taught(void) {
     if (rename(temp, path) != 0) remove(temp);
 #endif
 }
+#define TAUGHT "block.taught"
+
+/* The script running is the Battle Helmet's pickup ("You got the Battle
+ * Helmet"): the helmet is added only after it ends. */
+static bool getting_battle_helmet(void) {
+    return (peek(ISCRIPT_ADDR) | peek(ISCRIPT_ADDR + 1) << 8) == ISCRIPT_GOT_BATTLE_HELMET;
+}
 
 /* IScriptAction_EndScript, which every way out of a script takes (its END
  * action, B on a line, a shop's B): if this script gave the hero his first
- * shield that blocks, say the line first. It runs as the script's next
- * action, at the same depth: then END comes back here, and the box closes. */
+ * shield-slot item, say the line first. It runs as the script's next action,
+ * at the same depth: then END comes back here, and the box closes. */
 static int end_script_hook(uint16_t addr) {
     (void)addr;
     if (!enabled || failed || cyc_mod_isolated()) return 0;
     if (phase == SAYING) { phase = QUIET; return 0; }   /* our line has been said (or dismissed) */
-    if (taught || owned || !owns_blocking_shield()) return 0;
+    if (taught || owned || !(owns_shield_slot_item() || getting_battle_helmet())) return 0;
     if (!serve()) {
         fprintf(stderr, "[block] cannot supply the Block tutorial's line; it is off\n");
         failed = true;
@@ -314,7 +356,7 @@ static int end_script_hook(uint16_t addr) {
     fax_block_return_via(ISCRIPTS_INVOKE_NEXT_ACTION);
     phase = SAYING;
     taught = true;
-    save_taught();
+    remember(TAUGHT);
     ++tutorials;
     return 1;
 }
@@ -326,7 +368,7 @@ void fax_block_frame_end(void) {
     ++frames;
     if (pass != frames) return;
     phase = QUIET;
-    owned = owns_blocking_shield();
+    owned = owns_shield_slot_item();
 }
 
 void fax_block_loaded(void) {
@@ -350,7 +392,7 @@ static void deactivate(void) {
 }
 static void activate(void) {
     enabled = true;
-    load_taught();
+    taught = remembered(TAUGHT);
     hooks(1);
     nes_mod_set_local_only("Block", 1);   /* host input the other side would not see */
 }

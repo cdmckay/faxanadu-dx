@@ -129,6 +129,7 @@ static void scene(uint8_t hero_x, uint8_t shield, bool hold) {
     ram[PLAYER_FLAGS] = 0x40;
     ram[SELECTED_SHIELD] = shield;
     ram[HP_U] = 80;
+    ram[DURATION_OINTMENT] = 0xFF;                                /* no Ointment */
     for (unsigned s = 0; s < SLOTS; ++s) ram[CURRENT_SPRITES_ENTITIES + s] = 0xFF;
     ram[CURRENT_SPRITES_ENTITIES + SLOT] = SUGATA;
     ram[CURRENT_SPRITES_XPOS + SLOT] = 120;                       /* its middle at 128 */
@@ -196,19 +197,22 @@ static void in_reach_it_hurts(void) {
     to_the_flash();
     CHECK(ram[HP_U] == 70 && ram[INVINCIBILITY] == 0x3C && ram[STATUS_FLAG] & 2 && last_sound() == 0x04);
     CHECK(in_reach == 1 && finished == 1 && last_reached);
-    /* Holding Block without a shield, or with the Battle Helmet: the same. */
+    /* Holding Block without a shield: the same. */
     scene(100, NONE, true);
     to_the_flash();
     CHECK(ram[HP_U] == 70);
-    scene(100, HELMET, true);
+    /* The original's flash ignores invincibility: it does here too. */
+    scene(100, NONE, false);
+    ram[INVINCIBILITY] = 20;
     to_the_flash();
     CHECK(ram[HP_U] == 70);
 }
 
 static void block_stops_it(void) {
-    for (uint8_t shield = SMALL; shield <= LARGE; ++shield)
+    static const uint8_t stoppers[] = { SMALL, LARGE, HELMET };
+    for (unsigned i = 0; i < sizeof stoppers; ++i)
         for (int facing = 0; facing < 2; ++facing) {       /* from any side */
-            scene(100, shield, true);
+            scene(100, stoppers[i], true);
             ram[PLAYER_FLAGS] = facing ? 0x40 : 0;
             to_the_flash();
             CHECK(ram[HP_U] == 80 && ram[INVINCIBILITY] == 0 && sound_count == 1 && last_sound() == 0x0C);
@@ -241,6 +245,39 @@ static void the_magic_shield_reflects_it(void) {
     CHECK(ram[HP_U] == 70 && ram[SPRITE_HP + SLOT] == SUGATA_HP);
 }
 
+static void ointment_keeps_the_hp(void) {
+    /* In reach under Ointment: the hit sound, iframes and knockback, no HP. */
+    scene(100, NONE, false);
+    ram[DURATION_OINTMENT] = 0x20;
+    to_the_flash();
+    CHECK(ram[HP_U] == 80 && ram[INVINCIBILITY] == 0x3C && ram[STATUS_FLAG] & 2 && last_sound() == 0x04);
+    CHECK(sound_count == 1 && finished == 1 && anointed == 1 && in_reach == 1);
+    /* Its last frame ($00) still counts; once it is over ($FF), the 10 HP. */
+    scene(100, NONE, false);
+    ram[DURATION_OINTMENT] = 0x00;
+    to_the_flash();
+    CHECK(ram[HP_U] == 80 && anointed == 1);
+    scene(100, NONE, false);
+    ram[DURATION_OINTMENT] = 0xFF;
+    to_the_flash();
+    CHECK(ram[HP_U] == 70 && anointed == 0);
+    /* Out of reach, nothing at all; Block takes it first, without knockback;
+     * the Magic Shield still reflects. */
+    scene(20, NONE, false);
+    ram[DURATION_OINTMENT] = 0x20;
+    to_the_flash();
+    CHECK(ram[HP_U] == 80 && ram[INVINCIBILITY] == 0 && sound_count == 0 && anointed == 0);
+    scene(100, SMALL, true);
+    ram[DURATION_OINTMENT] = 0x20;
+    to_the_flash();
+    CHECK(ram[HP_U] == 80 && ram[INVINCIBILITY] == 0 && !(ram[STATUS_FLAG] & 2) && last_sound() == 0x0C);
+    CHECK(anointed == 0 && test_block_flashes() == 1);
+    scene(100, MAGIC, true);
+    ram[DURATION_OINTMENT] = 0x20;
+    to_the_flash();
+    CHECK(ram[HP_U] == 80 && reflected == 1 && anointed == 0 && ram[SPRITE_HP + SLOT] == SUGATA_HP - SUGATA_REFLECTED);
+}
+
 static void each_feature_alone(void) {
     /* Block alone: the flash is the game's, full screen, anywhere, and Block stops it anywhere. */
     scene(20, SMALL, true);
@@ -259,6 +296,13 @@ static void each_feature_alone(void) {
     enabled = false;
     frame(); frame();
     CHECK(ram[HP_U] == 70);                               /* the original: hit anywhere */
+    scene(100, NONE, false);
+    nes_mod_set_function_hook_enabled("faxanadu.sugata.behavior", 0);
+    nes_mod_set_function_hook_enabled("faxanadu.sugata.hit", 0);
+    enabled = false;
+    ram[DURATION_OINTMENT] = 0x20;
+    frame(); frame();
+    CHECK(ram[HP_U] == 70);                               /* and through Ointment */
     /* Sugata's flash alone: in reach it hurts, held key or not. */
     scene(100, SMALL, true);
     nes_mod_set_function_hook_enabled("faxanadu.block.flash", 0);
@@ -364,6 +408,7 @@ int main(void) {
     in_reach_it_hurts();
     block_stops_it();
     the_magic_shield_reflects_it();
+    ointment_keeps_the_hp();
     each_feature_alone();
     the_band();
     it_keeps_its_place();
