@@ -1,6 +1,6 @@
 #pragma once
-/* Save files (fax_files.c): the file select on the title screen, a Guru
- * saving instead of showing the mantra, and continuing a file. The record and
+/* Save files (fax_files.c): the file select on the title screen, a Guru's
+ * choice to save instead of the mantra, and continuing a file. The record and
  * its API are in fax_save.h. */
 #include <stdbool.h>
 #include <stdint.h>
