@@ -1,0 +1,24 @@
+format_version = 1
+id = "faxanadu.enhancement.quick-shops"
+version = "1.0.0"
+name = "Quick shops"
+author = "Faxanadu Remastered"
+description = "A shopkeeper opens his list at once; Select switches between buying and selling, you stay in the list until B, and any shop buys anything you carry."
+license = "MIT"
+resolver = "declarative"
+save_compatibility = "shared"
+
+[[target]]
+game_id = "faxanadu-usa"
+rom_crc32 = "57dd23d1"
+
+[[feature]]
+id = "quick-shops"
+name = "Quick shops"
+description = "Up on a shopkeeper opens his list straight away, with no greeting or questions. Select switches between buying and selling, buying or selling keeps you in the list, and B leaves. Prices, the inventory limits and \"not enough Golds\" are the game's own. Any shop buys anything you carry: at half its price where a shop sells it, or 100 Golds, but never the Dragon Slayer, the Battle Suit or the Battle Helmet."
+group = "Gameplay"
+default_enabled = true
+
+[[plugin]]
+feature = "quick-shops"
+id = "faxanadu.shops"

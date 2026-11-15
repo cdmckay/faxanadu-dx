@@ -46,6 +46,7 @@ if(NESRECOMP_BACKEND STREQUAL "cycle")
             fax_save.c fax_files.c
             fax_dagger.c
             fax_block.c fax_sugata.c
+            fax_shops.c
             fax_respawn.c
         MODS GAME_ID "faxanadu-usa"
         PLAYERS 1 REGION NTSC PASSWORD_SAVE "faxanadu.srm" PASSWORD_SAVE_LABEL "Mantra"
