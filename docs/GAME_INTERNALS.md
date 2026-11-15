@@ -494,9 +494,9 @@ for 9 - 10) before the enemy becomes its death effect (`$13`, in
 `Sprite_ShowNormalEnemyDeathByWeapon`). In between, the hit plays its sound
 and `Player_AddExperienceFromSprite` redraws the experience through
 `PPUBuffer_QueueCommandOrLength`, which waits for buffer space
-(`PPUBuffer_WaitForCapacity`). With the buffer full that wait crosses a frame
-boundary, so a read over TCP can see the wrapped HP with the entity
-unchanged. A test that tells a kill from a hit should wait a frame after the
+(`PPUBuffer_WaitForCapacity`). That wait, or a lag frame, can put a frame
+boundary between the two (a host frame ends at VBlank, wherever the CPU is),
+so a read over TCP can see the wrapped HP with the entity unchanged. A test that tells a kill from a hit should wait a frame after the
 HP changes before it reads the entity.
 
 **Eolis, for tests.** A new game starts on Eolis (area 0) screen 0, outside
