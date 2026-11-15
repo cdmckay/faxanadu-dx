@@ -49,6 +49,15 @@ Guru brings you back with all your gold and experience, instead of your
 title's starting amounts. The rest of death is as before: full HP and MP at
 your furthest temple, and the timed items are gone.
 
+**Auto keys** is on by default (Mods to turn it off). Press Up at a locked door
+and the right key from your inventory opens it, without selecting it first;
+whatever item you had selected stays selected.
+
+**Reusable tools** is on by default (Mods to turn it off). A key stays in your
+inventory after it opens a door, and the Mattock after it breaks a wall.
+Potions, the Elixir, the Hour Glass, the Wing Boots and the other consumables
+are still used up.
+
 Optional **Seamless** appears first in Mods, marked **Experimental** and
 disabled by default. It joins connected rooms, advances neighboring actors,
 and adapts the world view to your window with Fit to screen. Mouse wheel
