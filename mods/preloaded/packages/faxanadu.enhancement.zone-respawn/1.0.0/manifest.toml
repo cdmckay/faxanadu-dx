@@ -3,7 +3,7 @@ id = "faxanadu.enhancement.zone-respawn"
 version = "1.0.0"
 name = "Zone respawn"
 author = "Faxanadu Remastered"
-description = "Dying brings you back at the entrance of the tower, castle or region you died in, instead of at the Guru's temple."
+description = "Dying brings you back at the entrance of the tower, castle or region you died in, instead of at a Guru's temple."
 license = "MIT"
 resolver = "declarative"
 save_compatibility = "shared"
@@ -15,7 +15,7 @@ rom_crc32 = "57dd23d1"
 [[feature]]
 id = "zone-respawn"
 name = "Zone respawn"
-description = "When you die, the Guru still speaks, then you come back where you last entered the tower, castle, town or region you died in, with full HP and MP. With no entrance yet you wake at the Guru's temple, as before. Mantras still start you at a temple. Turn it off to always wake at the temple."
+description = "When you die, the Guru still speaks, then you come back where you last entered the tower, castle, town or region you died in, with full HP and MP. With no entrance yet you wake at the Guru's temple, as before. Continuing a file still starts you at the Guru you last saved with. Turn it off to always wake at the temple."
 group = "Gameplay"
 default_enabled = true
 

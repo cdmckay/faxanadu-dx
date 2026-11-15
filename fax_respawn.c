@@ -14,15 +14,20 @@
  *   place outside: Game_SetupExitBuilding, which loads Area_SavedArea,
  *   Area_SavedScreen, Screen_SavedPalette and Player_SavedPosXY with the
  *   area's tiles, music and sprites. At Player_Spawn's JSR Game_SpawnInTemple
- *   the hook writes the checkpoint there and returns into it, then into
- *   Game_MainLoop, instead of the temple.
+ *   a death with a checkpoint for its zone skips the call, so Player_Spawn
+ *   goes on at its next instruction ($DB20, where Save files saves the file
+ *   at every respawn) to JSR Game_SetupEnterBuilding; at that routine's entry
+ *   the hook writes the checkpoint where Game_ExitBuilding reads it and calls
+ *   Game_SetupExitBuilding instead. Player_Spawn's JMP Game_MainLoop follows.
  * - The fallback is the original: no checkpoint, or one for another zone (he
- *   died in a building), lays out the furthest temple. Any temple spawn (the
- *   fallback, a mantra, a Guru travel journey) forgets the checkpoint, so the
- *   way out of the temple becomes the next one. Mantras are unchanged.
+ *   died in a building), lays out the temple at TempleSpawnPoint, which Save
+ *   files keeps at the Guru last saved with (#43). Any temple spawn (the
+ *   fallback, continuing a file or a mantra, a Guru travel journey) forgets
+ *   the checkpoint, so the way out of the temple becomes the next one.
  *
  * The checkpoint lives for the session and in this feature's save-state
- * record. See docs/GAME_INTERNALS.md, "Zone respawn". */
+ * record. A file continues at its Guru, so it never needs the checkpoint.
+ * See docs/GAME_INTERNALS.md, "Entrances and zone respawn". */
 #include "fax_respawn.h"
 #include "fax_zone.h"
 #include "cyc_mod.h"
@@ -42,8 +47,9 @@
                                         after the death script and Player_SetInitialExpAndGold */
 #define SPAWN_IN_TEMPLE    0xDB1Du   /* Player_Spawn's JSR Game_SpawnInTemple; then JSR Game_SetupEnterBuilding,
                                         JMP Game_MainLoop */
+#define SPAWNED            0xDB20u   /* Player_Spawn's JSR Game_SetupEnterBuilding (Save files saves here) */
+#define SETUP_ENTER_BUILDING 0xDAAFu /* Game_SetupEnterBuilding: JSR PPU_WaitUntilFlushed */
 #define SETUP_EXIT_BUILDING 0xDABEu  /* Game_SetupExitBuilding: Game_ExitBuilding, Screen_ResetForGamePlay, ... RTS */
-#define MAIN_LOOP          0xDB45u   /* Game_MainLoop: LDX #$FF, TXS */
 /* RAM */
 #define AREA_CURRENT_AREA   0x0024u
 #define AREA_CURRENT_SCREEN 0x0063u
@@ -72,7 +78,11 @@ typedef struct {
 static const Checkpoint none = { FAX_ZONE_NONE, 0, 0, 0, 0, 0, 0, 0 };
 static bool enabled;
 static Checkpoint checkpoint = { FAX_ZONE_NONE, 0, 0, 0, 0, 0, 0, 0 };
-static bool dying;                   /* the death path is between DEATH_FADE and Player_Spawn */
+/* Where a death is: between DEATH_FADE and Player_Spawn's JSR Game_SpawnInTemple
+ * (DYING), then, coming back at the checkpoint, until Game_SetupEnterBuilding
+ * (RESPAWNING). */
+enum { ALIVE, DYING, RESPAWNING };
+static uint8_t death;
 static unsigned recorded, respawns, fallbacks;
 
 static uint8_t q(uint16_t addr) { return cyc_mod_peek(addr); }
@@ -117,13 +127,58 @@ static int load_hook(uint16_t addr) {
 /* Player_HandleDeath, after the Guru's words: the next Player_Spawn is a death's. */
 static int death_hook(uint16_t addr) {
     (void)addr;
-    if (!cyc_mod_isolated()) dying = true;
+    if (!cyc_mod_isolated()) death = DYING;
     return 0;
 }
 
-/* Lay out the checkpoint where Game_ExitBuilding reads the way out, and return
- * into Game_SetupExitBuilding and then Game_MainLoop on a fresh stack. */
-static void respawn(const Checkpoint *c) {
+/* Push a return address as JSR does (the address - 1, high byte first). */
+static void push_return(uint16_t to) {
+    CycModRegs regs;
+    cyc_mod_regs(&regs);
+    uint16_t r = (uint16_t)(to - 1);
+    p((uint16_t)(0x100 | regs.s), (uint8_t)(r >> 8));
+    p((uint16_t)(0x100 | (uint8_t)(regs.s - 1)), (uint8_t)r);
+    regs.s = (uint8_t)(regs.s - 2);
+    cyc_mod_set_regs(&regs);
+}
+static uint16_t return_address(void) {   /* where the routine at hand returns to */
+    CycModRegs regs;
+    cyc_mod_regs(&regs);
+    return (uint16_t)((q((uint16_t)(0x100 | (uint8_t)(regs.s + 1))) |
+                       q((uint16_t)(0x100 | (uint8_t)(regs.s + 2))) << 8) + 1);
+}
+
+/* Player_Spawn's JSR Game_SpawnInTemple: a death with a checkpoint for this
+ * zone skips the call (as if it returned at once), so Player_Spawn goes on at
+ * SPAWNED; anything else is a temple, as in the original. */
+static int spawn_hook(uint16_t addr) {
+    (void)addr;
+    if (cyc_mod_isolated()) return 0;
+    bool died = death == DYING;
+    death = ALIVE;
+    if (died && usable(&checkpoint, q(AREA_CURRENT_AREA), q(AREA_CURRENT_SCREEN))) {
+        push_return(SPAWNED);
+        death = RESPAWNING;
+        return 1;
+    }
+    /* The temple: Game_SpawnInTemple lays out the one at TempleSpawnPoint, which
+     * Save files keeps at the Guru last saved with (#43), and the original at
+     * the furthest temple. */
+    if (died) ++fallbacks;
+    checkpoint = none;                    /* the way out of the temple is the next way in */
+    return 0;
+}
+
+/* Game_SetupEnterBuilding, called from SPAWNED while coming back at the
+ * checkpoint: lay it out where Game_ExitBuilding reads the way out, and run
+ * Game_SetupExitBuilding instead, which returns to Player_Spawn's JMP
+ * Game_MainLoop. */
+static int enter_building_hook(uint16_t addr) {
+    (void)addr;
+    if (cyc_mod_isolated() || death != RESPAWNING) return 0;
+    death = ALIVE;
+    if (return_address() != SPAWNED + 3) return 0;   /* not Player_Spawn's call: leave it be */
+    const Checkpoint *c = &checkpoint;
     p(AREA_SAVED_AREA, c->area);
     p(AREA_SAVED_SCREEN, c->screen);
     p(SCREEN_SAVED_PALETTE, c->palette);
@@ -131,36 +186,9 @@ static void respawn(const Checkpoint *c) {
     p(AREA_REGION, c->region);
     p(AREAS_DEFAULT_MUSIC, c->music);     /* Game_ExitBuilding plays it */
     p(PLAYER_FLAGS, (uint8_t)((q(PLAYER_FLAGS) & ~FACING_RIGHT) | c->facing));
-    static const uint16_t path[] = { SETUP_EXIT_BUILDING, MAIN_LOOP };
-    uint16_t sp = 0x1FF;
-    for (int i = 1; i >= 0; --i) {
-        uint16_t r = (uint16_t)(path[i] - 1);
-        p(sp--, (uint8_t)(r >> 8));
-        p(sp--, (uint8_t)r);
-    }
-    CycModRegs regs;
-    cyc_mod_regs(&regs);
-    regs.s = (uint8_t)sp;
-    cyc_mod_set_regs(&regs);
-}
-
-/* Player_Spawn's JSR Game_SpawnInTemple: a death with a checkpoint for this
- * zone comes back there; anything else is a temple, as in the original. */
-static int spawn_hook(uint16_t addr) {
-    (void)addr;
-    if (cyc_mod_isolated()) return 0;
-    bool death = dying;
-    dying = false;
-    if (death && usable(&checkpoint, q(AREA_CURRENT_AREA), q(AREA_CURRENT_SCREEN))) {
-        respawn(&checkpoint);
-        ++respawns;
-        return 1;
-    }
-    /* The temple: Game_SpawnInTemple lays out the furthest one (TempleSpawnPoint).
-     * Respawning at the most recent Guru instead (#43) would choose it here. */
-    if (death) ++fallbacks;
-    checkpoint = none;                    /* the way out of the temple is the next way in */
-    return 0;
+    push_return(SETUP_EXIT_BUILDING);
+    ++respawns;
+    return 1;
 }
 
 void fax_respawn_checkpoint_pack(uint8_t out[FAX_RESPAWN_CHECKPOINT_LEN]) {
@@ -180,25 +208,25 @@ static bool unpack(const uint8_t *in, int len, Checkpoint *out) {
 }
 bool fax_respawn_checkpoint_unpack(const uint8_t *in, int len) { return unpack(in, len, &checkpoint); }
 
-/* Save states carry the checkpoint and whether a death is on its way to Player_Spawn. */
+/* Save states carry the checkpoint and where a death is (ALIVE, DYING, RESPAWNING). */
 enum { VERSION = 1, RECORD = 2 + FAX_RESPAWN_CHECKPOINT_LEN };
 static int state_get(uint8_t *buf, int cap) {
     if (cap < RECORD) return -1;
     buf[0] = VERSION;
     fax_respawn_checkpoint_pack(buf + 1);
-    buf[1 + FAX_RESPAWN_CHECKPOINT_LEN] = dying;
+    buf[1 + FAX_RESPAWN_CHECKPOINT_LEN] = death;
     return RECORD;
 }
 static int state_validate(const uint8_t *buf, int len) {
     Checkpoint c;
     return len == 0 || (len == RECORD && buf[0] == VERSION && unpack(buf + 1, FAX_RESPAWN_CHECKPOINT_LEN, &c) &&
-                        buf[1 + FAX_RESPAWN_CHECKPOINT_LEN] <= 1);
+                        buf[1 + FAX_RESPAWN_CHECKPOINT_LEN] <= RESPAWNING);
 }
 static int state_set(const uint8_t *buf, int len) {
     if (!state_validate(buf, len)) return 0;
-    if (!len) { checkpoint = none; dying = false; return 1; }   /* saved without the feature */
+    if (!len) { checkpoint = none; death = ALIVE; return 1; }   /* saved without the feature */
     unpack(buf + 1, FAX_RESPAWN_CHECKPOINT_LEN, &checkpoint);
-    dying = buf[1 + FAX_RESPAWN_CHECKPOINT_LEN];
+    death = buf[1 + FAX_RESPAWN_CHECKPOINT_LEN];
     return 1;
 }
 
@@ -209,10 +237,10 @@ static void respawn_state(int id, const char *line) {
     const FaxZone *z = fax_zone(checkpoint.zone);
     snprintf(fields, sizeof fields,
              "\"enabled\":%s,\"zone\":%s%s%s,\"area\":%u,\"screen\":%u,\"start\":%u,\"palette\":%u,\"region\":%u,"
-             "\"music\":%u,\"facing_right\":%s,\"dying\":%s,\"recorded\":%u,\"respawns\":%u,\"fallbacks\":%u",
+             "\"music\":%u,\"facing_right\":%s,\"death\":%u,\"recorded\":%u,\"respawns\":%u,\"fallbacks\":%u",
              enabled ? "true" : "false", z ? "\"" : "", z ? z->name : "null", z ? "\"" : "", checkpoint.area,
              checkpoint.screen, checkpoint.start, checkpoint.palette, checkpoint.region, checkpoint.music,
-             checkpoint.facing ? "true" : "false", dying ? "true" : "false", recorded, respawns, fallbacks);
+             checkpoint.facing ? "true" : "false", death, recorded, respawns, fallbacks);
     cyc_tcp_ok(id, fields);
 }
 void fax_respawn_tcp_setup(void) {
@@ -223,12 +251,14 @@ void fax_respawn_tcp_setup(void) {}
 #endif
 
 static const char *const hook_ids[] = {
-    "faxanadu.zone-respawn.load", "faxanadu.zone-respawn.death", "faxanadu.zone-respawn.spawn" };
+    "faxanadu.zone-respawn.load", "faxanadu.zone-respawn.death", "faxanadu.zone-respawn.spawn",
+    "faxanadu.zone-respawn.enter-building" };
 static void hooks(bool on) {
     for (unsigned i = 0; i < sizeof hook_ids / sizeof hook_ids[0]; ++i) nes_mod_set_function_hook_enabled(hook_ids[i], on);
 }
 static void deactivate(void) {
-    enabled = dying = false;
+    enabled = false;
+    death = ALIVE;
     checkpoint = none;
     recorded = respawns = fallbacks = 0;
     hooks(false);
@@ -243,6 +273,7 @@ NES_MOD_CONSTRUCTOR(register_zone_respawn) {
     if (!nes_mod_register_function_entry_plugin(hook_ids[0], SCREEN_SETUP_NEW, load_hook) ||
         !nes_mod_register_function_entry_plugin(hook_ids[1], DEATH_FADE, death_hook) ||
         !nes_mod_register_function_entry_plugin(hook_ids[2], SPAWN_IN_TEMPLE, spawn_hook) ||
+        !nes_mod_register_function_entry_plugin(hook_ids[3], SETUP_ENTER_BUILDING, enter_building_hook) ||
         !nes_mod_register_reset_callback(deactivate) ||
         !nes_mod_register_activation_plugin("faxanadu.zone-respawn", activate) ||
         !nes_mod_register_savestate_hook("faxanadu.zone-respawn", state_get, state_set) ||

@@ -410,8 +410,9 @@ bank = 12
 bytes = "20 b0 87 ad 01 02 10 06 20 81 f2 4c"
 
 # Zone respawn (fax_respawn.c): every screen load (the way into a zone), the
-# death path after the Guru's words, and Player_Spawn's JSR Game_SpawnInTemple,
-# where a death with a checkpoint returns into Game_SetupExitBuilding instead.
+# death path after the Guru's words, Player_Spawn's JSR Game_SpawnInTemple,
+# which a death with a checkpoint skips, and Game_SetupEnterBuilding, which it
+# swaps for Game_SetupExitBuilding when Player_Spawn calls it next.
 
 [[mod_function_hook]]
 id = "faxanadu.zone-respawn.load"
@@ -430,3 +431,9 @@ id = "faxanadu.zone-respawn.spawn"
 addr = 0xdb1d
 bank = 15
 bytes = "20 61 dd 20 af da 4c 45 db 20 af c6"
+
+[[mod_function_hook]]
+id = "faxanadu.zone-respawn.enter-building"
+addr = 0xdaaf
+bank = 15
+bytes = "20 f7 ca 20 06 de 20 17 cb 20 25 ca"

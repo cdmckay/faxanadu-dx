@@ -1146,7 +1146,8 @@ replays any entrance. `Game_SetupExitBuilding` (`$DABE`) wraps it as the
 other `Game_Setup*` do and returns, so a prepared stack can return into it and
 then into `Game_MainLoop`.
 
-**Zone respawn** (`fax_respawn.c`) uses three sites:
+**Zone respawn** (`fax_respawn.c`) uses four sites, none shared, so the link
+order of features' hooks never matters to it:
 
 - `Screen_SetupNew` (`$DD13`): a load into a different zone records the way
   in as the checkpoint. A building (area 4) changes nothing: its way out
@@ -1156,19 +1157,33 @@ then into `Game_MainLoop`.
   `Player_SetInitialExpAndGold` far call: reached only by a death, after the
   Guru's words. The RTS from `MMC1_PopBank` lands there, and a hook there runs.
 - `$DB1D`, `Player_Spawn`'s `JSR Game_SpawnInTemple`, with S at `$FF` on the
-  death path: a death in the checkpoint's zone writes it to the `Saved*`
-  variables, `Area_Region`, `Areas_DefaultMusic` and the facing, puts
-  `Game_SetupExitBuilding` - 1 and `Game_MainLoop` - 1 at `$01FC-$01FF`, sets
-  S to `$FB` and returns. Anything else lays out the temple, as the original
-  does: a mantra (`$FC95` jumps to `Player_Spawn`), Guru travel's journey
-  (its prepared stack RTSes into `$DB1D`, and a hook there runs for it too),
-  and a death with no checkpoint or one for another zone (a death in a
+  death path. A death in the checkpoint's zone skips the call: the hook pushes
+  `$DB1F`, as the JSR would, and returns, so the routine is entered and left at
+  once and `Player_Spawn` goes on at `$DB20`, where Save files saves the file at
+  every respawn. Anything else lays out the temple at `TempleSpawnPoint`, as
+  the original does (Save files keeps the Guru last saved with there): a file
+  or a mantra continued (`$FC95` jumps to `Player_Spawn`), Guru travel's
+  journey (its prepared stack RTSes into `$DB1D`, and a hook there runs for it
+  too), and a death with no checkpoint or one for another zone (a death in a
   building, which is in no zone). Each forgets the checkpoint, so walking out
   of the temple records the next.
+- `Game_SetupEnterBuilding` (`$DAAF`), called from `$DB20` (the return address
+  is `$DB23`, `JMP Game_MainLoop`) after a skipped call: it writes the
+  checkpoint to the `Saved*` variables, `Area_Region`, `Areas_DefaultMusic`
+  and the facing, pushes `Game_SetupExitBuilding` - 1 and returns into it. Its
+  RTS goes back to `Player_Spawn`'s `JMP Game_MainLoop`.
 
 `Player_Spawn` has already set HP and MP to 80, cleared the Mattock bit and
-the timed items, and the death path has restored the selected equipment, so
-the respawn keeps all of the original's death but the place.
+the timed items (the Ointment too), and the death path has restored the
+selected equipment, so the respawn keeps all of the original's death but the
+place. Sugata's flash (Mist `$1E-$1F`, `$4E-$4F`) is a death like any other:
+`$1F` is where the Branch's door back arrives, so dying to it there comes back
+beside it, as walking through that door does.
+
+The checkpoint is not kept in a save file. A file continues at the Guru it
+was saved with, through the temple, and any temple spawn forgets the
+checkpoint (the temple's door is the next way in), so a stored one would
+never be read.
 
 ## Items and the inventory
 
@@ -1475,15 +1490,16 @@ addresses, and `tools/check_allocations.py` enforces it.
   save-state record is each slot's warning count and the band.
 - **Zone respawn** (`fax_respawn.c`). Dying comes back at the last entrance
   into the zone (tower, castle, town or region) the hero died in, after the
-  Guru's words, instead of at the furthest temple. A hook at `Screen_SetupNew`
-  records the way in whenever a load enters a different zone; a hook after the
-  death script marks the death; at `Player_Spawn`'s `JSR Game_SpawnInTemple`
-  a death in the checkpoint's zone returns into `Game_SetupExitBuilding` with
-  the entrance in the `Saved*` variables. With no checkpoint, or after a
-  mantra or a Guru travel journey, the temple is laid out as before, and the
-  checkpoint is forgotten until the hero walks out. Mantras are unchanged. Its
-  save-state record holds the checkpoint and whether a death is on its way to
-  `Player_Spawn` (see "Entrances and zone respawn").
+  Guru's words, instead of at the temple. A hook at `Screen_SetupNew` records
+  the way in whenever a load enters a different zone; a hook after the death
+  script marks the death; `Player_Spawn`'s `JSR Game_SpawnInTemple` is skipped
+  for a death in the checkpoint's zone, and its `JSR Game_SetupEnterBuilding`
+  then runs `Game_SetupExitBuilding` with the entrance in the `Saved*`
+  variables (Save files' save at `$DB20` in between runs as at any respawn).
+  With no checkpoint, or after continuing a file or a Guru travel journey, the
+  temple is laid out as before, and the checkpoint is forgotten until the hero
+  walks out. Its save-state record holds the checkpoint and where a death is
+  (see "Entrances and zone respawn").
 
 - **Save files** (`fax_save.c`, `fax_files.c`). Three files instead of
   mantras; see "Save files" below.

@@ -65,10 +65,10 @@ your furthest temple, and the timed items are gone.
 
 **Zone respawn** is on by default (Mods to turn it off). When you die, the
 Guru still speaks, then you come back where you last entered the tower,
-castle, town or region you died in, with full HP and MP, instead of at your
-furthest temple. Until you have entered one, and after a mantra or a Guru's
+castle, town or region you died in, with full HP and MP, instead of at a
+temple. Until you have entered one, and after continuing or a Guru's
 journey until you walk out of the temple, you wake at the temple as before.
-Your mantra still starts you at a temple.
+Continuing a file still starts you at the Guru you last saved with.
 
 **Pendant fix** is on by default (Mods to turn it off). The Pendant was meant
 to make your weapon hit a quarter harder, but a reversed check in the

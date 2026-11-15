@@ -18,7 +18,9 @@ game's (PlayerIsDead set):
    as before.
 2. Through the gate into Eolis, then a screen further left (a scroll, or with
    Seamless on a room handoff): dying there comes back at the gate's side of
-   Eolis, after the Guru's words, with the gold and experience kept.
+   Eolis, after the Guru's words, with the gold and experience kept. Save
+   files (on by default, file 1 in play) writes the file at that respawn too,
+   with the gold and experience, keeping its spawn point.
 3. Through each tower's and castle's door (the Towers of Trunk, Fortress,
    Suffer and Mist, the Castle of Fraternal, the Fortress of Zenis) and each
    region's (Trunk, Mist, Branch, Dartmoor): dying inside comes back exactly
@@ -368,14 +370,23 @@ def main():
         assert respawn()["screen"] == 1, "the walk set no checkpoint"
         wait(10)
         further = save("eolis-2")
+        files = tcp("files_state")
+        assert files["file"] == 1, "Save files has file 1 in play (on by default)"
         came = die(further, "eolis", 0, 1, pictures=True)
         assert came == entered, (came, entered)
+        saved = tcp("files_state")
+        assert saved["saves"] == files["saves"] + 1 and saved["spawn"] == 0, (files, saved)
+        record = dict(line.split(" = ", 1) for line in (out / "game" / "faxanadu_file1.txt").read_text().splitlines()
+                      if " = " in line)
+        assert (record["gold"], record["experience"], record["spawn"]) == \
+            (str(HERO["gold"]), str(HERO["experience"]), "0"), record
         assert (ram(HP), ram(MP)) == (0x50, 0x50), "full HP and MP"
         assert hero() == HERO, hero()
         assert ram(TEMPLE_SPAWN_POINT) == 0, "the mantra's temple is unchanged"
         state = respawn()
         assert (state["respawns"], state["fallbacks"]) == (1, 1), state
-        print("ok: dying a screen into Eolis comes back at its gate, after the Guru, with gold and experience")
+        print("ok: dying a screen into Eolis comes back at its gate, after the Guru, with gold and experience; "
+              "Save files wrote the file at the respawn, keeping its spawn point")
 
         # 3. Every tower, castle and region, through its own door.
         inside = {}
