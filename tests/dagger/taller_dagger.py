@@ -35,8 +35,10 @@ pixels away and the swords from 31; it hurts the hero from 15.
    every swing after it, until it reaches the hero and hurts him. The Long
    Sword's reach and hit are as with the feature on.
 
-Screenshots of the stock dagger passing over the Zozura, the taller dagger
-hitting it, and the Long Sword hitting it.
+Screenshots, each on the first frame of a swing's first hit phase (its low
+frame): the taller dagger hitting the Zozura, the Long Sword hitting it from
+further out, the taller dagger missing from there, the taller dagger passing
+over it in a jump, and the original dagger passing over it from close in.
 """
 import argparse
 import json
@@ -199,8 +201,8 @@ def main():
         air). With `again`, keep swinging until something happens. Returns
         what happened: hit (its HP fell), hurt (it reached the hero), swings,
         the reaches the game loaded, and (distance, hero y) in each sample of
-        a first hit phase. `name` takes a screenshot in the first one (or at
-        the hit)."""
+        a first hit phase. `name` takes a screenshot in the first one, the
+        swing's low frame, so hits and misses show the same moment."""
         case = out / "case.cycstate"
         fixture(zozura, case, {PLAYER_CUR_WEAPON: weapon, SELECTED_WEAPON: weapon, HP: FULL_HP,
                                SPRITE_HP + TARGET: TOUGH})
@@ -219,17 +221,15 @@ def main():
                 got["swings"] += 1
             if attacking and m[ATTACK_PHASE] == 1:
                 got["phase1"].append((d, m[HERO_Y]))
-            if m[SPRITE_HP + TARGET] < TOUGH:
-                got["hit"] = True
                 if name:
                     shot(name)
+                    name = None
+            if m[SPRITE_HP + TARGET] < TOUGH:
+                got["hit"] = True
                 return got
             if m[HP] < FULL_HP or m[SCREEN] != ZOZURA_SCREEN:
                 got["hurt"] = True
                 return got
-            if name and got["phase1"]:
-                shot(name)
-                name = None
             if was and not attacking and not again:
                 return got                                          # the one swing is over
             if jump and not jumped and d <= JUMP_AT:
@@ -284,7 +284,7 @@ def main():
         got = swing(zozura, LONG_SWORD, SWORD_RANGE, name="long-sword-hits")
         assert got["reaches"] == {SWORD} and got["hit"], f"the Long Sword: {got}"
         on_sword = got
-        got = swing(zozura, DAGGER, SWORD_RANGE)
+        got = swing(zozura, DAGGER, SWORD_RANGE, name="taller-dagger-from-afar-misses")
         assert got["reaches"] == {TALL} and not got["hit"] and got["swings"] == 1, f"dagger from afar: {got}"
         far = first_phase(got)
         assert all(d > REACH_IN_PHASE_1[DAGGER] for d, _ in got["phase1"]), got
@@ -293,7 +293,8 @@ def main():
 
         # 2. Nothing under his feet: a swing at the top of a jump, right over it.
         for weapon in (DAGGER, LONG_SWORD):
-            got = swing(zozura, weapon, REACH_IN_PHASE_1[weapon], jump=True)
+            got = swing(zozura, weapon, REACH_IN_PHASE_1[weapon], jump=True,
+                        name="taller-dagger-jumps-over" if weapon == DAGGER else None)
             assert got["swings"] == 1 and not got["hit"], f"{NAMES[weapon]} in a jump: {got}"
             assert all(y <= GROUND - 20 and d <= REACH_IN_PHASE_1[weapon] for d, y in got["phase1"]), got
             print(f"ok: {NAMES[weapon]}: swung in a jump {GROUND - max(y for _, y in got['phase1'])} pixels up, "

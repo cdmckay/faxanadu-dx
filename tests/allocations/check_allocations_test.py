@@ -59,9 +59,14 @@ def model():
           f"a wrong stock value is rejected: {wrong}")
     check(len(errors([dagger(stock=(0x08, 0x08), start=0xB897)], prg)) == 1, "each byte of a long override is checked")
     check(errors([dagger(stock=(0x08,))]) == [], "stock values are only checked against a ROM")
+    empty = errors([dagger(stock=())])
+    check(len(empty) == 1 and "needs one stock byte" in empty[0], f"an override of no bytes is rejected: {empty}")
+    check(len(errors([dagger(stock=(0x104,))])) == 1, "a stock value that is not a byte is rejected")
 
     check(errors([unused(0xBF00, 0xBF10)], prg) == [], "unused claims are still checked for $FF")
     check(len(errors([unused(0xB890, 0xB8A0)], prg)) == 1, "an unused claim on used ROM is still rejected")
+    clash = errors([unused(0xBF00, 0xBF10), unused(0xBF0F, 0xBF20, package="another")])
+    check(len(clash) == 1 and "overlaps" in clash[0], f"two unused claims that overlap are still reported: {clash}")
 
     clash = errors([dagger(), unused(0xB890, 0xB8A0)])
     check(len(clash) == 1 and "overlaps" in clash[0], f"an override overlapping an unused claim is reported: {clash}")

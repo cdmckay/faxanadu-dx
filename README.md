@@ -94,6 +94,11 @@ at the game's own pace; hold A and it types 4 times as fast. A page break or a
 question still waits for a fresh press of A, so holding it never skips a page
 or answers for you: let go, then press A to go on.
 
+**Taller dagger** is on by default (Mods to turn it off). The Hand Dagger used
+to swing over low enemies that every sword hits, like the Zozura crawling
+outside Eolis. Now its swing reaches as low as the swords', so it hits them.
+It keeps its short reach, so the Long Sword is still an upgrade.
+
 Optional **Seamless** appears first in Mods, marked **Experimental** and
 disabled by default. It joins connected rooms, advances neighboring actors,
 and adapts the world view to your window with Fit to screen. Mouse wheel

@@ -23,10 +23,15 @@ def rom_claims(features):
 
 
 def rom_errors(claims, prg=None):
-    """Claims that overlap, whatever their kind, and with the stock PRG image,
-    unused claims that are not $FF and overrides whose bytes are not their
-    stock values."""
+    """Overrides that claim no byte or list a value that is not one, claims
+    that overlap, whatever their kind, and with the stock PRG image, unused
+    claims that are not $FF and overrides whose bytes are not their stock
+    values."""
     errors = []
+    for package, r in claims:
+        if r["stock"] is not None and (not r["stock"] or any(not 0 <= v <= 0xFF for v in r["stock"])):
+            errors.append(f"{package}: the override at bank {r['bank']} ${r['start']:04X} needs one stock byte "
+                          f"(0-255) per byte it claims, not {r['stock']}")
     for (pa, a), (pb, b) in combinations(claims, 2):
         if a["bank"] == b["bank"] and a["start"] < b["end"] and b["start"] < a["end"]:
             errors.append(f"bank {a['bank']} ${a['start']:04X}-${a['end'] - 1:04X} ({pa}: {a['use']}) overlaps "

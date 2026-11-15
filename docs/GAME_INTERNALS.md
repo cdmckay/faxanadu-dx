@@ -41,6 +41,11 @@ MMC1, 16 PRG banks of 16 KiB, 8 KiB CHR RAM, no PRG RAM.
 | 12 | `$AD8A-$BFFF` | 4,726 bytes | Guru travel uses `$AE00-$AE06` |
 | 13 | `$B45B-$BFFF` | 2,981 bytes | Keep `$B45A` `$FF` (see Messages). Guru travel uses `$B45B-$B48A` |
 
+**Existing bytes** a feature serves with other values (a tuned table entry,
+say) are claimed too, as `overrides` with their stock values, which
+`tools/check_allocations.py --rom` checks. The Taller dagger serves `$B898`
+(bank 14).
+
 **Rev A** (`Faxanadu (USA) (Rev A)`, CRC32 `E71DB268`) matches the original in
 banks 5, 14 and 15, but bank 12 differs from `$9000` (the password code moved,
 and data tables after it shifted). Not supported: the build rejects it.
@@ -339,9 +344,9 @@ A on END (row 5, column 3) checks the mantra and continues.
 
 The sprite loop calls `Player_HitSpriteWithWeapon` (`$8804`) for each live
 sprite every frame, except while the sprite's hit counter counts down. It
-lands a hit while a swing is on animation frame 1 or 2, on a visible enemy in
-reach (`Sprites_IsSpriteOutOfWeaponRange`). A hit builds its damage in
-`Temp_00` (`$00`):
+lands a hit while `Player_AttackPhaseAnimFrame` is 1 or 2, on a visible enemy
+in reach (`Sprites_IsSpriteOutOfWeaponRange`; see *Weapon reach* below). A
+hit builds its damage in `Temp_00` (`$00`):
 
 | Address | Code | Does |
 |---|---|---|
@@ -396,9 +401,80 @@ screens run 7-6-5-4-3-2-1-8 from left to right (`EOLIS_SCROLL_DATA`, bank 3;
 screen 0 has no neighbours). Screens 4 and 5 each have two Zozura (`$47`,
 9 HP) crawling right along the ground, and screen 8 a Monodron (`$2A`,
 10 HP). Walking left from the town, the hero comes onto screen 4 at x=240.
-The stock Hand Dagger passes over a Zozura; the swords hit one about 30
-pixels left of the hero (his x minus its x). A Zozura that reaches a hero at
-the screen's right edge knocks him onto the next screen.
+The stock Hand Dagger passes over a Zozura (see *Weapon reach*); facing it,
+the swords hit one from up to 31 pixels left of the hero (his x minus its x),
+and it hurts him from 15. A Zozura that reaches a hero at the screen's right
+edge knocks him onto the next screen.
+
+## Weapon reach (bank 14)
+
+A swing has three phases (`PLAYER_ATTACK_ANIMATION_PHASES`, bank 15): 8
+frames thrusting, 3 holding, 8 withdrawing. `Player_AttackPhaseAnimFrame`
+counts them 0, 1, 2, and `Maybe_Player_CalcAnimFrame` (`$B927`) maps them to
+pose frames 4, 5 and 6 (`BYTE_ARRAY_PRG14__b97b`). Hits land in phases 1 and
+2, so on pose frames 5 and 6.
+
+Each frame `Player_DrawWeapon` (`$B7D6`) places the weapon and loads its
+reach:
+
+- **Where:** `PlayerPosXPlus10` (`$CE`) is the hero's x plus a per-pose
+  offset from `PTR_ARRAY_PRG14__b89f` (`$B89F`), one table per weapon with
+  and without a shield (`Player_ArmorLookupIndex` bit 0), by facing.
+  `Maybe_Something_WeaponPosY` (`$D0`) is his y plus a per-pose offset from
+  `PTR_ARRAY_PRG14__b90f` (`$B90F`), by weapon. In the hit frames:
+
+  | Weapon | Pose 5 (phase 1) | Pose 6 (phase 2) |
+  |---|---|---|
+  | Hand Dagger | x+14 right, x-8 left; y+8 | x+24 right, x-16 left; y+6 |
+  | Hand Dagger with a shield | x+16 right, x-8 left; y+8 | the same as without |
+  | Long Sword, Giant Blade, Dragon Slayer | x+16 right, x-16 left; y+8 | x+24 right, x-24 left; y+6 |
+
+- **How far:** `Maybe_WeaponRange_X/Y` (`$D2`, `$D3`) from
+  `MAYBE_WEAPON_RANGES` (`$B897`), an (X, Y) pair per weapon, by
+  `Player_CurWeapon`. Nothing else reads the table.
+
+  | Weapon | X | Y |
+  |---|---|---|
+  | Hand Dagger | `$08` | `$04` (`$B898`) |
+  | Long Sword, Giant Blade, Dragon Slayer | `$10` | `$08` |
+
+  It returns before loading them when a portrait is up, when there is no
+  weapon (`Player_CurWeapon` `$FF`), or when the weapon is off the screen, so
+  `$D2`/`$D3` then keep the last weapon's values.
+
+`Sprites_IsSpriteOutOfWeaponRange` (`$88CB`) compares the sprite's top-left
+(`CurrentSprites_XPos_Full`, `CurrentSprites_YPos`, copied to
+`$037F`/`$0380`) with that box, using the sprite's extents (EX, EY) from
+`MAYBE_SPRITE_EXTENTS` (`$B407`, a byte pair per entity). In 8-bit
+arithmetic, it hits when
+
+    (weapon x + X - sprite x) mod 256 < EX + X
+    (weapon y + Y - sprite y) mod 256 < EY + Y
+
+that is, when the sprite overlaps the box from the weapon's position to X
+pixels right of it and Y pixels below it, whichever way the hero faces. So
+**the Y reach only stretches the box down**: its top is the weapon's y
+whatever the reach. With the hero at y, the box spans y+8 to y+8+Y in pose 5
+and y+6 to y+6+Y in pose 6: y+8 to y+12 for the stock dagger, y+8 to y+16 for
+the swords.
+
+- **The dagger's short swing.** A Zozura (16 by 16) on the hero's ground has
+  its top at y+16: the swords touch its top row in pose 5, and the stock
+  dagger's box ends 4 pixels above it. The same goes for any enemy 16 pixels
+  tall by its extents whose top is that low: the Hornet, Bihoruda, Lilith,
+  Yuinaru and `SPRITE_ENEMY_FIRE_GIANT`, and the 32-by-16 Rokusutahn and
+  Borabohra. Enemies 24 or 32 tall standing on his ground reach up into every
+  weapon's box.
+- **Across,** facing left, a weapon's box reaches past the hero's left edge
+  by 8 (dagger) or 16 (swords) pixels in pose 5 and 16 or 24 in pose 6;
+  facing right, by 7 or 17, then 17 or 25.
+- Extents seen: 16 by 32 for most enemies, 16 by 16 for the small fliers and
+  the Zozura, 32 by 24 for Zoradohna and Pakukame, 32 by 32 Ripasheiku, 48 by
+  32 Shadow Eura, 64 by 16 King Grieve.
+
+With the **Taller dagger**, `$B898` is served as `$08` through a read
+override, so the dagger's box is as tall as the swords' and reaches their
+low enemies, from the same short distance as before.
 
 ## The hero's movement (bank 15)
 
@@ -912,3 +988,11 @@ addresses, and `tools/check_allocations.py` enforces it.
   bit of the joypad masks, which the Magic button never changes (it ORs in
   Up and B, for `Player_CastMagic` alone, outside any message loop), and
   writes neither mask.
+- **Taller dagger** (`fax_dagger.c`). The Hand Dagger's Y reach,
+  `MAYBE_WEAPON_RANGES+1` (`$B898`, bank 14), is served as `$08` instead of
+  `$04` through a read override that matches only bank 14's byte while it
+  holds `$04`, so its box is as tall as the swords' (see *Weapon reach*). Its
+  X reach stays `$08`. No hooks. Its save-state record is empty: the load
+  callback only serves the byte again. `mods/allocations.toml` claims the byte
+  as an `overrides` entry, which `tools/check_allocations.py` checks against
+  its stock value.
