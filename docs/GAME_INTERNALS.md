@@ -187,6 +187,62 @@ What a feature can rely on, and the traps:
 - A save state's RAM is in its `HW  ` chunk at offset 23, 2 KiB, with no
   checksum. Edit it to set up test fixtures (`tests/travel/guru_travel.py`).
 
+## Far calls (`MMC1_LoadBankAndJump`)
+
+Code in the fixed bank reaches a routine in a switchable bank with
+`JSR MMC1_LoadBankAndJump` (`$F859`) and three inline bytes: the bank, then
+the routine's address - 1, little-endian. `MMC1_LoadBankAndJump` saves A, X and
+Y, pops the JSR's return address, and pushes, in order: the address past the
+inline bytes - 1 (where the caller resumes), `CurrentROMBank`, `MMC1_PopBank` - 1
+(`$F8C5`) and the routine's address - 1. It switches the bank, restores A, X
+and Y, and RTSes into the routine. So at the entry of a far-called routine:
+
+| Stack | Holds |
+|---|---|
+| S+1, S+2 | `$F8C5`: the routine's RTS goes to `MMC1_PopBank` (`$F8C6`: `PLA`, `TAX`, `JMP MMC1_UpdateROMBank`), which maps the caller's bank back and returns to the caller |
+| S+3 | The caller's bank |
+| S+4, S+5 | The caller's resume address - 1 |
+
+- The resume address names the call site exactly, which tells apart two far
+  calls to the same routine (Death keeps gold does).
+- A hook that handles a far-called routine's entry returns through
+  `MMC1_PopBank`, as the routine's own RTS would, so skipping one is safe.
+
+## Titles, experience and gold
+
+| Address | Name | Notes |
+|---|---|---|
+| `$0390-$0391` | `Experience` | 16-bit little-endian |
+| `$0437` | `PlayerTitle` | The title the hero holds, 0 (Novice) to 15 |
+| `$04ED` | `NextPlayerTitle` | The title earned. Ahead of `PlayerTitle` until a Guru grants it |
+| `$0427-$042A` | `DurationOintment`, `DurationGlove`, `DurationWingBoots`, `DurationHourGlass` | `$FF` when not running |
+
+- `Player_CheckReachedNextTitle` raises `NextPlayerTitle` by one when
+  `Experience` reaches `PLAYER_TITLE_EXP_NEEDED[NextPlayerTitle]`. A Guru's
+  `04` action then makes `PlayerTitle` `NextPlayerTitle` and jumps to his new
+  rank line.
+- `Player_SetInitialExpAndGold` (`$95B1`, bank 12) sets `NextPlayerTitle` to
+  `PlayerTitle`, and for title t from 1 sets `Experience` to
+  `PLAYER_TITLE_EXP_NEEDED[t-1]` (`$F749`, words) and `Gold` to
+  `PLAYER_TITLE_GOLD[t-1]` (`$F767`, words; the top byte 0). A Novice gets 0
+  of both. The tables start 1000 experience and 500 gold for title 1, 3500 and
+  1200 for title 3.
+- It is far-called from two places, both with S at `$FA` on entry, since both
+  callers set S to `$FF` first:
+  - `Player_HandleDeath`, at `$D99A`, resuming at `$D9A0` (`JSR Screen_FadeToBlack`).
+    So in the original, death also takes back a title earned but not yet granted.
+  - `Game_ShowStartScreen`, after the mantra screen, at `$FC8F`, resuming at
+    `$FC95` (`JMP Player_Spawn`). A mantra holds neither gold nor experience.
+- `PlayerIsDead` is cleared near the start of `Player_HandleDeath`, before the
+  death script, so it cannot tell the two calls apart.
+
+**The start screen and the mantra screen.** Select toggles `$0687`
+(0 Start, 1 Continue); Start takes it. On the mantra screen the cursor is
+`Password_CursorRow` (`$0663`) and `Password_CursorCol` (`$0662`), and
+`Password_EnteredCharsLength` (`$0666`) counts the characters typed. The last
+row (5) holds →, ←, DEL and END at columns 0-3, and Up from row 0 wraps to it.
+A on END (row 5, column 3) checks the mantra and continues.
+
 ## Features and what they use
 
 `mods/allocations.toml` lists each feature's ROM, hook sites and shared
@@ -199,3 +255,8 @@ addresses, and `tools/check_allocations.py` enforces it.
   path without its penalties, with `TempleSpawnPoint` set only during the
   committed `Game_SpawnInTemple` call. Visited Gurus persist in
   `faxanadu_gurus.txt`; a new game resets them.
+- **Death keeps gold** (`fax_death.c`). Dying brings the hero back with the
+  gold, experience and earned title he had. It hooks
+  `Player_SetInitialExpAndGold` and returns at once when the far call's resume
+  address is `Player_HandleDeath`'s, and leaves the start screen's call alone.
+  It keeps no state.
