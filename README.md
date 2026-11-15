@@ -49,6 +49,11 @@ Guru brings you back with all your gold and experience, instead of your
 title's starting amounts. The rest of death is as before: full HP and MP at
 your furthest temple, and the timed items are gone.
 
+**Zone names** is on by default (Mods to turn it off). When you enter a
+different town, region, tower or castle, its name appears below the status bar
+for two seconds in the game's own text box, as the dialogue names it ("Tower of
+Suffer", "Castle of Fraternal"). Shops, houses and temples show nothing.
+
 Optional **Seamless** appears first in Mods, marked **Experimental** and
 disabled by default. It joins connected rooms, advances neighboring actors,
 and adapts the world view to your window with Fit to screen. Mouse wheel

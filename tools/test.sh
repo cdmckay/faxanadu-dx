@@ -37,6 +37,9 @@ cmake --build "$OUT/world" -j"$JOBS" >/dev/null && echo "fax_world.c compiles wi
 cmake -S tests/death -B "$OUT/death" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/death" -j"$JOBS" >/dev/null
 "$OUT/death/death_test"
+cmake -S tests/zones -B "$OUT/zones" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/zones" -j"$JOBS" >/dev/null
+"$OUT/zones/zones_test"
 
 echo "== game build"
 [ -f build-cycle/CMakeCache.txt ] || cmake -S . -B build-cycle -DCMAKE_BUILD_TYPE=Release -DNESRECOMP_ROM="$ROM" >/dev/null
@@ -55,6 +58,13 @@ e2e travel-e2e-seamless --game-arg=--world-view=seamless & seamless=$!
 echo "== end to end: death keeps gold, alongside them"
 python3 tests/death/death_keeps_gold.py --build build-cycle --rom "$ROM" --out "$OUT/death-e2e" \
   > "$OUT/death-e2e.log" 2>&1 & death=$!
+echo "== end to end: zone names, by default and with Seamless on, alongside them"
+zones_e2e() {  # NAME [ARGS...]
+  local name="$1"; shift
+  python3 tests/zones/zone_names.py --build build-cycle --rom "$ROM" --out "$OUT/$name" "$@" > "$OUT/$name.log" 2>&1
+}
+zones_e2e zones-e2e & zones=$!
+zones_e2e zones-e2e-seamless --game-arg=--world-view=seamless & zones_seamless=$!
 failed=0
 wait "$default" || failed=1
 sed 's/^/[default]  /' "$OUT/travel-e2e.log"
@@ -62,5 +72,9 @@ wait "$seamless" || failed=1
 sed 's/^/[seamless] /' "$OUT/travel-e2e-seamless.log"
 wait "$death" || failed=1
 sed 's/^/[death]    /' "$OUT/death-e2e.log"
+wait "$zones" || failed=1
+sed 's/^/[zones]    /' "$OUT/zones-e2e.log"
+wait "$zones_seamless" || failed=1
+sed 's/^/[zones+sw] /' "$OUT/zones-e2e-seamless.log"
 [ "$failed" = 0 ] || { echo "end-to-end tests failed; screenshots in $OUT/*-e2e*/" >&2; exit 1; }
 echo "all checks passed"
