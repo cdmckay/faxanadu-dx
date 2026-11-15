@@ -111,7 +111,7 @@ enum { CATEGORIES = 5, ITEMS = 4, PAGE = 8, MOST = 4 + 4 + 4 + 4 + 8 };
 enum { BUY, SELL, NONE };
 /* Shop_Draw's list, in tiles: its box and its rows (an entry is two rows). */
 enum { LIST_X = 10, LIST_Y = 8, LIST_W = 20, LIST_H = 20, HINT_COL = LIST_X + 2, HINT_ROW = LIST_Y + LIST_H - 2,
-       HINT_COLS = 16 };
+       HINT_COLS = 16, PAGE_ROW = LIST_Y + 1 };
 /* TextBox_Open's frame corner tiles */
 enum { CORNER_TOP_LEFT = 1, CORNER_TOP_RIGHT = 3, CORNER_BOTTOM_LEFT = 5, CORNER_BOTTOM_RIGHT = 6 };
 
@@ -418,6 +418,8 @@ static int final_hook(uint16_t addr) {
     (void)addr;
     if (!here() || !(in_step(BUY, 3) || in_step(SELL, 3))) return 0;
     Offer all[MOST];
+    int list = in_step(BUY, 3) ? BUY : SELL;
+    shop.cursor[list] = q(MENU_CURSOR_POS);     /* the message left it where it was */
     shop.selling = (uint8_t)sell_list(all);
     to_list(shop.mode == SELL && shop.selling ? SELL : BUY);
     ++messages;
@@ -426,20 +428,23 @@ static int final_hook(uint16_t addr) {
 
 /* ---- the hint ---- */
 
-/* The line under the list, 16 columns, or false for none. */
+/* The line under the list, or false for none. The font has no colon or
+ * slash (TILE_GLYPHS_START leaves them blank), so the words say it. */
 static bool hint(char out[HINT_COLS + 1]) {
     if (!shop.active || shop.shown == NONE || q(ISCRIPT_PORTRAIT_ID) == 0xFF) return false;
-    const char *say = shop.shown == BUY ? "Select: Sell" : "Select: Buy";
+    const char *say = shop.shown == BUY ? "Select to sell" : "Select to buy";
     unsigned cursor = q(MENU_CURSOR_POS);
     if (shop.shown == SELL && cursor < q(ARG_STRINGS_COUNT) && cursor < PAGE &&
         fax_shops_never_buys(q((uint16_t)(DATA_ARRAY + cursor))))
         say = "Not for sale";
-    snprintf(out, HINT_COLS + 1, "%-16s", say);
-    if (shop.shown == SELL && pages() > 1) {
-        char page[8];
-        int n = snprintf(page, sizeof page, "%d/%d", shop.page + 1, pages());
-        memcpy(out + HINT_COLS - n, page, (size_t)n);
-    }
+    snprintf(out, HINT_COLS + 1, "%s", say);
+    return true;
+}
+/* The sell list's page, over its first entry at the right ("1 of 2"), when
+ * there is more than one. */
+static bool page_label(char out[HINT_COLS + 1]) {
+    if (shop.shown != SELL || pages() < 2) return false;
+    snprintf(out, HINT_COLS + 1, "%d of %d", shop.page + 1, pages());
     return true;
 }
 
@@ -469,6 +474,25 @@ static void to_picture(int w, int h, int *x, int *y) {
     *y = *y * nh / 240;
 }
 
+/* Shop_Draw writes a price's last digit even for 0 (UI_DrawDigitsNoLeadingZeroes
+ * blanks all but the units), so an item no shop buys would read "0". Its
+ * price cells are painted the box's inside again: tile 0, all color 0. */
+static void blank_prices(uint32_t *px, int w, int h) {
+    enum { PRICE_COL = LIST_X + 13, PRICE_COLS = 5 };   /* Shop_Draw: X + 13, 5 digits, on an entry's second row */
+    if (shop.shown != SELL) return;
+    unsigned count = q(ARG_STRINGS_COUNT);
+    uint32_t inside = cyc_render_color(0);
+    for (unsigned i = 0; i < count && i < PAGE; ++i) {
+        if (!fax_shops_never_buys(q((uint16_t)(DATA_ARRAY + i)))) continue;
+        int x0 = PRICE_COL * FAX_TEXT_CELL, y0 = (LIST_Y + 3 + 2 * (int)i) * FAX_TEXT_CELL;
+        int x1 = x0 + PRICE_COLS * FAX_TEXT_CELL, y1 = y0 + FAX_TEXT_CELL;
+        to_picture(w, h, &x0, &y0);
+        to_picture(w, h, &x1, &y1);
+        for (int y = y0 < 0 ? 0 : y0; y < y1 && y < h; ++y)
+            for (int x = x0 < 0 ? 0 : x0; x < x1 && x < w; ++x) px[(size_t)y * (size_t)w + (size_t)x] = inside;
+    }
+}
+
 static uint32_t *canvas;
 static size_t capacity;
 
@@ -492,9 +516,16 @@ const uint32_t *fax_shops_present(const uint32_t *picture, int *w, int *h) {
         canvas = grown; capacity = n;
     }
     memcpy(canvas, from, n * sizeof *canvas);
+    blank_prices(canvas, width, height);
     int x = HINT_COL * FAX_TEXT_CELL, y = HINT_ROW * FAX_TEXT_CELL;
     to_picture(width, height, &x, &y);
     fax_text_draw(canvas, width, height, x, y, line, 255);
+    char page[HINT_COLS + 1];
+    if (page_label(page)) {
+        x = (HINT_COL + HINT_COLS - (int)strlen(page)) * FAX_TEXT_CELL, y = PAGE_ROW * FAX_TEXT_CELL;
+        to_picture(width, height, &x, &y);
+        fax_text_draw(canvas, width, height, x, y, page, 255);
+    }
     *w = width; *h = height;
     return canvas;
 }
@@ -551,7 +582,7 @@ static int state_set(const uint8_t *buf, int len) {
 #ifdef CYC_WITH_SDL
 static void shops_state(int id, const char *line) {
     (void)line;
-    char fields[1024], items[64] = "", prices[96] = "", say[HINT_COLS + 1];
+    char fields[1024], items[64] = "", prices[96] = "", say[HINT_COLS + 1], page[HINT_COLS + 1];
     unsigned count = q(ARG_STRINGS_COUNT);
     if (count > PAGE) count = PAGE;
     for (unsigned i = 0; i < count; ++i) {
@@ -560,17 +591,19 @@ static void shops_state(int id, const char *line) {
         snprintf(prices + b, sizeof prices - b, "%s%u", i ? "," : "",
                  q((uint16_t)(SHOP_ITEM_COSTS_L + i)) | q((uint16_t)(SHOP_ITEM_COSTS_U + i)) << 8);
     }
-    bool hinted = hint(say), up = list_shown();
+    bool hinted = hint(say), up = list_shown(), paged = page_label(page);
     static const char *const modes[] = { "buy", "sell", "none" };
     snprintf(fields, sizeof fields,
              "\"enabled\":%s,\"active\":%s,\"mode\":\"%s\",\"shown\":\"%s\",\"page\":%u,\"pages\":%d,"
              "\"selling\":%u,\"cursor\":%u,\"list\":[%s],\"prices\":[%s],\"list_up\":%s,\"hint\":%s%s%s,"
+             "\"page_label\":%s%s%s,"
              "\"script\":%u,\"opened\":%u,\"bought\":%u,\"sold\":%u,\"refused\":%u,\"switched\":%u,"
              "\"turned\":%u,\"messages\":%u",
              enabled ? "true" : "false", shop.active ? "true" : "false", modes[shop.mode <= SELL ? shop.mode : 2],
              modes[shop.shown <= NONE ? shop.shown : 2], shop.page, pages(), shop.selling, q(MENU_CURSOR_POS),
              items, prices, up ? "true" : "false", hinted && up ? "\"" : "", hinted && up ? say : "null",
-             hinted && up ? "\"" : "", shop.script.base, opened, bought, sold, refused, switched, turned, messages);
+             hinted && up ? "\"" : "", hinted && up && paged ? "\"" : "", hinted && up && paged ? page : "null",
+             hinted && up && paged ? "\"" : "", shop.script.base, opened, bought, sold, refused, switched, turned, messages);
     cyc_tcp_ok(id, fields);
 }
 void fax_shops_tcp_setup(void) {
