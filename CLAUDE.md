@@ -66,6 +66,13 @@ recompiler produced it; features observe and steer it.
   own `free_port()`: the helper reserves each port for the whole test, against
   every suite on the machine, and relaunches the game if the port is taken
   anyway. [tests/README.md](tests/README.md) shows how.
+- **End-to-end tests count game frames, never seconds.** The helper's
+  `wait()` and `until()` count the game's frames, and the script can lag any
+  number of frames behind the game on a loaded machine. Input that must land
+  on a given frame goes in with the save state it starts from, in one
+  `batch()` (a `load_state`, then the `action`), or runs headless from that
+  state with `--input`. Never count on two TCP commands being a few frames
+  apart.
 - **While developing, run `tools/test.sh --quick` and your feature's
   end-to-end test directly; run the full `tools/test.sh` once, before opening
   the PR.** Each full run starts every end-to-end game at once, a core each,

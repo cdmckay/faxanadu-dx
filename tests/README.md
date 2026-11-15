@@ -43,6 +43,24 @@ def main():
 The functions talk to the game launched last. `tests/movement/play.py` and
 `tests/block/harness.py` subclass `Game` with what their tests add.
 
+### Frames, not seconds
+
+The script can lag any number of frames behind the game when the machine is
+loaded, so a test waits on the game: `wait()` and `until()` count its frames.
+Never count on two TCP commands landing a few frames apart. When a button
+must go down on a given frame, make a save state just before it (headless,
+`--save-state F:PATH`; `play.py`'s `headless(..., save=...)`) and send the
+load and the press together:
+
+```python
+batch(("load_state", dict(path=str(state))), ("action", dict(name="a", frames=2)))
+```
+
+The game serves every line it has before its next frame, so A goes down on the
+state's first frame. Anything needing more than one timed press runs headless
+from a state with `--input`. `game.poke(writes)` edits RAM in the running game
+(save, `fixture()`, load), for example to clear a screen's enemies.
+
 ### Ports
 
 Never pick a port in a test. `Game.launch()` reserves one with

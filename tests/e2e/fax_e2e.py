@@ -26,6 +26,13 @@ A test imports it with a sys.path line, so it still runs directly
 
 Never pick a port yourself: Game.launch() reserves one (see Ports).
 
+Count game frames, never seconds: wait() and until() count the game's frames,
+so a test runs the same however loaded the machine is. A command is served
+on a frame boundary and the script can lag any number of frames behind the
+game, so input that must land on a given frame goes in with the save state
+it starts from, in one batch(), or runs headless from that state with --input
+(tests/movement/play.py's headless()).
+
 Game, one per test
     Game(build, rom, out, game_args=(), realtime=False, port=0), or Game.from_args(args)
         Checks the ROM is the original Faxanadu (USA), empties OUT, copies the
@@ -44,6 +51,9 @@ Game, one per test
                       up from 00. Returns the Path; the file name goes in .shots.
     .set_features({(package_id, feature_id): enabled})
                       Write OUT/game/mods/state.toml, the launcher's mod selection.
+    .poke(writes, records=None)
+                      Edit RAM in the running game: save a state, fixture() it,
+                      load it back.
     .tcp() .frame() .wait() .ram() .until()   As the functions below, on this game.
     .out .exe .rom .image (the ROM's bytes) .env .log .port .proc .shots
     .exe              What launch() runs: OUT/game/FaxanaduRecomp. Point it at
@@ -52,6 +62,10 @@ Game, one per test
 
 Functions, on the game launched last
     tcp(cmd, **kw)                  One command; its reply. RuntimeError unless ok.
+    batch((cmd, {args}), ...)       Several commands in one write; their replies.
+                                    The game serves them all before its next
+                                    frame, so a load_state then an action holds
+                                    the button from the state's first frame.
     frame()                         The frame counter (ping).
     wait(frames)                    Until `frames` more frames have run.
     ram(addr, n=1)                  CPU RAM: an int for one byte, else bytes.
@@ -307,6 +321,23 @@ class Game:
             raise RuntimeError(f"{cmd}: {reply}")
         return reply
 
+    def batch(self, *commands):
+        """Send (cmd, {args}) commands in one write and return their replies.
+        The game reads every line it has and serves them all before its next
+        frame, so they take effect together: a load_state then an action
+        holds the button from the loaded state's first frame, frame-exact,
+        however far the script lags."""
+        with socket.create_connection(("127.0.0.1", self.port), 5) as s:
+            s.settimeout(self.timeout)
+            f = s.makefile("rwb", buffering=0)
+            f.write(b"".join((json.dumps(dict(id=i + 1, cmd=cmd, **kw)) + "\n").encode()
+                             for i, (cmd, kw) in enumerate(commands)))
+            replies = [json.loads(f.readline()) for _ in commands]
+        for (cmd, _), reply in zip(commands, replies):
+            if not reply.get("ok"):
+                raise RuntimeError(f"{cmd}: {reply}")
+        return replies
+
     def frame(self):
         return self.tcp("ping")["frame"]
 
@@ -336,9 +367,21 @@ class Game:
     def set_features(self, features):
         (self.out / "game" / "mods" / "state.toml").write_text(features_toml(features))
 
+    def poke(self, writes, records=None):
+        """Edit RAM (and mods' records) in the running game: save a state,
+        edit it with fixture(), load it back."""
+        path = self.out / "poke.cycstate"
+        self.tcp("save_state", path=str(path))
+        fixture(path, path, writes, records)
+        self.tcp("load_state", path=str(path))
+
 
 def tcp(cmd, **kw):
     return _current().tcp(cmd, **kw)
+
+
+def batch(*commands):
+    return _current().batch(*commands)
 
 
 def frame():

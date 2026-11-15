@@ -77,15 +77,8 @@ def main():
         want = {"auto": True, "reuse": True, **enabled}
         assert (state["auto"], state["reuse"]) == (want["auto"], want["reuse"]), state
 
-    def poke(writes):
-        """Edit RAM in the running game: save, edit the state, load it back."""
-        path = out / "poke.cycstate"
-        tcp("save_state", path=str(path))
-        fixture(path, path, writes)
-        tcp("load_state", path=str(path))
-
     def clear_enemies():
-        poke({SPRITE_ENTITIES + slot: 0xFF for slot in range(8)})
+        game.poke({SPRITE_ENTITIES + slot: 0xFF for slot in range(8)})
 
     def walk(direction, test, what, steps=200):
         for _ in range(steps):
@@ -222,7 +215,7 @@ def main():
               "the key is still in the inventory and the Mattock still selected")
 
         # The same key opens a second door: Trunk's tower door.
-        poke({SCREEN_TO_THE_RIGHT: TOWER_DOOR})
+        game.poke({SCREEN_TO_THE_RIGHT: TOWER_DOOR})
         enter("right", TRUNK, TOWER_DOOR)
         walk_to(138)
         assert press_up({MARK_OF_JACK, USED_KEY}) == USED_KEY
@@ -263,7 +256,7 @@ def main():
         assert items() == ([MATTOCK], NO_ITEM), items()
         clear_enemies()
         select(MATTOCK)
-        poke({SCREEN_TO_THE_RIGHT: WALL})
+        game.poke({SCREEN_TO_THE_RIGHT: WALL})
         enter("right", TRUNK, WALL)
         break_wall()
         game.shot("off-mattock-used-up")
