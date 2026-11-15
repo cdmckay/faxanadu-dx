@@ -105,6 +105,16 @@ to swing over low enemies that every sword hits, like the Zozura crawling
 outside Eolis. Now its swing reaches as low as the swords', so it hits them.
 It keeps its short reach, so the Long Sword is still an upgrade.
 
+**Quick shops** is on by default (Mods to turn it off). Up on a shopkeeper
+opens his list straight away, with no greeting or questions. Select switches
+between buying and selling, buying or selling keeps you in the list with the
+cursor where it was, and B leaves. Prices, what you can carry and "This is not
+enough Golds." are the game's own. Any shop buys anything you carry: half its
+price where a shop sells it, otherwise 100 Golds. Up from the top or Down from
+the bottom turns the page of a long list. The Dragon Slayer, the Battle Suit
+and the Battle Helmet are not for sale, and what you have equipped or selected
+is not offered, as before.
+
 Optional **Seamless** appears first in Mods, marked **Experimental** and
 disabled by default. It joins connected rooms, advances neighboring actors,
 and adapts the world view to your window with Fit to screen. Mouse wheel
