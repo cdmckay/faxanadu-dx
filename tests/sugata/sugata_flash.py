@@ -112,8 +112,8 @@ def main():
         center = g.ram(SPRITE_X + slot) + 8
         assert s["band_x"] == [center - REACH, center + REACH], (s, center)
         captured(hidden, 0)
-        g.until("the warning's 30 frames", lambda: state()["band"] == "flash", 60)
-        assert state()["band_x"] == s["band_x"], "Sugata stands still while it warns"
+        g.until("the warning's 30 frames", lambda: state()["flashes"] == 1, 60)
+        assert state()["flash_x"] == s["band_x"], "Sugata stands still while it warns"
         print(f"ok: Sugata blinks for {WARNING} frames before it flashes, its reach [{center - REACH}, "
               f"{center + REACH}) dimmed")
 

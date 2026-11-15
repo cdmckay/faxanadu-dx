@@ -102,6 +102,7 @@ static uint8_t warn[SLOTS];          /* frames of warning a slot's Sugata has gi
 static Band band;
 static unsigned warnings, warned, flashes, in_reach, out_of_reach, reflected, reflect_failed, anointed;   /* warned: flashes after a full warning */
 static int last_distance;            /* the hero's middle less Sugata's, at the last flash */
+static int last_center = -1;         /* the middle of the last flash's band */
 static bool last_reached;
 
 static uint8_t peek(uint16_t a) { return cyc_mod_peek(a); }
@@ -149,6 +150,7 @@ static int greyscale_hook(uint16_t addr) {
     cyc_mod_poke(PPU_MASK, (uint8_t)(peek(PPU_MASK) & ~1u));
     unsigned s = slot();
     band = (Band){ FLASH_BAND, (uint8_t)s, (uint8_t)(middle(s) - 8), FLASH_SHOWN };
+    last_center = middle(s);
     ++flashes;
     return 0;
 }
@@ -325,7 +327,7 @@ static void deactivate(void) {
     memset(warn, 0, sizeof warn);
     band = (Band){ 0 };
     warnings = warned = flashes = in_reach = out_of_reach = reflected = reflect_failed = anointed = 0;
-    last_distance = 0; last_reached = false;
+    last_distance = 0; last_reached = false; last_center = -1;
     hooks(0);
 }
 static void activate(void) {
@@ -363,15 +365,16 @@ static int state_set(const uint8_t *buf, int len) {
 static const char *kind_name(int k) { return k == FLASH_BAND ? "flash" : k == WARNING_BAND ? "warning" : "none"; }
 static void sugata_state(int id, const char *line) {
     (void)line;
-    char fields[512];
+    char fields[640];
     int x0 = band.kind ? band.center + 8 - SUGATA_REACH : 0, x1 = band.kind ? band.center + 8 + SUGATA_REACH : 0;
+    int f0 = last_center < 0 ? 0 : last_center - SUGATA_REACH, f1 = last_center < 0 ? 0 : last_center + SUGATA_REACH;
     unsigned warning = warning_frames();
     snprintf(fields, sizeof fields,
              "\"enabled\":%s,\"warnings\":%u,\"warning\":%u,\"warned\":%u,\"flashes\":%u,\"in_reach\":%u,\"out_of_reach\":%u,"
              "\"reflected\":%u,\"reflect_failed\":%u,\"anointed\":%u,\"last_distance\":%d,\"last_reached\":%s,"
-             "\"band\":\"%s\",\"band_x\":[%d,%d],\"captured\":%u",
+             "\"band\":\"%s\",\"band_x\":[%d,%d],\"flash_x\":[%d,%d],\"captured\":%u",
              enabled ? "true" : "false", warnings, warning, warned, flashes, in_reach, out_of_reach, reflected,
-             reflect_failed, anointed, last_distance, last_reached ? "true" : "false", kind_name(band.kind), x0, x1, captured);
+             reflect_failed, anointed, last_distance, last_reached ? "true" : "false", kind_name(band.kind), x0, x1, f0, f1, captured);
     cyc_tcp_ok(id, fields);
 }
 /* Write the presented picture to `path` the next time a band of that kind
