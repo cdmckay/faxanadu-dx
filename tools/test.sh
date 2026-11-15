@@ -27,6 +27,7 @@ OUT="$REPO/build-tests"
 
 echo "== allocations"
 python3 tools/check_allocations.py --rom "$ROM"
+python3 tests/allocations/check_allocations_test.py --rom "$ROM"
 
 echo "== unit tests"
 cmake -S tests/travel -B "$OUT/travel" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
@@ -59,6 +60,12 @@ cmake --build "$OUT/movement" -j"$JOBS" >/dev/null
 cmake -S tests/files -B "$OUT/files" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/files" -j"$JOBS" >/dev/null
 FAX_FILES_TEST_DIR="$OUT/files/scratch" "$OUT/files/files_test"
+cmake -S tests/speaker -B "$OUT/speaker" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/speaker" -j"$JOBS" >/dev/null
+"$OUT/speaker/speaker_test"
+cmake -S tests/dagger -B "$OUT/dagger" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/dagger" -j"$JOBS" >/dev/null
+"$OUT/dagger/dagger_test"
 
 echo "== game build"
 [ -f build-cycle/CMakeCache.txt ] || cmake -S . -B build-cycle -DCMAKE_BUILD_TYPE=Release -DNESRECOMP_ROM="$ROM" >/dev/null
@@ -98,12 +105,22 @@ python3 tests/movement/falling_pose.py --build build-cycle --rom "$ROM" --out "$
   > "$OUT/pose-e2e.log" 2>&1 & pose=$!
 python3 tests/movement/forgiving_jumps.py --build build-cycle --rom "$ROM" --out "$OUT/jumps-e2e" \
   > "$OUT/jumps-e2e.log" 2>&1 & jumps=$!
+echo "== end to end: speaker names, by default and with Seamless on, alongside them"
+speaker_e2e() {  # NAME [ARGS...]
+  local name="$1"; shift
+  python3 tests/speaker/speaker_names.py --build build-cycle --rom "$ROM" --out "$OUT/$name" "$@" > "$OUT/$name.log" 2>&1
+}
+speaker_e2e speaker-e2e & speaker=$!
+speaker_e2e speaker-e2e-seamless --game-arg=--world-view=seamless & speaker_seamless=$!
 echo "== end to end: Hold A to speed up text, alongside them"
 python3 tests/text_speed/text_speed.py --build build-cycle --rom "$ROM" --out "$OUT/text-speed-e2e" \
   > "$OUT/text-speed-e2e.log" 2>&1 & text_speed=$!
 echo "== end to end: Save files, alongside them"
 python3 tests/files/save_files.py --build build-cycle --rom "$ROM" --out "$OUT/files-e2e" \
   > "$OUT/files-e2e.log" 2>&1 & files=$!
+echo "== end to end: the taller dagger, alongside them"
+python3 tests/dagger/taller_dagger.py --build build-cycle --rom "$ROM" --out "$OUT/dagger-e2e" \
+  > "$OUT/dagger-e2e.log" 2>&1 & dagger=$!
 failed=0
 wait "$default" || failed=1
 sed 's/^/[default]  /' "$OUT/travel-e2e.log"
@@ -125,9 +142,15 @@ wait "$pose" || failed=1
 sed 's/^/[pose]     /' "$OUT/pose-e2e.log"
 wait "$jumps" || failed=1
 sed 's/^/[jumps]    /' "$OUT/jumps-e2e.log"
+wait "$speaker" || failed=1
+sed 's/^/[speaker]  /' "$OUT/speaker-e2e.log"
+wait "$speaker_seamless" || failed=1
+sed 's/^/[spkr+sw]  /' "$OUT/speaker-e2e-seamless.log"
 wait "$text_speed" || failed=1
 sed 's/^/[text]     /' "$OUT/text-speed-e2e.log"
 wait "$files" || failed=1
 sed 's/^/[files]    /' "$OUT/files-e2e.log"
+wait "$dagger" || failed=1
+sed 's/^/[dagger]   /' "$OUT/dagger-e2e.log"
 [ "$failed" = 0 ] || { echo "end-to-end tests failed; screenshots in $OUT/*-e2e*/" >&2; exit 1; }
 echo "all checks passed"

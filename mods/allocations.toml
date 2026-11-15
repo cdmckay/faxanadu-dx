@@ -4,9 +4,13 @@
 #   - two features claim overlapping ROM and no [[shared_rom]] says why that is
 #     safe,
 #   - a claimed ROM range is not unused ($FF) in the stock image (with --rom),
+#   - an overridden ROM byte is not its declared stock value (with --rom),
 #   - two features that can be enabled together hook the same address and no
 #     [[shared_site]] below says why that is safe.
 # Features that share a manifest exclusive group are never enabled together.
+# ROM claims come in two kinds: `rom` takes unused ($FF) bytes for new data,
+# and `overrides` takes existing bytes the feature serves with other values,
+# one byte per entry of `stock` (what the stock image holds there).
 # Update this file with the feature, and docs/GAME_INTERNALS.md with it.
 
 [[feature]]
@@ -71,6 +75,14 @@ rom = []
 # the presented picture (fax_text.c), after Seamless has composed it.
 
 [[feature]]
+package = "faxanadu.enhancement.speaker-names"
+source = "fax_speaker.c"
+hooks = "faxanadu.speaker-names."
+rom = []
+# No hooks and no ROM: it reads RAM and the nametable when the picture is
+# presented and draws over it (fax_text.c), after Seamless and zone names.
+
+[[feature]]
 package = "faxanadu.enhancement.auto-keys"
 source = "fax_keys.c"
 hooks = "faxanadu.auto-keys."
@@ -126,6 +138,16 @@ rom = []
 # where no message types.
 
 [[feature]]
+package = "faxanadu.enhancement.taller-dagger"
+source = "fax_dagger.c"
+hooks = "faxanadu.taller-dagger."
+rom = []
+# Served through a read override; the ROM image itself is never changed.
+overrides = [
+    { bank = 14, start = 0xB898, stock = [0x04], use = "MAYBE_WEAPON_RANGES: the dagger's Y reach, served as $08" },
+]
+
+[[feature]]
 package = "faxanadu.enhancement.save-files"
 source = "fax_files.c"
 hooks = "faxanadu.files."
@@ -134,13 +156,15 @@ rom = [
     { bank = 12, start = 0xAE10, end = 0xAE18, use = "the Guru's choice (menu or question) and its own SAY step" },
     { bank = 13, start = 0xB45B, end = 0xB48B, use = "message $C3, the Guru's line slot, shared with Guru travel" },
 ]
-# One read override on used ROM: the immediate operand of LDA #$10 in
-# IScriptAction_ShowBuySellMenu ($8631, bank 12), the menu's message ID. It is
-# $C3 only from the Guru's menu step until the end of that frame (the menu
-# reads it at once), then the stock $10 again, so the shops' menu never sees
-# it. Writes TempleSpawnPoint (the saved Guru), the joypad's changed mask on
-# the title screen, DAT_0687 (Start or Continue), IScriptOrCHRAddr and
-# IScriptOffset, and the progress Password_Load would write when continuing.
+overrides = [
+    { bank = 12, start = 0x8631, stock = [0x10], use = "IScriptAction_ShowBuySellMenu's LDA #$10: the menu's message, served as $C3 for the Guru's menu only" },
+]
+# The operand is $C3 only from the Guru's menu step to the end of that frame
+# (the menu reads it at once), then the stock $10 again, so the shops' menu
+# never sees it. Writes TempleSpawnPoint (the saved Guru), the joypad's
+# changed mask on the title screen, DAT_0687 (Start or Continue),
+# IScriptOrCHRAddr and IScriptOffset, and the progress Password_Load would
+# write when continuing.
 
 [[shared_rom]]
 bank = 13
@@ -155,7 +179,7 @@ back in state_loaded, after Guru travel's record has restored its own."""
 
 [[shared_site]]
 addr = 0x826E   # IScripts_InvokeNextAction
-hooks = ["faxanadu.travel.next-action", "faxanadu.files.next-action"]
+hooks = ["faxanadu.files.next-action", "faxanadu.travel.next-action"]
 why = """Neither handles the call; each only steers the interpreter by writing \
 IScriptOrCHRAddr. Neither redirects to an address the other acts on: with a \
 file in play Guru travel leaves the script's ends to Save files \
