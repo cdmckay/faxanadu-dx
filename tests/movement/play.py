@@ -38,11 +38,12 @@ LEDGE_SCREEN, LADDER_SCREEN = 7, 6
 PACKAGE, FEATURE = "faxanadu.remastered", "remastered"          # the one switch: off is the original game
 
 
-
 def selection(original=False):
     """mods/state.toml with the remaster on (the default), or off for the original game."""
     return "format_version = 1\n" + (
         f'\n[[feature]]\npackage_id = "{PACKAGE}"\nid = "{FEATURE}"\nenabled = false\n' if original else "")
+
+
 def free_port():
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
