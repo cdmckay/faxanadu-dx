@@ -49,7 +49,6 @@ and data tables after it shifted). Not supported: the build rejects it.
 
 | Address | Name | Notes |
 |---|---|---|
-| `$0016` | `Joy1_ButtonMask` | Buttons held. The NMI reads the pad only on frames the game waited for (`WaitForNextFrame`), not on lag frames |
 | `$0019` | `Joy1_ChangedButtonMask` | Buttons newly pressed this frame. A=`$80`, B=`$40`, Select=`$20`, Start=`$10`, Up=`$08` |
 | `$001A` | `InterruptCounter` | Counts every NMI, lag frames included. Read it in the same `read_ram` as other state to time things to the frame over TCP |
 | `$0024` | `Area_CurrentArea` | 4 = inside a building |
@@ -522,9 +521,11 @@ walk's 7, which changes the sprite rotation the next frame.
   `Joy1_ButtonMask`, and sets `Joy1_ChangedButtonMask` to the buttons held now
   and not before. Each pass of the main loop starts with `WaitForNextFrame`,
   which waits for a fresh NMI, so a newly pressed button is seen by one pass.
-  On a lag frame, a read the loop never waited for is replaced unseen, and a
-  button new in it is lost. A cycle-host frame ends at the start of VBlank
-  (scanline 241, dot 1), so each frame begins with that read.
+  On a lag frame, an NMI the loop did not wait for
+  (`Game_InterruptsHandledLatch` still set) skips the read altogether: the
+  masks keep their values, and a button pressed and let go within lag frames
+  is never seen. A cycle-host frame ends at the start of VBlank (scanline
+  241, dot 1), so each frame begins with that read, when there is one.
 - **Who reads the masks, in `Game_MainLoop`'s order:**
   - `GameLoop_UpdatePlayer` (`$E0CA`): `Player_CheckHandleAttack` swings the
     sword on a new B, unless climbing. `Player_CheckHandleEnterDoor` goes
@@ -907,4 +908,7 @@ addresses, and `tools/check_allocations.py` enforces it.
   `TextBox_Timer` up to a multiple of 4, so a character types every frame,
   and clears `TextBox_PlayTextSound` on all but every 4th frame, so the
   typing sound keeps its rhythm. Page breaks and questions still wait for a
-  new press. It writes nothing else and keeps no state.
+  new press. It writes nothing else and keeps no state. It reads only the A
+  bit of the joypad masks, which the Magic button never changes (it ORs in
+  Up and B, for `Player_CastMagic` alone, outside any message loop), and
+  writes neither mask.

@@ -13,15 +13,20 @@ the furthest temple (an external prerequisite, not coverage). Then:
    waits there, and at its end, until A is pressed again.
 2. Times the Conflate Guru's greeting typed without A, with A held, and with
    A released partway, and checks the held typing sound keeps its rhythm.
+   Then, frame exact: from a save state taken as the greeting types, runs
+   the same number of frames headless with A held, without A, and held with
+   the mods off, and compares how far each got.
 3. Holds A through Guru travel's offer and its first destination: neither
    question is answered until A is pressed again, and B still declines.
 
-Screenshots of each held wait go in OUT.
+Screenshots of each held wait, and of the greeting after the same frames
+held and not held, go in OUT.
 """
 import argparse
 import os
 from pathlib import Path
 import shutil
+import struct
 import subprocess
 import sys
 import time
@@ -38,6 +43,7 @@ ISCRIPT_OFFSET = 0xDD                                  # moves when the script g
 NEGATIVE_THOUGHTS, MEDITATE_WITH_YOU = 0x24, 0x22      # the death message; the Guru's greeting
 OFFER_PHASE, ASKING_PHASE = 2, 3                       # fax_travel.c's Phase
 HOLD = 3000                                            # frames: longer than any step below
+SAME_FRAMES = 36                                       # the headless runs: part of the greeting, held or not
 
 
 def hold_a():
@@ -82,6 +88,13 @@ def time_page():
     return frames / ((last[1] - first[1]) % 256), frames, ticks.count(1) / max(len(ticks), 1)
 
 
+def state_ram(path, addr):
+    """A byte of CPU RAM in a save state."""
+    data = path.read_bytes()
+    pos = next(p for tag, p, _ in gt.chunks(data) if tag == b"HW  ")
+    return data[pos + 23 + addr]
+
+
 def still(what, test, frames=120):
     """`test` stays true for `frames` frames."""
     end = frame() + frames
@@ -115,6 +128,28 @@ def main():
         path = out / f"{len(shots):02d}-{name}.png"
         tcp("screenshot", layer="picture", path=str(path))
         shots.append(path.name)
+
+    def headless(name, state, buttons, mods):
+        """Run SAME_FRAMES frames headless from `state` holding `buttons` ("-" for
+        none), with the mod catalog `mods`: the bytes of the message read since
+        the state, and a screenshot of the last frame."""
+        start = struct.unpack_from("<I", state.read_bytes(), 28)[0]   # the frame it was saved after
+        folder = out / name
+        folder.mkdir()
+        (folder / "input.txt").write_text(f"{start} {buttons}\n")
+        final = folder / "final.cycstate"
+        with open(folder / "run.log", "w") as run_log:
+            subprocess.run([str(out / "game" / "FaxanaduRecomp"), str(args.rom.resolve()), "--no-save",
+                            "--mods-root", str(mods), "--load-state", str(state),
+                            "--frames", str(start + SAME_FRAMES), "--input", str(folder / "input.txt"),
+                            "--screenshot", str(folder / "picture.png"),
+                            "--save-state", f"{start + SAME_FRAMES - 1}:{final}"],
+                           cwd=folder, env=env, stdout=run_log, stderr=subprocess.STDOUT, timeout=120, check=True)
+        assert state_ram(final, MESSAGE_ID) == MEDITATE_WITH_YOU, f"{name}: still the greeting"
+        shot = out / f"{len(shots):02d}-{name}.png"
+        shutil.copy2(folder / "picture.png", shot)
+        shots.append(shot.name)
+        return (state_ram(final, PROCESSED) - state_ram(state, PROCESSED)) % 256
 
     def line():
         return tcp("travel_state")["text"]
@@ -196,7 +231,7 @@ def main():
         until("the greeting to type out", typed)
         offset = ram(ISCRIPT_OFFSET)
         still("held A does not go on to the mantra", lambda: ram(ISCRIPT_OFFSET) == offset)
-        shot("greeting-held")
+        shot("greeting-typed-out-held")
         release_a()
 
         tcp("load_state", path=str(temple))
@@ -218,6 +253,30 @@ def main():
         assert restarts <= 0.6, f"the typing sound restarts on {restarts:.0%} of held frames"
         print(f"ok: held A types the greeting {normal / held:.1f}x faster; letting go returns to normal speed")
         print(f"ok: held, the typing sound plays out its 4 ticks (first tick on {restarts:.0%} of snapshots)")
+
+        # Frame exact: the same frames from the same state, headless. The
+        # state is saved once the greeting has begun to type, so every frame
+        # after it is a typing frame.
+        tcp("load_state", path=str(temple))
+        talk_to_guru()
+        loaded = ram(PROCESSED)
+        until("the greeting's first character", lambda: ram(PROCESSED) != loaded, 120)
+        typing = out / "greeting-typing.cycstate"
+        tcp("save_state", path=str(typing))
+        mods = out / "headless-mods"
+        shutil.copytree(out / "game" / "mods", mods)
+        stock = out / "stock-mods"
+        stock.mkdir()
+        not_held = headless("greeting-not-held", typing, "-", mods)
+        held_now = headless("greeting-held", typing, "A", mods)
+        stock_held = headless("greeting-held-mods-off", typing, "A", stock)
+        print(f"   greeting, {SAME_FRAMES} frames from one state: {not_held} bytes without A, {held_now} with A held, "
+              f"{stock_held} held with the mods off")
+        assert abs(not_held - SAME_FRAMES / 4) <= 1, f"without A, a byte every 4 frames, not {not_held}"
+        assert SAME_FRAMES - 2 <= held_now <= SAME_FRAMES, f"held, a byte a frame after the press, not {held_now}"
+        assert stock_held == not_held, "with the mods off, holding A types at the game's pace"
+        print(f"ok: in the same {SAME_FRAMES} frames, held A types {held_now} bytes of the greeting to "
+              f"{not_held} without; with the mods off, holding A changes nothing")
 
         # 3. Guru travel's questions, held through.
         tcp("load_state", path=str(temple))

@@ -103,6 +103,20 @@ static void ready_frames(void) {
     CHECK(sounds == 16);                                         /* every 4th ready frame */
 }
 
+static void magic_button_masks(void) {
+    /* The Magic button (fax_magic.c) ORs Up held and B new into the joypad
+     * masks for Player_CastMagic alone, and leaves A as the pad has it. With
+     * or without that, the hook decides the same, for every pad state; and
+     * the hook writes neither mask (writes_only_the_timer_and_sound). */
+    enum { UP = 0x08 };
+    for (unsigned held = 0; held < 256; ++held)
+        for (unsigned changed = 0; changed < 256; ++changed) {
+            if (changed & ~held) continue;                       /* new buttons are held buttons */
+            CHECK(speeding((uint8_t)(held | UP | B), (uint8_t)(changed | B)) ==
+                  speeding((uint8_t)held, (uint8_t)changed));
+        }
+}
+
 static void writes_only_the_timer_and_sound(void) {
     for (unsigned i = 0; i < sizeof ram; ++i) ram[i] = (uint8_t)(i * 7 + 1);
     ram[JOY1_BUTTON_MASK] = A; ram[JOY1_CHANGED_BUTTON_MASK] = 0;
@@ -219,6 +233,7 @@ static void switch_off(void) {
 int main(void) {
     activate();
     ready_frames();
+    magic_button_masks();
     writes_only_the_timer_and_sound();
     pace();
     release();

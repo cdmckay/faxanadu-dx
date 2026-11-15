@@ -16,8 +16,10 @@
  * (Joy1_ChangedButtonMask), so holding A types to the end of the page and
  * stops there: release and press to go on. The frame A is first pressed is
  * left at the game's pace, so a press can never finish a page that the stock
- * game would not have finished on that frame. B is untouched. See
- * docs/GAME_INTERNALS.md. */
+ * game would not have finished on that frame. B is untouched. The Magic
+ * button (fax_magic.c) ORs Up and B into the joypad masks for
+ * Player_CastMagic alone, where no message types, and never touches A, so
+ * the two cannot see each other. See docs/GAME_INTERNALS.md. */
 #include "fax_text_speed.h"
 #include "cyc_mod.h"
 #include "mod_runtime.h"
