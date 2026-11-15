@@ -45,7 +45,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 
 #ifndef FAX_FILES_LOG
 #define FAX_FILES_LOG(...) fprintf(stderr, __VA_ARGS__)
