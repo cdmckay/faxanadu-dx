@@ -92,3 +92,22 @@ finishes the door for whichever of the two features are on. When the first \
 site handles the call the second is skipped; when it does not, the second \
 finds nothing to do either. It acts only when Game_UnlockDoorWithUsableItem \
 is the caller."""
+
+[[feature]]
+package = "faxanadu.enhancement.recharging-items"
+source = "fax_recharge.c"
+hooks = "faxanadu.recharge."
+rom = []
+# Writes DurationWingBoots (through A at its STA), SpecialItems' Elixir bit
+# (when a Guru recharges it) and T:'s two tiles through the PPU buffer, as
+# UI_DrawTimeValue queues them. Hears Gurus through Guru travel's next-action
+# hook (fax_travel_listen), which runs while either feature is on: no second
+# hook at IScripts_InvokeNextAction ($826E).
+
+[[shared_site]]
+addr = 0xC4BF   # Player_ClearSelectedItem
+hooks = ["faxanadu.reusable-tools.mattock", "faxanadu.recharge.keep"]
+why = """Each handles only the calls fax_items.h gives it, told by the JSR's \
+return address: reusable tools Player_UseMattock's, recharging items \
+Player_UseWingBoots' and Player_UseHourGlass's. A call one handles the other \
+would pass, so either may fire first."""
