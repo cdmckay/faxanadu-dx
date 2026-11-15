@@ -99,6 +99,8 @@ static void frame(void) {
     ram[CURRENT_SPRITE_INDEX] = SLOT;
     if (ram[CURRENT_SPRITES_ENTITIES + SLOT] == SUGATA) {
         if (ram[CURRENT_SPRITES_HIT_BY_MAGIC + SLOT] < 0x80) {   /* knocked back: no behavior */
+            /* Sprites_Maybe_UpdateHitByMagic, a Deluge's: 3 pixels the way it faces */
+            ram[CURRENT_SPRITES_XPOS + SLOT] += ram[CURRENT_SPRITES_FLAGS + SLOT] & FACING_RIGHT ? 3 : -3;
             if (!--ram[CURRENT_SPRITES_HIT_BY_MAGIC_IFRAMES + SLOT]) ram[CURRENT_SPRITES_HIT_BY_MAGIC + SLOT] = 0xFF;
         } else if (ram[CURRENT_SPRITES_BEHAVIORS + SLOT] == BEHAVIOR_FLASH) {
             flash_behavior();
@@ -227,8 +229,18 @@ static void the_magic_shield_reflects_it(void) {
     CHECK(ram[HP_U] == 80 && ram[SPRITE_HP + SLOT] == SUGATA_HP - SUGATA_REFLECTED && reflected == 1);
     CHECK(sound_count == 1 && last_sound() == 0x02 && finished == 1 && test_block_flashes() == 0);
     CHECK(ram[CURRENT_SPRITES_HIT_BY_MAGIC + SLOT] == 0 && ram[CURRENT_SPRITES_HIT_BY_MAGIC_IFRAMES + SLOT] == 4);
-    for (int f = 0; f < 4; ++f) frame();                  /* knocked back, as a Deluge would */
-    CHECK(ram[CURRENT_SPRITES_HIT_BY_MAGIC + SLOT] == 0xFF);
+    for (int f = 0; f < 4; ++f) frame();                  /* knocked back, as a Deluge would, away from him */
+    CHECK(ram[CURRENT_SPRITES_HIT_BY_MAGIC + SLOT] == 0xFF && ram[CURRENT_SPRITES_XPOS + SLOT] == 120 + 12);
+    /* The hero on its right: knocked to the left. */
+    scene(140, MAGIC, true);
+    ram[CURRENT_SPRITES_FLAGS + SLOT] |= FACING_RIGHT;      /* it faced him */
+    to_the_flash();
+    CHECK(reflected == 1 && !(ram[CURRENT_SPRITES_FLAGS + SLOT] & FACING_RIGHT));
+    for (int f = 0; f < 4; ++f) frame();
+    CHECK(ram[CURRENT_SPRITES_XPOS + SLOT] == 120 - 12);
+    scene(100, MAGIC, true);
+    to_the_flash();
+    for (int f = 0; f < 4; ++f) frame();
     /* A second one kills it, through the game's death code. */
     next_flash();
     to_the_flash();

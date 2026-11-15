@@ -173,8 +173,9 @@ def main():
         lost, d = flash("V")
         captured(shot, 4)
         assert lost == 0 and d["reflected"] == 1 and g.ram(SPRITE_HP + slot) == 22 - REFLECTED, (lost, d)
-        assert g.ram(ENTITIES + slot) == SUGATA
-        print(f"ok: holding Block with the Magic Shield, the flash takes {REFLECTED} of Sugata's 22 HP instead")
+        assert g.ram(ENTITIES + slot) == SUGATA and state()["pushed"] == 1, state()   # away from him, to the right
+        print(f"ok: holding Block with the Magic Shield, the flash takes {REFLECTED} of Sugata's 22 HP instead, "
+              "and knocks it back away from him")
         last = g.out / "warning-magic-10hp.cycstate"
         fixture(warning, last, {SELECTED_SHIELD: MAGIC, SPRITE_HP + slot: 22 - REFLECTED})
         g.load(last)

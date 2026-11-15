@@ -25,7 +25,8 @@
  *     finishes as the game's does. In reach, with Block up and the Magic
  *     Shield, the flash goes back to Sugata: the enemy-hit sound and
  *     SUGATA_REFLECTED HP through Player_HitEnemyWithMagic's own HP and death
- *     code (@_reduceEnemyHP, $81FD), and a Deluge's knockback. With Block up
+ *     code (@_reduceEnemyHP, $81FD), and a Deluge's knockback, away from the
+ *     hero. With Block up
  *     and anything else in the shield slot, the site is left to Block
  *     (fax_block.c), which stops it.
  *   - Ointment: the original's flash never checks DurationOintment (bit 7
@@ -65,7 +66,8 @@ enum { SLOTS = 8, FLASH_SHOWN = 8, BLINK = 4, HUD = 32, ROOM_H = 208 };
 #define CURRENT_SPRITES_XPOS            0x00BAu   /* a sprite's left edge */
 #define CURRENT_SPRITES_ENTITIES        0x02CCu
 #define CURRENT_SPRITES_BEHAVIORS       0x02D4u   /* the behavior running; bit 7 once it has finished */
-#define CURRENT_SPRITES_FLAGS           0x02DCu   /* $40: the behavior is under way (Sprite_SetBehaviorReady) */
+#define CURRENT_SPRITES_FLAGS           0x02DCu   /* $40: the behavior is under way (Sprite_SetBehaviorReady);
+                                                     $01: facing right */
 #define CURRENT_SPRITES_HIT_BY_MAGIC    0x0334u   /* the knockback a spell gave it, $FF for none */
 #define CURRENT_SPRITES_HIT_BY_MAGIC_IFRAMES 0x033Cu
 #define CURRENT_SPRITE_INDEX            0x0378u
@@ -86,6 +88,7 @@ enum { SLOTS = 8, FLASH_SHOWN = 8, BLINK = 4, HUD = 32, ROOM_H = 208 };
 #define SUGATA            0x18u
 #define BEHAVIOR_FLASH    0x1Fu
 #define BEHAVIOR_READY    0x40u
+#define FACING_RIGHT      0x01u     /* CurrentSprites_Flags */
 #define SHIELD_MAGIC      2u
 #define SOUND_ENEMY_HIT   0x02u     /* what a spell's hit plays (Player_HitEnemyWithMagic) */
 #define SOUND_HERO_HIT    0x04u     /* what the flash plays */
@@ -103,6 +106,7 @@ static Band band;
 static unsigned warnings, warned, flashes, in_reach, out_of_reach, reflected, reflect_failed, anointed;   /* warned: flashes after a full warning */
 static int last_distance;            /* the hero's middle less Sugata's, at the last flash */
 static int last_center = -1;         /* the middle of the last flash's band */
+static int last_pushed;              /* the last reflection's knockback: 1 right, -1 left */
 static bool last_reached;
 
 static uint8_t peek(uint16_t a) { return cyc_mod_peek(a); }
@@ -155,7 +159,15 @@ static int greyscale_hook(uint16_t addr) {
     return 0;
 }
 
+/* As Sprite_CheckHitByCastMagic does for a spell's hit: the knockback, and
+ * the facing it moves Sugata in (CurrentSprites_Flags bit 0, set: right),
+ * the way a spell from the hero would fly, so away from him; then the sound
+ * and the HP, through Player_HitEnemyWithMagic's own code. */
 static void reflect(unsigned s) {
+    uint8_t flags = (uint8_t)(peek((uint16_t)(CURRENT_SPRITES_FLAGS + s)) & ~FACING_RIGHT);
+    if (middle(s) >= peek(PLAYER_POS_X) + 8) flags |= FACING_RIGHT;
+    last_pushed = flags & FACING_RIGHT ? 1 : -1;
+    cyc_mod_poke((uint16_t)(CURRENT_SPRITES_FLAGS + s), flags);
     fax_block_play_sound(SOUND_ENEMY_HIT);
     cyc_mod_poke(TEMP_00, SUGATA_REFLECTED);
     CycModRegs regs, call;
@@ -327,7 +339,7 @@ static void deactivate(void) {
     memset(warn, 0, sizeof warn);
     band = (Band){ 0 };
     warnings = warned = flashes = in_reach = out_of_reach = reflected = reflect_failed = anointed = 0;
-    last_distance = 0; last_reached = false; last_center = -1;
+    last_distance = 0; last_reached = false; last_center = -1; last_pushed = 0;
     hooks(0);
 }
 static void activate(void) {
@@ -371,10 +383,10 @@ static void sugata_state(int id, const char *line) {
     unsigned warning = warning_frames();
     snprintf(fields, sizeof fields,
              "\"enabled\":%s,\"warnings\":%u,\"warning\":%u,\"warned\":%u,\"flashes\":%u,\"in_reach\":%u,\"out_of_reach\":%u,"
-             "\"reflected\":%u,\"reflect_failed\":%u,\"anointed\":%u,\"last_distance\":%d,\"last_reached\":%s,"
+             "\"reflected\":%u,\"reflect_failed\":%u,\"pushed\":%d,\"anointed\":%u,\"last_distance\":%d,\"last_reached\":%s,"
              "\"band\":\"%s\",\"band_x\":[%d,%d],\"flash_x\":[%d,%d],\"captured\":%u",
              enabled ? "true" : "false", warnings, warning, warned, flashes, in_reach, out_of_reach, reflected,
-             reflect_failed, anointed, last_distance, last_reached ? "true" : "false", kind_name(band.kind), x0, x1, f0, f1, captured);
+             reflect_failed, last_pushed, anointed, last_distance, last_reached ? "true" : "false", kind_name(band.kind), x0, x1, f0, f1, captured);
     cyc_tcp_ok(id, fields);
 }
 /* Write the presented picture to `path` the next time a band of that kind
