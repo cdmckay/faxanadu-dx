@@ -26,15 +26,9 @@ source = "fax_world.c"
 hooks = "faxanadu.world."
 rom = []
 
-[[feature]]
-package = "faxanadu.gameplay.zelda2-link"
-source = "mods/zelda2/fax_link.c"
-hooks = "faxanadu.link."
-rom = []
-
 [[shared_site]]
 addr = 0xE016   # GameLoop_CheckShowPlayerMenu
-hooks = ["faxanadu.world.inventory", "faxanadu.link.inventory", "faxanadu.travel.main-loop"]
-why = """Seamless (freeze_hook) and Link (inventory_hook) observe and return 0, so \
-later sites still fire. Guru travel handles the call only to start a journey, \
-and its site is the last at this address."""
+hooks = ["faxanadu.world.inventory", "faxanadu.travel.main-loop"]
+why = """Seamless (freeze_hook) observes and returns 0, so later sites still \
+fire. Guru travel handles the call only to start a journey, and its site is \
+the last at this address."""

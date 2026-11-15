@@ -36,9 +36,6 @@ if(NESRECOMP_BACKEND STREQUAL "cycle")
         RECOMPILER "${NESRECOMP_HOST_COMPILER}"
         SEED_FILE "${NESRECOMP_CYCLE_SEEDS}"
         HOST_EXTRAS "${CMAKE_CURRENT_SOURCE_DIR}/cyc_extras.c" fax_world.c fax_travel.c
-            mods/zelda2/link_controller.c mods/zelda2/fax_link.c mods/zelda2/link_assets.c
-            "${NESRECOMP_ROOT}/runner/src/foreign_controller.c"
-            "${NESRECOMP_ROOT}/runner/src/mod_audio.c"
         MODS GAME_ID "faxanadu-usa"
         PLAYERS 1 REGION NTSC PASSWORD_SAVE "faxanadu.srm" PASSWORD_SAVE_LABEL "Mantra"
         BOXART "${CMAKE_CURRENT_SOURCE_DIR}/boxart.tga")
@@ -50,9 +47,7 @@ if(NESRECOMP_BACKEND STREQUAL "cycle")
     target_compile_definitions(FaxanaduRecomp PRIVATE CYC_CONTENT_TOOLS)
     add_custom_command(TARGET FaxanaduRecomp POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${CMAKE_CURRENT_SOURCE_DIR}/mods/preloaded" "$<TARGET_FILE_DIR:FaxanaduRecomp>/mods"
-        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/package_link_mod.py"
-            --out "$<TARGET_FILE_DIR:FaxanaduRecomp>/Play-as-Link.nesmod")
+            "${CMAKE_CURRENT_SOURCE_DIR}/mods/preloaded" "$<TARGET_FILE_DIR:FaxanaduRecomp>/mods")
     return()
 elseif(NOT NESRECOMP_BACKEND STREQUAL "legacy")
     message(FATAL_ERROR "NESRECOMP_BACKEND must be cycle or legacy")

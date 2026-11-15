@@ -38,10 +38,6 @@ Older `keybinds.ini` and F5/F6/F7 instructions below apply to the legacy host.
 2. Extract and run `FaxanaduRecomp.exe`
 3. Select your Faxanadu (USA) ROM when prompted — the path is saved for future launches
 
-Optional **Play as Link** is available in Mods. Select your Zelda II USA ROM,
-enable the mod, and launch Faxanadu with Link's movement, sword beams, vertical
-stabs and all eight spells. See [controls and details](docs/LINK_MOD.md).
-
 **Guru travel** is on by default (Mods to turn it off). After a temple's Guru
 gives your mantra, he offers to send your spirit to any other Guru you have
 visited: A to go, B to hear the next town. HP, MP, gold and your spawn point
@@ -53,8 +49,8 @@ disabled by default. It joins connected rooms, advances neighboring actors,
 and adapts the world view to your window with Fit to screen. Mouse wheel
 changes pixel zoom; F4 shows the connected map. Dialogue and pause preserve
 the expanded view. It passed a preliminary owner playtest; broader gameplay
-coverage and cross-room combat/projectiles remain incomplete. Seamless and
-Play as Link are separate local-play modes. See [details](docs/SEAMLESS-WORLD.md).
+coverage and cross-room combat/projectiles remain incomplete. Seamless is
+local play only. See [details](docs/SEAMLESS-WORLD.md).
 
 ## Controls
 

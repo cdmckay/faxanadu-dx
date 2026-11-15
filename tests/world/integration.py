@@ -18,7 +18,7 @@ import zlib
 
 sys.dont_write_bytecode = True
 
-helpers = Path(__file__).parents[1] / "link/integration.py"
+helpers = Path(__file__).with_name("cycstate.py")
 spec = importlib.util.spec_from_file_location("state_helpers", helpers)
 state = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(state)
