@@ -16,6 +16,7 @@
 #include "fax_falling.h"
 #include "fax_jumps.h"
 #include "fax_text_speed.h"
+#include "fax_dagger.h"
 #include "fax_block.h"
 #include "fax_sugata.h"
 #ifdef CYC_WITH_SDL
@@ -182,6 +183,7 @@ static void power_on(void *ctx) {
     fax_world_reset();
     fax_travel_step();
     fax_banner_reset();
+    fax_dagger_step();
     if (compile_path[0]) {
         int n = chr_override_compile_dir(compile_path);
         exit(n < 0 ? 2 : 0);
@@ -225,6 +227,7 @@ static void frame_end(void *ctx) {
     fax_travel_step();
     fax_magic_frame_end();
     fax_banner_step();
+    fax_dagger_step();
     fax_block_frame_end();
     fax_sugata_frame_end();
     if (tiles_enabled || tile_dump) chr_override_frame_end();
@@ -276,6 +279,7 @@ static void tcp_setup(void *ctx) {
     fax_falling_tcp_setup();
     fax_jumps_tcp_setup();
     fax_text_speed_tcp_setup();
+    fax_dagger_tcp_setup();
     fax_block_tcp_setup();
     fax_sugata_tcp_setup();
 }

@@ -100,6 +100,11 @@ at the game's own pace; hold A and it types 4 times as fast. A page break or a
 question still waits for a fresh press of A, so holding it never skips a page
 or answers for you: let go, then press A to go on.
 
+**Taller dagger** is on by default (Mods to turn it off). The Hand Dagger used
+to swing over low enemies that every sword hits, like the Zozura crawling
+outside Eolis. Now its swing reaches as low as the swords', so it hits them.
+It keeps its short reach, so the Long Sword is still an upgrade.
+
 **Block** is on by default (Mods to turn it off). Hold V on the keyboard, or B
 on a controller, with a shield (or the Battle Helmet) in hand to stand your
 ground and raise it: enemy magic from the front, and Sugata's flash from any

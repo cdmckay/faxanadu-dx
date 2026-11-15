@@ -27,6 +27,7 @@ OUT="$REPO/build-tests"
 
 echo "== allocations"
 python3 tools/check_allocations.py --rom "$ROM"
+python3 tests/allocations/check_allocations_test.py --rom "$ROM"
 
 echo "== unit tests"
 cmake -S tests/travel -B "$OUT/travel" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
@@ -59,6 +60,9 @@ cmake --build "$OUT/movement" -j"$JOBS" >/dev/null
 cmake -S tests/speaker -B "$OUT/speaker" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/speaker" -j"$JOBS" >/dev/null
 "$OUT/speaker/speaker_test"
+cmake -S tests/dagger -B "$OUT/dagger" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/dagger" -j"$JOBS" >/dev/null
+"$OUT/dagger/dagger_test"
 cmake -S tests/block -B "$OUT/block" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/block" -j"$JOBS" >/dev/null
 "$OUT/block/block_test"
@@ -114,6 +118,9 @@ speaker_e2e speaker-e2e-seamless --game-arg=--world-view=seamless & speaker_seam
 echo "== end to end: Hold A to speed up text, alongside them"
 python3 tests/text_speed/text_speed.py --build build-cycle --rom "$ROM" --out "$OUT/text-speed-e2e" \
   > "$OUT/text-speed-e2e.log" 2>&1 & text_speed=$!
+echo "== end to end: the taller dagger, alongside them"
+python3 tests/dagger/taller_dagger.py --build build-cycle --rom "$ROM" --out "$OUT/dagger-e2e" \
+  > "$OUT/dagger-e2e.log" 2>&1 & dagger=$!
 echo "== end to end: Block and Sugata's flash, by default and with Seamless on, alongside them"
 block_e2e() {  # SCRIPT NAME [ARGS...]
   local script="$1" name="$2"; shift 2
@@ -150,6 +157,8 @@ wait "$speaker_seamless" || failed=1
 sed 's/^/[spkr+sw]  /' "$OUT/speaker-e2e-seamless.log"
 wait "$text_speed" || failed=1
 sed 's/^/[text]     /' "$OUT/text-speed-e2e.log"
+wait "$dagger" || failed=1
+sed 's/^/[dagger]   /' "$OUT/dagger-e2e.log"
 wait "$block" || failed=1
 sed 's/^/[block]    /' "$OUT/block-e2e.log"
 wait "$block_seamless" || failed=1
