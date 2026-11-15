@@ -1,5 +1,5 @@
 {
-  description = "faxanadu-remaster - Faxanadu (NES) statically recompiled for PC";
+  description = "Faxanadu Remastered - Faxanadu (NES) statically recompiled for PC";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
