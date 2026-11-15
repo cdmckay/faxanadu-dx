@@ -5,7 +5,8 @@
 Copies the build to OUT and starts a new game over TCP, to Eolis's gate. The
 hero's shield-slot item is set in a copy of that save state (save-state RAM,
 an external prerequisite), and walking through the gate into Eolis loads its
-tiles. Block is held the way a player does: TCP `key` feeds the window a real
+tiles; the townsfolk are sent away (slots cleared), so the pictures show the
+hero alone. Block is held the way a player does: TCP `key` feeds the window a real
 V key. The hero's sprites are read from the shadow OAM ($0700), which the
 game fills each frame and the picture (or Seamless world's) is drawn from.
 
@@ -30,7 +31,7 @@ import sys
 import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from harness import (Game, fixture, POS_X, POS_Y, PLAYER_FLAGS, FACING_RIGHT, SELECTED_SHIELD,  # noqa: E402
+from harness import (Game, fixture, POS_X, POS_Y, PLAYER_FLAGS, FACING_RIGHT, SELECTED_SHIELD, ENTITIES,  # noqa: E402
                      SMALL, LARGE, MAGIC, HELMET, NO_SHIELD)
 
 SHADOW_OAM, SHIELD_BOX = 0x700, 0x39B         # Player_ShieldPositionX/Y
@@ -83,7 +84,11 @@ def main():
         g.wait(30)
         g.act("right", 20, 10)
         assert g.ram(SELECTED_SHIELD) == shield and g.ram(PLAYER_FLAGS) & FACING_RIGHT
-        return g.save(f"eolis-{name}")
+        alone = g.out / f"eolis-{name}.cycstate"           # the townsfolk sent away, for clear pictures
+        fixture(g.save(f"eolis-{name}-townsfolk"), alone, {ENTITIES + i: 0xFF for i in range(8)})
+        g.load(alone)
+        g.wait(4)
+        return alone
 
     def hold(frames=90):
         g.tcp("key", name="V", frames=frames)
