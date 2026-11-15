@@ -8,6 +8,7 @@
 #include "fax_world.h"
 #include "fax_travel.h"
 #include "fax_death.h"
+#include "fax_pendant.h"
 #ifdef CYC_WITH_SDL
 #include "cyc_tcp.h"
 #include <SDL.h>
@@ -250,6 +251,7 @@ static void tcp_setup(void *ctx) {
     fax_world_tcp_setup();
     fax_travel_tcp_setup();
     fax_death_tcp_setup();
+    fax_pendant_tcp_setup();
 }
 #endif
 static const uint32_t *present(void *ctx,int *w,int *h) {
