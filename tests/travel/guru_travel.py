@@ -2,6 +2,10 @@
 
     python3 tests/travel/guru_travel.py --build build-cycle --rom "Faxanadu (USA).nes" --out /tmp/travel
 
+The game runs uncapped (about 5x real time; --realtime to watch it at normal
+speed) and the script waits on the game's own state, never on the clock, so
+runs on different --port values can go in parallel.
+
 Copies the build to OUT (so the mantra and faxanadu_gurus.txt sidecars stay
 there), starts a new game over TCP, then edits save-state RAM to place the hero
 (an external prerequisite, not coverage): Conflate is the furthest temple, and
@@ -21,7 +25,7 @@ import time
 import zlib
 
 PORT = 4392
-TEMPLE_SPAWN_POINT, PLAYER_IS_DEAD, MESSAGE_ID = 0x439, 0x438, 0x213
+TEMPLE_SPAWN_POINT, PLAYER_IS_DEAD, MESSAGE_ID, TEXTBOX_PAUSED = 0x439, 0x438, 0x213, 0x215
 AREA, SCREEN, HP, MP, GOLD = 0x24, 0x63, 0x431, 0x39A, 0x392
 BUILDINGS = 4
 TEMPLE_SCREEN = [0x02, 0x0B, 0x10, 0x1E, 0x23, 0x2B, 0x33, 0x3C]   # DEST_SCREEN_FOR_TEMPLE_SPAWN
@@ -48,7 +52,7 @@ def frame():
 def wait(frames):
     end = frame() + frames
     while frame() < end:
-        time.sleep(0.02)
+        time.sleep(0.005)
 
 
 def ram(addr, n=1):
@@ -61,13 +65,24 @@ def until(what, test, frames=1200):
     while frame() < end:
         if test():
             return
-        time.sleep(0.02)
+        time.sleep(0.005)
     raise AssertionError(f"timed out waiting for {what}")
 
 
-def act(name, frames=6, after=30):
+def act(name, frames=6, after=8):
     tcp("action", name=name, frames=frames)
     wait(frames + after)
+
+
+def typed():
+    """The text box is waiting for a button: the message has typed out
+    (MessageID clears) or reached a pause (TextBox_MessagePaused)."""
+    message, _, paused = ram(MESSAGE_ID, 3)
+    return message == 0 or paused != 0
+
+
+def in_temple(temple):
+    return (ram(AREA), ram(SCREEN)) == (BUILDINGS, TEMPLE_SCREEN[temple])
 
 
 def chunks(data):
@@ -92,12 +107,16 @@ def fixture(source, target, writes):
 
 
 def main():
+    global PORT
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     for key in ("build", "rom", "out"):
         ap.add_argument("--" + key, type=Path, required=True)
     ap.add_argument("--game-arg", action="append", default=[],
                     help="extra game option, e.g. --game-arg=--world-view=seamless (repeatable)")
+    ap.add_argument("--port", type=int, default=PORT, help="TCP port; give parallel runs their own")
+    ap.add_argument("--realtime", action="store_true", help="run at normal speed instead of uncapped")
     args = ap.parse_args()
+    PORT = args.port
     image = args.rom.read_bytes()
     assert zlib.crc32(image[16:]) == 0x57DD23D1, "the original Faxanadu (USA) ROM is required"
     out = args.out.resolve()
@@ -114,6 +133,8 @@ def main():
     def launch():
         nonlocal game
         extra = [part for arg in args.game_arg for part in arg.split("=", 1)]
+        if not args.realtime:
+            extra += ["--uncapped", "--exit-after", "100000000"]
         game = subprocess.Popen([str(out / "game" / "FaxanaduRecomp"), str(args.rom.resolve()), "--hidden",
                                  "--tcp", str(PORT), *extra], env=env, stdout=log, stderr=subprocess.STDOUT)
         for _ in range(100):
@@ -139,19 +160,18 @@ def main():
         return tcp("travel_state")["text"]
 
     def shot_line(name):
-        wait(200)                             # let the line type out
+        until("the line to type out", typed)
         shot(name)
 
     def advance(expect, tries=12):
-        """Press A, a press per typed page, until the Guru's line `expect` is up.
-        Text types at a character per 4 frames; A only acts on a finished page."""
+        """Press A on each typed-out page until the Guru's line `expect` is up."""
         for _ in range(tries):
             if line() == expect:
                 return
-            wait(110)
+            until("a page to type out", lambda: line() == expect or typed())
             if line() == expect:
                 return
-            act("a", 6, 4)
+            act("a")
         until(f"line {expect}", lambda: line() == expect, 300)
 
     def talk_to_guru():
@@ -163,14 +183,26 @@ def main():
 
     def answer(button, expect):
         """Answer the question on screen once it has typed out."""
-        wait(150)
-        act(button, 6, 30)
+        until("the question to type out", typed)
+        act(button)
         until(f"line {expect}", lambda: line() == expect)
 
-    def die_and_respawn():
+    def close_box(button="a"):
+        """Dismiss the last line once it has typed out, and let the box close."""
+        until("the line to type out", typed)
+        act(button, 6, 60)
+
+    def die_and_respawn(temple):
+        """Page through the death message until the hero is back in `temple`."""
         until("the death message", lambda: ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 600)
-        for _ in range(4):
-            act("a", 6, 90)
+        for _ in range(40):
+            if in_temple(temple):
+                return
+            if typed():
+                act("a")
+            else:
+                wait(10)
+        until(f"temple {temple}", lambda: in_temple(temple))
 
     try:
         # A new game meets only Eolis's Guru: make the starting state, then
@@ -190,8 +222,7 @@ def main():
         dead = out / "conflate-death.cycstate"
         fixture(gate, dead, {TEMPLE_SPAWN_POINT: CONFLATE, PLAYER_IS_DEAD: 1})
         tcp("load_state", path=str(dead))
-        die_and_respawn()
-        until("Conflate's temple", lambda: (ram(AREA), ram(SCREEN)) == (BUILDINGS, TEMPLE_SCREEN[CONFLATE]))
+        die_and_respawn(CONFLATE)
         wait(60)
         temple = out / "conflate-temple.cycstate"
         raw = out / "conflate-temple-raw.cycstate"
@@ -203,11 +234,9 @@ def main():
         tcp("load_state", path=str(temple))
         talk_to_guru()
         shot_line("offer")
-        wait(150)
-        act("b", 6, 120)
-        wait(200)
-        assert tcp("travel_state")["dest"] == -1
-        assert (ram(AREA), ram(SCREEN)) == (BUILDINGS, TEMPLE_SCREEN[CONFLATE])
+        close_box("b")
+        wait(60)
+        assert tcp("travel_state")["dest"] == -1 and in_temple(CONFLATE)
         print("ok: declining the offer stays in Conflate")
 
         # 2. Only visited Gurus up to the furthest temple, in order, then farewell.
@@ -223,10 +252,9 @@ def main():
         tcp("save_state", path=str(asking))
         answer("b", FAREWELL)                # neither was Victim; Conflate is here
         shot_line("farewell")
-        wait(150)
-        act("a", 6, 120)
-        assert tcp("travel_state")["dest"] == -1
-        assert (ram(AREA), ram(SCREEN)) == (BUILDINGS, TEMPLE_SCREEN[CONFLATE])
+        close_box()
+        wait(60)
+        assert tcp("travel_state")["dest"] == -1 and in_temple(CONFLATE)
         print("ok: offers Eolis, Apolune, Mascon only, then the farewell")
         print("ok: a state saved before the conversation still loads after it")
 
@@ -239,9 +267,8 @@ def main():
         answer("a", DEPART)
         assert tcp("travel_state")["dest"] == MASCON
         shot_line("depart")
-        wait(150)
-        act("a", 6, 30)
-        until("Mascon's temple", lambda: (ram(AREA), ram(SCREEN)) == (BUILDINGS, TEMPLE_SCREEN[MASCON]))
+        close_box()
+        until("Mascon's temple", lambda: in_temple(MASCON))
         wait(90)
         shot("arrived")
         assert ram(TEMPLE_SPAWN_POINT) == CONFLATE, "the furthest temple stays the spawn point"
@@ -254,8 +281,7 @@ def main():
         tcp("save_state", path=str(arrived))
         fixture(arrived, out / "mascon-death.cycstate", {PLAYER_IS_DEAD: 1})
         tcp("load_state", path=str(out / "mascon-death.cycstate"))
-        die_and_respawn()
-        until("Conflate's temple", lambda: (ram(AREA), ram(SCREEN)) == (BUILDINGS, TEMPLE_SCREEN[CONFLATE]))
+        die_and_respawn(CONFLATE)
         print("ok: death after travel respawns at Conflate")
 
         # 5. A state saved mid-conversation resumes it, line and all.
@@ -263,9 +289,8 @@ def main():
         assert line() == TO_GURU + MASCON
         shot_line("resumed")
         answer("a", DEPART)
-        wait(150)
-        act("a", 6, 30)
-        until("Mascon's temple", lambda: (ram(AREA), ram(SCREEN)) == (BUILDINGS, TEMPLE_SCREEN[MASCON]))
+        close_box()
+        until("Mascon's temple", lambda: in_temple(MASCON))
         print("ok: a state saved while asking about Mascon resumes and travels there")
 
         visited = (out / "game" / "faxanadu_gurus.txt").read_text().split()

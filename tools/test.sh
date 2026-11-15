@@ -49,9 +49,18 @@ cmake --build build-cycle -j"$JOBS" >/dev/null
 build-cycle/FaxanaduRecomp "$ROM" --frames 600 --no-save | grep "mode="
 
 if [ "$QUICK" = 1 ]; then echo "(end-to-end runs skipped: --quick)"; exit 0; fi
-echo "== end to end: Guru travel"
-python3 tests/travel/guru_travel.py --build build-cycle --rom "$ROM" --out "$OUT/travel-e2e"
-echo "== end to end: Guru travel with Seamless on"
-python3 tests/travel/guru_travel.py --build build-cycle --rom "$ROM" --out "$OUT/travel-e2e-seamless" \
-  --game-arg=--world-view=seamless
+echo "== end to end: Guru travel, by default and with Seamless on, in parallel"
+e2e() {  # NAME PORT [ARGS...]: one run, in its own folder, on its own port
+  local name="$1" port="$2"; shift 2
+  python3 tests/travel/guru_travel.py --build build-cycle --rom "$ROM" --out "$OUT/$name" --port "$port" "$@" \
+    > "$OUT/$name.log" 2>&1
+}
+e2e travel-e2e 4392 & default=$!
+e2e travel-e2e-seamless 4393 --game-arg=--world-view=seamless & seamless=$!
+failed=0
+wait "$default" || failed=1
+sed 's/^/[default]  /' "$OUT/travel-e2e.log"
+wait "$seamless" || failed=1
+sed 's/^/[seamless] /' "$OUT/travel-e2e-seamless.log"
+[ "$failed" = 0 ] || { echo "end-to-end tests failed; screenshots in $OUT/travel-e2e*/" >&2; exit 1; }
 echo "all checks passed"
