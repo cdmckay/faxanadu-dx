@@ -235,8 +235,18 @@ def main():
         tab("Guru of Eolis")
         finish()
         assert ram(SPECIAL_ITEMS) & RING_OF_ELF, "the Guru gives the Ring of Elf"
-        act("up", 4, 10)
-        until("the Guru again", lambda: speaker()["portrait"] != NO_PORTRAIT, 600)
+        # Player_CheckHandlePressUpOnNPC talks only on the one frame Up goes
+        # down, so a press that lands as the conversation winds down goes
+        # unseen. Press again until he answers.
+        for _ in range(5):
+            act("up", 4, 10)
+            try:
+                until("the Guru again", lambda: speaker()["portrait"] != NO_PORTRAIT, 120)
+                break
+            except AssertionError:
+                pass
+        else:
+            raise AssertionError("timed out waiting for the Guru again")
         for _ in range(20):
             if tcp("travel_state")["text"] == OFFER:
                 break
