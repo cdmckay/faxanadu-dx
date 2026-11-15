@@ -5,7 +5,6 @@
 #include "cyc_core.h"
 #include "override_text.h"
 #include "override_chr.h"
-#include "mods/zelda2/fax_link.h"
 #include "fax_world.h"
 #include "fax_travel.h"
 #ifdef CYC_WITH_SDL
@@ -166,7 +165,6 @@ static void inject_password(void) {
 }
 static void power_on(void *ctx) {
     (void)ctx; frame = 0; injected = false;
-    fax_link_power_on();
     fax_world_reset();
     fax_travel_step();
     if (compile_path[0]) {
@@ -202,14 +200,12 @@ static void power_on(void *ctx) {
 }
 static void frame_begin(void *ctx) {
     (void)ctx;
-    fax_link_frame_begin();
     if (text_enabled) { text_override_reload_if_changed(); text_override_apply(); }
     if (tiles_enabled) chr_override_reload_if_changed();
     inject_password();
 }
 static void frame_end(void *ctx) {
     (void)ctx; ++frame;
-    fax_link_frame_end();
     fax_world_step();
     fax_travel_step();
     if (tiles_enabled || tile_dump) chr_override_frame_end();
@@ -250,27 +246,17 @@ static void tcp_setup(void *ctx) {
     (void)ctx;
     cyc_tcp_register("mantra_now", "Read current progress without changing the machine", mantra_now);
     cyc_tcp_register("mantra_save", "Persist the current progress mantra", mantra_save);
-    fax_link_tcp_setup();
     fax_world_tcp_setup();
     fax_travel_tcp_setup();
 }
 #endif
 static const uint32_t *present(void *ctx,int *w,int *h) {
-    (void)ctx;const uint32_t *native=fax_link_present(w,h);
-    const uint32_t *world=fax_world_present(w,h,native?native:cyc_frame_argb());
-    return world?world:native;
-}
-static void audio_mix(void *ctx,int16_t *samples,size_t count) {
-    (void)ctx;fax_link_audio_mix(samples,count);
+    (void)ctx;return fax_world_present(w,h,cyc_frame_argb());
 }
 static void event(void *ctx,const void *e,int player) {
-    (void)ctx;(void)player;fax_link_event(e);
+    (void)ctx;(void)player;
     fax_world_event(e);
 }
-static void load_setting(void *ctx,const char *key,const char *value) {
-    (void)ctx;fax_link_load_setting(key,value);
-}
-static void save_settings(void *ctx,FILE *f) {(void)ctx;fax_link_save_settings(f);}
 static void state_loaded(void *ctx) {(void)ctx;fax_world_loaded();}
 const CycHostExtras *cyc_host_extras(void) {
     static const CycHostOption options[] = {
@@ -283,8 +269,7 @@ const CycHostExtras *cyc_host_extras(void) {
         { "--world-size", true, "Fixed development viewport WxH; omit for adaptive Fit" },
     };
     static const CycHostExtras extras = {
-        .present=present,.audio_rate=44100,.audio_mix=audio_mix,.event=event,
-        .load_setting=load_setting,.save_settings=save_settings,
+        .present=present,.event=event,
         .state_loaded=state_loaded,
         .power_on = power_on, .frame_begin = frame_begin, .frame_end = frame_end,
         .options = options, .option_count = sizeof(options) / sizeof(options[0]), .option = option,

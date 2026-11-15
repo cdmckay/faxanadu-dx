@@ -5,7 +5,6 @@
 #   tools/test.sh                 # ROM: "Faxanadu (USA).nes" at the repo root
 #   tools/test.sh --rom PATH      # another copy of the same ROM
 #   tools/test.sh --quick         # skip the end-to-end game runs
-#   ZELDA2_ROM=PATH tools/test.sh # also run Play as Link's controller tests
 #
 # Run inside the Nix devShell (direnv, or nix develop). The game build in
 # build-cycle is configured on first use.
@@ -17,7 +16,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --rom) ROM="$(realpath "$2")"; shift 2;;
     --quick) QUICK=1; shift;;
-    -h|--help) sed -n '2,11p' "$0"; exit 0;;
+    -h|--help) sed -n '2,10p' "$0"; exit 0;;
     *) echo "unknown arg: $1" >&2; exit 2;;
   esac
 done
@@ -35,13 +34,6 @@ cmake --build "$OUT/travel" -j"$JOBS" >/dev/null
 "$OUT/travel/travel_test"
 cmake -S tests/world -B "$OUT/world" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/world" -j"$JOBS" >/dev/null && echo "fax_world.c compiles without SDL"
-if [ -n "${ZELDA2_ROM:-}" ]; then
-  cmake -S tests/link -B "$OUT/link" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-  cmake --build "$OUT/link" -j"$JOBS" >/dev/null
-  "$OUT/link/link_controller_test" "$ZELDA2_ROM"
-else
-  echo "(Play as Link controller tests skipped: set ZELDA2_ROM)"
-fi
 
 echo "== game build"
 [ -f build-cycle/CMakeCache.txt ] || cmake -S . -B build-cycle -DCMAKE_BUILD_TYPE=Release -DNESRECOMP_ROM="$ROM" >/dev/null
