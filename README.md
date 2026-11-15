@@ -155,6 +155,13 @@ the bottom turns the page of a long list. The Dragon Slayer, the Battle Suit
 and the Battle Helmet are not for sale, and what you have equipped or selected
 is not offered, as before.
 
+**Equip indoors** is on by default (Mods to turn it off). In shops, houses
+and temples the Select menu equips what you choose, as it does outside, and
+you keep your weapon in hand: buy a sword and swing it on the spot. Swinging
+at townsfolk does nothing, as before. In the few rooms with enemies inside, in
+the Mist and Dartmoor, your sword now hurts them too; in the original only
+magic did.
+
 Optional **Seamless** appears first in Mods, marked **Experimental** and
 disabled by default. It joins connected rooms, advances neighboring actors,
 and adapts the world view to your window with Fit to screen. Mouse wheel
