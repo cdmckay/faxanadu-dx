@@ -4,7 +4,7 @@
 
 The game runs uncapped (about 5x real time; --realtime to watch it at normal
 speed) and the script waits on the game's own state, never on the clock, so
-runs on different --port values can go in parallel.
+each run takes a free TCP port, so any number can go in parallel.
 
 Copies the build to OUT (so the mantra and faxanadu_gurus.txt sidecars stay
 there), starts a new game over TCP, then edits save-state RAM to place the hero
@@ -24,7 +24,7 @@ import sys
 import time
 import zlib
 
-PORT = 4392
+PORT = 0                                                            # set in main
 TEMPLE_SPAWN_POINT, PLAYER_IS_DEAD, MESSAGE_ID, TEXTBOX_PAUSED = 0x439, 0x438, 0x213, 0x215
 AREA, SCREEN, HP, MP, GOLD = 0x24, 0x63, 0x431, 0x39A, 0x392
 BUILDINGS = 4
@@ -43,6 +43,12 @@ def tcp(cmd, **kw):
     if not reply.get("ok"):
         raise RuntimeError(f"{cmd}: {reply}")
     return reply
+
+
+def free_port():
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
 
 
 def frame():
@@ -113,10 +119,10 @@ def main():
         ap.add_argument("--" + key, type=Path, required=True)
     ap.add_argument("--game-arg", action="append", default=[],
                     help="extra game option, e.g. --game-arg=--world-view=seamless (repeatable)")
-    ap.add_argument("--port", type=int, default=PORT, help="TCP port; give parallel runs their own")
+    ap.add_argument("--port", type=int, default=0, help="TCP port (default: a free one)")
     ap.add_argument("--realtime", action="store_true", help="run at normal speed instead of uncapped")
     args = ap.parse_args()
-    PORT = args.port
+    PORT = args.port or free_port()
     image = args.rom.read_bytes()
     assert zlib.crc32(image[16:]) == 0x57DD23D1, "the original Faxanadu (USA) ROM is required"
     out = args.out.resolve()

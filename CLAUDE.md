@@ -58,7 +58,8 @@ recompiler produced it; features observe and steer it.
 - **Test every feature two ways.** Unit tests in C cover its logic against a
   model of the machine (`tests/travel/travel_test.c`). An end-to-end test plays
   it in a hidden window over TCP (`tests/travel/guru_travel.py`). Add both to
-  `tools/test.sh`.
+  `tools/test.sh`. Give each end-to-end run its own free port and output
+  folder: several sessions may run the suite at once.
 - A feature is a mod package under `mods/preloaded/packages/`, so players can
   turn it off in the launcher.
 - Match the game's voice and limits for any new dialogue: 16 columns, 4 lines,
