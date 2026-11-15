@@ -49,6 +49,13 @@ Guru brings you back with all your gold and experience, instead of your
 title's starting amounts. The rest of death is as before: full HP and MP at
 your furthest temple, and the timed items are gone.
 
+**Pendant fix** is on by default (Mods to turn it off). The Pendant was meant
+to make your weapon hit a quarter harder, but a reversed check in the
+original gave that bonus to everyone without it, and finding the Pendant took
+it away. Now your weapon does its base damage until you find the Pendant, and
+the original's full damage once you have it. The Glove adds its bonus as
+before.
+
 Optional **Seamless** appears first in Mods, marked **Experimental** and
 disabled by default. It joins connected rooms, advances neighboring actors,
 and adapts the world view to your window with Fit to screen. Mouse wheel
