@@ -44,6 +44,7 @@ static bool player_tick;
 static bool collision_active;
 static bool death_mode,script_mode;
 static int camera_x,camera_y,picture_w,picture_h,draw_w=1280,draw_h=720;
+static int origin_x,origin_y;static bool origin_valid;
 static uint32_t *canvas;
 static size_t capacity;
 static uint32_t frozen_hud[RW*HUD];
@@ -402,6 +403,7 @@ const uint32_t *fax_world_present(int *w,int *h,const uint32_t *native){
     /* Start pauses native simulation, not the expanded picture. Select's
      * native inventory is composited over the frozen world at the same zoom.
      * Never show a cached region while an original portal is replacing it. */
+    origin_valid=false;
     if(!enabled||!supported())return NULL;
     uint64_t start=SDL_GetPerformanceCounter();dimensions(w,h);
     bool same=active>=0&&area==q(0x24)&&active==q(0x63);
@@ -435,6 +437,7 @@ const uint32_t *fax_world_present(int *w,int *h,const uint32_t *native){
         for(int y=0;y<RH;y++){int dy=oy+y;if(dy<HUD||dy>=height)continue;
             memcpy(canvas+(size_t)dy*width+ox+x0,rasters[id]+y*RW+x0,(size_t)(x1-x0)*4);}
     }
+    origin_x=a->x*RW-camera_x;origin_y=HUD+a->y*RH-camera_y;origin_valid=true;
     bool original_scene=death_mode;
     if(original_scene){
         int ox=a->x*RW-camera_x,oy=HUD+a->y*RH-camera_y;
@@ -463,6 +466,7 @@ finished:
     picture_w=width;picture_h=height;render_ms=(SDL_GetPerformanceCounter()-start)*1000.0/SDL_GetPerformanceFrequency();return canvas;
 }
 void fax_world_reset(void){make_mask();memset(rooms,0,sizeof rooms);memset(raster_valid,0,sizeof raster_valid);area=active=-1;pending=-1;rom_ok=false;hud_valid=death_mode=script_mode=false;ticks=last_tick=handoffs=failures=portals=0;player_tick=collision_active=false;cyc_mod_set_ram_read_hook(NULL);}
+bool fax_world_origin(int *x,int *y){if(!origin_valid)return false;*x=origin_x;*y=origin_y;return true;}
 void fax_world_loaded(void){memset(raster_valid,0,sizeof raster_valid);cyc_mod_set_ram_read_hook(collision_active?collision_read:NULL);}
 bool fax_world_option(const char *name,const char *value){
     if(!strcmp(name,"--world-view")){if(strcmp(value,"off")&&strcmp(value,"seamless")&&strcmp(value,"atlas"))return false;enabled=strcmp(value,"off")!=0;hooks(enabled);atlas=!strcmp(value,"atlas");if(enabled)nes_mod_set_local_only("Seamless world",1);return true;}

@@ -301,3 +301,68 @@ id = "faxanadu.text-speed.if-ready"
 addr = 0xf491
 bank = 15
 bytes = "ad 13 02 f0 cf ad 15 02 d0 ca ad 1d"
+
+# Sugata's flash (fax_sugata.c): SpriteBehavior_FlashScreenHitPlayer's entry
+# (the warning), its STA PPU_Mask's next instruction (the band instead of
+# greyscale) and its damage, and Sugata's draw (the blink). Its damage site is
+# shared with Block's and must come first: it decides reach, the Magic
+# Shield's reflection and Ointment, and leaves the rest to Block.
+
+[[mod_function_hook]]
+id = "faxanadu.sugata.behavior"
+addr = 0xab26
+bank = 14
+bytes = "20 85 a8 d0 0e a9 02 9d ec 02 a5 0b"
+
+[[mod_function_hook]]
+id = "faxanadu.sugata.greyscale"
+addr = 0xab36
+bank = 14
+bytes = "20 94 a8 de ec 02 d0 28 a5 0b 29 fe"
+
+[[mod_function_hook]]
+id = "faxanadu.sugata.hit"
+addr = 0xab44
+bank = 14
+bytes = "a9 04 20 e4 d0 a9 3c 85 ad a5 a5 09"
+
+[[mod_function_hook]]
+id = "faxanadu.sugata.blink"
+addr = 0x929f
+bank = 14
+bytes = "20 82 8c a0 00 ad 83 03 29 08 f0 01"
+
+# Block (fax_block.c): Game_MainLoop's GameLoop_CountdownItems call (the hero
+# is in play), the damage the shield lets through, enemy magic touching the
+# hero, Sugata's flash about to hurt, and IScriptAction_EndScript, every way
+# out of an interaction script (the tutorial).
+
+[[mod_function_hook]]
+id = "faxanadu.block.main-loop"
+addr = 0xc88f
+bank = 15
+bytes = "20 eb c5 20 9d c5 20 9b c8 4c b4 c8"
+
+[[mod_function_hook]]
+id = "faxanadu.block.shield-hit"
+addr = 0x87dc
+bank = 14
+bytes = "ae 78 03 bc cc 02 b9 d7 b6 ac bf 03"
+
+[[mod_function_hook]]
+id = "faxanadu.block.touch-magic"
+addr = 0x8999
+bank = 14
+bytes = "a5 ad d0 10 ad 27 04 10 0b 20 ae 89"
+
+[[mod_function_hook]]
+id = "faxanadu.block.flash"
+addr = 0xab44
+bank = 14
+bytes = "a9 04 20 e4 d0 a9 3c 85 ad a5 a5 09"
+
+[[mod_function_hook]]
+id = "faxanadu.block.end-script"
+addr = 0x82b4
+bank = 12
+bytes = "20 b0 87 ad 01 02 10 06 20 81 f2 4c"
