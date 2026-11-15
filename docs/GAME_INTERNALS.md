@@ -1051,7 +1051,11 @@ jumping or falling, `Player_Flags & $05`):
 `Sprites_UpdateBehavior` (`$A66B`, bank 14) skips every sprite whose
 `SPRITE_CATEGORIES_BY_ENTITY` is 0 (an enemy), and `Sprites_UpdateAll` stops
 `SpriteUpdateCounter`. Bosses are category 7, so **bosses never freeze**
-(checked in the game: Ripasheiku keeps moving). And on the first frame on a
+(checked in the game: Ripasheiku keeps moving). Their behaviors run, but
+whatever a boss times by `SpriteUpdateCounter` waits on the stopped counter:
+Ripasheiku, for one, casts only when its low 6 bits read `$20`. He also stands
+for up to about 4 s between moves (`CurrentSprites_BehaviorData2` counting
+down), so a glance can mistake him for frozen. And on the first frame on a
 boss's screen, `ScreenEvents_HandleBoss` (`$EF9E`) calls `LimitItemDurations`
 (`$EFBF`), which sets
 a running Ointment or Hour Glass to 0, so one used before the boss's screen
@@ -1068,9 +1072,9 @@ the bit.
 `Player_CheckHandleVertMovement` (`$E2C8`) treats the hero as on a ladder
 (`Player_CheckIfOnLadder`, then the climb): Up rises a pixel a frame, and
 `Player_CheckHandleJump` lets Left and Right move him in the air. Let go of A
-and he falls; press it afresh and it is a jump. A test that flies must hold A
-without a break (`tests/recharge/recharging_items.py` renews its pad holds
-before they lapse).
+and he falls. A test that flies must hold A without a break: renewing short
+TCP `action` holds made the hero bob up and down, and
+`tests/recharge/recharging_items.py` renews long `pad` holds before they lapse.
 
 **The Spring of Sky needs the Wing Boots** ("They say a fountain is up in the
 sky, but you need Wing Boots..."). Its man (`$3B`) stands on the fountain's
@@ -1079,9 +1083,10 @@ ledge in Trunk `$25`, at the top of a shaft that rises from the floor of `$20`
 The usual takeoff is that floor. The way up: the shaft at x 48, round the right
 end of the ledge across `$24` (row 5, open at columns 13-14), up the right side
 of `$25` and left along its top to the man. Flown in the end-to-end test with
-each screen's enemies cleared, it takes SPRING_FRAMES frames (SPRING_SECONDS of
-the game's seconds) from leaving the message box to landing by him, so the
-lowest band's 30 s is enough, with about SPRING_LEFT s to spare.
+the enemies of `$20`, `$23` and `$24` cleared, it takes about 1,035 frames
+(16 of the game's seconds) from leaving the message box to landing by him, so
+the lowest band's 30 s is enough, with 15 s to spare. The original gave a
+Novice 40 s.
 
 The dialogue also says the Wing Boots are needed "to get to the misty town of
 Victim" (Mist `$22` and `$25` lead into it). One candidate: the ladder at the
@@ -1092,12 +1097,13 @@ rest of the way to Victim, were not checked.
 
 **Recharging breaks no sequence** (the check from #6):
 
-- It gives no item, so the first moment you can own Wing Boots is the
-  original's: a pair in the Tower of Fortress (Trunk `$2D`, one visit in four)
-  or Forepaw's shop.
+- It gives no item, so the first moment you can own Wing Boots is unchanged.
+  The earliest sources (table above) are around Forepaw: its shop, and the
+  Tower of Fortress (Trunk `$2D`, one visit in four), whose entrance is "right
+  above this town".
 - Flying again is not new reach. The original sells pairs in two shops and
-  lets found pairs stack, so it gave any number of flights for gold, even back
-  to back with two pairs held. A kept pair flies again a minute after it lands.
+  lets found pairs stack, so it gave any number of flights for gold. A kept
+  pair flies again a minute after its flight runs out.
 - Flights longer than the original's longest (40 s, a Novice's) come only from
   Swordman (50 s) and Champion (60 s). Not checked: whether any place needs one
   flight of more than 40 s. Nothing in the dialogue points at one, and the late

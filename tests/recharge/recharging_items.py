@@ -506,11 +506,12 @@ def main():
         use()
         dismiss(USED_HOUR_GLASS)
         assert ram(DURATION_HOUR_GLASS) in (FREEZE, FREEZE - 1)
-        seen = set()
-        for _ in range(40):
+        seen = set()                                                # he stands up to ~4 s between moves
+        end = frame() + 10 * SECOND
+        while frame() < end and len(seen) < 4:
             seen.add((ram(SPRITE_X + boss), ram(SPRITE_Y + boss)))
             wait(3)
-        assert len(seen) > 1, f"Ripasheiku stood still under the Hour Glass: {seen}"
+        assert len(seen) > 1 and ram(DURATION_HOUR_GLASS) < 0x80, f"Ripasheiku stood still under the Hour Glass: {seen}"
         shot("boss-not-frozen")
         print(f"ok: bosses do not freeze: Ripasheiku moved through {len(seen)} positions under the Hour Glass")
         target = out / "boss-entry.cycstate"                        # the Hour Glass running in the shop
@@ -586,8 +587,10 @@ def main():
         warp(shop, "find-boots", TRUNK, 0x2D, 0x31, PALETTE_TOWER, 1,
              {SELECTED_ITEM: WING_BOOTS, NUMBER_OF_ITEMS: 0, VISIT_COUNT: 3}, {2: COOLDOWN})
         assert state()["boots_cooldown"] > 0, state()
-        clear(0x07)                                                 # it shows once the hornets are gone
+        slots = ram(SPRITE_ENTITIES, 8)                             # it shows once the hornets are gone;
+        poke({PLAYER_X: 40, **{SPRITE_ENTITIES + i: 0xFF for i in range(8) if slots[i] == 0x07}})   # 24 px off it
         wait(2 * SECOND)                                            # past the zone's name
+        assert ram(MESSAGE_ID) != GOT_WING_BOOTS and not state()["boots_ready"], state()
         hud_shot("find-boots-before", range(1, COOLDOWN + 1))       # the pair by the wall, T: blinking
         for _ in range(60):                                         # it lies at x 16
             if ram(MESSAGE_ID) == GOT_WING_BOOTS:
@@ -621,8 +624,8 @@ def main():
         print("ok: a found pair of Wing Boots, an Hour Glass and an Elixir each recharge the one held, "
               "without a second copy")
 
-        # 7. The Spring of Sky: from Trunk $20's floor below the shaft to the man in $25. Each screen's
-        # enemies are cleared as the hero reaches it: the flight is what is measured.
+        # 7. The Spring of Sky: from Trunk $20's floor below the shaft to the man in $25. The enemies of
+        # $20, $23 and $24 are cleared as the hero reaches each: the flight is what is measured.
         warp(shop, "spring", TRUNK, 0x20, 0x94, PALETTE_OUTSIDE, 1,
              {SELECTED_ITEM: WING_BOOTS, NUMBER_OF_ITEMS: 0, QUESTS: 0x01, PLAYER_TITLE: 0})
         use()
@@ -650,7 +653,7 @@ def main():
             zp = ram(SCREEN_READY, PLAYER_Y + 1 - SCREEN_READY)
             screen, x, y = zp[SCREEN - SCREEN_READY], zp[PLAYER_X - SCREEN_READY], zp[PLAYER_Y - SCREEN_READY]
             assert ram(DURATION_WING_BOOTS) < 0x80, f"the flight ran out at {place()}, x={x} y={y}"
-            if screen != cleared and zp[0] == 0:
+            if screen != cleared and screen != 0x25 and zp[0] == 0:   # not the man and his fountain
                 clear()
                 cleared = screen
             if screen == 0x24 and not shaft_shot and y < 160:
@@ -698,7 +701,8 @@ def main():
         s = state()
         assert s["boots_running"] == 1 and s["glass_cooldown"] == 50 and ram(PLAYER_STATUS) & 0x80, s
         talk_to_guru()                                              # with the ring, he offers Apolune
-        for _ in range(30):
+        end = frame() + 40 * SECOND                                  # his line, the intro, the offer: A to each
+        while frame() < end:
             line = tcp("travel_state")["text"]
             if line == TRAVEL_TO_GURU + 1 and typed():
                 break
