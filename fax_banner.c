@@ -12,6 +12,7 @@
  * last name, so walking out shows the town's. Two zones with one name (the
  * Dartmoor region and its town) show it once. The banner holds still while a
  * text box or menu is open or the game is paused, and is hidden behind boxes.
+ * Slain by (fax_slain.c) draws its line in the same box with fax_banner_draw.
  * See docs/GAME_INTERNALS.md, "Areas, screens and zones". */
 #include "fax_banner.h"
 #include "fax_text.h"
