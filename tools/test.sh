@@ -133,7 +133,7 @@ python3 tests/files/save_files.py --build build-cycle --rom "$ROM" --out "$OUT/f
 echo "== end to end: the taller dagger, alongside them"
 python3 tests/dagger/taller_dagger.py --build build-cycle --rom "$ROM" --out "$OUT/dagger-e2e" \
   > "$OUT/dagger-e2e.log" 2>&1 & dagger=$!
-echo "== end to end: Block and Sugata's flash, by default and with Seamless on, alongside them"
+echo "== end to end: Block, its raised shield and Sugata's flash, by default and with Seamless on, alongside them"
 block_e2e() {  # SCRIPT NAME [ARGS...]
   local script="$1" name="$2"; shift 2
   python3 "$script" --build build-cycle --rom "$ROM" --out "$OUT/$name" "$@" > "$OUT/$name.log" 2>&1
@@ -142,6 +142,8 @@ block_e2e tests/block/block.py block-e2e & block=$!
 block_e2e tests/block/block.py block-e2e-seamless --game-arg=--world-view=seamless & block_seamless=$!
 block_e2e tests/sugata/sugata_flash.py sugata-e2e & sugata=$!
 block_e2e tests/sugata/sugata_flash.py sugata-e2e-seamless --game-arg=--world-view=seamless & sugata_seamless=$!
+block_e2e tests/block/block_shield.py block-shield-e2e & block_shield=$!
+block_e2e tests/block/block_shield.py block-shield-e2e-seamless --game-arg=--world-view=seamless & block_shield_seamless=$!
 echo "== end to end: Quick shops, by default and with Seamless on, alongside them"
 shops_e2e() {  # NAME [ARGS...]
   local name="$1"; shift
@@ -191,6 +193,10 @@ wait "$sugata" || failed=1
 sed 's/^/[sugata]   /' "$OUT/sugata-e2e.log"
 wait "$sugata_seamless" || failed=1
 sed 's/^/[sugata+sw] /' "$OUT/sugata-e2e-seamless.log"
+wait "$block_shield" || failed=1
+sed 's/^/[shield]   /' "$OUT/block-shield-e2e.log"
+wait "$block_shield_seamless" || failed=1
+sed 's/^/[shield+sw] /' "$OUT/block-shield-e2e-seamless.log"
 wait "$shops" || failed=1
 sed 's/^/[shops]    /' "$OUT/shops-e2e.log"
 wait "$shops_seamless" || failed=1
