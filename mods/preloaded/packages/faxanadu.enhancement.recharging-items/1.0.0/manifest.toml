@@ -1,0 +1,24 @@
+format_version = 1
+id = "faxanadu.enhancement.recharging-items"
+version = "1.0.0"
+name = "Recharging items"
+author = "Faxanadu Remastered"
+description = "The Wing Boots, the Hour Glass and the Elixir are kept after use and recharge, instead of being used up."
+license = "MIT"
+resolver = "declarative"
+save_compatibility = "shared"
+
+[[target]]
+game_id = "faxanadu-usa"
+rom_crc32 = "57dd23d1"
+
+[[feature]]
+id = "recharging-items"
+name = "Recharging items"
+description = "Wing Boots fly longer as your title rises (30, 40, 50 and 60 seconds, every four titles), then recharge for 60 seconds; the Hour Glass keeps its 15-second freeze and its cost of half your HP, then recharges for 60 seconds. T: blinks with the time left while one recharges, and dying makes both ready. The Elixir revives you and stays with you, spent, until you talk to a Guru. Finding one you already own recharges it."
+group = "Gameplay"
+default_enabled = true
+
+[[plugin]]
+feature = "recharging-items"
+id = "faxanadu.recharge"

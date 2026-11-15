@@ -103,8 +103,20 @@ whatever item you had selected stays selected.
 
 **Reusable tools** is on by default (Mods to turn it off). A key stays in your
 inventory after it opens a door, and the Mattock after it breaks a wall.
-Potions, the Elixir, the Hour Glass, the Wing Boots and the other consumables
-are still used up.
+Potions and the other consumables are still used up (Recharging items keeps
+the Wing Boots, the Hour Glass and the Elixir).
+
+**Recharging items** is on by default (Mods to turn it off). The Wing Boots,
+the Hour Glass and the Elixir are kept after use. The Wing Boots fly longer as
+your title rises (30, 40, 50 and 60 seconds, every four titles, where the
+original's flights got shorter), then recharge for 60 seconds. The Hour Glass
+still stops time for 15 seconds and costs half your HP, then recharges for 60
+seconds. While one recharges, T: on the status bar blinks the seconds left,
+and using it does nothing. Dying makes both ready. The Elixir still revives
+you, then stays with you, spent, until you talk to a Guru; the menu's Player
+page shows it only while it is charged. Finding one you already own recharges
+it, and a shop sells you an Elixir only to charge a spent one. Your save file
+keeps the cooldowns and whether the Elixir is spent.
 
 **Falling pose** is on by default (Mods to turn it off). Walking off a ledge,
 the hero used to fall standing or mid-step, as if walking on air. Now he shows
