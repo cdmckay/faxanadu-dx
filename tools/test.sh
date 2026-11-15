@@ -78,6 +78,9 @@ cmake --build "$OUT/shops" -j"$JOBS" >/dev/null
 cmake -S tests/respawn -B "$OUT/respawn" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/respawn" -j"$JOBS" >/dev/null
 "$OUT/respawn/respawn_test"
+cmake -S tests/recharge -B "$OUT/recharge" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/recharge" -j"$JOBS" >/dev/null
+"$OUT/recharge/recharge_test"
 
 echo "== game build"
 [ -f build-cycle/CMakeCache.txt ] || cmake -S . -B build-cycle -DCMAKE_BUILD_TYPE=Release -DNESRECOMP_ROM="$ROM" >/dev/null
@@ -158,6 +161,9 @@ respawn_e2e() {  # NAME [ARGS...]
 }
 respawn_e2e respawn-e2e & respawn=$!
 respawn_e2e respawn-e2e-seamless --game-arg=--world-view=seamless & respawn_seamless=$!
+echo "== end to end: recharging items, alongside them"
+python3 tests/recharge/recharging_items.py --build build-cycle --rom "$ROM" --out "$OUT/recharge-e2e" \
+  > "$OUT/recharge-e2e.log" 2>&1 & recharge=$!
 failed=0
 wait "$default" || failed=1
 sed 's/^/[default]  /' "$OUT/travel-e2e.log"
@@ -209,5 +215,7 @@ wait "$respawn" || failed=1
 sed 's/^/[respawn]  /' "$OUT/respawn-e2e.log"
 wait "$respawn_seamless" || failed=1
 sed 's/^/[resp+sw]  /' "$OUT/respawn-e2e-seamless.log"
+wait "$recharge" || failed=1
+sed 's/^/[recharge] /' "$OUT/recharge-e2e.log"
 [ "$failed" = 0 ] || { echo "end-to-end tests failed; screenshots in $OUT/*-e2e*/" >&2; exit 1; }
 echo "all checks passed"

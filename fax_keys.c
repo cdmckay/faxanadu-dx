@@ -19,8 +19,10 @@
  * Reusable tools (faxanadu.reusable-tools): the same clear, reached with a
  * selected key, puts the key back in SelectedItem and is skipped, so the key
  * stays selected and drawn. Player_UseMattock clears the Mattock through
- * Player_ClearSelectedItem; that call is skipped, and only that one, so the
- * Red Potion, Wing Boots and Hour Glass are still used up.
+ * Player_ClearSelectedItem; that call is skipped, and only that one. Which
+ * item each Player_ClearSelectedItem call uses up, and who keeps it, is one
+ * list (fax_items.h): the Red Potion stays used up, and the Wing Boots and
+ * Hour Glass are recharging items' (fax_recharge.c).
  *
  * The calls are told apart by their return address, as fax_death.c does. Both
  * features hook UI_ClearSelectedItemPic with one callback (unlocked_hook) that
@@ -29,6 +31,7 @@
  * from a door's handler to its unlock, inside one frame-frozen script; it is
  * still saved with save states. See docs/GAME_INTERNALS.md. */
 #include "fax_keys.h"
+#include "fax_items.h"
 #include "cyc_mod.h"
 #include "mod_runtime.h"
 #include "mod_function_hooks.h"
@@ -142,10 +145,13 @@ static int unlocked_hook(uint16_t addr) {
 
 /* Player_ClearSelectedItem, called from Player_UseMattock: keep the Mattock.
  * The routine preserves A, and Player_UseMattock restores X and Y from the
- * stack after it, so skipping it changes nothing else. */
+ * stack after it, so skipping it changes nothing else. The other calls are
+ * left to whoever fax_items.h names. */
 static int mattock_hook(uint16_t addr) {
     (void)addr;
-    if (!called_from(MATTOCK_CLEARS_ITEM)) return 0;
+    CycModRegs regs;
+    cyc_mod_regs(&regs);
+    if (fax_use_up_keeper(fax_jsr_caller(regs.s, cyc_mod_peek)) != FAX_KEPT_BY_REUSABLE_TOOLS) return 0;
     ++mattock_kept;
     return 1;
 }
