@@ -27,8 +27,8 @@
  *   on the game's own second (InterruptCounter & $3F == 0), and the HUD's T:
  *   shows a recharging item's cooldown, blinking, through the PPU buffer as
  *   UI_DrawTimeValue writes it. Flight time stays the game's steady count.
- * - Player_UseElixir: the Elixir is spent. Guru travel's Guru signal
- *   (fax_travel_listen): a spent Elixir is charged again.
+ * - Player_UseElixir: the Elixir is spent. IScripts_InvokeNextAction, at the
+ *   first action of a Guru's script: a spent Elixir is charged again.
  * - Player_PickUpItem: a duplicate recharges instead of being added.
  * - Game_ClearTimedItems (every spawn but a Guru journey): both ready, or a
  *   continued file's cooldowns.
@@ -42,7 +42,6 @@
  * options is picked, or none. See docs/GAME_INTERNALS.md. */
 #include "fax_recharge.h"
 #include "fax_items.h"
-#include "fax_travel.h"
 #include "fax_save.h"
 #include "cyc_mod.h"
 #include "mod_runtime.h"
@@ -68,8 +67,13 @@
 #define PLAYER_PICK_UP_ITEM     0xC8CDu  /* LDX NumberOfItems, CPX #$08, BCS: A is the item */
 #define SOUND_PLAY_EFFECT       0xD0E4u  /* STA Temp_SoundIDToPlay, ...: queues sound A, keeps X and Y */
 #define GAME_SHOW_START_SCREEN  0xFC65u  /* LDX #$FF, TXS: the title, from Game_InitStateForStartScreen only */
+/* Bank 12 */
+#define ISCRIPTS_INVOKE_NEXT_ACTION 0x826Eu  /* JSR IScripts_LoadByte: the action at IScriptOrCHRAddr + IScriptOffset */
+#define EOLIS_GURU_FIRST        0xA0BDu  /* ISCRIPT_EOLIS_GURU's first action: CHECK_FOR_ITEM Ring of Elf */
 /* RAM */
 #define INTERRUPT_COUNTER       0x001Au  /* +1 each NMI; the game's second is when & $3F == 0 */
+#define ISCRIPT_ADDR            0x00DBu  /* IScriptOrCHRAddr; the next action is at it + IScriptOffset ($DD) */
+#define ISCRIPT_OFFSET          0x00DDu
 #define PPU_BUFFER_READ         0x001Fu  /* PPUBuffer_ReadOffset */
 #define PPU_BUFFER_WRITE        0x0020u  /* PPUBuffer_WriteOffset */
 #define PPU_BUFFER              0x0500u  /* 256 bytes, circular: [length][addr hi][addr lo][tiles] */
@@ -87,6 +91,8 @@
 #define PPU_BUFFER_ROOM         0x24u    /* PPUBuffer_HasCapacity: at least 36 bytes free, or empty */
 #define TILE_BLANK              0x00u    /* the HUD's blank tile */
 #define MAX_ITEMS               8
+#define ISCRIPT_SET_SPAWN_POINT 0x06u    /* 06 temple: each temple Guru's first action */
+#define TEMPLES                 8
 
 enum { BOOTS, GLASS, TIMED };   /* the two timed items */
 enum { BANDS = 4 };             /* title bands: PlayerTitle / 4 */
@@ -308,13 +314,28 @@ static int title_hook(uint16_t addr) {
     return 0;
 }
 
-/* A Guru's conversation has begun (fax_travel.c): charge a spent Elixir. */
-static void guru_met(unsigned temple) {
-    (void)temple;
-    if (!enabled || cyc_mod_isolated() || !charge.elixir_spent) return;
+/* The Guru whose conversation begins with the action at `at`, or -1: a
+ * temple Guru's script opens with SET_SPAWN_POINT (06 temple), the only
+ * scripts that use it; Eolis's Guru sets none, so his first action. */
+static int guru_begins(uint16_t at) {
+    if (q(at) == ISCRIPT_SET_SPAWN_POINT && q((uint16_t)(at + 1)) < TEMPLES) return q((uint16_t)(at + 1));
+    return at == EOLIS_GURU_FIRST ? 0 : -1;
+}
+
+/* IScripts_InvokeNextAction: a Guru's conversation begins, so charge a spent
+ * Elixir before he speaks, whatever he goes on to offer (the mantra, Save
+ * files' choice, Guru travel) and however it ends. It only observes, and the
+ * Gurus' other hooks here never redirect these two actions, so it sees them
+ * whichever runs first. */
+static int guru_hook(uint16_t addr) {
+    (void)addr;
+    if (cyc_mod_isolated() || !charge.elixir_spent) return 0;
+    uint16_t at = (uint16_t)((q(ISCRIPT_ADDR) | q(ISCRIPT_ADDR + 1) << 8) + q(ISCRIPT_OFFSET));
+    if (guru_begins(at) < 0) return 0;
     cyc_mod_poke(SPECIAL_ITEMS, (uint8_t)(q(SPECIAL_ITEMS) | BIT_ELIXIR));
     charge.elixir_spent = 0;
     ++guru_recharges;
+    return 0;
 }
 
 /* ---- the file in play (Save files, fax_save.h) ---- */
@@ -391,7 +412,7 @@ static int state_set(const uint8_t *buf, int len) {
 static const char *const hook_ids[] = {
     "faxanadu.recharge.elixir", "faxanadu.recharge.keep", "faxanadu.recharge.use-boots",
     "faxanadu.recharge.flight", "faxanadu.recharge.use-glass", "faxanadu.recharge.spawn",
-    "faxanadu.recharge.tick", "faxanadu.recharge.pick-up", "faxanadu.recharge.title" };
+    "faxanadu.recharge.tick", "faxanadu.recharge.pick-up", "faxanadu.recharge.title", "faxanadu.recharge.guru" };
 static void hooks(bool on) {
     for (unsigned i = 0; i < sizeof hook_ids / sizeof hook_ids[0]; ++i) nes_mod_set_function_hook_enabled(hook_ids[i], on);
 }
@@ -402,12 +423,10 @@ static void deactivate(void) {
     drawn_valid = false;
     flights = freezes = refused = kept = pickups = revives = guru_recharges = spawns = 0;
     hooks(false);
-    fax_travel_listen(guru_met, false);
 }
 static void activate(void) {
     enabled = true;
     hooks(true);
-    fax_travel_listen(guru_met, true);
     nes_mod_set_local_only("Recharging items", 1);
 }
 
@@ -445,7 +464,7 @@ NES_MOD_CONSTRUCTOR(register_recharge) {
         { PLAYER_USE_WING_BOOTS, use_hook }, { WING_BOOTS_SET_FLIGHT, flight_hook },
         { PLAYER_USE_HOUR_GLASS, use_hook }, { GAME_CLEAR_TIMED_ITEMS, spawn_hook },
         { GAME_LOOP_COUNTDOWN, tick_hook }, { PLAYER_PICK_UP_ITEM, pick_up_hook },
-        { GAME_SHOW_START_SCREEN, title_hook } };
+        { GAME_SHOW_START_SCREEN, title_hook }, { ISCRIPTS_INVOKE_NEXT_ACTION, guru_hook } };
     for (unsigned i = 0; i < sizeof sites / sizeof sites[0]; ++i)
         if (!nes_mod_register_function_entry_plugin(hook_ids[i], sites[i].addr, sites[i].cb)) abort();
     if (!nes_mod_register_reset_callback(deactivate) ||

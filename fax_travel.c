@@ -43,7 +43,6 @@ enum { TEMPLES = 8, SLOT_LEN = FAX_TRAVEL_SLOT_LEN };
 #define GURU_PASSWORD_END   0xA5FFu   /* ISCRIPT_COMMON_GURU_PASSWORD: 03 22, 14, here 00 */
 #define GURU_NEW_RANK_END   0xA602u   /* ISCRIPT_COMMON_GURU_NEW_RANK: 01 23, here 00 */
 #define EOLIS_GURU_HAS_RING 0xA0C6u   /* Eolis's Guru, who sets no spawn point: 03 2D, 00 */
-#define EOLIS_GURU_FIRST    0xA0BDu   /* ISCRIPT_EOLIS_GURU's first action: CHECK_FOR_ITEM Ring of Elf */
 #define SAY FAX_TRAVEL_SAY            /* $AE00: 03 C3 00: show the slot, then END */
 #define ASK 0xAE03u                   /* 16 C3 SAY: ask; A jumps to SAY, B goes on to ASK + 4 */
 /* Bank 13: Messages_Load counts $FF terminators from $8300. Message 193 is
@@ -71,8 +70,6 @@ typedef struct { uint8_t phase, offer, asking; } Talk;
 typedef struct { uint16_t at; int text, go; } Steer;
 
 static bool enabled, served, failed;
-enum { LISTENERS = 4 };
-static FaxGuruListener listeners[LISTENERS];   /* other features told when a Guru's conversation begins */
 static uint8_t visited = 1;          /* bit per temple; Eolis is where every game begins */
 static Talk talk;
 static int text = -1;                /* the line in the slot */
@@ -234,25 +231,12 @@ static void meet(unsigned here) {
     talk.offer = offered(here, furthest_temple(), visited);
 }
 
-/* The temple whose Guru's conversation begins with the action at `at`, or
- * -1: a temple Guru's SET_SPAWN_POINT, which comes first in his script, or
- * the first action of Eolis's Guru, who sets none. */
-static int guru_begins(uint16_t at) {
-    if (cyc_mod_peek(at) == SET_SPAWN_POINT && cyc_mod_peek((uint16_t)(at + 1)) < TEMPLES)
-        return cyc_mod_peek((uint16_t)(at + 1));
-    return at == EOLIS_GURU_FIRST ? 0 : -1;
-}
-
-/* IScripts_InvokeNextAction: tell the listeners a Guru is talking, meet him,
- * and steer the conversation. */
+/* IScripts_InvokeNextAction: meet the Guru, and steer the conversation. */
 static int next_action_hook(uint16_t addr) {
     (void)addr;
+    if (!served) return 0;
     uint16_t at = (uint16_t)((cyc_mod_peek(ISCRIPT_ADDR) | cyc_mod_peek(ISCRIPT_ADDR + 1) << 8) +
                              cyc_mod_peek(ISCRIPT_OFFSET));
-    int guru = guru_begins(at);
-    if (guru >= 0)
-        for (unsigned i = 0; i < LISTENERS; ++i) if (listeners[i]) listeners[i]((unsigned)guru);
-    if (!served) return 0;
     if (cyc_mod_peek(at) == SET_SPAWN_POINT && cyc_mod_peek((uint16_t)(at + 1)) < TEMPLES)
         meet(cyc_mod_peek((uint16_t)(at + 1)));
     else if (at == EOLIS_GURU_HAS_RING)
@@ -314,20 +298,8 @@ static int new_game_hook(uint16_t addr) {
 
 static const char *const hook_ids[] = {
     "faxanadu.travel.next-action", "faxanadu.travel.main-loop", "faxanadu.travel.spawn", "faxanadu.travel.new-game" };
-static bool listened(void) {
-    for (unsigned i = 0; i < LISTENERS; ++i) if (listeners[i]) return true;
-    return false;
-}
 static void hooks(bool on) {
-    for (unsigned i = 0; i < sizeof hook_ids / sizeof hook_ids[0]; ++i)
-        nes_mod_set_function_hook_enabled(hook_ids[i], on || (i == 0 && listened()));   /* hook_ids[0]: next-action */
-}
-/* Listen for Gurus (fax_travel.h). The interpreter's hook runs while Guru
- * travel or any listener is on. */
-void fax_travel_listen(FaxGuruListener fn, bool on) {
-    for (unsigned i = 0; i < LISTENERS; ++i) if (listeners[i] == fn) listeners[i] = NULL;
-    for (unsigned i = 0; on && fn && i < LISTENERS; ++i) if (!listeners[i]) { listeners[i] = fn; break; }
-    nes_mod_set_function_hook_enabled(hook_ids[0], enabled || listened());
+    for (unsigned i = 0; i < sizeof hook_ids / sizeof hook_ids[0]; ++i) nes_mod_set_function_hook_enabled(hook_ids[i], on);
 }
 static void deactivate(void) {
     if (served) unserve();

@@ -40,7 +40,13 @@ used with Down+B, as a player would.
 8. Guru travel (relaunched having met the Gurus of Eolis and Apolune): a
    journey from Eolis to Apolune with the Wing Boots flying and the Hour Glass
    recharging keeps both counting, and the flight's cooldown follows it.
-9. Turned off: the pair is used up after one 40 s (Novice) flight.
+9. Save files: dying with the Elixir spent writes recharge.elixir = spent to
+   the file in play (file 1, which Start on the title began). A Guru's save
+   writes the cooldowns; quitting and continuing the file puts them back, and
+   an Elixir the file says is spent stays spent.
+10. With Save files and Guru travel off: Apolune's Guru, giving only the
+    mantra, charges a spent Elixir.
+11. Turned off: the pair is used up after one 40 s (Novice) flight.
 """
 import argparse
 import json
@@ -62,6 +68,7 @@ HP, HP_FRACTION, PLAYER_IS_DEAD, TEMPLE_SPAWN_POINT, PLAYER_TITLE = 0x431, 0x432
 ITEM_INVENTORY, SELECTED_ITEM, NUMBER_OF_ITEMS, GOLD = 0x3AD, 0x3C1, 0x3C6, 0x392
 DURATION_WING_BOOTS, DURATION_HOUR_GLASS, SPECIAL_ITEMS, QUESTS = 0x429, 0x42A, 0x42C, 0x42D
 SPRITE_ENTITIES, SPRITE_X, SPRITE_Y = 0x2CC, 0xBA, 0xC2                # CurrentSprites_*, 8 slots each
+SPRITE_PHASES, SPRITE_DATA2, SPRITE_DATA3, SPRITE_UPDATE_COUNTER = 0x2E4, 0x2EC, 0x2F4, 0x383
 SAVED_AREA, SAVED_SCREEN, SAVED_PALETTE, SAVED_POS, REGION = 0x3D5, 0x3D6, 0x3D7, 0x3D8, 0x435
 VISIT_COUNT = 0x43A                                                 # Screen_TrackedVisitCount
 HOUR_GLASS, WING_BOOTS, NO_ITEM, BIT_ELIXIR, RING_OF_ELF = 0x0D, 0x0F, 0xFF, 0x08, 0x80
@@ -69,6 +76,10 @@ USED_HOUR_GLASS, USED_WING_BOOTS, USED_ELIXIR = 0xAC, 0xAD, 0xAF      # message 
 GOT_WING_BOOTS, GOT_HOUR_GLASS, GOT_ELIXIR = 0xB3, 0xB4, 0xB0        # "I'm holding ..."
 WING_BOOTS_GONE, HOUR_GLASS_GONE, NEGATIVE_THOUGHTS, HO_HO_HO = 0xC0, 0xC1, 0x24, 0x57
 SHOP_HELLO, WHAT_WOULD_YOU_LIKE, CANT_CARRY_MORE = 0x0F, 0x14, 0x06
+FILE, GURU_SAVED = "faxanadu_file1.txt", 3                          # Start on the title: a new game in file 1
+SAVE_FILES = ("faxanadu.enhancement.save-files", "save-files")
+GURU_TRAVEL = ("faxanadu.enhancement.guru-travel", "guru-travel")
+MEDITATE_WITH_YOU = 0x22                                            # a temple Guru's greeting, then the mantra
 EOLIS, TRUNK, BUILDINGS = 0, 1, 4
 EOLIS_TEMPLE, APOLUNE_TEMPLE, TOOL_SHOP = 0x02, 0x0B, 0x04          # building numbers
 PALETTE_EOLIS, PALETTE_OUTSIDE, PALETTE_TOWER = 0x00, 0x06, 0x07
@@ -163,6 +174,20 @@ def items():
     return list(ram(ITEM_INVENTORY, 8)[:ram(NUMBER_OF_ITEMS)]), ram(SELECTED_ITEM)
 
 
+def read_file(path):
+    """A save file's fields."""
+    fields = {}
+    for line in path.read_text().splitlines():
+        if line.strip() and not line.startswith("#"):
+            key, value = (part.strip() for part in line.split("=", 1))
+            fields[key] = value
+    return fields
+
+
+def write_file(path, fields):
+    path.write_text("".join(f"{k} = {v}\n" for k, v in fields.items()))
+
+
 def chunks(data):
     assert data[:8] == b"CYCSTATE"
     pos = 32
@@ -188,7 +213,7 @@ def fixture(source, target, writes, record=None):
             found = True
             for offset, value in (record or {}).items():
                 data[p + 64 + offset] = value
-    assert found or record is None, "the state has no recharging-items record"
+    assert found or record is None, "the state has no recharging items record"
     target.write_bytes(data)
 
 
@@ -216,12 +241,14 @@ def main():
     game = None
     shots = []
 
-    def launch(on=True, gurus=None):
+    def launch(on=True, gurus=None, off=()):
+        """Start the game with recharging items on or off, and the (package, feature) pairs in `off` off."""
         nonlocal game
-        package, feature = PACKAGE
-        (out / "game" / "mods" / "state.toml").write_text(
-            f'format_version = 1\n\n[[feature]]\npackage_id = "{package}"\nid = "{feature}"\n'
-            f"enabled = {'true' if on else 'false'}\n")
+        lines = ["format_version = 1"]
+        for (package, feature), enabled in [(PACKAGE, on)] + [(pf, False) for pf in off]:
+            lines += ["", "[[feature]]", f'package_id = "{package}"', f'id = "{feature}"',
+                      f"enabled = {'true' if enabled else 'false'}"]
+        (out / "game" / "mods" / "state.toml").write_text("\n".join(lines) + "\n")
         if gurus:
             (out / "game" / "faxanadu_gurus.txt").write_text("".join(g + "\n" for g in gurus))
         extra = [part for arg in args.game_arg for part in arg.split("=", 1)]
@@ -295,6 +322,7 @@ def main():
             if ram(AREA) != BUILDINGS:
                 break
             act("right", 2, 0)
+        tcp("action", name="right", frames=1)                       # let go
         until("the screen to settle", lambda: ram(AREA) != BUILDINGS and settled(), 600)
         wait(30)
 
@@ -506,14 +534,18 @@ def main():
         use()
         dismiss(USED_HOUR_GLASS)
         assert ram(DURATION_HOUR_GLASS) in (FREEZE, FREEZE - 1)
-        seen = set()                                                # he stands up to ~4 s between moves
-        end = frame() + 10 * SECOND
-        while frame() < end and len(seen) < 4:
-            seen.add((ram(SPRITE_X + boss), ram(SPRITE_Y + boss)))
+        counter = ram(SPRITE_UPDATE_COUNTER)
+        seen = set()                                                # his place, phase and its countdowns
+        end = frame() + 3 * SECOND
+        while frame() < end and len(seen) < 4 and not box_open():
+            seen.add((ram(SPRITE_X + boss), ram(SPRITE_Y + boss), ram(SPRITE_PHASES + boss),
+                      ram(SPRITE_DATA2 + boss), ram(SPRITE_DATA3 + boss)))
             wait(3)
-        assert len(seen) > 1 and ram(DURATION_HOUR_GLASS) < 0x80, f"Ripasheiku stood still under the Hour Glass: {seen}"
+        assert len(seen) > 1 and ram(DURATION_HOUR_GLASS) < 0x80, f"Ripasheiku's behavior stood still: {seen}"
+        assert ram(SPRITE_UPDATE_COUNTER) == counter, "SpriteUpdateCounter stops under the Hour Glass"
         shot("boss-not-frozen")
-        print(f"ok: bosses do not freeze: Ripasheiku moved through {len(seen)} positions under the Hour Glass")
+        print(f"ok: bosses do not freeze: Ripasheiku's behavior ran through {len(seen)} states under the Hour "
+              f"Glass, while SpriteUpdateCounter stood at ${counter:02X}")
         target = out / "boss-entry.cycstate"                        # the Hour Glass running in the shop
         fixture(shop, target, {SAVED_AREA: TRUNK, SAVED_SCREEN: 0x15, SAVED_PALETTE: PALETTE_TOWER, SAVED_POS: 0x95,
                                REGION: 1, HP: 0x50, SELECTED_ITEM: HOUR_GLASS, NUMBER_OF_ITEMS: 0,
@@ -554,9 +586,12 @@ def main():
         assert s["elixir_spent"] and not s["elixir_charged"] and s["revives"] == 1, s
         temple = out / "temple.cycstate"
         tcp("save_state", path=str(temple))
+        saved = read_file(out / "game" / FILE)                     # the respawn wrote the file in play
+        assert saved.get("recharge.elixir") == "spent" and int(saved["special_items"]) & BIT_ELIXIR == 0, saved
+        assert saved["recharge.wingboots"] == "0" and saved["recharge.hourglass"] == "0", saved
         status_shot("status-elixir-spent")
-        print("ok: spent, the Elixir does not save him; he dies and respawns with it still spent, and the status "
-              "page does not show it")
+        print("ok: spent, the Elixir does not save him; he dies and respawns with it still spent, the status "
+              "page does not show it, and the respawn's save writes recharge.elixir = spent to file 1")
         talk_to_guru()
         until("the Guru to charge it", lambda: state()["guru_recharges"] == 1, 120)
         s = state()
@@ -588,7 +623,9 @@ def main():
              {SELECTED_ITEM: WING_BOOTS, NUMBER_OF_ITEMS: 0, VISIT_COUNT: 3}, {2: COOLDOWN})
         assert state()["boots_cooldown"] > 0, state()
         slots = ram(SPRITE_ENTITIES, 8)                             # it shows once the hornets are gone;
-        poke({PLAYER_X: 40, **{SPRITE_ENTITIES + i: 0xFF for i in range(8) if slots[i] == 0x07}})   # 24 px off it
+        poke({PLAYER_X: 36, PLAYER_Y: 48,                           # on the ledge, 20 px off it
+              **{SPRITE_ENTITIES + i: 0xFF for i in range(8) if slots[i] == 0x07}})
+        wait(8)
         assert ram(PLAYER_Y) == 48, f"on the ledge: y {ram(PLAYER_Y)}"
         wait(2 * SECOND)                                            # past the zone's name
         assert ram(MESSAGE_ID) != GOT_WING_BOOTS and not state()["boots_ready"], state()
@@ -727,9 +764,77 @@ def main():
         print(f"ok: a Guru travel journey from Eolis to Apolune keeps the flight ({flying} s left before, {after} "
               f"after) and the Hour Glass's cooldown ({cooling} s, then {s['glass_cooldown']}), and the flight's "
               "cooldown follows it")
+
+        # 9. Save files: a Guru's save keeps the cooldowns in file 1; continuing it after quitting puts them
+        # back, and a file whose Elixir is spent continues with it spent.
+        keep = out / "temple-save.cycstate"
+        fixture(temple, keep, {SPECIAL_ITEMS: RING_OF_ELF | BIT_ELIXIR, SELECTED_ITEM: WING_BOOTS,
+                               NUMBER_OF_ITEMS: 0}, {1: 0, 2: 45, 3: 0, 4: 30, 5: 0})
+        tcp("load_state", path=str(keep))
+        wait(4)
+        saves = tcp("files_state")["saves"]
+        talk_to_guru()                                              # "Remember my journey." is the first choice
+        end = frame() + 40 * SECOND
+        while frame() < end and tcp("files_state")["saves"] == saves:
+            if typed():
+                act("a", 6, 14)
+            else:
+                wait(4)
+        assert tcp("files_state")["saves"] == saves + 1, tcp("files_state")
+        for _ in range(20):                                         # B closes what follows
+            if not box_open():
+                break
+            act("b", 6, 20)
+        saved = read_file(out / "game" / FILE)
+        boots_left, glass_left = int(saved["recharge.wingboots"]), int(saved["recharge.hourglass"])
+        assert 40 <= boots_left <= 45 and 25 <= glass_left <= 30 and "recharge.elixir" not in saved, saved
+        close()
+        saved["recharge.elixir"] = "spent"                         # as a respawn with it spent writes it
+        saved["special_items"] = str(int(saved["special_items"]) & ~BIT_ELIXIR)
+        write_file(out / "game" / FILE, saved)
+        launch()
+        until("the file select", lambda: frame() > 700)
+        tcp("pad", buttons="start", frames=10)                      # file 1: continue
+        until("Eolis's temple", lambda: place() == (BUILDINGS, EOLIS_TEMPLE) and settled(), 1800)
+        wait(30)
+        s = state()
+        assert boots_left - 2 <= s["boots_cooldown"] <= boots_left and glass_left - 2 <= s["glass_cooldown"] <= glass_left, \
+            (s, saved)
+        assert s["elixir_spent"] and not s["elixir_charged"], s
+        hud_shot("continued-recharging", range(1, COOLDOWN + 1))
+        print(f"ok: saving at a Guru wrote the cooldowns to file 1 (Wing Boots {boots_left} s, Hour Glass {glass_left} s); "
+              f"continuing it after quitting put them back ({s['boots_cooldown']} s, {s['glass_cooldown']} s), "
+              "and a spent Elixir in the file is still spent")
         close()
 
-        # 9. Off: the original's one-use pair and its title-based flight.
+        # 10. Without the Gurus' mods: with Save files and Guru travel off, Apolune's Guru only gives the mantra,
+        # and talking to him still charges a spent Elixir.
+        launch(off=(SAVE_FILES, GURU_TRAVEL))
+        assert not tcp("files_state")["enabled"] and not tcp("travel_state")["enabled"]
+        plain = out / "apolune-death.cycstate"
+        fixture(temple, plain, {TEMPLE_SPAWN_POINT: 1, PLAYER_IS_DEAD: 1, SPECIAL_ITEMS: 0}, {5: 1})
+        tcp("load_state", path=str(plain))
+        dismiss(NEGATIVE_THOUGHTS, 600)
+        until("Apolune's temple", lambda: place() == (BUILDINGS, APOLUNE_TEMPLE) and settled(), 1800)
+        wait(30)
+        assert state()["elixir_spent"], state()
+        talk_to_guru()
+        until("the Guru to charge it", lambda: state()["guru_recharges"] == 1, 120)
+        seen = set()
+        end = frame() + 40 * SECOND
+        while frame() < end and box_open():
+            seen.add(ram(MESSAGE_ID))
+            if typed():
+                act("a", 6, 14)
+            else:
+                wait(4)
+        assert not box_open() and MEDITATE_WITH_YOU in seen, sorted(seen)
+        assert state()["elixir_charged"], state()
+        print("ok: with Save files and Guru travel off, Apolune's Guru gives the mantra, and talking to him "
+              "charges the spent Elixir")
+        close()
+
+        # 11. Off: the original's one-use pair and its title-based flight.
         launch(on=False)
         fixture(town, boots, {HP: 0x50, SELECTED_ITEM: WING_BOOTS, NUMBER_OF_ITEMS: 0, PLAYER_TITLE: 0, **no_one})
         tcp("load_state", path=str(boots))

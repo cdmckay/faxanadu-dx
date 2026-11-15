@@ -1269,11 +1269,16 @@ jumping or falling, `Player_Flags & $05`):
 `Sprites_UpdateBehavior` (`$A66B`, bank 14) skips every sprite whose
 `SPRITE_CATEGORIES_BY_ENTITY` is 0 (an enemy), and `Sprites_UpdateAll` stops
 `SpriteUpdateCounter`. Bosses are category 7, so **bosses never freeze**
-(checked in the game: Ripasheiku keeps moving). Their behaviors run, but
-whatever a boss times by `SpriteUpdateCounter` waits on the stopped counter:
-Ripasheiku, for one, casts only when its low 6 bits read `$20`. He also stands
-for up to about 4 s between moves (`CurrentSprites_BehaviorData2` counting
-down), so a glance can mistake him for frozen. And on the first frame on a
+(checked in the game: Ripasheiku's place, phase and countdowns keep changing
+while `SpriteUpdateCounter`, `$0383`, stands still). Their behaviors run, but
+whatever a boss times by `SpriteUpdateCounter` reads the stopped counter:
+Ripasheiku casts in his last phase on frames whose low 6 bits read `$20`, so
+from the code, an Hour Glass that stops the counter there would have him try
+every frame of that phase, and one that stops it elsewhere, never (not
+checked; one test run lost the hero there under the Hour Glass). He also
+stands for up to about 4 s between moves (`CurrentSprites_BehaviorData2`,
+`$02EC`, counting down), so watching his place alone can mistake him for
+frozen. And on the first frame on a
 boss's screen, `ScreenEvents_HandleBoss` (`$EF9E`) calls `LimitItemDurations`
 (`$EFBF`), which sets
 a running Ointment or Hour Glass to 0, so one used before the boss's screen
@@ -1485,17 +1490,31 @@ addresses, and `tools/check_allocations.py` enforces it.
     with the list full. Found during a run, the run goes on and no cooldown
     follows it.
   - `Game_ClearTimedItems`: both ready (a death, a new game, a mantra; not a
-    Guru travel journey). `Game_ShowStartScreen`: everything forgotten. A
-    mantra keeps a charged Elixir (the bit) and loses a spent one.
-  - Gurus: Guru travel tells listeners (`fax_travel_listen`) when a Guru's
-    conversation begins (his `SET_SPAWN_POINT`, or the first action of Eolis's
-    Guru), from its `IScripts_InvokeNextAction` hook, which stays on while Guru
-    travel or any listener is. A spent Elixir is charged then, before he
-    speaks.
-  - Its hooks do nothing inside Seamless's isolated simulations. Its 6-byte
+    Guru travel journey), or a continued file's cooldowns (below).
+    `Game_ShowStartScreen`: everything forgotten. A mantra keeps a charged
+    Elixir (the bit) and loses a spent one.
+  - `IScripts_InvokeNextAction` (`$826E`, bank 12), observing only: at a
+    Guru's first action (a temple Guru's `SET_SPAWN_POINT`, which only their
+    seven scripts use, or `$A0BD`, Eolis's Guru's `CHECK_FOR_ITEM`), a spent
+    Elixir is charged, before he speaks. So any Guru conversation counts: the
+    plain mantra one with Save files and Guru travel off, and with them on,
+    whichever of Save files' choices is picked, or B. Their hooks at the same
+    address never redirect those two actions (Save files undoes the spawn
+    point's raise at the next action), so the three run in any order.
+  - Save files: the file in play keeps `recharge.wingboots` and
+    `recharge.hourglass` (the game's seconds until ready, 0 when ready; a run
+    not yet over counts as its whole cooldown) and `recharge.elixir` (`spent`,
+    or no field: the core `special_items` says whether it is charged). They
+    are written whenever the file is (`FAX_SAVE_WRITING`: a Guru's save, and
+    every spawn's, so a death writes them ready), read back on
+    `FAX_SAVE_CONTINUED`, and reset by `FAX_SAVE_NEW_GAME`. Continuing spawns
+    the hero through `Player_Spawn`, whose `Game_ClearTimedItems` would make
+    both ready, so the continued cooldowns wait for that call and are put
+    back there, before the spawn's save writes the file again.
+  - Its hooks do nothing inside Seamless's isolated simulations. Its 9-byte
     save-state record (a version, each timed item's running flag and cooldown,
-    the Elixir spent) is its whole state, and `fax_recharge_record_get/set`
-    hand save slots the same bytes.
+    the Elixir spent, and a continued file's cooldowns waiting for the spawn)
+    is its whole state while playing.
 - **Block** (`fax_block.c`). A bindable button (V, or B on a controller)
   raises whatever the shield slot holds, the Battle Helmet included. The host
   input callback clears the d-pad, A and B while it is up and a pass of
@@ -1564,7 +1583,9 @@ are kept, in place, through every save.
 | `selected_weapon` ... `selected_item` | `SelectedWeapon` ... `SelectedItem` | A number, or `none` |
 
 Other fields belong to features: Guru travel's `gurus` (the visited Gurus,
-town names), and `imported_mantra` on a file imported from a mantra. Missing
+town names), recharging items' `recharge.wingboots`, `recharge.hourglass` and
+`recharge.elixir` (see its entry in *Features and what they use*), and
+`imported_mantra` on a file imported from a mantra. Missing
 core fields take a new game's values. HP, MP and the timed items are not
 kept: continuing fills HP and MP and clears the timed items, as a mantra did.
 

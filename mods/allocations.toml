@@ -184,14 +184,18 @@ back in state_loaded, after Guru travel's record has restored its own."""
 
 [[shared_site]]
 addr = 0x826E   # IScripts_InvokeNextAction
-hooks = ["faxanadu.files.next-action", "faxanadu.travel.next-action"]
-why = """Neither handles the call; each only steers the interpreter by writing \
-IScriptOrCHRAddr. Neither redirects to an address the other acts on: with a \
+hooks = ["faxanadu.files.next-action", "faxanadu.recharge.guru", "faxanadu.travel.next-action"]
+why = """None handles the call; Save files and Guru travel only steer the \
+interpreter by writing IScriptOrCHRAddr. Neither redirects to an address the other acts on: with a \
 file in play Guru travel leaves the script's ends to Save files \
 (fax_files_guru_choice), Save files acts on the Gurus' own actions and its \
 own steps, and it undoes SET_SPAWN_POINT's raise at the next action rather \
 than skipping it, so Guru travel still meets the Guru there. So the two may \
-run in either order."""
+run in either order. Recharging items only reads: at a Guru's first action \
+(a temple Guru's SET_SPAWN_POINT, or $A0BD for Eolis's), which neither \
+redirects, it charges a spent Elixir (SpecialItems), which neither reads \
+there. So all three may run in any order, and each works with the others \
+off."""
 
 [[feature]]
 package = "faxanadu.enhancement.block"
@@ -243,13 +247,13 @@ package = "faxanadu.enhancement.recharging-items"
 source = "fax_recharge.c"
 hooks = "faxanadu.recharge."
 rom = []
-# Writes DurationWingBoots (through A at its STA), SpecialItems' Elixir bit
-# (when a Guru recharges it) and T:'s two tiles through the PPU buffer, as
-# UI_DrawTimeValue queues them. Hears Gurus through Guru travel's next-action
-# hook (fax_travel_listen), which runs while either feature is on: no second
-# hook at IScripts_InvokeNextAction ($826E). No read overrides. Keeps the
-# fields recharge.wingboots, recharge.hourglass and recharge.elixir in the
-# file in play (fax_save.h).
+# Writes DurationWingBoots (through A at its STA),
+# SpecialItems' Elixir bit (when a Guru recharges it) and T:'s two tiles
+# through the PPU buffer, as UI_DrawTimeValue queues them. Its own observing
+# site at IScripts_InvokeNextAction ($826E) hears a Guru's first action, with
+# Save files and Guru travel on or off. No read overrides. Keeps the fields
+# recharge.wingboots, recharge.hourglass and recharge.elixir in the file in
+# play (fax_save.h), when Save files has one.
 
 [[shared_site]]
 addr = 0xC4BF   # Player_ClearSelectedItem
@@ -257,7 +261,7 @@ hooks = ["faxanadu.reusable-tools.mattock", "faxanadu.recharge.keep"]
 why = """Each handles only the calls fax_items.h gives it, told by the JSR's \
 return address: reusable tools Player_UseMattock's, recharging items \
 Player_UseWingBoots' and Player_UseHourGlass's. A call one handles the other \
-would pass, so either may fire first."""
+would pass, so either may fire first, and each works with the other off."""
 
 [[shared_site]]
 addr = 0xC88F   # GameLoop_CountdownItems

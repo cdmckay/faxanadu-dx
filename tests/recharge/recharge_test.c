@@ -16,7 +16,11 @@ static CycModRegs cpu;
 static bool isolated;
 static int sound = -1;                        /* the last effect Sound_PlayEffect queued */
 
-uint8_t cyc_mod_peek(uint16_t addr) { return addr < 0x2000 ? ram[addr & 0x7FF] : 0; }
+static uint8_t bank12[0x4000];               /* $8000-$BFFF as bank 12 maps it: the Gurus' scripts */
+uint8_t cyc_mod_peek(uint16_t addr) {
+    if (addr < 0x2000) return ram[addr & 0x7FF];
+    return addr >= 0x8000 && addr < 0xC000 ? bank12[addr - 0x8000] : 0;
+}
 bool cyc_mod_poke(uint16_t addr, uint8_t value) {
     if (addr >= 0x2000) return false;
     ram[addr & 0x7FF] = value;
@@ -100,13 +104,6 @@ bool fax_save_set_int(const char *key, long value) {
     char v[24];
     snprintf(v, sizeof v, "%ld", value);
     return fax_save_set(key, v);
-}
-
-/* Guru travel's listener list (fax_travel.c). */
-static FaxGuruListener guru_listener;
-void fax_travel_listen(FaxGuruListener fn, bool on) {
-    if (on) guru_listener = fn;
-    else if (guru_listener == fn) guru_listener = NULL;
 }
 
 /* Hook sites at `addr`, as the scheduler runs them: enabled callbacks in
@@ -257,7 +254,31 @@ static void respawn(void) {
  * its JSR Game_SpawnInTemple. Nothing here for this feature. */
 static void journey(void) { nmi(); }
 /* A Guru's conversation begins (fax_travel.c tells its listeners). */
-static void meet_guru(unsigned temple) { if (guru_listener) guru_listener(temple); }
+/* IScripts_InvokeNextAction, about to run the action at `at`. */
+static void next_action(uint16_t at) {
+    ram[ISCRIPT_ADDR] = (uint8_t)at; ram[ISCRIPT_ADDR + 1] = (uint8_t)(at >> 8); ram[ISCRIPT_OFFSET] = 0;
+    CHECK(!fire(ISCRIPTS_INVOKE_NEXT_ACTION));   /* it only observes */
+}
+/* Talking to a Guru: his script's actions, as the interpreter reaches each.
+ * A temple Guru's opens with 06 temple (then the mantra or a new title, or
+ * Save files' or Guru travel's steps); Eolis's with CHECK_FOR_ITEM. */
+static void meet_guru(unsigned temple) {
+    static const uint16_t script = 0xA200, eolis = 0xA0BC;
+    if (temple == 0) {
+        bank12[eolis - 0x8000] = 0x81;                          /* the Guru's portrait */
+        static const uint8_t first[] = { 0x12, 0x80, 0xC6, 0xA0, 0x01, 0x2B, 0x10, 0x80, 0x00 };
+        memcpy(bank12 + (eolis + 1 - 0x8000), first, sizeof first);
+        ram[ISCRIPT_ADDR] = (uint8_t)eolis; ram[ISCRIPT_ADDR + 1] = (uint8_t)(eolis >> 8); ram[ISCRIPT_OFFSET] = 1;
+        CHECK(!fire(ISCRIPTS_INVOKE_NEXT_ACTION));
+        next_action(0xA0C6);                                    /* 03 2D, 00: he has the ring */
+        return;
+    }
+    const uint8_t bytes[] = { 0x06, (uint8_t)temple, 0x17, 0xFC, 0xA5 };
+    memcpy(bank12 + (script - 0x8000), bytes, sizeof bytes);
+    next_action(script);
+    next_action(script + 2);                                    /* 17: on to the mantra */
+    next_action(0xA5FC);
+}
 /* Player_PickUpWingBoots / Player_PickUpHourGlass: the script, then
  * JMP Player_PickUpItem with A the item, back to Player_HandleTouchItem. */
 static void pick_up(uint8_t item) {
@@ -318,14 +339,12 @@ static void check_t_blinks(int v) {
 
 /* ---- tests ---- */
 static void registers(void) {
-    CHECK(site_count == 9 && !strcmp(plugin_id, "faxanadu.recharge") && reset_cb == deactivate);
+    CHECK(site_count == 10 && !strcmp(plugin_id, "faxanadu.recharge") && reset_cb == deactivate);
     CHECK(save_get && save_set && save_validate);
     play(true);
     for (int i = 0; i < site_count; ++i) CHECK(sites[i].on);
-    CHECK(guru_listener == guru_met);
     play(false);
     for (int i = 0; i < site_count; ++i) CHECK(!sites[i].on);
-    CHECK(guru_listener == NULL);
 }
 
 static void flight_grows_with_title(void) {
@@ -495,6 +514,14 @@ static void elixir(void) {
     respawn();
     seconds(400);                           /* no timer, and no recharge on death */
     CHECK(charge.elixir_spent && !(ram[SPECIAL_ITEMS] & BIT_ELIXIR));
+    /* Anyone else's script, a Guru's later actions, or a bad spawn point: nothing. */
+    static const uint8_t npc[] = { 0x03, 0x40, 0x00, 0x06, 0x09, 0x00 };
+    memcpy(bank12 + (0xA300 - 0x8000), npc, sizeof npc);
+    next_action(0xA300);
+    next_action(0xA302);
+    next_action(0xA303);                    /* 06 with no temple 9 */
+    next_action(0xA0C6);
+    CHECK(charge.elixir_spent && guru_recharges == 0);
     meet_guru(0);                           /* Eolis's Guru, or any other */
     CHECK(!charge.elixir_spent && guru_recharges == 1 && ram[SPECIAL_ITEMS] == (BIT_ELIXIR | 0x80));
     hurt();

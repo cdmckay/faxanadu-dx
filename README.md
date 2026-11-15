@@ -108,7 +108,8 @@ seconds. While one recharges, T: on the status bar blinks the seconds left,
 and using it does nothing. Dying makes both ready. The Elixir still revives
 you, then stays with you, spent, until you talk to a Guru; the menu's Player
 page shows it only while it is charged. Finding one you already own recharges
-it, and a shop sells you an Elixir only to charge a spent one.
+it, and a shop sells you an Elixir only to charge a spent one. Your save file
+keeps the cooldowns and whether the Elixir is spent.
 
 **Falling pose** is on by default (Mods to turn it off). Walking off a ledge,
 the hero used to fall standing or mid-step, as if walking on air. Now he shows

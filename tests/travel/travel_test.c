@@ -17,8 +17,8 @@ static uint8_t over[16 * 16384];
 static bool overridden[16 * 16384];
 static CycModRegs cpu = { .s = 0xFD };
 static int commits, commit_temple = -1;
-static struct { const char *id; int on; } hook_state[8];   /* each hook site's enabled flag */
-static unsigned hook_states;
+static const char *hooks_on[8];
+static unsigned hooks_on_n;
 
 static unsigned bank_at(uint16_t addr) { return addr >= 0xB400 && addr < 0xC000 ? 13 : 12; }   /* the slot, else scripts */
 uint8_t cyc_mod_peek(uint16_t addr) {
@@ -64,10 +64,8 @@ void fax_save_gurus_format(uint8_t visited, char out[FAX_SAVE_VALUE]) {
 bool fax_save_listen(FaxSaveListener listener) { save_listener = listener; return true; }
 int nes_mod_register_function_entry_plugin(const char *id, uint16_t addr, NESModFunctionEntryCallback cb) { (void)id; (void)addr; (void)cb; return 1; }
 int nes_mod_set_function_hook_enabled(const char *id, int on) {
-    unsigned i = 0;
-    while (i < hook_states && strcmp(hook_state[i].id, id)) ++i;
-    if (i == hook_states) { if (i == 8) return 0; hook_state[hook_states++].id = id; }
-    hook_state[i].on = on;
+    if (on && hooks_on_n < 8) hooks_on[hooks_on_n++] = id;
+    if (!on) hooks_on_n = 0;
     return 1;
 }
 int nes_mod_register_reset_callback(NESModActivationCallback cb) { (void)cb; return 1; }
@@ -75,16 +73,6 @@ int nes_mod_register_activation_plugin(const char *id, NESModActivationCallback 
 int nes_mod_register_savestate_hook(const char *id, NESModSavestateGet get, NESModSavestateSet set) { (void)id; (void)get; (void)set; return 1; }
 int nes_mod_register_savestate_validator(const char *id, NESModSavestateValidate v) { (void)id; (void)v; return 1; }
 void nes_mod_set_local_only(const char *name, int required) { (void)name; (void)required; }
-
-static bool hook_on(const char *id) {
-    for (unsigned i = 0; i < hook_states; ++i) if (!strcmp(hook_state[i].id, id)) return hook_state[i].on;
-    return false;
-}
-static unsigned hooks_on(void) {
-    unsigned n = 0;
-    for (unsigned i = 0; i < hook_states; ++i) n += hook_state[i].on != 0;
-    return n;
-}
 
 static void put(uint16_t addr, const uint8_t *bytes, size_t n) { memcpy(rom + prg(12, addr), bytes, n); }
 static void stock(void) {
@@ -321,57 +309,8 @@ static void refuses_other_layouts(void) {
     deactivate();                                    /* back to the stock image */
     rom[prg(12, ASK)] = 0x00;                        /* someone else's bytes where our steps go */
     activate(); fax_travel_step();
-    CHECK(failed && !served && hooks_on() == 0);
+    CHECK(failed && !served && hooks_on_n == 0);
     for (unsigned i = 0; i < 7; ++i) CHECK(!overridden[prg(12, (uint16_t)(SAY + i))]);
-}
-
-/* Other features hear when a Guru's conversation begins (fax_travel_listen),
- * with Guru travel on or off. */
-static unsigned heard[8], heard_n;
-static void hear(unsigned temple) { if (heard_n < 8) heard[heard_n++] = temple; }
-static void hear_too(unsigned temple) { (void)temple; ++heard_n; }
-static void guru_listeners(void) {
-    static const uint8_t to_has_ring[] = { 0x17, 0xC6, 0xA0 };   /* stands in for CHECK_FOR_ITEM Ring of Elf */
-    stock(); visited = 0x2B;
-    put(EOLIS_GURU_FIRST, to_has_ring, sizeof to_has_ring);
-    fax_travel_listen(hear, true);
-    heard_n = 0;
-    guru(5, 5, false, "B");                          /* at his SET_SPAWN_POINT, once */
-    CHECK(heard_n == 1 && heard[0] == 5);
-    EXPECT("msg 22", "mantra", INTRO, OFFER_LINE, "end");
-    heard_n = 0;
-    visited = 0x01;                                   /* nowhere to offer: he only talks */
-    run(EOLIS_GURU_FIRST, 0, "");                     /* Eolis's Guru, at his first action */
-    CHECK(heard_n == 1 && heard[0] == 0);
-    heard_n = 0;
-    static const uint8_t npc[] = { 0x03, 0x40, 0x00 };
-    put(0xA100, npc, sizeof npc);
-    run(0xA100, 7, "");                               /* anyone else: nothing */
-    run(0xA0C6, 0, "");                               /* nor Eolis's Guru's later lines */
-    CHECK(heard_n == 0);
-    /* Guru travel off: its interpreter hook stays on for the listener, and
-     * the Guru only talks. */
-    deactivate();
-    CHECK(hook_on("faxanadu.travel.next-action") && hooks_on() == 1);
-    guru(2, 2, false, "");
-    EXPECT("msg 22", "mantra", "end");
-    CHECK(heard_n == 1 && heard[0] == 2 && dest == -1);
-    /* Two listeners both hear; a listener added twice hears once. */
-    fax_travel_listen(hear_too, true);
-    fax_travel_listen(hear_too, true);
-    heard_n = 0;
-    guru(1, 1, false, "");
-    CHECK(heard_n == 2);
-    fax_travel_listen(hear_too, false);
-    fax_travel_listen(hear, false);
-    CHECK(!hook_on("faxanadu.travel.next-action") && hooks_on() == 0);
-    activate();                                       /* Guru travel on again: its hooks, no listener */
-    CHECK(hook_on("faxanadu.travel.next-action") && hooks_on() == 4);
-    heard_n = 0;
-    guru(1, 1, false, "B");
-    CHECK(heard_n == 0);
-    deactivate();
-    CHECK(hooks_on() == 0);
 }
 
 int main(void) {
@@ -383,7 +322,6 @@ int main(void) {
     journey_path();
     resume();
     refuses_other_layouts();
-    guru_listeners();
     printf("travel_test: %u checks passed\n", checks);
     return 0;
 }
