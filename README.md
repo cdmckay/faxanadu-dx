@@ -44,6 +44,11 @@ visited: A to go, B to hear the next town. HP, MP, gold and your spawn point
 are kept. The Gurus you have met are saved in `faxanadu_gurus.txt` next to the
 game.
 
+**Death keeps gold** is on by default (Mods to turn it off). When you die, the
+Guru brings you back with all your gold and experience, instead of your
+title's starting amounts. The rest of death is as before: full HP and MP at
+your furthest temple, and the timed items are gone.
+
 Optional **Seamless** appears first in Mods, marked **Experimental** and
 disabled by default. It joins connected rooms, advances neighboring actors,
 and adapts the world view to your window with Fit to screen. Mouse wheel

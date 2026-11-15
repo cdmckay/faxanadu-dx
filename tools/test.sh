@@ -34,6 +34,9 @@ cmake --build "$OUT/travel" -j"$JOBS" >/dev/null
 "$OUT/travel/travel_test"
 cmake -S tests/world -B "$OUT/world" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/world" -j"$JOBS" >/dev/null && echo "fax_world.c compiles without SDL"
+cmake -S tests/death -B "$OUT/death" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/death" -j"$JOBS" >/dev/null
+"$OUT/death/death_test"
 
 echo "== game build"
 [ -f build-cycle/CMakeCache.txt ] || cmake -S . -B build-cycle -DCMAKE_BUILD_TYPE=Release -DNESRECOMP_ROM="$ROM" >/dev/null
@@ -49,10 +52,15 @@ e2e() {  # NAME [ARGS...]: one run, in its own folder, on a free port
 }
 e2e travel-e2e & default=$!
 e2e travel-e2e-seamless --game-arg=--world-view=seamless & seamless=$!
+echo "== end to end: death keeps gold, alongside them"
+python3 tests/death/death_keeps_gold.py --build build-cycle --rom "$ROM" --out "$OUT/death-e2e" \
+  > "$OUT/death-e2e.log" 2>&1 & death=$!
 failed=0
 wait "$default" || failed=1
 sed 's/^/[default]  /' "$OUT/travel-e2e.log"
 wait "$seamless" || failed=1
 sed 's/^/[seamless] /' "$OUT/travel-e2e-seamless.log"
-[ "$failed" = 0 ] || { echo "end-to-end tests failed; screenshots in $OUT/travel-e2e*/" >&2; exit 1; }
+wait "$death" || failed=1
+sed 's/^/[death]    /' "$OUT/death-e2e.log"
+[ "$failed" = 0 ] || { echo "end-to-end tests failed; screenshots in $OUT/*-e2e*/" >&2; exit 1; }
 echo "all checks passed"
