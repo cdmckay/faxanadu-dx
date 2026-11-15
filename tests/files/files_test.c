@@ -647,7 +647,23 @@ static void choices(void) {
     EXPECT("msg 22", QUESTION, "end");
     CHECK(ram[TEMPLE_SPAWN_POINT] == 1 && !exists("faxanadu_file1.txt"));
 
-    /* After a new title, and at Eolis's Guru with the Ring. */
+    /* After a new title, and at Eolis's Guru with the Ring. The new title's
+     * line scrolled the box (5 lines): each of our lines keeps its rows. */
+    in_play(); travel_offers = true;
+    ram[TEXTBOX_LINE_SCROLL] = 1;
+    CHECK(scroll_hook(CLEAR_SCROLLED) == 0 && ram[TEXTBOX_LINE_SCROLL] == 1);   /* not ours: left alone */
+    ram[TEXTBOX_LINE_SCROLL] = 0;
+    CHECK(scroll_hook(CLEAR_SCROLLED) == 0 && ram[TEXTBOX_LINE_SCROLL] == 0);
+    ram[TEXTBOX_LINE_SCROLL] = 1;
+    ram[AREA_CURRENT_AREA] = BUILDINGS; ram[AREA_CURRENT_SCREEN] = temple_screen[4];
+    jump(GURU_NEW_RANK_END);
+    next_action_hook(0x826E);
+    CHECK(keep_rows && rows == 1);
+    ram[TEXTBOX_LINE_SCROLL] = 0;                   /* Messages_Load zeroes it for the menu ... */
+    CHECK(scroll_hook(CLEAR_SCROLLED) == 0 && ram[TEXTBOX_LINE_SCROLL] == 1);   /* ... and it is put back */
+    ram[TEXTBOX_CLOSED] = 1;
+    fax_files_frame_end();
+    CHECK(!keep_rows && guru == GURU_IDLE);
     in_play(); travel_offers = true;
     temple_guru(4, true, "0");
     EXPECT("msg 23", MENU, SAVED, "end");

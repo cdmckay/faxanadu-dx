@@ -57,6 +57,7 @@
 #define ISCRIPT_ADDR        0x00DBu   /* IScriptOrCHRAddr; the next action is at it + IScriptOffset */
 #define ISCRIPT_OFFSET      0x00DDu
 #define TEXTBOX_CLOSED      0x020Cu   /* 0 while a text box or the menu is open */
+#define TEXTBOX_LINE_SCROLL 0x021Au   /* TextBox_LineScrollOffset: the CHR line block of the box's top row */
 #define EXPERIENCE          0x0390u
 #define GOLD                0x0392u
 #define TEMPLE_SPAWN_POINT  0x0439u   /* with Save files: the temple of the Guru last saved with */
@@ -80,6 +81,7 @@
 #define START_SPAWN       0xFC95u   /* Game_ShowStartScreen's @_afterSetExpGoldFarJump: JMP Player_Spawn */
 #define SPAWNED           0xDB20u   /* Player_Spawn, after JSR Game_SpawnInTemple: JSR Game_SetupEnterBuilding */
 #define SOUND_PLAY_EFFECT 0xD0E4u   /* Sound_PlayEffect: A = the effect */
+#define CLEAR_SCROLLED    0xF439u   /* TextBox_ClearPasswordSize (from Messages_Load), after STA TextBox_LineScrollOffset */
 /* Joypad bits */
 enum { BUTTON_A = 0x80, BUTTON_B = 0x40, BUTTON_SELECT = 0x20, BUTTON_START = 0x10, BUTTON_UP = 0x08, BUTTON_DOWN = 0x04 };
 enum { SLOT_LEN = 48, BUILDINGS = 4, SOUND_CURSOR = 0x0B };
@@ -127,6 +129,8 @@ static uint16_t say_step;      /* the step that shows the saved line: Guru trave
 static bool held;              /* SET_SPAWN_POINT is running: put the spawn point back after it */
 static uint8_t held_spawn;
 static bool stepped, own_say, menu_message;   /* overrides of ours that are set */
+static bool keep_rows;         /* our lines are in a box that may have scrolled: keep its rows */
+static uint8_t rows;           /* TextBox_LineScrollOffset as the box's last line left it */
 static unsigned saves, save_failures, imports;
 static int last_spawn = -1;
 static char title_names[16][10];
@@ -546,6 +550,17 @@ static void fail(const char *why) {
     guru = GURU_IDLE;
 }
 
+/* TextBox_ClearPasswordSize, as Messages_Load starts each message, has just
+ * zeroed TextBox_LineScrollOffset. The box's rows are not laid out again
+ * between two messages, so after one that scrolled (a new title's, 5 lines)
+ * the next would show its lines rotated. While our lines (and Guru travel's
+ * after them) are in the box, put back the offset the last line left. */
+static int scroll_hook(uint16_t addr) {
+    (void)addr;
+    if (enabled && keep_rows) cyc_mod_poke(TEXTBOX_LINE_SCROLL, rows);
+    return 0;
+}
+
 /* IScripts_InvokeNextAction: where a Guru would show the mantra, offer the
  * choice; then save, or hand over to Guru travel. Works whichever of this and
  * Guru travel's hook at the same address runs first: neither redirects at an
@@ -608,6 +623,8 @@ static int next_action_hook(uint16_t addr) {
         return 0;
     }
     guru = (uint8_t)(as_menu ? GURU_MENU : GURU_QUESTION);
+    keep_rows = true;
+    rows = q(TEXTBOX_LINE_SCROLL) & 3;
     go(STEP);
     return 0;
 }
@@ -662,6 +679,7 @@ void fax_files_power_on(void) {
     furthest = 0;
     guru = GURU_IDLE;
     held = false;
+    keep_rows = false;
     menu = (Menu){ PICK, 0, 0 };
     fax_save_end();
 }
@@ -669,24 +687,26 @@ void fax_files_frame_end(void) {
     if (seen < 255) ++seen;
     if (title_up && seen > 30) title_up = false;   /* the title went without a choice (a state was loaded) */
     if (menu_message) serve_menu_message(false);   /* the menu has read its message ID */
-    if (guru && q(TEXTBOX_CLOSED)) guru = GURU_IDLE;   /* B left the Guru */
+    if (q(TEXTBOX_CLOSED)) { guru = GURU_IDLE; keep_rows = false; }   /* the box closed: B left, or it ended */
+    else if (keep_rows) rows = q(TEXTBOX_LINE_SCROLL) & 3;
 }
 
 /* Save states carry the file in play, the file select and the Guru's choice,
  * so loading one resumes them as they were. The file's fields are reread. */
-enum { RECORD = 12, VERSION = 1 };
+enum { RECORD = 14, VERSION = 1 };
 static int state_get(uint8_t *buf, int cap) {
     if (cap < RECORD) return -1;
     const uint8_t rec[RECORD] = { VERSION, (uint8_t)fax_save_file(), title_up, menu.mode, menu.cursor, menu.target,
                                   (uint8_t)continuing, furthest, guru, seen, (uint8_t)say_step,
-                                  (uint8_t)(say_step >> 8) };
+                                  (uint8_t)(say_step >> 8), keep_rows, rows };
     memcpy(buf, rec, RECORD);
     return RECORD;
 }
 static int state_validate(const uint8_t *buf, int len) {
     return len == 0 || (len == RECORD && buf[0] == VERSION && buf[1] <= FAX_SAVE_FILES && buf[2] <= 1 &&
                         buf[3] <= CONFIRM && buf[4] <= ERASE_ROW && buf[5] < FAX_SAVE_FILES &&
-                        buf[6] <= FAX_SAVE_FILES && buf[7] < FAX_SAVE_TEMPLES && buf[8] < GURU_PHASES);
+                        buf[6] <= FAX_SAVE_FILES && buf[7] < FAX_SAVE_TEMPLES && buf[8] < GURU_PHASES &&
+                        buf[12] <= 1 && buf[13] <= 3);
 }
 static uint8_t loaded_file;
 static int state_set(const uint8_t *buf, int len) {
@@ -700,6 +720,8 @@ static int state_set(const uint8_t *buf, int len) {
     guru = buf[8];
     seen = buf[9];
     say_step = (uint16_t)(buf[10] | buf[11] << 8);
+    keep_rows = buf[12];
+    rows = buf[13];
     held = false;
     return 1;
 }
@@ -761,7 +783,7 @@ void fax_files_tcp_setup(void) {}
 
 static const char *const hook_ids[] = {
     "faxanadu.files.title", "faxanadu.files.mantra-screen", "faxanadu.files.start-spawn", "faxanadu.files.spawned",
-    "faxanadu.files.next-action" };
+    "faxanadu.files.next-action", "faxanadu.files.scroll" };
 static void hooks(bool on) {
     for (unsigned i = 0; i < sizeof hook_ids / sizeof hook_ids[0]; ++i) nes_mod_set_function_hook_enabled(hook_ids[i], on);
 }
@@ -785,6 +807,7 @@ NES_MOD_CONSTRUCTOR(register_files) {
         !nes_mod_register_function_entry_plugin("faxanadu.files.start-spawn", START_SPAWN, start_spawn_hook) ||
         !nes_mod_register_function_entry_plugin("faxanadu.files.spawned", SPAWNED, spawned_hook) ||
         !nes_mod_register_function_entry_plugin("faxanadu.files.next-action", 0x826e, next_action_hook) ||
+        !nes_mod_register_function_entry_plugin("faxanadu.files.scroll", CLEAR_SCROLLED, scroll_hook) ||
         !nes_mod_register_reset_callback(deactivate) || !nes_mod_register_activation_plugin("faxanadu.save-files", activate) ||
         !nes_mod_register_savestate_hook("faxanadu.files", state_get, state_set) ||
         !nes_mod_register_savestate_validator("faxanadu.files", state_validate)) abort();

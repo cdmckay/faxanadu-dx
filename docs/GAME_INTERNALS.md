@@ -233,6 +233,17 @@ faxanatools' `messages.py` decodes and encodes them; `fax_travel.c`'s
   `MessageID` alone.
 - Between two messages the box is wiped and refilled. A screenshot taken then
   shows half of each.
+- **A message after one that scrolled shows rotated.** The box's rows show
+  CHR line blocks from `TextBox_LineScrollOffset` (`$021A`) on; a scroll
+  lays the rows out again and advances it. `Messages_Load` falls into
+  `TextBox_ClearPasswordSize` (`$F434`), which zeroes the offset, but nothing
+  lays the rows out again until a new box opens
+  (`IScripts_FillPlaceholderText`). So after a message of more than 4 lines
+  (a new title's, `$23`, has 5), the next message in the same box starts on
+  the wrong row: "journey. / Send me to / another Guru. / Remember my".
+  Putting the offset back right after the zeroing (`$F439`) fixes it, as
+  Save files does for its lines and Guru travel's after them. Guru travel's
+  intro after a new title, with no save file in play, still shows rotated.
 - The font is one bit a pixel in bank 13 at `TILE_GLYPHS_START` (`$8000`),
   8 bytes a character from `$20` to `$7F` (`A` is at `$8108`). The glyph data
   ends where the messages begin (`$8300`). `TextBox_WriteChar` copies a glyph
@@ -1302,6 +1313,10 @@ file in play, the interpreter goes to a step in unused ROM (bank 12,
 
 Without a file in play (Save files off, or turned on in the middle of a game)
 the Gurus show the mantra as before.
+
+Its lines come after the Guru's own, in the same box, and a new title's line
+scrolls: while they (and Guru travel's after them) are up, the hook at
+`$F439` keeps the box's line scroll offset (see The text box).
 
 **Saving on respawn.** The hook at `$DB20` (after `Game_SpawnInTemple` in
 `Player_Spawn`) saves the file at every respawn: after a death, a Guru travel
