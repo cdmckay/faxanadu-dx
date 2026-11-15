@@ -175,6 +175,13 @@ What a feature can rely on, and the traps:
   stack first to return somewhere else. That's how Guru travel enters the
   respawn path. When a site handles, later sites at the same address are
   skipped that time, so declare shared addresses in `mods/allocations.toml`.
+- A hook site can be **any instruction**, not only a routine's entry. Each
+  instruction is its own label in the generated code, so a site where a
+  branch and a fall-through meet fires on both paths (the Pendant fix's
+  does). Return 0 from such a site: nonzero would return from the routine.
+- `cyc_mod_peek` reads ROM as the bank is mapped now, **without** read
+  overrides. A feature that reads a table another feature serves through an
+  override sees the stock byte.
 - `cyc_mod_call_commit` runs a routine that only touches memory, at once,
   and keeps its effects.
 - Mods activate **before** the cart loads. Set up in the extras' `power_on`,
@@ -185,6 +192,11 @@ What a feature can rely on, and the traps:
   `dpleft`). `action` takes NES names (`a`, `left`, `up`). Durations are in
   frames, so a test that waits on frames and game state, never the clock,
   runs the same uncapped.
+- TCP `key` (an SDL key name) and `pad` reach the game as window events, as
+  a real key or controller does, so the host extras' `event` sees them. The
+  window keeps `config.ini` beside the executable and writes it at first
+  start; its `[Game]` keys go to the host extras' `load_setting`, and
+  `save_settings` writes them back whenever the window saves.
 - `--uncapped` (with `--exit-after N`) runs the window as fast as it can:
   about 290 fps, 5x real time. The cycle-accurate machine is the limit; even
   headless runs at about 370 fps.
@@ -246,6 +258,120 @@ and Y, and RTSes into the routine. So at the entry of a far-called routine:
 `Password_EnteredCharsLength` (`$0666`) counts the characters typed. The last
 row (5) holds →, ←, DEL and END at columns 0-3, and Up from row 0 wraps to it.
 A on END (row 5, column 3) checks the mantra and continues.
+
+## Weapon damage (bank 14)
+
+The sprite loop calls `Player_HitSpriteWithWeapon` (`$8804`) for each live
+sprite every frame, except while the sprite's hit counter counts down. It
+lands a hit while a swing is on animation frame 1 or 2, on a visible enemy in
+reach (`Sprites_IsSpriteOutOfWeaponRange`). A hit builds its damage in
+`Temp_00` (`$00`):
+
+| Address | Code | Does |
+|---|---|---|
+| `$886C` | `LDY Player_CurWeapon`, `LDA WEAPON_STRENGTHS,Y`, `STA Temp_00` | The weapon's strength, from `$B7A5` |
+| `$8874` | `LDA SpecialItems`, `AND #$02`, `BNE @_checkGlove` | **The Pendant Bug**: the branch skips the bonus *with* the Pendant |
+| `$887B` | `LDA Temp_00`, `LSR`, `LSR`, `CLC`, `ADC Temp_00`, `STA Temp_00` | +25%, rounded down: without the Pendant |
+| `$8884` | `@_checkGlove`: `LDA DurationGlove`, `BMI @_updateSpriteHP` | Both paths meet here |
+| `$8889` | `LDA Temp_00`, `CLC`, `ADC WEAPON_TO_GLOVE_STRENGTH,Y`, `STA Temp_00` | The Glove's bonus, from `$88C7`, while it runs |
+| `$8891` | `LDA CurrentSprites_HP,X`, `SEC`, `SBC Temp_00`, `STA`, `BCS @_return` | A borrow kills the enemy. Damage equal to its HP leaves it alive at 0 |
+
+So a hit does the weapon's base strength, plus a quarter of it, plus the
+Glove's bonus while the Glove runs:
+
+| Weapon | Base | Stock, no Pendant | Stock, Pendant | Glove adds |
+|---|---|---|---|---|
+| Hand Dagger | 4 | 5 | 4 | 2 |
+| Long Sword | 8 | 10 | 8 | 4 |
+| Giant Blade | 12 | 15 | 12 | 8 |
+| Dragon Slayer | 16 | 20 | 16 | 10 |
+
+The designers meant the quarter for the Pendant. With the **Pendant fix**,
+a hit does the base without it and the stock "no Pendant" damage with it,
+and the Glove adds its bonus after either.
+
+- From the branch to `@_checkGlove` only A, the flags and `Temp_00` change,
+  and only `Temp_00` matters after: `LDA DurationGlove` reloads A and N/Z, C
+  is set (`CLC`, `SEC`) before anything reads it, and nothing reads V. Y is
+  still `Player_CurWeapon`, and X the sprite being hit.
+- `WEAPON_STRENGTHS` is read only here. Magic damage is another routine
+  (`Player_HitEnemyWithMagic`), where the Magical Rod adds 50%.
+
+| Address | Name | Notes |
+|---|---|---|
+| `$00A4` | `Player_Flags` | Bit 7 set while a swing lasts. B (a new press) starts one |
+| `$00AE` | `Player_AttackPhaseAnimFrame` | 0, 1, 2, and stays 2 after the swing. Test `Player_Flags` instead |
+| `$00BA`, `$00C2` | `CurrentSprites_XPos_Full`, `CurrentSprites_YPos` | 8 sprite slots each, like the rows below |
+| `$02CC` | `CurrentSprites_Entities` | `$FF` for an empty slot |
+| `$0344` | `CurrentSprites_HP` | Set from `SPRITE_ENTITIES_HP` (`$B5A9`, by entity) when the sprite loads |
+| `$034C` | `CurrentSprites_HitCounter` | 8 on a hit; no new hit until it counts down |
+| `$03BD`, `$03C8` | `SelectedWeapon`, `Player_CurWeapon` | 0 Hand Dagger to 3 Dragon Slayer. `Player_CurWeapon` is `$FF` in buildings |
+| `$0428` | `DurationGlove` | `$FF` when not running |
+| `$042C` | `SpecialItems` | Bits: `$01` Black Onyx, `$02` Pendant, `$04` Magical Rod, `$08` Elixir, `$10` Demon's Ring, `$20` Ring of Dworf, `$40` Ring of Ruby, `$80` Ring of Elf |
+
+Ripasheiku drops the Pendant (`SpriteBehavior_PendantDroppedFromRipasheiku`,
+which removes the drop if the bit is already set).
+
+**Eolis, for tests.** A new game starts on Eolis (area 0) screen 0, outside
+the gate, with the intro's trigger (`SPRITE_TRIGGER_INTRO`, `$4F`) in sprite
+slot 7: walking right sets it off. The gate is a door (`EOLIS_DOOR_LOCATIONS`,
+block `$9C`); Up from x=195 goes into the town, screen 1, at x=144. The
+screens run 7-6-5-4-3-2-1-8 from left to right (`EOLIS_SCROLL_DATA`, bank 3;
+screen 0 has no neighbours). Screens 4 and 5 each have two Zozura (`$47`,
+9 HP) crawling right along the ground, and screen 8 a Monodron (`$2A`,
+10 HP). Walking left from the town, the hero comes onto screen 4 at x=240.
+The stock Hand Dagger passes over a Zozura; the swords hit one about 30
+pixels left of the hero (his x minus its x). A Zozura that reaches a hero at
+the screen's right edge knocks him onto the next screen.
+
+## Input and casting
+
+| Address | Name | Notes |
+|---|---|---|
+| `$0016` | `Joy1_ButtonMask` | Buttons held. The bits of `Joy1_ChangedButtonMask`, plus Down=`$04`, Left=`$02`, Right=`$01` |
+| `$0018` | `Joy1_PrevButtonMask` | The held mask at the read before. While the screen scrolls, `Game_UpdatePlayerOnScroll` copies it back into `Joy1_ButtonMask` |
+| `$00A4` | `Player_Flags` | `$80` attacking, `$40` facing right, `$20` moving, `$10` climbing, `$08` a ladder to climb, `$04` falling, `$02` holding to climb, `$01` jumping |
+| `$02B3` | `CastMagic_Type` | The spell on screen, `$FF` for none. Each spell's handler takes it back to `$FF` when it hits or leaves |
+| `$039A` | `Player_MP` | At most 80 |
+| `$03A9-$03AC` | `MagicInventory` | Spells owned. `NumberOfMagicSpells` (`$03C5`) counts them |
+| `$03C0` | `SelectedMagic` | 0 Deluge, 1 Thunder, 2 Fire, 3 Death, 4 Tilte; `$FF` none |
+
+- **The pad is read once a frame, in the NMI.** `Input_HandleOnInterrupt`
+  copies `Joy1_ButtonMask` to `Joy1_PrevButtonMask`, reads the pad into
+  `Joy1_ButtonMask`, and sets `Joy1_ChangedButtonMask` to the buttons held now
+  and not before. Each pass of the main loop starts with `WaitForNextFrame`,
+  which waits for a fresh NMI, so a newly pressed button is seen by one pass.
+  On a lag frame, a read the loop never waited for is replaced unseen, and a
+  button new in it is lost. A cycle-host frame ends at the start of VBlank
+  (scanline 241, dot 1), so each frame begins with that read.
+- **Who reads the masks, in `Game_MainLoop`'s order:**
+  - `GameLoop_UpdatePlayer` (`$E0CA`): `Player_CheckHandleAttack` swings the
+    sword on a new B, unless climbing. `Player_CheckHandleEnterDoor` goes
+    through a door on a new Up.
+  - `Player_CastMagic` (`$BA5B`, bank 14, `JSR` at `$DB5F`): see below.
+  - `GameLoop_CheckUseCurrentItem` (`$C478`, `JSR` at `$DB62`): Down held and
+    a new B use the selected item, unless jumping or falling.
+  - `Sprites_UpdateAll`: touching an NPC, `Player_CheckHandlePressUpOnNPC`
+    runs its script when the changed mask is exactly Up (`$08`).
+  - `GameLoop_CheckShowPlayerMenu` (Select) and `GameLoop_CheckPauseGame`
+    (Start).
+- **Casting.** `Player_CastMagic` runs the spell's handler instead while one
+  is on screen (`CastMagic_Type` positive), and does nothing while climbing
+  (`Player_IsClimbing`: `Player_Flags` `$08` and `$10`). Otherwise it casts
+  when Up is held and B newly pressed: `SelectedMagic` below 5, and
+  `Player_ReduceMP` (fixed bank) takes `MAGIC_COSTS` (`$B7A9`, bank 14: 2, 4,
+  6, 10, 16) or refuses. The spell starts from the hero and flies the way he
+  faces.
+- **Up+B is clumsy by design.** The sword swings on the same new B, so the
+  stock combo always swings and casts. At a door the new Up goes through it
+  first, in `GameLoop_UpdatePlayer`, and `Game_SetupEnterScreen` waits for the
+  next frame, whose read no longer has B new: Up+B at a door enters it and
+  casts nothing. Next to an NPC, a new Up alone talks.
+- `EndGame_MainLoop` calls `Player_CastMagic` too (`JSR` at `$DC0B`), with the
+  buttons `EndGame_MovePlayerTowardKing` plays.
+- On Eolis screen 0 (see *Eolis, for tests*), the intro's trigger stops the
+  hero at x=53 for a long monologue that A pages through. Up goes through the
+  gate from anywhere in x=188-199.
 
 ## Items and the inventory
 
@@ -399,7 +525,7 @@ Mattock breaks nothing a fetched one could not.
 - **For tests:** set `Area_ScreenToTheRight` in a save state and walk off the
   right edge to reach any screen of the same area the game's own way.
   `CurrentSprites_Entities` (`$02CC`, 8 slots) set to `$FF` clears a screen's
-  enemies.
+  enemies (see *Eolis, for tests*).
 
 ## Features and what they use
 
@@ -418,6 +544,20 @@ addresses, and `tools/check_allocations.py` enforces it.
   `Player_SetInitialExpAndGold` and returns at once when the far call's resume
   address is `Player_HandleDeath`'s, and leaves the start screen's call alone.
   It keeps no state.
+- **Pendant fix** (`fax_pendant.c`). Weapons hit a quarter harder only with
+  the Pendant. It hooks `@_checkGlove` (`$8884`, bank 14), where both sides
+  of the reversed branch meet, and sets `Temp_00` from
+  `WEAPON_STRENGTHS[Y]` and the Pendant bit before the Glove adds its bonus.
+  It keeps no state.
+- **Magic button** (`fax_magic.c`). A bindable button (C, or Y on a
+  controller) casts the selected spell. On a press, it ORs Up held and B new
+  into the joypad masks at `Player_CastMagic`'s entry, when `Game_MainLoop`
+  called it, and puts the real masks back at `GameLoop_CheckUseCurrentItem`'s
+  entry, so no door, sword, item, NPC or next pad read sees them. If the NMI
+  read the pad in between (a lag frame), it recomputes the changed mask
+  against the real one. A press lasts one frame, as a pad read does. The
+  bindings are `MagicKey` and `MagicButton` in `config.ini` [Game], in the
+  host's own key and button names.
 - **Auto keys** (`fax_keys.c`). Up at a locked door opens it with its key from
   anywhere in the inventory. At `Game_RunDoorRequirementHandler` it lends the
   key to `SelectedItem` when the key is listed but not selected, so the game's
