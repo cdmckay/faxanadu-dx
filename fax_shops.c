@@ -16,6 +16,9 @@
  * what the hero already has, his room and his gold, add and remove the item,
  * count the gold up or down, and say "You can't carry any more." or "This is
  * not enough Golds.". The ROM is never changed and no read override is used.
+ * Its hook at IScripts_InvokeNextAction shares the address with Guru travel's
+ * and Save files'; it acts only on a script with the shops' layout and its two
+ * list steps, so the three may run in either order (mods/allocations.toml).
  *
  * - Up on the shopkeeper: at the script's first action (IScripts_InvokeNextAction
  *   with IScriptOffset 1) the script goes to BUY instead of the greeting, and
