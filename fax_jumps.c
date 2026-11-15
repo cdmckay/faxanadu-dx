@@ -21,8 +21,11 @@
  *   been pressed then.
  *
  * Neither applies with the Wing Boots running (A flies), in knockback, on a
- * ladder, or across a screen change. See docs/GAME_INTERNALS.md. */
+ * ladder, across a screen change, or while Block is up: Block takes A away
+ * (fax_block_input), and a press kept from just before it went up would
+ * hand A back on landing. See docs/GAME_INTERNALS.md. */
 #include "fax_jumps.h"
+#include "fax_block.h"
 #include "cyc_mod.h"
 #include "mod_runtime.h"
 #include "mod_function_hooks.h"
@@ -76,7 +79,7 @@ static uint8_t ledge_x, ledge_y;   /* where he stood */
 static bool buffered;              /* A pressed in the air, not yet used */
 static uint32_t press_tick;
 static uint8_t area = 0xFF, screen = 0xFF;
-static unsigned coyote_jumps, buffered_jumps;
+static unsigned coyote_jumps, buffered_jumps, blocked_presses;
 
 static uint8_t peek(uint16_t addr) { return cyc_mod_peek(addr); }
 
@@ -110,6 +113,10 @@ static int tick_hook(uint16_t addr) {
         screen = s;
     }
     if (!reached_last) armed = false;   /* he jumped or climbed in between */
+    if (fax_block_raised()) {             /* nothing kept while Block is up */
+        if (buffered) ++blocked_presses;
+        armed = buffered = false;
+    }
     if ((peek(JOY1_CHANGED) & A_BUTTON) && (flags & (JUMPING | FALLING_OFF)) && !(status & (WING_BOOTS | KNOCKBACK)) &&
         !(flags & CLIMBING)) {
         buffered = true;
@@ -219,7 +226,7 @@ static void hooks(int on) {
 static void deactivate(void) {
     enabled = false;
     clear();
-    coyote_jumps = buffered_jumps = 0;
+    coyote_jumps = buffered_jumps = blocked_presses = 0;
     hooks(0);
 }
 static void activate(void) {
@@ -232,16 +239,17 @@ static void activate(void) {
 #ifdef CYC_WITH_SDL
 static void jumps_state(int id, const char *line) {
     (void)line;
-    char fields[192];
+    char fields[224];
     snprintf(fields, sizeof fields,
              "\"enabled\":%s,\"coyote\":%u,\"buffered\":%u,\"coyote_frames\":%u,\"buffer_frames\":%u,\"armed\":%s,"
-             "\"pending\":%s",
+             "\"pending\":%s,\"blocked\":%u",
              enabled ? "true" : "false", coyote_jumps, buffered_jumps, COYOTE_FRAMES, BUFFER_FRAMES,
-             armed ? "true" : "false", buffered ? "true" : "false");
+             armed ? "true" : "false", buffered ? "true" : "false", blocked_presses);
     cyc_tcp_ok(id, fields);
 }
 void fax_jumps_tcp_setup(void) {
-    cyc_tcp_register("forgiving_jumps_state", "Forgiving jumps: coyote and buffered jumps it gave", jumps_state);
+    cyc_tcp_register("forgiving_jumps_state",
+                     "Forgiving jumps: coyote and buffered jumps it gave, and presses Block dropped", jumps_state);
 }
 #else
 void fax_jumps_tcp_setup(void) {}
