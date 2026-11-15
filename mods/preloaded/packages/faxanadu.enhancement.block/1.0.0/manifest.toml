@@ -1,0 +1,24 @@
+format_version = 1
+id = "faxanadu.enhancement.block"
+version = "1.0.0"
+name = "Block"
+author = "Faxanadu Remastered"
+description = "A button of its own to raise your shield: hold it to stand your ground and stop enemy magic and Sugata's flash."
+license = "MIT"
+resolver = "declarative"
+save_compatibility = "shared"
+
+[[target]]
+game_id = "faxanadu-usa"
+rom_crc32 = "57dd23d1"
+
+[[feature]]
+id = "block"
+name = "Block"
+description = "Hold V on the keyboard, or B on a controller, with a shield or the Battle Helmet to stand still and stop enemy magic from the front, and Sugata's flash from anywhere, with the shield's sound. Contact and sword damage are as before. While you hold it, the shield is drawn raised before your face; with the Battle Helmet, which has no shield to show, you glint as Block goes up. The first shield (or the Battle Helmet) you get, the game tells you once. Rebind it with BlockKey and BlockButton in config.ini."
+group = "Combat"
+default_enabled = true
+
+[[plugin]]
+feature = "block"
+id = "faxanadu.block"

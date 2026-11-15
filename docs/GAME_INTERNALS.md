@@ -1356,7 +1356,7 @@ addresses, and `tools/check_allocations.py` enforces it.
   within them, the jump check at `$E44B` sees A, so the jump is the one the
   original makes with A pressed then. Neither applies with the Wing Boots
   running, in knockback, while climbing, or across a change of screen or
-  area. Nor while Block is up (`fax_block_raised()`, false with Shields off):
+  area. Nor while Block is up (`fax_block_raised()`, false with Block off):
   Block takes A away, and a press kept from just before it went up would hand
   A back on landing, so each update with Block up drops it (TCP
   `forgiving_jumps_state` counts those as `blocked`). It counts updates at
@@ -1379,9 +1379,6 @@ addresses, and `tools/check_allocations.py` enforces it.
   callback only serves the byte again. `mods/allocations.toml` claims the byte
   as an `overrides` entry, which `tools/check_allocations.py` checks against
   its stock value.
-- **Shields** is one mod (`faxanadu.enhancement.shields`) of two sources,
-  Block and Sugata's flash: the Magic Shield's reflection works only through
-  Block, and mods never depend on each other.
 - **Block** (`fax_block.c`). A bindable button (V, or B on a controller)
   raises whatever the shield slot holds, the Battle Helmet included. The host
   input callback clears the d-pad, A and B while it is up and a pass of

@@ -21,8 +21,7 @@ Sugata's warning, edited for the hero's place and shield:
    ends the band.
 5. Holding Block without a shield: 10 HP. Under Ointment, in the band: no HP,
    but the knockback.
-6. With Shields (Block and Sugata's flash) off, the original: no warning,
-   10 HP, Ointment or not.
+6. With Sugata's flash off, the original: no warning, 10 HP, Ointment or not.
 
 Pictures of the band are taken by the game itself (TCP sugata_capture) on the
 frame it shows, since a flash lasts a few frames.
@@ -40,7 +39,7 @@ MIST, SCREEN_30, PALETTE_MIST, REGION_MIST = 2, 30, 0x0A, 2
 SUGATA, DEATH = 0x18, 0x14
 REACH, WARNING, REFLECTED, FLASH_DAMAGE = 40, 30, 12, 10
 DURATION_OINTMENT = 0x427
-PACKAGE, FEATURE = "faxanadu.enhancement.shields", "shields"    # Block and Sugata's flash, one mod
+PACKAGE, FEATURE = "faxanadu.enhancement.sugata-flash", "sugata-flash"
 
 
 def main():
@@ -214,7 +213,7 @@ def main():
             f'format_version = 1\n\n[[feature]]\npackage_id = "{PACKAGE}"\nid = "{FEATURE}"\nenabled = false\n')
         g.launch()
         s = state()
-        assert not s["enabled"] and not g.tcp("block_state")["enabled"], s
+        assert not s["enabled"], s
         g.load(arrived)
         hp = g.hp()
         g.until("the flash", lambda: hp - g.hp() == FLASH_DAMAGE, 400)
