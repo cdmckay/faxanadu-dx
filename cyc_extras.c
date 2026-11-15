@@ -11,6 +11,7 @@
 #include "fax_pendant.h"
 #include "fax_magic.h"
 #include "fax_banner.h"
+#include "fax_speaker.h"
 #include "fax_keys.h"
 #include "fax_falling.h"
 #include "fax_jumps.h"
@@ -266,6 +267,7 @@ static void tcp_setup(void *ctx) {
     fax_pendant_tcp_setup();
     fax_magic_tcp_setup();
     fax_banner_tcp_setup();
+    fax_speaker_tcp_setup();
     fax_keys_tcp_setup();
     fax_falling_tcp_setup();
     fax_jumps_tcp_setup();
@@ -273,7 +275,8 @@ static void tcp_setup(void *ctx) {
 }
 #endif
 static const uint32_t *present(void *ctx,int *w,int *h) {
-    (void)ctx;return fax_banner_present(fax_world_present(w,h,cyc_frame_argb()),w,h);
+    (void)ctx;
+    return fax_speaker_present(fax_banner_present(fax_world_present(w,h,cyc_frame_argb()),w,h),w,h);
 }
 static void event(void *ctx,const void *e,int player) {
     (void)ctx;(void)player;

@@ -57,13 +57,15 @@ and data tables after it shifted). Not supported: the build rejects it.
 | `$00DB-$00DD` | `IScriptOrCHRAddr`, `IScriptOffset` | The interpreter reads the next action at addr + offset |
 | `$0100` | `CurrentROMBank` | 14 in the main loop. The stack shares this page |
 | `$0127` | `SoundEffect_State_Counter` | The playing sound effect's tick; the typing sound runs 1-4 |
+| `$0208-$020B` | `TextBox_X`, `TextBox_Y`, `TextBox_Width`, `TextBox_Height` | The box last opened or closed, in tiles (see *The text box*) |
 | `$0212` | `TextBox_PlayTextSound` | The typing sound plays for a character if set |
-| `$0213` | `MessageID` | 0 once a message has typed out; otherwise stale after a conversation |
+| `$0213` | `MessageID` | 0 once a message has typed out; otherwise stale after a conversation, and still stale (with `$0215`) as the next script's portrait opens, until its first message loads |
 | `$0214` | `Message_ProcessedLength` | Bytes of the message read, from an offset, not 0. Wraps with the address |
 | `$0215` | `TextBox_MessagePaused` | Nonzero while a `$FC` pause waits for A |
 | `$021D` | `TextBox_Timer` | Characters type when it is a multiple of 4. `Messages_Load` zeroes it |
 | `$0390`, `$0392-$0394` | `Experience`, `Gold` | Gold is 24-bit little-endian |
 | `$039A` | `Player_MP` | |
+| `$03C7` | `IScript_PortraitID` | The portrait showing, `$FF` for none (see *Portraits*) |
 | `$042D` | `Quests` | Bit flags |
 | `$0431`, `$0432` | `Player_HP_U`, `Player_HP_L` | |
 | `$0438` | `PlayerIsDead` | Set it to 1 and the main loop runs the death path |
@@ -105,6 +107,75 @@ The full table is in chipx86's notes. The Gurus' scripts:
   `03 2D, 00` at `$A0C6`.
 - Death runs script `$1F` ("Don't have negative thoughts", message `$24`),
   not a Guru's.
+
+### Portraits
+
+`IScripts_Begin` copies a script's entity byte to `Temp_0201` (`$0201`, a
+shared temporary) and, for `$80` and up, has `IScripts_LoadPortraitTiles`
+store it **less its top bit** in `IScript_PortraitID` (`$03C7`): 0 King, 1
+Guru, 2 Martial Artist, 3 Magician, 4 Doctor, 5 Nurse, 6 Pink Shirt Guy, 7
+Smoking Guy, 8 Meat Salesman, 9 Tools Salesman, 10 Key Salesman. Then it frames
+the portrait (`IScripts_OpenForPortrait`) and opens the dialogue box.
+
+- The ID holds through every action of the script: messages, questions, the
+  Buy/Sell menu, shop lists, the mantra and Guru travel's lines.
+  `IScriptAction_EndScript` sets it back to `$FF` (`IScripts_ClearPortraitImage`)
+  before it clears both boxes (`TextBox_ClearForPortraitAndText`).
+  `Screen_ClearSprites` also sets it to `$FF`, so it is `$FF` whenever no
+  portrait shows. A script without a portrait (`$00`) leaves it alone.
+- **At power-on RAM is 0**: on the title screen `IScript_PortraitID` reads 0
+  (the King) and `TextBox_Closed` 0 (a box open). Check the area too.
+- Every script with a portrait runs in a building (`AREA_BUILDINGS`); bank 11's
+  sprite lists for area 4 put each on its building. **No script shows the Pink
+  Shirt Guy's or the Smoking Guy's portrait.**
+
+| Portrait | Buildings (`Area_CurrentScreen` in area 4) |
+|---|---|
+| King | `$07` (Eolis, the King's room) |
+| Guru | The 8 temples (*Temples and spawning*), and `$42` in the Castle of Fraternal (Dartmoor `$1E`, block `$A7`) |
+| Martial Artist | `$06` (Eolis) |
+| Magician | `$05` (Eolis), `$1C` (the "magic hall outside town", Mist `$29`) |
+| Doctor | `$0C`, `$11`, `$1B`, `$24`, `$2C`, `$3F`: the hospitals |
+| Nurse | `$0C`, `$11`, `$1B` (hospitals), `$31` (Daybreak's meat shop) |
+| Meat Salesman | `$00`, `$0E`, `$17`, `$26`, `$2A`, `$31`, `$3E` |
+| Tools Salesman | `$04`, `$08`, `$0F`, `$14` (Trunk `$06`), `$18`, `$20` (Mist `$0D`), `$2D`, `$30`, `$41`, `$45` |
+| Key Salesman | `$03`, `$09`, `$13`, `$19`, `$27`, `$2F`, `$40` |
+
+The secret "Guru" of the Tower of Fortress ($48, $58 "the Guri") is the man in
+building `$15`, a temple room on Trunk `$2D`, but his script (`ISCRIPT_A18A`)
+has no portrait. Nor do the King at the end (`ISCRIPT_KING_END_GAME`, "Glad
+you're back.", building `$44`) and the Smoking Man of `$3D` (`ISCRIPT_A331`);
+the priest of `$3B` has no script. The Nurse in Daybreak's meat shop is the
+`SPRITE_NPC_NURSE` sprite, as in the hospitals.
+
+To list who is where: read area 4's sprite lists (`SPRITE_INFO_VICTIM_SCREEN_*`,
+one area off), map each `ISCRIPT_ENTRYPOINT_*` through `ISCRIPT_ADDRS_L` to its
+script, and read the script's first byte.
+
+How the dialogue names them: "the king" / "The King is waiting for you." ($27,
+$33), "The Guru of Conflate" ($94) and "the Guru in the Castle of Fraternal"
+($9D), "a martial art lesson" ($19), "I shall give magic" and "I'll teach you"
+from the Magician ($15, $17), "Our doctor can help." ($45), "I sell keys." and
+"I sell tools." ($0E, $0F). Nobody names the nurse or the meat salesman.
+
+**Eolis's buildings, for tests** (`EOLIS_DOOR_LOCATIONS`; a door's block is
+`YX`, so x = (block & 15) × 16):
+
+| Building | Kind | Door | NPC (`YX`) |
+|---|---|---|---|
+| `$00` | Meat shop | screen 1, block `$93` | `$84`, behind the counter: walk left until stopped |
+| `$01` | House | screen 2, `$9E` | |
+| `$02` | Temple | screen 2, `$95` | Guru `$82` |
+| `$03` | Key shop | screen 3, `$9D` | `$84` |
+| `$04` | Tool shop | screen 3, `$9A` | `$73`, behind the counter (stops at x=80) |
+| `$05` | Magic shop | screen 6, `$9C`, Ring of Elf | `$71` |
+| `$06` | Martial arts | screen 6, `$9A`, Ring of Elf | `$87`, mid-room: stop at x 124 |
+| `$07` | King's room | screen 7, `$98`, Ring of Elf | `$72`, atop stairs: jump up them (Left and A) |
+
+The King's guard (`ISCRIPT_EOLIS_KINGS_GUARD`, no portrait) stands at `$9A` on
+screen 7, two blocks right of the King's door. The Eolis Guru gives the Ring
+of Elf (`SpecialItems` `$80`) the first time; the King gives 1500 gold only to
+a hero with none.
 
 ## Messages (bank 13)
 
@@ -148,6 +219,28 @@ faxanatools' `messages.py` decodes and encodes them; `fax_travel.c`'s
   around tile 0 (black), from the playfield's background pattern table.
   `TextBox_Closed` (`$020C`) is 0 while a box or the Select menu is open, and
   nonzero once one has closed (also before the first).
+- **Where boxes go**, in tiles of the 256 x 240 screen (the HUD is rows 0-3),
+  as `TextBox_X`, `TextBox_Y`, `TextBox_Width`, `TextBox_Height` (`$0208-$020B`)
+  hold them; the frame is inside the size, and text starts 2 tiles in:
+
+  | Box | Set by | X, Y | Size |
+  |---|---|---|---|
+  | Portrait | `TextBox_SetCoordsForPortrait` | 2, 14 | 8 x 10 |
+  | Dialogue, with a portrait | `TextBox_SetCoordsForNPC` | 10, 16 | 20 x 8 |
+  | Dialogue, without | `TextBox_SetCoordsForNPC` | 10, 6 if `Player_PosY` >= 64, else 10, 16 | 20 x 8 |
+  | A shop's list (buy or sell) | `Shop_Draw` | 10, 8 | 20 x 20 |
+  | Both closed at a script's end | `TextBox_ClearForPortraitAndText` | 2, 8 | 30 x 20 |
+  | The Select menu | `PlayerMenu_Show` | 2, 6 | 10 x 14 |
+
+  A shop's list covers the dialogue box and rises above it; picking from it
+  (`Maybe_Shop_DrawTextBox`) closes the list and opens the dialogue box again.
+  The portrait box stays up throughout.
+- `TextBox_Open` and `TextBox_Close` only queue nametable writes in the PPU
+  buffer, top row first, and the queue drains over the next NMIs (waiting when
+  it is full), so a box appears and goes over a few frames. `TextBox_Closed`
+  changes when the writes are queued, not when they show. To know a box is on
+  screen, read its corner tiles from the nametable, through the line's scroll
+  (`cyc_render_nametable`, `cyc_render_line_scroll_x/y`; `fax_speaker.c`).
 - The HUD and every box share one palette, `UI_AttributeDataIndex` (`$038D`,
   0-3), which `Screen_LoadUIPalette` sets from the screen's palette
   (`PALETTE_INDEX_TO_UI_BG_ATTRIBUTE_INDEX`, bank 11). The frame's colors
@@ -244,6 +337,9 @@ What a feature can rely on, and the traps:
   `dpleft`). `action` takes NES names (`a`, `left`, `up`). Durations are in
   frames, so a test that waits on frames and game state, never the clock,
   runs the same uncapped.
+- TCP `action` returns at once and holds the button for its frames, so two
+  `action`s sent back to back are held together: `left` then `a` jumps left
+  (`tests/speaker/speaker_names.py` climbs the King's stairs that way).
 - TCP `key` (an SDL key name) and `pad` reach the game as window events, as
   a real key or controller does, so the host extras' `event` sees them. The
   window keeps `config.ini` beside the executable and writes it at first
@@ -870,6 +966,18 @@ addresses, and `tools/check_allocations.py` enforces it.
   respawn or a Guru travel journey, and makes the next zone's name show. The
   banner is held while a box is open or the game is paused. Its save-state
   record keeps the banner as it was.
+
+- **Speaker names** (`fax_speaker.c`, with `fax_zone.c` and `fax_text.c`).
+  While a portrait's frame is on screen, the speaker's name sits on a tab
+  above the dialogue box, at its left edge (tiles 10, 13-15), in the game's
+  font and frame; on a shop's list it moves up onto the list (rows 5-7). The
+  King and the Gurus are "of" a place: a temple's town by temple number (so
+  the Guru whose door opens on the Mist is Mascon's, as in Guru travel), else
+  the zone at the building's door (`Area_SavedArea`, `Area_SavedScreen`),
+  a tower or castle by its own name ("Guru of Fraternal"). A name over 16
+  characters loses the tab's blank cells, so no tab is wider than the dialogue
+  box. No hooks, no ROM, no state: it reads RAM and the nametable when the
+  picture is presented, and draws after Seamless and zone names.
 
 - **Auto keys** (`fax_keys.c`). Up at a locked door opens it with its key from
   anywhere in the inventory. At `Game_RunDoorRequirementHandler` it lends the
