@@ -104,7 +104,9 @@ between actions.
 | `$03` | msg | Message |
 | `$04` | addr | Jump if the player's title went up |
 | `$06` | temple | Set spawn point. **Only raises** `TempleSpawnPoint` |
+| `$08` | items | A shop's buy list (see *Shops*) |
 | `$0F` | addr | The shops' Buy/Sell menu: message `$10`, then a cursor on its lines 1 and 3. A on the first choice jumps to addr, A on the second goes on to the next action, B ends the script |
+| `$11` | items | A shop's sell list |
 | `$14` | | Show the mantra (`IScriptAction_ShowPassword`): encodes it, types it a character a frame, waits for A |
 | `$16` | msg, addr | Question: A jumps to addr, B goes on to the next action. Unused by the game, works |
 | `$17` | addr | Jump |
@@ -362,9 +364,9 @@ What a feature can rely on, and the traps:
   (its 48-byte line slot and 7 step bytes), the Taller dagger 1, and Save
   files shares the slot and adds 5 (4 step bytes and the menu's operand), or
   8 if it ever ran with Guru travel off (its own 3-byte SAY): 61 to 64 of 64
-  with all three on. A new message for the text box should share the slot,
-  and anything more needs the table made larger or Guru travel's slot cut to
-  its longest line.
+  with all three on. Quick shops takes none. A new message for the text box
+  should share the slot, and anything more needs the table made larger or
+  Guru travel's slot cut to its longest line.
 - An override works on an **immediate operand** in used ROM (the recompiler
   reads immediates at run time), not only on data: Save files changes the
   Buy/Sell menu's `LDA #$10` for one menu. Put such a byte back as soon as it
@@ -380,6 +382,13 @@ What a feature can rely on, and the traps:
   the features' constructors, so the link order of `HOST_EXTRAS`, not the
   order of `game.toml`. Write sites that share an address to work in either
   order.
+- **A jump from any site.** Handling pulls the return address from S + 1 and
+  S + 2 and goes on at it + 1. So a site anywhere can go anywhere in the same
+  routine or another: push the target - 1 (high byte first, as a JSR does)
+  and return 1, and S ends where it was. Pushing two targets runs a routine
+  first and returns into the second (Quick shops closes a list that way), and
+  overwriting a subroutine's own return address at S + 1 leaves it at its
+  caller's level. The scheduler runs any PC, mid-routine or not.
 - A hook site can be **any instruction**, not only a routine's entry. Each
   instruction is its own label in the generated code, so a site where a
   branch and a fall-through meet fires on both paths (the Pendant fix's
@@ -1151,6 +1160,133 @@ Red Potion `$10`). Shops and scripts add the category in the top 3 bits
   Potion at `$C53B`, the Wing Boots at `$C581`, the Hour Glass at `$C5D0`,
   the Mattock at `$C64C`.
 
+## Shops (bank 12)
+
+There are 17 shops: 10 tool shops (which also sell the weapons, armor,
+shields and magic) and 7 key shops. Meat, magic, the doctor and the martial
+artist are single offers, scripted with questions and `$05` (pay). Every shop
+runs one script layout:
+
+| Offset | Bytes | Does |
+|---|---|---|
+| base | `89` / `8A` | The Tools or Key Salesman's portrait |
+| +1 | `03 0F` / `03 0E` | "Hello. I sell tools. What would you like?" (keys: `$0E`) |
+| +3 | `0F BUY` | `IScriptAction_ShowBuySellMenu` (`$8630`): "Come here to buy. Come here to sell." (`$10`); Buy jumps to BUY |
+| +6 | `11 ITEMS` | `IScriptAction_ShowSellMenu` (`$8660`) |
+| +9 | `03 02, 00` | "Thank you for shopping.", end |
+| BUY (+12) | `08 ITEMS` | `IScriptAction_OpenShop` (`$83D8`) |
+| BUY + 3 | `03 02, 00` | |
+
+`ITEMS` is a list of item (full ID), price (16-bit), to a `$FF`. The scripts
+are `ISCRIPT_ADDRS_L/U` (`$9F6B`/`$A003`, 152 entries) 12, 13, 25, 26, 29, 40,
+43, 57, 59, 60, 72, 74, 87, 102, 104, 117 and 119, from `$A37A` (tools) and
+`$A4FC` (keys), their lists from `$A42E` and `$A57A`.
+
+| Shop | Sells (Golds) |
+|---|---|
+| Eolis tools | Hand Dagger 400, Red Potion 160, Elixir 320, Deluge 400 |
+| Apolune tools | Small Shield 800, Hand Dagger 500, Deluge 500, Red Potion 300 |
+| "Before Apolune" (chipx86's name) | Magic Shield 7600, Death 12500 |
+| Forepaw tools | Long Sword 1600, Studded Mail 2500, Small Shield 1100, Red Potion 400, Wing Boots 2800 |
+| Mascon tools | Large Shield 3500, Thunder 1200, Mattock 800, Red Potion 600 |
+| "After Mascon" | Death 9800, Hour Glass 5600, Elixir 4300, Red Potion 300 |
+| Victim tools | Full Plate 5200, Mattock 1200, Red Potion 800 |
+| Conflate tools | Giant Blade 8500, Magic Shield 9800, Wing Boots 5500, Red Potion 1000 |
+| Daybreak tools | Tilte 15000, Giant Blade 11500, Red Potion 1200 |
+| Dartmoor tools | Giant Blade 13000, Red Potion 2000 |
+| Key shops | J: Eolis 100, Apolune 140, Forepaw 200, Mascon 500. Q: Forepaw 500, Mascon 600, Victim 1200, Daybreak 1000. K: Victim 1500, Daybreak 1200, Dartmoor 1300 |
+
+No shop sells the Leather Armor, the Fire magic (the Magician's, 3000 by
+script), the A and Jo keys (gifts), the Poison, or the last fight's gear.
+
+| Address | Name | Notes |
+|---|---|---|
+| `$0202-$0203` | `Temp_0202/3` | The price being paid or earned, as the gold counts |
+| `$021E` | `Menu_CursorPos` | The list's cursor |
+| `$021F` | `Arg_StringsCount` | Entries in the list |
+| `$0220-$0227` | `DataArray` | The list's items, **8 at most**. Shared with the Select menu and screen scrolling |
+| `$0228-$022F`, `$0230-$0237` | `ShopItemCostsL/U` | Their prices |
+
+**The buy list** (`IScriptAction_OpenShop`, `$83D8`):
+
+1. "What would you like?" (`$14`) types out (`$83D8-$83E8`); B on it ends
+   the script. Then `$83EA` reads the list's address, `Shop_Populate`
+   (`$8501`) copies items and prices, `Shop_Draw` (`$99F8`) opens the list
+   (10,8, 20 x 20, see *The text box*) and puts the cursor at the top.
+2. `IScripts_WaitForMenuInput` (`$84ED`) loops a frame at a time:
+   `IScripts_UpdatePortraitAnimation`, `Menu_UpdateAndDraw` (`$9056`: Up and
+   Down move the cursor, **wrapping** at both ends, with sound `$0B`), then A
+   returns C clear and B C set. Select and the rest are ignored.
+3. B ends the script at once (`$83FF`: `JMP IScriptAction_EndScript`), with
+   no line.
+4. A: `Shop_GetPlayerHasSelectedItem` (`$8482`) refuses a weapon, armor,
+   shield or spell the hero has (in hand or in its list), and a SpecialItems
+   item (rings, Elixir, Magical Rod, Pendant, Black Onyx) he has. Other items
+   can be bought again and again, until their list is full
+   (`MAX_INVENTORY_SLOTS`, `$847D`: 4, 4, 4, 4, 8). Either refusal closes the
+   list and ends with "You can't carry any more." (`$06`, at `$8469`).
+   Then `IScripts_CheckEnoughMoney`; short, "This is not enough Golds."
+   (`$03`, `IScripts_ShowNotEnoughMoney`, `$837C`).
+5. Bought: `Player_AddToInventory`, then `IScripts_ProgressivelySubtractGold`
+   takes 10 Golds a frame and then waits 60 frames, then (`$8463`)
+   `Maybe_Shop_DrawTextBox` (`$8471`: two frames, close the list, open the
+   dialogue box) and `JMP IScripts_InvokeNextAction`: BUY + 3, "Thank you for
+   shopping.", and the end. One purchase per conversation.
+
+`IScripts_ShowFinalMessage` (`$837E`, A = the message) types a message and,
+at `$838E`, on A or B, `JMP IScriptAction_EndScript`. The shops' refusals and
+the empty sell list end the conversation through it.
+
+**The sell list** (`IScriptAction_ShowSellMenu`, `$8660`): after reading the
+list's address it scans **only the Items list** (`LDX #$04` at `$866F`, `CPX
+#$05` at `$86B8`), from its last entry to its first, and offers each item that
+is in this shop's list, at **half this shop's price** (`LSR` high byte, `ROR`
+low byte, at `$86A5`: rounded down). So in the original a shop buys only the
+Items it sells (Red Potions, Wing Boots, the Hour Glass, the Mattock, and the
+J, Q and K keys), never a weapon, armor, shield or spell, and never the
+selected item, which is in no list. Selling a Red Potion bought in Eolis (160)
+in Dartmoor pays 1000. At `$86BC`, none: "You have nothing to buy." (`$12`,
+sic) through `IScripts_ShowFinalMessage`. Else "Which one would like to
+sell?" (`$13`), `Shop_Draw`, the same wait; B ends the script (`$8701`), A
+(`$86E0`) takes the price, `Player_RemoveItem` (which for a SpecialItems ID
+clears its bit), `IScripts_ProgressivelyAddGold`, then (`$86F8`) closes the
+list, reopens the dialogue box and invokes SELL + 3.
+
+**`Shop_Draw`** draws each entry on two rows from row 10: the item's picture
+at column 12, its name at column 15, and on the next row its price at column
+23, 5 digits by `UI_DrawDigitsNoLeadingZeroes`, which blanks leading zeros but
+**always draws the units**: a price of 0 shows "0". Eight entries fill rows
+10-25; rows 9 and 26 inside the frame stay empty. The gold counts by 10s, and
+every price in the game is a multiple of 20, so every half is a multiple of
+10. A price that is not would overshoot: `IScripts_ProgressivelyAddGold` pays
+the next 10 up, and its count then runs on from `$FF` down, about 250 frames
+instead of its usual 60.
+
+**The font has no `:` or `/`**: `TILE_GLYPHS_START` leaves `#$%&()*+/:;<=>@[\]^`
+blank. It has `-`, `.`, `,`, `'`, `!`, `?` and `"`.
+
+**What a shop buys, with Quick shops.** A shop buys any item carried that is
+in an inventory list: half its own price where it sells the item (the
+original's rule), otherwise half the lowest price any shop asks (so selling
+where a shop does not sell an item never pays more than buying it anywhere
+costs), otherwise 100 Golds (the A and Jo keys, the Leather Armor, Fire, the
+Poison), as the 40th Anniversary Edition pays. Never:
+
+| Item | Why |
+|---|---|
+| Dragon Slayer | "Defeat the Evil one with Dragon Slayer." (`$9C`); King Grieve drops it, and only while you have none |
+| Battle Suit, Battle Helmet | Worn for the last fight, only with the Dragon Slayer (`$8B`); Zoradohna drops them, likewise |
+| The rings of Elf, Ruby, Dworf, the Demon's Ring | Doors, the fountain's rock, Dartmoor and the fortress |
+| Black Onyx | The man by the gate to Branch gives the A key only to its holder |
+| Elixir | The Spring of Trunk takes it (`ISCRIPT_SPRING_OF_TRUNK` consumes it) |
+| Pendant, Magical Rod | One of a kind |
+
+The SpecialItems ones are bits, in no list, so no sell list could show them;
+they are refused even if one were. The selected item and what is equipped are
+in no list either, as in the original. The rest are safe to sell: every other
+key, the Mattock, the Wing Boots and the potions can be bought again, and the
+A and Jo keys' givers hand out another to a hero without one.
+
 ## Doors and keys
 
 Up at a door: `Player_CheckHandleEnterDoor` (`$E526`) has
@@ -1431,6 +1567,32 @@ addresses, and `tools/check_allocations.py` enforces it.
   own sound, iframes and knockback without `Player_ReduceHP`; otherwise the
   game's 10 HP. Two reflections kill Sugata (more than its 22 HP). Its
   save-state record is each slot's warning count and the band.
+- **Quick shops** (`fax_shops.c`). Up on a shopkeeper opens his buy list at
+  once, Select switches to the sell list and back, a purchase or a sale keeps
+  the list up with the cursor where it was, and B leaves. A shop buys
+  anything carried (see *Shops*), 8 to a page: Up from the top or Down from
+  the bottom turns the page. No ROM and no read overrides. It steers the
+  script at `IScripts_InvokeNextAction` (its first action goes to BUY; BUY + 3
+  and SELL + 3 go back to their list) and jumps by return at seven sites of
+  its own: OpenShop's entry, past "What would you like?" to `$83EA`;
+  `$8463`, past the purchase's close; `$86BC`, where it replaces the sell
+  scan's list with a page of everything carried and goes on at `Shop_Draw`
+  (`$86D8`), past "Which one would like to sell?", or, with nothing to sell
+  and a list open, through `Maybe_Shop_DrawTextBox` first; `$86E0`, back to
+  the wait for an item no shop buys; `$86F8`, past the sale's close;
+  `$84F0`, in `IScripts_WaitForMenuInput` before the menu update, where it
+  puts the cursor back, Select or a page turn goes through
+  `Sound_PlayEffect` (`$0B`) to the other step, and B goes through
+  `Maybe_Shop_DrawTextBox` to `IScriptAction_EndScript`, so the list is closed
+  when the script ends, as after the original's purchase, and a line Block
+  adds there (its tutorial, after the first shield) shows in the dialogue box;
+  and `$838E`, where a shop's message goes back to the list. Presses while a
+  list is drawn, or the gold counts, are lost, as in the original: the game
+  reads the pad only in the list's wait. The hint line ("Select to sell", "Select to
+  buy", "Not for sale") is drawn on the list's row 26 and the page ("1 of 2")
+  on row 9, at present time, while the list's four frame corners show; an
+  unsellable item's price cells are painted the box's inside. Its save-state
+  record holds the conversation (17 bytes).
 
 - **Save files** (`fax_save.c`, `fax_files.c`). Three files instead of
   mantras; see "Save files" below.
