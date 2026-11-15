@@ -301,3 +301,38 @@ id = "faxanadu.text-speed.if-ready"
 addr = 0xf491
 bank = 15
 bytes = "ad 13 02 f0 cf ad 15 02 d0 ca ad 1d"
+
+# Save files (fax_files.c): the title's input routine (the file select runs
+# there), the mantra screen and the start screen's JMP Player_Spawn (continuing
+# a file), Player_Spawn after Game_SpawnInTemple (keep the furthest temple,
+# save on respawn), and each interaction-script action (a Guru saves).
+
+[[mod_function_hook]]
+id = "faxanadu.files.title"
+addr = 0x9f44
+bank = 12
+bytes = "a5 19 29 20 f0 0d ad 87 06 49 01 8d"
+
+[[mod_function_hook]]
+id = "faxanadu.files.mantra-screen"
+addr = 0x909d
+bank = 12
+bytes = "20 f7 ca a9 10 8d 06 20 a9 00 8d 06"
+
+[[mod_function_hook]]
+id = "faxanadu.files.start-spawn"
+addr = 0xfc95
+bank = 15
+bytes = "4c 0a db 20 59 f8 0c 99 a7 20 59 f8"
+
+[[mod_function_hook]]
+id = "faxanadu.files.spawned"
+addr = 0xdb20
+bank = 15
+bytes = "20 af da 4c 45 db 20 af c6 20 f7 ca"
+
+[[mod_function_hook]]
+id = "faxanadu.files.next-action"
+addr = 0x826e
+bank = 12
+bytes = "20 a4 87 aa bd 93 82 48 bd 7b 82 48"

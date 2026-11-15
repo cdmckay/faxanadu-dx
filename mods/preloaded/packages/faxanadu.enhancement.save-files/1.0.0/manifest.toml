@@ -1,0 +1,24 @@
+format_version = 1
+id = "faxanadu.enhancement.save-files"
+version = "1.0.0"
+name = "Save files"
+author = "Faxanadu Remastered"
+description = "Three save files on the title screen instead of mantras. Talking to a Guru saves your journey."
+license = "MIT"
+resolver = "declarative"
+save_compatibility = "shared"
+
+[[target]]
+game_id = "faxanadu-usa"
+rom_crc32 = "57dd23d1"
+
+[[feature]]
+id = "save-files"
+name = "Save files"
+description = "Pick one of three files on the title screen to continue or start. A Guru saves your file instead of giving a mantra, and so does every return to a temple. Gold, experience, items and the Gurus you have met are kept exactly."
+group = "Gameplay"
+default_enabled = true
+
+[[plugin]]
+feature = "save-files"
+id = "faxanadu.save-files"

@@ -101,3 +101,55 @@ void fax_text_draw(uint32_t *px, int w, int h, int x, int y, const char *s, unsi
                 if (glyphs[ch - FIRST][r] >> (7 - c) & 1) put(px, w, h, x + c, y + r, color, alpha);
     }
 }
+
+/* The frame's tiles as the ROM holds them, for screens whose pattern tables
+ * hold something else (the title screen): UI_DrawHUDSprites copies 60 tiles from
+ * bank 10, HUD_TILES_START ($8140), to the playfield's pattern table at $1000,
+ * so tile t is at $8140 + t * 16 there. */
+#define HUD_TILES_START 0x8140u
+enum { HUD_BANK = 10, FRAME_TILES = 7 };
+static uint8_t frame[FRAME_TILES][16];
+static bool frame_loaded;
+
+static bool load_frame(void) {
+    if (frame_loaded) return true;
+    size_t need = cyc_mod_copy_cart_payload(NULL, 0);
+    if (need < (size_t)(HUD_BANK + 1) * BANK_SIZE) return false;
+    uint8_t *payload = malloc(need);
+    if (!payload) return false;
+    bool ok = cyc_mod_copy_cart_payload(payload, need) == need;
+    if (ok) memcpy(frame, payload + HUD_BANK * BANK_SIZE + (HUD_TILES_START - 0x8000u), sizeof frame);
+    free(payload);
+    frame_loaded = ok;
+    return ok;
+}
+
+void fax_text_box_rom(uint32_t *px, int w, int h, int x, int y, int cols, int rows, const uint32_t colors[4],
+                      unsigned alpha) {
+    if (!load_frame()) return;
+    for (int r = 0; r < rows + 2; ++r)
+        for (int c = 0; c < cols + 2; ++c) {
+            bool top = r == 0, bottom = r == rows + 1, left = c == 0, right = c == cols + 1;
+            unsigned t = top ? (left ? TILE_TOP_LEFT : right ? TILE_TOP_RIGHT : TILE_TOP)
+                       : bottom ? (left ? TILE_BOTTOM_LEFT : right ? TILE_BOTTOM_RIGHT : TILE_TOP)
+                       : left || right ? TILE_SIDE : TILE_INSIDE;
+            for (int py = 0; py < 8; ++py) {
+                uint8_t lo = frame[t][py], hi = frame[t][py + 8];
+                for (int pc = 0; pc < 8; ++pc) {
+                    unsigned v = (lo >> (7 - pc) & 1u) | (hi >> (7 - pc) & 1u) << 1;
+                    put(px, w, h, x + c * FAX_TEXT_CELL + pc, y + r * FAX_TEXT_CELL + py, colors[v], alpha);
+                }
+            }
+        }
+}
+
+void fax_text_draw_color(uint32_t *px, int w, int h, int x, int y, const char *s, uint32_t color, unsigned alpha) {
+    if (!loaded) return;
+    for (; *s; ++s, x += FAX_TEXT_CELL) {
+        unsigned ch = (unsigned char)*s;
+        if (ch < FIRST || ch >= FIRST + GLYPHS) continue;
+        for (int r = 0; r < 8; ++r)
+            for (int c = 0; c < 8; ++c)
+                if (glyphs[ch - FIRST][r] >> (7 - c) & 1) put(px, w, h, x + c, y + r, color, alpha);
+    }
+}
