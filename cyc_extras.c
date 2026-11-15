@@ -10,6 +10,7 @@
 #include "fax_death.h"
 #include "fax_pendant.h"
 #include "fax_magic.h"
+#include "fax_keys.h"
 #ifdef CYC_WITH_SDL
 #include "cyc_tcp.h"
 #include <SDL.h>
@@ -258,6 +259,7 @@ static void tcp_setup(void *ctx) {
     fax_death_tcp_setup();
     fax_pendant_tcp_setup();
     fax_magic_tcp_setup();
+    fax_keys_tcp_setup();
 }
 #endif
 static const uint32_t *present(void *ctx,int *w,int *h) {

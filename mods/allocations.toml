@@ -60,3 +60,27 @@ rom = []
 # the joypad masks ($16, $18, $19) between the two calls, and puts back what
 # it found. A feature that later hooks $C478 and handles it must sit after
 # this one in game.toml, or the real masks are never restored.
+
+[[feature]]
+package = "faxanadu.enhancement.auto-keys"
+source = "fax_keys.c"
+hooks = "faxanadu.auto-keys."
+rom = []
+# Writes SelectedItem, ItemInventory and NumberOfItems, as selecting and using
+# a key would. Shares fax_keys.c with reusable tools.
+
+[[feature]]
+package = "faxanadu.enhancement.reusable-tools"
+source = "fax_keys.c"
+hooks = "faxanadu.reusable-tools."
+rom = []
+# Writes SelectedItem only, putting back the key the game just cleared.
+
+[[shared_site]]
+addr = 0xC8DC   # UI_ClearSelectedItemPic
+hooks = ["faxanadu.auto-keys.unlocked", "faxanadu.reusable-tools.unlocked"]
+why = """Both sites run the same callback, fax_keys.c's unlocked_hook, which \
+finishes the door for whichever of the two features are on. When the first \
+site handles the call the second is skipped; when it does not, the second \
+finds nothing to do either. It acts only when Game_UnlockDoorWithUsableItem \
+is the caller."""

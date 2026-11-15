@@ -127,6 +127,10 @@ faxanatools' `messages.py` decodes and encodes them; `fax_travel.c`'s
   once.
 - The box is waiting for a button when `MessageID` is 0 (typed out) or
   `TextBox_MessagePaused` is set. Wait on that rather than on a timer.
+  Only a pause sets `TextBox_MessagePaused` ($FF), and only continuing past
+  one (or the mantra box) clears it, so it can hold a stale nonzero value: $9F
+  all through a new game's intro. For a line with no pause, wait on
+  `MessageID` alone.
 - Between two messages the box is wiped and refilled. A screenshot taken then
   shows half of each.
 
@@ -369,6 +373,160 @@ the screen's right edge knocks him onto the next screen.
   hero at x=53 for a long monologue that A pages through. Up goes through the
   gate from anywhere in x=188-199.
 
+## Items and the inventory
+
+Five categories, each with a count, a selected entry and a list. Entries are
+the item's ID within its category (`ITEMINVENTORY_*` for items: the rings
+`$00-$03`, the A, K, Q, J and Jo keys `$04-$08`, the Mattock `$09`, ..., the
+Red Potion `$10`). Shops and scripts add the category in the top 3 bits
+(`KEY_J` is `$87`).
+
+| Category | List | Max (`MAX_INVENTORY_SLOTS`, `$847D` bank 12) | Selected | Count |
+|---|---|---|---|---|
+| Weapons | `$039D` | 4 | `$03BD` `SelectedWeapon` | `$03C2` |
+| Armor | `$03A1` | 4 | `$03BE` | `$03C3` |
+| Shields | `$03A5` | 4 | `$03BF` | `$03C4` |
+| Magic | `$03A9` | 4 | `$03C0` | `$03C5` |
+| Items | `$03AD` `ItemInventory` | 8 | `$03C1` `SelectedItem` | `$03C6` `NumberOfItems` |
+
+- **The selected item is not in the list.** `Player_Equip` (`$8CA9`, bank 12)
+  takes the new item out of the list and appends the old selection to it.
+  So "the player has X" means X is selected or in the first `NumberOfItems`
+  slots; `Player_LacksItem` (`$8CF7`) checks both. `$FF` selects nothing.
+- `Player_RemoveItem` (`$9A6A`, bank 12) shifts the later entries down and
+  decrements the count, leaving a stale byte after the end. `Player_AddToInventory`
+  overwrites the last entry when the category is full; `Player_PickUpItem`
+  (`$C8CD`) refuses when it is full.
+- The rings, the Elixir, the Magical Rod, the Pendant and the Black Onyx are
+  bits in `SpecialItems` (`$042C`), not list entries.
+- **The HUD picture** of the selected item is four CHR RAM tiles at PPU
+  `$13C0`. `Player_SetItem` (`$FC0B`) queues them through the PPU buffer;
+  `UI_ClearSelectedItemPic` (`$C8DC`) queues blanks; `UI_DrawSelectedItem`
+  writes `PPUDATA` directly and only runs with the whole HUD. Writing
+  `SelectedItem` redraws nothing.
+- The mantra stores each list entry in 4 bits and the selections in 5, so
+  only the IDs below `$10` survive it in the item list.
+- Using an item (Down-B, `GameLoop_CheckUseCurrentItem` `$C478`) jumps on
+  `SelectedItem`. The consumables end with `JSR Player_ClearSelectedItem`
+  (`$C4BF`: `SelectedItem = $FF`, then `UI_ClearSelectedItemPic`): the Red
+  Potion at `$C53B`, the Wing Boots at `$C581`, the Hour Glass at `$C5D0`,
+  the Mattock at `$C64C`.
+
+## Doors and keys
+
+Up at a door: `Player_CheckHandleEnterDoor` (`$E526`) has
+`Area_SetStateFromDoorDestination` (`$E7C5`) find the door and set
+`CurrentDoor_KeyRequirement` (`$042B`), then calls
+`Game_RunDoorRequirementHandler` (`$EB2F`, from `$E539`) and enters the door
+only if the requirement reads 0 afterwards. A door to the outside
+(`Player_EnterDoorToOutside`, `$E5B2`) does the same with the requirement from
+`DOOR_LOOKUP_REQUIREMENTS` (`$E5DB`), indexed by `Area_Region` (`$0435`) × 2,
++1 for the door forward.
+
+| Requirement | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|
+| Needs | A key | K key | Q key | J key | Jo key | Ring of Elf | Ring of Dworf | Demon's Ring |
+| Handler | `$EB51` | `$EB61` | `$EB71` | `$EB81` | `$EB91` | `$EBA1` | `$EBB1` | `$EBC1` |
+| Without it | script `$7D` | `$7C` | `$7B` | `$02` | `$7E` | `$7F` | `$7F` | `$7F` |
+
+- A key handler compares `SelectedItem` with its key (`$04-$08`). On a match,
+  `Game_UnlockDoorWithUsableItem` (`$EBD1`) runs script `$84`, which only says
+  "I've used key." (`01 AE 00`); then `SelectedItem = $FF` and
+  `JSR UI_ClearSelectedItemPic` at `$EBDE`. Clearing the selection is what
+  uses the key up: a selected key is in no list. It falls into
+  `Game_UnlockDoor` (`$EBE1`), which zeroes the requirement and plays the
+  sound. Without the key, the script says "There is a mark of "Jack" by the
+  key hole." (and Queen, King, Ace, Joker) and the door stays shut.
+- A ring door checks a `SpecialItems` bit and never uses the ring up.
+- **Doors lock again.** The requirement comes from ROM each time Up is
+  pressed, so every pass from a door's locked side costs a key.
+- Door data is in bank 3, per area. `*_DOOR_LOCATIONS` holds 4-byte records
+  (screen, block `YX`, destination, start `YX`), ending in `$FF`. A
+  destination below `$20` is a screen of the same area, `$20` and up a
+  building, `$FE`/`$FF` the region behind/ahead. `*_DOOR_DESTINATIONS` holds
+  4 bytes per destination, at destination × 4 (Towns: (destination − `$20`) × 4,
+  wrapping in 8 bits): screen, palette or building, key requirement, unused.
+
+**Every key door, and where each key comes from** (from the ROM's door tables;
+key shops from `*_KEY_SHOP_ITEMS`, gifts from the interaction scripts):
+
+| Key | Doors | Source |
+|---|---|---|
+| J | Eolis's exit (screen `$08`) to Trunk; Trunk `$0B` → the Tower of Trunk (`$0D`); Trunk `$28` → `$29` | Key shops: Eolis 100, Apolune 140, Forepaw 200, Mascon 500 |
+| Q | Trunk's gate to Mist (screen `$28`); Mist `$00` → `$3E`; Mist `$01` → `$4F` | Forepaw 500, Mascon 600, Victim 1200, Daybreak 1000 |
+| K | Mist `$17` → `$45`, `$20` → `$50`; Branch `$0A` → `$09`, `$0E` → `$0F`, `$14` → `$13`, `$19` → `$18` | Victim 1500, Daybreak 1200, Dartmoor 1300 |
+| A | Mist's gate to Branch (screen `$1F`), the one A door | A gift: the man in the house on Mist `$1F` (Buildings `$22`, script `$46`, `ISCRIPT_A27C`) gives one if you hold the Black Onyx and no A key, each time you ask |
+| Jo | Trunk `$1E` → `$3E`, the one Jo door ("the first spring") | A gift: the man in the house on Trunk `$2D` (Buildings `$15`, script `$24`, `ISCRIPT_A18A`) gives one once the Spring of Sky is done and you hold no Jo key, each time you ask |
+
+The rings: Elf for three Eolis houses (screens `$06`, `$07`), Dworf for
+Branch's gate to Dartmoor, the Demon's Ring for Dartmoor's gate to the Evil
+Fortress and the two doors on Dartmoor `$0E`. No sprite in the game is a key
+pickup.
+
+**Reusable keys break no sequence.** A shop key could already be bought in
+any number. The A and Jo keys are gifts, but each opens only the one door its
+giver sends you to, and the giver hands out another whenever you hold none, so
+a kept key opens nothing a fresh one would not. No key needs to stay
+consumable.
+
+## The Mattock and breakable walls
+
+- `Player_UseMattock` (`$C616`) looks at the block in front of the hero (1
+  pixel left of him, or 16 pixels right, on `Player_PosY`'s row) and acts only if it
+  is `USE_MATTOCK_BLOCK_TRANSITIONS[Area_CurrentArea × 4]` (`$C68F`). It runs
+  script `$81` ("I've used Mattock."), calls `Player_ClearSelectedItem` at
+  `$C64C` (which uses it up), then replaces that block and the one below
+  over four steps of 4 frames.
+- Only Trunk (area 1) has a group: `$63` → `$85`, `$86`, `$42`. Every other
+  group is `$00`, so elsewhere the Mattock "breaks" air (block `$00`) into air:
+  the message shows and, in the original, the Mattock is gone for nothing.
+  chipx86's comments name the groups after towns; they are by area.
+- Block property `$0B` (`BLOCK_MAYBE_BREAKABLE_BY_MATTOCK`) is on block `$63`
+  in Trunk, and also `$84`, `$85` in Mist, `$5C` in Branch and `$61` in
+  Dartmoor. The Mattock code never reads properties, and `$0B` is impassable,
+  so those are plain solid blocks.
+- **Block `$63` is in two screens** (all 64 Trunk screens decoded): `$0C`,
+  x 3, rows 10-11, the wall beside the Tower of Trunk on the way east; and
+  `$2D`, x 3, row 11, a floor block beside the ladder down to `$29`, which
+  opens nothing.
+- **A broken wall comes back** whenever its screen loads again (checked in
+  the game): breaking it only edits `ScreenBuffer`, and screens decompress
+  from ROM. So in the original, every pass through it costs a Mattock.
+- `QUEST_MATTOCK` (`Quests` bit `$10`) only records that Ripasheiku's Mattock
+  was picked up (`Player_PickUpMattockWithQuest`, `$C74A`); its sprite
+  removes itself while the bit is set. `Player_Spawn` clears the bit, so after
+  a death that Mattock is back. It does not open or close any wall.
+- **Where Mattocks come from:** one lies in the Tower of Trunk at `$0E`
+  (sprite `$50`, shown on one counted visit in four once the screen's enemies
+  are dead: `SpriteBehavior_RandomlyShowItem_50`, `Screen_Is3Of4Visits`),
+  Ripasheiku drops one at the tower's top (`$15`, sprite `$5B`), another
+  lies in Branch `$18`, and the tool shops of Mascon (800) and Victim (1200)
+  sell them.
+
+**A reusable Mattock breaks no sequence.** Both walls are in Trunk, before the
+shops, but the tower holds Mattocks that come back (the lying one, and
+Ripasheiku's after any death), and the tower comes before either wall. A kept
+Mattock breaks nothing a fetched one could not.
+
+## Screens and blocks
+
+- A screen is 16 × 16 blocks in `ScreenBuffer` (`$0600`, row × 16 + column);
+  the last row is always zero. `Area_LoadBlocks` (`$D1F6`) decompresses one
+  from the area's bank (`AREA_TO_SCREEN_DATA_BANKS`: Trunk and Branch bank 1,
+  the buildings, Dartmoor and the Evil Fortress bank 2, the rest bank 0),
+  through the word
+  table at the bank's `$8000` (entry `AREA_TO_BANK_OFFSET`), then a word per
+  screen; words are offsets from `$8000`. The data is a bit stream, high bit
+  first: 2 bits per block, `0` copy the block to the left, `1` the one above,
+  `2` the one above-left, `3` read 8 more bits as the block.
+- The screen's neighbours are in `Area_ScreenToTheLeft/Right/Above/Below`
+  (`$0066-$0069`), loaded from the area's scroll data. Walking off an edge
+  makes the neighbour `Area_CurrentScreen` and loads it.
+- **For tests:** set `Area_ScreenToTheRight` in a save state and walk off the
+  right edge to reach any screen of the same area the game's own way.
+  `CurrentSprites_Entities` (`$02CC`, 8 slots) set to `$FF` clears a screen's
+  enemies (see *Eolis, for tests*).
+
 ## Features and what they use
 
 `mods/allocations.toml` lists each feature's ROM, hook sites and shared
@@ -400,3 +558,16 @@ addresses, and `tools/check_allocations.py` enforces it.
   against the real one. A press lasts one frame, as a pad read does. The
   bindings are `MagicKey` and `MagicButton` in `config.ini` [Game], in the
   host's own key and button names.
+- **Auto keys** (`fax_keys.c`). Up at a locked door opens it with its key from
+  anywhere in the inventory. At `Game_RunDoorRequirementHandler` it lends the
+  key to `SelectedItem` when the key is listed but not selected, so the game's
+  own check and "I've used key." run. At `UI_ClearSelectedItemPic` called from
+  `$EBDE` it takes the key out of the list (unless reusable tools is on), puts
+  the old selection back and skips the clear: the HUD never stopped showing
+  it. The lent key is saved with save states.
+- **Reusable tools** (`fax_keys.c`). Keys and the Mattock are not used up. At
+  the same `UI_ClearSelectedItemPic` call it puts the selected key back in
+  `SelectedItem` and skips the clear; it skips `Player_ClearSelectedItem` when
+  `Player_UseMattock` calls it (from `$C64C`) and for no other item. Both
+  features' sites at `$C8DC` run one callback, which does the work of whichever
+  are on. It keeps no state of its own.

@@ -65,6 +65,15 @@ like `lefttrigger+`) in the `[Game]` section of `config.ini`, next to the game.
 `none` unbinds either. Pick one that nothing else uses. The menu's Controls
 section shows the bindings.
 
+**Auto keys** is on by default (Mods to turn it off). Press Up at a locked door
+and the right key from your inventory opens it, without selecting it first;
+whatever item you had selected stays selected.
+
+**Reusable tools** is on by default (Mods to turn it off). A key stays in your
+inventory after it opens a door, and the Mattock after it breaks a wall.
+Potions, the Elixir, the Hour Glass, the Wing Boots and the other consumables
+are still used up.
+
 Optional **Seamless** appears first in Mods, marked **Experimental** and
 disabled by default. It joins connected rooms, advances neighboring actors,
 and adapts the world view to your window with Fit to screen. Mouse wheel
