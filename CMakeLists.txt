@@ -43,6 +43,7 @@ if(NESRECOMP_BACKEND STREQUAL "cycle")
             fax_keys.c
             fax_falling.c fax_jumps.c
             fax_text_speed.c
+            fax_save.c fax_files.c
             fax_dagger.c
             fax_block.c fax_sugata.c
             fax_respawn.c

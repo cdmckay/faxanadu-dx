@@ -26,3 +26,11 @@ void fax_text_box(uint32_t *px, int w, int h, int x, int y, int cols, int rows, 
 /* A line of text (characters $20-$7F) with its top-left at (x, y), in the
  * text box's text color, blended at alpha 0-255. */
 void fax_text_draw(uint32_t *px, int w, int h, int x, int y, const char *s, unsigned alpha);
+
+/* The same frame with its tiles from ROM rather than the pattern table the
+ * picture was drawn with, in the colors given for pixel values 0-3: for a
+ * screen whose pattern tables hold something else, like the title. */
+void fax_text_box_rom(uint32_t *px, int w, int h, int x, int y, int cols, int rows, const uint32_t colors[4],
+                      unsigned alpha);
+/* A line of text in a given ARGB color. */
+void fax_text_draw_color(uint32_t *px, int w, int h, int x, int y, const char *s, uint32_t color, unsigned alpha);

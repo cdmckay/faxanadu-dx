@@ -302,6 +302,48 @@ addr = 0xf491
 bank = 15
 bytes = "ad 13 02 f0 cf ad 15 02 d0 ca ad 1d"
 
+# Save files (fax_files.c): the title's input routine (the file select runs
+# there), the mantra screen and the start screen's JMP Player_Spawn (continuing
+# a file), Player_Spawn after Game_SpawnInTemple (save on respawn), each
+# interaction-script action (a Guru's choice), and Messages_Load's reset of
+# the text box's line scroll (keep it for lines that follow a scrolled one).
+
+[[mod_function_hook]]
+id = "faxanadu.files.title"
+addr = 0x9f44
+bank = 12
+bytes = "a5 19 29 20 f0 0d ad 87 06 49 01 8d"
+
+[[mod_function_hook]]
+id = "faxanadu.files.mantra-screen"
+addr = 0x909d
+bank = 12
+bytes = "20 f7 ca a9 10 8d 06 20 a9 00 8d 06"
+
+[[mod_function_hook]]
+id = "faxanadu.files.start-spawn"
+addr = 0xfc95
+bank = 15
+bytes = "4c 0a db 20 59 f8 0c 99 a7 20 59 f8"
+
+[[mod_function_hook]]
+id = "faxanadu.files.spawned"
+addr = 0xdb20
+bank = 15
+bytes = "20 af da 4c 45 db 20 af c6 20 f7 ca"
+
+[[mod_function_hook]]
+id = "faxanadu.files.next-action"
+addr = 0x826e
+bank = 12
+bytes = "20 a4 87 aa bd 93 82 48 bd 7b 82 48"
+
+[[mod_function_hook]]
+id = "faxanadu.files.scroll"
+addr = 0xf439
+bank = 15
+bytes = "8d 16 02 8d 17 02 8d 15 02 8d 1c 02"
+
 # Sugata's flash (fax_sugata.c): SpriteBehavior_FlashScreenHitPlayer's entry
 # (the warning), its STA PPU_Mask's next instruction (the band instead of
 # greyscale) and its damage, and Sugata's draw (the blink). Its damage site is

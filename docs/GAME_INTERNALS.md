@@ -38,13 +38,15 @@ MMC1, 16 PRG banks of 16 KiB, 8 KiB CHR RAM, no PRG RAM.
 
 | Bank | Range | Size | Notes |
 |---|---|---|---|
-| 12 | `$AD8A-$BFFF` | 4,726 bytes | Guru travel uses `$AE00-$AE06` |
-| 13 | `$B45B-$BFFF` | 2,981 bytes | Keep `$B45A` `$FF` (see Messages). Guru travel uses `$B45B-$B48A` |
+| 12 | `$AD8A-$BFFF` | 4,726 bytes | Guru travel uses `$AE00-$AE06` (and lands on `$AE07` without reading it), Save files `$AE10-$AE17` |
+| 13 | `$B45B-$BFFF` | 2,981 bytes | Keep `$B45A` `$FF` (see Messages). Guru travel and Save files share `$B45B-$B48A` |
 
 **Existing bytes** a feature serves with other values (a tuned table entry,
 say) are claimed too, as `overrides` with their stock values, which
 `tools/check_allocations.py --rom` checks. The Taller dagger serves `$B898`
-(bank 14).
+(bank 14), Save files the Buy/Sell menu's message operand, `$8631` (bank 12).
+Two features may claim the same bytes only through a `[[shared_rom]]` entry
+saying why, as Guru travel and Save files do for the line slot.
 
 **Rev A** (`Faxanadu (USA) (Rev A)`, CRC32 `E71DB268`) matches the original in
 banks 5, 14 and 15, but bank 12 differs from `$9000` (the password code moved,
@@ -74,7 +76,10 @@ and data tables after it shifted). Not supported: the build rejects it.
 | `$042D` | `Quests` | Bit flags |
 | `$0431`, `$0432` | `Player_HP_U`, `Player_HP_L` | |
 | `$0438` | `PlayerIsDead` | Set it to 1 and the main loop runs the death path |
-| `$0439` | `TempleSpawnPoint` | The furthest temple reached, 0-7 |
+| `$0439` | `TempleSpawnPoint` | Where death respawns and a mantra continues, 0-7. In the original, the furthest temple reached; with Save files, the temple of the Guru last saved with |
+| `$0600-$061F` | `Password_EnteredChars` | The mantra screen's characters, as 6-bit values (shares `ScreenBuffer`) |
+| `$0666` | `Password_EnteredCharsLength` | |
+| `$0687` | `DAT_0687` | The title's choice: 0 Start, 1 Continue |
 
 ## Interaction scripts (bank 12)
 
@@ -99,7 +104,8 @@ between actions.
 | `$03` | msg | Message |
 | `$04` | addr | Jump if the player's title went up |
 | `$06` | temple | Set spawn point. **Only raises** `TempleSpawnPoint` |
-| `$14` | | Show the mantra |
+| `$0F` | addr | The shops' Buy/Sell menu: message `$10`, then a cursor on its lines 1 and 3. A on the first choice jumps to addr, A on the second goes on to the next action, B ends the script |
+| `$14` | | Show the mantra (`IScriptAction_ShowPassword`): encodes it, types it a character a frame, waits for A |
 | `$16` | msg, addr | Question: A jumps to addr, B goes on to the next action. Unused by the game, works |
 | `$17` | addr | Jump |
 
@@ -112,6 +118,19 @@ The full table is in chipx86's notes. The Gurus' scripts:
   `03 2D, 00` at `$A0C6`.
 - Death runs script `$1F` ("Don't have negative thoughts", message `$24`),
   not a Guru's.
+- Only `ISCRIPT_COMMON_GURU_PASSWORD` uses action `$14`. Without a new title
+  every temple Guru says message `$22` ("You need peace of mind. I will
+  meditate with you.") and shows the mantra; with one, he says `$23` and no
+  mantra. Eolis's Guru never shows it.
+
+**The Buy/Sell menu** (`IScriptAction_ShowBuySellMenu`, `$8630`) is any
+two-choice menu: its labels are just message `$10`'s four lines ("Come here /
+to buy. / Come here / to sell."), and `Menu_UpdateAndDraw` draws the cursor
+two lines apart, a column left of the text. The message ID is the immediate of
+its first instruction, `LDA #$10`, at `$8631`: a read override there shows any
+message instead, so Save files sets it for its one menu and puts it back at
+the end of the frame, once the menu has read it. Immediates are read at run
+time, so overriding one works.
 
 ### Portraits
 
@@ -214,6 +233,17 @@ faxanatools' `messages.py` decodes and encodes them; `fax_travel.c`'s
   `MessageID` alone.
 - Between two messages the box is wiped and refilled. A screenshot taken then
   shows half of each.
+- **A message after one that scrolled shows rotated.** The box's rows show
+  CHR line blocks from `TextBox_LineScrollOffset` (`$021A`) on; a scroll
+  lays the rows out again and advances it. `Messages_Load` falls into
+  `TextBox_ClearPasswordSize` (`$F434`), which zeroes the offset, but nothing
+  lays the rows out again until a new box opens
+  (`IScripts_FillPlaceholderText`). So after a message of more than 4 lines
+  (a new title's, `$23`, has 5), the next message in the same box starts on
+  the wrong row: "journey. / Send me to / another Guru. / Remember my".
+  Putting the offset back right after the zeroing (`$F439`) fixes it, as
+  Save files does for its lines and Guru travel's after them. Guru travel's
+  intro after a new title, with no save file in play, still shows rotated.
 - The font is one bit a pixel in bank 13 at `TILE_GLYPHS_START` (`$8000`),
   8 bytes a character from `$20` to `$7F` (`A` is at `$8108`). The glyph data
   ends where the messages begin (`$8300`). `TextBox_WriteChar` copies a glyph
@@ -222,6 +252,10 @@ faxanatools' `messages.py` decodes and encodes them; `fax_travel.c`'s
 - `TextBox_Open` frames a box with background tiles 1 (top left), 2 (top and
   bottom), 3 (top right), 4 (sides), 5 (bottom left) and 6 (bottom right)
   around tile 0 (black), from the playfield's background pattern table.
+  `UI_DrawHUDSprites` copies those (60 tiles in all) from bank 10,
+  `HUD_TILES_START` (`$8140`), to PPU `$1000`, so tile t is at
+  `$8140 + t * 16` in ROM; `fax_text_box_rom` draws the frame from there on
+  screens whose pattern tables hold something else, like the title.
   `TextBox_Closed` (`$020C`) is 0 while a box or the Select menu is open, and
   nonzero once one has closed (also before the first).
 - **Where boxes go**, in tiles of the 256 x 240 screen (the HUD is rows 0-3),
@@ -304,6 +338,11 @@ faxanatools' `messages.py` decodes and encodes them; `fax_travel.c`'s
   through the right edge.
 - `Game_Start` (`$DB26`) runs only for a new game. A mantra continues through
   `Player_Spawn`.
+- `Player_Spawn`'s `JSR Game_SpawnInTemple` is at `$DB1D` and returns to
+  `$DB20` (`JSR Game_SetupEnterBuilding`): every respawn passes there, after a
+  death, a Guru travel journey or a continue. `Game_SpawnInTemple` sets
+  `Area_CurrentScreen` to the temple's interior (`$DDD5,X`), but not yet
+  `Area_CurrentArea`.
 - `Game_MainLoop` (`$DB45`) resets the stack and maps bank 14 each frame.
   `GameLoop_CheckShowPlayerMenu` (`$E016`) is called from it after sprites
   update, so it runs right after any conversation ends.
@@ -318,13 +357,29 @@ What a feature can rely on, and the traps:
 - **Read overrides** (`cyc_mod_set_prg_read_override`) change what the CPU
   reads at one PRG byte. They are not machine state: they are not hashed or
   saved, so restore whatever you serve from your save-state record. There
-  are 64, shared by every feature.
+  are 64, shared by every feature, and an entry, once made, is never freed
+  (setting it back to the stock byte keeps the slot). Guru travel takes 55
+  (its 48-byte line slot and 7 step bytes), the Taller dagger 1, and Save
+  files shares the slot and adds 5 (4 step bytes and the menu's operand), or
+  8 if it ever ran with Guru travel off (its own 3-byte SAY): 61 to 64 of 64
+  with all three on. A new message for the text box should share the slot,
+  and anything more needs the table made larger or Guru travel's slot cut to
+  its longest line.
+- An override works on an **immediate operand** in used ROM (the recompiler
+  reads immediates at run time), not only on data: Save files changes the
+  Buy/Sell menu's `LDA #$10` for one menu. Put such a byte back as soon as it
+  has been read, so nothing else sees it.
 - **Hook sites** (`game.toml` `[[mod_function_hook]]`, keyed by the bytes
   there) call C before an instruction. Returning nonzero returns from the
   routine as its RTS would, from the current S. A callback can set S and the
   stack first to return somewhere else. That's how Guru travel enters the
   respawn path. When a site handles, later sites at the same address are
   skipped that time, so declare shared addresses in `mods/allocations.toml`.
+  Sites at one address run in the order their callbacks were registered
+  (`nes_mod_function_entry` walks its table in order), which is the order of
+  the features' constructors, so the link order of `HOST_EXTRAS`, not the
+  order of `game.toml`. Write sites that share an address to work in either
+  order.
 - A hook site can be **any instruction**, not only a routine's entry. Each
   instruction is its own label in the generated code, so a site where a
   branch and a fall-through meet fires on both paths (the Pendant fix's
@@ -435,6 +490,80 @@ and Y, and RTSes into the routine. So at the entry of a far-called routine:
 `Password_EnteredCharsLength` (`$0666`) counts the characters typed. The last
 row (5) holds →, ←, DEL and END at columns 0-3, and Up from row 0 wraps to it.
 A on END (row 5, column 3) checks the mantra and continues.
+
+## The title screen (bank 15, bank 12)
+
+`Game_InitStateForStartScreen` (`$DA6A`) sets S to `$FF`, initializes the
+inventory and runs `Game_InitStateForSpawn`, then `Game_ShowStartScreen`
+(`$FC65`) far-calls `StartScreen_Draw` and loops at `@_waitForInput` (`$FC6E`)
+once a frame: `WaitForNextFrame`, `Screen_ResetSpritesForNonGame`, a far call
+to `StartScreen_CheckHandleInput` (`$9F44`, bank 12), then at
+`@_afterCheckHandleInputFarJump` (`$FC7A`) a check of
+`Joy1_ChangedButtonMask` for Start.
+
+- `StartScreen_CheckHandleInput` toggles `$0687` on Select (with sound `$0B`)
+  and draws the arrow, sprite `$AD`, at x `$34` or `$74`, y `$7E`. Nothing
+  else calls it, so a hook that handles it owns the title's input: the arrow
+  is not drawn (the loop resets sprites each frame), and clearing Start in
+  `Joy1_ChangedButtonMask` there keeps the loop from seeing it.
+- Start with `$0687` = 0: music 8, then `@_startGame` (`$FC98`):
+  `SplashAnimation_RunIntro`, `Player_SetStartGameState` (`$9570`: everything
+  zero or none, but `SelectedArmor` 0) and `JMP Game_Start`.
+- With `$0687` = 1: `PasswordScreen_Show` (`$909D`, far call), then
+  `Player_SetInitialExpAndGold` (far call from `$FC8F`), then at `$FC95`
+  `JMP Player_Spawn`. `PasswordScreen_Show` returns only once
+  `Password_Load` has succeeded, and leaves nothing else that
+  `Player_Spawn` needs: skipping it (handling its far call) after putting the
+  progress in RAM continues as a mantra would.
+- The picture: the logo and its border fill y 16-143; START and CONTINUE are
+  on y 160-166 and the three notices on 184, 200 and 216, so y 144-239 is
+  free for a box of 12 cells. The background palettes are `$0F $05 $18 $38`
+  (the logo's border), `$0F $17 $27 $30` (the white text), `$0F $0F $16 $28`
+  and `$0F $0F $00 $10`; `UI_AttributeDataIndex` is 1. The playfield's
+  pattern table holds the title's tiles, not the text box's, so a box drawn
+  there takes the frame from ROM (`HUD_TILES_START`, bank 10; see The text
+  box).
+- The titles' names are 16 space-padded characters each at
+  `PLAYER_TITLE_STRINGS` (`$F649`, bank 15): Novice, Aspirant, Battler,
+  Fighter, Adept, Chevalier, Veteran, Warrior, Swordman, Hero, Soldier,
+  Myrmidon, Champion, Superhero, Paladin, Lord.
+- The dialogue font has a right-pointing triangle at `}` (`$7D`), and blank
+  glyphs for `#$%&()*+/:;<=>@[\]^`.
+
+## The mantra (bank 12)
+
+`Password_GenerateState` (`$96FE`) packs the game into
+`Password_EncodedState` (`$04CD`), a checksum byte and a 5-bit count of 6-bit
+characters, then `Password_EncodeGameState` (`$976C`), padded to a byte. Each
+character is one of 64 (`A-Z`, `a-z`, `0-9`, `,`, `?`, in that order). The
+fields, in order:
+
+| Field | RAM | Bits |
+|---|---|---|
+| Spawn point | `TempleSpawnPoint` (`$0439`) | 3 |
+| Title | `PlayerTitle` (`$0437`) | 4 |
+| Special items | `SpecialItems` (`$042C`) | 8 |
+| Quests | `Quests` (`$042D`) | 8 |
+| Selected weapon, armor, shield | `$03BD-$03BF` | 1 (set) + 2 each |
+| Selected spell | `SelectedMagic` (`$03C0`) | 1 + 3 |
+| Selected item | `SelectedItem` (`$03C1`) | 1 + 5 |
+| Weapons, armor, shields | `$039D`, `$03A1`, `$03A5`; counts `$03C2-$03C4` | count 3, entries 2 |
+| Spells | `$03A9`; count `$03C5` | count 3, entries 3 |
+| Items | `$03AD`; count `$03C6` | count 4, entries 5 |
+
+An unset selection (`$FF`) is a single 0 bit. `Password_Load` (`$95E9`)
+reads the same fields back and fails (C set) if a list holds more than 4
+entries (8 items); before it, `Password_Maybe_CheckPasswordLength` (`$9850`)
+repacks the typed characters from `Password_EnteredChars` and fails unless the
+count matches `Password_EnteredCharsLength` and the checksum sums to 0. Both
+only touch memory, so a mantra decodes in an isolated call: write the
+characters' values and the length, switch to bank 12 (`$CC1A`, X = 12), call
+the two, then `Player_SetInitialExpAndGold`.
+
+**Not in the mantra:** gold, experience and `NextPlayerTitle` (continuing
+sets them from the title), HP and MP (`Player_Spawn` fills them), the timed
+items, and where the hero stood. The mantra's spawn point is
+`TempleSpawnPoint`, the furthest temple in the original.
 
 ## Weapon damage (bank 14)
 
@@ -1072,8 +1201,10 @@ Red Potion `$10`). Shops and scripts add the category in the top 3 bits
   `UI_ClearSelectedItemPic` (`$C8DC`) queues blanks; `UI_DrawSelectedItem`
   writes `PPUDATA` directly and only runs with the whole HUD. Writing
   `SelectedItem` redraws nothing.
-- The mantra stores each list entry in 4 bits and the selections in 5, so
-  only the IDs below `$10` survive it in the item list.
+- The mantra stores each item list entry and the selected item in 5 bits
+  (the list's count takes 4), so every item survives it, the Red Potion
+  (`$10`) to the Fire Crystal (`$15`) included. (An earlier note here said 4
+  bits an entry; that was the count.)
 - Using an item (Down-B, `GameLoop_CheckUseCurrentItem` `$C478`) jumps on
   `SelectedItem`. The consumables end with `JSR Player_ClearSelectedItem`
   (`$C4BF`: `SelectedItem = $FF`, then `UI_ClearSelectedItemPic`): the Red
@@ -1201,12 +1332,19 @@ Mattock breaks nothing a fetched one could not.
 addresses, and `tools/check_allocations.py` enforces it.
 
 - **Guru travel** (`fax_travel.c`). After the mantra or a new title, the Guru
-  offers to send you to any other Guru you have visited. It steers the
-  conversation at `IScripts_InvokeNextAction` and supplies two script steps
-  and one message slot through read overrides. The journey is the respawn
-  path without its penalties, with `TempleSpawnPoint` set only during the
-  committed `Game_SpawnInTemple` call. Visited Gurus persist in
-  `faxanadu_gurus.txt`; a new game resets them.
+  says "All Gurus / meditate as one." and offers "Shall I send / you to
+  another / Guru?", then asks about each Guru you have visited up to the
+  furthest temple ("To the Guru of / <town>?"). It steers the conversation at
+  `IScripts_InvokeNextAction` and supplies two script steps and one message
+  slot through read overrides. The journey is the respawn path without its
+  penalties, with `TempleSpawnPoint` set only during the committed
+  `Game_SpawnInTemple` call, so the spawn point is kept. The furthest temple
+  is the highest visited Guru's (or `TempleSpawnPoint`, if further), since
+  with Save files the spawn point is the Guru last saved with. With a file in
+  play, Save files asks first and starts Guru travel through
+  `fax_travel_begin`; the visited Gurus are then the file's `gurus` field.
+  Without Save files they persist in `faxanadu_gurus.txt`; a new game resets
+  them.
 - **Death keeps gold** (`fax_death.c`). Dying brings the hero back with the
   gold, experience and earned title he had. It hooks
   `Player_SetInitialExpAndGold` and returns at once when the far call's resume
@@ -1346,3 +1484,124 @@ addresses, and `tools/check_allocations.py` enforces it.
   checkpoint is forgotten until the hero walks out. Mantras are unchanged. Its
   save-state record holds the checkpoint and whether a death is on its way to
   `Player_Spawn` (see "Entrances and zone respawn").
+
+- **Save files** (`fax_save.c`, `fax_files.c`). Three files instead of
+  mantras; see "Save files" below.
+
+## Save files
+
+**The files** are `faxanadu_file1.txt` to `faxanadu_file3.txt` beside the
+game, each a record of named fields: text, one `key = value` a line, `#`
+comments. A file is written whole to a `.tmp` and renamed over the old one,
+so a crash never leaves half a file. `--no-save` writes nothing. A record
+must have a `version`; a newer one than the build knows shows as "From a newer
+version" and is never written over (erase it to reuse the file), and anything
+malformed shows as "Damaged file". Older versions migrate through the
+`migrations` table in `fax_save.c` (none yet). Fields the build does not know
+are kept, in place, through every save.
+
+**The core fields**, written from RAM at each save:
+
+| Field | From | Notes |
+|---|---|---|
+| `version` | | 1 |
+| `title`, `next_title` | `PlayerTitle`, `NextPlayerTitle` | 0-15 |
+| `experience`, `gold` | `Experience`, `Gold` | Exact; gold is 24-bit |
+| `spawn` | `TempleSpawnPoint` | The temple of the Guru last saved with: where the file continues and death respawns |
+| `furthest` | Save files' own count | The furthest temple reached: the original's `TempleSpawnPoint`. The file select shows its town |
+| `special_items`, `quests` | `SpecialItems`, `Quests` | Bit flags, decimal |
+| `weapons`, `armor`, `shields`, `spells`, `items` | The five lists, up to their counts | Entries in decimal, space-separated |
+| `selected_weapon` ... `selected_item` | `SelectedWeapon` ... `SelectedItem` | A number, or `none` |
+
+Other fields belong to features: Guru travel's `gurus` (the visited Gurus,
+town names), and `imported_mantra` on a file imported from a mantra. Missing
+core fields take a new game's values. HP, MP and the timed items are not
+kept: continuing fills HP and MP and clears the timed items, as a mantra did.
+
+**The file select.** A hook at `StartScreen_CheckHandleInput` runs it instead
+of the title's own input (see The title screen), and the file select is drawn
+over the picture below the logo. Up and Down move, A or Start take a file:
+an empty one starts a new game through the stock Start path (nothing is
+written until the first save), a saved one continues. "Erase a file" picks a
+file, then asks "Erase file N? A yes B no"; B steps back.
+
+**Continuing** takes the stock Continue path: the hook at
+`PasswordScreen_Show` puts the file's progress where `Password_Load` would and
+skips the mantra screen, `Player_SetInitialExpAndGold` runs (Death keeps gold
+lets it, since it is the start screen's call), and the hook at `$FC95`
+(`JMP Player_Spawn`) puts back the exact gold, experience and next title.
+`Player_Spawn` does the rest: full HP and MP, the timed items and the Mattock
+quest bit cleared (as after a death), and the temple at `TempleSpawnPoint`.
+
+**A Guru's choice.** Where a Guru would show the mantra (`$A5FE`), after a new
+title (`$A602`) and at Eolis's Guru with the Ring of Elf (`$A0C8`), with a
+file in play, the interpreter goes to a step in unused ROM (bank 12,
+`$AE10`):
+
+- If Guru travel has another Guru to offer: the Buy/Sell menu, showing
+  "Remember my / journey. / Send me to / another Guru." (message `$C3`
+  through the operand override). The first saves; the second starts Guru
+  travel at its intro, then the towns at once; B leaves.
+- Otherwise: the question "Shall I remember / your journey?" (action `$16`).
+  A saves; B leaves.
+- Saving makes this Guru's temple `TempleSpawnPoint`, raises the furthest
+  temple, writes the file, and shows "I will remember / your journey."
+  (through Guru travel's SAY step, or Save files' own at `$AE15`). Then, if
+  Guru travel has somewhere to offer, its intro and offer follow.
+- **The spawn point moves only on a save** (#43). `SET_SPAWN_POINT` (`$06`)
+  still runs, so Guru travel meets the Guru there, but Save files puts
+  `TempleSpawnPoint` back at the next action and keeps the raise as the
+  furthest temple.
+
+Without a file in play (Save files off, or turned on in the middle of a game)
+the Gurus show the mantra as before.
+
+Its lines come after the Guru's own, in the same box, and a new title's line
+scrolls: while they (and Guru travel's after them) are up, the hook at
+`$F439` keeps the box's line scroll offset (see The text box).
+
+**Saving on respawn.** The hook at `$DB20` (after `Game_SpawnInTemple` in
+`Player_Spawn`) saves the file at every respawn: after a death, a Guru travel
+journey and continuing. It keeps the spawn point, so quitting never loses more
+than the last stretch, and only a Guru moves where the file continues.
+
+**Importing mantras.** The first time the title shows with Save files
+(`faxanadu_imported.txt` absent), the mantra in `faxanadu.srm` goes into file
+1 (or the first empty file), with the Gurus in `faxanadu_gurus.txt`. After
+that, a mantra not imported before goes into the first empty file: a new one
+in `faxanadu.srm` (which the launcher's Mantra field edits) or `--password`.
+`faxanadu_imported.txt` lists the mantras imported, so each goes in once;
+delete it to import again. A mantra is decoded by the game's own routines in
+an isolated call (see The mantra), so it gets the title's gold and experience,
+as continuing from it did; its spawn point is also its furthest temple, and
+that Guru counts as visited. With Save files on, `faxanadu.srm` is no longer
+written every 15 seconds.
+
+**For other features: `fax_save.h`.** Keep your state in the file in play:
+
+```c
+#include "fax_save.h"
+
+static void on_save(FaxSaveEvent event) {
+    if (event == FAX_SAVE_WRITING) fax_save_set_int("elixir.charge", charge);           /* about to be written */
+    else if (event == FAX_SAVE_CONTINUED) charge = fax_save_get_int("elixir.charge", 0); /* a file continued */
+    else charge = 0;                                                                     /* FAX_SAVE_NEW_GAME */
+}
+NES_MOD_CONSTRUCTOR(register_elixir) { if (!fax_save_listen(on_save)) abort(); }
+```
+
+- `fax_save_get(key)` / `fax_save_set(key, value)` (and `_int`) read and
+  write a field of the file in play; `NULL` removes one. Set returns false
+  with no file in play, and for the core fields above. Name keys after the
+  feature: `elixir.charge`, `block.tutorial`, `zone.checkpoint`. Keys are
+  `[a-z0-9_.-]`, up to 31 characters; values printable ASCII, up to 95; a
+  record holds 64 fields.
+- A value set is written at the next save (a Guru's or a respawn's). Set it in
+  `FAX_SAVE_WRITING` from your own state, rather than when it changes, and
+  read it back in `FAX_SAVE_CONTINUED`: a save state does not reload the
+  file's fields into your feature (it rereads the file into the record, but
+  sends no event), so your own save-state record stays the authority while
+  playing.
+- `fax_save_enabled()` says Save files is on; `fax_save_file()` gives the file
+  in play (1-3), or 0 on the title, without a file, or with Save files off.
+  Without a file, keep your state as you did before (a sidecar, or nothing).
