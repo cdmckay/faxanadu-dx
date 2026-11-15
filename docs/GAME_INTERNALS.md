@@ -55,7 +55,8 @@ and data tables after it shifted). Not supported: the build rejects it.
 | `$009E`, `$00A1` | `Player_PosX_Block`, `Player_PosY` | |
 | `$00DB-$00DD` | `IScriptOrCHRAddr`, `IScriptOffset` | The interpreter reads the next action at addr + offset |
 | `$0100` | `CurrentROMBank` | 14 in the main loop. The stack shares this page |
-| `$0213` | `MessageID` | Keeps a stale value after a conversation |
+| `$0213` | `MessageID` | 0 once a message has typed out; otherwise stale after a conversation |
+| `$0215` | `TextBox_MessagePaused` | Nonzero while a `$FC` pause waits for A |
 | `$0390`, `$0392-$0394` | `Experience`, `Gold` | Gold is 24-bit little-endian |
 | `$039A` | `Player_MP` | |
 | `$042D` | `Quests` | Bit flags |
@@ -124,6 +125,8 @@ faxanatools' `messages.py` decodes and encodes them; `fax_travel.c`'s
 - Questions end with a flashing "?". A continues; B dismisses at any point,
   even mid-text. Both read `Joy1_ChangedButtonMask`, so a held button acts
   once.
+- The box is waiting for a button when `MessageID` is 0 (typed out) or
+  `TextBox_MessagePaused` is set. Wait on that rather than on a timer.
 - Between two messages the box is wiped and refilled. A screenshot taken then
   shows half of each.
 
@@ -175,7 +178,12 @@ What a feature can rely on, and the traps:
 - A headless run loads mods only with `--mods-root DIR`. A hidden window
   needs `NESRECOMP_NO_LAUNCHER=1 SDL_VIDEODRIVER=dummy` and `--hidden`.
 - TCP (`--tcp PORT`): `pad` takes SDL controller names (`a`, `start`,
-  `dpleft`). `action` takes NES names (`a`, `left`, `up`).
+  `dpleft`). `action` takes NES names (`a`, `left`, `up`). Durations are in
+  frames, so a test that waits on frames and game state, never the clock,
+  runs the same uncapped.
+- `--uncapped` (with `--exit-after N`) runs the window as fast as it can:
+  about 290 fps, 5x real time. The cycle-accurate machine is the limit; even
+  headless runs at about 370 fps.
 - A save state's RAM is in its `HW  ` chunk at offset 23, 2 KiB, with no
   checksum. Edit it to set up test fixtures (`tests/travel/guru_travel.py`).
 
