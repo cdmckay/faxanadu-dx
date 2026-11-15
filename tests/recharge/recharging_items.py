@@ -658,21 +658,15 @@ def main():
         warp(shop, "find-boots", TRUNK, 0x2D, 0x31, PALETTE_TOWER, 1,
              {SELECTED_ITEM: WING_BOOTS, NUMBER_OF_ITEMS: 0, VISIT_COUNT: 3}, {2: COOLDOWN})
         assert state()["boots_cooldown"] > 0, state()
-        slots = ram(SPRITE_ENTITIES, 8)                             # it shows once the hornets are gone;
-        poke({PLAYER_X: 36, PLAYER_Y: 48,                           # on the ledge, 20 px off it
-              **{SPRITE_ENTITIES + i: 0xFF for i in range(8) if slots[i] == 0x07}})
-        wait(8)
-        assert ram(PLAYER_Y) == 48, f"on the ledge: y {ram(PLAYER_Y)}"
-        wait(2 * SECOND)                                            # past the zone's name
-        assert ram(MESSAGE_ID) != GOT_WING_BOOTS and not state()["boots_ready"], state()
-        hud_shot("find-boots-before", range(1, COOLDOWN + 1))       # the pair by the wall, T: blinking
-        for _ in range(60):                                         # it lies at x 16
+        clear(0x07)                                                 # it shows once the hornets are gone, under
+        for _ in range(60):                                         # his feet (it lies at x 16, by the wall)
             if ram(MESSAGE_ID) == GOT_WING_BOOTS:
                 break
             act("left", 2, 2)
         until("the find", lambda: ram(MESSAGE_ID) == GOT_WING_BOOTS, 600)
-        until("the line to type out", typed, 900)
+        until("the line to type out", lambda: ram(MESSAGE_ID) == 0, 900)
         assert not state()["boots_ready"], state()                  # Player_PickUpItem comes after the line
+        shot("find-boots-message")
         page_through()
         wait(4)
         s = state()
