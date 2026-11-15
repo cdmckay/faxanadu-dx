@@ -29,6 +29,8 @@
               pkgs.freetype
               pkgs.harfbuzz
               pkgs.glib
+              # tools/disassembly.sh assembles chipx86's disassembly.
+              pkgs.cc65
             ] ++ pkgs.lib.optionals pkgs.stdenv.isLinux [
               pkgs.libGL
               # SDL_syswm.h, included by ImGui's SDL2 backend, includes Xlib.h.

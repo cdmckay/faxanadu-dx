@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# Run every check this repo has. They run locally, not in CI: the build
+# recompiles your ROM, which cannot be distributed.
+#
+#   tools/test.sh                 # ROM: "Faxanadu (USA).nes" at the repo root
+#   tools/test.sh --rom PATH      # another copy of the same ROM
+#   tools/test.sh --quick         # skip the end-to-end game runs
+#   ZELDA2_ROM=PATH tools/test.sh # also run Play as Link's controller tests
+#
+# Run inside the Nix devShell (direnv, or nix develop). The game build in
+# build-cycle is configured on first use.
+set -euo pipefail
+REPO="$(cd "$(dirname "$0")/.." && pwd)"
+ROM="$REPO/Faxanadu (USA).nes"
+QUICK=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --rom) ROM="$(realpath "$2")"; shift 2;;
+    --quick) QUICK=1; shift;;
+    -h|--help) sed -n '2,11p' "$0"; exit 0;;
+    *) echo "unknown arg: $1" >&2; exit 2;;
+  esac
+done
+[ -f "$ROM" ] || { echo "No ROM at $ROM; see README, Building from Source" >&2; exit 2; }
+cd "$REPO"
+JOBS="$(nproc 2>/dev/null || echo 4)"
+OUT="$REPO/build-tests"
+
+echo "== allocations"
+python3 tools/check_allocations.py --rom "$ROM"
+
+echo "== unit tests"
+cmake -S tests/travel -B "$OUT/travel" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/travel" -j"$JOBS" >/dev/null
+"$OUT/travel/travel_test"
+cmake -S tests/world -B "$OUT/world" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/world" -j"$JOBS" >/dev/null && echo "fax_world.c compiles without SDL"
+if [ -n "${ZELDA2_ROM:-}" ]; then
+  cmake -S tests/link -B "$OUT/link" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+  cmake --build "$OUT/link" -j"$JOBS" >/dev/null
+  "$OUT/link/link_controller_test" "$ZELDA2_ROM"
+else
+  echo "(Play as Link controller tests skipped: set ZELDA2_ROM)"
+fi
+
+echo "== game build"
+[ -f build-cycle/CMakeCache.txt ] || cmake -S . -B build-cycle -DCMAKE_BUILD_TYPE=Release -DNESRECOMP_ROM="$ROM" >/dev/null
+cmake --build build-cycle -j"$JOBS" >/dev/null
+build-cycle/FaxanaduRecomp "$ROM" --frames 600 --no-save | grep "mode="
+
+if [ "$QUICK" = 1 ]; then echo "(end-to-end runs skipped: --quick)"; exit 0; fi
+echo "== end to end: Guru travel"
+python3 tests/travel/guru_travel.py --build build-cycle --rom "$ROM" --out "$OUT/travel-e2e"
+echo "== end to end: Guru travel with Seamless on"
+python3 tests/travel/guru_travel.py --build build-cycle --rom "$ROM" --out "$OUT/travel-e2e-seamless" \
+  --game-arg=--world-view=seamless
+echo "all checks passed"

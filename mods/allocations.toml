@@ -1,0 +1,40 @@
+# What each feature takes from the game, so features cannot quietly collide.
+# tools/check_allocations.py fails when:
+#   - a game.toml hook site belongs to no feature (by id prefix),
+#   - two features claim overlapping ROM,
+#   - a claimed ROM range is not unused ($FF) in the stock image (with --rom),
+#   - two features that can be enabled together hook the same address and no
+#     [[shared_site]] below says why that is safe.
+# Features that share a manifest exclusive group are never enabled together.
+# Update this file with the feature, and docs/GAME_INTERNALS.md with it.
+
+[[feature]]
+package = "faxanadu.enhancement.guru-travel"
+source = "fax_travel.c"
+hooks = "faxanadu.travel."
+# Supplied through read overrides; the ROM image itself is never changed.
+rom = [
+    { bank = 12, start = 0xAE00, end = 0xAE07, use = "SAY and ASK interaction-script steps" },
+    { bank = 13, start = 0xB45B, end = 0xB48B, use = "message $C3, the Guru's current line" },
+]
+# Writes only the game's own variables: TempleSpawnPoint, IScriptOrCHRAddr
+# and IScriptOffset, and the stack at $01FA-$01FF when a journey starts.
+
+[[feature]]
+package = "faxanadu.enhancement.seamless-world"
+source = "fax_world.c"
+hooks = "faxanadu.world."
+rom = []
+
+[[feature]]
+package = "faxanadu.gameplay.zelda2-link"
+source = "mods/zelda2/fax_link.c"
+hooks = "faxanadu.link."
+rom = []
+
+[[shared_site]]
+addr = 0xE016   # GameLoop_CheckShowPlayerMenu
+hooks = ["faxanadu.world.inventory", "faxanadu.link.inventory", "faxanadu.travel.main-loop"]
+why = """Seamless (freeze_hook) and Link (inventory_hook) observe and return 0, so \
+later sites still fire. Guru travel handles the call only to start a journey, \
+and its site is the last at this address."""
