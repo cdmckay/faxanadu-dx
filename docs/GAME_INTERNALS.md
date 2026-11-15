@@ -49,14 +49,20 @@ and data tables after it shifted). Not supported: the build rejects it.
 
 | Address | Name | Notes |
 |---|---|---|
+| `$0016` | `Joy1_ButtonMask` | Buttons held. The NMI reads the pad only on frames the game waited for (`WaitForNextFrame`), not on lag frames |
 | `$0019` | `Joy1_ChangedButtonMask` | Buttons newly pressed this frame. A=`$80`, B=`$40`, Select=`$20`, Start=`$10`, Up=`$08` |
+| `$001A` | `InterruptCounter` | Counts every NMI, lag frames included. Read it in the same `read_ram` as other state to time things to the frame over TCP |
 | `$0024` | `Area_CurrentArea` | 4 = inside a building |
 | `$0063` | `Area_CurrentScreen` | |
 | `$009E`, `$00A1` | `Player_PosX_Block`, `Player_PosY` | |
 | `$00DB-$00DD` | `IScriptOrCHRAddr`, `IScriptOffset` | The interpreter reads the next action at addr + offset |
 | `$0100` | `CurrentROMBank` | 14 in the main loop. The stack shares this page |
+| `$0127` | `SoundEffect_State_Counter` | The playing sound effect's tick; the typing sound runs 1-4 |
+| `$0212` | `TextBox_PlayTextSound` | The typing sound plays for a character if set |
 | `$0213` | `MessageID` | 0 once a message has typed out; otherwise stale after a conversation |
+| `$0214` | `Message_ProcessedLength` | Bytes of the message read, from an offset, not 0. Wraps with the address |
 | `$0215` | `TextBox_MessagePaused` | Nonzero while a `$FC` pause waits for A |
+| `$021D` | `TextBox_Timer` | Characters type when it is a multiple of 4. `Messages_Load` zeroes it |
 | `$0390`, `$0392-$0394` | `Experience`, `Gold` | Gold is 24-bit little-endian |
 | `$039A` | `Player_MP` | |
 | `$042D` | `Quests` | Bit flags |
@@ -130,6 +136,39 @@ faxanatools' `messages.py` decodes and encodes them; `fax_travel.c`'s
 - Between two messages the box is wiped and refilled. A screenshot taken then
   shows half of each.
 
+### How text types (bank 15)
+
+- Every message loop (`IScriptAction_ShowMessage`, `..._ShowUnskippableMessage`,
+  the questions, shops, `IScripts_ShowFinalMessage`) runs once a frame:
+  `IScripts_UpdatePortraitAnimation` (which waits for the frame), then
+  `TextBox_ShowNextChar` (`$F466`), then a `TextBox_CheckShouldContinue*`.
+- `TextBox_ShowNextChar` increments `TextBox_Timer`, sets
+  `TextBox_PlayTextSound` to 1 and calls `TextBox_ShowNextChar_IfReady`
+  (`$F491`), which nothing else calls. That returns unless a message is
+  loaded, it isn't paused and the timer is a multiple of 4; then it reads one
+  message byte and draws it. So the game's pace is one byte every 4 frames,
+  `$FC` and the end each taking a byte's turn. Nothing else reads the timer.
+- Each character queues 19 bytes to the PPU buffer: one 16-byte glyph tile of
+  CHR RAM, at `$1400 + line * $100 + column * 16`. Writers wait for buffer
+  space (`PPUBuffer_WaitForCapacity`) rather than overflow it. One character
+  a frame keeps up: Hold A to speed up text types the Guru's greeting at
+  exactly a byte a frame, with no stalls.
+- The continue checks read only `Joy1_ChangedButtonMask`, which the NMI sets
+  to `held & ~previous`. A on a ▼ or a finished message goes on, and B
+  dismisses a skippable one, only on the frame the button goes down. A held
+  button never acts again. Shop menus (`IScripts_WaitForMenuInput`) and the
+  mantra's ▲ work the same way.
+- The typing sound (sound effect 1, noise) lasts 4 ticks: 2 of a soft hiss,
+  then 2 of a sharp clack (chipx86 traces the clack to an out-of-bounds table
+  read). At the game's pace each character starts it just as the last one
+  ends. Started every frame, it never gets past the hiss.
+- After `Messages_Load` sets `MessageID`, the first `TextBox_ShowNextChar`
+  comes about 12 frames later, while the box opens. Those are lag frames, so
+  the pad isn't read either. Time typing from the first character, not from
+  `MessageID`.
+- The mantra types a character a frame through its own
+  `PasswordScreen_ShowNextChar`, not `TextBox_ShowNextChar`.
+
 ## Temples and spawning (bank 15)
 
 | Temple | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
@@ -186,6 +225,12 @@ What a feature can rely on, and the traps:
   headless runs at about 370 fps.
 - A save state's RAM is in its `HW  ` chunk at offset 23, 2 KiB, with no
   checksum. Edit it to set up test fixtures (`tests/travel/guru_travel.py`).
+- Each TCP command is served on a frame boundary, so a polling loop sees the
+  game a few frames apart. For frame-exact checks, read `InterruptCounter`
+  with the state in one `read_ram`, or run headless from a save state with
+  `--load-state`, `--input` (absolute frame numbers; `--frames` is absolute
+  too) and `--frame-log`, which writes every frame's RAM after a 12-byte
+  file header, each record a 36-byte header, palette, OAM, then RAM.
 
 ## Far calls (`MMC1_LoadBankAndJump`)
 
@@ -260,3 +305,9 @@ addresses, and `tools/check_allocations.py` enforces it.
   `Player_SetInitialExpAndGold` and returns at once when the far call's resume
   address is `Player_HandleDeath`'s, and leaves the start screen's call alone.
   It keeps no state.
+- **Hold A to speed up text** (`fax_text_speed.c`). While A is held (and not
+  on the frame it goes down), a hook at `TextBox_ShowNextChar_IfReady` rounds
+  `TextBox_Timer` up to a multiple of 4, so a character types every frame,
+  and clears `TextBox_PlayTextSound` on all but every 4th frame, so the
+  typing sound keeps its rhythm. Page breaks and questions still wait for a
+  new press. It writes nothing else and keeps no state.
