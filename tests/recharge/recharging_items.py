@@ -474,7 +474,7 @@ def main():
         print("ok: dying makes the recharging Wing Boots ready")
 
         # 2. The Hour Glass on Eolis screen 4.
-        warp(shop, "glass", EOLIS, 4, 0x9C, PALETTE_EOLIS, 0, {SELECTED_ITEM: HOUR_GLASS, NUMBER_OF_ITEMS: 0})
+        warp(shop, "glass", EOLIS, 4, 0x9E, PALETTE_EOLIS, 0, {SELECTED_ITEM: HOUR_GLASS, NUMBER_OF_ITEMS: 0})
         zozuras = [i for i, e in enumerate(ram(SPRITE_ENTITIES, 8)) if e == ZOZURA]
         assert zozuras, "Zozuras on screen 4"
         use()
@@ -537,9 +537,11 @@ def main():
              {SPECIAL_ITEMS: BIT_ELIXIR, SELECTED_ITEM: NO_ITEM, NUMBER_OF_ITEMS: 0})
         status_shot("status-elixir-charged")
         poke({HP: 1, HP_FRACTION: 0})
-        dismiss(USED_ELIXIR, 2400)
+        until("a Zozura's hit", lambda: ram(MESSAGE_ID) == USED_ELIXIR, 2400)
+        until("the line to type out", typed, 900)
+        shot("elixir-used")
+        page_through()
         until("HP and MP to refill", lambda: ram(HP) == 0x50 and not box_open(), 1200)
-        shot("elixir-revived")
         s = state()
         assert s["revives"] == 1 and s["elixir_spent"] and not s["elixir_charged"], s
         print("ok: at 0 HP the Elixir revives the hero, and is kept, spent")
@@ -584,18 +586,23 @@ def main():
         warp(shop, "find-boots", TRUNK, 0x2D, 0x31, PALETTE_TOWER, 1,
              {SELECTED_ITEM: WING_BOOTS, NUMBER_OF_ITEMS: 0, VISIT_COUNT: 3}, {2: COOLDOWN})
         assert state()["boots_cooldown"] > 0, state()
-        clear(0x07)
+        clear(0x07)                                                 # it shows once the hornets are gone
+        wait(2 * SECOND)                                            # past the zone's name
+        hud_shot("find-boots-before", range(1, COOLDOWN + 1))       # the pair by the wall, T: blinking
+        for _ in range(60):                                         # it lies at x 16
+            if ram(MESSAGE_ID) == GOT_WING_BOOTS:
+                break
+            act("left", 2, 2)
         until("the find", lambda: ram(MESSAGE_ID) == GOT_WING_BOOTS, 600)
         until("the line to type out", typed, 900)
-        assert not state()["boots_ready"], state()
-        shot("find-boots-message")                                  # T: still shows the cooldown
+        assert not state()["boots_ready"], state()                  # Player_PickUpItem comes after the line
         page_through()
         wait(4)
         s = state()
         assert s["boots_ready"] and s["pickups"] == 1 and items() == ([], WING_BOOTS), (s, items())
         until("T: to show 00", lambda: state()["hud_drawn"] == 0, 60)
         wait(2)
-        shot("find-boots-ready")
+        shot("find-boots-after")
         warp(shop, "find-glass", TRUNK, 0x13, 0x3D, PALETTE_TOWER, 1,
              {SELECTED_ITEM: HOUR_GLASS, NUMBER_OF_ITEMS: 0, VISIT_COUNT: 3}, {4: COOLDOWN})
         assert state()["glass_cooldown"] > 0, state()
@@ -603,7 +610,7 @@ def main():
         clear(0x26)
         dismiss(GOT_HOUR_GLASS, 600)
         s = state()
-        assert s["glass_ready"] and s["pickups"] == 1 and items() == ([], HOUR_GLASS), (s, items())
+        assert s["glass_ready"] and s["pickups"] == 2 and items() == ([], HOUR_GLASS), (s, items())
         warp(shop, "find-elixir", TRUNK, 0x3C, 0x22, PALETTE_TOWER, 1,
              {SPECIAL_ITEMS: 0, SELECTED_ITEM: NO_ITEM, NUMBER_OF_ITEMS: 0}, {5: 1})
         assert state()["elixir_spent"], state()
@@ -614,49 +621,65 @@ def main():
         print("ok: a found pair of Wing Boots, an Hour Glass and an Elixir each recharge the one held, "
               "without a second copy")
 
-        # 7. The Spring of Sky: from Trunk $20's floor below the shaft to the man in $25.
+        # 7. The Spring of Sky: from Trunk $20's floor below the shaft to the man in $25. Each screen's
+        # enemies are cleared as the hero reaches it: the flight is what is measured.
         warp(shop, "spring", TRUNK, 0x20, 0x94, PALETTE_OUTSIDE, 1,
              {SELECTED_ITEM: WING_BOOTS, NUMBER_OF_ITEMS: 0, QUESTS: 0x01, PLAYER_TITLE: 0})
         use()
         dismiss(USED_WING_BOOTS)
         start = frame()
         assert ram(DURATION_WING_BOOTS) in (FLIGHT, FLIGHT - 1)
+        hold, held = 40, {}                                         # pad button -> frame its hold was renewed
 
-        def fly(target_x, up=True):
-            x = ram(PLAYER_X)
-            tcp("action", name="a", frames=8)
-            if up:
-                tcp("action", name="up", frames=8)
-            if x < target_x - 4:
-                tcp("action", name="right", frames=6)
-            elif x > target_x + 4:
-                tcp("action", name="left", frames=6)
-            wait(6)
-        over = shaft_shot = False                                   # above the fountain, heading left
-        for _ in range(1200):
-            screen, x, y = ram(SCREEN), ram(PLAYER_X), ram(PLAYER_Y)
+        def press(want, now):
+            """Hold the buttons in `want` (A to fly, Up to rise), renewing each hold before it lapses, and let
+            the others go: a lapse would land the hero, and a fresh A would jump."""
+            for b in ("a", "dpup", "dpleft", "dpright"):
+                if b in want and now - held.get(b, -hold) > hold // 2:
+                    tcp("pad", buttons=b, frames=hold)
+                    held[b] = now
+                elif b not in want and b in held:
+                    tcp("pad", buttons=b, frames=1)
+                    del held[b]
+
+        def steer(x, target):
+            return {"dpright"} if x < target - 3 else {"dpleft"} if x > target + 3 else set()
+        cleared = shaft_shot = None
+        for _ in range(5000):
+            now = frame()
+            zp = ram(SCREEN_READY, PLAYER_Y + 1 - SCREEN_READY)
+            screen, x, y = zp[SCREEN - SCREEN_READY], zp[PLAYER_X - SCREEN_READY], zp[PLAYER_Y - SCREEN_READY]
             assert ram(DURATION_WING_BOOTS) < 0x80, f"the flight ran out at {place()}, x={x} y={y}"
-            if screen == 0x24 and not shaft_shot:
+            if screen != cleared and zp[0] == 0:
+                clear()
+                cleared = screen
+            if screen == 0x24 and not shaft_shot and y < 160:
                 shot("spring-flight")
                 shaft_shot = True
-            if screen in (0x20, 0x23) or (screen == 0x24 and y > 128):
-                fly(48)                                             # up the shaft, columns 2-5
-            elif screen == 0x24:
-                fly(216)                                            # under the ledge, round its right end
-            elif screen == 0x25 and y > 40 and not over:
-                fly(216)                                            # up the right side, past the fountain
-            elif screen == 0x25 and abs(x - 176) > 4:
-                over = True
-                fly(176, up=False)                                  # over the fountain to the man
+            if screen in (0x20, 0x23) or (screen == 0x24 and y > 112):
+                want = {"a", "dpup"} | steer(x, 48)                 # up the shaft, columns 2-5
+            elif screen == 0x24 or (screen == 0x25 and y > 40):
+                want = {"a", "dpup"} | steer(x, 216)                # round the ledge's right end, up the right side
+            elif screen == 0x25 and x > 186:
+                want = {"a"} | ({"dpup"} if y > 16 else set()) | steer(x, 182)   # along the top, over the man
             elif screen == 0x25:
-                break                                               # let go: down onto the fountain
+                press(set(), now)                                   # let go: down onto his ledge
+                break
             else:
                 raise AssertionError(f"off the route: {place()}, x={x} y={y}")
+            press(want, now)
         until("the landing", lambda: ram(PLAYER_FLAGS) & 0x05 == 0 and place() == (TRUNK, 0x25), 300)
         landed = frame() - start
         left = ram(DURATION_WING_BOOTS)
         assert left < 0x80, "the flight ran out before the landing"
-        act("up", 4, 10)
+        for _ in range(12):                                         # beside him, on the fountain's ledge
+            if ram(MESSAGE_ID) == HO_HO_HO:
+                break
+            x = ram(PLAYER_X)
+            if not 172 <= x <= 186:
+                act("right" if x < 172 else "left", 2, 8)
+                continue
+            act("up", 4, 20)
         until("the Spring of Sky's man", lambda: ram(MESSAGE_ID) == HO_HO_HO, 300)
         shot("spring-of-sky")
         page_through()

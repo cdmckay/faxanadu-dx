@@ -892,15 +892,31 @@ clear, it sets `PlayerIsDead`. The menu's Player page draws a picture for each
 `SpecialItems` bit, the Elixir's included, on its last row. A mantra keeps
 the bit.
 
+**Flying.** While `Player_StatusFlag` has `$80` and A is held,
+`Player_CheckHandleVertMovement` (`$E2C8`) treats the hero as on a ladder
+(`Player_CheckIfOnLadder`, then the climb): Up rises a pixel a frame, and
+`Player_CheckHandleJump` lets Left and Right move him in the air. Let go of A
+and he falls; press it afresh and it is a jump. A test that flies must hold A
+without a break (`tests/recharge/recharging_items.py` renews its pad holds
+before they lapse).
+
 **The Spring of Sky needs the Wing Boots** ("They say a fountain is up in the
-sky, but you need Wing Boots..."). Its man (`$3B`) is in Trunk `$25`, at the top
-of a shaft that runs up from the floor of `$20` (the way into the sky:
-"you'll come to a place where the sky opens above") through `$23` and `$24`.
-The usual takeoff is that floor, below the shaft. Flying it as a test does
-(up the shaft at x 48, round the right end of the ledge in `$24`, up the right
-side of `$25` and over the fountain to the man) takes SPRING_FRAMES frames,
-SPRING_SECONDS of the game's seconds, so the lowest band's 30 s leaves
-SPRING_LEFT s over (`tests/recharge/recharging_items.py`).
+sky, but you need Wing Boots..."). Its man (`$3B`) stands on the fountain's
+ledge in Trunk `$25`, at the top of a shaft that rises from the floor of `$20`
+("you'll come to a place where the sky opens above") through `$23` and `$24`.
+The usual takeoff is that floor. The way up: the shaft at x 48, round the right
+end of the ledge across `$24` (row 5, open at columns 13-14), up the right side
+of `$25` and left along its top to the man. Flown in the end-to-end test with
+each screen's enemies cleared, it takes SPRING_FRAMES frames (SPRING_SECONDS of
+the game's seconds) from leaving the message box to landing by him, so the
+lowest band's 30 s is enough, with about SPRING_LEFT s to spare.
+
+The dialogue also says the Wing Boots are needed "to get to the misty town of
+Victim" (Mist `$22` and `$25` lead into it). One candidate: the ladder at the
+top left of Mist `$04`, up to `$2A` and on through `$2B` and `$2C` to `$22`,
+starts high above the floor, and a probe flew from the floor into `$2A` in
+about 180 frames (3 s). Whether that is the climb the dialogue means, and the
+rest of the way to Victim, were not checked.
 
 **Recharging breaks no sequence** (the check from #6):
 
