@@ -583,6 +583,92 @@ With the **Taller dagger**, `$B898` is served as `$08` through a read
 override, so the dagger's box is as tall as the swords' and reaches their
 low enemies, from the same short distance as before.
 
+## Shields and enemy magic (bank 14)
+
+The shield slot holds `SelectedShield` (`$03BF`): 0 Small Shield, 1 Large
+Shield, 2 Magic Shield, 3 the Battle Helmet, `$FF` none (shop and script IDs
+`$40-$43`). Shields are only sold in shops (the Small at Apolune's tool shop
+for 800, the Magic Shield for 7,600 or 9,800); no conversation gives one. The
+Battle Helmet is picked up (below).
+
+Each frame the sprite loop checks every live sprite against the shield, then
+against the hero:
+
+| Address | Routine | Does |
+|---|---|---|
+| `$877C` | `Player_CheckShieldHitByMagic` | Skips `SelectedShield` 3 and up (the helmet, none) and animation frames 4-6 (a swing). Only enemy magic (`SPRITE_CATEGORIES_BY_ENTITY` 6), against the shield's box at `Player_ShieldPositionX/Y` (`$039B`, `$039C`), which `Player_DrawShield` sets each frame |
+| `$87CB` | `Player_HandleShieldHitByMagic` | `JSR Player_HandleHitByMagic`, then (`$87CE`) removes the shot and plays sound `$0C`, the shield's |
+| `$87DC` | `Player_HandleHitByMagic` | Lets `SPRITE_ENTITY_DAMAGES[entity] >> (SelectedShield + 1)` through: half with the Small Shield, a quarter with the Large, an eighth with the Magic. Non-zero: `Player_SetDamagedBySprite` (60 iframes, face the shot, knockback) and `Player_ReduceHP` |
+| `$8999` | `Player_HandleTouchEnemyMagic` | Magic that touches the hero: nothing while `Player_InvincibilityPhase` or Ointment runs, else `Player_HandleTouchEnemy` (sound 4, the full damage) and the shot is removed |
+| `$B982` | `Player_DrawShield` | Draws nothing for the helmet or none, so `Player_ShieldPositionX/Y` keep stale values then |
+
+- **The Battle Helmet never stops magic in the original.** It lives in the
+  shield slot, but the shield check skips it and no shield is drawn: the
+  helmet is part of the armor tiles (`Player_LoadShieldTilesToPPU`). A shot at
+  shield height takes its full damage.
+- **Picking up the Battle Helmet** (`Player_PickUpBattleHelmet`, `$C70A`)
+  runs IScript `$8C`, `ISCRIPT_GOT_BATTLE_HELMET` (`$A698`, bank 12: generic
+  box, `SHOW_UNSKIPPABLE_MESSAGE` `$B6` "I've got the Battle Helmet.", END),
+  plays sound 8, and only then adds the helmet to `ShieldInventory`. Its
+  sprite (`$59`) lies in Zoradohna's room, Branch (area 5) screen 7 at x=64,
+  with Zoradohna (`$2E`) in slot 6 and the helmet in slot 7. Its behavior
+  (`$2C`) clears the room's sprites if the hero has the helmet already, and
+  hides it while Zoradohna is on screen. Walking out of a building with the
+  door's `Area_Saved*` edited to area 5, screen 7, palette `$08`
+  (`PALETTE_BRANCH`), position `$9C`, region 3 arrives there; clearing slot 6
+  in the save state shows the helmet.
+- **Ointment.** `DurationOintment` (`$0427`) is `$FF` when none runs; while
+  one runs, bit 7 is clear (the last second is `$00`).
+  `Game_DecOintmentDuration` (`$C8B4`, from `GameLoop_CountdownItems`)
+  counts it down when `InterruptCounter & $3F` is 0, every 64 frames.
+- **Iframes and knockback.** A hit sets `Player_InvincibilityPhase` (`$00AD`)
+  to `$3C` and `Player_StatusFlag` (`$00A5`) bit `$02`, knockback.
+  `Player_HandleIFrames` (`$E0E8`) counts the phase down each frame and
+  clears knockback when it reaches `$39`, three frames after the hit. So
+  knockback needs the phase: with it at 0 the bit is cleared at once.
+
+**Zenis, for tests.** On the fortress of Zenis's screen 16 (area 7, palette
+`$0F`, region 5, position `$91`), an Execution Hood casts a shot (`$51`,
+8 HP) at the hero from the right. Editing the shot's Y in a save state aims
+it at the shield (150, the hero on the ledge at 144) or his head (136).
+
+## Sugata's flash (bank 14)
+
+Sugata (entity `$18`, 22 HP, 4 HP contact damage) lives only in the Mist
+(area 2), on screens 30, 31, 78 and 79 (`SPRITE_INFO_FOREPAW`, bank 11: the
+sprite tables are named by town, the Mist's by Forepaw). Screen 30 is reached
+from a building door edited to area 2, screen 30, palette `$0A`
+(`PALETTE_MIST`), position `$92`, region 2; Sugata is in slot 6.
+
+`BSCRIPTS_ENEMY_SUGATA` (`$AF98`): face the hero, walk toward him 30 ticks,
+wait 30, walk 40, wait 10, creep 20, then behavior `$1F`,
+`SpriteBehavior_FlashScreenHitPlayer` (`$AB26`), and start over. It is the
+only user of `$1F`:
+
+| Address | Code | Does |
+|---|---|---|
+| `$AB26` | `JSR Sprite_IsBehaviorNotReady`, `BNE $AB39` | The first call goes on; later ones skip to the countdown |
+| `$AB2B` | `LDA #$02`, `STA CurrentSprites_BehaviorData2,X` | Two calls |
+| `$AB30` | `LDA PPU_Mask`, `ORA #$01`, `STA PPU_Mask` | Greyscale, which the NMI writes to `$2001` |
+| `$AB36` | `JSR Sprite_SetBehaviorReady` | |
+| `$AB39` | `DEC CurrentSprites_BehaviorData2,X`, `BNE` return | |
+| `$AB3E` | `LDA PPU_Mask`, `AND #$FE`, `STA PPU_Mask` | Greyscale off: it showed for about two frames |
+| `$AB44` | `LDA #$04`, `JSR Sound_PlayEffect`; `$3C` to `Player_InvincibilityPhase`; knockback; `$0A00` to `Arg_PlayerHealthDelta`; `JSR Player_ReduceHP` | 10 HP, wherever the hero is |
+| `$AB60` | `LDX CurrentSpriteIndex`, `JMP Sprite_FinishBehavior` | |
+
+- It checks no position, hitbox, shield, jump, iframes or Ointment: every
+  other hit checks the last two.
+- Killing Sugata clears the greyscale bit (in `Player_HitEnemyWithMagic`'s
+  `@_reduceEnemyHP`, `$81FD`, and the sword's kill), so a flash cut short
+  cannot leave the screen grey.
+- `@_reduceEnemyHP` (`$81FD`) takes `Temp_00` from `CurrentSprites_HP,X`; a
+  borrow kills (sound 3, experience, the death effect, `$14`). Damage equal
+  to the HP leaves the enemy alive at 0. It can be entered alone with X the
+  sprite, as a spell's hit would after its sound (2) and defense maths.
+- `SpriteUpdateHandler_Enemy_Sugata` (`$929F`) draws Sugata; returning
+  through `SpriteUpdateHandler_Invisible` (`$8C98`) hides it that frame. The
+  presented picture lags the sprites by a frame or two.
+
 ## The hero's movement (bank 15)
 
 `GameLoop_UpdatePlayer` (`$E0CA`) runs once a frame, unless the screen is
@@ -1242,6 +1328,44 @@ addresses, and `tools/check_allocations.py` enforces it.
   callback only serves the byte again. `mods/allocations.toml` claims the byte
   as an `overrides` entry, which `tools/check_allocations.py` checks against
   its stock value.
+- **Block** (`fax_block.c`). A bindable button (V, or B on a controller)
+  raises whatever the shield slot holds, the Battle Helmet included. The host
+  input callback clears the d-pad, A and B while it is up and a pass of
+  `Game_MainLoop` reached `GameLoop_CountdownItems` (`$C88F`, from `$DB68`)
+  in the last frame, so text boxes and menus keep their buttons. At
+  `Player_HandleHitByMagic` it lets nothing through. At
+  `Player_HandleTouchEnemyMagic`, magic whose box's middle is on the side the
+  hero faces returns through `$87CE` (removed, sound `$0C`): with the helmet,
+  which has no shield box, this is the only way magic is stopped. At `$AB44`
+  it stops Sugata's flash from any side with the shield's sound and finishes
+  the behavior through `$AB60`. Contact damage is untouched. The tutorial
+  hooks `IScriptAction_EndScript` (`$82B4`, which every way out of a script
+  takes): if the hero owns no shield-slot item before the script and does
+  now, or the script is the Battle Helmet's pickup (`IScriptOrCHRAddr` =
+  `$A698`, before the helmet is added), it points the script at Guru
+  travel's SAY step with its line in message `$C3`'s slot and returns through
+  `IScripts_InvokeNextAction`, so the line is one more native message in the
+  same box. The line names the binding of the device last used. That it was
+  said is a named field (`block.taught`) behind `remembered()`/`remember()`:
+  a line in `faxanadu_block.txt` beside the game until save slots keep named
+  fields. Its save-state record is what the hero owned and whether the line
+  is showing.
+- **Sugata's flash** (`fax_sugata.c`). At `$AB26`, before the behavior is
+  under way, it skips the call for 30 frames, and Sugata's draw (`$929F`)
+  returns through `SpriteUpdateHandler_Invisible` 4 frames in 8, counted back
+  from the flash so the warning ends with Sugata shown. At `$AB36` it clears
+  the greyscale the behavior just set and records a band: the presented
+  picture (after Seamless composes it, at the active room's origin, and
+  before the zone banner) greys only the columns within 40 pixels of Sugata's
+  middle, under the HUD, as the PPU would (each color becomes the grey of its
+  palette row, `entry & $30`), for 8 frames, and dims them by a third through
+  the warning. At `$AB44` it decides: the hero's 16 pixels outside the band,
+  no damage; Block up with the Magic Shield, 12 HP to Sugata through
+  `@_reduceEnemyHP` with sound 2 and a Deluge's knockback; Block up with
+  anything else, it leaves the site to Block; Ointment running, the flash's
+  own sound, iframes and knockback without `Player_ReduceHP`; otherwise the
+  game's 10 HP. Two reflections kill Sugata (more than its 22 HP). Its
+  save-state record is each slot's warning count and the band.
 - **Quick shops** (`fax_shops.c`). Up on a shopkeeper opens his buy list at
   once, Select switches to the sell list and back, a purchase or a sale keeps
   the list up with the cursor where it was, and B leaves. A shop buys
@@ -1256,9 +1380,14 @@ addresses, and `tools/check_allocations.py` enforces it.
   and a list open, through `Maybe_Shop_DrawTextBox` first; `$86E0`, back to
   the wait for an item no shop buys; `$86F8`, past the sale's close;
   `$84F0`, in `IScripts_WaitForMenuInput` before the menu update, where it
-  puts the cursor back, and Select or a page turn goes through
-  `Sound_PlayEffect` (`$0B`) to the other step; and `$838E`, where a shop's
-  message goes back to the list. The hint line ("Select to sell", "Select to
+  puts the cursor back, Select or a page turn goes through
+  `Sound_PlayEffect` (`$0B`) to the other step, and B goes through
+  `Maybe_Shop_DrawTextBox` to `IScriptAction_EndScript`, so the list is closed
+  when the script ends, as after the original's purchase, and a line Block
+  adds there (its tutorial, after the first shield) shows in the dialogue box;
+  and `$838E`, where a shop's message goes back to the list. Presses while a
+  list is drawn, or the gold counts, are lost, as in the original: the game
+  reads the pad only in the list's wait. The hint line ("Select to sell", "Select to
   buy", "Not for sale") is drawn on the list's row 26 and the page ("1 of 2")
   on row 9, at present time, while the list's four frame corners show; an
   unsellable item's price cells are painted the box's inside. Its save-state

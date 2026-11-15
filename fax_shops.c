@@ -32,7 +32,10 @@
  *   sale (its close skipped too) SELL+3 goes back to SELL.
  * - Select, in either list (IScripts_WaitForMenuInput, before its menu
  *   update), invokes the other list's step, with the cursor sound.
- * - B leaves, as it always did: the list's B ends the script at once.
+ * - B leaves: the list's B ends the script, as it always did, but closes the
+ *   list first (Maybe_Shop_DrawTextBox), as a purchase did before the
+ *   original's thanks, so a line a feature adds at the script's end (Block's,
+ *   fax_block.c, after the first shield) shows in the dialogue box.
  * - A shop's message (ShowFinalMessage: "You can't carry any more.", "This is
  *   not enough Golds.", or the empty sell list's "You have nothing to buy.")
  *   goes back to the list instead of ending the conversation, to buying if
@@ -82,6 +85,7 @@
 #define ISCRIPT_PORTRAIT_ID 0x03C7u   /* $FF once IScriptAction_EndScript has run */
 /* Bank 12 */
 #define INVOKE_NEXT_ACTION  0x826Eu   /* IScripts_InvokeNextAction: JSR IScripts_LoadByte, TAX, dispatch */
+#define END_SCRIPT          0x82B4u   /* IScriptAction_EndScript: clears the portrait, closes the boxes */
 #define FINAL_MESSAGE_END   0x838Eu   /* IScripts_ShowFinalMessage's @_endScript: JMP IScriptAction_EndScript */
 #define OPEN_SHOP           0x83D8u   /* IScriptAction_OpenShop: LDA #$14 ("What would you like?"), its loop */
 #define OPEN_SHOP_LIST      0x83EAu   /* ... after the loop: JSR IScripts_LoadByte (the items), Populate, Draw */
@@ -105,7 +109,7 @@
 enum { ISCRIPTS = ISCRIPT_ADDRS_U - ISCRIPT_ADDRS_L };   /* 152 */
 /* IScript actions */
 enum { SHOW_MESSAGE = 0x03, OPEN_SHOP_ACTION = 0x08, SHOW_BUY_SELL_MENU = 0x0F, SHOW_SELL_MENU = 0x11 };
-enum { BUTTON_SELECT = 0x20, BUTTON_UP = 0x08, BUTTON_DOWN = 0x04 };
+enum { BUTTON_A = 0x80, BUTTON_B = 0x40, BUTTON_SELECT = 0x20, BUTTON_UP = 0x08, BUTTON_DOWN = 0x04 };
 enum { SOUND_CURSOR = 0x0B };                     /* Menu_UpdateAndDraw's */
 enum { CATEGORIES = 5, ITEMS = 4, PAGE = 8, MOST = 4 + 4 + 4 + 4 + 8 };
 enum { BUY, SELL, NONE };
@@ -140,6 +144,7 @@ static bool enabled, failed, priced;
 static Session shop;
 static uint16_t lowest[256];   /* by item: the lowest price any shop asks, 0 if none sells it */
 static unsigned opened, bought, sold, refused, switched, turned, messages;
+static unsigned waits;         /* frames a list has waited for a button: it reads the pad */
 
 static uint8_t q(uint16_t addr) { return cyc_mod_peek(addr); }
 static void p(uint16_t addr, uint8_t v) { cyc_mod_poke(addr, v); }
@@ -383,12 +388,14 @@ static int sold_hook(uint16_t addr) {
 }
 
 /* IScripts_WaitForMenuInput, each frame before the menu moves: the cursor
- * put back, Select to the other list, and the sell list's pages. */
+ * put back, Select to the other list, B with the list closed, and the sell
+ * list's pages. */
 static int menu_hook(uint16_t addr) {
     (void)addr;
     if (!here()) return 0;
     int list = in_step(BUY, 3) ? BUY : in_step(SELL, 3) ? SELL : NONE;
     if (list == NONE) return 0;
+    ++waits;
     unsigned count = q(ARG_STRINGS_COUNT), cursor = q(MENU_CURSOR_POS);
     if (shop.restore) {
         shop.restore = 0;
@@ -401,6 +408,10 @@ static int menu_hook(uint16_t addr) {
         to_list(list == BUY ? SELL : BUY);
         ++switched;
         return go(true, SOUND_PLAY_EFFECT, INVOKE_NEXT_ACTION, 0, SOUND_CURSOR);
+    }
+    if ((pressed & BUTTON_B) && !(pressed & BUTTON_A)) {   /* A first, as the wait reads them */
+        shop.cursor[list] = (uint8_t)cursor;
+        return go(true, MAYBE_SHOP_DRAW_TEXTBOX, END_SCRIPT, 0, -1);
     }
     if (list != SELL || pages() < 2) return 0;   /* the menu wraps, as it always did */
     int turn = pressed & BUTTON_UP ? (cursor == 0 ? -1 : 0) : pressed & BUTTON_DOWN ? (cursor + 1 >= count ? 1 : 0) : 0;
@@ -541,7 +552,7 @@ static void hooks(int on) {
 static void deactivate(void) {
     enabled = failed = priced = false;
     shop = (Session){ .shown = NONE };
-    opened = bought = sold = refused = switched = turned = messages = 0;
+    opened = bought = sold = refused = switched = turned = messages = waits = 0;
     hooks(0);
 }
 static void activate(void) {
@@ -598,12 +609,13 @@ static void shops_state(int id, const char *line) {
              "\"selling\":%u,\"cursor\":%u,\"list\":[%s],\"prices\":[%s],\"list_up\":%s,\"hint\":%s%s%s,"
              "\"page_label\":%s%s%s,"
              "\"script\":%u,\"opened\":%u,\"bought\":%u,\"sold\":%u,\"refused\":%u,\"switched\":%u,"
-             "\"turned\":%u,\"messages\":%u",
+             "\"turned\":%u,\"messages\":%u,\"waits\":%u",
              enabled ? "true" : "false", shop.active ? "true" : "false", modes[shop.mode <= SELL ? shop.mode : 2],
              modes[shop.shown <= NONE ? shop.shown : 2], shop.page, pages(), shop.selling, q(MENU_CURSOR_POS),
              items, prices, up ? "true" : "false", hinted && up ? "\"" : "", hinted && up ? say : "null",
              hinted && up ? "\"" : "", hinted && up && paged ? "\"" : "", hinted && up && paged ? page : "null",
-             hinted && up && paged ? "\"" : "", shop.script.base, opened, bought, sold, refused, switched, turned, messages);
+             hinted && up && paged ? "\"" : "", shop.script.base, opened, bought, sold, refused, switched, turned, messages,
+             waits);
     cyc_tcp_ok(id, fields);
 }
 void fax_shops_tcp_setup(void) {

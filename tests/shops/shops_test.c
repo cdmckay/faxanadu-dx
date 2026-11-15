@@ -503,7 +503,7 @@ static void straight_to_the_list(void) {
     carry(700, (const uint8_t[]){ KEY_J }, 1);
     press("B");
     talk(shops[EOLIS_TOOLS].index);
-    CHECK(said_count == 0 && !strcmp(events, "d") && input_at == 1 && !stuck);
+    CHECK(said_count == 0 && !strcmp(events, "dc") && input_at == 1 && !stuck);   /* B: closed, then the end */
     CHECK(listed((const uint8_t[]){ HAND_DAGGER, RED_POTION, ELIXIR, DELUGE }, (const uint16_t[]){ 400, 160, 320, 400 }, 4));
     CHECK(ram[ISCRIPT_PORTRAIT_ID] == 0xFF && gold() == 700);
     /* Every shop, the key shops too. */
@@ -529,7 +529,7 @@ static void buying(void) {
     talk(shops[EOLIS_TOOLS].index);
     CHECK(input_at == 5 && !stuck && said_count == 0);
     CHECK(gold() == 700 - 3 * 160 && count_of(RED_POTION) == 3 && count_of(KEY_J) == 1);
-    CHECK(draws == 4 && closes == 0);                    /* drawn again in place, never closed */
+    CHECK(draws == 4 && closes == 1);                    /* drawn again in place, closed as B leaves */
     CHECK(bought == 3);
     /* The Elixir: bought once, then the game's own "You can't carry any
      * more." for a second, and the list again. */
@@ -537,7 +537,7 @@ static void buying(void) {
     press("ddAAAB");
     talk(shops[EOLIS_TOOLS].index);
     CHECK(gold() == 700 - 320 && (ram[SPECIAL_ITEMS] & 0x08));
-    CHECK(said_count == 1 && said[0] == 0x06 && !strcmp(events, "ddcmd"));
+    CHECK(said_count == 1 && said[0] == 0x06 && !strcmp(events, "ddcmdc"));
 }
 
 static void the_games_checks(void) {
@@ -547,7 +547,7 @@ static void the_games_checks(void) {
     press("dddAAuuAB");
     talk(shops[EOLIS_TOOLS].index);
     CHECK(said_count == 1 && said[0] == 0x03);
-    CHECK(!strcmp(events, "dcmdd"));                     /* the list, closed for the line, again; a purchase */
+    CHECK(!strcmp(events, "dcmddc"));                    /* the list, closed for the line, again; a purchase */
     CHECK(gold() == 300 - 160 && count_of(RED_POTION) == 1 && count_of(DELUGE) == 0);
     CHECK(input_at == 9 && !stuck);
     /* The Hand Dagger in hand: "You can't carry any more." */
@@ -578,7 +578,7 @@ static void selling(void) {
      * Slayer: no price. */
     press("sB");
     talk(shops[EOLIS_TOOLS].index);
-    CHECK(said_count == 0 && sounds == 1 && !strcmp(events, "dd"));
+    CHECK(said_count == 0 && sounds == 1 && !strcmp(events, "ddc"));
     CHECK(listed((const uint8_t[]){ RED_POTION, RED_POTION, KEY_A, KEY_J, LONG_SWORD, DRAGON_SLAYER },
                  (const uint16_t[]){ 80, 80, 100, 50, 800, 0 }, 6));
     /* Sell the J key (a key shop's: 50) and a Red Potion (this shop's: 80). */
@@ -587,7 +587,7 @@ static void selling(void) {
     talk(shops[EOLIS_TOOLS].index);
     CHECK(said_count == 0 && !stuck && input_at == 10);
     CHECK(gold() == 100 + 50 + 80 && count_of(KEY_J) == 0 && count_of(RED_POTION) == 1 && count_of(KEY_A) == 1);
-    CHECK(closes == 0);
+    CHECK(closes == 1);
     /* The Dragon Slayer: A does nothing, and the list waits. */
     carry(100, carried, sizeof carried);
     press("sdddddAAB");
@@ -626,13 +626,13 @@ static void switching(void) {
     carry(500, NULL, 0);
     press("sAdAB");
     talk(shops[EOLIS_TOOLS].index);
-    CHECK(said_count == 1 && said[0] == 0x12 && !strcmp(events, "dcmdd"));
+    CHECK(said_count == 1 && said[0] == 0x12 && !strcmp(events, "dcmddc"));
     CHECK(gold() == 500 - 160);
     /* Selling the last thing: the line, then buying. */
     carry(0, (const uint8_t[]){ KEY_J }, 1);
     press("sAAB");
     talk(shops[EOLIS_TOOLS].index);
-    CHECK(gold() == 50 && said_count == 1 && said[0] == 0x12 && !strcmp(events, "ddcmd"));
+    CHECK(gold() == 50 && said_count == 1 && said[0] == 0x12 && !strcmp(events, "ddcmdc"));
 }
 
 static void pages_of_eight(void) {

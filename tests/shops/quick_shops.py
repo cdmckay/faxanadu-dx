@@ -343,7 +343,9 @@ def main():
         """Wait until the `mode` list is on screen, with its hint, and has stopped redrawing."""
         until(what or f"the {mode} list", lambda: (lambda s: s["shown"] == mode and s["list_up"] and
                                                     s["hint"] is not None)(shops()), 900)
-        wait(12)
+        waits = shops()["waits"]
+        until("the list to wait for a button", lambda: shops()["waits"] > waits, 300)
+        wait(2)
         state = shops()
         assert state["shown"] == mode and state["list_up"], state
         return state
