@@ -21,7 +21,8 @@ and the weapon in hand.
 2. A swing at the Tool Seller across the counter, headless: the hero swings,
    the sword is drawn every frame it can hit, its box overlaps the seller's by
    the game's own test, and the seller's slot, HP and hit counter never change.
-   Then Up still opens his list.
+   Then Up still opens his list, and Select's sell list (Quick shops) offers
+   the Hand Dagger the sword replaced, in the same visit.
 3. Eolis's temple: the same swing at the Guru, then Up runs his script to the
    end (the Ring of Elf, the first time).
 4. The room behind the door on the Mist's screen 6 (building $1D), one of the
@@ -270,9 +271,12 @@ def main():
         """Run from `state` for `frames` frames, holding buttons on a schedule of
         (frame, buttons) pairs counted from the state's frame. Returns each
         frame's CPU RAM, after the frame."""
+        # With the game's options: a Seamless state's world record loads only with Seamless on.
         probe = subprocess.run([str(exe), str(args.rom.resolve()), "--load-state", str(state), "--frames", "0",
-                                "--no-save"], capture_output=True, text=True)
-        start = int(re.search(r"continuing at frame (\d+)", probe.stdout).group(1))
+                                "--mods-root", str(mods(on)), "--no-save", *extra_args], capture_output=True, text=True)
+        found = re.search(r"continuing at frame (\d+)", probe.stdout)
+        assert found, probe.stdout + probe.stderr
+        start = int(found.group(1))
         run = out / "run"
         run.mkdir(exist_ok=True)
         (run / "input.txt").write_text("".join(f"{start + at} {buttons}\n" for at, buttons in sorted(schedule)))
@@ -375,33 +379,43 @@ def main():
                 wait(4)
         raise AssertionError("the conversation did not end")
 
-    def menu_to_weapons():
+    def menu_to_weapons(name="menu-indoors"):
         """Select, then A on Weapons: the weapons list, waiting for a button."""
         act("select", 4, 6)
         until("the menu", lambda: ram(TEXTBOX_CLOSED) == 0 and ram(TEXTBOX_X + 2) == MENU_WIDTH, 300)
         wait(30)
-        menu = shot("menu-indoors")
+        menu = shot(name)
         act("a", 4, 6)
         until("the weapons list", lambda: ram(TEXTBOX_X + 2) == WEAPONS_WIDTH, 300)
         wait(30)
         return menu
+
+    def list_up(mode):
+        """Quick shops' `mode` list on screen and waiting for a button: presses
+        while it draws are lost, as in the original."""
+        shops = lambda: tcp("shops_state")
+        until(f"the {mode} list", lambda: (lambda s: s["shown"] == mode and s["list_up"])(shops()), 900)
+        waits = shops()["waits"]
+        until("the list to wait for a button", lambda: shops()["waits"] > waits, 300)
+        wait(2)
+        return shops()
+
+    def leave_shop():
+        act("b", 4, 6)
+        until("the conversation's end", lambda: ram(PORTRAIT) == NO_PORTRAIT and ram(TEXTBOX_CLOSED) != 0, 300)
+        wait(20)
 
     def buy_long_sword():
         """Up at the Tool Seller (Quick shops: straight to his list), A on the
         Long Sword, its top entry, and B."""
         weapons_before = weapons()
         act("up", 4, 6)
-        until("the buy list", lambda: (lambda s: s["shown"] == "buy" and s["list_up"])(tcp("shops_state")), 900)
-        assert tcp("shops_state")["list"][0] == LONG_SWORD, tcp("shops_state")
-        wait(20)
-        before = tcp("shops_state")["bought"]
+        state = list_up("buy")
+        assert state["list"][0] == LONG_SWORD, state
         act("a", 4, 6)
-        until("the purchase", lambda: tcp("shops_state")["bought"] == before + 1, 1200)
-        until("the list again", lambda: tcp("shops_state")["list_up"], 900)
-        wait(20)
-        act("b", 4, 6)
-        until("the conversation's end", lambda: ram(PORTRAIT) == NO_PORTRAIT and ram(TEXTBOX_CLOSED) != 0, 300)
-        wait(20)
+        until("the purchase", lambda: tcp("shops_state")["bought"] == state["bought"] + 1, 1200)
+        list_up("buy")
+        leave_shop()
         assert weapons() == weapons_before + [LONG_SWORD], weapons()
 
     try:
@@ -457,10 +471,13 @@ def main():
         wait(5)
         act("b", 4, 30)
         act("up", 4, 6)
-        until("his list", lambda: (lambda s: s["shown"] == "buy" and s["list_up"])(tcp("shops_state")), 900)
-        act("b", 4, 6)
-        until("the conversation's end", lambda: ram(PORTRAIT) == NO_PORTRAIT, 300)
-        print("ok: the Long Sword swings through the Tool Seller (in its reach) and does nothing; he still sells")
+        list_up("buy")
+        act("select", 4, 6)
+        state = list_up("sell")
+        assert state["list"] == [HAND_DAGGER] and state["prices"] == [200], state       # half of Eolis's 400
+        leave_shop()
+        print("ok: the Long Sword swings through the Tool Seller (in its reach) and does nothing; he still "
+              "trades, and buys the dagger the sword just replaced")
 
         # 3. Eolis's temple (building 2: screen 2, block $95), at the Guru.
         go_in(start, "eolis-temple", EOLIS, 2, PALETTE_EOLIS, 0x95, carrying(0, LONG_SWORD))
@@ -534,7 +551,7 @@ def main():
         assert not weapon_drawn(ram(0, 0x800)), "a weapon drawn without the feature"
         to_counter()
         buy_long_sword()
-        menu_to_weapons()
+        menu_to_weapons("off-menu-indoors")
         act("a", 4, 30)
         assert ram(TEXTBOX_CLOSED) == 0 and ram(TEXTBOX_X + 2) == WEAPONS_WIDTH, "the menu closed"
         assert ram(SELECTED_WEAPON) == HAND_DAGGER and ram(PLAYER_CUR_WEAPON) == NONE

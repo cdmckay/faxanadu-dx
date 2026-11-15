@@ -259,7 +259,10 @@ faxanatools' `messages.py` decodes and encodes them; `fax_travel.c`'s
   `$8140 + t * 16` in ROM; `fax_text_box_rom` draws the frame from there on
   screens whose pattern tables hold something else, like the title.
   `TextBox_Closed` (`$020C`) is 0 while a box or the Select menu is open, and
-  nonzero once one has closed (also before the first).
+  nonzero once one has closed (also before the first). Only `TextBox_Open`
+  and `TextBox_Close` store it by name, yet walking out of a building into the
+  towns (area 3, Forepaw's screen 2) it read 0 with no box up, so a test
+  should not take 0 alone for an open box outside Eolis.
 - **Where boxes go**, in tiles of the 256 x 240 screen (the HUD is rows 0-3),
   as `TextBox_X`, `TextBox_Y`, `TextBox_Width`, `TextBox_Height` (`$0208-$020B`)
   hold them; the frame is inside the size, and text starts 2 tiles in:
