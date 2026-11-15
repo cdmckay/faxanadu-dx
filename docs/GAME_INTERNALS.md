@@ -1545,12 +1545,11 @@ addresses, and `tools/check_allocations.py` enforces it.
   raised (the Battle Helmet, or a shield in a swing or on a ladder), Block
   going up makes the hero glint: at `Player_DrawWeapon`'s entry the body's
   slots, noted at `Player_DrawBody`'s, take palette 1, the shield's colors,
-  for draws 1-4 and 9-12 of 12, and stop at once if Block is let go. Both
-  only draw. Seamless world's redraw of the hero past a room's edge runs in an
+  for draws 1-4 and 9-12 of 12, and stop at once if Block is let go. Both only
+  draw. Seamless world's redraw of the hero past a room's edge runs in an
   isolated machine without hooks, so that part of him is the stock pose (the
-  falling pose's is the same). The
-  glint is not in the save-state record: a load starts it over, and a button
-  held through the load does not start one.
+  falling pose's is the same). The glint is not in the save-state record: a
+  load starts it over, and a button held through the load does not start one.
 - **Sugata's flash** (`fax_sugata.c`). At `$AB26`, before the behavior is
   under way, it skips the call for 30 frames, and Sugata's draw (`$929F`)
   returns through `SpriteUpdateHandler_Invisible` 4 frames in 8, counted back
