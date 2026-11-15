@@ -1,4 +1,4 @@
-# Faxanadu Remaster
+# Faxanadu Remastered
 
 A remaster of Faxanadu (NES) that keeps as much of the real game as possible,
 and fixes what has aged.
