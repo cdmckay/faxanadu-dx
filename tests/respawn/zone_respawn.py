@@ -27,7 +27,10 @@ game's (PlayerIsDead set):
    by, where there is one: no entrance traps him.
 4. In the Tower of Trunk, dying a screen further in still comes back at its
    door (the default view: the walk needs the screen's enemies cleared).
-5. With the feature off in the mod selection, the same death in the tower
+5. A Guru travel journey (from Conflate's temple to Apolune's) forgets the
+   checkpoint: walking out of Apolune's temple records the town, and dying
+   there comes back at that door.
+6. With the feature off in the mod selection, the same death in the tower
    wakes at the temple, as the original does.
 """
 import argparse
@@ -57,6 +60,11 @@ BUILDINGS, EOLIS_TEMPLE = 4, 0x02
 KEY_A, KEY_K, KEY_Q, KEY_J = 0x04, 0x05, 0x06, 0x07                 # ITEMINVENTORY_KEY_*
 RING_OF_DWORF, DEMONS_RING = 0x20, 0x10                             # SpecialItems bits
 HERO = dict(experience=4660, gold=12345)
+APOLUNE, CONFLATE = 1, 5                                            # temples
+TEMPLE_SCREEN = {APOLUNE: 0x0B, CONFLATE: 0x2B}                     # DEST_SCREEN_FOR_TEMPLE_SPAWN
+TOWNS = 3
+MEDITATE_WITH_YOU = 0x22                                            # the Guru's greeting
+OFFER, DEPART, TO_GURU = 1, 3, 4                                    # fax_travel.c's lines (TO_GURU + temple)
 PACKAGE, FEATURE = "faxanadu.enhancement.zone-respawn", "zone-respawn"
 
 # Each entrance: the zone, where its door is (area, screen, palette, block YX,
@@ -414,7 +422,45 @@ def main():
             assert hero() == HERO, hero()
             print("ok: dying a screen into the Tower of Trunk comes back at its door")
 
-        # 5. Turned off, the same death wakes at the temple.
+        # 5. A Guru travel journey forgets the checkpoint: walking out of the
+        #    temple it lands in records the next, and a death comes back there.
+        close()
+        (out / "game" / "faxanadu_gurus.txt").write_text("Eolis\nApolune\nConflate\n")
+        launch()
+        die_in_conflate = out / "conflate.cycstate"
+        fixture(gate, die_in_conflate, {TEMPLE_SPAWN_POINT: CONFLATE})
+        die(die_in_conflate, "to-conflate", BUILDINGS, TEMPLE_SCREEN[CONFLATE])
+        walk_out()
+        until("Conflate", lambda: at(TOWNS, 0x08), 600)
+        state = respawn()
+        assert (state["zone"], state["screen"], state["start"]) == ("Conflate", 0x08, 0x99), state
+        through_door(0x99, "Conflate's temple", lambda: at(BUILDINGS, TEMPLE_SCREEN[CONFLATE]))
+        assert respawn()["zone"] == "Conflate", "a building changes nothing"
+        act("left", 170, 10)
+        act("up", 4, 10)
+        until("the Guru's greeting", lambda: ram(MESSAGE_ID) == MEDITATE_WITH_YOU)
+        for want, button in ((OFFER, "a"), (TO_GURU + 0, "b"), (TO_GURU + APOLUNE, "a"), (DEPART, "a")):
+            for _ in range(12):
+                until("a page to type out", typed)
+                if tcp("travel_state")["text"] == want:
+                    break
+                act("a")
+            assert tcp("travel_state")["text"] == want, tcp("travel_state")
+            act(button, 6, 30)
+        until("Apolune's temple", lambda: at(BUILDINGS, TEMPLE_SCREEN[APOLUNE]), 2400)
+        assert respawn()["zone"] is None, "the journey forgot Conflate"
+        walk_out()
+        until("Apolune", lambda: at(TOWNS, 0x01), 600)
+        entered = arrival()
+        state = respawn()
+        assert (state["zone"], state["screen"]) == ("Apolune", 0x01), state
+        came = die(save("apolune"), "apolune", TOWNS, 0x01)
+        assert came == entered, (came, entered)
+        assert ram(TEMPLE_SPAWN_POINT) == CONFLATE, "the furthest temple is unchanged"
+        print("ok: a Guru travel journey forgets the checkpoint; walking out of Apolune's temple records the "
+              "next, and dying comes back there")
+
+        # 6. Turned off, the same death wakes at the temple.
         if "Tower of Trunk" in inside:
             close()
             (out / "game" / "mods" / "state.toml").write_text(
