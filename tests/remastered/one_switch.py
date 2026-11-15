@@ -45,6 +45,7 @@ STATES = {
     "pendant-fix": ("pendant_state", "enabled"), "taller-dagger": ("dagger_state", "enabled"),
     "sugata-flash": ("sugata_state", "enabled"), "quick-shops": ("shops_state", "enabled"),
     "auto-keys": ("keys_state", "auto"), "reusable-tools": ("keys_state", "reuse"),
+    "recharging-items": ("recharge_state", "enabled"),
     "forgiving-jumps": ("forgiving_jumps_state", "enabled"), "falling-pose": ("falling_pose_state", "enabled"),
     "text-speed": ("text_speed_state", "enabled"), "zone-names": ("zone_state", "enabled"),
     "speaker-names": ("speaker_state", "enabled"),
