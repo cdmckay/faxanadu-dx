@@ -292,7 +292,7 @@ def main():
         launch(gamedir)
         state = files()
         assert [s["status"] for s in state["slots"]] == [MISSING] * 3, state
-        assert state["rows"][0].endswith("1 New game") and state["rows"][9].endswith("Erase a file"), state
+        assert state["rows"][0].endswith("1 New game") and state["rows"][7].endswith("Erase a file"), state
         shot("select-empty", "select-empty")
         choose(2)
         until("the Eolis gate", lambda: frame() > 1900, 3000)
@@ -362,8 +362,8 @@ def main():
         launch(gamedir)
         state = files()
         assert [s["status"] for s in state["slots"]] == [MISSING, OK, MISSING], state
-        assert "Adept" in state["rows"][3] and "Conflate" in state["rows"][3], state["rows"]
-        assert "Gold 123456" in state["rows"][4] and "Exp 4900" in state["rows"][4], state["rows"]
+        assert "Adept" in state["rows"][2] and "Conflate" in state["rows"][2], state["rows"]
+        assert "Gold 123456" in state["rows"][3] and "Exp 4900" in state["rows"][3], state["rows"]
         shot("select-saved", "select-saved")
         choose(2)
         until("Conflate's temple", lambda: in_temple(CONFLATE), 1200)
@@ -457,11 +457,11 @@ def main():
         act("down")
         act("a")
         assert files()["mode"] == 2 and files()["target"] == 1
-        assert files()["rows"][9].endswith("Erase file 2? A yes B no"), files()["rows"]
+        assert files()["rows"][7].endswith("Erase file 2? A yes B no"), files()["rows"]
         shot("erase-confirm")
         act("a")
         state = files()
-        assert not (imports / "faxanadu_file2.txt").exists() and state["rows"][3].endswith("2 New game"), state
+        assert not (imports / "faxanadu_file2.txt").exists() and state["rows"][2].endswith("2 New game"), state
         assert (imports / "faxanadu_file1.txt").exists()
         print("ok: erasing file 2 from the file select")
         print("screenshots:", ", ".join(shots))

@@ -575,3 +575,13 @@ id = "faxanadu.recharge.guru"
 addr = 0x826e
 bank = 12
 bytes = "20 a4 87 aa bd 93 82 48 bd 7b 82 48"   # IScripts_InvokeNextAction: a Guru's first action charges the Elixir
+
+# REMASTERED on the title (fax_title.c): Game_ShowStartScreen's loop, after
+# the far call to StartScreen_CheckHandleInput (which Save files takes over),
+# notes once a frame that the title is up. It only observes.
+
+[[mod_function_hook]]
+id = "faxanadu.title-remastered.loop"
+addr = 0xfc7a
+bank = 15
+bytes = "a5 19 29 10 f0 ee a9 08 85 fa ad 87"   # @_afterCheckHandleInputFarJump: LDA Joy1_ChangedButtonMask, AND #$10
