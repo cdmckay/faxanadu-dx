@@ -41,6 +41,11 @@ MMC1, 16 PRG banks of 16 KiB, 8 KiB CHR RAM, no PRG RAM.
 | 12 | `$AD8A-$BFFF` | 4,726 bytes | Guru travel uses `$AE00-$AE06` |
 | 13 | `$B45B-$BFFF` | 2,981 bytes | Keep `$B45A` `$FF` (see Messages). Guru travel uses `$B45B-$B48A` |
 
+**Existing bytes** a feature serves with other values (a tuned table entry,
+say) are claimed too, as `overrides` with their stock values, which
+`tools/check_allocations.py --rom` checks. The Taller dagger serves `$B898`
+(bank 14).
+
 **Rev A** (`Faxanadu (USA) (Rev A)`, CRC32 `E71DB268`) matches the original in
 banks 5, 14 and 15, but bank 12 differs from `$9000` (the password code moved,
 and data tables after it shifted). Not supported: the build rejects it.
@@ -57,13 +62,15 @@ and data tables after it shifted). Not supported: the build rejects it.
 | `$00DB-$00DD` | `IScriptOrCHRAddr`, `IScriptOffset` | The interpreter reads the next action at addr + offset |
 | `$0100` | `CurrentROMBank` | 14 in the main loop. The stack shares this page |
 | `$0127` | `SoundEffect_State_Counter` | The playing sound effect's tick; the typing sound runs 1-4 |
+| `$0208-$020B` | `TextBox_X`, `TextBox_Y`, `TextBox_Width`, `TextBox_Height` | The box last opened or closed, in tiles (see *The text box*) |
 | `$0212` | `TextBox_PlayTextSound` | The typing sound plays for a character if set |
-| `$0213` | `MessageID` | 0 once a message has typed out; otherwise stale after a conversation |
+| `$0213` | `MessageID` | 0 once a message has typed out; otherwise stale after a conversation, and still stale (with `$0215`) as the next script's portrait opens, until its first message loads |
 | `$0214` | `Message_ProcessedLength` | Bytes of the message read, from an offset, not 0. Wraps with the address |
 | `$0215` | `TextBox_MessagePaused` | Nonzero while a `$FC` pause waits for A |
 | `$021D` | `TextBox_Timer` | Characters type when it is a multiple of 4. `Messages_Load` zeroes it |
 | `$0390`, `$0392-$0394` | `Experience`, `Gold` | Gold is 24-bit little-endian |
 | `$039A` | `Player_MP` | |
+| `$03C7` | `IScript_PortraitID` | The portrait showing, `$FF` for none (see *Portraits*) |
 | `$042D` | `Quests` | Bit flags |
 | `$0431`, `$0432` | `Player_HP_U`, `Player_HP_L` | |
 | `$0438` | `PlayerIsDead` | Set it to 1 and the main loop runs the death path |
@@ -105,6 +112,75 @@ The full table is in chipx86's notes. The Gurus' scripts:
   `03 2D, 00` at `$A0C6`.
 - Death runs script `$1F` ("Don't have negative thoughts", message `$24`),
   not a Guru's.
+
+### Portraits
+
+`IScripts_Begin` copies a script's entity byte to `Temp_0201` (`$0201`, a
+shared temporary) and, for `$80` and up, has `IScripts_LoadPortraitTiles`
+store it **less its top bit** in `IScript_PortraitID` (`$03C7`): 0 King, 1
+Guru, 2 Martial Artist, 3 Magician, 4 Doctor, 5 Nurse, 6 Pink Shirt Guy, 7
+Smoking Guy, 8 Meat Salesman, 9 Tools Salesman, 10 Key Salesman. Then it frames
+the portrait (`IScripts_OpenForPortrait`) and opens the dialogue box.
+
+- The ID holds through every action of the script: messages, questions, the
+  Buy/Sell menu, shop lists, the mantra and Guru travel's lines.
+  `IScriptAction_EndScript` sets it back to `$FF` (`IScripts_ClearPortraitImage`)
+  before it clears both boxes (`TextBox_ClearForPortraitAndText`).
+  `Screen_ClearSprites` also sets it to `$FF`, so it is `$FF` whenever no
+  portrait shows. A script without a portrait (`$00`) leaves it alone.
+- **At power-on RAM is 0**: on the title screen `IScript_PortraitID` reads 0
+  (the King) and `TextBox_Closed` 0 (a box open). Check the area too.
+- Every script with a portrait runs in a building (`AREA_BUILDINGS`); bank 11's
+  sprite lists for area 4 put each on its building. **No script shows the Pink
+  Shirt Guy's or the Smoking Guy's portrait.**
+
+| Portrait | Buildings (`Area_CurrentScreen` in area 4) |
+|---|---|
+| King | `$07` (Eolis, the King's room) |
+| Guru | The 8 temples (*Temples and spawning*), and `$42` in the Castle of Fraternal (Dartmoor `$1E`, block `$A7`) |
+| Martial Artist | `$06` (Eolis) |
+| Magician | `$05` (Eolis), `$1C` (the "magic hall outside town", Mist `$29`) |
+| Doctor | `$0C`, `$11`, `$1B`, `$24`, `$2C`, `$3F`: the hospitals |
+| Nurse | `$0C`, `$11`, `$1B` (hospitals), `$31` (Daybreak's meat shop) |
+| Meat Salesman | `$00`, `$0E`, `$17`, `$26`, `$2A`, `$31`, `$3E` |
+| Tools Salesman | `$04`, `$08`, `$0F`, `$14` (Trunk `$06`), `$18`, `$20` (Mist `$0D`), `$2D`, `$30`, `$41`, `$45` |
+| Key Salesman | `$03`, `$09`, `$13`, `$19`, `$27`, `$2F`, `$40` |
+
+The secret "Guru" of the Tower of Fortress ($48, $58 "the Guri") is the man in
+building `$15`, a temple room on Trunk `$2D`, but his script (`ISCRIPT_A18A`)
+has no portrait. Nor do the King at the end (`ISCRIPT_KING_END_GAME`, "Glad
+you're back.", building `$44`) and the Smoking Man of `$3D` (`ISCRIPT_A331`);
+the priest of `$3B` has no script. The Nurse in Daybreak's meat shop is the
+`SPRITE_NPC_NURSE` sprite, as in the hospitals.
+
+To list who is where: read area 4's sprite lists (`SPRITE_INFO_VICTIM_SCREEN_*`,
+one area off), map each `ISCRIPT_ENTRYPOINT_*` through `ISCRIPT_ADDRS_L` to its
+script, and read the script's first byte.
+
+How the dialogue names them: "the king" / "The King is waiting for you." ($27,
+$33), "The Guru of Conflate" ($94) and "the Guru in the Castle of Fraternal"
+($9D), "a martial art lesson" ($19), "I shall give magic" and "I'll teach you"
+from the Magician ($15, $17), "Our doctor can help." ($45), "I sell keys." and
+"I sell tools." ($0E, $0F). Nobody names the nurse or the meat salesman.
+
+**Eolis's buildings, for tests** (`EOLIS_DOOR_LOCATIONS`; a door's block is
+`YX`, so x = (block & 15) × 16):
+
+| Building | Kind | Door | NPC (`YX`) |
+|---|---|---|---|
+| `$00` | Meat shop | screen 1, block `$93` | `$84`, behind the counter: walk left until stopped |
+| `$01` | House | screen 2, `$9E` | |
+| `$02` | Temple | screen 2, `$95` | Guru `$82` |
+| `$03` | Key shop | screen 3, `$9D` | `$84` |
+| `$04` | Tool shop | screen 3, `$9A` | `$73`, behind the counter (stops at x=80) |
+| `$05` | Magic shop | screen 6, `$9C`, Ring of Elf | `$71` |
+| `$06` | Martial arts | screen 6, `$9A`, Ring of Elf | `$87`, mid-room: stop at x 124 |
+| `$07` | King's room | screen 7, `$98`, Ring of Elf | `$72`, atop stairs: jump up them (Left and A) |
+
+The King's guard (`ISCRIPT_EOLIS_KINGS_GUARD`, no portrait) stands at `$9A` on
+screen 7, two blocks right of the King's door. The Eolis Guru gives the Ring
+of Elf (`SpecialItems` `$80`) the first time; the King gives 1500 gold only to
+a hero with none.
 
 ## Messages (bank 13)
 
@@ -148,6 +224,28 @@ faxanatools' `messages.py` decodes and encodes them; `fax_travel.c`'s
   around tile 0 (black), from the playfield's background pattern table.
   `TextBox_Closed` (`$020C`) is 0 while a box or the Select menu is open, and
   nonzero once one has closed (also before the first).
+- **Where boxes go**, in tiles of the 256 x 240 screen (the HUD is rows 0-3),
+  as `TextBox_X`, `TextBox_Y`, `TextBox_Width`, `TextBox_Height` (`$0208-$020B`)
+  hold them; the frame is inside the size, and text starts 2 tiles in:
+
+  | Box | Set by | X, Y | Size |
+  |---|---|---|---|
+  | Portrait | `TextBox_SetCoordsForPortrait` | 2, 14 | 8 x 10 |
+  | Dialogue, with a portrait | `TextBox_SetCoordsForNPC` | 10, 16 | 20 x 8 |
+  | Dialogue, without | `TextBox_SetCoordsForNPC` | 10, 6 if `Player_PosY` >= 64, else 10, 16 | 20 x 8 |
+  | A shop's list (buy or sell) | `Shop_Draw` | 10, 8 | 20 x 20 |
+  | Both closed at a script's end | `TextBox_ClearForPortraitAndText` | 2, 8 | 30 x 20 |
+  | The Select menu | `PlayerMenu_Show` | 2, 6 | 10 x 14 |
+
+  A shop's list covers the dialogue box and rises above it; picking from it
+  (`Maybe_Shop_DrawTextBox`) closes the list and opens the dialogue box again.
+  The portrait box stays up throughout.
+- `TextBox_Open` and `TextBox_Close` only queue nametable writes in the PPU
+  buffer, top row first, and the queue drains over the next NMIs (waiting when
+  it is full), so a box appears and goes over a few frames. `TextBox_Closed`
+  changes when the writes are queued, not when they show. To know a box is on
+  screen, read its corner tiles from the nametable, through the line's scroll
+  (`cyc_render_nametable`, `cyc_render_line_scroll_x/y`; `fax_speaker.c`).
 - The HUD and every box share one palette, `UI_AttributeDataIndex` (`$038D`,
   0-3), which `Screen_LoadUIPalette` sets from the screen's palette
   (`PALETTE_INDEX_TO_UI_BG_ATTRIBUTE_INDEX`, bank 11). The frame's colors
@@ -244,6 +342,9 @@ What a feature can rely on, and the traps:
   `dpleft`). `action` takes NES names (`a`, `left`, `up`). Durations are in
   frames, so a test that waits on frames and game state, never the clock,
   runs the same uncapped.
+- TCP `action` returns at once and holds the button for its frames, so two
+  `action`s sent back to back are held together: `left` then `a` jumps left
+  (`tests/speaker/speaker_names.py` climbs the King's stairs that way).
 - TCP `key` (an SDL key name) and `pad` reach the game as window events, as
   a real key or controller does, so the host extras' `event` sees them. The
   window keeps `config.ini` beside the executable and writes it at first
@@ -339,9 +440,9 @@ A on END (row 5, column 3) checks the mantra and continues.
 
 The sprite loop calls `Player_HitSpriteWithWeapon` (`$8804`) for each live
 sprite every frame, except while the sprite's hit counter counts down. It
-lands a hit while a swing is on animation frame 1 or 2, on a visible enemy in
-reach (`Sprites_IsSpriteOutOfWeaponRange`). A hit builds its damage in
-`Temp_00` (`$00`):
+lands a hit while `Player_AttackPhaseAnimFrame` is 1 or 2, on a visible enemy
+in reach (`Sprites_IsSpriteOutOfWeaponRange`; see *Weapon reach* below). A
+hit builds its damage in `Temp_00` (`$00`):
 
 | Address | Code | Does |
 |---|---|---|
@@ -396,9 +497,80 @@ screens run 7-6-5-4-3-2-1-8 from left to right (`EOLIS_SCROLL_DATA`, bank 3;
 screen 0 has no neighbours). Screens 4 and 5 each have two Zozura (`$47`,
 9 HP) crawling right along the ground, and screen 8 a Monodron (`$2A`,
 10 HP). Walking left from the town, the hero comes onto screen 4 at x=240.
-The stock Hand Dagger passes over a Zozura; the swords hit one about 30
-pixels left of the hero (his x minus its x). A Zozura that reaches a hero at
-the screen's right edge knocks him onto the next screen.
+The stock Hand Dagger passes over a Zozura (see *Weapon reach*); facing it,
+the swords hit one from up to 31 pixels left of the hero (his x minus its x),
+and it hurts him from 15. A Zozura that reaches a hero at the screen's right
+edge knocks him onto the next screen.
+
+## Weapon reach (bank 14)
+
+A swing has three phases (`PLAYER_ATTACK_ANIMATION_PHASES`, bank 15): 8
+frames thrusting, 3 holding, 8 withdrawing. `Player_AttackPhaseAnimFrame`
+counts them 0, 1, 2, and `Maybe_Player_CalcAnimFrame` (`$B927`) maps them to
+pose frames 4, 5 and 6 (`BYTE_ARRAY_PRG14__b97b`). Hits land in phases 1 and
+2, so on pose frames 5 and 6.
+
+Each frame `Player_DrawWeapon` (`$B7D6`) places the weapon and loads its
+reach:
+
+- **Where:** `PlayerPosXPlus10` (`$CE`) is the hero's x plus a per-pose
+  offset from `PTR_ARRAY_PRG14__b89f` (`$B89F`), one table per weapon with
+  and without a shield (`Player_ArmorLookupIndex` bit 0), by facing.
+  `Maybe_Something_WeaponPosY` (`$D0`) is his y plus a per-pose offset from
+  `PTR_ARRAY_PRG14__b90f` (`$B90F`), by weapon. In the hit frames:
+
+  | Weapon | Pose 5 (phase 1) | Pose 6 (phase 2) |
+  |---|---|---|
+  | Hand Dagger | x+14 right, x-8 left; y+8 | x+24 right, x-16 left; y+6 |
+  | Hand Dagger with a shield | x+16 right, x-8 left; y+8 | the same as without |
+  | Long Sword, Giant Blade, Dragon Slayer | x+16 right, x-16 left; y+8 | x+24 right, x-24 left; y+6 |
+
+- **How far:** `Maybe_WeaponRange_X/Y` (`$D2`, `$D3`) from
+  `MAYBE_WEAPON_RANGES` (`$B897`), an (X, Y) pair per weapon, by
+  `Player_CurWeapon`. Nothing else reads the table.
+
+  | Weapon | X | Y |
+  |---|---|---|
+  | Hand Dagger | `$08` | `$04` (`$B898`) |
+  | Long Sword, Giant Blade, Dragon Slayer | `$10` | `$08` |
+
+  It returns before loading them when a portrait is up, when there is no
+  weapon (`Player_CurWeapon` `$FF`), or when the weapon is off the screen, so
+  `$D2`/`$D3` then keep the last weapon's values.
+
+`Sprites_IsSpriteOutOfWeaponRange` (`$88CB`) compares the sprite's top-left
+(`CurrentSprites_XPos_Full`, `CurrentSprites_YPos`, copied to
+`$037F`/`$0380`) with that box, using the sprite's extents (EX, EY) from
+`MAYBE_SPRITE_EXTENTS` (`$B407`, a byte pair per entity). In 8-bit
+arithmetic, it hits when
+
+    (weapon x + X - sprite x) mod 256 < EX + X
+    (weapon y + Y - sprite y) mod 256 < EY + Y
+
+that is, when the sprite overlaps the box from the weapon's position to X
+pixels right of it and Y pixels below it, whichever way the hero faces. So
+**the Y reach only stretches the box down**: its top is the weapon's y
+whatever the reach. With the hero at y, the box spans y+8 to y+8+Y in pose 5
+and y+6 to y+6+Y in pose 6: y+8 to y+12 for the stock dagger, y+8 to y+16 for
+the swords.
+
+- **The dagger's short swing.** A Zozura (16 by 16) on the hero's ground has
+  its top at y+16: the swords touch its top row in pose 5, and the stock
+  dagger's box ends 4 pixels above it. The same goes for any enemy 16 pixels
+  tall by its extents whose top is that low: the Hornet, Bihoruda, Lilith,
+  Yuinaru and `SPRITE_ENEMY_FIRE_GIANT`, and the 32-by-16 Rokusutahn and
+  Borabohra. Enemies 24 or 32 tall standing on his ground reach up into every
+  weapon's box.
+- **Across,** facing left, a weapon's box reaches past the hero's left edge
+  by 8 (dagger) or 16 (swords) pixels in pose 5 and 16 or 24 in pose 6;
+  facing right, by 7 or 17, then 17 or 25.
+- Extents seen: 16 by 32 for most enemies, 16 by 16 for the small fliers and
+  the Zozura, 32 by 24 for Zoradohna and Pakukame, 32 by 32 Ripasheiku, 48 by
+  32 Shadow Eura, 64 by 16 King Grieve.
+
+With the **Taller dagger**, `$B898` is served as `$08` through a read
+override, so the dagger's box is as tall as the swords' and reaches their
+low enemies, from the same short distance as before.
 
 ## The hero's movement (bank 15)
 
@@ -968,6 +1140,18 @@ addresses, and `tools/check_allocations.py` enforces it.
   banner is held while a box is open or the game is paused. Its save-state
   record keeps the banner as it was.
 
+- **Speaker names** (`fax_speaker.c`, with `fax_zone.c` and `fax_text.c`).
+  While a portrait's frame is on screen, the speaker's name sits on a tab
+  above the dialogue box, at its left edge (tiles 10, 13-15), in the game's
+  font and frame; on a shop's list it moves up onto the list (rows 5-7). The
+  King and the Gurus are "of" a place: a temple's town by temple number (so
+  the Guru whose door opens on the Mist is Mascon's, as in Guru travel), else
+  the zone at the building's door (`Area_SavedArea`, `Area_SavedScreen`),
+  a tower or castle by its own name ("Guru of Fraternal"). A name over 16
+  characters loses the tab's blank cells, so no tab is wider than the dialogue
+  box. No hooks, no ROM, no state: it reads RAM and the nametable when the
+  picture is presented, and draws after Seamless and zone names.
+
 - **Auto keys** (`fax_keys.c`). Up at a locked door opens it with its key from
   anywhere in the inventory. At `Game_RunDoorRequirementHandler` it lends the
   key to `SelectedItem` when the key is listed but not selected, so the game's
@@ -1009,6 +1193,14 @@ addresses, and `tools/check_allocations.py` enforces it.
   bit of the joypad masks, which the Magic button never changes (it ORs in
   Up and B, for `Player_CastMagic` alone, outside any message loop), and
   writes neither mask.
+- **Taller dagger** (`fax_dagger.c`). The Hand Dagger's Y reach,
+  `MAYBE_WEAPON_RANGES+1` (`$B898`, bank 14), is served as `$08` instead of
+  `$04` through a read override that matches only bank 14's byte while it
+  holds `$04`, so its box is as tall as the swords' (see *Weapon reach*). Its
+  X reach stays `$08`. No hooks. Its save-state record is empty: the load
+  callback only serves the byte again. `mods/allocations.toml` claims the byte
+  as an `overrides` entry, which `tools/check_allocations.py` checks against
+  its stock value.
 - **Zone respawn** (`fax_respawn.c`). Dying comes back at the last entrance
   into the zone (tower, castle, town or region) the hero died in, after the
   Guru's words, instead of at the furthest temple. A hook at `Screen_SetupNew`

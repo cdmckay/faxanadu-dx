@@ -382,7 +382,10 @@ def main():
             clear_screen(f"outside-{name}")
             through_door(pos, name, lambda: at(in_area, in_screen))
             entered = arrival()
-            assert (entered["x"], entered["y"]) == ((start & 0x0F) << 4, start & 0xF0), (name, entered)
+            # Where the door puts him; Dartmoor's start is a row above the floor,
+            # and he has dropped onto it by the time the screen settles.
+            assert entered["x"] == (start & 0x0F) << 4 and entered["y"] in (start & 0xF0, (start & 0xF0) + 16), \
+                (name, entered)
             state = respawn()
             assert (state["zone"], state["area"], state["screen"], state["start"]) == \
                 (name, in_area, in_screen, start), (name, state)

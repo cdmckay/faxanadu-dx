@@ -77,6 +77,12 @@ different town, region, tower or castle, its name appears below the status bar
 for two seconds in the game's own text box, as the dialogue names it ("Tower of
 Suffer", "Castle of Fraternal"). Shops, houses and temples show nothing.
 
+**Speaker names** is on by default (Mods to turn it off). When someone with a
+portrait talks to you, their name sits on a tab above the dialogue box for
+the whole conversation, as the game names them: "Guru of Apolune", "King of
+Eolis", "Martial Artist", "Key Seller". People without a portrait show no
+name.
+
 **Auto keys** is on by default (Mods to turn it off). Press Up at a locked door
 and the right key from your inventory opens it, without selecting it first;
 whatever item you had selected stays selected.
@@ -100,6 +106,11 @@ in the original. The Wing Boots, ladders and knockback work as before.
 at the game's own pace; hold A and it types 4 times as fast. A page break or a
 question still waits for a fresh press of A, so holding it never skips a page
 or answers for you: let go, then press A to go on.
+
+**Taller dagger** is on by default (Mods to turn it off). The Hand Dagger used
+to swing over low enemies that every sword hits, like the Zozura crawling
+outside Eolis. Now its swing reaches as low as the swords', so it hits them.
+It keeps its short reach, so the Long Sword is still an upgrade.
 
 Optional **Seamless** appears first in Mods, marked **Experimental** and
 disabled by default. It joins connected rooms, advances neighboring actors,
