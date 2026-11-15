@@ -39,6 +39,29 @@ bool cyc_mod_call_commit(uint16_t routine, CycModRegs *regs) {
     (void)regs; CHECK(routine == 0xDD61); ++commits; commit_temple = ram[TEMPLE_SPAWN_POINT]; return true;
 }
 bool cyc_host_saves_enabled(void) { return false; }
+/* Save files, as fax_travel.c sees it: whether it runs the Guru's choice, and
+ * the file in play's `gurus` field. */
+static bool guru_choice, save_files;
+static char gurus_field[FAX_SAVE_VALUE];
+static FaxSaveListener save_listener;
+bool fax_files_guru_choice(void) { return guru_choice; }
+bool fax_save_enabled(void) { return save_files; }
+const char *fax_save_get(const char *key) { return !strcmp(key, "gurus") ? gurus_field : NULL; }
+bool fax_save_set(const char *key, const char *value) {
+    CHECK(!strcmp(key, "gurus")); snprintf(gurus_field, sizeof gurus_field, "%s", value); return true;
+}
+uint8_t fax_save_gurus_parse(const char *text) {
+    static const char *const names[] = { "Eolis", "Apolune", "Forepaw", "Mascon", "Victim", "Conflate", "Daybreak", "Dartmoor" };
+    uint8_t v = 0;
+    for (int t = 0; t < 8; ++t) if (text && strstr(text, names[t])) v |= (uint8_t)(1u << t);
+    return v;
+}
+void fax_save_gurus_format(uint8_t visited, char out[FAX_SAVE_VALUE]) {
+    static const char *const names[] = { "Eolis", "Apolune", "Forepaw", "Mascon", "Victim", "Conflate", "Daybreak", "Dartmoor" };
+    size_t n = 0; out[0] = 0;
+    for (int t = 0; t < 8; ++t) if (visited >> t & 1) n += (size_t)snprintf(out + n, FAX_SAVE_VALUE - n, "%s%s", n ? " " : "", names[t]);
+}
+bool fax_save_listen(FaxSaveListener listener) { save_listener = listener; return true; }
 int nes_mod_register_function_entry_plugin(const char *id, uint16_t addr, NESModFunctionEntryCallback cb) { (void)id; (void)addr; (void)cb; return 1; }
 int nes_mod_set_function_hook_enabled(const char *id, int on) {
     if (on && hooks_on_n < 8) hooks_on[hooks_on_n++] = id;
@@ -135,7 +158,7 @@ static void expect(const char *const *lines) {
 }
 #define EXPECT(...) do { static const char *const lines_[] = { __VA_ARGS__, NULL }; expect(lines_); } while (0)
 #define INTRO "All Gurus/meditate as one."
-#define OFFER_LINE "Shall I send/your spirit to/another Guru?"
+#define OFFER_LINE "Shall I send/you to another/Guru?"
 
 static void lines_fit(void) {
     uint8_t out[SLOT_LEN];
@@ -197,6 +220,55 @@ static void conversations(void) {
     EXPECT("msg 40", "end");
 }
 
+/* With a file in play, Save files asks first (fax_files.c): the script's end
+ * is left alone, and Save files starts Guru travel's part when it chooses. */
+static void after_save_files(void) {
+    stock(); visited = 0x2B; guru_choice = true;
+    guru(5, 5, false, "");
+    EXPECT("msg 22", "mantra", "end");
+    CHECK(fax_travel_can_offer() && fax_travel_say_step() == SAY);
+
+    /* "Send me to another Guru.": the intro, then the towns at once. */
+    stock(); visited = 0x2B; guru_choice = true;
+    guru(5, 5, false, "");
+    run(fax_travel_begin(true), 5, "BA");
+    EXPECT(INTRO, "To the Guru of/Eolis?", "To the Guru of/Apolune?", "Close your eyes/and clear your/mind.", "end");
+    CHECK(dest == 1);
+
+    /* After saving: the intro and the offer, as after the mantra. */
+    stock(); visited = 0x2B; guru_choice = true;
+    guru(5, 5, false, "");
+    run(fax_travel_begin(false), 5, "B");
+    EXPECT(INTRO, OFFER_LINE, "end");
+
+    /* Nowhere to send the hero: nothing to begin. */
+    stock(); visited = 0x01; guru_choice = true;
+    run(0xA0C6, 0, "");
+    CHECK(!fax_travel_can_offer() && fax_travel_begin(false) == 0);
+    guru_choice = false;
+
+    /* The furthest temple is the highest visited Guru's, whatever the spawn
+     * point says: with Save files it is the Guru last saved with. */
+    stock(); visited = 0x2B;
+    meet(1);
+    CHECK(talk.offer == 0x29);                       /* Eolis, Mascon, Conflate from Apolune, spawn point 0 */
+}
+
+/* The visited Gurus live in the file in play. */
+static void in_the_file(void) {
+    stock(); save_files = true;
+    CHECK(save_listener);
+    snprintf(gurus_field, sizeof gurus_field, "Apolune Conflate");
+    save_listener(FAX_SAVE_CONTINUED);
+    CHECK(visited == 0x23);
+    meet(3);
+    save_listener(FAX_SAVE_WRITING);
+    CHECK(!strcmp(gurus_field, "Eolis Apolune Mascon Conflate"));
+    save_listener(FAX_SAVE_NEW_GAME);
+    CHECK(visited == 1);
+    save_files = false;
+}
+
 static void journey_path(void) {
     stock(); dest = 3; ram[TEMPLE_SPAWN_POINT] = 5;
     ram[CURRENT_ROM_BANK] = 12;
@@ -225,6 +297,8 @@ static void resume(void) {
     CHECK(state_set(buf, n) && talk.phase == ASKING && talk.asking == 3 && text == TEXT_TO + 3);
     char line[64]; slot_text(line);
     CHECK(!strcmp(line, "To the Guru of/Mascon?"));
+    buf[2] = INTRO_TOWNS;
+    CHECK(state_validate(buf, n));
     buf[2] = 9;
     CHECK(!state_validate(buf, n) && !state_set(buf, n));
     CHECK(state_set(buf, 0) && talk.phase == IDLE && dest == -1);
@@ -243,6 +317,8 @@ int main(void) {
     lines_fit();
     what_is_offered();
     conversations();
+    after_save_files();
+    in_the_file();
     journey_path();
     resume();
     refuses_other_layouts();

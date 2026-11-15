@@ -57,6 +57,9 @@ cmake -S tests/movement -B "$OUT/movement" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/
 cmake --build "$OUT/movement" -j"$JOBS" >/dev/null
 "$OUT/movement/pose_test"
 "$OUT/movement/jumps_test"
+cmake -S tests/files -B "$OUT/files" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/files" -j"$JOBS" >/dev/null
+FAX_FILES_TEST_DIR="$OUT/files/scratch" "$OUT/files/files_test"
 cmake -S tests/speaker -B "$OUT/speaker" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/speaker" -j"$JOBS" >/dev/null
 "$OUT/speaker/speaker_test"
@@ -118,6 +121,9 @@ speaker_e2e speaker-e2e-seamless --game-arg=--world-view=seamless & speaker_seam
 echo "== end to end: Hold A to speed up text, alongside them"
 python3 tests/text_speed/text_speed.py --build build-cycle --rom "$ROM" --out "$OUT/text-speed-e2e" \
   > "$OUT/text-speed-e2e.log" 2>&1 & text_speed=$!
+echo "== end to end: Save files, alongside them"
+python3 tests/files/save_files.py --build build-cycle --rom "$ROM" --out "$OUT/files-e2e" \
+  > "$OUT/files-e2e.log" 2>&1 & files=$!
 echo "== end to end: the taller dagger, alongside them"
 python3 tests/dagger/taller_dagger.py --build build-cycle --rom "$ROM" --out "$OUT/dagger-e2e" \
   > "$OUT/dagger-e2e.log" 2>&1 & dagger=$!
@@ -157,6 +163,8 @@ wait "$speaker_seamless" || failed=1
 sed 's/^/[spkr+sw]  /' "$OUT/speaker-e2e-seamless.log"
 wait "$text_speed" || failed=1
 sed 's/^/[text]     /' "$OUT/text-speed-e2e.log"
+wait "$files" || failed=1
+sed 's/^/[files]    /' "$OUT/files-e2e.log"
 wait "$dagger" || failed=1
 sed 's/^/[dagger]   /' "$OUT/dagger-e2e.log"
 wait "$block" || failed=1
