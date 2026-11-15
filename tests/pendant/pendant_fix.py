@@ -86,11 +86,17 @@ def main():
                 tcp("action", name="b", frames=2)
         else:
             raise AssertionError("the hero never hit the Zozura")
+        # A kill borrows: the HP wraps past enemy_hp, and the death effect
+        # replaces the Zozura a frame or two later (Player_AddExperienceFromSprite
+        # can take a frame). Wait for it.
+        died = entity != ZOZURA or hp > enemy_hp
+        if died and entity == ZOZURA:
+            until("the Zozura's death effect", lambda: ram(SPRITE_ENTITY + TARGET) != ZOZURA, 30)
         assert ram(SCREEN) == ZOZURA_SCREEN, "the Zozura reached the hero first and knocked him off the screen"
         if name:
             wait(4)
             game.shot(name)
-        return None if entity != ZOZURA else enemy_hp - hp
+        return None if died else enemy_hp - hp
 
     def expected(weapon, pendant, gloved, fixed):
         bonus = pendant if fixed else not pendant
