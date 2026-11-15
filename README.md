@@ -89,6 +89,11 @@ time), and A pressed in the air up to 6 frames before you land jumps as you
 land (jump buffering). No jump goes higher or further than a well-timed one
 in the original. The Wing Boots, ladders and knockback work as before.
 
+**Hold A to speed up text** is on by default (Mods to turn it off). Text types
+at the game's own pace; hold A and it types 4 times as fast. A page break or a
+question still waits for a fresh press of A, so holding it never skips a page
+or answers for you: let go, then press A to go on.
+
 Optional **Seamless** appears first in Mods, marked **Experimental** and
 disabled by default. It joins connected rooms, advances neighboring actors,
 and adapts the world view to your window with Fit to screen. Mouse wheel

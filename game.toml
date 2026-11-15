@@ -292,3 +292,12 @@ id = "faxanadu.forgiving-jumps.jump"
 addr = 0xe44b
 bank = 15
 bytes = "10 e6 20 f6 ec b0 e7 a2 02 20 c8 e6"
+
+# Hold A to speed up text (fax_text_speed.c): TextBox_ShowNextChar_IfReady,
+# which TextBox_ShowNextChar calls once a frame in every message loop.
+
+[[mod_function_hook]]
+id = "faxanadu.text-speed.if-ready"
+addr = 0xf491
+bank = 15
+bytes = "ad 13 02 f0 cf ad 15 02 d0 ca ad 1d"

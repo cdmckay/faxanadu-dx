@@ -32,6 +32,9 @@ echo "== unit tests"
 cmake -S tests/travel -B "$OUT/travel" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/travel" -j"$JOBS" >/dev/null
 "$OUT/travel/travel_test"
+cmake -S tests/text_speed -B "$OUT/text_speed" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/text_speed" -j"$JOBS" >/dev/null
+"$OUT/text_speed/text_speed_test"
 cmake -S tests/world -B "$OUT/world" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/world" -j"$JOBS" >/dev/null && echo "fax_world.c compiles without SDL"
 cmake -S tests/death -B "$OUT/death" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
@@ -92,6 +95,9 @@ python3 tests/movement/falling_pose.py --build build-cycle --rom "$ROM" --out "$
   > "$OUT/pose-e2e.log" 2>&1 & pose=$!
 python3 tests/movement/forgiving_jumps.py --build build-cycle --rom "$ROM" --out "$OUT/jumps-e2e" \
   > "$OUT/jumps-e2e.log" 2>&1 & jumps=$!
+echo "== end to end: Hold A to speed up text, alongside them"
+python3 tests/text_speed/text_speed.py --build build-cycle --rom "$ROM" --out "$OUT/text-speed-e2e" \
+  > "$OUT/text-speed-e2e.log" 2>&1 & text_speed=$!
 failed=0
 wait "$default" || failed=1
 sed 's/^/[default]  /' "$OUT/travel-e2e.log"
@@ -113,5 +119,7 @@ wait "$pose" || failed=1
 sed 's/^/[pose]     /' "$OUT/pose-e2e.log"
 wait "$jumps" || failed=1
 sed 's/^/[jumps]    /' "$OUT/jumps-e2e.log"
+wait "$text_speed" || failed=1
+sed 's/^/[text]     /' "$OUT/text-speed-e2e.log"
 [ "$failed" = 0 ] || { echo "end-to-end tests failed; screenshots in $OUT/*-e2e*/" >&2; exit 1; }
 echo "all checks passed"

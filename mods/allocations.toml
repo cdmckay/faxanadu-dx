@@ -112,3 +112,14 @@ rom = []
 # inside the hero's vertical update: the ground check ($E3B2) and the jump
 # check ($E44B). No other feature hooks these. Writes only Player_PosY (the
 # fall step of a coyote jump) and the registers at those branches.
+
+[[feature]]
+package = "faxanadu.enhancement.text-speed"
+source = "fax_text_speed.c"
+hooks = "faxanadu.text-speed."
+rom = []
+# Writes only TextBox_Timer ($021D) and TextBox_PlayTextSound ($0212), at
+# TextBox_ShowNextChar_IfReady ($F491), which no other feature hooks.
+# Reads the joypad masks' A bit, which the Magic button never changes: it ORs
+# in Up and B only between Player_CastMagic and GameLoop_CheckUseCurrentItem,
+# where no message types.
