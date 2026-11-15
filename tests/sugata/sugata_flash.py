@@ -169,7 +169,7 @@ def main():
         magic = g.out / "warning-magic.cycstate"
         fixture(warning, magic, {SELECTED_SHIELD: MAGIC})
         g.load(magic)
-        shot = capture("magic-shield-reflects", "flash")
+        shot = capture("magic-shield-reflects", "flash", at=4)    # Sugata knocked back by then
         lost, d = flash("V")
         captured(shot, 4)
         assert lost == 0 and d["reflected"] == 1 and g.ram(SPRITE_HP + slot) == 22 - REFLECTED, (lost, d)
