@@ -86,28 +86,55 @@ FaxanaduRecomp.exe [ROM] --password "k8fPcv?,TwSYzGZQhMIQhCEA"
 
 ## Building from Source
 
-Prerequisites: Windows 10+, Visual Studio 2022, CMake 3.20+ (SDL2 is bundled)
+The build recompiles your ROM at configure time, so it needs the original
+`Faxanadu (USA)` image (game data CRC32 `57DD23D1`). `Faxanadu (USA) (Rev A)`
+is a different revision and is rejected. Put the ROM at the repo root as
+`Faxanadu (USA).nes`; `*.nes` is gitignored.
 
 ```bash
-git clone https://github.com/mstan/FaxanaduRecomp
-cd FaxanaduRecomp
+git clone https://github.com/cdmckay/faxanadu-remaster
+cd faxanadu-remaster
 
 # Windows
 setup.bat
 
 # Linux / macOS
-chmod +x setup.sh && ./setup.sh
+./setup.sh
 ```
 
 This initializes the pinned [nesrecomp](https://github.com/mstan/nesrecomp)
 submodule and links the Nestopia oracle core.
 
-Then build:
+### Windows
+
+Prerequisites: Windows 10+, Visual Studio 2022, CMake 3.20+ (SDL2 is bundled)
 
 ```bash
-cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DNESRECOMP_ROM="Faxanadu (USA).nes"
 cmake --build build --config Release
 ```
+
+### Linux
+
+The Nix devShell in `flake.nix` provides CMake, Python, SDL2, GL, FreeType and
+HarfBuzz. With [direnv](https://direnv.net/), `direnv allow` loads it whenever
+you enter the repo; otherwise run the commands inside `nix develop`.
+
+```bash
+direnv allow
+cmake -S . -B build-cycle -DCMAKE_BUILD_TYPE=Release -DNESRECOMP_ROM="$PWD/Faxanadu (USA).nes"
+cmake --build build-cycle -j"$(nproc)"
+build-cycle/FaxanaduRecomp "Faxanadu (USA).nes"
+```
+
+Without Nix, install the same packages from your distribution (on Debian:
+`cmake python3 libsdl2-dev libgl-dev libfreetype-dev libharfbuzz-dev`).
+nixpkgs' SDL2 is sdl2-compat on SDL3, which runs natively on Wayland and draws
+the window's title bar with libdecor on GNOME. Classic SDL2 prefers X11 (through
+XWayland); run with `SDL_VIDEODRIVER=wayland` to get native Wayland there.
+
+Headless runs are handy for checks: `--frames 600 --screenshot shot.png`
+plays 600 frames without a window and saves the last one.
 
 ## Architecture
 
