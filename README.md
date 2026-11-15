@@ -33,6 +33,12 @@ Optional **Play as Link** is available in Mods. Select your Zelda II USA ROM,
 enable the mod, and launch Faxanadu with Link's movement, sword beams, vertical
 stabs and all eight spells. See [controls and details](docs/LINK_MOD.md).
 
+**Guru travel** is on by default (Mods to turn it off). After a temple's Guru
+gives your mantra, he offers to send your spirit to any other Guru you have
+visited: A to go, B to hear the next town. HP, MP, gold and your spawn point
+are kept. The Gurus you have met are saved in `faxanadu_gurus.txt` next to the
+game.
+
 Optional **Seamless** appears first in Mods, marked **Experimental** and
 disabled by default. It joins connected rooms, advances neighboring actors,
 and adapts the world view to your window with Fit to screen. Mouse wheel

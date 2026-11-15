@@ -266,3 +266,30 @@ id = "faxanadu.world.script"
 addr = 0x8242
 bank = 12
 bytes = "c9 ff d0 02 a9 1f 8d 00 02 aa bd 6b"
+
+# Guru travel (fax_travel.c): each interaction-script action, the
+# conversation's end in the main loop, the temple layout and a new game.
+
+[[mod_function_hook]]
+id = "faxanadu.travel.next-action"
+addr = 0x826e
+bank = 12
+bytes = "20 a4 87 aa bd 93 82 48 bd 7b 82 48"
+
+[[mod_function_hook]]
+id = "faxanadu.travel.main-loop"
+addr = 0xe016
+bank = 15
+bytes = "a5 24 d0 04 a5 63 f0 0c a5 19 29 20"
+
+[[mod_function_hook]]
+id = "faxanadu.travel.spawn"
+addr = 0xdd61
+bank = 15
+bytes = "ae 39 04 bd d5 dd 85 63 bd cd dd 8d"
+
+[[mod_function_hook]]
+id = "faxanadu.travel.new-game"
+addr = 0xdb26
+bank = 15
+bytes = "20 af c6 20 f7 ca 20 a7 de a9 00 8d"
