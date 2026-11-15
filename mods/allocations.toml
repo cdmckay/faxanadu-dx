@@ -49,3 +49,14 @@ hooks = "faxanadu.pendant-fix."
 rom = []
 # Hooks only @_checkGlove ($8884, bank 14), which no other feature hooks, and
 # writes only Temp_00 there, which the routine sets for this hit just before.
+
+[[feature]]
+package = "faxanadu.enhancement.magic-button"
+source = "fax_magic.c"
+hooks = "faxanadu.magic-button."
+rom = []
+# Hooks Player_CastMagic ($BA5B, bank 14) and GameLoop_CheckUseCurrentItem
+# ($C478), which no other feature hooks, and never handles either. Writes only
+# the joypad masks ($16, $18, $19) between the two calls, and puts back what
+# it found. A feature that later hooks $C478 and handles it must sit after
+# this one in game.toml, or the real masks are never restored.

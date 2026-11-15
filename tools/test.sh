@@ -40,6 +40,9 @@ cmake --build "$OUT/death" -j"$JOBS" >/dev/null
 cmake -S tests/pendant -B "$OUT/pendant" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/pendant" -j"$JOBS" >/dev/null
 "$OUT/pendant/pendant_test"
+cmake -S tests/magic -B "$OUT/magic" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/magic" -j"$JOBS" >/dev/null
+"$OUT/magic/magic_test"
 
 echo "== game build"
 [ -f build-cycle/CMakeCache.txt ] || cmake -S . -B build-cycle -DCMAKE_BUILD_TYPE=Release -DNESRECOMP_ROM="$ROM" >/dev/null
@@ -61,6 +64,9 @@ python3 tests/death/death_keeps_gold.py --build build-cycle --rom "$ROM" --out "
 echo "== end to end: the Pendant fix, alongside them"
 python3 tests/pendant/pendant_fix.py --build build-cycle --rom "$ROM" --out "$OUT/pendant-e2e" \
   > "$OUT/pendant-e2e.log" 2>&1 & pendant=$!
+echo "== end to end: the Magic button, alongside them"
+python3 tests/magic/magic_button.py --build build-cycle --rom "$ROM" --out "$OUT/magic-e2e" \
+  > "$OUT/magic-e2e.log" 2>&1 & magic=$!
 failed=0
 wait "$default" || failed=1
 sed 's/^/[default]  /' "$OUT/travel-e2e.log"
@@ -70,5 +76,7 @@ wait "$death" || failed=1
 sed 's/^/[death]    /' "$OUT/death-e2e.log"
 wait "$pendant" || failed=1
 sed 's/^/[pendant]  /' "$OUT/pendant-e2e.log"
+wait "$magic" || failed=1
+sed 's/^/[magic]    /' "$OUT/magic-e2e.log"
 [ "$failed" = 0 ] || { echo "end-to-end tests failed; screenshots in $OUT/*-e2e*/" >&2; exit 1; }
 echo "all checks passed"
