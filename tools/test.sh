@@ -46,6 +46,9 @@ cmake --build "$OUT/magic" -j"$JOBS" >/dev/null
 cmake -S tests/zones -B "$OUT/zones" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/zones" -j"$JOBS" >/dev/null
 "$OUT/zones/zones_test"
+cmake -S tests/keys -B "$OUT/keys" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/keys" -j"$JOBS" >/dev/null
+"$OUT/keys/keys_test"
 
 echo "== game build"
 [ -f build-cycle/CMakeCache.txt ] || cmake -S . -B build-cycle -DCMAKE_BUILD_TYPE=Release -DNESRECOMP_ROM="$ROM" >/dev/null
@@ -77,6 +80,9 @@ zones_e2e() {  # NAME [ARGS...]
 }
 zones_e2e zones-e2e & zones=$!
 zones_e2e zones-e2e-seamless --game-arg=--world-view=seamless & zones_seamless=$!
+echo "== end to end: auto keys and reusable tools, alongside them"
+python3 tests/keys/auto_and_reusable_keys.py --build build-cycle --rom "$ROM" --out "$OUT/keys-e2e" \
+  > "$OUT/keys-e2e.log" 2>&1 & keys=$!
 failed=0
 wait "$default" || failed=1
 sed 's/^/[default]  /' "$OUT/travel-e2e.log"
@@ -92,5 +98,7 @@ wait "$zones" || failed=1
 sed 's/^/[zones]    /' "$OUT/zones-e2e.log"
 wait "$zones_seamless" || failed=1
 sed 's/^/[zones+sw] /' "$OUT/zones-e2e-seamless.log"
+wait "$keys" || failed=1
+sed 's/^/[keys]     /' "$OUT/keys-e2e.log"
 [ "$failed" = 0 ] || { echo "end-to-end tests failed; screenshots in $OUT/*-e2e*/" >&2; exit 1; }
 echo "all checks passed"

@@ -214,3 +214,31 @@ id = "faxanadu.magic-button.restore"
 addr = 0xc478
 bank = 15
 bytes = "a5 a4 29 05 d0 1e a5 16 29 04 f0 18"
+
+# Auto keys and reusable tools (fax_keys.c): the door requirement handler, the
+# HUD picture clear that uses up a key or the Mattock, and the Mattock's
+# Player_ClearSelectedItem call. Both features hook UI_ClearSelectedItemPic.
+
+[[mod_function_hook]]
+id = "faxanadu.auto-keys.door"
+addr = 0xeb2f
+bank = 15
+bytes = "ad 2b 04 f0 0a 0a a8 b9 40 eb 48 b9"
+
+[[mod_function_hook]]
+id = "faxanadu.auto-keys.unlocked"
+addr = 0xc8dc
+bank = 15
+bytes = "a9 13 8d e9 00 a9 c0 8d e8 00 a2 04"
+
+[[mod_function_hook]]
+id = "faxanadu.reusable-tools.unlocked"
+addr = 0xc8dc
+bank = 15
+bytes = "a9 13 8d e9 00 a9 c0 8d e8 00 a2 04"
+
+[[mod_function_hook]]
+id = "faxanadu.reusable-tools.mattock"
+addr = 0xc4bf
+bank = 15
+bytes = "48 a9 ff 8d c1 03 20 dc c8 68 60 ad"
