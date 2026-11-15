@@ -747,9 +747,13 @@ against the hero:
 | `$B982` | `Player_DrawShield` | Draws nothing for the helmet or none, so `Player_ShieldPositionX/Y` keep stale values then |
 
 - **The Battle Helmet never stops magic in the original.** It lives in the
-  shield slot, but the shield check skips it and no shield is drawn: the
-  helmet is part of the armor tiles (`Player_LoadShieldTilesToPPU`). A shot at
-  shield height takes its full damage.
+  shield slot, but the shield check skips it and no shield is drawn. A shot
+  at shield height takes its full damage.
+- **The Battle Helmet has no graphic at all.** With `SelectedShield` 3 or up,
+  `Player_LoadArmorTilesToPPU` loads the armor's tiles without the shield arm,
+  `Player_DrawBody` picks the same no-shield poses
+  (`PLAYER_BODY_TILEINFO_START_OFFSETS`), and `Player_LoadShieldTilesToPPU`
+  loads nothing: with the helmet the hero looks exactly as with no shield.
 - **Picking up the Battle Helmet** (`Player_PickUpBattleHelmet`, `$C70A`)
   runs IScript `$8C`, `ISCRIPT_GOT_BATTLE_HELMET` (`$A698`, bank 12: generic
   box, `SHOW_UNSKIPPABLE_MESSAGE` `$B6` "I've got the Battle Helmet.", END),
@@ -770,6 +774,49 @@ against the hero:
   `Player_HandleIFrames` (`$E0E8`) counts the phase down each frame and
   clears knockback when it reaches `$39`, three frames after the hit. So
   knockback needs the phase: with it at 0 the bit is cleared at once.
+
+**How the shield is drawn.** Each pass, after
+`Screen_ResetSpritesForGamePlay`, the main loop draws the shield, then the
+body, then the weapon: `JSR Player_DrawShield`, `Player_DrawBody` (`$EBEE`),
+`Player_DrawWeapon` (`$B7D6`), in that order everywhere the hero is drawn
+(`Game_MainLoop` and its two scroll loops, `EndGame_MainLoop`,
+`Game_DrawScreenInFrozenState`). `Player_DrawShield`:
+
+1. Returns if a portrait shows (`IScript_PortraitID` positive) or the slot
+   holds the helmet or nothing.
+2. Takes the pose from `Maybe_Player_CalcAnimFrame` into `Temp_00` (0-3
+   upright, 4-6 a swing, 7 a ladder; see *The pose*).
+3. Sets the box: `Player_ShieldPositionX` = `Player_PosX_Block` +
+   `SHIELD_SPRITE_OFFSETS_X[pose × 2 + facing right]` (`$B9DD`: 0 facing left
+   and 8 facing right in poses 0-5, the other way round in pose 6, 0 both ways
+   on a ladder), and `Player_ShieldPositionY` = `Player_PosY` + 8.
+4. Copies the box to `Arg_DrawSprite_PosX/Y` (`$27`, `$28`), the flip from his
+   facing, and `Sprites_PPUOffset` `$30`.
+5. At `$B9C3` (`LDA Temp_00`), runs `Player_CalculateVisibility` at
+   `Arg_DrawSprite_PosX/Y`, which puts the sprites behind foreground blocks.
+6. Draws appearance `MAYBE_SHIELD_SPRITE_PPU_OFFSETS[pose]` (`$B9D5`: `$60`,
+   or `$61` and `$62` in a swing, `$42` on a ladder, the back view) with
+   `Sprite_SetPlayerAppearanceAddr`.
+
+- **The shield's sprites** are a column of two 8×8 tiles, `$30` and `$31`, in
+  sprite palette 1. Each shield's 6 tiles load to PPU `$0300` on a screen's
+  setup (`Screen_SetupNew`, so walking through Eolis's gate loads a shield set
+  in a save state). The Small, Large and Magic Shields differ only in length,
+  5 pixels wide, seen edge on.
+- **Sprite slots.** `Sprite_Draw` writes Y, tile, attributes, X at
+  `Sprites_SpriteSlot` (`$25`) × 4 EOR `Sprites_StartSlotRange` (`$1C`) in
+  the shadow OAM (`$0700`), then `Sprites_IncNextSpriteSlot` alternates
+  halves: 1, 33, 2, 34, ... (slot 0 is the status bar's). The hero's parts
+  each take a run of slots, so the body's are those between `Sprites_SpriteSlot`
+  at `Player_DrawBody` and at `Player_DrawWeapon`. OAM Y is the drawing Y
+  + 32, the HUD.
+- **Sprite palettes.** Palette 0 is the hero's (`$18 $26 $30`), palette 1 the
+  shield's (`$00 $25 $30`: grey, pink, white). All three sprite palette sets
+  (bank 11, `$81C0` + 16 × n, loaded by `Screen_LoadSpritePalette`) have these
+  two; palettes 2 and 3 are the area's actors'.
+- **Block's raised shield** (`fax_block.c`) changes `Arg_DrawSprite_PosX/Y` at
+  `$B9C3`: the box is set by then, so it moves the picture (and its
+  visibility) and never what the shield stops.
 
 **Zenis, for tests.** On the fortress of Zenis's screen 16 (area 7, palette
 `$0F`, region 5, position `$91`), an Execution Hood casts a shot (`$51`,
@@ -1468,8 +1515,12 @@ addresses, and `tools/check_allocations.py` enforces it.
   within them, the jump check at `$E44B` sees A, so the jump is the one the
   original makes with A pressed then. Neither applies with the Wing Boots
   running, in knockback, while climbing, or across a change of screen or
-  area. It counts updates at `Player_CheckHandleVertMovement`'s entry, not
-  frames, and keeps a 7-byte save-state record.
+  area. Nor while Block is up (`fax_block_raised()`, false with Block off):
+  Block takes A away, and a press kept from just before it went up would hand
+  A back on landing, so each update with Block up drops it (TCP
+  `forgiving_jumps_state` counts those as `blocked`). It counts updates at
+  `Player_CheckHandleVertMovement`'s entry, not frames, and keeps a 7-byte
+  save-state record.
 - **Hold A to speed up text** (`fax_text_speed.c`). While A is held (and not
   on the frame it goes down), a hook at `TextBox_ShowNextChar_IfReady` rounds
   `TextBox_Timer` up to a multiple of 4, so a character types every frame,
@@ -1508,7 +1559,20 @@ addresses, and `tools/check_allocations.py` enforces it.
   said is a named field (`block.taught`) behind `remembered()`/`remember()`:
   a line in `faxanadu_block.txt` beside the game until save slots keep named
   fields. Its save-state record is what the hero owned and whether the line
-  is showing.
+  is showing. The tutorial sets the SAY step's and the slot's read overrides
+  itself, so it speaks with Guru travel off too.
+  It shows. At `$B9C3` (see *How the shield is drawn*), in the upright poses
+  (0-3), Block up moves the shield's drawing 6 pixels up and 2 the way he
+  faces, before his face, short of wrapping past the screen's edge; the box
+  stays. A swing and a ladder keep their own shield poses. Where nothing is
+  raised (the Battle Helmet, or a shield in a swing or on a ladder), Block
+  going up makes the hero glint: at `Player_DrawWeapon`'s entry the body's
+  slots, noted at `Player_DrawBody`'s, take palette 1, the shield's colors,
+  for draws 1-4 and 9-12 of 12, and stop at once if Block is let go. Both only
+  draw. Seamless world's redraw of the hero past a room's edge runs in an
+  isolated machine without hooks, so that part of him is the stock pose (the
+  falling pose's is the same). The glint is not in the save-state record: a
+  load starts it over, and a button held through the load does not start one.
 - **Sugata's flash** (`fax_sugata.c`). At `$AB26`, before the behavior is
   under way, it skips the call for 30 frames, and Sugata's draw (`$929F`)
   returns through `SpriteUpdateHandler_Invisible` 4 frames in 8, counted back
