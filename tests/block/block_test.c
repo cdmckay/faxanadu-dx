@@ -424,7 +424,7 @@ static void the_shield_is_raised(void) {
         Drawn d = drawn(SHIELD_TILE);
         CHECK(p < 4 ? d.x == 98 && d.y == 146 + HUD : d.x == 100 + SHIELD_SPRITE_OFFSETS_X[p * 2] && d.y == 152 + HUD);
     }
-    /* Drawn the same in an isolated machine (Seamless world's room edges),
+    /* Drawn the same in an isolated machine that allows hooks,
      * which counts nothing. */
     unsigned raised = shields_raised;
     pose = 0;

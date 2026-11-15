@@ -31,7 +31,7 @@
  * face and out in front (the drawing only; the shield's box stays where the
  * game puts it). With the Battle Helmet, which has no shield drawn, or in a
  * pose with a shield of its own (a swing, a ladder), the hero glints in the
- * shield's colours as Block goes up.
+ * shield's colors as Block goes up.
  *
  * The first time the hero comes to own anything for the shield slot (a shop,
  * or the Battle Helmet's pickup, whose script runs before the helmet is
@@ -256,9 +256,10 @@ static int flash_hook(uint16_t addr) {
  * Player_DrawWeapon's, which the game always calls in turn) take the shield's
  * palette, twice, GLINT_BEAT draws each.
  *
- * Both only draw. In an isolated machine (Seamless world redraws the hero in
- * one at a room's edge) they draw what the live one does and change nothing
- * of their own. */
+ * Both only draw, and count only in the live machine: an isolated one that
+ * allows hooks would draw the same. (Seamless world's redraw of the hero at a
+ * room's edge allows none, so the part of him past the edge is the game's
+ * own pose there.) */
 enum { RAISE_UP = 6, RAISE_FORWARD = 2, UPRIGHT_POSES = 4 };
 enum { GLINT_BEAT = 4, GLINT_DRAWS = 3 * GLINT_BEAT, SHIELD_PALETTE = 1 };
 enum { NO_SLOT = 0xFF };
