@@ -28,8 +28,7 @@ identity above was checked directly.
 | Seam/pause/inventory | Existing 20 checks pass, including complete state/picture restore and paused actor retention |
 | Portrait and resizing | Actual shop interaction and wide/portrait SDL resizes retain actors, camera and expanded geometry |
 | Actual death/retry colors | Complete guest core and actor OAM/CHR are unchanged; all 357 changed pixels in two affected NPC rooms map to the original outdoor palette |
-| Existing Link mode | All eight spells, HP/MP effects, native/interpreter state/trace/picture, picker/effect restore, disabled default and wrong-ROM/invalid-state rejection pass |
-| Package | ZIP integrity, complete PE C++ runtime closure, both opt-in catalogs and ROM/player-data exclusion pass; no loading-speed packages ship |
+| Package | ZIP integrity, complete PE C++ runtime closure, the opt-in catalog and ROM/player-data exclusion pass; no loading-speed packages ship |
 | Portable source | SDL-free compile passes |
 
 Raw evidence is retained at
@@ -43,4 +42,4 @@ Remaining qualification and limitations are listed in
 [Seamless world](SEAMLESS-WORLD.md). The existing x=3 clipped-player scratch-draw
 failure occurs in both comparison builds and remains documented there; the
 normal seamless crossing gate reports no failures. No full playthrough,
-netplay, Link/Seamless combination, or non-Windows runtime claim is made.
+netplay or non-Windows runtime claim is made.

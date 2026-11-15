@@ -30,18 +30,72 @@ source = "fax_world.c"
 hooks = "faxanadu.world."
 rom = []
 
-[[feature]]
-package = "faxanadu.gameplay.zelda2-link"
-source = "mods/zelda2/fax_link.c"
-hooks = "faxanadu.link."
-rom = []
-
 [[shared_site]]
 addr = 0xE016   # GameLoop_CheckShowPlayerMenu
-hooks = ["faxanadu.world.inventory", "faxanadu.link.inventory", "faxanadu.travel.main-loop"]
-why = """Seamless (freeze_hook) and Link (inventory_hook) observe and return 0, so \
-later sites still fire. Guru travel handles the call only to start a journey, \
-and its site is the last at this address."""
+hooks = ["faxanadu.world.inventory", "faxanadu.travel.main-loop"]
+why = """Seamless (freeze_hook) observes and returns 0, so later sites still \
+fire. Guru travel handles the call only to start a journey, and its site is \
+the last at this address."""
+
+[[feature]]
+package = "faxanadu.enhancement.death-keeps-gold"
+source = "fax_death.c"
+hooks = "faxanadu.death-keeps-gold."
+rom = []
+# Hooks only Player_SetInitialExpAndGold ($95B1, bank 12), which no other
+# feature hooks, and writes nothing: it tells a death from a mantra by the far
+# call's return address, so it needs no hook at Player_HandleDeath ($D8EC).
+
+[[feature]]
+package = "faxanadu.enhancement.pendant-fix"
+source = "fax_pendant.c"
+hooks = "faxanadu.pendant-fix."
+rom = []
+# Hooks only @_checkGlove ($8884, bank 14), which no other feature hooks, and
+# writes only Temp_00 there, which the routine sets for this hit just before.
+
+[[feature]]
+package = "faxanadu.enhancement.magic-button"
+source = "fax_magic.c"
+hooks = "faxanadu.magic-button."
+rom = []
+# Hooks Player_CastMagic ($BA5B, bank 14) and GameLoop_CheckUseCurrentItem
+# ($C478), which no other feature hooks, and never handles either. Writes only
+# the joypad masks ($16, $18, $19) between the two calls, and puts back what
+# it found. A feature that later hooks $C478 and handles it must sit after
+# this one in game.toml, or the real masks are never restored.
+
+[[feature]]
+package = "faxanadu.enhancement.zone-names"
+source = "fax_banner.c"
+hooks = "faxanadu.zone-names."
+rom = []
+# No hooks and no ROM: it reads RAM at the end of each frame and draws over
+# the presented picture (fax_text.c), after Seamless has composed it.
+
+[[feature]]
+package = "faxanadu.enhancement.auto-keys"
+source = "fax_keys.c"
+hooks = "faxanadu.auto-keys."
+rom = []
+# Writes SelectedItem, ItemInventory and NumberOfItems, as selecting and using
+# a key would. Shares fax_keys.c with reusable tools.
+
+[[feature]]
+package = "faxanadu.enhancement.reusable-tools"
+source = "fax_keys.c"
+hooks = "faxanadu.reusable-tools."
+rom = []
+# Writes SelectedItem only, putting back the key the game just cleared.
+
+[[shared_site]]
+addr = 0xC8DC   # UI_ClearSelectedItemPic
+hooks = ["faxanadu.auto-keys.unlocked", "faxanadu.reusable-tools.unlocked"]
+why = """Both sites run the same callback, fax_keys.c's unlocked_hook, which \
+finishes the door for whichever of the two features are on. When the first \
+site handles the call the second is skipped; when it does not, the second \
+finds nothing to do either. It acts only when Game_UnlockDoorWithUsableItem \
+is the caller."""
 
 [[feature]]
 package = "faxanadu.enhancement.taller-dagger"

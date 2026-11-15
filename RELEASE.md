@@ -11,9 +11,9 @@ powershell -File tools/make_release.ps1 -Rom <USA-ROM> -BuildDir <build> -SkipBu
 
 The single release asset is `release/FaxanaduRecomp-windows-x64.zip`. It contains
 the executable, SDL2 and licensed Visual C++ runtimes, launcher assets, licenses,
-instructions, and the preloaded mod catalog. Both Seamless and Play as Link are
-disabled by default and marked Experimental. No developer profile, ROM path,
-native save, save state, log or extracted owner graphics belongs in the ZIP.
+instructions, and the preloaded mod catalog. Seamless is disabled by default
+and marked Experimental. No developer profile, ROM path, native save, save
+state, log or extracted owner graphics belongs in the ZIP.
 
 Extract into an isolated directory and verify the launcher, first-row Seamless
 entry and Experimental badge, disabled default, enabled catalog path, gameplay

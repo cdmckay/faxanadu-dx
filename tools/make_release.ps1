@@ -15,16 +15,7 @@ Start pauses, Select opens native inventory, B closes it.
 Doors and scripted region changes retain their native transitions.
 Seamless passed a preliminary owner playtest; cross-room combat/projectiles
 and broader progression coverage remain incomplete. It is disabled by default
-and cannot be combined with Play as Link. Both mods are local-play only.
-
-Optional experimental Play as Link mod: open Mods, select your Zelda II USA ROM,
-enable Play as Link (marked Experimental), then launch Faxanadu. Both original ROMs remain on your computer.
-A jumps, B uses the sword, Down crouches; airborne Up/Down stab vertically.
-Select opens magic; A confirms, B cancels. Up+B casts. C and V are optional
-cast/picker shortcuts (config.ini [Game] LinkCastKey / LinkPickerKey).
-Start opens the Faxanadu inventory; Down+Start uses the selected native item.
-All eight spells are unlocked and use native MP. Sword beams require full HP.
-The mod is disabled by default. Native equipment, quests and mantras remain.
+and local-play only.
 '@
 $buildPath = if ([IO.Path]::IsPathRooted($BuildDir)) { $BuildDir } else { Join-Path $root $BuildDir }
 if (-not $SkipBuild) {

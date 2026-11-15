@@ -1,4 +1,4 @@
-# Faxanadu Remaster
+# Faxanadu Remastered
 
 A remaster of Faxanadu (NES) that keeps as much of the real game as possible,
 and fixes what has aged.
@@ -38,23 +38,54 @@ Older `keybinds.ini` and F5/F6/F7 instructions below apply to the legacy host.
 2. Extract and run `FaxanaduRecomp.exe`
 3. Select your Faxanadu (USA) ROM when prompted — the path is saved for future launches
 
-Optional **Play as Link** is available in Mods. Select your Zelda II USA ROM,
-enable the mod, and launch Faxanadu with Link's movement, sword beams, vertical
-stabs and all eight spells. See [controls and details](docs/LINK_MOD.md).
-
 **Guru travel** is on by default (Mods to turn it off). After a temple's Guru
 gives your mantra, he offers to send your spirit to any other Guru you have
 visited: A to go, B to hear the next town. HP, MP, gold and your spawn point
 are kept. The Gurus you have met are saved in `faxanadu_gurus.txt` next to the
 game.
 
+**Death keeps gold** is on by default (Mods to turn it off). When you die, the
+Guru brings you back with all your gold and experience, instead of your
+title's starting amounts. The rest of death is as before: full HP and MP at
+your furthest temple, and the timed items are gone.
+
+**Pendant fix** is on by default (Mods to turn it off). The Pendant was meant
+to make your weapon hit a quarter harder, but a reversed check in the
+original gave that bonus to everyone without it, and finding the Pendant took
+it away. Now your weapon does its base damage until you find the Pendant, and
+the original's full damage once you have it. The Glove adds its bonus as
+before.
+
+**Magic button** is on by default (Mods to turn it off). C on the keyboard, or
+Y on a controller, casts your selected spell, as Up+B does, but without going
+through a door, talking to anyone or swinging your sword. Up+B still works.
+To rebind it, set `MagicKey` (a key name, like `V` or `Left Shift`) and
+`MagicButton` (a controller button, like `b` or `leftshoulder`, or a trigger,
+like `lefttrigger+`) in the `[Game]` section of `config.ini`, next to the game.
+`none` unbinds either. Pick one that nothing else uses. The menu's Controls
+section shows the bindings.
+
+**Zone names** is on by default (Mods to turn it off). When you enter a
+different town, region, tower or castle, its name appears below the status bar
+for two seconds in the game's own text box, as the dialogue names it ("Tower of
+Suffer", "Castle of Fraternal"). Shops, houses and temples show nothing.
+
+**Auto keys** is on by default (Mods to turn it off). Press Up at a locked door
+and the right key from your inventory opens it, without selecting it first;
+whatever item you had selected stays selected.
+
+**Reusable tools** is on by default (Mods to turn it off). A key stays in your
+inventory after it opens a door, and the Mattock after it breaks a wall.
+Potions, the Elixir, the Hour Glass, the Wing Boots and the other consumables
+are still used up.
+
 Optional **Seamless** appears first in Mods, marked **Experimental** and
 disabled by default. It joins connected rooms, advances neighboring actors,
 and adapts the world view to your window with Fit to screen. Mouse wheel
 changes pixel zoom; F4 shows the connected map. Dialogue and pause preserve
 the expanded view. It passed a preliminary owner playtest; broader gameplay
-coverage and cross-room combat/projectiles remain incomplete. Seamless and
-Play as Link are separate local-play modes. See [details](docs/SEAMLESS-WORLD.md).
+coverage and cross-room combat/projectiles remain incomplete. Seamless is
+local play only. See [details](docs/SEAMLESS-WORLD.md).
 
 ## Controls
 
@@ -65,6 +96,7 @@ Play as Link are separate local-play modes. See [details](docs/SEAMLESS-WORLD.md
 | B          | X |
 | Start      | Enter |
 | Select     | Right Shift |
+| Magic (Up+B) | C (controller: Y) |
 
 ## Mantra (Password) Features
 

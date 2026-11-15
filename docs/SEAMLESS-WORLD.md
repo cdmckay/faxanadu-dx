@@ -41,8 +41,6 @@ Native controls: Select opens inventory; B closes it; Start pauses/unpauses.
 The painted gate in the first Trunk room has no registered Up destination in
 the USA game. The preview preserves that behavior; its registered-door setup
 provides an actual unlocked Up interaction.
-This preview is exclusive with Play as Link until their adapters are qualified
-together. Both enhancements remain available separately.
 
 ## Implementation and reuse
 
@@ -115,8 +113,8 @@ more. Initial region decoding and native portal delays remain separate costs.
 
 Still open: enemy/projectile migration and combat while participants belong to
 different rooms; broader boss, secret, breakable terrain, death/retry and ending
-coverage; complete progression/mantra gameplay audit; Link integration; full-map
-costs and other hosts. Actors chase a projected local player in neighboring
+coverage; complete progression/mantra gameplay audit; full-map costs and
+other hosts. Actors chase a projected local player in neighboring
 rooms. This can change encounter timing compared with stock and needs human
 playtesting. No full playthrough, netplay, legacy-host or non-USA claim is made.
 

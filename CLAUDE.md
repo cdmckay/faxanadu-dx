@@ -1,4 +1,4 @@
-# faxanadu-remaster
+# Faxanadu Remastered
 
 Faxanadu (NES) statically recompiled to native code with
 [nesrecomp](https://github.com/mstan/nesrecomp), plus quality-of-life features.
@@ -64,6 +64,3 @@ recompiler produced it; features observe and steer it.
   turn it off in the launcher.
 - Match the game's voice and limits for any new dialogue: 16 columns, 4 lines,
   plain words.
-- **Play as Link** (`mods/zelda2/`) is kept but low priority. Keep it building
-  and its hooks declared, but don't spend effort testing, extending or making
-  new features compatible with it.

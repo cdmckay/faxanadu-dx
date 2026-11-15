@@ -19,7 +19,7 @@ description = "Continuous connected rooms with adaptive Fit to screen. Resize fr
 group = "Display"
 default_enabled = false
 experimental = true
-exclusive_groups = ["display-mode", "player-controller"]
+exclusive_groups = ["display-mode"]
 
 [[plugin]]
 feature = "seamless-world"

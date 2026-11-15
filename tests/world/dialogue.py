@@ -17,7 +17,7 @@ import sys
 from PIL import Image
 
 sys.dont_write_bytecode = True
-spec = importlib.util.spec_from_file_location("state_helpers", Path(__file__).parents[1] / "link/integration.py")
+spec = importlib.util.spec_from_file_location("state_helpers", Path(__file__).with_name("cycstate.py"))
 state = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(state)
 
