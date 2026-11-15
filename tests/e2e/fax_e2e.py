@@ -46,6 +46,9 @@ Game, one per test
                       Write OUT/game/mods/state.toml, the launcher's mod selection.
     .tcp() .frame() .wait() .ram() .until()   As the functions below, on this game.
     .out .exe .rom .image (the ROM's bytes) .env .log .port .proc .shots
+    .exe              What launch() runs: OUT/game/FaxanaduRecomp. Point it at
+                      another copy to run that one (Save files does).
+    .timeout          Seconds tcp() waits for a reply (30).
 
 Functions, on the game launched last
     tcp(cmd, **kw)                  One command; its reply. RuntimeError unless ok.
@@ -220,6 +223,7 @@ class Game:
         self.game_args, self.realtime = list(game_args), realtime
         self.port, self.fixed_port = port, bool(port)
         self.proc, self.shots = None, []
+        self.timeout = 30                  # seconds to wait for a reply
 
     @classmethod
     def from_args(cls, args):
@@ -295,7 +299,7 @@ class Game:
 
     def tcp(self, cmd, **kw):
         with socket.create_connection(("127.0.0.1", self.port), 5) as s:
-            s.settimeout(30)
+            s.settimeout(self.timeout)
             f = s.makefile("rwb", buffering=0)
             f.write((json.dumps(dict(id=1, cmd=cmd, **kw)) + "\n").encode())
             reply = json.loads(f.readline())

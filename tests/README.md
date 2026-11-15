@@ -40,8 +40,8 @@ def main():
         game.close()
 ```
 
-The functions talk to the game launched last. `tests/movement/play.py`
-subclasses `Game` for the movement tests' headless runs.
+The functions talk to the game launched last. `tests/movement/play.py` and
+`tests/block/harness.py` subclass `Game` with what their tests add.
 
 ### Ports
 
