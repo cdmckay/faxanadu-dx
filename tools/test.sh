@@ -136,7 +136,7 @@ python3 tests/files/save_files.py --build build-cycle --rom "$ROM" --out "$OUT/f
 echo "== end to end: the taller dagger, alongside them"
 python3 tests/dagger/taller_dagger.py --build build-cycle --rom "$ROM" --out "$OUT/dagger-e2e" \
   > "$OUT/dagger-e2e.log" 2>&1 & dagger=$!
-echo "== end to end: Block, its raised shield and Sugata's flash, by default and with Seamless on, alongside them"
+echo "== end to end: Block, its glint and Sugata's flash, by default and with Seamless on, alongside them"
 block_e2e() {  # SCRIPT NAME [ARGS...]
   local script="$1" name="$2"; shift 2
   python3 "$script" --build build-cycle --rom "$ROM" --out "$OUT/$name" "$@" > "$OUT/$name.log" 2>&1

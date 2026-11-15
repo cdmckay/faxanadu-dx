@@ -27,6 +27,8 @@
 #define BEHAVIORS            0x02D4u
 #define TEMP_0201            0x0201u
 #define PORTRAIT             0x03C7u   /* IScript_PortraitID: $FF, none */
+#define ARG_DRAW_SPRITE_POS_X 0x0027u  /* where Sprite_Draw draws */
+#define ARG_DRAW_SPRITE_POS_Y 0x0028u
 enum { MAGIC_SPRITE = 0x51, MAGIC_DAMAGE = 8, CATEGORY_MAGIC = 6, SLOT = 3 };
 enum { SMALL, LARGE, MAGIC_SHIELD, HELMET, NONE = 0xFF };
 enum { A = 0x80, B = 0x40, SELECT = 0x20, START = 0x10, UP = 0x08, DOWN = 0x04, LEFT = 0x02, RIGHT = 0x01 };
@@ -92,16 +94,14 @@ static void sprite_draw(unsigned cols, unsigned rows, uint8_t tile, uint8_t pale
 }
 /* Player_DrawShield ($B982): nothing for the Battle Helmet or none; else the
  * box and the drawing place from the pose, and a column of 2 tiles in
- * palette 1. */
+ * palette 1. No feature hooks it. */
 static void draw_shield(void) {
     if (!(ram[PORTRAIT] & 0x80) || ram[SELECTED_SHIELD] >= HELMET) return;
-    ram[TEMP_00] = pose;
     unsigned i = pose * 2u + (ram[PLAYER_FLAGS] & FACING_RIGHT ? 1 : 0);
     ram[SHIELD_X] = (uint8_t)(ram[PLAYER_POS_X] + SHIELD_SPRITE_OFFSETS_X[i]);
     ram[SHIELD_Y] = (uint8_t)(ram[POS_Y] + 8);
     ram[ARG_DRAW_SPRITE_POS_X] = ram[SHIELD_X];
     ram[ARG_DRAW_SPRITE_POS_Y] = ram[SHIELD_Y];
-    CHECK(SITES(DRAW_SHIELD_AT, "faxanadu.block.shield-draw"));
     sprite_draw(1, 2, SHIELD_TILE, 1);
 }
 /* Player_DrawBody ($EBEE): 2 columns of 4 tiles at the hero, in palette 0. */
@@ -369,77 +369,6 @@ static void the_battle_helmet(void) {
 
 /* ---- what Block looks like ---- */
 
-static void the_shield_is_raised(void) {
-    /* Where it goes: 6 higher and 2 further the way he faces, short of the
-     * screen's edges. */
-    uint8_t x = 108, y = 152;
-    raise_shield(&x, &y, true);
-    CHECK(x == 110 && y == 146);
-    x = 100; y = 152;
-    raise_shield(&x, &y, false);
-    CHECK(x == 98 && y == 146);
-    x = 1; y = 5;
-    raise_shield(&x, &y, false);
-    CHECK(x == 0 && y == 0);
-    x = 254; y = 6;
-    raise_shield(&x, &y, true);
-    CHECK(x == 255 && y == 0);
-    x = 253;
-    raise_shield(&x, &y, true);
-    CHECK(x == 255);
-
-    /* Not held: where the game draws it, its box and its drawing alike. */
-    fresh();
-    for (uint8_t shield = SMALL; shield <= MAGIC_SHIELD; ++shield)
-        for (int right = 0; right < 2; ++right) {
-            hold(false);
-            scene(shield, right, 60, 0);
-            draw_hero();
-            Drawn d = drawn(SHIELD_TILE);
-            uint8_t at = right ? 108 : 100;
-            CHECK(d.n == 2 && d.x == at && d.y == 152 + HUD && all_in(&d, 1));
-            CHECK(ram[SHIELD_X] == at && ram[SHIELD_Y] == 152);
-            /* Held: drawn before his face and out in front; the box stays. */
-            hold(true);
-            draw_hero();
-            d = drawn(SHIELD_TILE);
-            CHECK(d.n == 2 && d.x == (right ? 110 : 98) && d.y == 146 + HUD && all_in(&d, 1));
-            CHECK(ram[SHIELD_X] == at && ram[SHIELD_Y] == 152);
-            Drawn body = drawn(BODY_TILE);
-            CHECK(body.n == 8 && body.x == 100 && body.y == 144 + HUD && all_in(&body, 0));   /* no glint */
-            /* Let go: back where the game draws it. */
-            hold(false);
-            draw_hero();
-            d = drawn(SHIELD_TILE);
-            CHECK(d.x == at && d.y == 152 + HUD);
-        }
-    CHECK(shields_raised == 6 && glints == 0);
-    /* Walking and in a jump too (poses 1-3); not in a swing (4-6) or on a
-     * ladder (7), whose shield poses stay as they are. */
-    hold(true);
-    for (uint8_t p = 0; p < 8; ++p) {
-        scene(SMALL, false, 60, 0);
-        pose = p;
-        draw_hero();
-        Drawn d = drawn(SHIELD_TILE);
-        CHECK(p < 4 ? d.x == 98 && d.y == 146 + HUD : d.x == 100 + SHIELD_SPRITE_OFFSETS_X[p * 2] && d.y == 152 + HUD);
-    }
-    /* Drawn the same in an isolated machine that allows hooks,
-     * which counts nothing. */
-    unsigned raised = shields_raised;
-    pose = 0;
-    scene(LARGE, true, 60, 0);
-    isolated_scope = true;
-    draw_hero();
-    isolated_scope = false;
-    CHECK(drawn(SHIELD_TILE).x == 110 && shields_raised == raised);
-    /* The magic tests above ran through this drawing: the box was the game's. */
-    /* Off: as the game draws it. */
-    model_reset();
-    draw_hero();
-    CHECK(drawn(SHIELD_TILE).x == 108 && drawn(SHIELD_TILE).y == 152 + HUD);
-}
-
 /* Draws of a glint: the body's palette in each of `n` passes. */
 static void passes(unsigned n, uint8_t want[]) {
     for (unsigned i = 0; i < n; ++i) {
@@ -449,43 +378,87 @@ static void passes(unsigned n, uint8_t want[]) {
         want[i] = all_in(&body, 1) ? 1 : all_in(&body, 0) ? 0 : 9;
     }
 }
+static const uint8_t GLINT[16] = { 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0 };
+static const uint8_t NO_GLINT[16] = { 0 };
 
-static void a_glint_where_nothing_is_raised(void) {
-    static const uint8_t GLINT[16] = { 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0 };
-    uint8_t seen[16];
-    /* The Battle Helmet: no shield drawn. Block going up makes the body glint
-     * in the shield's palette, twice, 4 draws each; sprite 0 keeps its own. */
+static void the_shield_is_drawn_where_the_game_draws_it(void) {
+    /* Held or not, through the glint, in every pose either way he faces: the
+     * shield's two sprites, in its palette, and its box are the game's. */
     fresh();
-    pose = 0;
-    scene(HELMET, true, 60, 0);
-    passes(4, seen);
-    CHECK(!memcmp(seen, (uint8_t[4]){ 0, 0, 0, 0 }, 4) && drawn(SHIELD_TILE).n == 0);
+    for (uint8_t shield = SMALL; shield <= MAGIC_SHIELD; ++shield)
+        for (int right = 0; right < 2; ++right)
+            for (uint8_t p = 0; p < 8; ++p) {
+                uint8_t at = (uint8_t)(100 + SHIELD_SPRITE_OFFSETS_X[p * 2 + right]);
+                for (unsigned held_on = 0; held_on < 2; ++held_on) {
+                    hold(false);
+                    scene(shield, right, 60, 0);
+                    pose = p;
+                    hold(held_on);
+                    for (unsigned i = 0; i < 16; ++i) {
+                        draw_hero();
+                        Drawn d = drawn(SHIELD_TILE);
+                        CHECK(d.n == 2 && d.x == at && d.y == 152 + HUD && all_in(&d, 1));
+                        CHECK(ram[SHIELD_X] == at && ram[SHIELD_Y] == 152);
+                    }
+                }
+            }
+    CHECK(glints == 3 * 2 * 8);
+    /* Off: the same. */
+    model_reset();
+    scene(LARGE, true, 60, 0);
     hold(true);
-    passes(16, seen);
-    CHECK(!memcmp(seen, GLINT, 16) && glints == 1);
-    CHECK((ram[SHADOW_OAM + 2] & 3) == 3);
+    draw_hero();
+    CHECK(drawn(SHIELD_TILE).x == 108 && drawn(SHIELD_TILE).y == 152 + HUD && ram[SHIELD_X] == 108);
+}
+
+static void a_glint_as_block_goes_up(void) {
+    uint8_t seen[16];
+    /* The Small, Large and Magic Shields and the Battle Helmet, either way he
+     * faces, in every pose (upright, a swing, a ladder): Block going up makes
+     * the body glint in the shield's palette, twice, 4 draws each; sprite 0
+     * keeps its own. */
+    fresh();
+    unsigned count = 0;
+    for (uint8_t shield = SMALL; shield <= HELMET; ++shield)
+        for (int right = 0; right < 2; ++right)
+            for (uint8_t p = 0; p < 8; ++p) {
+                hold(false);
+                scene(shield, right, 60, 0);
+                pose = p;
+                passes(4, seen);
+                CHECK(!memcmp(seen, NO_GLINT, 4));
+                hold(true);
+                passes(16, seen);
+                CHECK(!memcmp(seen, GLINT, 16) && glints == ++count);
+                CHECK((ram[SHADOW_OAM + 2] & 3) == 3);
+                CHECK(drawn(SHIELD_TILE).n == (shield == HELMET ? 0u : 2u));
+            }
     /* Held on, nothing more. Let go and up again: another. */
+    pose = 0;
+    scene(LARGE, true, 60, 0);
     passes(4, seen);
-    CHECK(!memcmp(seen, (uint8_t[4]){ 0, 0, 0, 0 }, 4));
+    CHECK(!memcmp(seen, NO_GLINT, 4));
     hold(false);
     passes(1, seen);
     hold(true);
     passes(2, seen);
-    CHECK(seen[0] == 1 && seen[1] == 1 && glints == 2);
+    CHECK(seen[0] == 1 && seen[1] == 1 && glints == ++count);
     /* Let go in the middle: it stops at once. */
     hold(false);
     passes(1, seen);
     CHECK(seen[0] == 0);
     hold(true);
     passes(1, seen);
-    CHECK(seen[0] == 1 && glints == 3);
+    CHECK(seen[0] == 1 && glints == ++count);
     /* The sprite slots the game rotates: the other range draws the same. */
     hold(false);
     passes(1, seen);
     ram[SPRITES_START_SLOT_RANGE] = 0x20;
     hold(true);
     passes(16, seen);
-    CHECK(!memcmp(seen, GLINT, 16) && (ram[SHADOW_OAM + 2] & 3) == 3);
+    CHECK(!memcmp(seen, GLINT, 16) && (ram[SHADOW_OAM + 2] & 3) == 3 && glints == ++count);
+    Drawn d = drawn(SHIELD_TILE);
+    CHECK(d.n == 2 && d.x == 108 && all_in(&d, 1));
     ram[SPRITES_START_SLOT_RANGE] = 0;
     /* A state loaded with Block held: no glint for a button held through it. */
     hold(false);
@@ -494,49 +467,34 @@ static void a_glint_where_nothing_is_raised(void) {
     passes(2, seen);
     fax_block_loaded();
     passes(4, seen);
-    CHECK(!memcmp(seen, (uint8_t[4]){ 0, 0, 0, 0 }, 4));
+    CHECK(!memcmp(seen, NO_GLINT, 4));
     /* In an isolated machine: the live glint's draw, and nothing counted. */
     hold(false);
     passes(1, seen);
     hold(true);
     passes(1, seen);
-    unsigned left = glint, count = glints;
+    unsigned left = glint;
+    count = glints;
     isolated_scope = true;
     passes(1, seen);
     isolated_scope = false;
     CHECK(seen[0] == 1 && glint == left && glints == count);
 
-    /* A shield: raised, so no glint. */
-    fresh();
-    scene(SMALL, true, 60, 0);
-    passes(1, seen);
-    hold(true);
-    passes(8, seen);
-    CHECK(!memcmp(seen, (uint8_t[8]){ 0 }, 8) && glints == 0 && shields_raised == 8);
-    /* A shield in a swing or on a ladder, where it is not raised: a glint. */
-    for (uint8_t p = 4; p < 8; ++p) {
-        hold(false);
-        scene(MAGIC_SHIELD, false, 60, 0);
-        pose = p;
-        passes(1, seen);
-        hold(true);
-        passes(16, seen);
-        CHECK(!memcmp(seen, GLINT, 16) && drawn(SHIELD_TILE).x == 100 + SHIELD_SPRITE_OFFSETS_X[p * 2]);
-    }
-    CHECK(glints == 4);
     /* No shield, or off: nothing. */
     hold(false);
-    pose = 0;
     scene(NONE, true, 60, 0);
     passes(1, seen);
     hold(true);
     passes(4, seen);
-    CHECK(!memcmp(seen, (uint8_t[4]){ 0 }, 4) && glints == 4);
-    model_reset();
-    scene(HELMET, true, 60, 0);
-    hold(true);
-    passes(4, seen);
-    CHECK(!memcmp(seen, (uint8_t[4]){ 0 }, 4));
+    CHECK(!memcmp(seen, NO_GLINT, 4) && glints == count);
+    for (uint8_t shield = SMALL; shield <= HELMET; ++shield) {
+        model_reset();
+        scene(shield, true, 60, 0);
+        passes(1, seen);
+        hold(true);
+        passes(16, seen);
+        CHECK(!memcmp(seen, NO_GLINT, 16));
+    }
 }
 
 /* ---- Sugata's flash, without Sugata's flash's feature ---- */
@@ -833,8 +791,8 @@ int main(void) {
     not_from_behind();
     the_battle_helmet();
     the_flash_is_blocked_from_anywhere();
-    the_shield_is_raised();
-    a_glint_where_nothing_is_raised();
+    the_shield_is_drawn_where_the_game_draws_it();
+    a_glint_as_block_goes_up();
     the_first_shield_teaches_once();
     the_battle_helmet_teaches_too();
     b_on_the_thanks_still_teaches();
