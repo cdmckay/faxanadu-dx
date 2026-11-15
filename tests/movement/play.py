@@ -122,10 +122,11 @@ class Game(fax_e2e.Game):
             (root / "state.toml").write_text(fax_e2e.features_toml({(PACKAGES[f], f): False for f in off}))
         return root
 
-    def headless(self, state, schedule, frames, mods, screenshot=None):
+    def headless(self, state, schedule, frames, mods, screenshot=None, save=None):
         """Run from `state` for `frames` frames, holding buttons on a schedule
         of (frame, buttons) pairs counted from the state's frame ("RIGHT+A",
-        "-" for none). Returns each frame's CPU RAM, after the frame."""
+        "-" for none). Returns each frame's CPU RAM, after the frame. With
+        `save`, (frame, path): also save a state after that frame."""
         probe = subprocess.run([str(self.exe), str(self.rom), "--load-state", str(state), "--frames", "0", "--no-save"],
                                capture_output=True, text=True)
         start = int(re.search(r"continuing at frame (\d+)", probe.stdout).group(1))
@@ -138,6 +139,8 @@ class Game(fax_e2e.Game):
                 "--frame-log-frames", f"{start}:{start + frames - 1}", "--mods-root", str(mods), "--no-save"]
         if screenshot:
             args += ["--screenshot", str(screenshot)]
+        if save:
+            args += ["--save-state", f"{start + save[0]}:{save[1]}"]
         done = subprocess.run(args, capture_output=True, text=True)
         assert done.returncode == 0, done.stdout + done.stderr
         data = log.read_bytes()

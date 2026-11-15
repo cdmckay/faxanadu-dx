@@ -8,10 +8,13 @@ states made there, with RAM fixtures for the hero's place and kit, and a
 button schedule, and read his position and flags every frame, with the
 feature on and off:
 
-1. In the window, at normal speed: A pressed just after walking off Trunk's
-   ledge jumps (forgiving_jumps_state counts a coyote jump), and A pressed
-   just before landing a jump on the floor jumps again on landing (a buffered
-   jump). With the feature off in the mod selection, neither.
+1. In the window, at normal speed: A pressed 2 frames after walking off
+   Trunk's ledge jumps (forgiving_jumps_state counts a coyote jump), and A
+   pressed 3 frames before landing a jump on the floor jumps again on landing
+   (a buffered jump). With the feature off in the mod selection, neither.
+   Each press goes in with the load of a state made headless the frame
+   before it (fax_e2e's batch()), so it lands on that frame however far
+   the script lags.
 2. Coyote time. A on the last frame on the ledge is the original's best jump;
    a frame later the original just falls. With the feature on, A on any of
    the first 5 frames off the ledge jumps: every frame he is where the best
@@ -63,36 +66,33 @@ def main():
         assert game.tcp("forgiving_jumps_state")["enabled"], "the feature is on by default"
         game.close()
 
-        # 1. Live, at normal speed: a late press and an early one.
+        # 1. Live, at normal speed: a late press and an early one, each on its
+        # frame: the states they start from are made headless.
+        on = game.mods("mods-on")
+        walk = [(0, "-"), (5, "RIGHT")]
+        W = next(i for i, p in enumerate(path(game.headless(ledge, walk, 60, on))) if p[1] > 80)   # off the ledge
+        walked_off = out / "walked-off.cycstate"                       # after his first frame off it
+        game.headless(ledge, walk, W + 1, on, save=(W, walked_off))
+        jump = [(0, "-"), (5, "A"), (6, "-")]
+        once = path(game.headless(floor, jump, 80, on))
+        ground = next(i for i in range(6, 80) if not once[i][2] & JUMPING) + 1   # back on the floor
+        landing = out / "landing.cycstate"                             # 4 frames before it
+        game.headless(floor, jump, ground - 3, on, save=(ground - 4, landing))
+
         def live(enabled):
-            """The coyote and buffered jumps a late and an early press gave, in up
-            to 3 tries each: the press goes in as fast as TCP allows."""
+            """The coyote and buffered jumps the late and the early press gave."""
             game.realtime = True
             game.launch()
             state = game.tcp("forgiving_jumps_state")
             assert state["enabled"] == enabled and state["coyote_frames"] == COYOTE_FRAMES, state
-            coyote = buffered = 0
-            for _ in range(3):
-                before = game.tcp("forgiving_jumps_state")
-                game.tcp("load_state", path=str(ledge))
-                game.tcp("action", name="right", frames=120)
-                game.until("walking off", lambda: game.ram(Y) > 80, 300)
-                game.tcp("action", name="a", frames=2)
-                game.until("the floor", lambda: game.ram(Y) == 160 and not game.ram(FLAGS) & (FALLING | JUMPING), 300)
-                coyote = game.tcp("forgiving_jumps_state")["coyote"] - before["coyote"]
-                if coyote or not enabled:
-                    break
-            for _ in range(3):
-                before = game.tcp("forgiving_jumps_state")
-                game.tcp("load_state", path=str(floor))
-                game.tcp("action", name="a", frames=2)
-                game.until("the jump", lambda: game.ram(FLAGS) & JUMPING, 60)
-                game.until("the jump's last frames", lambda: game.ram(JC) >= 27, 120)
-                game.tcp("action", name="a", frames=2)
-                game.wait(30)
-                buffered = game.tcp("forgiving_jumps_state")["buffered"] - before["buffered"]
-                if buffered or not enabled:
-                    break
+            game.batch(("load_state", dict(path=str(walked_off))), ("action", dict(name="right", frames=60)),
+                       ("action", dict(name="a", frames=2)))
+            game.until("the floor", lambda: game.ram(Y) == 160 and not game.ram(FLAGS) & (FALLING | JUMPING), 300)
+            coyote = game.tcp("forgiving_jumps_state")["coyote"] - state["coyote"]
+            state = game.tcp("forgiving_jumps_state")
+            game.batch(("load_state", dict(path=str(landing))), ("action", dict(name="a", frames=2)))
+            game.wait(30)
+            buffered = game.tcp("forgiving_jumps_state")["buffered"] - state["buffered"]
             game.close()
             return coyote, buffered
 
