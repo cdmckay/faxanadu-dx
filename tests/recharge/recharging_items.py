@@ -377,21 +377,56 @@ def main():
         act("b", 4, 30)
         until("the menu to close", lambda: not box_open(), 120)
 
+    def quick_shops():
+        try:
+            return tcp("shops_state")["enabled"]
+        except RuntimeError:                                        # a build without Quick shops
+            return False
+
     def buy(row):
-        """Talk to the shopkeeper, choose Buy and the item on `row`. The
-        messages shown after choosing it."""
-        act("up", 4, 10)
-        until("the greeting", lambda: ram(MESSAGE_ID) == SHOP_HELLO, 300)
-        until("the greeting to type out", typed, 900)
-        act("a", 4, 40)                                             # to Buy / Sell
-        act("a", 4, 10)                                             # Buy
-        until("What would you like?", lambda: ram(MESSAGE_ID) == WHAT_WOULD_YOU_LIKE, 300)
-        until("the question to type out", typed, 900)
-        act("a", 4, 40)                                             # the list
-        for _ in range(row):
-            act("down", 4, 10)
-        act("a", 4, 4)
+        """Talk to the shopkeeper and buy the item on `row` of the list. The
+        messages shown after choosing it. With Quick shops (on by default) Up
+        opens the list at once, a message goes back to it and B leaves; without,
+        it is the game's greeting, Buy/Sell, "What would you like?" and the list."""
         seen = []
+        if quick_shops():
+            def list_waiting():
+                s = tcp("shops_state")
+                return s["shown"] == "buy" and s["list_up"]
+            act("up", 4, 10)
+            until("the list", list_waiting, 900)
+            wait(20)
+            for _ in range(row):
+                act("down", 4, 10)
+            before = tcp("shops_state")
+            act("a", 4, 4)
+            end = frame() + 20 * SECOND
+            while frame() < end:
+                m = ram(MESSAGE_ID)
+                if m and m not in seen:
+                    seen.append(m)
+                after = tcp("shops_state")
+                done = after["bought"] > before["bought"] or after["messages"] > before["messages"]
+                if done and list_waiting():
+                    break
+                if CANT_CARRY_MORE in seen and typed() and not list_waiting():
+                    act("a", 6, 14)                                 # the message, then back to the list
+                else:
+                    wait(4)
+            wait(20)
+            act("b", 4, 10)                                         # leave
+        else:
+            act("up", 4, 10)
+            until("the greeting", lambda: ram(MESSAGE_ID) == SHOP_HELLO, 300)
+            until("the greeting to type out", typed, 900)
+            act("a", 4, 40)                                         # to Buy / Sell
+            act("a", 4, 10)                                         # Buy
+            until("What would you like?", lambda: ram(MESSAGE_ID) == WHAT_WOULD_YOU_LIKE, 300)
+            until("the question to type out", typed, 900)
+            act("a", 4, 40)                                         # the list
+            for _ in range(row):
+                act("down", 4, 10)
+            act("a", 4, 4)
         end = frame() + 30 * SECOND                                 # A to each line until the box closes
         while frame() < end and box_open():
             m = ram(MESSAGE_ID)

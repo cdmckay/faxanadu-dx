@@ -72,6 +72,9 @@ cmake --build "$OUT/block" -j"$JOBS" >/dev/null
 cmake -S tests/sugata -B "$OUT/sugata" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/sugata" -j"$JOBS" >/dev/null
 "$OUT/sugata/sugata_test"
+cmake -S tests/shops -B "$OUT/shops" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/shops" -j"$JOBS" >/dev/null
+"$OUT/shops/shops_test"
 cmake -S tests/recharge -B "$OUT/recharge" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/recharge" -j"$JOBS" >/dev/null
 "$OUT/recharge/recharge_test"
@@ -139,6 +142,13 @@ block_e2e tests/block/block.py block-e2e & block=$!
 block_e2e tests/block/block.py block-e2e-seamless --game-arg=--world-view=seamless & block_seamless=$!
 block_e2e tests/sugata/sugata_flash.py sugata-e2e & sugata=$!
 block_e2e tests/sugata/sugata_flash.py sugata-e2e-seamless --game-arg=--world-view=seamless & sugata_seamless=$!
+echo "== end to end: Quick shops, by default and with Seamless on, alongside them"
+shops_e2e() {  # NAME [ARGS...]
+  local name="$1"; shift
+  python3 tests/shops/quick_shops.py --build build-cycle --rom "$ROM" --out "$OUT/$name" "$@" > "$OUT/$name.log" 2>&1
+}
+shops_e2e shops-e2e & shops=$!
+shops_e2e shops-e2e-seamless --game-arg=--world-view=seamless & shops_seamless=$!
 echo "== end to end: recharging items, alongside them"
 python3 tests/recharge/recharging_items.py --build build-cycle --rom "$ROM" --out "$OUT/recharge-e2e" \
   > "$OUT/recharge-e2e.log" 2>&1 & recharge=$!
@@ -181,6 +191,10 @@ wait "$sugata" || failed=1
 sed 's/^/[sugata]   /' "$OUT/sugata-e2e.log"
 wait "$sugata_seamless" || failed=1
 sed 's/^/[sugata+sw] /' "$OUT/sugata-e2e-seamless.log"
+wait "$shops" || failed=1
+sed 's/^/[shops]    /' "$OUT/shops-e2e.log"
+wait "$shops_seamless" || failed=1
+sed 's/^/[shops+sw] /' "$OUT/shops-e2e-seamless.log"
 wait "$recharge" || failed=1
 sed 's/^/[recharge] /' "$OUT/recharge-e2e.log"
 [ "$failed" = 0 ] || { echo "end-to-end tests failed; screenshots in $OUT/*-e2e*/" >&2; exit 1; }

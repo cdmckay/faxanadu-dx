@@ -184,18 +184,21 @@ back in state_loaded, after Guru travel's record has restored its own."""
 
 [[shared_site]]
 addr = 0x826E   # IScripts_InvokeNextAction
-hooks = ["faxanadu.files.next-action", "faxanadu.recharge.guru", "faxanadu.travel.next-action"]
-why = """None handles the call; Save files and Guru travel only steer the \
-interpreter by writing IScriptOrCHRAddr. Neither redirects to an address the other acts on: with a \
-file in play Guru travel leaves the script's ends to Save files \
-(fax_files_guru_choice), Save files acts on the Gurus' own actions and its \
-own steps, and it undoes SET_SPAWN_POINT's raise at the next action rather \
-than skipping it, so Guru travel still meets the Guru there. So the two may \
-run in either order. Recharging items only reads: at a Guru's first action \
-(a temple Guru's SET_SPAWN_POINT, or $A0BD for Eolis's), which neither \
-redirects, it charges a spent Elixir (SpecialItems), which neither reads \
-there. So all three may run in any order, and each works with the others \
-off."""
+hooks = ["faxanadu.files.next-action", "faxanadu.recharge.guru", "faxanadu.shops.next-action",
+         "faxanadu.travel.next-action"]
+why = """None handles the call; Save files, Guru travel and Quick shops only \
+steer the interpreter by writing IScriptOrCHRAddr. None redirects to an \
+address another acts on: with a file in play Guru travel leaves the script's \
+ends to Save files (fax_files_guru_choice), Save files acts on the Gurus' own \
+actions and its own steps, and it undoes SET_SPAWN_POINT's raise at the next \
+action rather than skipping it, so Guru travel still meets the Guru there. \
+Quick shops acts only on a script with the shops' layout, at its first action \
+(IScriptOffset 1, before which the others have moved nothing in a shop), and \
+then only on its two list steps; no Guru's script has that layout, and no \
+shop's has a Guru's action or step. Recharging items only reads: at a Guru's \
+first action (a temple Guru's SET_SPAWN_POINT, or $A0BD for Eolis's), which \
+none redirects, it charges a spent Elixir (SpecialItems), which none reads \
+there. So all four may run in any order, and each works with the others off."""
 
 [[feature]]
 package = "faxanadu.enhancement.block"
@@ -241,6 +244,21 @@ the HP (only with Block down), and then Block's is skipped; otherwise it \
 returns 0 and Block's stops the flash if Block is up. Both finish the \
 behavior the same way, through $AB60. With either feature off, the other's \
 site works alone."""
+
+[[feature]]
+package = "faxanadu.enhancement.quick-shops"
+source = "fax_shops.c"
+hooks = "faxanadu.shops."
+rom = []
+# No ROM and no read overrides. Writes only the game's own variables, while a
+# shop's script runs: IScriptOrCHRAddr and IScriptOffset (the next step),
+# Menu_CursorPos, the list (DataArray, ShopItemCostsL/U, Arg_StringsCount)
+# after ShowSellMenu's scan, and the stack below S where a step is entered by
+# return. It shares IScripts_InvokeNextAction ($826E) with Guru travel and Save
+# files (declared above); its other sites are in the shops' list actions,
+# which no other feature hooks. Save files' override of the Buy/Sell menu's
+# operand ($8631) is for the Guru's menu: with Quick shops on, a shop never
+# runs that menu.
 
 [[feature]]
 package = "faxanadu.enhancement.recharging-items"

@@ -19,9 +19,10 @@ real SDL key and controller events.
    stops nothing (8 HP, as in the original); held Block, nothing.
 3. In Apolune's tool shop with 10,000 gold: buying the Small Shield when the
    hero already has the Large one says nothing more; buying it as his first
-   shield adds one line naming the key, after the shopkeeper's thanks, and
+   shield adds one line naming the key as he leaves the shop, and
    faxanadu_block.txt remembers it. Again with no shield, or after a restart:
-   nothing.
+   nothing. (Quick shops, on by default, opens the list at once and keeps it
+   up after a purchase, with no thanks, until B.)
    The Battle Helmet, in Zoradohna's room (Branch, area 5, screen 7, the boss
    removed from the save state), picked up as the first shield-slot item: the
    line follows "I've got the Battle Helmet." Picked up again once taught:
@@ -47,7 +48,7 @@ ZORADOHNA, BATTLE_HELMET_OBJ = 0x2E, 0x59
 APOLUNE, PALETTE_TOWN, REGION_TRUNK, TOOL_SHOP = 0, 0x1B, 1, 8   # Apolune is towns' screen 0; its tool shop building 8
 HOOD_MAGIC, MAGIC_DAMAGE = 0x51, 8                                # the Execution Hood's shot, SPRITE_ENTITY_DAMAGES
 SHIELD_HEIGHT, HEAD_HEIGHT = 150, 136                             # the shot's Y, the hero on the ledge at 144
-THANK_YOU, OUR_LINE = 0x02, 0xC3                                # "Thank you for shopping."; Guru travel's slot
+OUR_LINE, PORTRAIT, NO_PORTRAIT = 0xC3, 0x3C7, 0xFF              # Guru travel's slot; IScript_PortraitID
 LINE = "Hold V to raise\nyour shield\nagainst magic."
 PACKAGE, FEATURE = "faxanadu.enhancement.block", "block"
 
@@ -88,26 +89,32 @@ def main():
         return hp - g.hp(), {k: after[k] - before[k] for k in ("magic_blocked", "shield_saved")}
 
     def talk_and_buy():
-        """Walk to the shopkeeper, buy the first item (the Small Shield), and
-        page through to the end. Returns the messages (MessageID) shown after
-        the purchase, and the picture of our line if there was one."""
+        """Walk to the shopkeeper, buy the first item (the Small Shield) from
+        his list, which Quick shops opens at once, and leave with B, paging
+        through what is said as the conversation ends. Returns the messages
+        (MessageID) shown after the purchase, and the picture of our line if
+        there was one."""
         g.act("left", 200, 10)
         g.act("up", 4, 10)
         shields, said, picture = g.ram(NUMBER_OF_SHIELDS), [], None
-        for _ in range(16):
-            end = g.frame() + 600
-            while not g.typed():
-                message = g.ram(MESSAGE_ID)
-                if g.ram(NUMBER_OF_SHIELDS) > shields and message and (not said or said[-1] != message):
-                    said.append(message)
-                assert g.frame() < end, "a page to type out"
+        g.until("the shop's list", lambda: (lambda s: s["shown"] == "buy" and s["list_up"])(g.tcp("shops_state")), 600)
+        bought = g.tcp("shops_state")["bought"]
+        g.act("a", 4, 6)
+        g.until("the purchase", lambda: (lambda s: s["bought"] == bought + 1 and s["list_up"])(g.tcp("shops_state")),
+                1200)
+        assert g.ram(NUMBER_OF_SHIELDS) == shields + 1, shields
+        waits = g.tcp("shops_state")["waits"]
+        g.until("the list to wait for a button", lambda: g.tcp("shops_state")["waits"] > waits, 300)
+        g.act("b", 4, 6)
+        g.until("a line, or the end", lambda: g.ram(PORTRAIT) == NO_PORTRAIT or g.ram(MESSAGE_ID) == OUR_LINE, 600)
+        if g.ram(MESSAGE_ID) == OUR_LINE:
+            said.append(OUR_LINE)
+            g.until("the line to type out", lambda: g.ram(MESSAGE_ID) == 0, 600)
             g.wait(6)
-            if not g.box_open():
-                break
-            if block()["saying"] and not picture:
+            if block()["saying"]:
                 picture = g.shot("tutorial-line")
             g.act("a", 4, 20)
-        assert not g.box_open() and g.ram(NUMBER_OF_SHIELDS) == shields + 1, (g.box_open(), shields)
+        g.until("the end", lambda: g.ram(PORTRAIT) == NO_PORTRAIT and not g.box_open(), 600)
         g.wait(10)
         return said, picture
 
@@ -221,28 +228,28 @@ def main():
         g.load(owns_large)
         g.wait(4)
         said, _ = talk_and_buy()
-        assert said == [THANK_YOU] and block()["tutorials"] == 0 and not block()["taught"], (said, block())
-        print("ok: a second shield (the Small, owning the Large) gets only the shopkeeper's thanks")
+        assert said == [] and block()["tutorials"] == 0 and not block()["taught"], (said, block())
+        print("ok: a second shield (the Small, owning the Large) gets no line")
         g.load(tool_shop)
         g.wait(4)
         said, picture = talk_and_buy()
         state = block()
-        assert said == [THANK_YOU, OUR_LINE] and picture, said
+        assert said == [OUR_LINE] and picture, said
         assert state["tutorials"] == 1 and state["taught"] and state["line"] == LINE, state
         sidecar = g.out / "game" / "faxanadu_block.txt"
         assert sidecar.read_text() == "block.taught\n", sidecar.read_text()
-        print("ok: the first shield gets one more line after the thanks: " + LINE.replace("\n", " / "))
+        print("ok: the first shield gets one more line as he leaves the shop: " + LINE.replace("\n", " / "))
         g.load(tool_shop)
         g.wait(4)
         said, _ = talk_and_buy()
-        assert said == [THANK_YOU] and block()["tutorials"] == 1, said
+        assert said == [] and block()["tutorials"] == 1, said
         g.close()
         g.launch()
         assert block()["taught"]
         g.load(tool_shop)
         g.wait(4)
         said, _ = talk_and_buy()
-        assert said == [THANK_YOU] and block()["tutorials"] == 0, said
+        assert said == [] and block()["tutorials"] == 0, said
         print("ok: it is said once: not again, nor after a restart (faxanadu_block.txt)")
         g.close()
 
