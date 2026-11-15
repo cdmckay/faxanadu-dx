@@ -352,11 +352,15 @@ def main():
         state = respawn()
         assert (state["zone"], state["area"], state["screen"], state["start"]) == ("Eolis", 0, 1, 0x99), state
         assert (entered["x"], entered["y"]) == (0x90, 0x90), entered
+        handoffs = tcp("fax_world")["handoffs"] if seamless else 0
         for _ in range(300):
             if ram(SCREEN) == 2 and settled() and ram(PLAYER_X) < 200:
                 break
             act("left", 4, 0)
         assert ram(SCREEN) == 2, "a screen further into Eolis"
+        if seamless:
+            assert tcp("fax_world")["handoffs"] > handoffs, "Seamless handed the hero to the next room"
+        assert respawn()["screen"] == 1, "the walk set no checkpoint"
         wait(10)
         further = save("eolis-2")
         came = die(further, "eolis", 0, 1, pictures=True)
@@ -418,6 +422,7 @@ def main():
                     break
                 act("right", 4, 0)
             assert ram(SCREEN) == 0x0E, "a screen further into the tower"
+            clear_screen("tower-0e")                       # this screen's enemies came with it
             walk_to(40, 60)
             further = save("tower-0e")
             came = die(further, "tower", 1, 0x0D, pictures=True)

@@ -898,7 +898,7 @@ region's door: `MAYBE_SCREEN_TRANSITION_MAP` and the door's start byte):
 | Trunk | Eolis `$08`, `$9C` (region) | J key | Trunk `$00`, `$A1` | `$06`, `$03` | none: the Trunk has no door back to Eolis |
 | Mist | Trunk `$28`, `$10` (region) | Q key | Mist `$11`, `$9E` | `$0A`, `$05` | `$11` `$9F` (region) |
 | Branch | Mist `$1F`, `$9C` (region) | A key | Branch `$00`, `$A6` | `$08`, `$04` | `$00` `$A5` (region) |
-| Dartmoor | Branch `$27`, `$A8` (region) | Ring of Dworf | Dartmoor `$00`, `$9E` | `$0C`, `$02` | `$00` `$AF` (region) |
+| Dartmoor | Branch `$27`, `$A8` (region) | Ring of Dworf | Dartmoor `$00`, `$9E`, a row above the floor: he drops to `$AE` | `$0C`, `$02` | `$00` `$AF` (region) |
 
 The towns and the regions also meet at the towns' edges
 (`AREA_TOWN_TRANSITIONS_DATA`). Every door back out takes nothing and is a

@@ -183,7 +183,7 @@ static void entrances(void) {
     CHECK(at(FAX_ZONE_APOLUNE, FAX_AREA_TOWNS, 0x00, 0x92));
     edge(FAX_AREA_TRUNK, 0x08, 0x71, PALETTE_OUTSIDE, MUSIC_APOLUNE);
     CHECK(at(FAX_ZONE_TRUNK, FAX_AREA_TRUNK, 0x08, 0x71) && recorded == 6);
-    /* Seamless's neighbouring rooms run in an isolated scope: never a way in. */
+    /* Seamless's neighboring rooms run in an isolated scope: never a way in. */
     isolated = true;
     door(0x0D, PALETTE_TOWER, 0x91, MUSIC_TOWER);
     isolated = false;

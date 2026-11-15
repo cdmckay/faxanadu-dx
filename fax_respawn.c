@@ -103,7 +103,7 @@ static bool usable(const Checkpoint *c, unsigned area, unsigned screen) {
 /* Screen_SetupNew: note the way in. */
 static int load_hook(uint16_t addr) {
     (void)addr;
-    if (cyc_mod_isolated()) return 0;   /* Seamless's neighbouring rooms */
+    if (cyc_mod_isolated()) return 0;   /* Seamless's neighboring rooms */
     Checkpoint in = { FAX_ZONE_NONE, q(AREA_CURRENT_AREA), q(AREA_LOADING_SCREEN), q(SCREEN_START_POS),
                       q(SCREEN_DEST_PALETTE), q(AREA_REGION), q(AREAS_DEFAULT_MUSIC),
                       (uint8_t)(q(PLAYER_FLAGS) & FACING_RIGHT) };
