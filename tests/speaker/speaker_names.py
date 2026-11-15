@@ -14,11 +14,11 @@ Eolis building it edits where the shop's door leads (save-state RAM, an
 external prerequisite, as tests/zones/zone_names.py does), walks out onto that
 building's door and goes in: the Guru (twice: the Ring of Elf, then Guru
 travel's offer), the King, the King's guard outside (no portrait, no name), the
-Martial Artist, and the Tool Seller through his shop's list. Last, the shop's
-door leads to the Castle of Fraternal's temple, for the longest name, "Guru of
-Fraternal". Each conversation is screenshot in OUT, and the tab is checked in
-the picture itself: its corner is the game's own frame tile, and it holds a
-line of text.
+Martial Artist, and the Tool Seller on his shop's list, which Quick shops
+opens at once. Last, the shop's door leads to the Castle of Fraternal's temple,
+for the longest name, "Guru of Fraternal". Each conversation is screenshot in
+OUT, and the tab is checked in the picture itself: its corner is the game's own
+frame tile, and it holds a line of text.
 """
 from pathlib import Path
 import struct
@@ -146,9 +146,10 @@ def main():
         until("the building", lambda: ram(AREA) == BUILDINGS)
         wait(40)
 
-    def talk(climb=False, stop=0):
+    def talk(climb=False, stop=0, line=True):
         """Walk left to the person behind the counter, or to x `stop`
-        (jumping up steps if `climb`), and press Up."""
+        (jumping up steps if `climb`), and press Up. With `line`, wait for
+        the first line to start typing."""
         for _ in range(60):
             if ram(PLAYER_X) <= stop or speaker()["portrait"] != NO_PORTRAIT:
                 break
@@ -163,15 +164,19 @@ def main():
                     break                                   # at the counter
         act("up", 4, 10)
         until("a portrait", lambda: speaker()["portrait"] != NO_PORTRAIT, 600)
+        if not line:
+            return
         # Until the first line types, MessageID and TextBox_MessagePaused hold
         # whatever was there before (after a door to another area, $F0 $F0 $F0),
         # which can read as typed out.
         until("the first line to start typing", lambda: not typed(), 600)
 
-    def tab(name, row=13, label=None):
-        """Wait for the tab `name` over a typed-out page, check it on screen, screenshot it."""
+    def tab(name, row=13, label=None, line=True):
+        """Wait for the tab `name` over a typed-out page (with `line`), check it
+        on screen, screenshot it."""
         until(f"the {name} tab", lambda: speaker()["shown"], 600)
-        until("the line to type out", typed)
+        if line:
+            until("the line to type out", typed)
         state = speaker()
         assert state["name"] == name and state["shown"] and state["box"], state
         assert (state["col"], state["row"]) == (10, row), state
@@ -293,19 +298,13 @@ def main():
         finish("b")
         print("ok: the Martial Artist is named")
 
-        # 6. The Tool Seller: his greeting, the Buy/Sell menu, then his list.
+        # 6. The Tool Seller, on his shop's list, which Quick shops (on by
+        # default) opens at once.
         go_in(shop, "tool-shop", 3, 0x9A)
-        talk()
-        tab("Tool Seller")
-        for _ in range(6):                                  # "I sell tools.", Buy, "What would you like?"
-            if speaker()["row"] == 5:
-                break
-            until("a page or the menu", typed)
-            assert speaker()["shown"], speaker()
-            act("a", 6, 20)
-        until("the shop's list", lambda: speaker()["row"] == 5, 600)
+        talk(line=False)
+        until("the shop's list", lambda: speaker()["shown"] and speaker()["row"] == 5, 600)
         wait(20)
-        tab("Tool Seller", row=5, label="tool-seller-list")
+        tab("Tool Seller", row=5, label="tool-seller-list", line=False)
         act("b", 6, 14)                                     # leave the list: the end
         finish("b")
         print("ok: the Tool Seller is named, on his shop's list as well")
