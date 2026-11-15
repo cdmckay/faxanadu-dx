@@ -1,4 +1,4 @@
-# Faxanadu Remaster
+# Faxanadu Remastered
 
 A remaster of Faxanadu (NES) that keeps as much of the real game as possible,
 and fixes what has aged.
@@ -78,6 +78,21 @@ whatever item you had selected stays selected.
 inventory after it opens a door, and the Mattock after it breaks a wall.
 Potions, the Elixir, the Hour Glass, the Wing Boots and the other consumables
 are still used up.
+
+**Falling pose** is on by default (Mods to turn it off). Walking off a ledge,
+the hero used to fall standing or mid-step, as if walking on air. Now he shows
+the jump pose until he lands, as in a jump.
+
+**Forgiving jumps** is on by default (Mods to turn it off). A pressed up to 5
+frames after you walk off a ledge still jumps, from where you are (coyote
+time), and A pressed in the air up to 6 frames before you land jumps as you
+land (jump buffering). No jump goes higher or further than a well-timed one
+in the original. The Wing Boots, ladders and knockback work as before.
+
+**Hold A to speed up text** is on by default (Mods to turn it off). Text types
+at the game's own pace; hold A and it types 4 times as fast. A page break or a
+question still waits for a fresh press of A, so holding it never skips a page
+or answers for you: let go, then press A to go on.
 
 Optional **Seamless** appears first in Mods, marked **Experimental** and
 disabled by default. It joins connected rooms, advances neighboring actors,

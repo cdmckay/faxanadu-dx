@@ -1,0 +1,18 @@
+cmake_minimum_required(VERSION 3.20)
+project(FaxanaduMovementTests C)
+set(CMAKE_C_STANDARD 11)
+if(NOT NESRECOMP_ROOT)
+    message(FATAL_ERROR "Set NESRECOMP_ROOT to the game's cycle engine checkout")
+endif()
+# fax_falling.c and fax_jumps.c are included by their tests, against model.h,
+# a model of the machine and the hero's update.
+foreach(test pose jumps)
+    add_executable(${test}_test ${test}_test.c)
+    target_include_directories(${test}_test PRIVATE ../.. ${NESRECOMP_ROOT}/runner/include ${NESRECOMP_ROOT}/runner/cyc)
+    if(NOT MSVC)
+        target_compile_options(${test}_test PRIVATE -Wall -Wextra)
+    endif()
+endforeach()
+enable_testing()
+add_test(NAME pose_unit COMMAND pose_test)
+add_test(NAME jumps_unit COMMAND jumps_test)
