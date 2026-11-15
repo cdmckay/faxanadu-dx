@@ -30,7 +30,11 @@ game's (PlayerIsDead set):
 5. A Guru travel journey (from Conflate's temple to Apolune's) forgets the
    checkpoint: walking out of Apolune's temple records the town, and dying
    there comes back at that door.
-6. With the feature off in the mod selection, the same death in the tower
+6. Sugata's flash (#50): on the Mist's screen $1F, where the Branch's door
+   back arrives and Sugata lives, its flash takes his last 10 HP, and he
+   comes back at that door with no band or greyscale left. Ointment, a timed
+   item, still ends with a death.
+7. With the feature off in the mod selection, the same death in the tower
    wakes at the temple, as the original does.
 """
 import argparse
@@ -65,6 +69,7 @@ TEMPLE_SCREEN = {APOLUNE: 0x0B, CONFLATE: 0x2B}                     # DEST_SCREE
 TOWNS = 3
 MEDITATE_WITH_YOU = 0x22                                            # the Guru's greeting
 OFFER, DEPART, TO_GURU = 1, 3, 4                                    # fax_travel.c's lines (TO_GURU + temple)
+PPU_MASK, DURATION_OINTMENT, SUGATA = 0x0B, 0x427, 0x18             # greyscale is bit 0; $FF: no Ointment
 PACKAGE, FEATURE = "faxanadu.enhancement.zone-respawn", "zone-respawn"
 
 # Each entrance: the zone, where its door is (area, screen, palette, block YX,
@@ -468,7 +473,44 @@ def main():
         print("ok: a Guru travel journey forgets the checkpoint; walking out of Apolune's temple records the "
               "next, and dying comes back there")
 
-        # 6. Turned off, the same death wakes at the temple.
+        # 6. Sugata's flash and Ointment. Into the Mist by the Branch's door back,
+        #    onto screen $1F, where Sugata lives: with 10 HP left, its flash
+        #    kills him, and he comes back at that door with no band or greyscale
+        #    left. Ointment is a timed item, and a death still ends it.
+        door = out / "door-mist-from-branch.cycstate"
+        fixture(temple, door, {AREA_SAVED_AREA: 5, AREA_SAVED_SCREEN: 0x00, SCREEN_SAVED_PALETTE: 0x08,
+                               PLAYER_SAVED_POS: 0xA5, AREA_REGION: 3, HP: 0x50})
+        tcp("load_state", path=str(door))
+        walk_out()
+        until("the Branch", lambda: at(5, 0x00), 600)
+        clear_screen("branch-0")
+        through_door(0xA5, "the Mist from the Branch", lambda: at(2, 0x1F))
+        entered = arrival()
+        state = respawn()
+        assert (state["zone"], state["screen"], state["start"]) == ("Mist", 0x1F, 0x9B), state
+        sugata = [i for i in range(8) if ram(SPRITE_ENTITIES + i) == SUGATA]
+        assert sugata, "Sugata is on the Mist's screen $1F"
+        raw = save("mist-1f")
+        weak = out / "mist-1f-weak.cycstate"
+        fixture(raw, weak, {HP: 10, **{SPRITE_ENTITIES + i: 0xFF for i in range(8) if i not in sugata}})
+        tcp("load_state", path=str(weak))
+        before = tcp("sugata_state")
+        until("Sugata's flash to kill him", lambda: ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 6000)
+        after = tcp("sugata_state")
+        assert after["in_reach"] > before["in_reach"], (before, after)
+        page_until("the Mist's door", lambda: at(2, 0x1F))
+        came = arrival()
+        assert came == entered, (came, entered)
+        assert tcp("sugata_state")["band"] != "flash" and not ram(PPU_MASK) & 1, "no flash left over"
+        assert (ram(HP), ram(MP)) == (0x50, 0x50)
+        anointed = out / "mist-1f-ointment.cycstate"
+        fixture(raw, anointed, {DURATION_OINTMENT: 0x20})
+        die(anointed, "ointment", 2, 0x1F)
+        assert ram(DURATION_OINTMENT) == 0xFF, "a death ends the Ointment, as in the original"
+        print("ok: Sugata's flash takes his last HP on the Mist's screen $1F: back at the Branch's door, "
+              "no band or greyscale left; a death still ends the Ointment")
+
+        # 7. Turned off, the same death wakes at the temple.
         if "Tower of Trunk" in inside:
             close()
             (out / "game" / "mods" / "state.toml").write_text(

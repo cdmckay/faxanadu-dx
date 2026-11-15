@@ -489,6 +489,16 @@ and the Glove adds its bonus after either.
 Ripasheiku drops the Pendant (`SpriteBehavior_PendantDroppedFromRipasheiku`,
 which removes the drop if the bit is already set).
 
+**A kill can straddle a frame.** On a borrow, the HP is stored (wrapped, `$FF`
+for 9 - 10) before the enemy becomes its death effect (`$13`, in
+`Sprite_ShowNormalEnemyDeathByWeapon`). In between, the hit plays its sound
+and `Player_AddExperienceFromSprite` redraws the experience through
+`PPUBuffer_QueueCommandOrLength`, which waits for buffer space
+(`PPUBuffer_WaitForCapacity`). With the buffer full that wait crosses a frame
+boundary, so a read over TCP can see the wrapped HP with the entity
+unchanged. A test that tells a kill from a hit should wait a frame after the
+HP changes before it reads the entity.
+
 **Eolis, for tests.** A new game starts on Eolis (area 0) screen 0, outside
 the gate, with the intro's trigger (`SPRITE_TRIGGER_INTRO`, `$4F`) in sprite
 slot 7: walking right sets it off. The gate is a door (`EOLIS_DOOR_LOCATIONS`,
