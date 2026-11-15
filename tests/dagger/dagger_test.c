@@ -11,7 +11,9 @@
 static unsigned checks;
 #define CHECK(test) do{++checks;if(!(test)){fprintf(stderr,"FAIL line %u: %s\n",__LINE__,#test);exit(1);}}while(0)
 
-/* ---- the machine ---- */
+/* ---- the machine ----
+ * The registrations below accept only this module's own callbacks: the
+ * constructor aborts before main if any is wrong. */
 static uint8_t rom[16 * 16384];                  /* $FF but the weapon range table */
 typedef struct { uint32_t offset; uint8_t compare, value; } Override;
 static Override overrides[64];
@@ -34,16 +36,25 @@ static uint8_t cpu_read(unsigned bank, uint16_t addr) {
         if (overrides[i].offset == offset && overrides[i].compare == value) return overrides[i].value;
     return value;
 }
-int nes_mod_register_reset_callback(NESModActivationCallback cb) { (void)cb; return 1; }
-int nes_mod_register_activation_plugin(const char *id, NESModActivationCallback cb) { (void)id; (void)cb; return 1; }
+int nes_mod_register_reset_callback(NESModActivationCallback cb) { return cb == deactivate; }
+int nes_mod_register_activation_plugin(const char *id, NESModActivationCallback cb) {
+    return !strcmp(id, "faxanadu.taller-dagger") && cb == activate;
+}
+int nes_mod_register_savestate_hook(const char *id, NESModSavestateGet get, NESModSavestateSet set) {
+    return !strcmp(id, "faxanadu.taller-dagger") && get == state_get && set == state_set;
+}
+int nes_mod_register_savestate_validator(const char *id, NESModSavestateValidate validate) {
+    return !strcmp(id, "faxanadu.taller-dagger") && validate == state_validate;
+}
 void nes_mod_set_local_only(const char *name, int required) { (void)name; local_only = required; }
 
+/* A fresh machine with the stock image and the feature off. */
 static void stock(void) {
     static const uint8_t ranges[] = { 0x08, 0x04, 0x10, 0x08, 0x10, 0x08, 0x10, 0x08 };
+    deactivate();
     memset(rom, 0xFF, sizeof rom);
     memcpy(rom + prg(14, WEAPON_RANGES), ranges, sizeof ranges);
     override_count = 0; local_only = false;
-    deactivate();
 }
 static void on(void) { stock(); activate(); fax_dagger_step(); }
 
@@ -63,17 +74,23 @@ static bool hits(Reach r, uint8_t wx, uint8_t wy, uint8_t sx, uint8_t sy, uint8_
     if ((uint8_t)(wx + r.x - sx) >= (uint8_t)(ex + r.x)) return false;
     return (uint8_t)(wy + r.y - sy) < (uint8_t)(ey + r.y);
 }
-/* The hero stands at (120, 144) facing right, 32 pixels tall. In the swing's
- * first hit phase every weapon is at (x + 16, y + 8); in the second, at
- * (x + 24, y + 6). A Zozura is 16 by 16 and stands at y + 16 on the same
- * ground. */
+/* The hero stands at (120, 144) facing right, 32 pixels tall, with no
+ * shield. A swing hits on its animation frames 5 and 6, where Player_DrawWeapon
+ * puts the weapon at the hero plus an offset from its per-weapon tables
+ * (PTR_ARRAY_PRG14__b89f for X, by facing; PTR_ARRAY_PRG14__b90f for Y): the
+ * dagger at (x + 14, y + 8) then (x + 24, y + 6), the swords at (x + 16, y + 8)
+ * then (x + 24, y + 6). A Zozura is 16 by 16 (MAYBE_SPRITE_EXTENTS) and stands
+ * at y + 16 on the same ground; a Monodron is 16 by 32. */
 enum { HERO_X = 120, HERO_Y = 144, ZOZURA = 16, MONODRON_HEIGHT = 32 };
 typedef struct { uint8_t dx, dy; } Phase;
-static const Phase phases[] = { { 16, 8 }, { 24, 6 } };
+static const Phase dagger_phases[] = { { 14, 8 }, { 24, 6 } }, sword_phases[] = { { 16, 8 }, { 24, 6 } };
+static const Phase *phases(int weapon) { return weapon == DAGGER ? dagger_phases : sword_phases; }
 static bool swing(int weapon, uint8_t sx, uint8_t sy, uint8_t ex, uint8_t ey) {
     bool hit = false;
-    for (unsigned p = 0; p < 2; ++p)
-        hit |= hits(reach(weapon), (uint8_t)(HERO_X + phases[p].dx), (uint8_t)(HERO_Y + phases[p].dy), sx, sy, ex, ey);
+    for (unsigned p = 0; p < 2; ++p) {
+        const Phase *at = &phases(weapon)[p];
+        hit |= hits(reach(weapon), (uint8_t)(HERO_X + at->dx), (uint8_t)(HERO_Y + at->dy), sx, sy, ex, ey);
+    }
     return hit;
 }
 
@@ -111,6 +128,22 @@ static void refuses_other_layouts(void) {
     CHECK(override_count == 0);
 }
 
+/* Overrides are not machine state: whatever a host does with them across a
+ * load, the save-state hook serves the reach again. Its record is empty. */
+static void save_states(void) {
+    uint8_t buf[4];
+    on();
+    CHECK(state_get(buf, sizeof buf) == 0);
+    CHECK(state_validate(NULL, 0) && !state_validate(buf, 1) && !state_set(buf, 1));
+    override_count = 0;                              /* a host that dropped every override */
+    CHECK(reach(DAGGER).y == 0x04);
+    CHECK(state_set(NULL, 0));                       /* a save without our record, or with an empty one */
+    CHECK(reach(DAGGER).y == 0x08 && override_count == 1 && served);
+    CHECK(state_set(NULL, 0) && override_count == 1);  /* a load where the override survived */
+    stock();                                         /* turned off: a load serves nothing */
+    CHECK(state_set(NULL, 0) && override_count == 0 && reach(DAGGER).y == 0x04);
+}
+
 static void low_enemies(void) {
     const uint8_t zx = HERO_X + 22, ground = HERO_Y + 16;
     stock();
@@ -140,7 +173,7 @@ static void nothing_above(void) {
             if (after && !before) CHECK(sy > HERO_Y + 12 && sy <= HERO_Y + 16);
             if (sy + ey <= HERO_Y + 6) CHECK(!after);                     /* wholly above the swing */
             for (unsigned p = 0; p < 2; ++p) {
-                uint8_t wx = (uint8_t)(HERO_X + phases[p].dx), wy = (uint8_t)(HERO_Y + phases[p].dy);
+                uint8_t wx = (uint8_t)(HERO_X + sword_phases[p].dx), wy = (uint8_t)(HERO_Y + sword_phases[p].dy);
                 bool dagger = hits(reach(DAGGER), wx, wy, wx, (uint8_t)sy, ZOZURA, ey);
                 bool sword = hits(reach(LONG_SWORD), wx, wy, wx, (uint8_t)sy, ZOZURA, ey);
                 CHECK(dagger == sword);                                    /* the same height */
@@ -153,6 +186,7 @@ int main(void) {
     stock_reach();
     taller_reach();
     refuses_other_layouts();
+    save_states();
     low_enemies();
     nothing_above();
     printf("dagger_test: %u checks passed\n", checks);

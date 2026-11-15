@@ -104,7 +104,9 @@ def main():
         print("allocation:", e, file=sys.stderr)
     if errors:
         return 1
-    print(f"allocations ok: {len(features)} features, {len(sites)} hook sites, {len(claims)} ROM claims")
+    overrides = sum(r["stock"] is not None for _, r in claims)
+    print(f"allocations ok: {len(features)} features, {len(sites)} hook sites, "
+          f"{len(claims) - overrides} ROM claims, {overrides} overridden")
     return 0
 
 

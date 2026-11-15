@@ -267,6 +267,7 @@ static void tcp_setup(void *ctx) {
     fax_magic_tcp_setup();
     fax_banner_tcp_setup();
     fax_keys_tcp_setup();
+    fax_dagger_tcp_setup();
 }
 #endif
 static const uint32_t *present(void *ctx,int *w,int *h) {

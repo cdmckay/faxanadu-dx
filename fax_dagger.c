@@ -7,13 +7,18 @@
  * reach spans right of and below the weapon. Serving the dagger's Y reach as
  * the swords' $08 makes its box as tall as theirs, reaching 4 pixels lower;
  * its X reach stays $08, half theirs. The ROM image is never changed (save
- * states hash it): the byte is served through a read override, which lasts
- * across save-state loads because the host never clears overrides. See
- * docs/GAME_INTERNALS.md. */
+ * states hash it): the byte is served through a read override. Overrides are
+ * not machine state, so the save-state hook serves it again after every load.
+ * See docs/GAME_INTERNALS.md. */
 #include "fax_dagger.h"
 #include "cyc_mod.h"
 #include "mod_runtime.h"
+#include "mod_savestate.h"
+#ifdef CYC_WITH_SDL
+#include "cyc_tcp.h"
+#endif
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -56,7 +61,38 @@ void fax_dagger_step(void) {
     served = true;
 }
 
+/* The feature keeps no state of its own, so its record is empty. A load calls
+ * the setter whether or not the save has a record, and that is where the
+ * reach is served again. */
+static int state_get(uint8_t *buf, int cap) { (void)buf; (void)cap; return 0; }
+static int state_validate(const uint8_t *buf, int len) { (void)buf; return len == 0; }
+static int state_set(const uint8_t *buf, int len) {
+    if (!state_validate(buf, len)) return 0;
+    if (served && !serve(true)) {
+        fprintf(stderr, "[dagger] could not serve the reach after a load; the taller dagger is off\n");
+        served = false; failed = true;
+    }
+    return 1;
+}
+
+#ifdef CYC_WITH_SDL
+static void dagger_state(int id, const char *line) {
+    (void)line;
+    char fields[96];
+    snprintf(fields, sizeof fields, "\"enabled\":%s,\"served\":%s,\"failed\":%s",
+             enabled ? "true" : "false", served ? "true" : "false", failed ? "true" : "false");
+    cyc_tcp_ok(id, fields);
+}
+void fax_dagger_tcp_setup(void) {
+    cyc_tcp_register("dagger_state", "Taller dagger: on, and whether the dagger's reach is served", dagger_state);
+}
+#else
+void fax_dagger_tcp_setup(void) {}
+#endif
+
 NES_MOD_CONSTRUCTOR(register_dagger) {
     if (!nes_mod_register_reset_callback(deactivate) ||
-        !nes_mod_register_activation_plugin("faxanadu.taller-dagger", activate)) abort();
+        !nes_mod_register_activation_plugin("faxanadu.taller-dagger", activate) ||
+        !nes_mod_register_savestate_hook("faxanadu.taller-dagger", state_get, state_set) ||
+        !nes_mod_register_savestate_validator("faxanadu.taller-dagger", state_validate)) abort();
 }

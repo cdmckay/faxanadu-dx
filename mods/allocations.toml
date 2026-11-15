@@ -100,7 +100,7 @@ is the caller."""
 [[feature]]
 package = "faxanadu.enhancement.taller-dagger"
 source = "fax_dagger.c"
-hooks = "faxanadu.dagger."
+hooks = "faxanadu.taller-dagger."
 rom = []
 # Served through a read override; the ROM image itself is never changed.
 overrides = [
