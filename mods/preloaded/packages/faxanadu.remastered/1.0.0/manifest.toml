@@ -1,0 +1,87 @@
+format_version = 1
+id = "faxanadu.remastered"
+version = "1.0.0"
+name = "Faxanadu Remastered"
+author = "Faxanadu Remastered"
+description = "The whole remaster: save files, Guru travel, Block, fairer combat, quicker shops and text, and fixes to the original's bugs. Switch it off to play the original game."
+license = "MIT"
+resolver = "declarative"
+save_compatibility = "shared"
+
+[[target]]
+game_id = "faxanadu-usa"
+rom_crc32 = "57dd23d1"
+
+# Every feature of the remaster is a trusted plugin of this one feature, so
+# they are on or off together. The features may rely on each other:
+# mods/allocations.toml says what each takes and what they share.
+[[feature]]
+id = "remastered"
+name = "Faxanadu Remastered"
+description = "Everything the remaster adds, as one: three save files, Guru travel, Block and the Magic button, the Pendant and the dagger fixed, Sugata's flash with a warning, quick shops, keys found for you and kept, forgiving jumps, faster text, and the names of zones and speakers. Switch it off to play the original game."
+group = "Game"
+default_enabled = true
+
+[[plugin]]
+feature = "remastered"
+id = "faxanadu.save-files"
+
+[[plugin]]
+feature = "remastered"
+id = "faxanadu.guru-travel"
+
+[[plugin]]
+feature = "remastered"
+id = "faxanadu.death-keeps-gold"
+
+[[plugin]]
+feature = "remastered"
+id = "faxanadu.block"
+
+[[plugin]]
+feature = "remastered"
+id = "faxanadu.magic-button"
+
+[[plugin]]
+feature = "remastered"
+id = "faxanadu.pendant-fix"
+
+[[plugin]]
+feature = "remastered"
+id = "faxanadu.taller-dagger"
+
+[[plugin]]
+feature = "remastered"
+id = "faxanadu.sugata-flash"
+
+[[plugin]]
+feature = "remastered"
+id = "faxanadu.shops"
+
+[[plugin]]
+feature = "remastered"
+id = "faxanadu.auto-keys"
+
+[[plugin]]
+feature = "remastered"
+id = "faxanadu.reusable-tools"
+
+[[plugin]]
+feature = "remastered"
+id = "faxanadu.forgiving-jumps"
+
+[[plugin]]
+feature = "remastered"
+id = "faxanadu.falling-pose"
+
+[[plugin]]
+feature = "remastered"
+id = "faxanadu.text-speed"
+
+[[plugin]]
+feature = "remastered"
+id = "faxanadu.zone-names"
+
+[[plugin]]
+feature = "remastered"
+id = "faxanadu.speaker-names"
