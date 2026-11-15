@@ -39,6 +39,7 @@ if(NESRECOMP_BACKEND STREQUAL "cycle")
             fax_pendant.c
             fax_magic.c
             fax_zone.c fax_text.c fax_banner.c
+            fax_speaker.c
             fax_keys.c
             fax_falling.c fax_jumps.c
             fax_text_speed.c
