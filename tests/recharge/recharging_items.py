@@ -439,6 +439,14 @@ def main():
         assert not box_open(), f"the shop did not close (saw {seen})"
         return seen
 
+    def respawn(frames):
+        """Page through the death message until the hero is back: at the temple, or with zone respawn (on by
+        default) at the entrance to the zone he died in."""
+        before = state()["spawns"]
+        dismiss(NEGATIVE_THOUGHTS, frames)
+        until("the respawn", lambda: state()["spawns"] > before and settled() and not box_open(), 1800)
+        wait(30)
+
     def talk_to_guru():
         """Walk left to the Guru (who stands on the left) and talk."""
         act("left", 170, 10)
@@ -529,9 +537,7 @@ def main():
         dismiss(WING_BOOTS_GONE, (FLIGHT + 2) * SECOND)
         until("the cooldown", lambda: state()["boots_cooldown"] > 0, 60)
         poke({PLAYER_IS_DEAD: 1})
-        dismiss(NEGATIVE_THOUGHTS, 600)
-        until("the respawn", lambda: place() == (BUILDINGS, EOLIS_TEMPLE), 1200)
-        wait(30)
+        respawn(600)
         s = state()
         assert s["boots_ready"] and s["boots_cooldown"] == 0 and items() == ([], WING_BOOTS), s
         print("ok: dying makes the recharging Wing Boots ready")
@@ -615,19 +621,23 @@ def main():
         assert s["revives"] == 1 and s["elixir_spent"] and not s["elixir_charged"], s
         print("ok: at 0 HP the Elixir revives the hero, and is kept, spent")
         poke({HP: 1, HP_FRACTION: 0})
-        dismiss(NEGATIVE_THOUGHTS, 2400)
-        until("the respawn", lambda: place() == (BUILDINGS, EOLIS_TEMPLE), 1200)
-        wait(30)
+        respawn(2400)
         s = state()
         assert s["elixir_spent"] and not s["elixir_charged"] and s["revives"] == 1, s
-        temple = out / "temple.cycstate"
-        tcp("save_state", path=str(temple))
         saved = read_file(out / "game" / FILE)                     # the respawn wrote the file in play
         assert saved.get("recharge.elixir") == "spent" and int(saved["special_items"]) & BIT_ELIXIR == 0, saved
         assert saved["recharge.wingboots"] == "0" and saved["recharge.hourglass"] == "0", saved
+        # To Eolis's temple through its door (zone respawn, on by default, brings the hero back at the
+        # zone's entrance rather than the temple), with the Elixir spent as it is now.
+        warp(shop, "to-temple", EOLIS, 2, 0x95, PALETTE_EOLIS, 0,
+             {SPECIAL_ITEMS: 0, SELECTED_ITEM: NO_ITEM, NUMBER_OF_ITEMS: 0}, {5: 1})
+        enter_door(EOLIS_TEMPLE)
+        assert state()["elixir_spent"], state()
+        temple = out / "temple.cycstate"
+        tcp("save_state", path=str(temple))
         status_shot("status-elixir-spent")
-        print("ok: spent, the Elixir does not save him; he dies and respawns with it still spent, the status "
-              "page does not show it, and the respawn's save writes recharge.elixir = spent to file 1")
+        print("ok: spent, the Elixir does not save him; he dies and respawns with it still spent, the respawn's "
+              "save writes recharge.elixir = spent to file 1, and the status page does not show it")
         talk_to_guru()
         until("the Guru to charge it", lambda: state()["guru_recharges"] == 1, 120)
         s = state()
