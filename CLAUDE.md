@@ -1,4 +1,4 @@
-# faxanadu-remaster
+# Faxanadu Remastered
 
 Faxanadu (NES) statically recompiled to native code with
 [nesrecomp](https://github.com/mstan/nesrecomp), plus quality-of-life features.
