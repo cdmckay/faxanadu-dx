@@ -29,9 +29,10 @@ How the game works, as far as we've learned it, is in
 empty one to start a new game, or a saved one to continue exactly as you left
 it: title, gold, experience, items, quests and the Gurus you have met. "Erase
 a file" clears one. A Guru no longer gives a mantra: he offers to remember
-your journey, and the Guru you last saved with is where you come back when
-you die or continue. Talking to a Guru without saving leaves that where it
-was. Your file is also saved each time you come back to a temple.
+your journey, and the Guru you last saved with is where you continue, and
+where you wake when there's no entrance to come back to. Talking to a Guru
+without saving leaves that where it was. Your file is also saved each time
+you come back from a death or a journey.
 
 **Guru travel.** A temple's Guru can send you to any other Guru you have
 visited: choose "Send me to another Guru." when he asks, or say yes after he
@@ -39,8 +40,13 @@ remembers your journey. A to go, B to hear the next town. HP, MP, gold and
 your spawn point are kept.
 
 **Death keeps gold.** When you die, the Guru brings you back with all your
-gold and experience, instead of your title's starting amounts. The rest of
-death is as before: full HP and MP, and the timed items are gone.
+gold and experience, instead of your title's starting amounts. You still come
+back with full HP and MP, and the timed items are gone, as before.
+
+**Zone respawn.** After the Guru's words, you come back where you last
+entered the tower, castle, town or region you died in, instead of at a
+temple. Until you have entered one, and after continuing or a Guru's journey
+until you walk out of the temple, you wake at the temple as before.
 
 ### Combat
 

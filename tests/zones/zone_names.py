@@ -10,8 +10,9 @@ Copies the build to OUT (so the faxanadu_gurus.txt sidecar stays there) and
 starts a new game over TCP. It walks through Eolis's gate, into a shop and out,
 and through the door out of Eolis into the Trunk. Then it relaunches with the
 Gurus of Eolis, Apolune and Conflate visited (as tests/travel/guru_travel.py
-does), respawns in Conflate, travels to Apolune's Guru, and walks out of each
-temple. Last, it edits where a temple's door leads (save-state RAM, an external
+does), dies outside Eolis's gate with Conflate's temple his spawn point
+(before any entrance, so zone respawn wakes him at that temple, as the
+original does), travels to Apolune's Guru, and walks out of each temple. Last, it edits where a temple's door leads (save-state RAM, an external
 prerequisite) to walk out into the Tower of Fortress and the Castle of
 Fraternal. A screenshot of each banner is saved in OUT.
 """
@@ -242,6 +243,8 @@ def main():
         tcp("pad", buttons="start", frames=10)
         until("the Eolis gate", lambda: zone()["area"] == 0 and frame() > 1900)
         assert zone()["banners"] == 0 and zone()["here"] is None, zone()
+        outside = out / "outside-gate.cycstate"                    # before any entrance
+        tcp("save_state", path=str(outside))
         print("ok: no banner outside Eolis's gate")
 
         # 1. Through the gate (door at block column 12): Eolis.
@@ -290,11 +293,13 @@ def main():
         tcp("save_state", path=str(gate))
         close()
 
-        # 4. Respawn in Conflate, then travel to Apolune's Guru.
+        # 4. Respawn in Conflate, then travel to Apolune's Guru. He dies outside
+        #    Eolis's gate, before any entrance, so zone respawn wakes him at his
+        #    temple; dying in the Trunk would bring him back at its door.
         (out / "game" / "faxanadu_gurus.txt").write_text("Eolis\nApolune\nConflate\n")
         launch()
         dead = out / "conflate-death.cycstate"
-        fixture(gate, dead, {TEMPLE_SPAWN_POINT: CONFLATE, PLAYER_IS_DEAD: 1})
+        fixture(outside, dead, {TEMPLE_SPAWN_POINT: CONFLATE, PLAYER_IS_DEAD: 1})
         tcp("load_state", path=str(dead))
         until("the death message", lambda: ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 600)
         for _ in range(40):
