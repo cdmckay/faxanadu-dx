@@ -56,6 +56,9 @@ cmake -S tests/movement -B "$OUT/movement" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/
 cmake --build "$OUT/movement" -j"$JOBS" >/dev/null
 "$OUT/movement/pose_test"
 "$OUT/movement/jumps_test"
+cmake -S tests/recharge -B "$OUT/recharge" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/recharge" -j"$JOBS" >/dev/null
+"$OUT/recharge/recharge_test"
 
 echo "== game build"
 [ -f build-cycle/CMakeCache.txt ] || cmake -S . -B build-cycle -DCMAKE_BUILD_TYPE=Release -DNESRECOMP_ROM="$ROM" >/dev/null
@@ -98,6 +101,9 @@ python3 tests/movement/forgiving_jumps.py --build build-cycle --rom "$ROM" --out
 echo "== end to end: Hold A to speed up text, alongside them"
 python3 tests/text_speed/text_speed.py --build build-cycle --rom "$ROM" --out "$OUT/text-speed-e2e" \
   > "$OUT/text-speed-e2e.log" 2>&1 & text_speed=$!
+echo "== end to end: recharging items, alongside them"
+python3 tests/recharge/recharging_items.py --build build-cycle --rom "$ROM" --out "$OUT/recharge-e2e" \
+  > "$OUT/recharge-e2e.log" 2>&1 & recharge=$!
 failed=0
 wait "$default" || failed=1
 sed 's/^/[default]  /' "$OUT/travel-e2e.log"
@@ -121,5 +127,7 @@ wait "$jumps" || failed=1
 sed 's/^/[jumps]    /' "$OUT/jumps-e2e.log"
 wait "$text_speed" || failed=1
 sed 's/^/[text]     /' "$OUT/text-speed-e2e.log"
+wait "$recharge" || failed=1
+sed 's/^/[recharge] /' "$OUT/recharge-e2e.log"
 [ "$failed" = 0 ] || { echo "end-to-end tests failed; screenshots in $OUT/*-e2e*/" >&2; exit 1; }
 echo "all checks passed"

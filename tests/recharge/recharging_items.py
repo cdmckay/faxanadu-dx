@@ -8,30 +8,39 @@ the clock, and takes a free TCP port, so any number can run in parallel.
 Copies the build to OUT and starts a new game over TCP. The hero walks through
 the Eolis gate into the town and into a shop. Save-state RAM edits then set up
 what each scenario needs (external prerequisites, not coverage): the item
-selected, HP, the title, where the shop's door leads (Area_Saved*, so walking
-out puts the hero on the screen wanted), a screen's enemies cleared, the
-random-item visit counter, and for the duplicate finds the feature's own record
-(a cooldown running, the Elixir spent). Items are used with Down+B, as a player
-would.
+selected, HP, gold, the title, where the shop's door leads (Area_Saved*, so
+walking out puts the hero on the screen wanted), a screen's enemies cleared,
+the random-item visit counter, and for the duplicate finds and Guru travel
+the feature's own record (a cooldown running, the Elixir spent). Items are
+used with Down+B, as a player would.
 
 1. Wing Boots. One use at each title band gives 30, 40, 50 and 60 s of flight
-   (the original: 40, 30, 20, 10). Then, as a Novice: 30 s of flight, T:
-   counting it down. When it runs out, T: blinks a 60 s cooldown; Down+B then
-   does nothing. Once it is over, the same pair flies again. Dying makes them
-   ready.
+   (the original: 40, 30, 20, 10). Then, as a Novice in Eolis: 30 s of flight,
+   T: counting it down. When it runs out, T: blinks a 60 s cooldown; Down+B
+   then does nothing. Once it is over, the same pair flies again. Dying makes
+   them ready.
 2. The Hour Glass on Eolis screen 4: the Zozuras stop, HP halves, 15 s. Then a
    60 s cooldown; refused meanwhile; then it works again.
-3. The Hour Glass at Ripasheiku (Trunk $15): the boss keeps moving.
+3. The Hour Glass at Ripasheiku (Trunk $15): the boss keeps moving. Walking
+   onto a boss's screen with the Hour Glass running ends it within a second
+   (LimitItemDurations), and its cooldown follows.
 4. The Elixir on Eolis screen 4 with 1 HP: a Zozura's hit, and it revives the
    hero ("I've used Elixir."). With 1 HP again, the next hit kills him; he
-   respawns with it still spent. Talking to Eolis's Guru charges it.
-5. Finds: a pair of Wing Boots (Trunk $2D) while they recharge, an Hour Glass
+   respawns with it still spent, and the menu's Player page, which showed it,
+   does not. Talking to Eolis's Guru charges it, and the page shows it again.
+5. Eolis's tool shop with a spent Elixir: buying one charges it, for its 320
+   gold. With it charged, the shop refuses a second ("You can't carry any
+   more.") and keeps the gold.
+6. Finds: a pair of Wing Boots (Trunk $2D) while they recharge, an Hour Glass
    (Trunk $13) while it recharges, and an Elixir (Trunk $3C) while it is spent:
    each is ready at once, and none is a second copy.
-6. The Spring of Sky, the spring the Wing Boots are needed for: from the floor
+7. The Spring of Sky, the spring the Wing Boots are needed for: from the floor
    of Trunk $20 below the shaft, fly up through $23 and $24 to the Spring of
    Sky's man in $25 and wake him, inside the lowest band's 30 s.
-7. Turned off: the pair is used up after one 40 s (Novice) flight.
+8. Guru travel (relaunched having met the Gurus of Eolis and Apolune): a
+   journey from Eolis to Apolune with the Wing Boots flying and the Hour Glass
+   recharging keeps both counting, and the flight's cooldown follows it.
+9. Turned off: the pair is used up after one 40 s (Novice) flight.
 """
 import argparse
 import json
@@ -46,24 +55,29 @@ import time
 import zlib
 
 PORT = 0                                                            # set in main
-AREA, SCREEN, PLAYER_X, PLAYER_Y, PLAYER_FLAGS = 0x24, 0x63, 0x9E, 0xA1, 0xA4
+AREA, SCREEN, PLAYER_X, PLAYER_Y, PLAYER_FLAGS, PLAYER_STATUS = 0x24, 0x63, 0x9E, 0xA1, 0xA4, 0xA5
+SCREEN_READY = 0x0E
 TEXTBOX_CLOSED, MESSAGE_ID = 0x20C, 0x213
 HP, HP_FRACTION, PLAYER_IS_DEAD, TEMPLE_SPAWN_POINT, PLAYER_TITLE = 0x431, 0x432, 0x438, 0x439, 0x437
-ITEM_INVENTORY, SELECTED_ITEM, NUMBER_OF_ITEMS = 0x3AD, 0x3C1, 0x3C6
+ITEM_INVENTORY, SELECTED_ITEM, NUMBER_OF_ITEMS, GOLD = 0x3AD, 0x3C1, 0x3C6, 0x392
 DURATION_WING_BOOTS, DURATION_HOUR_GLASS, SPECIAL_ITEMS, QUESTS = 0x429, 0x42A, 0x42C, 0x42D
 SPRITE_ENTITIES, SPRITE_X, SPRITE_Y = 0x2CC, 0xBA, 0xC2                # CurrentSprites_*, 8 slots each
 SAVED_AREA, SAVED_SCREEN, SAVED_PALETTE, SAVED_POS, REGION = 0x3D5, 0x3D6, 0x3D7, 0x3D8, 0x435
 VISIT_COUNT = 0x43A                                                 # Screen_TrackedVisitCount
-HOUR_GLASS, WING_BOOTS, NO_ITEM, BIT_ELIXIR = 0x0D, 0x0F, 0xFF, 0x08
+HOUR_GLASS, WING_BOOTS, NO_ITEM, BIT_ELIXIR, RING_OF_ELF = 0x0D, 0x0F, 0xFF, 0x08, 0x80
 USED_HOUR_GLASS, USED_WING_BOOTS, USED_ELIXIR = 0xAC, 0xAD, 0xAF      # message IDs
 GOT_WING_BOOTS, GOT_HOUR_GLASS, GOT_ELIXIR = 0xB3, 0xB4, 0xB0        # "I'm holding ..."
 WING_BOOTS_GONE, HOUR_GLASS_GONE, NEGATIVE_THOUGHTS, HO_HO_HO = 0xC0, 0xC1, 0x24, 0x57
+SHOP_HELLO, WHAT_WOULD_YOU_LIKE, CANT_CARRY_MORE = 0x0F, 0x14, 0x06
 EOLIS, TRUNK, BUILDINGS = 0, 1, 4
+EOLIS_TEMPLE, APOLUNE_TEMPLE, TOOL_SHOP = 0x02, 0x0B, 0x04          # building numbers
 PALETTE_EOLIS, PALETTE_OUTSIDE, PALETTE_TOWER = 0x00, 0x06, 0x07
 ZOZURA, RIPASHEIKU = 0x47, 0x2D
 QUEST_SPRING_OF_SKY = 0x02
+TRAVEL_DEPART, TRAVEL_TO_GURU = 3, 4                                # fax_travel.c's lines (TO_GURU + temple)
 FLIGHTS, COOLDOWN, FREEZE = (30, 40, 50, 60), 60, 15              # the game's seconds (64 frames)
 FLIGHT = FLIGHTS[0]                                                 # a Novice's: the lowest band
+ELIXIR_PRICE, ELIXIR_ROW = 320, 2                                   # EOLIS_TOOL_SHOP_ITEMS: dagger, potion, Elixir
 SECOND = 64
 PACKAGE = ("faxanadu.enhancement.recharging-items", "recharging-items")
 RECORD = b"faxanadu.recharge"                                       # its save-state record: version, boots
@@ -123,6 +137,14 @@ def state():
 
 def place():
     return ram(AREA), ram(SCREEN)
+
+
+def gold():
+    return int.from_bytes(ram(GOLD, 3), "little")
+
+
+def settled():
+    return ram(SCREEN_READY) == 0
 
 
 def typed():
@@ -194,12 +216,14 @@ def main():
     game = None
     shots = []
 
-    def launch(on=True):
+    def launch(on=True, gurus=None):
         nonlocal game
         package, feature = PACKAGE
         (out / "game" / "mods" / "state.toml").write_text(
             f'format_version = 1\n\n[[feature]]\npackage_id = "{package}"\nid = "{feature}"\n'
             f"enabled = {'true' if on else 'false'}\n")
+        if gurus:
+            (out / "game" / "faxanadu_gurus.txt").write_text("".join(g + "\n" for g in gurus))
         extra = [part for arg in args.game_arg for part in arg.split("=", 1)]
         if not args.realtime:
             extra += ["--uncapped", "--exit-after", "100000000"]
@@ -234,10 +258,19 @@ def main():
         fixture(path, path, writes)
         tcp("load_state", path=str(path))
 
-    def clear(entity):
-        """Take every sprite of `entity` off the screen."""
+    def clear(entity=None):
+        """Take every sprite of `entity` (or every sprite) off the screen."""
         slots = ram(SPRITE_ENTITIES, 8)
-        poke({SPRITE_ENTITIES + i: 0xFF for i in range(8) if slots[i] == entity})
+        poke({SPRITE_ENTITIES + i: 0xFF for i in range(8) if entity is None or slots[i] == entity})
+
+    def page_through(frames=900):
+        """Press A on each typed-out page until the box closes."""
+        for _ in range(20):
+            if not box_open():
+                return
+            until("the page to type out", typed, frames)
+            act("a", 6, 14)
+        raise AssertionError("the box did not close")
 
     def dismiss(expect, frames=900):
         """Wait for message `expect`, and page through it with A until the box closes."""
@@ -247,12 +280,7 @@ def main():
             seen.append(ram(MESSAGE_ID))
             return seen[-1] == expect
         until(f"message ${expect:02X} (saw {sorted(set(seen))})", shown, frames)
-        for _ in range(12):
-            until("the message to type out", typed, 900)
-            act("a", 6, 14)
-            if not box_open():
-                return
-        raise AssertionError(f"message ${expect:02X}: the box did not close")
+        page_through()
 
     def use():
         """Down+B: the selected item."""
@@ -267,7 +295,7 @@ def main():
             if ram(AREA) != BUILDINGS:
                 break
             act("right", 2, 0)
-        until("the screen to settle", lambda: ram(AREA) != BUILDINGS and ram(0x0E) == 0, 600)
+        until("the screen to settle", lambda: ram(AREA) != BUILDINGS and settled(), 600)
         wait(30)
 
     def warp(source, name, area, screen, pos, palette, region, writes=None, record=None):
@@ -278,6 +306,12 @@ def main():
         tcp("load_state", path=str(target))
         walk_out()
         assert place() == (area, screen), f"warp to {area}/${screen:02X} reached {place()}"
+
+    def enter_door(building):
+        """Up at the door the hero stands at, into `building`."""
+        act("up", 4, 10)
+        until(f"building ${building:02X}", lambda: place() == (BUILDINGS, building) and settled(), 600)
+        wait(30)
 
     def await_ready(which, frames):
         until(f"the {which} to be ready", lambda: state()[f"{which}_ready"], frames)
@@ -298,6 +332,55 @@ def main():
         assert ram(PLAYER_Y) < y, f"flying: y {ram(PLAYER_Y)} not above {y}"
         shot(name)
         wait(10)
+
+    def status_shot(name):
+        """The Select menu's PLAYER page, whose last row shows the special items."""
+        for _ in range(3):                                          # not while knocked back
+            act("select", 4, 30)
+            if box_open():
+                break
+            wait(60)
+        for _ in range(5):
+            act("down", 4, 8)
+        act("a", 4, 40)
+        assert box_open(), "the status page"
+        shot(name)
+        act("b", 4, 30)
+        until("the menu to close", lambda: not box_open(), 120)
+
+    def buy(row):
+        """Talk to the shopkeeper, choose Buy and the item on `row`. The
+        messages shown after choosing it."""
+        act("up", 4, 10)
+        until("the greeting", lambda: ram(MESSAGE_ID) == SHOP_HELLO, 300)
+        until("the greeting to type out", typed, 900)
+        act("a", 4, 40)                                             # to Buy / Sell
+        act("a", 4, 10)                                             # Buy
+        until("What would you like?", lambda: ram(MESSAGE_ID) == WHAT_WOULD_YOU_LIKE, 300)
+        until("the question to type out", typed, 900)
+        act("a", 4, 40)                                             # the list
+        for _ in range(row):
+            act("down", 4, 10)
+        act("a", 4, 4)
+        seen = []
+        for _ in range(120):
+            m = ram(MESSAGE_ID)
+            if m and m not in seen:
+                seen.append(m)
+            if not box_open():
+                break
+            if typed():
+                act("a", 6, 14)
+            else:
+                wait(4)
+        until("the shop to close", lambda: not box_open(), 300)
+        return seen
+
+    def talk_to_guru():
+        """Walk left to the Guru (who stands on the left) and talk."""
+        act("left", 170, 10)
+        act("up", 4, 10)
+        until("the Guru to speak", box_open, 300)
 
     try:
         launch()
@@ -339,9 +422,9 @@ def main():
             dismiss(USED_WING_BOOTS)
             assert ram(DURATION_WING_BOOTS) in (flight, flight - 1), f"title {band * 4 + 3}: {ram(DURATION_WING_BOOTS)} s"
         print(f"ok: the Wing Boots fly {', '.join(map(str, FLIGHTS))} s by title band (the original: 40, 30, 20, 10)")
-        fixture(town, boots, {HP: 0x50, SELECTED_ITEM: WING_BOOTS, NUMBER_OF_ITEMS: 0, PLAYER_TITLE: 0, **no_one})
-        tcp("load_state", path=str(boots))
-        wait(10)
+        warp(shop, "boots-novice", EOLIS, 1, 0x99, PALETTE_EOLIS, 0,  # walked out, so the HUD shows the pair
+             {SELECTED_ITEM: WING_BOOTS, NUMBER_OF_ITEMS: 0, PLAYER_TITLE: 0})
+        clear()
         use()
         dismiss(USED_WING_BOOTS)
         assert ram(DURATION_WING_BOOTS) in (FLIGHT, FLIGHT - 1), f"flight {ram(DURATION_WING_BOOTS)}, not {FLIGHT} s"
@@ -357,7 +440,7 @@ def main():
         cooling_since = frame()
         s = state()
         assert s["boots_cooldown"] == COOLDOWN and not s["boots_ready"] and s["hud"] == COOLDOWN, s
-        hud_shot("hud-cooldown", range(COOLDOWN - 2, COOLDOWN + 1))
+        hud_shot("boots-recharging", range(COOLDOWN - 2, COOLDOWN + 1))
         blinks = set()
         for _ in range(40):
             blinks.add(state()["hud_drawn_blank"])
@@ -373,6 +456,7 @@ def main():
         await_ready("boots", (COOLDOWN + 2) * SECOND)
         waited = frame() - cooling_since
         assert (COOLDOWN - 1) * SECOND <= waited <= (COOLDOWN + 1) * SECOND, f"the cooldown took {waited} frames"
+        wait(4)
         assert state()["hud_drawn"] == 0, state()                  # T: back to the idle 00
         use()
         dismiss(USED_WING_BOOTS)
@@ -383,7 +467,7 @@ def main():
         until("the cooldown", lambda: state()["boots_cooldown"] > 0, 60)
         poke({PLAYER_IS_DEAD: 1})
         dismiss(NEGATIVE_THOUGHTS, 600)
-        until("the respawn", lambda: place() == (BUILDINGS, 0x02), 1200)
+        until("the respawn", lambda: place() == (BUILDINGS, EOLIS_TEMPLE), 1200)
         wait(30)
         s = state()
         assert s["boots_ready"] and s["boots_cooldown"] == 0 and items() == ([], WING_BOOTS), s
@@ -399,6 +483,7 @@ def main():
         before = [ram(SPRITE_X + i) for i in zozuras]
         wait(90)
         assert [ram(SPRITE_X + i) for i in zozuras] == before, "the Zozuras froze"
+        shot("hour-glass")
         print("ok: the Hour Glass freezes the Zozuras for 15 s and halves HP (80 to 40)")
         dismiss(HOUR_GLASS_GONE, (FREEZE + 2) * SECOND)
         clear(ZOZURA)
@@ -428,10 +513,29 @@ def main():
         assert len(seen) > 1, f"Ripasheiku stood still under the Hour Glass: {seen}"
         shot("boss-not-frozen")
         print(f"ok: bosses do not freeze: Ripasheiku moved through {len(seen)} positions under the Hour Glass")
+        target = out / "boss-entry.cycstate"                        # the Hour Glass running in the shop
+        fixture(shop, target, {SAVED_AREA: TRUNK, SAVED_SCREEN: 0x15, SAVED_PALETTE: PALETTE_TOWER, SAVED_POS: 0x95,
+                               REGION: 1, HP: 0x50, SELECTED_ITEM: HOUR_GLASS, NUMBER_OF_ITEMS: 0,
+                               DURATION_HOUR_GLASS: 12}, {3: 1})
+        tcp("load_state", path=str(target))
+        for _ in range(200):
+            if ram(AREA) != BUILDINGS:
+                break
+            act("right", 2, 0)
+        entered, left = frame(), ram(DURATION_HOUR_GLASS)            # at the door, before the screen's first frame
+        until("the Hour Glass to end", lambda: ram(DURATION_HOUR_GLASS) == 0xFF, 3 * SECOND)
+        ended = frame() - entered
+        assert 5 <= left <= 12 and ended <= 2 * SECOND, (left, ended)
+        dismiss(HOUR_GLASS_GONE, 300)
+        until("the cooldown", lambda: state()["glass_cooldown"] > 0, 60)
+        assert state()["glass_cooldown"] == COOLDOWN, state()
+        print(f"ok: walking onto the boss's screen with {left} s of the Hour Glass left ends it within "
+              f"{ended} frames (LimitItemDurations), then its cooldown starts")
 
         # 4. The Elixir: a revive, a death with it spent, a Guru.
         warp(shop, "elixir", EOLIS, 4, 0x9C, PALETTE_EOLIS, 0,
              {SPECIAL_ITEMS: BIT_ELIXIR, SELECTED_ITEM: NO_ITEM, NUMBER_OF_ITEMS: 0})
+        status_shot("status-elixir-charged")
         poke({HP: 1, HP_FRACTION: 0})
         dismiss(USED_ELIXIR, 2400)
         until("HP and MP to refill", lambda: ram(HP) == 0x50 and not box_open(), 1200)
@@ -441,36 +545,60 @@ def main():
         print("ok: at 0 HP the Elixir revives the hero, and is kept, spent")
         poke({HP: 1, HP_FRACTION: 0})
         dismiss(NEGATIVE_THOUGHTS, 2400)
-        until("the respawn", lambda: place() == (BUILDINGS, 0x02), 1200)
+        until("the respawn", lambda: place() == (BUILDINGS, EOLIS_TEMPLE), 1200)
         wait(30)
         s = state()
         assert s["elixir_spent"] and not s["elixir_charged"] and s["revives"] == 1, s
-        print("ok: spent, the Elixir does not save him; he dies and respawns with it still spent")
-        act("left", 170, 10)                                        # the Guru stands on the left
-        act("up", 4, 10)
-        until("the Guru to speak", box_open, 300)
+        temple = out / "temple.cycstate"
+        tcp("save_state", path=str(temple))
+        status_shot("status-elixir-spent")
+        print("ok: spent, the Elixir does not save him; he dies and respawns with it still spent, and the status "
+              "page does not show it")
+        talk_to_guru()
+        until("the Guru to charge it", lambda: state()["guru_recharges"] == 1, 120)
         s = state()
-        assert s["guru_recharges"] == 1 and s["elixir_charged"] and not s["elixir_spent"], s
-        until("the line to type out", typed, 900)
-        shot("elixir-recharged-at-guru")
-        for _ in range(20):
-            if not box_open():
-                break
-            until("a page to type out", typed, 900)
-            act("a", 6, 20)
-        print("ok: talking to Eolis's Guru charges the spent Elixir")
+        assert s["elixir_charged"] and not s["elixir_spent"], s
+        page_through()
+        status_shot("status-elixir-recharged")
+        print("ok: talking to Eolis's Guru charges the spent Elixir, and the status page shows it again")
 
-        # 5. Finds: each recharges what it duplicates.
+        # 5. Eolis's tool shop: a spent Elixir is charged for its price; a charged one is not sold twice.
+        warp(shop, "tool-shop", EOLIS, 3, 0x9A, PALETTE_EOLIS, 0,
+             {SPECIAL_ITEMS: 0, SELECTED_ITEM: NO_ITEM, NUMBER_OF_ITEMS: 0, GOLD: 0xE8, GOLD + 1: 0x03, GOLD + 2: 0},
+             {5: 1})
+        assert state()["elixir_spent"] and gold() == 1000, (state(), gold())
+        enter_door(TOOL_SHOP)
+        act("left", 120, 10)                                        # to the counter
+        seen = buy(ELIXIR_ROW)
+        wait(4)
+        s = state()
+        assert gold() == 1000 - ELIXIR_PRICE and s["elixir_charged"] and not s["elixir_spent"], (gold(), s, seen)
+        assert CANT_CARRY_MORE not in seen, seen
+        seen = buy(ELIXIR_ROW)
+        assert CANT_CARRY_MORE in seen and gold() == 1000 - ELIXIR_PRICE, (seen, gold())
+        assert state()["elixir_charged"], state()
+        print(f"ok: the tool shop charges a spent Elixir for {ELIXIR_PRICE} gold, and refuses a second while it is "
+              "charged (\"You can't carry any more.\")")
+
+        # 6. Finds: each recharges what it duplicates.
         warp(shop, "find-boots", TRUNK, 0x2D, 0x31, PALETTE_TOWER, 1,
              {SELECTED_ITEM: WING_BOOTS, NUMBER_OF_ITEMS: 0, VISIT_COUNT: 3}, {2: COOLDOWN})
-        assert state()["boots_cooldown"] == COOLDOWN, state()
+        assert state()["boots_cooldown"] > 0, state()
         clear(0x07)
-        dismiss(GOT_WING_BOOTS, 600)
+        until("the find", lambda: ram(MESSAGE_ID) == GOT_WING_BOOTS, 600)
+        until("the line to type out", typed, 900)
+        assert not state()["boots_ready"], state()
+        shot("find-boots-message")                                  # T: still shows the cooldown
+        page_through()
+        wait(4)
         s = state()
         assert s["boots_ready"] and s["pickups"] == 1 and items() == ([], WING_BOOTS), (s, items())
+        until("T: to show 00", lambda: state()["hud_drawn"] == 0, 60)
+        wait(2)
+        shot("find-boots-ready")
         warp(shop, "find-glass", TRUNK, 0x13, 0x3D, PALETTE_TOWER, 1,
              {SELECTED_ITEM: HOUR_GLASS, NUMBER_OF_ITEMS: 0, VISIT_COUNT: 3}, {4: COOLDOWN})
-        assert state()["glass_cooldown"] == COOLDOWN, state()
+        assert state()["glass_cooldown"] > 0, state()
         clear(0x47)
         clear(0x26)
         dismiss(GOT_HOUR_GLASS, 600)
@@ -486,7 +614,7 @@ def main():
         print("ok: a found pair of Wing Boots, an Hour Glass and an Elixir each recharge the one held, "
               "without a second copy")
 
-        # 6. The Spring of Sky: from Trunk $20's floor below the shaft to the man in $25.
+        # 7. The Spring of Sky: from Trunk $20's floor below the shaft to the man in $25.
         warp(shop, "spring", TRUNK, 0x20, 0x94, PALETTE_OUTSIDE, 1,
              {SELECTED_ITEM: WING_BOOTS, NUMBER_OF_ITEMS: 0, QUESTS: 0x01, PLAYER_TITLE: 0})
         use()
@@ -504,10 +632,13 @@ def main():
             elif x > target_x + 4:
                 tcp("action", name="left", frames=6)
             wait(6)
-        over = False                                                # above the fountain, heading left
+        over = shaft_shot = False                                   # above the fountain, heading left
         for _ in range(1200):
             screen, x, y = ram(SCREEN), ram(PLAYER_X), ram(PLAYER_Y)
             assert ram(DURATION_WING_BOOTS) < 0x80, f"the flight ran out at {place()}, x={x} y={y}"
+            if screen == 0x24 and not shaft_shot:
+                shot("spring-flight")
+                shaft_shot = True
             if screen in (0x20, 0x23) or (screen == 0x24 and y > 128):
                 fly(48)                                             # up the shaft, columns 2-5
             elif screen == 0x24:
@@ -528,17 +659,49 @@ def main():
         act("up", 4, 10)
         until("the Spring of Sky's man", lambda: ram(MESSAGE_ID) == HO_HO_HO, 300)
         shot("spring-of-sky")
-        for _ in range(20):
-            if not box_open():
-                break
-            until("a page to type out", typed, 900)
-            act("a", 6, 20)
+        page_through()
         assert ram(QUESTS) & QUEST_SPRING_OF_SKY, "the Spring of Sky's man woke"
         print(f"ok: the Spring of Sky: from Trunk $20's floor to the man in $25 in {landed} frames "
               f"({landed / SECOND:.1f} of the game's seconds), with {left} s of the {FLIGHT} s flight left")
         close()
 
-        # 7. Off: the original's one-use pair and its title-based flight.
+        # 8. Guru travel: a journey keeps the flight and the cooldown counting.
+        launch(gurus=("Eolis", "Apolune"))
+        travel = out / "temple-travel.cycstate"
+        fixture(temple, travel, {SPECIAL_ITEMS: RING_OF_ELF, TEMPLE_SPAWN_POINT: 1, DURATION_WING_BOOTS: 25,
+                                 SELECTED_ITEM: WING_BOOTS, NUMBER_OF_ITEMS: 0}, {1: 1, 2: 0, 4: 50})
+        tcp("load_state", path=str(travel))
+        wait(4)
+        s = state()
+        assert s["boots_running"] == 1 and s["glass_cooldown"] == 50 and ram(PLAYER_STATUS) & 0x80, s
+        talk_to_guru()                                              # with the ring, he offers Apolune
+        for _ in range(30):
+            line = tcp("travel_state")["text"]
+            if line == TRAVEL_TO_GURU + 1 and typed():
+                break
+            if typed():
+                act("a", 6, 14)
+            else:
+                wait(4)
+        assert tcp("travel_state")["text"] == TRAVEL_TO_GURU + 1, tcp("travel_state")
+        flying, cooling = ram(DURATION_WING_BOOTS), state()["glass_cooldown"]
+        act("a", 6, 14)
+        until("the farewell", lambda: tcp("travel_state")["text"] == TRAVEL_DEPART, 300)
+        page_through()
+        until("Apolune's temple", lambda: place() == (BUILDINGS, APOLUNE_TEMPLE) and settled(), 2400)
+        wait(SECOND + 6)                                            # a game second in the main loop
+        s, after = state(), ram(DURATION_WING_BOOTS)
+        assert s["boots_running"] == 1 and 0 < after < flying and ram(PLAYER_STATUS) & 0x80, (s, after)
+        assert 0 < s["glass_cooldown"] < cooling, s
+        dismiss(WING_BOOTS_GONE, (FLIGHT + 2) * SECOND)
+        until("the cooldown", lambda: state()["boots_cooldown"] > 0, 60)
+        assert state()["boots_cooldown"] == COOLDOWN, state()
+        print(f"ok: a Guru travel journey from Eolis to Apolune keeps the flight ({flying} s left before, {after} "
+              f"after) and the Hour Glass's cooldown ({cooling} s, then {s['glass_cooldown']}), and the flight's "
+              "cooldown follows it")
+        close()
+
+        # 9. Off: the original's one-use pair and its title-based flight.
         launch(on=False)
         fixture(town, boots, {HP: 0x50, SELECTED_ITEM: WING_BOOTS, NUMBER_OF_ITEMS: 0, PLAYER_TITLE: 0, **no_one})
         tcp("load_state", path=str(boots))

@@ -811,6 +811,111 @@ shops, but the tower holds Mattocks that come back (the lying one, and
 Ripasheiku's after any death), and the tower comes before either wall. A kept
 Mattock breaks nothing a fetched one could not.
 
+## Wing Boots, the Hour Glass and the Elixir
+
+| Address | Name | Notes |
+|---|---|---|
+| `$001A` | `InterruptCounter` | +1 each NMI. The game's second is a frame where `& $3F` is 0: 64 frames |
+| `$00A5` | `Player_StatusFlag` | `$80` while the Wing Boots fly. `Game_DecWingBootsDuration` sets it every frame the duration runs and clears it when it runs out; `Game_InitStateForSpawn` zeroes it |
+| `$0429`, `$042A` | `DurationWingBoots`, `DurationHourGlass` | Seconds left, `$FF` when not running |
+
+**Using them** (Down+B, `GameLoop_CheckUseCurrentItem`, which refuses while
+jumping or falling, `Player_Flags & $05`):
+
+- `Player_UseWingBoots` (`$C579`): script `$83` ("I've used Wing Boots."),
+  `JSR Player_ClearSelectedItem` at `$C581`, sound `$1A`, then
+  `DurationWingBoots` = `TITLE_TO_WINGBOOTS_DURATION[PlayerTitle / 4]` (`$C599`:
+  40, 30, 20, 10) with the `STA` at `$C592`, then `JSR UI_DrawTimeValue`, which
+  draws A.
+- `Player_UseHourGlass` (`$C5C8`): script `$82`, `JSR Player_ClearSelectedItem`
+  at `$C5D0`, sound `$1A`, halves HP (`LSR Player_HP_U`, `ROR Player_HP_L`),
+  `DurationHourGlass` = 15, music `$0B`.
+- Every main-loop frame `GameLoop_CountdownItems` (`$C88F`) runs
+  `Game_DecHourGlassDuration`, `Game_DecWingBootsDuration`, then the Glove's
+  and the Ointment's. Each takes a second off on the game's second, so a
+  duration of N lasts between N and N+1 seconds; wrapping to `$FF` runs "The
+  power of the Wing Boots (Hour Glass) is gone." (messages `$C0`, `$C1`).
+- **T:** is two ASCII tiles at PPU `$2058`. Only the Wing Boots draw it
+  (`UI_DrawTimeValue`, queued through the PPU buffer at `$0500`: length 2,
+  `$20`, `$58`, the digits); the Hour Glass never shows a time.
+- `Game_ClearTimedItems` (`$C6AF`) sets all four durations to `$FF`. It runs
+  from `Game_Start` and `Player_Spawn`, so every death ends them, but not on a
+  Guru travel journey, which enters `Player_Spawn` past it: a flight or a
+  freeze carries on in the other temple.
+- **Shops never sell what you hold.** `Shop_GetPlayerHasSelectedItem` (`$8482`, bank 12) refuses
+  any item already selected or listed, and a special item whose bit is set,
+  with "You can't carry any more." (message `$06`). In the original, then, a
+  second pair of Wing Boots or a second Hour Glass came only from the world:
+  `Player_PickUpItem` adds a duplicate like anything else.
+
+| Item | Shops | In the world (bank 11's lists: area, screen, block `YX`) |
+|---|---|---|
+| Wing Boots | Forepaw 2,800, Conflate 5,500 | Sprite `$55`: Trunk `$2D` (`$41`), Mist `$11` (`$5E`), `$1B` (`$35`), `$32` (`$48`), Branch `$1C` (`$A9`), `$22` (`$92`). Sprite `$5C`: Trunk `$3B` (`$3D`), Zorugeriru's |
+| Hour Glass | After Mascon 5,600 | Sprite `$56`: Trunk `$13` (`$4D`), Mist `$30` (`$32`), Branch `$16` (`$72`), Dartmoor `$04` (`$5E`), `$12` (`$32`) |
+| Elixir | Eolis 320, after Mascon 4,300 | Sprite `$4D`: Trunk `$3C` (`$32`), Mist `$41` (`$A1`), beside Zoradohna (`$2E`) |
+
+- Sprites `$55` and `$56` show on one counted visit in four, like the
+  Mattock (`SpriteBehavior_RandomlyShowItem_55` and `_51`,
+  `Screen_Is3Of4Visits`). Sprite `$5C` is the tower quest's pair
+  (`SpriteBehavior_WingBootsDroppedByZorugeriru`): it removes itself once
+  `QUEST_WING_BOOTS_FROM_TOWER` (`$08`) is set, and
+  `Player_PickUpWingBootsWithQuest` sets it. The Elixirs always show.
+- Touching one, `Player_HandleTouchItem` (`$88FB`, bank 14) reaches
+  `Player_PickUpWingBoots` (`$C6D8`, script `$89`) or `Player_PickUpHourGlass`
+  (`$C6BE`, script `$8A`), which end with `LDA #item`, `JMP Player_PickUpItem`
+  (`$C8CD`: append to the list if there is room) after the script has shown
+  "I'm holding ...". `Player_PickUpElixir` (`$C864`, script `$86`) ORs
+  `SpecialItems`' bit and never calls `Player_PickUpItem`.
+- **No one gives them.** The nurse in building `$1B` (script `$37`,
+  `ISCRIPT_A226`) only talks about the Hour Glass: what it does without one,
+  "The Hour Glass will exhaust your energy" with one. The Mist house woman
+  talks of the Pendant and the meteorite.
+- **The Spring of Trunk takes the Elixir, it does not give it.**
+  `ISCRIPT_SPRING_OF_TRUNK` asks for "your medicine"; with the Elixir it
+  `CONSUME_ITEM`s it and completes `QUEST_SPRING_OF_TRUNK`, without one it
+  says "Come back with the medicine."
+
+**The Hour Glass and bosses.** While `DurationHourGlass` runs,
+`Sprites_UpdateBehavior` (`$A66B`, bank 14) skips every sprite whose
+`SPRITE_CATEGORIES_BY_ENTITY` is 0 (an enemy), and `Sprites_UpdateAll` stops
+`SpriteUpdateCounter`. Bosses are category 7, so **bosses never freeze**
+(checked in the game: Ripasheiku keeps moving). And on the first frame on a
+boss's screen, `ScreenEvents_HandleBoss` (`$EF9E`) calls `LimitItemDurations`
+(`$EFBF`), which sets
+a running Ointment or Hour Glass to 0, so one used before the boss's screen
+ends within a second of walking onto it (checked too).
+
+**The Elixir.** When `Player_ReduceHP` (`$C08E`) takes the last HP it checks
+`SpecialItems & $08`: set, it jumps to `Player_UseElixir` (`$C4CA`), which
+clears the bit, runs script `$85` ("I've used Elixir.") and refills HP and MP;
+clear, it sets `PlayerIsDead`. The menu's Player page draws a picture for each
+`SpecialItems` bit, the Elixir's included, on its last row. A mantra keeps
+the bit.
+
+**The Spring of Sky needs the Wing Boots** ("They say a fountain is up in the
+sky, but you need Wing Boots..."). Its man (`$3B`) is in Trunk `$25`, at the top
+of a shaft that runs up from the floor of `$20` (the way into the sky:
+"you'll come to a place where the sky opens above") through `$23` and `$24`.
+The usual takeoff is that floor, below the shaft. Flying it as a test does
+(up the shaft at x 48, round the right end of the ledge in `$24`, up the right
+side of `$25` and over the fountain to the man) takes SPRING_FRAMES frames,
+SPRING_SECONDS of the game's seconds, so the lowest band's 30 s leaves
+SPRING_LEFT s over (`tests/recharge/recharging_items.py`).
+
+**Recharging breaks no sequence** (the check from #6):
+
+- It gives no item, so the first moment you can own Wing Boots is the
+  original's: a pair in the Tower of Fortress (Trunk `$2D`, one visit in four)
+  or Forepaw's shop.
+- Flying again is not new reach. The original sells pairs in two shops and
+  lets found pairs stack, so it gave any number of flights for gold, even back
+  to back with two pairs held. A kept pair flies again a minute after it lands.
+- Flights longer than the original's longest (40 s, a Novice's) come only from
+  Swordman (50 s) and Champion (60 s). Not checked: whether any place needs one
+  flight of more than 40 s. Nothing in the dialogue points at one, and the late
+  regions are gated by keys and rings.
+- The Hour Glass reaches nothing, and a kept Elixir is a revive, not a way in.
+
 ## Screens and blocks
 
 - A screen is 16 × 16 blocks in `ScreenBuffer` (`$0600`, row × 16 + column);
@@ -912,3 +1017,43 @@ addresses, and `tools/check_allocations.py` enforces it.
   bit of the joypad masks, which the Magic button never changes (it ORs in
   Up and B, for `Player_CastMagic` alone, outside any message loop), and
   writes neither mask.
+- **Recharging items** (`fax_recharge.c`, with the use-up list in
+  `fax_items.h`). The Wing Boots and the Hour Glass are kept and recharge, and
+  the Elixir is kept and a Guru charges it again. All its sites are in the
+  fixed bank:
+  - `Player_UseWingBoots` and `Player_UseHourGlass`, at entry: not ready, it
+    plays the "invalid choice" sound (`$0D`, `Sound_PlayEffect` in a committed
+    call) and returns to the main loop as the routine's RTS would.
+  - `Player_ClearSelectedItem` (`$C4BF`), shared with reusable tools: skipped
+    when the JSR came from `$C581` or `$C5D0`, so the item stays selected and
+    drawn. `fax_items.h` lists every caller and who keeps its item.
+  - The `STA DurationWingBoots` at `$C592`: A becomes the flight for the title
+    band, from the one table in `fax_recharge.c`, and `UI_DrawTimeValue` draws
+    it.
+  - `GameLoop_CountdownItems`, before the game's own countdowns: a run that
+    has ended (its duration back at `$FF`) starts a 60 s cooldown; cooldowns
+    count down on the game's second; and T: shows the selected item's
+    cooldown (else the Wing Boots', else the Hour Glass's), blank 16 frames in
+    64, queued through the PPU buffer as `UI_DrawTimeValue` queues it, when
+    `PPUBuffer_HasCapacity` would allow it. A spent Elixir whose bit came back
+    (bought or found) is charged.
+  - `Player_UseElixir`: the Elixir is spent. `SpecialItems`' bit stays the
+    game's own "a revive is in reserve", so `Player_ReduceHP`, the Player page,
+    the shops and the Spring of Trunk all go by whether it is charged: a shop
+    sells one only to a spent Elixir, which charges it at the shop's price.
+  - `Player_PickUpItem`, with A the Wing Boots or the Hour Glass and the hero
+    holding one (selected or listed): ready at once, and nothing added, even
+    with the list full. Found during a run, the run goes on and no cooldown
+    follows it.
+  - `Game_ClearTimedItems`: both ready (a death, a new game, a mantra; not a
+    Guru travel journey). `Game_ShowStartScreen`: everything forgotten. A
+    mantra keeps a charged Elixir (the bit) and loses a spent one.
+  - Gurus: Guru travel tells listeners (`fax_travel_listen`) when a Guru's
+    conversation begins (his `SET_SPAWN_POINT`, or the first action of Eolis's
+    Guru), from its `IScripts_InvokeNextAction` hook, which stays on while Guru
+    travel or any listener is. A spent Elixir is charged then, before he
+    speaks.
+  - Its hooks do nothing inside Seamless's isolated simulations. Its 6-byte
+    save-state record (a version, each timed item's running flag and cooldown,
+    the Elixir spent) is its whole state, and `fax_recharge_record_get/set`
+    hand save slots the same bytes.
