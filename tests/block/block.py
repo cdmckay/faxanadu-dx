@@ -15,11 +15,16 @@ real SDL key and controller events.
    the hero's height (its shot's Y edited) from the side he faces. The Small
    Shield alone lets half its 8 HP through; held Block, nothing, with the
    shield's sound. A shot at his head misses the shield: 8 HP, or nothing with
-   Block. From behind, without a shield and with the Battle Helmet: 8 HP.
+   Block. From behind, or without a shield: 8 HP. The Battle Helmet alone
+   stops nothing (8 HP, as in the original); held Block, nothing.
 3. In Apolune's tool shop with 10,000 gold: buying the Small Shield when the
    hero already has the Large one says nothing more; buying it as his first
    shield adds one line naming the key, after the shopkeeper's thanks, and
    faxanadu_block.txt remembers it. Again with no shield, or after a restart:
+   nothing.
+   The Battle Helmet, in Zoradohna's room (Branch, area 5, screen 7, the boss
+   removed from the save state), picked up as the first shield-slot item: the
+   line follows "I've got the Battle Helmet." Picked up again once taught:
    nothing.
 4. config.ini rebinds it (BlockKey = S, BlockButton = leftstick), and the
    window writes the bindings back; the line names the device last used.
@@ -37,6 +42,8 @@ from harness import (Game, fixture, AREA, BUILDINGS, TOWNS, POS_X, POS_Y, PLAYER
                      SMALL, LARGE, HELMET, NO_SHIELD)
 
 ZENIS, SCREEN_16, PALETTE_FORTRESS, REGION_FORTRESS = 7, 16, 0x0F, 5
+BRANCH, SCREEN_7, PALETTE_BRANCH, REGION_BRANCH = 5, 7, 0x08, 3     # Zoradohna's room
+ZORADOHNA, BATTLE_HELMET_OBJ = 0x2E, 0x59
 APOLUNE, PALETTE_TOWN, REGION_TRUNK, TOOL_SHOP = 0, 0x1B, 1, 8   # Apolune is towns' screen 0; its tool shop building 8
 HOOD_MAGIC, MAGIC_DAMAGE = 0x51, 8                                # the Execution Hood's shot, SPRITE_ENTITY_DAMAGES
 SHIELD_HEIGHT, HEAD_HEIGHT = 150, 136                             # the shot's Y, the hero on the ledge at 144
@@ -104,6 +111,26 @@ def main():
         g.wait(10)
         return said, picture
 
+    def pick_up_helmet():
+        """Walk left onto the Battle Helmet and page through what is said.
+        Returns whether our line was said, and its picture."""
+        saying, picture = False, None
+        for _ in range(300):
+            if g.box_open():
+                if g.typed():
+                    if block()["saying"]:
+                        saying = True
+                        picture = picture or g.shot("battle-helmet-line")
+                    g.act("a", 6, 14)
+                else:
+                    g.wait(4)
+                continue
+            if g.ram(ENTITIES + 7) != BATTLE_HELMET_OBJ:
+                g.wait(10)
+                return saying, picture
+            g.act("left", 2, 0)
+        raise AssertionError("could not pick up the Battle Helmet")
+
     try:
         g.launch()
         state = block()
@@ -161,20 +188,26 @@ def main():
         lost, d = shot_at(cast, slot, "behind-block", SHIELD_HEIGHT, behind, "V")
         assert lost == MAGIC_DAMAGE and d == {"magic_blocked": 0, "shield_saved": 0}, (lost, d)
         print("ok: from behind, Block stops nothing")
-        for name, shield in (("no-shield", NO_SHIELD), ("battle-helmet", HELMET)):
-            target = g.out / f"{name}.cycstate"
-            fixture(cast, target, {SPRITE_Y + slot: SHIELD_HEIGHT, SELECTED_SHIELD: shield})
-            g.load(target)
-            g.tcp("key", name="V", frames=200)
-            g.wait(6)
-            assert not block()["raised"], block()
-            hp = g.hp()
-            g.until("the shot to be gone", lambda: g.ram(ENTITIES + slot) != HOOD_MAGIC, 200)
-            g.wait(10)
-            assert hp - g.hp() == MAGIC_DAMAGE, (name, hp, g.hp())
-            g.tcp("key", name="V", frames=1)
-            g.wait(3)
-        print("ok: without a shield, or with the Battle Helmet, Block does nothing and the shot takes 8")
+        target = g.out / "no-shield.cycstate"
+        fixture(cast, target, {SPRITE_Y + slot: SHIELD_HEIGHT, SELECTED_SHIELD: NO_SHIELD})
+        g.load(target)
+        g.tcp("key", name="V", frames=200)
+        g.wait(6)
+        assert not block()["raised"], block()
+        hp = g.hp()
+        g.until("the shot to be gone", lambda: g.ram(ENTITIES + slot) != HOOD_MAGIC, 200)
+        g.wait(10)
+        assert hp - g.hp() == MAGIC_DAMAGE, (hp, g.hp())
+        g.tcp("key", name="V", frames=1)
+        g.wait(3)
+        print("ok: without a shield, Block does nothing and the shot takes 8")
+        helmet = {SELECTED_SHIELD: HELMET}
+        lost, d = shot_at(cast, slot, "battle-helmet", SHIELD_HEIGHT, helmet)
+        assert lost == MAGIC_DAMAGE and d == {"magic_blocked": 0, "shield_saved": 0}, (lost, d)
+        lost, d = shot_at(cast, slot, "battle-helmet-block", SHIELD_HEIGHT, helmet, "V")
+        assert lost == 0 and d == {"magic_blocked": 1, "shield_saved": 0}, (lost, d)
+        print(f"ok: the Battle Helmet alone stops nothing ({MAGIC_DAMAGE} HP, as in the original); holding Block, "
+              "it stops the shot")
 
         # 3. The tutorial, in Apolune's tool shop.
         g.warp(shop, "apolune", TOWNS, APOLUNE, PALETTE_TOWN, 0x94, REGION_TRUNK, {GOLD: 0x10, GOLD + 1: 0x27})
@@ -197,7 +230,7 @@ def main():
         assert said == [THANK_YOU, OUR_LINE] and picture, said
         assert state["tutorials"] == 1 and state["taught"] and state["line"] == LINE, state
         sidecar = g.out / "game" / "faxanadu_block.txt"
-        assert sidecar.read_text() == "taught\n", sidecar.read_text()
+        assert sidecar.read_text() == "block.taught\n", sidecar.read_text()
         print("ok: the first shield gets one more line after the thanks: " + LINE.replace("\n", " / "))
         g.load(tool_shop)
         g.wait(4)
@@ -211,6 +244,28 @@ def main():
         said, _ = talk_and_buy()
         assert said == [THANK_YOU] and block()["tutorials"] == 0, said
         print("ok: it is said once: not again, nor after a restart (faxanadu_block.txt)")
+        g.close()
+
+        # 3b. The Battle Helmet, picked up as the first shield-slot item.
+        sidecar.unlink()
+        g.launch()
+        assert not block()["taught"]
+        g.warp(shop, "branch-7", BRANCH, SCREEN_7, PALETTE_BRANCH, 0x9C, REGION_BRANCH)
+        assert list(g.ram(ENTITIES + 6, 2)) == [ZORADOHNA, BATTLE_HELMET_OBJ], list(g.ram(ENTITIES, 8))
+        boss_gone = g.out / "zoradohna-gone.cycstate"
+        g.save("branch-7-in")
+        fixture(g.out / "branch-7-in.cycstate", boss_gone, {ENTITIES + 6: 0xFF})
+        g.load(boss_gone)
+        saying, picture = pick_up_helmet()
+        state = block()
+        assert saying and picture and state["tutorials"] == 1 and state["taught"], (saying, state)
+        assert g.ram(SHIELD_INVENTORY) == HELMET and g.ram(NUMBER_OF_SHIELDS) == 1
+        assert sidecar.read_text() == "block.taught\n"
+        print("ok: the Battle Helmet as the first shield-slot item: the line follows \"I've got the Battle Helmet.\"")
+        g.load(boss_gone)
+        saying, _ = pick_up_helmet()
+        assert not saying and block()["tutorials"] == 1 and g.ram(NUMBER_OF_SHIELDS) == 1
+        print("ok: picked up again once taught, only the game's line")
         g.close()
 
         # 4. config.ini rebinds it.

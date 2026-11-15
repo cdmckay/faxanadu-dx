@@ -15,10 +15,13 @@ Sugata's warning, edited for the hero's place and shield:
    nothing.
 3. Holding Block (V) with the Small Shield, in the band: nothing, and the
    shield's sound. Then Sugata walks into him: contact damage is the game's 4.
+   With the Battle Helmet: nothing either.
 4. Holding Block with the Magic Shield: Sugata loses 12 HP; a second
    reflection (Sugata at the 10 HP the first leaves) kills it, and its death
    ends the band.
-5. With Sugata's flash off, the original: no warning, 10 HP.
+5. Holding Block without a shield: 10 HP. Under Ointment, in the band: no HP,
+   but the knockback.
+6. With Sugata's flash off, the original: no warning, 10 HP, Ointment or not.
 
 Pictures of the band are taken by the game itself (TCP sugata_capture) on the
 frame it shows, since a flash lasts a few frames.
@@ -30,11 +33,12 @@ import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "block"))
 from harness import (Game, fixture, AREA, BUILDINGS, POS_X, ENTITIES, SPRITE_X, SPRITE_HP, SELECTED_SHIELD,  # noqa: E402
-                     SMALL, MAGIC, NO_SHIELD, HP)
+                     SMALL, MAGIC, HELMET, NO_SHIELD, HP, INVINCIBILITY)
 
 MIST, SCREEN_30, PALETTE_MIST, REGION_MIST = 2, 30, 0x0A, 2
 SUGATA, DEATH = 0x18, 0x14
 REACH, WARNING, REFLECTED, FLASH_DAMAGE = 40, 30, 12, 10
+DURATION_OINTMENT = 0x427
 PACKAGE, FEATURE = "faxanadu.enhancement.sugata-flash", "sugata-flash"
 
 
@@ -137,7 +141,9 @@ def main():
         fixture(warning, small, {SELECTED_SHIELD: SMALL})
         g.load(small)
         blocked = g.tcp("block_state")["flashes_blocked"]
+        shot = capture("flash-blocked", "flash")
         lost, d = flash("V")
+        captured(shot, 3)
         assert lost == 0 and d["in_reach"] == 1 and d["reflected"] == 0, (lost, d)
         assert g.tcp("block_state")["flashes_blocked"] == blocked + 1
         print("ok: holding Block with the Small Shield in the band, the flash takes nothing")
@@ -149,6 +155,15 @@ def main():
         print(f"ok: blocking, Sugata's touch still takes the game's {contact} HP and knocks him back")
         g.tcp("key", name="V", frames=1)
         g.wait(4)
+        helmet = g.out / "warning-helmet.cycstate"
+        fixture(warning, helmet, {SELECTED_SHIELD: HELMET})
+        g.load(helmet)
+        lost, d = flash("V")
+        assert lost == 0 and d["in_reach"] == 1 and d["reflected"] == 0, (lost, d)
+        assert g.tcp("block_state")["flashes_blocked"] == blocked + 2
+        g.tcp("key", name="V", frames=1)
+        g.wait(4)
+        print("ok: holding Block with the Battle Helmet in the band, the flash takes nothing")
 
         # 4. The Magic Shield sends it back.
         magic = g.out / "warning-magic.cycstate"
@@ -156,7 +171,7 @@ def main():
         g.load(magic)
         shot = capture("magic-shield-reflects", "flash")
         lost, d = flash("V")
-        captured(shot, 3)
+        captured(shot, 4)
         assert lost == 0 and d["reflected"] == 1 and g.ram(SPRITE_HP + slot) == 22 - REFLECTED, (lost, d)
         assert g.ram(ENTITIES + slot) == SUGATA
         print(f"ok: holding Block with the Magic Shield, the flash takes {REFLECTED} of Sugata's 22 HP instead")
@@ -170,17 +185,29 @@ def main():
         g.shot("reflection-kills-sugata")
         print("ok: a second reflection kills Sugata through the game's death code, and the band ends with it")
         s = state()
-        assert s["warned"] == s["flashes"] == 6, s
+        assert s["warned"] == s["flashes"] == 7, s
         print(f"ok: each of the {s['flashes']} flashes came after the full {WARNING}-frame warning")
 
-        # 5. No shield, Block held: the band still hurts.
+        # 5. No shield, Block held: the band still hurts. Ointment keeps the HP, not the knockback.
         g.load(warning)
         lost, d = flash("V")
         assert lost == FLASH_DAMAGE, lost
         print("ok: holding Block without a shield, the flash still takes 10 HP")
+        g.tcp("key", name="V", frames=1)
+        g.wait(4)
+        anointed = g.out / "warning-ointment.cycstate"
+        fixture(warning, anointed, {DURATION_OINTMENT: 0x40})
+        g.load(anointed)
+        x = g.ram(POS_X)
+        lost, d = flash()
+        g.wait(8)
+        assert lost == 0 and d["anointed"] == 1 and d["in_reach"] == 1, (lost, d)
+        assert g.ram(INVINCIBILITY) > 0 and g.ram(POS_X) != x, (g.ram(INVINCIBILITY), x, g.ram(POS_X))
+        print(f"ok: under Ointment, in the band, the flash takes no HP but still knocks him back "
+              f"(x {x} to {g.ram(POS_X)})")
         g.close()
 
-        # 6. Off: the original flash, without a warning.
+        # 6. Off: the original flash, without a warning, through Ointment.
         (g.out / "game" / "mods" / "state.toml").write_text(
             f'format_version = 1\n\n[[feature]]\npackage_id = "{PACKAGE}"\nid = "{FEATURE}"\nenabled = false\n')
         g.launch()
@@ -191,6 +218,13 @@ def main():
         g.until("the flash", lambda: hp - g.hp() == FLASH_DAMAGE, 400)
         assert state()["warnings"] == state()["flashes"] == 0
         print("ok: turned off, Sugata flashes without warning and takes 10 HP, as the original")
+        target = g.out / "off-ointment.cycstate"
+        fixture(arrived, target, {DURATION_OINTMENT: 0x40})
+        g.load(target)
+        hp = g.hp()
+        g.until("the flash", lambda: hp - g.hp() == FLASH_DAMAGE, 400)
+        assert g.ram(DURATION_OINTMENT) < 0x80, "the Ointment still lasted"
+        print("ok: turned off, the flash takes 10 HP through Ointment, as the original")
         print("screenshots:", ", ".join(p.name for p in g.shots))
     except BaseException:
         if g.running():
