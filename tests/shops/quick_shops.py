@@ -32,7 +32,9 @@ building), the gold, and what the hero carries.
    Select goes back to buying; selling the last item empties the list ("You
    have nothing to buy.", the game's own line) and the list goes back to
    buying.
-3. With Quick shops off, the same Up shows the shop's greeting, as before.
+3. With Quick shops off, the same Up shows the shop's greeting and then the
+   Buy/Sell menu's own line, as before (Save files serves another line for
+   that menu at a Guru's, and only there).
 
 Each list is checked in the picture too: the list's frame, and its hint line
 inside it, in the text color.
@@ -63,7 +65,7 @@ HAND_DAGGER, LONG_SWORD, GIANT_BLADE, DRAGON_SLAYER = 0x00, 0x01, 0x02, 0x03
 KEY_A, KEY_K, KEY_Q, KEY_J, MATTOCK, RED_POTION = 0x04, 0x05, 0x06, 0x07, 0x09, 0x10
 DELUGE, ELIXIR = 0x60, 0x92
 ITEM = 0x80                                                         # the Items category, in a full ID
-NOT_ENOUGH_GOLDS, NOTHING_TO_SELL, GREETING = 0x03, 0x12, 0x0F      # message IDs
+NOT_ENOUGH_GOLDS, NOTHING_TO_SELL, GREETING, BUY_OR_SELL = 0x03, 0x12, 0x0F, 0x10   # message IDs
 LIST_FRAME = (80, 64)                                               # the list's top-left frame tile, tile 10,8
 HINT = (96, 208)                                                    # its hint line: tile 12,26
 PAGE_ROW, LINE_END = 72, 224                                        # the page: row 9, ending at column 27
@@ -549,7 +551,11 @@ def main():
         act("up", 4, 6)
         until("the greeting", lambda: ram(MESSAGE_ID) == GREETING, 600)
         assert not shops()["active"], shops()
-        print("ok: with Quick shops off, the Tool Seller greets you as before")
+        until("the greeting to type out", typed, 600)
+        act("a", 4, 6)
+        until("the Buy/Sell menu's own line", lambda: ram(MESSAGE_ID) == BUY_OR_SELL, 600)
+        print("ok: with Quick shops off, the Tool Seller greets you and asks Buy or Sell as before "
+              "(Save files' line for the Guru's menu stays the Guru's)")
         print("screenshots:", ", ".join(p.name for p in shots))
     except BaseException:
         shot("failure")
