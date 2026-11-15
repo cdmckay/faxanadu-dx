@@ -25,19 +25,12 @@ the item menu, as a player would.
    Mattock stays selected.
 4. Reusable tools alone: a selected key opens the door and stays selected.
 """
-import argparse
-import json
-import os
 from pathlib import Path
-import shutil
-import socket
-import struct
-import subprocess
 import sys
-import time
-import zlib
 
-PORT = 0                                                            # set in main
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
+from fax_e2e import Game, act, fixture, frame, parse_args, ram, tcp, until, wait  # noqa: E402
+
 AREA, SCREEN, SCREEN_TO_THE_RIGHT, PLAYER_X = 0x24, 0x63, 0x67, 0x9E
 MESSAGE_ID, HP = 0x213, 0x431
 ITEM_INVENTORY, SELECTED_ITEM, NUMBER_OF_ITEMS = 0x3AD, 0x3C1, 0x3C6
@@ -53,52 +46,6 @@ WALL_STOP = 0x20                                                    # the hero's
 MENU_ITEM_ROW = 4                                                   # WEAPON ARMOR SHIELD MAGIC ITEM PLAYER
 PACKAGES = {"auto": ("faxanadu.enhancement.auto-keys", "auto-keys"),
             "reuse": ("faxanadu.enhancement.reusable-tools", "reusable-tools")}
-
-
-def tcp(cmd, **kw):
-    with socket.create_connection(("127.0.0.1", PORT), 5) as s:
-        s.settimeout(30)
-        f = s.makefile("rwb", buffering=0)
-        f.write((json.dumps(dict(id=1, cmd=cmd, **kw)) + "\n").encode())
-        reply = json.loads(f.readline())
-    if not reply.get("ok"):
-        raise RuntimeError(f"{cmd}: {reply}")
-    return reply
-
-
-def free_port():
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
-def frame():
-    return tcp("ping")["frame"]
-
-
-def wait(frames):
-    end = frame() + frames
-    while frame() < end:
-        time.sleep(0.005)
-
-
-def ram(addr, n=1):
-    data = bytes.fromhex(tcp("read_ram", addr=addr, len=n)["hex"])
-    return data[0] if n == 1 else data
-
-
-def until(what, test, frames=1200):
-    end = frame() + frames
-    while frame() < end:
-        if test():
-            return
-        time.sleep(0.005)
-    raise AssertionError(f"timed out waiting for {what}")
-
-
-def act(name, frames=6, after=8):
-    tcp("action", name=name, frames=frames)
-    wait(frames + after)
 
 
 def typed():
@@ -117,88 +64,18 @@ def items():
     return list(ram(ITEM_INVENTORY, 8)[:ram(NUMBER_OF_ITEMS)]), ram(SELECTED_ITEM)
 
 
-def chunks(data):
-    assert data[:8] == b"CYCSTATE"
-    pos = 32
-    while pos < len(data):
-        tag, size = struct.unpack_from("<4sI", data, pos)
-        pos += 8
-        yield tag, pos, size
-        pos += size
-        if tag == b"END ":
-            return
-
-
-def fixture(source, target, writes):
-    data = bytearray(source.read_bytes())
-    pos, size = next((p, n) for t, p, n in chunks(data) if t == b"HW  ")
-    assert size == 2072, "Unqualified hardware ABI"
-    for address, value in writes.items():
-        data[pos + 23 + address] = value
-    target.write_bytes(data)
-
-
 def main():
-    global PORT
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    for key in ("build", "rom", "out"):
-        ap.add_argument("--" + key, type=Path, required=True)
-    ap.add_argument("--game-arg", action="append", default=[],
-                    help="extra game option, e.g. --game-arg=--world-view=seamless (repeatable)")
-    ap.add_argument("--port", type=int, default=0, help="TCP port (default: a free one)")
-    ap.add_argument("--realtime", action="store_true", help="run at normal speed instead of uncapped")
-    args = ap.parse_args()
-    PORT = args.port or free_port()
-    image = args.rom.read_bytes()
-    assert zlib.crc32(image[16:]) == 0x57DD23D1, "the original Faxanadu (USA) ROM is required"
-    out = args.out.resolve()
-    shutil.rmtree(out, ignore_errors=True)
-    (out / "game").mkdir(parents=True)
-    shutil.copy2(args.build / "FaxanaduRecomp", out / "game")
-    for folder in ("assets", "mods"):
-        shutil.copytree(args.build / folder, out / "game" / folder)
-    env = dict(os.environ, NESRECOMP_NO_LAUNCHER="1", SDL_VIDEODRIVER="dummy", SDL_AUDIODRIVER="dummy")
-    log = open(out / "game.log", "w")
-    game = None
-    shots = []
+    args = parse_args(__doc__)
+    game = Game.from_args(args)
+    out = game.out
 
     def launch(**enabled):
         """Start the game with the two features on or off (both on by default)."""
-        nonlocal game
-        lines = ["format_version = 1"]
-        for name, on in enabled.items():
-            package, feature = PACKAGES[name]
-            lines += ["", "[[feature]]", f'package_id = "{package}"', f'id = "{feature}"',
-                      f"enabled = {'true' if on else 'false'}"]
-        (out / "game" / "mods" / "state.toml").write_text("\n".join(lines) + "\n")
-        extra = [part for arg in args.game_arg for part in arg.split("=", 1)]
-        if not args.realtime:
-            extra += ["--uncapped", "--exit-after", "100000000"]
-        game = subprocess.Popen([str(out / "game" / "FaxanaduRecomp"), str(args.rom.resolve()), "--hidden",
-                                 "--tcp", str(PORT), *extra], env=env, stdout=log, stderr=subprocess.STDOUT)
-        for _ in range(100):
-            try:
-                frame()
-                break
-            except OSError:
-                time.sleep(0.1)
-        else:
-            raise AssertionError("the game did not start")
+        game.set_features({PACKAGES[name]: on for name, on in enabled.items()})
+        game.launch()
         state = tcp("keys_state")
         want = {"auto": True, "reuse": True, **enabled}
         assert (state["auto"], state["reuse"]) == (want["auto"], want["reuse"]), state
-
-    def close():
-        try:
-            tcp("quit")
-        except Exception:
-            game.kill()
-        game.wait(10)
-
-    def shot(name):
-        path = out / f"{len(shots):02d}-{name}.png"
-        tcp("screenshot", layer="picture", path=str(path))
-        shots.append(path.name)
 
     def poke(writes):
         """Edit RAM in the running game: save, edit the state, load it back."""
@@ -322,7 +199,7 @@ def main():
         tcp("load_state", path=str(no_key))
         select(MATTOCK)
         assert open_eolis_exit({MARK_OF_JACK, USED_KEY}) == MARK_OF_JACK
-        shot("no-key-mark-of-jack")
+        game.shot("no-key-mark-of-jack")
         dismiss_staying()
         print("ok: without a J key, Up at Eolis's exit door says there is the mark of Jack, and it stays shut")
 
@@ -331,14 +208,14 @@ def main():
         select(MATTOCK)
         assert items() == ([KEY_J], MATTOCK), items()
         assert open_eolis_exit({MARK_OF_JACK, USED_KEY}) == USED_KEY
-        shot("door-opens-key-unselected")
+        game.shot("door-opens-key-unselected")
         dismiss_into(TRUNK, 0)
         assert items() == ([KEY_J], MATTOCK), items()
         state = tcp("keys_state")
         assert (state["auto_opened"], state["keys_kept"], state["lent"]) == (1, 1, False), state
         clear_enemies()
         item_menu()
-        shot("key-still-in-inventory")
+        game.shot("key-still-in-inventory")
         act("b", 4, 30)
         assert items() == ([KEY_J], MATTOCK), items()
         print("ok: the unselected J key opened Eolis's exit door with \"I've used key.\"; "
@@ -349,7 +226,7 @@ def main():
         enter("right", TRUNK, TOWER_DOOR)
         walk_to(138)
         assert press_up({MARK_OF_JACK, USED_KEY}) == USED_KEY
-        shot("second-door-same-key")
+        game.shot("second-door-same-key")
         dismiss_into(TRUNK, TOWER)
         assert items() == ([KEY_J], MATTOCK), items()
         state = tcp("keys_state")
@@ -365,13 +242,13 @@ def main():
         clear_enemies()
         enter("right", TRUNK, WALL)
         break_wall()
-        shot("wall-broken-mattock-kept")
+        game.shot("wall-broken-mattock-kept")
         assert [ram(SCREEN_BUFFER + b) for b in WALL_BLOCKS] != [WALL_BLOCK] * 2
         assert items() == ([KEY_J], MATTOCK), items()
         assert tcp("keys_state")["mattock_kept"] == 1
         walk_to(64)                                                 # through where the wall was
         print("ok: the Mattock broke the wall in Trunk and is still selected; the hero walks through")
-        close()
+        game.close()
 
         # 2. Both off: the game as it was.
         launch(auto=False, reuse=False)
@@ -389,13 +266,13 @@ def main():
         poke({SCREEN_TO_THE_RIGHT: WALL})
         enter("right", TRUNK, WALL)
         break_wall()
-        shot("off-mattock-used-up")
+        game.shot("off-mattock-used-up")
         assert items() == ([], NO_ITEM), items()
         state = tcp("keys_state")
         assert (state["auto_opened"], state["keys_kept"], state["mattock_kept"]) == (0, 0, 0), state
         print("ok: turned off, the unselected key leaves the door shut, and a selected key and the Mattock "
               "are used up, as in the original")
-        close()
+        game.close()
 
         # 3. Auto keys alone: the door opens, the key is used up, the selection stays.
         launch(auto=True, reuse=False)
@@ -405,7 +282,7 @@ def main():
         dismiss_into(TRUNK, 0)
         assert items() == ([], MATTOCK), items()
         print("ok: auto keys alone opens the door with the unselected key, uses it up and keeps the Mattock selected")
-        close()
+        game.close()
 
         # 4. Reusable tools alone: a selected key stays selected.
         launch(auto=False, reuse=True)
@@ -416,14 +293,13 @@ def main():
         assert items() == ([MATTOCK], KEY_J), items()
         assert tcp("keys_state")["keys_kept"] == 1
         print("ok: reusable tools alone keeps a selected key selected after it opens the door")
-        print("screenshots:", ", ".join(shots))
+        print("screenshots:", ", ".join(game.shots))
     except BaseException:
-        if game and game.poll() is None:
-            shot("failure")
+        if game.running():
+            game.shot("failure")
         raise
     finally:
-        if game:
-            close()
+        game.close()
 
 
 if __name__ == "__main__":

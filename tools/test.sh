@@ -70,6 +70,8 @@ cmake --build build-cycle -j"$JOBS" >/dev/null
 build-cycle/FaxanaduRecomp "$ROM" --frames 600 --no-save | grep "mode="
 
 if [ "$QUICK" = 1 ]; then echo "(end-to-end runs skipped: --quick)"; exit 0; fi
+echo "== end to end: the shared helper's port reservation and relaunch"
+python3 tests/e2e/fax_e2e_test.py --build build-cycle --rom "$ROM" --out "$OUT/e2e-helper"
 echo "== end to end: Guru travel, by default and with Seamless on, in parallel"
 e2e() {  # NAME [ARGS...]: one run, in its own folder, on a free port
   local name="$1"; shift

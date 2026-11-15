@@ -23,20 +23,14 @@ and walks the hero to the gate of Eolis, a door. Then it edits save-state RAM
    writes the bindings back.
 8. With the feature off in the mod selection, C does nothing.
 """
-import argparse
-import json
-import os
 from pathlib import Path
 import re
-import shutil
-import socket
-import struct
-import subprocess
 import sys
 import time
-import zlib
 
-PORT = 0                                                            # set in main
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
+from fax_e2e import Game, act, fixture, frame, parse_args, ram, tcp, typed, until, wait  # noqa: E402
+
 AREA, SCREEN, POS_X = 0x24, 0x63, 0x9E
 PLAYER_FLAGS, ATTACKING = 0xA4, 0x80
 CAST_MAGIC_TYPE, NO_SPELL, DELUGE = 0x2B3, 0xFF, 0
@@ -50,47 +44,6 @@ DELUGE_COST = 2
 PACKAGE, FEATURE = "faxanadu.enhancement.magic-button", "magic-button"
 
 
-def tcp(cmd, **kw):
-    with socket.create_connection(("127.0.0.1", PORT), 5) as s:
-        s.settimeout(30)
-        f = s.makefile("rwb", buffering=0)
-        f.write((json.dumps(dict(id=1, cmd=cmd, **kw)) + "\n").encode())
-        reply = json.loads(f.readline())
-    if not reply.get("ok"):
-        raise RuntimeError(f"{cmd}: {reply}")
-    return reply
-
-
-def free_port():
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
-def frame():
-    return tcp("ping")["frame"]
-
-
-def wait(frames):
-    end = frame() + frames
-    while frame() < end:
-        time.sleep(0.005)
-
-
-def ram(addr, n=1):
-    data = bytes.fromhex(tcp("read_ram", addr=addr, len=n)["hex"])
-    return data[0] if n == 1 else data
-
-
-def until(what, test, frames=1200):
-    end = frame() + frames
-    while frame() < end:
-        if test():
-            return
-        time.sleep(0.005)
-    raise AssertionError(f"timed out waiting for {what}")
-
-
 def never(what, test, frames):
     """`test` stays false for `frames` frames."""
     end = frame() + frames
@@ -99,22 +52,10 @@ def never(what, test, frames):
         time.sleep(0.005)
 
 
-def act(name, frames=6, after=8):
-    tcp("action", name=name, frames=frames)
-    wait(frames + after)
-
-
 def up_b():
     """Up+B the stock way: both go down in the same frame, Up held a little longer."""
     tcp("action", name="up", frames=10)
     tcp("action", name="b", frames=4)
-
-
-def typed():
-    """The text box is waiting for a button: the message has typed out
-    (MessageID clears) or reached a pause (TextBox_MessagePaused)."""
-    message, _, paused = ram(MESSAGE_ID, 3)
-    return message == 0 or paused != 0
 
 
 def where():
@@ -125,77 +66,11 @@ def spell():
     return ram(CAST_MAGIC_TYPE)
 
 
-def chunks(data):
-    assert data[:8] == b"CYCSTATE"
-    pos = 32
-    while pos < len(data):
-        tag, size = struct.unpack_from("<4sI", data, pos)
-        pos += 8
-        yield tag, pos, size
-        pos += size
-        if tag == b"END ":
-            return
-
-
-def fixture(source, target, writes):
-    data = bytearray(source.read_bytes())
-    pos, size = next((p, n) for t, p, n in chunks(data) if t == b"HW  ")
-    assert size == 2072, "Unqualified hardware ABI"
-    for address, value in writes.items():
-        data[pos + 23 + address] = value
-    target.write_bytes(data)
-
-
 def main():
-    global PORT
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    for key in ("build", "rom", "out"):
-        ap.add_argument("--" + key, type=Path, required=True)
-    ap.add_argument("--game-arg", action="append", default=[],
-                    help="extra game option, e.g. --game-arg=--world-view=seamless (repeatable)")
-    ap.add_argument("--port", type=int, default=0, help="TCP port (default: a free one)")
-    ap.add_argument("--realtime", action="store_true", help="run at normal speed instead of uncapped")
-    args = ap.parse_args()
-    PORT = args.port or free_port()
-    image = args.rom.read_bytes()
-    assert zlib.crc32(image[16:]) == 0x57DD23D1, "the original Faxanadu (USA) ROM is required"
-    out = args.out.resolve()
-    shutil.rmtree(out, ignore_errors=True)
-    (out / "game").mkdir(parents=True)
-    shutil.copy2(args.build / "FaxanaduRecomp", out / "game")
-    for folder in ("assets", "mods"):
-        shutil.copytree(args.build / folder, out / "game" / folder)
+    args = parse_args(__doc__)
+    game = Game.from_args(args)
+    out = game.out
     config = out / "game" / "config.ini"
-    env = dict(os.environ, NESRECOMP_NO_LAUNCHER="1", SDL_VIDEODRIVER="dummy", SDL_AUDIODRIVER="dummy")
-    log = open(out / "game.log", "w")
-    game = None
-    shots = []
-
-    def launch(*extra):
-        nonlocal game
-        extra = [part for arg in args.game_arg for part in arg.split("=", 1)] + list(extra)
-        if not args.realtime:
-            extra += ["--uncapped", "--exit-after", "100000000"]
-        game = subprocess.Popen([str(out / "game" / "FaxanaduRecomp"), str(args.rom.resolve()), "--hidden",
-                                 "--tcp", str(PORT), *extra], env=env, stdout=log, stderr=subprocess.STDOUT)
-        for _ in range(100):
-            try:
-                return frame()
-            except OSError:
-                time.sleep(0.1)
-        raise AssertionError("the game did not start")
-
-    def close():
-        try:
-            tcp("quit")
-        except Exception:
-            game.kill()
-        game.wait(10)
-
-    def shot(name):
-        path = out / f"{len(shots):02d}-{name}.png"
-        tcp("screenshot", layer="picture", path=str(path))
-        shots.append(path.name)
 
     def magic(how, name):
         """Press the Magic button once: a key, or a controller button."""
@@ -227,7 +102,7 @@ def main():
         until("the spell to end", lambda: spell() == NO_SPELL, 600)
 
     try:
-        launch()
+        game.launch()
         state = tcp("magic_state")
         assert state["enabled"] and state["binding"] == "C / Y", state
         until("the title", lambda: frame() > 700)
@@ -262,7 +137,7 @@ def main():
 
         # 1. The gate is a door: Up goes through it, and so does Up+B.
         tcp("load_state", path=str(gate))
-        shot("gate")
+        game.shot("gate")
         act("up", 4, 4)
         until("Eolis", lambda: where() == INSIDE_EOLIS, 300)
         tcp("load_state", path=str(gate))
@@ -275,7 +150,7 @@ def main():
         cast_with("key", "C", 80)
         assert spell() == DELUGE, spell()
         wait(6)
-        shot("cast-at-gate")
+        game.shot("cast-at-gate")
         presented = tcp("magic_state")["presented"]
         magic("key", "C")                                               # again, while Deluge flies
         until("the press", lambda: tcp("magic_state")["presented"] == presented + 1, 60)
@@ -288,7 +163,7 @@ def main():
         # 3. On a controller.
         cast_with("pad", "y", 78)
         wait(6)
-        shot("cast-with-pad")
+        game.shot("cast-with-pad")
         spell_ends()
         print("ok: Y on a controller casts too")
 
@@ -325,22 +200,22 @@ def main():
         cast_with("key", "C", 80)
         assert spell() == DELUGE, spell()
         wait(4)
-        shot("cast-at-guru")
+        game.shot("cast-at-guru")
         never("the Guru's greeting", lambda: ram(MESSAGE_ID) == MEDITATE_WITH_YOU, 120)
         tcp("load_state", path=str(guru))
         act("up", 4, 4)
         until("the Guru's greeting", lambda: ram(MESSAGE_ID) == MEDITATE_WITH_YOU, 120)
         until("the greeting to type out", typed)
-        shot("up-at-guru")
+        game.shot("up-at-guru")
         print("ok: next to the Guru, Magic casts without a word from him; Up talks to him")
-        close()
+        game.close()
 
         # 7. config.ini rebinds it.
         text = config.read_text()
         assert re.search(r"^MagicKey = C$", text, re.M) and re.search(r"^MagicButton = y$", text, re.M), text
         config.write_text(re.sub(r"^MagicButton = y$", "MagicButton = b",
                                  re.sub(r"^MagicKey = C$", "MagicKey = V", text, flags=re.M), flags=re.M))
-        launch()
+        game.launch()
         state = tcp("magic_state")
         assert state["binding"] == "V / B", state
         tcp("load_state", path=str(gate))
@@ -348,29 +223,27 @@ def main():
         cast_with("key", "V", 80)
         spell_ends()
         cast_with("pad", "b", 78)
-        close()
+        game.close()
         text = config.read_text()
         assert re.search(r"^MagicKey = V$", text, re.M) and re.search(r"^MagicButton = b$", text, re.M), text
         print("ok: MagicKey = V and MagicButton = b in config.ini move it to V and B, and stay there")
 
         # 8. Off.
-        (out / "game" / "mods" / "state.toml").write_text(
-            f'format_version = 1\n\n[[feature]]\npackage_id = "{PACKAGE}"\nid = "{FEATURE}"\nenabled = false\n')
-        launch()
+        game.set_features({(PACKAGE, FEATURE): False})
+        game.launch()
         assert not tcp("magic_state")["enabled"], "the feature is off"
         tcp("load_state", path=str(gate))
         nothing_with("key", "V")
         nothing_with("pad", "b")
         assert tcp("magic_state")["presses"] == 0
         print("ok: turned off, the Magic button does nothing")
-        print("screenshots:", ", ".join(shots))
+        print("screenshots:", ", ".join(game.shots))
     except BaseException:
-        if game and game.poll() is None:
-            shot("failure")
+        if game.running():
+            game.shot("failure")
         raise
     finally:
-        if game:
-            close()
+        game.close()
 
 
 if __name__ == "__main__":

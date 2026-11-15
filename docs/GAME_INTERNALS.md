@@ -342,6 +342,10 @@ What a feature can rely on, and the traps:
   `dpleft`). `action` takes NES names (`a`, `left`, `up`). Durations are in
   frames, so a test that waits on frames and game state, never the clock,
   runs the same uncapped.
+- With `--tcp N` the window prints `[cyc tcp] listening on 127.0.0.1:N`, or
+  `[cyc tcp] cannot listen on port N` and **runs on without TCP**. A client
+  that connects to N then talks to whatever else holds it, another test's
+  game included. `tests/e2e/fax_e2e.py` waits for its own game's line.
 - TCP `action` returns at once and holds the button for its frames, so two
   `action`s sent back to back are held together: `left` then `a` jumps left
   (`tests/speaker/speaker_names.py` climbs the King's stairs that way).
@@ -354,7 +358,8 @@ What a feature can rely on, and the traps:
   about 290 fps, 5x real time. The cycle-accurate machine is the limit; even
   headless runs at about 370 fps.
 - A save state's RAM is in its `HW  ` chunk at offset 23, 2 KiB, with no
-  checksum. Edit it to set up test fixtures (`tests/travel/guru_travel.py`).
+  checksum. Edit it to set up test fixtures (`fixture()` in
+  `tests/e2e/fax_e2e.py`).
 - A site at a **branch** sees the flags the instruction before set, and can
   steer the branch by changing them (and the register they came from) with
   `cyc_mod_set_regs`, then returning 0. Forgiving jumps does this twice, so
