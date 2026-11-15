@@ -193,6 +193,7 @@ own steps, and it undoes SET_SPAWN_POINT's raise at the next action rather \
 than skipping it, so Guru travel still meets the Guru there. So the two may \
 run in either order."""
 
+[[feature]]
 package = "faxanadu.enhancement.block"
 source = "fax_block.c"
 hooks = "faxanadu.block."
