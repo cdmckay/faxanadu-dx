@@ -301,8 +301,21 @@ def main():
                 pass
         raise AssertionError(f"could not go through the door to {what}")
 
+    def standing():
+        """On the ground, neither jumping nor falling (Player_Flags $01 and $04,
+        which a fall keeps through its landing frame), at the same Y two frames
+        apart. Dartmoor's arrival is a row above the floor: he drops onto it."""
+        y, _, _, flags = ram(PLAYER_Y, 4)                   # Player_PosY ($A1) to Player_Flags ($A4)
+        if flags & 0x05:
+            return False
+        wait(2)
+        y2, _, _, flags = ram(PLAYER_Y, 4)
+        return not flags & 0x05 and y2 == y
+
     def arrival():
-        """Where and how the hero is, as a door or a respawn left him."""
+        """Where and how the hero is, as a door or a respawn left him, once he
+        stands."""
+        until("the hero to stand", standing, 300)
         return dict(area=ram(AREA), screen=ram(SCREEN), x=ram(PLAYER_X), y=ram(PLAYER_Y),
                     palette=ram(SCREEN_PALETTE), music=ram(AREAS_DEFAULT_MUSIC),
                     facing_right=bool(ram(PLAYER_FLAGS) & 0x40))
@@ -402,8 +415,8 @@ def main():
             clear_screen(f"outside-{name}")
             through_door(pos, name, lambda: at(in_area, in_screen))
             entered = arrival()
-            # Where the door puts him; Dartmoor's start is a row above the floor,
-            # and he has dropped onto it by the time the screen settles.
+            # Where the door puts him, standing; Dartmoor's start is a row above
+            # the floor, and he drops onto it.
             assert entered["x"] == (start & 0x0F) << 4 and entered["y"] in (start & 0xF0, (start & 0xF0) + 16), \
                 (name, entered)
             state = respawn()
