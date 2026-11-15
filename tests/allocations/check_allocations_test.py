@@ -76,6 +76,16 @@ def model():
           "a long override's whole range counts for overlaps")
     check(errors([dagger(), unused(0xB898, 0xB899, bank=13)]) == [], "the same address in another bank is no overlap")
 
+    slot = [{"bank": 13, "start": 0xB45B, "end": 0xB48B, "packages": ["travel", "files"], "why": "one line slot"}]
+    pair = [(p, dict(r, stock=None)) for p, r in (("travel", {"bank": 13, "start": 0xB45B, "end": 0xB48B, "use": "a"}),
+                                                  ("files", {"bank": 13, "start": 0xB45B, "end": 0xB48B, "use": "b"}))]
+    check(checker.rom_errors(pair, None, slot) == [], "a [[shared_rom]] lets the two features it names share it")
+    check(len(checker.rom_errors(pair, None)) == 1, "without it they overlap")
+    third = [(p if p == "travel" else "other", r) for p, r in pair]
+    check(len(checker.rom_errors(third, None, slot)) == 1, "a feature it does not name still overlaps")
+    wider = [(p, dict(r, end=0xB490)) for p, r in pair]
+    check(len(checker.rom_errors(wider, None, slot)) == 1, "a claim past it still overlaps")
+
 
 def cli(rom):
     run = lambda path: subprocess.run([sys.executable, str(ROOT / "tools/check_allocations.py"), "--rom", str(rom),

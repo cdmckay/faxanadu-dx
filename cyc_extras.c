@@ -16,6 +16,8 @@
 #include "fax_falling.h"
 #include "fax_jumps.h"
 #include "fax_text_speed.h"
+#include "fax_save.h"
+#include "fax_files.h"
 #include "fax_dagger.h"
 #include "fax_block.h"
 #include "fax_sugata.h"
@@ -158,6 +160,9 @@ bool faxanadu_replace_file(const char *from, const char *to) {
 }
 #endif
 
+/* The --password mantra, for Save files to import; NULL without one. */
+const char *faxanadu_cli_mantra(void) { return password_cli && password[0] ? password : NULL; }
+
 static void inject_password(void) {
     if (!password[0] || injected) return;
     unsigned max = cyc_mod_peek(0x0665), n = (unsigned)strlen(password);
@@ -184,6 +189,7 @@ static void power_on(void *ctx) {
     fax_world_reset();
     fax_travel_step();
     fax_banner_reset();
+    fax_files_power_on();
     fax_dagger_step();
     if (compile_path[0]) {
         int n = chr_override_compile_dir(compile_path);
@@ -228,11 +234,13 @@ static void frame_end(void *ctx) {
     fax_travel_step();
     fax_magic_frame_end();
     fax_banner_step();
+    fax_files_frame_end();
     fax_dagger_step();
     fax_block_frame_end();
     fax_sugata_frame_end();
     if (tiles_enabled || tile_dump) chr_override_frame_end();
-    if (!cyc_host_saves_enabled() || frame % 900) return;
+    /* Save files replace the mantra; faxanadu.srm is then only for importing. */
+    if (!cyc_host_saves_enabled() || frame % 900 || fax_save_enabled()) return;
     if (!(cyc_mod_peek(0x042C) | cyc_mod_peek(0x042D) | cyc_mod_peek(0x0437) | cyc_mod_peek(0x0439))) return;
     char mantra[25];
     if (generate_mantra(mantra)) save_mantra(mantra);
@@ -280,6 +288,7 @@ static void tcp_setup(void *ctx) {
     fax_falling_tcp_setup();
     fax_jumps_tcp_setup();
     fax_text_speed_tcp_setup();
+    fax_files_tcp_setup();
     fax_dagger_tcp_setup();
     fax_block_tcp_setup();
     fax_sugata_tcp_setup();
@@ -288,7 +297,7 @@ static void tcp_setup(void *ctx) {
 #endif
 static const uint32_t *present(void *ctx,int *w,int *h) {
     (void)ctx;
-    const uint32_t *picture=fax_speaker_present(fax_banner_present(fax_sugata_present(fax_world_present(w,h,cyc_frame_argb()),w,h),w,h),w,h);
+    const uint32_t *picture=fax_files_present(fax_speaker_present(fax_banner_present(fax_sugata_present(fax_world_present(w,h,cyc_frame_argb()),w,h),w,h),w,h),w,h);
     return fax_shops_present(picture,w,h);
 }
 static void event(void *ctx,const void *e,int player) {
@@ -315,7 +324,7 @@ static RecompRuntimeUiItem menu_rows[] = {
 static int menu_row_enabled(void *ctx, const RecompRuntimeUiItem *it) { (void)ctx; (void)it; return 0; }
 static const RecompRuntimeUiCallbacks menu_callbacks = { .is_enabled = menu_row_enabled };
 #endif
-static void state_loaded(void *ctx) {(void)ctx;fax_world_loaded();fax_block_loaded();}
+static void state_loaded(void *ctx) {(void)ctx;fax_world_loaded();fax_block_loaded();fax_files_state_loaded();}
 const CycHostExtras *cyc_host_extras(void) {
     static const CycHostOption options[] = {
         { "--password", true, "Prefill a 1..24 character mantra (spaces allowed)" },

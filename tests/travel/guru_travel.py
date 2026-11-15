@@ -181,7 +181,9 @@ def main():
         until(f"line {expect}", lambda: line() == expect, 300)
 
     def talk_to_guru():
-        """Walk left to the Guru, talk, and page through his greeting and the mantra."""
+        """Walk left to the Guru, talk, and page through his greeting to the
+        offer. A file is in play (Save files is on by default), so he asks
+        first; A on his menu remembers the journey, then Guru travel offers."""
         act("left", 170, 10)
         act("up", 4, 10)
         until("the Guru's greeting", lambda: ram(MESSAGE_ID) == MEDITATE_WITH_YOU)

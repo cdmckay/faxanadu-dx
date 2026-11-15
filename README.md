@@ -38,11 +38,25 @@ Older `keybinds.ini` and F5/F6/F7 instructions below apply to the legacy host.
 2. Extract and run `FaxanaduRecomp.exe`
 3. Select your Faxanadu (USA) ROM when prompted — the path is saved for future launches
 
-**Guru travel** is on by default (Mods to turn it off). After a temple's Guru
-gives your mantra, he offers to send your spirit to any other Guru you have
-visited: A to go, B to hear the next town. HP, MP, gold and your spawn point
-are kept. The Gurus you have met are saved in `faxanadu_gurus.txt` next to the
-game.
+**Save files** is on by default (Mods to turn it off). The title screen offers
+three files, as in Zelda: pick an empty one to start a new game, or a saved one
+to continue exactly as you left it: title, gold, experience, items, quests and
+the Gurus you have met. "Erase a file" clears one. A Guru no longer gives a
+mantra: he offers to remember your journey, and the Guru you last saved with
+is where you come back when you die or continue. Talking to a Guru without
+saving leaves that where it was. Your file is also saved each time you come
+back to a temple. The files are `faxanadu_file1.txt` to `faxanadu_file3.txt`
+next to the game. The first time, your mantra in `faxanadu.srm` (and the Gurus
+in `faxanadu_gurus.txt`) goes into file 1; to bring in another mantra, enter it
+in the launcher's Mantra field or pass `--password`, and it goes into the first
+empty file.
+
+**Guru travel** is on by default (Mods to turn it off). A temple's Guru can
+send you to any other Guru you have visited: choose "Send me to another Guru."
+when he asks, or say yes after he remembers your journey. A to go, B to hear
+the next town. HP, MP, gold and your spawn point are kept. The Gurus you have
+met are kept in your save file (with Save files off, in `faxanadu_gurus.txt`
+next to the game).
 
 **Death keeps gold** is on by default (Mods to turn it off). When you die, the
 Guru brings you back with all your gold and experience, instead of your
@@ -152,6 +166,9 @@ local play only. See [details](docs/SEAMLESS-WORLD.md).
 | Block (hold, with a shield) | V (controller: B) |
 
 ## Mantra (Password) Features
+
+With Save files on (the default), mantras are only imported; see Save files
+above. What follows applies with Save files off.
 
 Faxanadu uses a mantra system instead of battery-backed saves. FaxanaduRecomp adds convenience features around this:
 
