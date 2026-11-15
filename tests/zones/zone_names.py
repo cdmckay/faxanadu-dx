@@ -172,8 +172,10 @@ def main():
         tcp("save_state", path=str(gate))
         game.close()
 
-        # 4. Respawn in Conflate, then travel to Apolune's Guru.
+        # 4. Respawn in Conflate, then travel to Apolune's Guru. Zone respawn
+        #    is off: on, dying in the Trunk comes back at its door, not a temple.
         (out / "game" / "faxanadu_gurus.txt").write_text("Eolis\nApolune\nConflate\n")
+        game.set_features({("faxanadu.enhancement.zone-respawn", "zone-respawn"): False})
         game.launch()
         dead = out / "conflate-death.cycstate"
         fixture(gate, dead, {TEMPLE_SPAWN_POINT: CONFLATE, PLAYER_IS_DEAD: 1})

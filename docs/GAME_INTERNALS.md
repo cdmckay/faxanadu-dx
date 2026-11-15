@@ -618,10 +618,6 @@ The designers meant the quarter for the Pendant. With the **Pendant fix**,
 a hit does the base without it and the stock "no Pendant" damage with it,
 and the Glove adds its bonus after either.
 
-- A kill stores the wrapped HP first; `Player_AddExperienceFromSprite` and
-  `Sprite_ShowNormalEnemyDeathByWeapon` follow, and a test has read the
-  wrapped HP with the entity still the enemy. Wait for the entity to change
-  before calling it dead (`tests/pendant/pendant_fix.py`).
 - From the branch to `@_checkGlove` only A, the flags and `Temp_00` change,
   and only `Temp_00` matters after: `LDA DurationGlove` reloads A and N/Z, C
   is set (`CLC`, `SEC`) before anything reads it, and nothing reads V. Y is
@@ -643,6 +639,18 @@ and the Glove adds its bonus after either.
 
 Ripasheiku drops the Pendant (`SpriteBehavior_PendantDroppedFromRipasheiku`,
 which removes the drop if the bit is already set).
+
+**A kill can straddle a frame.** On a borrow, the HP is stored (wrapped, `$FF`
+for 9 - 10) before the enemy becomes its death effect (`$13`, in
+`Sprite_ShowNormalEnemyDeathByWeapon`). In between, the hit plays its sound
+and `Player_AddExperienceFromSprite` redraws the experience through
+`PPUBuffer_QueueCommandOrLength`, which waits for buffer space
+(`PPUBuffer_WaitForCapacity`). That wait, or a lag frame, can put a frame
+boundary between the two (a host frame ends at VBlank, wherever the CPU is),
+so a read over TCP can see the wrapped HP with the entity unchanged. A test
+that tells a kill from a hit should read the entity and HP in one `read_ram`,
+call a wrapped HP a kill, and wait (in frames) for the entity to change
+(`tests/pendant/pendant_fix.py`).
 
 **Eolis, for tests.** A new game starts on Eolis (area 0) screen 0, outside
 the gate, with the intro's trigger (`SPRITE_TRIGGER_INTRO`, `$4F`) in sprite
@@ -1141,6 +1149,118 @@ apart:
 - Mist `$0A`, `$0B`, `$23`, `$24` and Dartmoor `$0F` are linked to nothing.
 - chipx86 calls area 7 `REGION_EVIL_FORTRESS`; the dialogue says "the
   fortress of Zenis" and "the Evil One in the fortress".
+- **No scroll link crosses a zone.** Every left, right, up and down link in
+  the scroll data stays inside its zone, so a zone is only ever entered
+  through a door, a region's door, a town's edge or a building's way out, all
+  of which load the screen. Decoded from bank 3: `AREAS_TABLE_PTR` (`$8000`)
+  holds the offset of `AREA_TABLES` from `$8000`; that holds, per area, the
+  offset of `<AREA>_AREA_DATA`, five more offsets: block attributes, block
+  properties, scroll data, door locations, door destinations
+  (`Game_LoadAreaTable` adds `$80` to each high byte).
+
+## Entrances and zone respawn
+
+**Every screen load passes through `Screen_SetupNew` (`$DD13`)**: from
+`Screen_Load` (a door within the area through `Game_SetupEnterScreen`, the
+Trunk's climb, a region's door through `Game_LoadCurrentArea`, a town's edge
+through `Game_EnterAreaHandler`, a building's way out through
+`Game_ExitBuilding`, the first level) and from `Game_EnterBuilding`. Seamless's
+room handoffs and a scroll to the next screen do not load one. At its entry,
+the way in is complete in RAM:
+
+| Address | Name | Holds |
+|---|---|---|
+| `$0024` | `Area_CurrentArea` | The area, already the new one |
+| `$0064` | `Area_LoadingScreenIndex` | The screen it makes `Area_CurrentScreen` |
+| `$0065` | `Screen_DestPaletteOrIndex` | The palette it makes `Screen_PaletteIndex` (`$03D0`) |
+| `$006C` | `Screen_StartPosYX` | Where it puts the hero: Y in the high nibble, X in the low, in blocks |
+| `$0435` | `Area_Region` | `REGION_*`: which region's doors (`DOOR_LOOKUP_REQUIREMENTS` and the rest) apply. A town's edge leaves it alone |
+| `$03D1` | `Areas_DefaultMusic` | The music, already set: by `Game_LoadCurrentArea` or `Game_EnterAreaHandler` from `AREA_TO_MUSIC_TABLE`, by `Game_BeginExitBuilding` from `Area_Music_Outside`, or for a door within the area from the destination palette (below) |
+| `$00A4` | `Player_Flags` `$40` | His facing. A door keeps it; a region's door faces him right (`Player_SetInitialState`), and so does a building's way out |
+
+A door within the area changes the music only when the destination palette is
+one of seven (`PALETTE_OUTSIDE`, `_TOWER`, `_MIST`, `_SUFFER`, `_DARTMOOR`,
+`_FRATERNAL`, `_KING_GRIEVES_ROOM`, at `$E569`): the towers and the castle get
+`MUSIC_MAYBE_TOWER` (`$06`). The Branch's doors (palettes 8 and 9) keep the
+music. The tiles are the area's (`AREA_TO_TILES_INDEXES`): towers have no
+tiles of their own.
+
+**The way into each tower, castle and region**, from the door tables (a
+region's door: `MAYBE_SCREEN_TRANSITION_MAP` and the door's start byte):
+
+| Zone | Door | Takes | Arrives at | Palette, music | Way back out |
+|---|---|---|---|---|---|
+| Tower of Trunk | Trunk `$0B`, block `$A9` | J key | `$0D`, `$91` | `$07`, `$06` | `$0D` block `$90` |
+| Tower of Fortress | Trunk `$28`, `$3D` | J key | `$29`, `$93` | `$07`, `$06` | `$29` `$92` |
+| Tower of Suffer | Mist `$00`, `$9A` | Q key | `$3E`, `$91` | `$0B`, `$06` | `$3E` `$90` |
+| Tower of Mist | Mist `$17`, `$A6` | K key | `$45`, `$A1` | `$0B`, `$06` | `$45` `$A0` |
+| Castle of Fraternal | Dartmoor `$0C`, `$48` | nothing | `$10`, `$91` | `$0D`, `$06` | `$10` `$90` |
+| Fortress of Zenis | Dartmoor `$0E`, `$AE` (region) | Demon's Ring | Zenis `$08`, `$A2` | `$0F`, `$10` | `$08` `$A1` (region) |
+| Eolis | the gate, Eolis `$00`, `$9C` | nothing | `$01`, `$99` | `$00`, `$07` | none |
+| Trunk | Eolis `$08`, `$9C` (region) | J key | Trunk `$00`, `$A1` | `$06`, `$03` | none: the Trunk has no door back to Eolis |
+| Mist | Trunk `$28`, `$10` (region) | Q key | Mist `$11`, `$9E` | `$0A`, `$05` | `$11` `$9F` (region) |
+| Branch | Mist `$1F`, `$9C` (region) | A key | Branch `$00`, `$A6` | `$08`, `$04` | `$00` `$A5` (region) |
+| Dartmoor | Branch `$27`, `$A8` (region) | Ring of Dworf | Dartmoor `$00`, `$9E`, a row above the floor: he drops to `$AE` | `$0C`, `$02` | `$00` `$AF` (region) |
+
+The towns and the regions also meet at the towns' edges
+(`AREA_TOWN_TRANSITIONS_DATA`). Every door back out takes nothing and is a
+step from where the hero arrives, so no entrance shuts him in. No boss screen
+(`SCREEN_EVENT_BOSS` in bank 11's sprite lists: Trunk `$15` and `$3B`, Mist
+`$34` and `$4C`, Branch `$07` and `$1D`, Dartmoor `$15`; `SCREEN_EVENT_FINAL_BOSS`
+on Zenis `$00`, behind the door on `$01`) is an arrival screen or next to one.
+chipx86's sprite-list labels are one area off and number screens in decimal:
+`SPRITE_INFO_APOLUNE_SCREEN_59` is Trunk `$3B`. The Castle of Fraternal's first screen (`$10`) does hold a
+Rokusutahn (`SPRITE_BOSS_ROKUSUTAHN`, one of the big enemies that roam many
+screens), with the door out at the hero's back.
+
+**`Game_ExitBuilding` (`$DE66`) is the game's loader for any place outside.**
+It plays `Areas_DefaultMusic`, sets `Player_CurWeapon` from `SelectedWeapon`,
+loads the area table and tiles for `Area_SavedArea`, and loads
+`Area_SavedScreen` with `Screen_SavedPalette` and `Player_SavedPosXY` (the
+same YX format as `Screen_StartPosYX`) through `Screen_Load`. With
+`Area_Region`, the music and the facing set as the way in left them, it
+replays any entrance. `Game_SetupExitBuilding` (`$DABE`) wraps it as the
+other `Game_Setup*` do and returns, so a prepared stack can return into it and
+then into `Game_MainLoop`.
+
+**Zone respawn** (`fax_respawn.c`) uses four sites, none shared, so the link
+order of features' hooks never matters to it:
+
+- `Screen_SetupNew` (`$DD13`): a load into a different zone records the way
+  in as the checkpoint. A building (area 4) changes nothing: its way out
+  leads back where the hero stood. A load outdoors in no zone (Eolis screen 0,
+  where a new game starts) forgets it.
+- `$D9A0`, `Player_HandleDeath`'s `JSR Screen_FadeToBlack` right after the
+  `Player_SetInitialExpAndGold` far call: reached only by a death, after the
+  Guru's words. The RTS from `MMC1_PopBank` lands there, and a hook there runs.
+- `$DB1D`, `Player_Spawn`'s `JSR Game_SpawnInTemple`, with S at `$FF` on the
+  death path. A death in the checkpoint's zone skips the call: the hook pushes
+  `$DB1F`, as the JSR would, and returns, so the routine is entered and left at
+  once and `Player_Spawn` goes on at `$DB20`, where Save files saves the file at
+  every respawn. Anything else lays out the temple at `TempleSpawnPoint`, as
+  the original does (Save files keeps the Guru last saved with there): a file
+  or a mantra continued (`$FC95` jumps to `Player_Spawn`), Guru travel's
+  journey (its prepared stack RTSes into `$DB1D`, and a hook there runs for it
+  too), and a death with no checkpoint or one for another zone (a death in a
+  building, which is in no zone). Each forgets the checkpoint, so walking out
+  of the temple records the next.
+- `Game_SetupEnterBuilding` (`$DAAF`), called from `$DB20` (the return address
+  is `$DB23`, `JMP Game_MainLoop`) after a skipped call: it writes the
+  checkpoint to the `Saved*` variables, `Area_Region`, `Areas_DefaultMusic`
+  and the facing, pushes `Game_SetupExitBuilding` - 1 and returns into it. Its
+  RTS goes back to `Player_Spawn`'s `JMP Game_MainLoop`.
+
+`Player_Spawn` has already set HP and MP to 80, cleared the Mattock bit and
+the timed items (the Ointment too), and the death path has restored the
+selected equipment, so the respawn keeps all of the original's death but the
+place. Sugata's flash (Mist `$1E-$1F`, `$4E-$4F`) is a death like any other:
+`$1F` is where the Branch's door back arrives, so dying to it there comes back
+beside it, as walking through that door does.
+
+The checkpoint is not kept in a save file. A file continues at the Guru it
+was saved with, through the temple, and any temple spawn forgets the
+checkpoint (the temple's door is the next way in), so a stored one would
+never be read.
 
 ## Items and the inventory
 
@@ -1615,6 +1735,18 @@ addresses, and `tools/check_allocations.py` enforces it.
   on row 9, at present time, while the list's four frame corners show; an
   unsellable item's price cells are painted the box's inside. Its save-state
   record holds the conversation (17 bytes).
+- **Zone respawn** (`fax_respawn.c`). Dying comes back at the last entrance
+  into the zone (tower, castle, town or region) the hero died in, after the
+  Guru's words, instead of at the temple. A hook at `Screen_SetupNew` records
+  the way in whenever a load enters a different zone; a hook after the death
+  script marks the death; `Player_Spawn`'s `JSR Game_SpawnInTemple` is skipped
+  for a death in the checkpoint's zone, and its `JSR Game_SetupEnterBuilding`
+  then runs `Game_SetupExitBuilding` with the entrance in the `Saved*`
+  variables (Save files' save at `$DB20` in between runs as at any respawn).
+  With no checkpoint, or after continuing a file or a Guru travel journey, the
+  temple is laid out as before, and the checkpoint is forgotten until the hero
+  walks out. Its save-state record holds the checkpoint and where a death is
+  (see "Entrances and zone respawn").
 
 - **Save files** (`fax_save.c`, `fax_files.c`). Three files instead of
   mantras; see "Save files" below.

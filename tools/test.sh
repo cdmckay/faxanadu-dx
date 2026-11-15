@@ -75,6 +75,9 @@ cmake --build "$OUT/sugata" -j"$JOBS" >/dev/null
 cmake -S tests/shops -B "$OUT/shops" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/shops" -j"$JOBS" >/dev/null
 "$OUT/shops/shops_test"
+cmake -S tests/respawn -B "$OUT/respawn" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/respawn" -j"$JOBS" >/dev/null
+"$OUT/respawn/respawn_test"
 
 echo "== game build"
 [ -f build-cycle/CMakeCache.txt ] || cmake -S . -B build-cycle -DCMAKE_BUILD_TYPE=Release -DNESRECOMP_ROM="$ROM" >/dev/null
@@ -150,6 +153,13 @@ shops_e2e() {  # NAME [ARGS...]
 }
 shops_e2e shops-e2e & shops=$!
 shops_e2e shops-e2e-seamless --game-arg=--world-view=seamless & shops_seamless=$!
+echo "== end to end: zone respawn, by default and with Seamless on, alongside them"
+respawn_e2e() {  # NAME [ARGS...]
+  local name="$1"; shift
+  python3 tests/respawn/zone_respawn.py --build build-cycle --rom "$ROM" --out "$OUT/$name" "$@" > "$OUT/$name.log" 2>&1
+}
+respawn_e2e respawn-e2e & respawn=$!
+respawn_e2e respawn-e2e-seamless --game-arg=--world-view=seamless & respawn_seamless=$!
 failed=0
 wait "$default" || failed=1
 sed 's/^/[default]  /' "$OUT/travel-e2e.log"
@@ -197,5 +207,9 @@ wait "$shops" || failed=1
 sed 's/^/[shops]    /' "$OUT/shops-e2e.log"
 wait "$shops_seamless" || failed=1
 sed 's/^/[shops+sw] /' "$OUT/shops-e2e-seamless.log"
+wait "$respawn" || failed=1
+sed 's/^/[respawn]  /' "$OUT/respawn-e2e.log"
+wait "$respawn_seamless" || failed=1
+sed 's/^/[resp+sw]  /' "$OUT/respawn-e2e-seamless.log"
 [ "$failed" = 0 ] || { echo "end-to-end tests failed; screenshots in $OUT/*-e2e*/" >&2; exit 1; }
 echo "all checks passed"
