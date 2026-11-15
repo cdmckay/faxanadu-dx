@@ -37,6 +37,9 @@ if(NESRECOMP_BACKEND STREQUAL "cycle")
         SEED_FILE "${NESRECOMP_CYCLE_SEEDS}"
         HOST_EXTRAS "${CMAKE_CURRENT_SOURCE_DIR}/cyc_extras.c" fax_world.c fax_travel.c fax_death.c
             fax_pendant.c
+            fax_magic.c
+            fax_zone.c fax_text.c fax_banner.c
+            fax_keys.c
             fax_falling.c fax_jumps.c
         MODS GAME_ID "faxanadu-usa"
         PLAYERS 1 REGION NTSC PASSWORD_SAVE "faxanadu.srm" PASSWORD_SAVE_LABEL "Mantra"
