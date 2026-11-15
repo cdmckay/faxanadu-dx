@@ -135,9 +135,9 @@ static int spawned_index(uint8_t entity) {
         if (SPAWNED[i].spawned == entity) return (int)i;
     return -1;
 }
-static bool spawns_it(int kind, uint8_t entity) {
+static bool spawns_it(int kind, uint8_t entity) {   /* an empty slot ($FF) is no one */
     for (unsigned j = 0; j < 3; ++j)
-        if (SPAWNED[kind].by[j] != NO_ONE && SPAWNED[kind].by[j] == entity) return true;
+        if (entity != NO_ONE && SPAWNED[kind].by[j] == entity) return true;
     return false;
 }
 
