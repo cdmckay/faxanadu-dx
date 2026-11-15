@@ -15,7 +15,7 @@ rom_crc32 = "57dd23d1"
 [[feature]]
 id = "reusable-tools"
 name = "Reusable tools"
-description = "A key stays in your inventory after it opens a door, and the Mattock after it breaks a wall. Potions, the Elixir, the Hour Glass, the Wing Boots and the other consumables are still used up."
+description = "A key stays in your inventory after it opens a door, and the Mattock after it breaks a wall. Potions and the other consumables are still used up (Recharging items keeps the Wing Boots, the Hour Glass and the Elixir)."
 group = "Gameplay"
 default_enabled = true
 
