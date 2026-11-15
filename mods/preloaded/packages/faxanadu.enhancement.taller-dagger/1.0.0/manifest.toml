@@ -1,0 +1,24 @@
+format_version = 1
+id = "faxanadu.enhancement.taller-dagger"
+version = "1.0.0"
+name = "Taller dagger"
+author = "faxanadu-remaster"
+description = "The Hand Dagger reaches as low as the swords, so it hits low enemies like the Zozura outside Eolis."
+license = "MIT"
+resolver = "declarative"
+save_compatibility = "shared"
+
+[[target]]
+game_id = "faxanadu-usa"
+rom_crc32 = "57dd23d1"
+
+[[feature]]
+id = "taller-dagger"
+name = "Taller dagger"
+description = "The Hand Dagger's swing is as tall as the swords', so it hits enemies low on the ground that it used to pass over. It keeps its short reach, so the Long Sword is still an upgrade."
+group = "Combat"
+default_enabled = true
+
+[[plugin]]
+feature = "taller-dagger"
+id = "faxanadu.taller-dagger"

@@ -8,6 +8,7 @@
 #include "mods/zelda2/fax_link.h"
 #include "fax_world.h"
 #include "fax_travel.h"
+#include "fax_dagger.h"
 #ifdef CYC_WITH_SDL
 #include "cyc_tcp.h"
 #include <SDL.h>
@@ -169,6 +170,7 @@ static void power_on(void *ctx) {
     fax_link_power_on();
     fax_world_reset();
     fax_travel_step();
+    fax_dagger_step();
     if (compile_path[0]) {
         int n = chr_override_compile_dir(compile_path);
         exit(n < 0 ? 2 : 0);
@@ -212,6 +214,7 @@ static void frame_end(void *ctx) {
     fax_link_frame_end();
     fax_world_step();
     fax_travel_step();
+    fax_dagger_step();
     if (tiles_enabled || tile_dump) chr_override_frame_end();
     if (!cyc_host_saves_enabled() || frame % 900) return;
     if (!(cyc_mod_peek(0x042C) | cyc_mod_peek(0x042D) | cyc_mod_peek(0x0437) | cyc_mod_peek(0x0439))) return;

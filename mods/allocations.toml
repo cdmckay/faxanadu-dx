@@ -3,9 +3,13 @@
 #   - a game.toml hook site belongs to no feature (by id prefix),
 #   - two features claim overlapping ROM,
 #   - a claimed ROM range is not unused ($FF) in the stock image (with --rom),
+#   - an overridden ROM byte is not its declared stock value (with --rom),
 #   - two features that can be enabled together hook the same address and no
 #     [[shared_site]] below says why that is safe.
 # Features that share a manifest exclusive group are never enabled together.
+# ROM claims come in two kinds: `rom` takes unused ($FF) bytes for new data,
+# and `overrides` takes existing bytes the feature serves with other values,
+# one byte per entry of `stock` (what the stock image holds there).
 # Update this file with the feature, and docs/GAME_INTERNALS.md with it.
 
 [[feature]]
@@ -38,3 +42,13 @@ hooks = ["faxanadu.world.inventory", "faxanadu.link.inventory", "faxanadu.travel
 why = """Seamless (freeze_hook) and Link (inventory_hook) observe and return 0, so \
 later sites still fire. Guru travel handles the call only to start a journey, \
 and its site is the last at this address."""
+
+[[feature]]
+package = "faxanadu.enhancement.taller-dagger"
+source = "fax_dagger.c"
+hooks = "faxanadu.dagger."
+rom = []
+# Served through a read override; the ROM image itself is never changed.
+overrides = [
+    { bank = 14, start = 0xB898, stock = [0x04], use = "MAYBE_WEAPON_RANGES: the dagger's Y reach, served as $08" },
+]
