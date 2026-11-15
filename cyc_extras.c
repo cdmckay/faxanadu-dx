@@ -12,6 +12,8 @@
 #include "fax_magic.h"
 #include "fax_banner.h"
 #include "fax_keys.h"
+#include "fax_block.h"
+#include "fax_sugata.h"
 #ifdef CYC_WITH_SDL
 #include "cyc_tcp.h"
 #include <SDL.h>
@@ -219,6 +221,8 @@ static void frame_end(void *ctx) {
     fax_travel_step();
     fax_magic_frame_end();
     fax_banner_step();
+    fax_block_frame_end();
+    fax_sugata_frame_end();
     if (tiles_enabled || tile_dump) chr_override_frame_end();
     if (!cyc_host_saves_enabled() || frame % 900) return;
     if (!(cyc_mod_peek(0x042C) | cyc_mod_peek(0x042D) | cyc_mod_peek(0x0437) | cyc_mod_peek(0x0439))) return;
@@ -264,32 +268,38 @@ static void tcp_setup(void *ctx) {
     fax_magic_tcp_setup();
     fax_banner_tcp_setup();
     fax_keys_tcp_setup();
+    fax_block_tcp_setup();
+    fax_sugata_tcp_setup();
 }
 #endif
 static const uint32_t *present(void *ctx,int *w,int *h) {
-    (void)ctx;return fax_banner_present(fax_world_present(w,h,cyc_frame_argb()),w,h);
+    (void)ctx;return fax_banner_present(fax_sugata_present(fax_world_present(w,h,cyc_frame_argb()),w,h),w,h);
 }
 static void event(void *ctx,const void *e,int player) {
     (void)ctx;(void)player;
     fax_world_event(e);
     fax_magic_event(e);
+    fax_block_event(e);
 }
+static void input(void *ctx, uint8_t buttons[2]) { (void)ctx; fax_block_input(buttons); }
 static void load_setting(void *ctx, const char *key, const char *value) {
     (void)ctx;
-    fax_magic_load_setting(key, value);
+    if (!fax_magic_load_setting(key, value)) fax_block_load_setting(key, value);
 }
-static void save_settings(void *ctx, FILE *f) { (void)ctx; fax_magic_save_settings(f); }
+static void save_settings(void *ctx, FILE *f) { (void)ctx; fax_magic_save_settings(f); fax_block_save_settings(f); }
 #ifdef CYC_WITH_RECOMP_UI
-/* The runtime menu's Controls section: the Magic button's bindings, an
- * information row like the host's own shortcuts. */
+/* The runtime menu's Controls section: the Magic and Block buttons' bindings,
+ * information rows like the host's own shortcuts. */
 static RecompRuntimeUiItem menu_rows[] = {
     { "faxanadu.magic", "Controls", "Magic", "Casts like Up+B. Rebind it in config.ini [Game].",
+      RECOMP_RUNTIME_UI_ACTION, 0, 0, 0, NULL, 0, NULL },
+    { "faxanadu.block", "Controls", "Block", "Hold with a shield to stop magic. Rebind it in config.ini [Game].",
       RECOMP_RUNTIME_UI_ACTION, 0, 0, 0, NULL, 0, NULL },
 };
 static int menu_row_enabled(void *ctx, const RecompRuntimeUiItem *it) { (void)ctx; (void)it; return 0; }
 static const RecompRuntimeUiCallbacks menu_callbacks = { .is_enabled = menu_row_enabled };
 #endif
-static void state_loaded(void *ctx) {(void)ctx;fax_world_loaded();}
+static void state_loaded(void *ctx) {(void)ctx;fax_world_loaded();fax_block_loaded();}
 const CycHostExtras *cyc_host_extras(void) {
     static const CycHostOption options[] = {
         { "--password", true, "Prefill a 1..24 character mantra (spaces allowed)" },
@@ -302,9 +312,10 @@ const CycHostExtras *cyc_host_extras(void) {
     };
 #ifdef CYC_WITH_RECOMP_UI
     menu_rows[0].label = fax_magic_controls_label();
+    menu_rows[1].label = fax_block_controls_label();
 #endif
     static const CycHostExtras extras = {
-        .present=present,.event=event,
+        .present=present,.event=event,.input=input,
         .load_setting = load_setting, .save_settings = save_settings,
 #ifdef CYC_WITH_RECOMP_UI
         .menu_items = menu_rows, .menu_item_count = sizeof(menu_rows) / sizeof(menu_rows[0]),

@@ -79,6 +79,21 @@ inventory after it opens a door, and the Mattock after it breaks a wall.
 Potions, the Elixir, the Hour Glass, the Wing Boots and the other consumables
 are still used up.
 
+**Block** is on by default (Mods to turn it off). Hold V on the keyboard, or B
+on a controller, with the Small, Large or Magic Shield in hand to stand your
+ground and raise it: enemy magic from the front, and Sugata's flash from any
+side, is stopped with the shield's sound. Contact and sword damage are as
+before, and the Battle Helmet holds no shield. The first time you get a shield,
+the shopkeeper adds a line naming your key, once (remembered in
+`faxanadu_block.txt` next to the game). Rebind it with `BlockKey` and
+`BlockButton` in `config.ini`, as for the Magic button.
+
+**Sugata's flash** is on by default (Mods to turn it off). Sugata, in the Mist,
+blinks for half a second before it flashes, and the band of the screen its
+flash will reach dims faintly. The flash greys only that band and hurts only
+there: step out of it, or hold Block. With the Magic Shield, Block turns the
+flash back on Sugata. In the original it hit you anywhere on the screen.
+
 Optional **Seamless** appears first in Mods, marked **Experimental** and
 disabled by default. It joins connected rooms, advances neighboring actors,
 and adapts the world view to your window with Fit to screen. Mouse wheel
@@ -97,6 +112,7 @@ local play only. See [details](docs/SEAMLESS-WORLD.md).
 | Start      | Enter |
 | Select     | Right Shift |
 | Magic (Up+B) | C (controller: Y) |
+| Block (hold, with a shield) | V (controller: B) |
 
 ## Mantra (Password) Features
 

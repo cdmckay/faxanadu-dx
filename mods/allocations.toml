@@ -92,3 +92,40 @@ finishes the door for whichever of the two features are on. When the first \
 site handles the call the second is skipped; when it does not, the second \
 finds nothing to do either. It acts only when Game_UnlockDoorWithUsableItem \
 is the caller."""
+
+[[feature]]
+package = "faxanadu.enhancement.block"
+source = "fax_block.c"
+hooks = "faxanadu.block."
+rom = []
+# Hooks GameLoop_CountdownItems ($C88F), Player_HandleHitByMagic ($87DC),
+# Player_HandleTouchEnemyMagic ($8999) and IScriptAction_EndScript ($82B4),
+# which no other feature hooks, and Sugata's flash's damage, shared (below).
+# Writes the stack (a return address, as a JSR would) and, when the tutorial
+# speaks, IScriptOrCHRAddr and IScriptOffset. It plays sound $0C with
+# Sound_PlayEffect. The tutorial borrows Guru travel's SAY step and message $C3
+# slot (claimed above, fax_travel.h) through the same read overrides rather
+# than claiming ROM of its own: 55 of the 64 overrides are Guru travel's, and
+# its line would need 48 more. It speaks only as the script that gave the hero
+# his first shield ends, never in a Guru's, and Guru travel writes its own
+# line into the slot again before each one it says.
+
+[[feature]]
+package = "faxanadu.enhancement.sugata-flash"
+source = "fax_sugata.c"
+hooks = "faxanadu.sugata."
+rom = []
+# Hooks SpriteBehavior_FlashScreenHitPlayer ($AB26, $AB36, and $AB44, shared
+# with Block below) and SpriteUpdateHandler_Enemy_Sugata ($929F), which only
+# Sugata runs. Writes PPU_Mask's greyscale bit (clearing what the behavior
+# just set), Temp_00 and the stack, and Sugata's HP and knockback through
+# Player_HitEnemyWithMagic's own code when the Magic Shield reflects.
+
+[[shared_site]]
+addr = 0xAB44   # SpriteBehavior_FlashScreenHitPlayer's damage
+hooks = ["faxanadu.sugata.hit", "faxanadu.block.flash"]
+why = """Sugata's flash's site is first in game.toml. It handles the call when \
+the flash is out of reach or the Magic Shield reflects it, and then Block's \
+is skipped; otherwise it returns 0 and Block's stops the flash if Block is \
+up. Both finish the behavior the same way, through $AB60. With either \
+feature off, the other's site works alone."""
