@@ -14,7 +14,8 @@ temple. Then he dies:
 1. With the feature on, he comes back at Mascon's Guru with the same gold,
    experience and earned title. The rest of death is the game's: full HP and
    MP, the Mattock bit and the Wing Boots gone.
-2. Continuing from his mantra on the title screen still sets gold and
+2. Continuing from his mantra on the title screen (with Save files off, so the
+   title's Continue and the mantra screen are the game's) still sets gold and
    experience from his title, as the original does.
 3. With the feature off in the mod selection, the same death resets them to
    his title's, as the original does.
@@ -116,6 +117,9 @@ def main():
         game.close()
 
         # 2. Continuing from his mantra still sets gold and experience from the title.
+        # The title's Continue and the mantra screen are the game's own with
+        # Save files off.
+        game.set_features({("faxanadu.enhancement.save-files", "save-files"): False})
         game.launch("--password", mantra)
         until("the title", lambda: frame() > 700)
         for _ in range(4):

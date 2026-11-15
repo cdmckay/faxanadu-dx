@@ -1,7 +1,8 @@
 # What each feature takes from the game, so features cannot quietly collide.
 # tools/check_allocations.py fails when:
 #   - a game.toml hook site belongs to no feature (by id prefix),
-#   - two features claim overlapping ROM,
+#   - two features claim overlapping ROM and no [[shared_rom]] says why that is
+#     safe,
 #   - a claimed ROM range is not unused ($FF) in the stock image (with --rom),
 #   - an overridden ROM byte is not its declared stock value (with --rom),
 #   - two features that can be enabled together hook the same address and no
@@ -145,3 +146,94 @@ rom = []
 overrides = [
     { bank = 14, start = 0xB898, stock = [0x04], use = "MAYBE_WEAPON_RANGES: the dagger's Y reach, served as $08" },
 ]
+
+[[feature]]
+package = "faxanadu.enhancement.save-files"
+source = "fax_files.c"
+hooks = "faxanadu.files."
+# Supplied through read overrides; the ROM image itself is never changed.
+rom = [
+    { bank = 12, start = 0xAE10, end = 0xAE18, use = "the Guru's choice (menu or question) and its own SAY step" },
+    { bank = 13, start = 0xB45B, end = 0xB48B, use = "message $C3, the Guru's line slot, shared with Guru travel" },
+]
+overrides = [
+    { bank = 12, start = 0x8631, stock = [0x10], use = "IScriptAction_ShowBuySellMenu's LDA #$10: the menu's message, served as $C3 for the Guru's menu only" },
+]
+# Hooks StartScreen_CheckHandleInput ($9F44), PasswordScreen_Show ($909D),
+# the start screen's JMP Player_Spawn ($FC95), Player_Spawn after
+# Game_SpawnInTemple ($DB20) and TextBox_ClearPasswordSize after it zeroes the
+# line scroll ($F439), which no other feature hooks, and
+# IScripts_InvokeNextAction ($826E) with Guru travel.
+# The operand is $C3 only from the Guru's menu step to the end of that frame
+# (the menu reads it at once), then the stock $10 again, so the shops' menu
+# never sees it. Writes TempleSpawnPoint (the saved Guru), the joypad's
+# changed mask on the title screen, DAT_0687 (Start or Continue),
+# IScriptOrCHRAddr and IScriptOffset, and the progress Password_Load would
+# write when continuing.
+
+[[shared_rom]]
+bank = 13
+start = 0xB45B
+end = 0xB48B
+packages = ["faxanadu.enhancement.guru-travel", "faxanadu.enhancement.save-files"]
+why = """Message $C3, one line slot for the Guru's lines. Each feature writes \
+its line there just before the step that shows it, and the two never show a \
+line at once: Save files' choice comes first and starts Guru travel's part \
+through fax_travel_begin. After a save state loads, Save files puts its line \
+back in state_loaded, after Guru travel's record has restored its own."""
+
+[[shared_site]]
+addr = 0x826E   # IScripts_InvokeNextAction
+hooks = ["faxanadu.files.next-action", "faxanadu.travel.next-action"]
+why = """Neither handles the call; each only steers the interpreter by writing \
+IScriptOrCHRAddr. Neither redirects to an address the other acts on: with a \
+file in play Guru travel leaves the script's ends to Save files \
+(fax_files_guru_choice), Save files acts on the Gurus' own actions and its \
+own steps, and it undoes SET_SPAWN_POINT's raise at the next action rather \
+than skipping it, so Guru travel still meets the Guru there. So the two may \
+run in either order."""
+
+[[feature]]
+package = "faxanadu.enhancement.block"
+source = "fax_block.c"
+hooks = "faxanadu.block."
+rom = []
+# Hooks GameLoop_CountdownItems ($C88F), Player_HandleHitByMagic ($87DC),
+# Player_HandleTouchEnemyMagic ($8999) and IScriptAction_EndScript ($82B4),
+# which no other feature hooks, and Sugata's flash's damage, shared (below).
+# Writes the stack (a return address, as a JSR would) and, when the tutorial
+# speaks, IScriptOrCHRAddr and IScriptOffset. It plays sound $0C with
+# Sound_PlayEffect. Its host input callback clears the d-pad, A and B while
+# Block is up in play; no other feature has an input callback. The tutorial
+# borrows Guru travel's SAY step and message $C3 slot (claimed above,
+# fax_travel.h) through the same read overrides rather than claiming ROM of its
+# own: 55 of the 64 overrides are Guru travel's, and its line would need 48
+# more. It speaks only as the script that gave the hero his first shield-slot
+# item ends (a shop's, or the Battle Helmet's pickup, ISCRIPT_GOT_BATTLE_HELMET
+# at $A698), never in a Guru's, and Guru travel writes its own line into the
+# slot again before each one it says.
+
+[[feature]]
+package = "faxanadu.enhancement.sugata-flash"
+source = "fax_sugata.c"
+hooks = "faxanadu.sugata."
+rom = []
+# Hooks SpriteBehavior_FlashScreenHitPlayer ($AB26, $AB36, and $AB44, shared
+# with Block below) and SpriteUpdateHandler_Enemy_Sugata ($929F), which only
+# Sugata runs. Writes PPU_Mask's greyscale bit (clearing what the behavior
+# just set), Temp_00 and the stack, and Sugata's HP and knockback through
+# Player_HitEnemyWithMagic's own code when the Magic Shield reflects. Under
+# Ointment it writes what the flash itself writes, Player_InvincibilityPhase
+# and Player_StatusFlag's knockback bit, and plays sound 4. It draws the band
+# over the presented picture, after Seamless composes it and before the zone
+# banner.
+
+[[shared_site]]
+addr = 0xAB44   # SpriteBehavior_FlashScreenHitPlayer's damage
+hooks = ["faxanadu.sugata.hit", "faxanadu.block.flash"]
+why = """Sugata's flash's site is first in game.toml. It handles the call when \
+the flash is out of reach, the Magic Shield reflects it, or Ointment keeps \
+the HP (only with Block down), and then Block's is skipped; otherwise it \
+returns 0 and Block's stops the flash if Block is up. Both finish the \
+behavior the same way, through $AB60. With either feature off, the other's \
+site works alone."""

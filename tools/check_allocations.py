@@ -22,18 +22,26 @@ def rom_claims(features):
     return claims
 
 
-def rom_errors(claims, prg=None):
+def shared(shared_rom, pa, a, pb, b):
+    """A [[shared_rom]] entry covers both claims and names both features."""
+    return any(sr["bank"] == a["bank"] == b["bank"] and {pa, pb} <= set(sr["packages"]) and
+               sr["start"] <= min(a["start"], b["start"]) and max(a["end"], b["end"]) <= sr["end"]
+               for sr in shared_rom)
+
+
+def rom_errors(claims, prg=None, shared_rom=()):
     """Overrides that claim no byte or list a value that is not one, claims
-    that overlap, whatever their kind, and with the stock PRG image, unused
-    claims that are not $FF and overrides whose bytes are not their stock
-    values."""
+    that overlap, whatever their kind, unless a [[shared_rom]] says why two
+    features may share them, and with the stock PRG image, unused claims that
+    are not $FF and overrides whose bytes are not their stock values."""
     errors = []
     for package, r in claims:
         if r["stock"] is not None and (not r["stock"] or any(not 0 <= v <= 0xFF for v in r["stock"])):
             errors.append(f"{package}: the override at bank {r['bank']} ${r['start']:04X} needs one stock byte "
                           f"(0-255) per byte it claims, not {r['stock']}")
     for (pa, a), (pb, b) in combinations(claims, 2):
-        if a["bank"] == b["bank"] and a["start"] < b["end"] and b["start"] < a["end"]:
+        if a["bank"] == b["bank"] and a["start"] < b["end"] and b["start"] < a["end"] and \
+                not shared(shared_rom, pa, a, pb, b):
             errors.append(f"bank {a['bank']} ${a['start']:04X}-${a['end'] - 1:04X} ({pa}: {a['use']}) overlaps "
                           f"${b['start']:04X}-${b['end'] - 1:04X} ({pb}: {b['use']})")
     if prg is None:
@@ -103,7 +111,7 @@ def main():
         image = args.rom.read_bytes()
         prg = image[16 + (512 if image[6] & 4 else 0):]
     claims = rom_claims(features)
-    errors += rom_errors(claims, prg)
+    errors += rom_errors(claims, prg, allocations.get("shared_rom", []))
 
     for e in errors:
         print("allocation:", e, file=sys.stderr)
