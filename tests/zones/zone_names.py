@@ -26,6 +26,7 @@ TEXTBOX_CLOSED, MESSAGE_ID, TEXTBOX_PAUSED = 0x20C, 0x213, 0x215
 AREA_SAVED_AREA, AREA_SAVED_SCREEN, SCREEN_SAVED_PALETTE, PLAYER_SAVED_POS = 0x3D5, 0x3D6, 0x3D7, 0x3D8
 HP, AREA_REGION, PLAYER_IS_DEAD, TEMPLE_SPAWN_POINT = 0x431, 0x435, 0x438, 0x439
 SELECTED_ITEM, KEY_J = 0x3C1, 0x07                                 # Game_OpenDoorWithJKey's check
+SPRITE_ENTITIES = 0x2CC                                             # CurrentSprites_Entities, 8 slots
 BUILDINGS, TOWNS = 4, 3
 TEMPLE_SCREEN = {1: 0x0B, 5: 0x2B}                                  # DEST_SCREEN_FOR_TEMPLE_SPAWN: Apolune, Conflate
 APOLUNE, CONFLATE = 1, 5
@@ -144,9 +145,11 @@ def main():
         walk_out()
         settled_in(0, 8)
         assert zone()["banners"] == 1, zone()
-        # Player_CheckHandleEnterDoor reads Up only on the frame it goes down,
-        # and not while the screen scrolls or he is off the door's block (this
-        # screen's Monodron can knock him off). Press until the key's line shows.
+        # This screen's Monodron can knock him off the door, or kill him while
+        # the script lags: clear it. Player_CheckHandleEnterDoor reads Up only
+        # on the frame it goes down, and not while the screen scrolls, so press
+        # until the key's line shows.
+        game.poke({SPRITE_ENTITIES + slot: 0xFF for slot in range(8)})
         for _ in range(5):
             walk_to(186, 196)                              # the door, column 12
             act("up", 4, 10)
