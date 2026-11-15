@@ -21,7 +21,7 @@ Sugata's warning, edited for the hero's place and shield:
    ends the band.
 5. Holding Block without a shield: 10 HP. Under Ointment, in the band: no HP,
    but the knockback.
-6. With Sugata's flash off, the original: no warning, 10 HP, Ointment or not.
+6. With the remaster off, the original: no warning, 10 HP, Ointment or not.
 
 Pictures of the band are taken by the game itself (TCP sugata_capture) on the
 frame it shows, since a flash lasts a few frames.
@@ -39,7 +39,7 @@ MIST, SCREEN_30, PALETTE_MIST, REGION_MIST = 2, 30, 0x0A, 2
 SUGATA, DEATH = 0x18, 0x14
 REACH, WARNING, REFLECTED, FLASH_DAMAGE = 40, 30, 12, 10
 DURATION_OINTMENT = 0x427
-PACKAGE, FEATURE = "faxanadu.enhancement.sugata-flash", "sugata-flash"
+PACKAGE, FEATURE = "faxanadu.remastered", "remastered"          # the one switch: off is the original game
 
 
 def main():
@@ -208,7 +208,7 @@ def main():
               f"(x {x} to {g.ram(POS_X)})")
         g.close()
 
-        # 6. Off: the original flash, without a warning, through Ointment.
+        # 6. The remaster off: the original flash, without a warning, through Ointment.
         (g.out / "game" / "mods" / "state.toml").write_text(
             f'format_version = 1\n\n[[feature]]\npackage_id = "{PACKAGE}"\nid = "{FEATURE}"\nenabled = false\n')
         g.launch()
@@ -218,14 +218,14 @@ def main():
         hp = g.hp()
         g.until("the flash", lambda: hp - g.hp() == FLASH_DAMAGE, 400)
         assert state()["warnings"] == state()["flashes"] == 0
-        print("ok: turned off, Sugata flashes without warning and takes 10 HP, as the original")
+        print("ok: with the remaster off, Sugata flashes without warning and takes 10 HP, as the original")
         target = g.out / "off-ointment.cycstate"
         fixture(arrived, target, {DURATION_OINTMENT: 0x40})
         g.load(target)
         hp = g.hp()
         g.until("the flash", lambda: hp - g.hp() == FLASH_DAMAGE, 400)
         assert g.ram(DURATION_OINTMENT) < 0x80, "the Ointment still lasted"
-        print("ok: turned off, the flash takes 10 HP through Ointment, as the original")
+        print("ok: with the remaster off, the flash takes 10 HP through Ointment, as the original")
         print("screenshots:", ", ".join(p.name for p in g.shots))
     except BaseException:
         if g.running():

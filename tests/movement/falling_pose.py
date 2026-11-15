@@ -6,11 +6,11 @@ A hidden window over TCP gets the hero to Trunk (see play.py), runs uncapped
 and waits on the game's own state, on a free port. The frame-by-frame checks
 run the same build headless from save states made there, with RAM fixtures
 for the hero's place and kit, and compare his sprites (the shadow OAM) with
-the feature on and off:
+the remaster on and off (off is the original game):
 
 1. In the window: walking off Trunk's ledge, the body and gear pose routines
    answer the jump pose all the way down (falling_pose_state counts them);
-   with the feature off in the mod selection, never.
+   with the remaster off in the mod selection, never.
 2. Frame by frame: on every frame he falls without jumping (and is not
    attacking, climbing or on the frame he lands), his sprites are a jump's,
    for his facing; on every other frame they are the original's. Walking off
@@ -28,7 +28,6 @@ import sys
 from play import (ATTACKING, CAN_CLIMB, CLIMBING, DURATION_WING_BOOTS, FALLING, FLAGS, HP, IFRAMES, JUMPING,
                   KNOCKBACK, LADDER_SCREEN, LEDGE_SCREEN, RIGHT, STATUS, X, Y, Game, fixture, hero_sprites, no_actors)
 
-FEATURE = "falling-pose"
 
 
 def climbing(ram):
@@ -64,19 +63,19 @@ def main():
         print(f"ok: in the window, the fall off the ledge drew {state['body']} body and {state['gear']} weapon "
               "and shield poses as the jump pose")
         game.close()
-        game.select(off=[FEATURE])
+        game.select(original=True)
         game.launch()
-        assert not game.tcp("falling_pose_state")["enabled"], "the feature is off"
+        assert not game.tcp("falling_pose_state")["enabled"], "the remaster is off"
         game.tcp("load_state", path=str(ledge))
         game.tcp("action", name="right", frames=60)
         game.until("the floor", lambda: game.ram(Y) == 160 and not game.ram(FLAGS) & FALLING, 600)
         assert game.tcp("falling_pose_state")["body"] == 0
-        print("ok: turned off, the pose routines are the game's")
+        print("ok: with the remaster off, the pose routines are the game's")
         game.close()
         game.select()
 
         # 2. Frame by frame, headless.
-        on, off = game.mods("mods-on"), game.mods("mods-off", off=[FEATURE])
+        on, off = game.mods("mods-on"), game.mods("mods-off", original=True)
         walk = [(0, "-"), (5, "RIGHT")]
         plain = game.headless(ledge, walk, 60, off)
         W = next(i for i, r in enumerate(plain) if r[Y] > 80)      # the first frame off the ledge
