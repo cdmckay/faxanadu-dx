@@ -8,6 +8,10 @@
 #include "fax_world.h"
 #include "fax_travel.h"
 #include "fax_death.h"
+#include "fax_pendant.h"
+#include "fax_magic.h"
+#include "fax_banner.h"
+#include "fax_keys.h"
 #include "fax_text_speed.h"
 #ifdef CYC_WITH_SDL
 #include "cyc_tcp.h"
@@ -16,6 +20,9 @@
 #include <string.h>
 #include <time.h>
 #include <stdlib.h>
+#ifdef CYC_WITH_RECOMP_UI
+#include "recomp_runtime_ui.h"
+#endif
 
 static char password[25], saved[25];
 static bool password_cli, injected, history_started;
@@ -169,6 +176,7 @@ static void power_on(void *ctx) {
     (void)ctx; frame = 0; injected = false;
     fax_world_reset();
     fax_travel_step();
+    fax_banner_reset();
     if (compile_path[0]) {
         int n = chr_override_compile_dir(compile_path);
         exit(n < 0 ? 2 : 0);
@@ -210,6 +218,8 @@ static void frame_end(void *ctx) {
     (void)ctx; ++frame;
     fax_world_step();
     fax_travel_step();
+    fax_magic_frame_end();
+    fax_banner_step();
     if (tiles_enabled || tile_dump) chr_override_frame_end();
     if (!cyc_host_saves_enabled() || frame % 900) return;
     if (!(cyc_mod_peek(0x042C) | cyc_mod_peek(0x042D) | cyc_mod_peek(0x0437) | cyc_mod_peek(0x0439))) return;
@@ -251,16 +261,36 @@ static void tcp_setup(void *ctx) {
     fax_world_tcp_setup();
     fax_travel_tcp_setup();
     fax_death_tcp_setup();
+    fax_pendant_tcp_setup();
+    fax_magic_tcp_setup();
+    fax_banner_tcp_setup();
+    fax_keys_tcp_setup();
     fax_text_speed_tcp_setup();
 }
 #endif
 static const uint32_t *present(void *ctx,int *w,int *h) {
-    (void)ctx;return fax_world_present(w,h,cyc_frame_argb());
+    (void)ctx;return fax_banner_present(fax_world_present(w,h,cyc_frame_argb()),w,h);
 }
 static void event(void *ctx,const void *e,int player) {
     (void)ctx;(void)player;
     fax_world_event(e);
+    fax_magic_event(e);
 }
+static void load_setting(void *ctx, const char *key, const char *value) {
+    (void)ctx;
+    fax_magic_load_setting(key, value);
+}
+static void save_settings(void *ctx, FILE *f) { (void)ctx; fax_magic_save_settings(f); }
+#ifdef CYC_WITH_RECOMP_UI
+/* The runtime menu's Controls section: the Magic button's bindings, an
+ * information row like the host's own shortcuts. */
+static RecompRuntimeUiItem menu_rows[] = {
+    { "faxanadu.magic", "Controls", "Magic", "Casts like Up+B. Rebind it in config.ini [Game].",
+      RECOMP_RUNTIME_UI_ACTION, 0, 0, 0, NULL, 0, NULL },
+};
+static int menu_row_enabled(void *ctx, const RecompRuntimeUiItem *it) { (void)ctx; (void)it; return 0; }
+static const RecompRuntimeUiCallbacks menu_callbacks = { .is_enabled = menu_row_enabled };
+#endif
 static void state_loaded(void *ctx) {(void)ctx;fax_world_loaded();}
 const CycHostExtras *cyc_host_extras(void) {
     static const CycHostOption options[] = {
@@ -272,8 +302,16 @@ const CycHostExtras *cyc_host_extras(void) {
         { "--world-view", true, "World camera: off, seamless or atlas" },
         { "--world-size", true, "Fixed development viewport WxH; omit for adaptive Fit" },
     };
+#ifdef CYC_WITH_RECOMP_UI
+    menu_rows[0].label = fax_magic_controls_label();
+#endif
     static const CycHostExtras extras = {
         .present=present,.event=event,
+        .load_setting = load_setting, .save_settings = save_settings,
+#ifdef CYC_WITH_RECOMP_UI
+        .menu_items = menu_rows, .menu_item_count = sizeof(menu_rows) / sizeof(menu_rows[0]),
+        .menu_callbacks = &menu_callbacks,
+#endif
         .state_loaded=state_loaded,
         .power_on = power_on, .frame_begin = frame_begin, .frame_end = frame_end,
         .options = options, .option_count = sizeof(options) / sizeof(options[0]), .option = option,

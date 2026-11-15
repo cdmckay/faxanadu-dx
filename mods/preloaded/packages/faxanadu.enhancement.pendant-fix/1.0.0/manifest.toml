@@ -1,0 +1,24 @@
+format_version = 1
+id = "faxanadu.enhancement.pendant-fix"
+version = "1.0.0"
+name = "Pendant fix"
+author = "faxanadu-remaster"
+description = "The Pendant raises weapon damage by a quarter, as it was meant to. In the original a reversed check gave the bonus to everyone without the Pendant, and finding it took the bonus away."
+license = "MIT"
+resolver = "declarative"
+save_compatibility = "shared"
+
+[[target]]
+game_id = "faxanadu-usa"
+rom_crc32 = "57dd23d1"
+
+[[feature]]
+id = "pendant-fix"
+name = "Pendant fix"
+description = "Weapons hit a quarter harder only once you have the Pendant: the base strength until you find it, then exactly the original's damage. In the original the Pendant took that bonus away. The Glove still adds its own."
+group = "Combat"
+default_enabled = true
+
+[[plugin]]
+feature = "pendant-fix"
+id = "faxanadu.pendant-fix"
