@@ -50,14 +50,19 @@ and data tables after it shifted). Not supported: the build rejects it.
 | Address | Name | Notes |
 |---|---|---|
 | `$0019` | `Joy1_ChangedButtonMask` | Buttons newly pressed this frame. A=`$80`, B=`$40`, Select=`$20`, Start=`$10`, Up=`$08` |
+| `$001A` | `InterruptCounter` | Counts every NMI, lag frames included. Read it in the same `read_ram` as other state to time things to the frame over TCP |
 | `$0024` | `Area_CurrentArea` | 4 = inside a building |
 | `$0063` | `Area_CurrentScreen` | |
 | `$009E`, `$00A1` | `Player_PosX_Block`, `Player_PosY` | |
 | `$00DB-$00DD` | `IScriptOrCHRAddr`, `IScriptOffset` | The interpreter reads the next action at addr + offset |
 | `$0100` | `CurrentROMBank` | 14 in the main loop. The stack shares this page |
+| `$0127` | `SoundEffect_State_Counter` | The playing sound effect's tick; the typing sound runs 1-4 |
 | `$0208-$020B` | `TextBox_X`, `TextBox_Y`, `TextBox_Width`, `TextBox_Height` | The box last opened or closed, in tiles (see *The text box*) |
+| `$0212` | `TextBox_PlayTextSound` | The typing sound plays for a character if set |
 | `$0213` | `MessageID` | 0 once a message has typed out; otherwise stale after a conversation |
+| `$0214` | `Message_ProcessedLength` | Bytes of the message read, from an offset, not 0. Wraps with the address |
 | `$0215` | `TextBox_MessagePaused` | Nonzero while a `$FC` pause waits for A |
+| `$021D` | `TextBox_Timer` | Characters type when it is a multiple of 4. `Messages_Load` zeroes it |
 | `$0390`, `$0392-$0394` | `Experience`, `Gold` | Gold is 24-bit little-endian |
 | `$039A` | `Player_MP` | |
 | `$03C7` | `IScript_PortraitID` | The portrait showing, `$FF` for none (see *Portraits*) |
@@ -234,6 +239,39 @@ faxanatools' `messages.py` decodes and encodes them; `fax_travel.c`'s
   (`PALETTE_INDEX_TO_UI_BG_ATTRIBUTE_INDEX`, bank 11). The frame's colors
   differ from place to place for that reason.
 
+### How text types (bank 15)
+
+- Every message loop (`IScriptAction_ShowMessage`, `..._ShowUnskippableMessage`,
+  the questions, shops, `IScripts_ShowFinalMessage`) runs once a frame:
+  `IScripts_UpdatePortraitAnimation` (which waits for the frame), then
+  `TextBox_ShowNextChar` (`$F466`), then a `TextBox_CheckShouldContinue*`.
+- `TextBox_ShowNextChar` increments `TextBox_Timer`, sets
+  `TextBox_PlayTextSound` to 1 and calls `TextBox_ShowNextChar_IfReady`
+  (`$F491`), which nothing else calls. That returns unless a message is
+  loaded, it isn't paused and the timer is a multiple of 4; then it reads one
+  message byte and draws it. So the game's pace is one byte every 4 frames,
+  `$FC` and the end each taking a byte's turn. Nothing else reads the timer.
+- Each character queues 19 bytes to the PPU buffer: one 16-byte glyph tile of
+  CHR RAM, at `$1400 + line * $100 + column * 16`. Writers wait for buffer
+  space (`PPUBuffer_WaitForCapacity`) rather than overflow it. One character
+  a frame keeps up: Hold A to speed up text types the Guru's greeting at
+  exactly a byte a frame, with no stalls.
+- The continue checks read only `Joy1_ChangedButtonMask`, which the NMI sets
+  to `held & ~previous`. A on a ▼ or a finished message goes on, and B
+  dismisses a skippable one, only on the frame the button goes down. A held
+  button never acts again. Shop menus (`IScripts_WaitForMenuInput`) and the
+  mantra's ▲ work the same way.
+- The typing sound (sound effect 1, noise) lasts 4 ticks: 2 of a soft hiss,
+  then 2 of a sharp clack (chipx86 traces the clack to an out-of-bounds table
+  read). At the game's pace each character starts it just as the last one
+  ends. Started every frame, it never gets past the hiss.
+- After `Messages_Load` sets `MessageID`, the first `TextBox_ShowNextChar`
+  comes about 12 frames later, while the box opens. Those are lag frames, so
+  the pad isn't read either. Time typing from the first character, not from
+  `MessageID`.
+- The mantra types a character a frame through its own
+  `PasswordScreen_ShowNextChar`, not `TextBox_ShowNextChar`.
+
 ## Temples and spawning (bank 15)
 
 | Temple | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
@@ -309,6 +347,10 @@ What a feature can rely on, and the traps:
   steer the branch by changing them (and the register they came from) with
   `cyc_mod_set_regs`, then returning 0. Forgiving jumps does this twice, so
   the game's own code does the rest.
+- Each TCP command is served on a frame boundary, so a polling loop sees the
+  game a few frames apart. To time something to the frame over TCP, read
+  `InterruptCounter` with the state in one `read_ram`. A save state's frame,
+  which a headless run from it continues, is the `uint32` at offset 28.
 - TCP input lands at no particular frame. For anything that depends on the
   frame a button goes down, run the same build headless from a save state:
   `--load-state S --input FILE --frames N --frame-log LOG --mods-root DIR`.
@@ -568,9 +610,11 @@ walk's 7, which changes the sprite rotation the next frame.
   `Joy1_ButtonMask`, and sets `Joy1_ChangedButtonMask` to the buttons held now
   and not before. Each pass of the main loop starts with `WaitForNextFrame`,
   which waits for a fresh NMI, so a newly pressed button is seen by one pass.
-  On a lag frame, a read the loop never waited for is replaced unseen, and a
-  button new in it is lost. A cycle-host frame ends at the start of VBlank
-  (scanline 241, dot 1), so each frame begins with that read.
+  On a lag frame, an NMI the loop did not wait for
+  (`Game_InterruptsHandledLatch` still set) skips the read altogether: the
+  masks keep their values, and a button pressed and let go within lag frames
+  is never seen. A cycle-host frame ends at the start of VBlank (scanline
+  241, dot 1), so each frame begins with that read, when there is one.
 - **Who reads the masks, in `Game_MainLoop`'s order:**
   - `GameLoop_UpdatePlayer` (`$E0CA`): `Player_CheckHandleAttack` swings the
     sword on a new B, unless climbing. `Player_CheckHandleEnterDoor` goes
@@ -960,3 +1004,12 @@ addresses, and `tools/check_allocations.py` enforces it.
   running, in knockback, while climbing, or across a change of screen or
   area. It counts updates at `Player_CheckHandleVertMovement`'s entry, not
   frames, and keeps a 7-byte save-state record.
+- **Hold A to speed up text** (`fax_text_speed.c`). While A is held (and not
+  on the frame it goes down), a hook at `TextBox_ShowNextChar_IfReady` rounds
+  `TextBox_Timer` up to a multiple of 4, so a character types every frame,
+  and clears `TextBox_PlayTextSound` on all but every 4th frame, so the
+  typing sound keeps its rhythm. Page breaks and questions still wait for a
+  new press. It writes nothing else and keeps no state. It reads only the A
+  bit of the joypad masks, which the Magic button never changes (it ORs in
+  Up and B, for `Player_CastMagic` alone, outside any message loop), and
+  writes neither mask.
