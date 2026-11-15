@@ -171,6 +171,13 @@ What a feature can rely on, and the traps:
   stack first to return somewhere else. That's how Guru travel enters the
   respawn path. When a site handles, later sites at the same address are
   skipped that time, so declare shared addresses in `mods/allocations.toml`.
+- A hook site can be **any instruction**, not only a routine's entry. Each
+  instruction is its own label in the generated code, so a site where a
+  branch and a fall-through meet fires on both paths (the Pendant fix's
+  does). Return 0 from such a site: nonzero would return from the routine.
+- `cyc_mod_peek` reads ROM as the bank is mapped now, **without** read
+  overrides. A feature that reads a table another feature serves through an
+  override sees the stock byte.
 - `cyc_mod_call_commit` runs a routine that only touches memory, at once,
   and keeps its effects.
 - Mods activate **before** the cart loads. Set up in the extras' `power_on`,
@@ -248,6 +255,71 @@ and Y, and RTSes into the routine. So at the entry of a far-called routine:
 row (5) holds →, ←, DEL and END at columns 0-3, and Up from row 0 wraps to it.
 A on END (row 5, column 3) checks the mantra and continues.
 
+## Weapon damage (bank 14)
+
+The sprite loop calls `Player_HitSpriteWithWeapon` (`$8804`) for each live
+sprite every frame, except while the sprite's hit counter counts down. It
+lands a hit while a swing is on animation frame 1 or 2, on a visible enemy in
+reach (`Sprites_IsSpriteOutOfWeaponRange`). A hit builds its damage in
+`Temp_00` (`$00`):
+
+| Address | Code | Does |
+|---|---|---|
+| `$886C` | `LDY Player_CurWeapon`, `LDA WEAPON_STRENGTHS,Y`, `STA Temp_00` | The weapon's strength, from `$B7A5` |
+| `$8874` | `LDA SpecialItems`, `AND #$02`, `BNE @_checkGlove` | **The Pendant Bug**: the branch skips the bonus *with* the Pendant |
+| `$887B` | `LDA Temp_00`, `LSR`, `LSR`, `CLC`, `ADC Temp_00`, `STA Temp_00` | +25%, rounded down: without the Pendant |
+| `$8884` | `@_checkGlove`: `LDA DurationGlove`, `BMI @_updateSpriteHP` | Both paths meet here |
+| `$8889` | `LDA Temp_00`, `CLC`, `ADC WEAPON_TO_GLOVE_STRENGTH,Y`, `STA Temp_00` | The Glove's bonus, from `$88C7`, while it runs |
+| `$8891` | `LDA CurrentSprites_HP,X`, `SEC`, `SBC Temp_00`, `STA`, `BCS @_return` | A borrow kills the enemy. Damage equal to its HP leaves it alive at 0 |
+
+So a hit does the weapon's base strength, plus a quarter of it, plus the
+Glove's bonus while the Glove runs:
+
+| Weapon | Base | Stock, no Pendant | Stock, Pendant | Glove adds |
+|---|---|---|---|---|
+| Hand Dagger | 4 | 5 | 4 | 2 |
+| Long Sword | 8 | 10 | 8 | 4 |
+| Giant Blade | 12 | 15 | 12 | 8 |
+| Dragon Slayer | 16 | 20 | 16 | 10 |
+
+The designers meant the quarter for the Pendant. With the **Pendant fix**,
+a hit does the base without it and the stock "no Pendant" damage with it,
+and the Glove adds its bonus after either.
+
+- From the branch to `@_checkGlove` only A, the flags and `Temp_00` change,
+  and only `Temp_00` matters after: `LDA DurationGlove` reloads A and N/Z, C
+  is set (`CLC`, `SEC`) before anything reads it, and nothing reads V. Y is
+  still `Player_CurWeapon`, and X the sprite being hit.
+- `WEAPON_STRENGTHS` is read only here. Magic damage is another routine
+  (`Player_HitEnemyWithMagic`), where the Magical Rod adds 50%.
+
+| Address | Name | Notes |
+|---|---|---|
+| `$00A4` | `Player_Flags` | Bit 7 set while a swing lasts. B (a new press) starts one |
+| `$00AE` | `Player_AttackPhaseAnimFrame` | 0, 1, 2, and stays 2 after the swing. Test `Player_Flags` instead |
+| `$00BA`, `$00C2` | `CurrentSprites_XPos_Full`, `CurrentSprites_YPos` | 8 sprite slots each, like the rows below |
+| `$02CC` | `CurrentSprites_Entities` | `$FF` for an empty slot |
+| `$0344` | `CurrentSprites_HP` | Set from `SPRITE_ENTITIES_HP` (`$B5A9`, by entity) when the sprite loads |
+| `$034C` | `CurrentSprites_HitCounter` | 8 on a hit; no new hit until it counts down |
+| `$03BD`, `$03C8` | `SelectedWeapon`, `Player_CurWeapon` | 0 Hand Dagger to 3 Dragon Slayer. `Player_CurWeapon` is `$FF` in buildings |
+| `$0428` | `DurationGlove` | `$FF` when not running |
+| `$042C` | `SpecialItems` | Bits: `$01` Black Onyx, `$02` Pendant, `$04` Magical Rod, `$08` Elixir, `$10` Demon's Ring, `$20` Ring of Dworf, `$40` Ring of Ruby, `$80` Ring of Elf |
+
+Ripasheiku drops the Pendant (`SpriteBehavior_PendantDroppedFromRipasheiku`,
+which removes the drop if the bit is already set).
+
+**Eolis, for tests.** A new game starts on Eolis (area 0) screen 0, outside
+the gate, with the intro's trigger (`SPRITE_TRIGGER_INTRO`, `$4F`) in sprite
+slot 7: walking right sets it off. The gate is a door (`EOLIS_DOOR_LOCATIONS`,
+block `$9C`); Up from x=195 goes into the town, screen 1, at x=144. The
+screens run 7-6-5-4-3-2-1-8 from left to right (`EOLIS_SCROLL_DATA`, bank 3;
+screen 0 has no neighbours). Screens 4 and 5 each have two Zozura (`$47`,
+9 HP) crawling right along the ground, and screen 8 a Monodron (`$2A`,
+10 HP). Walking left from the town, the hero comes onto screen 4 at x=240.
+The stock Hand Dagger passes over a Zozura; the swords hit one about 30
+pixels left of the hero (his x minus its x). A Zozura that reaches a hero at
+the screen's right edge knocks him onto the next screen.
+
 ## Input and casting
 
 | Address | Name | Notes |
@@ -293,9 +365,9 @@ A on END (row 5, column 3) checks the mantra and continues.
   casts nothing. Next to an NPC, a new Up alone talks.
 - `EndGame_MainLoop` calls `Player_CastMagic` too (`JSR` at `$DC0B`), with the
   buttons `EndGame_MovePlayerTowardKing` plays.
-- The opening: a new game's hero stops at x=53 on the first screen for a long
-  monologue (A pages it), then walks on. The gate of Eolis is a door at
-  x=188-199 there (area 0, screen 0; Up leads to screen 1).
+- On Eolis screen 0 (see *Eolis, for tests*), the intro's trigger stops the
+  hero at x=53 for a long monologue that A pages through. Up goes through the
+  gate from anywhere in x=188-199.
 
 ## Features and what they use
 
@@ -313,6 +385,11 @@ addresses, and `tools/check_allocations.py` enforces it.
   gold, experience and earned title he had. It hooks
   `Player_SetInitialExpAndGold` and returns at once when the far call's resume
   address is `Player_HandleDeath`'s, and leaves the start screen's call alone.
+  It keeps no state.
+- **Pendant fix** (`fax_pendant.c`). Weapons hit a quarter harder only with
+  the Pendant. It hooks `@_checkGlove` (`$8884`, bank 14), where both sides
+  of the reversed branch meet, and sets `Temp_00` from
+  `WEAPON_STRENGTHS[Y]` and the Pendant bit before the Glove adds its bonus.
   It keeps no state.
 - **Magic button** (`fax_magic.c`). A bindable button (C, or Y on a
   controller) casts the selected spell. On a press, it ORs Up held and B new

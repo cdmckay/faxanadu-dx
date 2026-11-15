@@ -49,6 +49,13 @@ Guru brings you back with all your gold and experience, instead of your
 title's starting amounts. The rest of death is as before: full HP and MP at
 your furthest temple, and the timed items are gone.
 
+**Pendant fix** is on by default (Mods to turn it off). The Pendant was meant
+to make your weapon hit a quarter harder, but a reversed check in the
+original gave that bonus to everyone without it, and finding the Pendant took
+it away. Now your weapon does its base damage until you find the Pendant, and
+the original's full damage once you have it. The Glove adds its bonus as
+before.
+
 **Magic button** is on by default (Mods to turn it off). C on the keyboard, or
 Y on a controller, casts your selected spell, as Up+B does, but without going
 through a door, talking to anyone or swinging your sword. Up+B still works.
