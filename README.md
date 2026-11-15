@@ -1,16 +1,25 @@
-# FaxanaduRecomp
+# Faxanadu Remaster
 
-> _This recompilation is a **byproduct of developing
-> [nesrecomp](https://github.com/mstan/nesrecomp)** — the games are the proving ground, the framework is the goal.
-> **These are in-development previews, not finished ports — expect rough
-> edges**, and depth will keep landing over months, not days. My time for any
-> one title is limited, so I ask for your patience. Contributions are welcome —
-> testing, issues, and PRs to the game or framework all help and will
-> accelerate this game's polish. More on the why at:
-> [Recomp + AI: 5 Months Later »](https://1379.tech/recomp-ai-5-months-later/)_
+A remaster of Faxanadu (NES) that keeps as much of the real game as possible,
+and fixes what has aged.
 
-Static recompilation of Faxanadu (NES) for native PC.
-Built with the [NESRecomp](https://github.com/mstan/nesrecomp) framework.
+## Goals
+
+- **The real game underneath.** Faxanadu's own code runs as native code,
+  recompiled from your ROM, so the world, music, story and feel are the
+  original's. Features steer the game from outside; they don't rewrite it.
+- **Quality of life.** Conveniences the 1987 game lacks, like travelling
+  between Gurus and saving without writing down mantras. Where the game can
+  offer them itself, it does, in its own text box and voice.
+- **Combat, tuned with care.** Combat may be adjusted to be a bit more fun,
+  without losing what makes Faxanadu feel like Faxanadu.
+- **The original, one switch away.** Each change is a mod you can turn off in
+  the launcher.
+
+Built on Matthew Stanley's [FaxanaduRecomp](https://github.com/mstan/FaxanaduRecomp)
+and his [NESRecomp](https://github.com/mstan/nesrecomp) static recompiler.
+How the game works, as far as we've learned it, is in
+[docs/GAME_INTERNALS.md](docs/GAME_INTERNALS.md).
 
 > **Status: Playable.** The game runs from title screen through credits. No outstanding known bugs. Not 100% playtested — minor edge cases may exist, but normal gameplay is fully functional.
 
