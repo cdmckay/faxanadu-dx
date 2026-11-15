@@ -50,13 +50,18 @@ and data tables after it shifted). Not supported: the build rejects it.
 | Address | Name | Notes |
 |---|---|---|
 | `$0019` | `Joy1_ChangedButtonMask` | Buttons newly pressed this frame. A=`$80`, B=`$40`, Select=`$20`, Start=`$10`, Up=`$08` |
+| `$001A` | `InterruptCounter` | Counts every NMI, lag frames included. Read it in the same `read_ram` as other state to time things to the frame over TCP |
 | `$0024` | `Area_CurrentArea` | 4 = inside a building |
 | `$0063` | `Area_CurrentScreen` | |
 | `$009E`, `$00A1` | `Player_PosX_Block`, `Player_PosY` | |
 | `$00DB-$00DD` | `IScriptOrCHRAddr`, `IScriptOffset` | The interpreter reads the next action at addr + offset |
 | `$0100` | `CurrentROMBank` | 14 in the main loop. The stack shares this page |
+| `$0127` | `SoundEffect_State_Counter` | The playing sound effect's tick; the typing sound runs 1-4 |
+| `$0212` | `TextBox_PlayTextSound` | The typing sound plays for a character if set |
 | `$0213` | `MessageID` | 0 once a message has typed out; otherwise stale after a conversation |
+| `$0214` | `Message_ProcessedLength` | Bytes of the message read, from an offset, not 0. Wraps with the address |
 | `$0215` | `TextBox_MessagePaused` | Nonzero while a `$FC` pause waits for A |
+| `$021D` | `TextBox_Timer` | Characters type when it is a multiple of 4. `Messages_Load` zeroes it |
 | `$0390`, `$0392-$0394` | `Experience`, `Gold` | Gold is 24-bit little-endian |
 | `$039A` | `Player_MP` | |
 | `$042D` | `Quests` | Bit flags |
@@ -148,6 +153,39 @@ faxanatools' `messages.py` decodes and encodes them; `fax_travel.c`'s
   (`PALETTE_INDEX_TO_UI_BG_ATTRIBUTE_INDEX`, bank 11). The frame's colors
   differ from place to place for that reason.
 
+### How text types (bank 15)
+
+- Every message loop (`IScriptAction_ShowMessage`, `..._ShowUnskippableMessage`,
+  the questions, shops, `IScripts_ShowFinalMessage`) runs once a frame:
+  `IScripts_UpdatePortraitAnimation` (which waits for the frame), then
+  `TextBox_ShowNextChar` (`$F466`), then a `TextBox_CheckShouldContinue*`.
+- `TextBox_ShowNextChar` increments `TextBox_Timer`, sets
+  `TextBox_PlayTextSound` to 1 and calls `TextBox_ShowNextChar_IfReady`
+  (`$F491`), which nothing else calls. That returns unless a message is
+  loaded, it isn't paused and the timer is a multiple of 4; then it reads one
+  message byte and draws it. So the game's pace is one byte every 4 frames,
+  `$FC` and the end each taking a byte's turn. Nothing else reads the timer.
+- Each character queues 19 bytes to the PPU buffer: one 16-byte glyph tile of
+  CHR RAM, at `$1400 + line * $100 + column * 16`. Writers wait for buffer
+  space (`PPUBuffer_WaitForCapacity`) rather than overflow it. One character
+  a frame keeps up: Hold A to speed up text types the Guru's greeting at
+  exactly a byte a frame, with no stalls.
+- The continue checks read only `Joy1_ChangedButtonMask`, which the NMI sets
+  to `held & ~previous`. A on a ▼ or a finished message goes on, and B
+  dismisses a skippable one, only on the frame the button goes down. A held
+  button never acts again. Shop menus (`IScripts_WaitForMenuInput`) and the
+  mantra's ▲ work the same way.
+- The typing sound (sound effect 1, noise) lasts 4 ticks: 2 of a soft hiss,
+  then 2 of a sharp clack (chipx86 traces the clack to an out-of-bounds table
+  read). At the game's pace each character starts it just as the last one
+  ends. Started every frame, it never gets past the hiss.
+- After `Messages_Load` sets `MessageID`, the first `TextBox_ShowNextChar`
+  comes about 12 frames later, while the box opens. Those are lag frames, so
+  the pad isn't read either. Time typing from the first character, not from
+  `MessageID`.
+- The mantra types a character a frame through its own
+  `PasswordScreen_ShowNextChar`, not `TextBox_ShowNextChar`.
+
 ## Temples and spawning (bank 15)
 
 | Temple | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
@@ -216,6 +254,30 @@ What a feature can rely on, and the traps:
   headless runs at about 370 fps.
 - A save state's RAM is in its `HW  ` chunk at offset 23, 2 KiB, with no
   checksum. Edit it to set up test fixtures (`tests/travel/guru_travel.py`).
+- A site at a **branch** sees the flags the instruction before set, and can
+  steer the branch by changing them (and the register they came from) with
+  `cyc_mod_set_regs`, then returning 0. Forgiving jumps does this twice, so
+  the game's own code does the rest.
+- Each TCP command is served on a frame boundary, so a polling loop sees the
+  game a few frames apart. To time something to the frame over TCP, read
+  `InterruptCounter` with the state in one `read_ram`. A save state's frame,
+  which a headless run from it continues, is the `uint32` at offset 28.
+- TCP input lands at no particular frame. For anything that depends on the
+  frame a button goes down, run the same build headless from a save state:
+  `--load-state S --input FILE --frames N --frame-log LOG --mods-root DIR`.
+  `--input` lines are `<frame> <BUTTONS>` (`RIGHT+A`, `-` for none), in the
+  host's frame numbers, which a loaded state continues; a run with
+  `--frames 0` prints the state's frame. The frame log holds every frame's
+  CPU RAM (after a `CYCFRAME` and version header, per frame: 9 words, the
+  palette, OAM, then RAM). `--screenshot` saves the last frame.
+  `tests/movement/play.py` wraps this.
+- Save a state after a screen has finished scrolling
+  (`Screen_ScrollDirection` `$54` is `$FF`): the main loop does not update
+  the hero while it scrolls, so a state saved mid-scroll ignores input for a
+  second after loading.
+- With the Seamless world on, the hero's routines can run in an isolated
+  scope where `cyc_mod_isolated()` is true. A hook that keeps state must leave
+  it alone there.
 
 ## Far calls (`MMC1_LoadBankAndJump`)
 
@@ -338,13 +400,117 @@ The stock Hand Dagger passes over a Zozura; the swords hit one about 30
 pixels left of the hero (his x minus its x). A Zozura that reaches a hero at
 the screen's right edge knocks him onto the next screen.
 
+## The hero's movement (bank 15)
+
+`GameLoop_UpdatePlayer` (`$E0CA`) runs once a frame, unless the screen is
+scrolling: `Player_CheckHandleAttack`, `Player_CheckHandleVertMovement`
+(`$E2C8`), `Player_CheckHandleJump` (`$E174`, which despite its name is the
+sideways movement and knockback), `Player_HandleIFrames`, then doors, the
+breakable block, the Mascon block and screen edges. The main loop then draws
+the shield, the body and the weapon, and only later updates the other actors,
+which is when the weapon hits and magic meets the shield.
+
+| Address | Name | Notes |
+|---|---|---|
+| `$0016` | `Joy1_ButtonMask` | Buttons held. `$0019` has those newly pressed |
+| `$0054` | `Screen_ScrollDirection` | `$FF` when the screen is not scrolling |
+| `$009D`, `$009E` | `Player_PosX_Frac`, `Player_PosX_Block` | 8.8 fixed point |
+| `$00A0` | `Player_ClimbFlySpeedModifier` | The fraction for climbing and Wing Boots flight |
+| `$00A1` | `Player_PosY` | His top: he is 32 pixels tall, so standing on block row 12 he is at 160 |
+| `$00A3` | `Player_MovementTick` | Advances only while walking on the ground or climbing; picks the walk frame |
+| `$00A4` | `Player_Flags` | Below |
+| `$00A5` | `Player_StatusFlag` | `$01` attack held, `$02` knockback, `$80` Wing Boots running |
+| `$00A6` | `Player_JumpCurveIndex` | 0-31 through a jump; 32 after one |
+| `$00A9`, `$00AA` | `Player_MoveAcceleration` | Walking speed, 8.8: `$C0` from a standstill, up to `$180` |
+| `$00AD` | `Player_InvincibilityPhase` | `$3C` on a hit, down to 0. Knockback ends at `$39` |
+| `$0700-$07FF` | Shadow OAM | DMA'd each frame. The game rotates sprite order from frame to frame |
+
+**`Player_Flags`** (`$A4`), as the code uses it, not quite as the labels say:
+
+| Bit | Name | Meaning |
+|---|---|---|
+| `$01` | `PLAYER_JUMPING` | In a jump's curve. Set when one starts; cleared on landing, at the curve's end, by climbing, and by knockback |
+| `$02` | holding to climb | Set with a jump, cleared on a frame on the ground without a new A press. Nothing we found reads it |
+| `$04` | `PLAYER_FALLING_OFF` | **In the air without jumping**: walking off a ledge, stepping off a ladder, knocked off one, or the rest of a jump that outlasts its curve. Not only ladders, as its name suggests |
+| `$08` | can climb | A climbable block at his head or feet (`Player_CheckIfOnLadder` sets it every frame) |
+| `$10` | climbing | Up or Down pressed in front of a ladder; cleared away from one |
+| `$20` | moving | Walking, or carried sideways in the air |
+| `$40` | facing right | |
+| `$80` | attacking | Through the swing's 8 + 3 + 8 frames |
+
+**On the ground** means `Player_CheckIfPassable` (`$E6C8`) finds the way down
+blocked: the block under his feet, at `Y + $20`, from `X + 4`, and the next
+block too when `X & 15` is 4-11, so his feet are 8 pixels wide. (The call in
+`Player_HandleVertLadderOrJump` loads the direction into A instead of X, as
+chipx86 notes, so it checks whatever X holds; in practice that is down.)
+
+**Each frame without a jump**, `Player_HandleVertLadderOrJump` (`$E399`)
+asks that at `$E3AD`. With ground below (`$E3B2` branches on the answer),
+`Player_GrabClimbLadderOrJump` clears `PLAYER_FALLING_OFF` and runs
+`Player_UpdateClimbOrJump`. In the air, `@_setFalling` (`$E3D1`) sets
+`PLAYER_FALLING_OFF`; in front of a ladder he is caught (the same grab path),
+and otherwise he drops **8 pixels, every frame, from the first**: no gravity,
+no speed-up (1 pixel with the Wing Boots and A held). `@_checkCapFall`
+(`$E423`) then rounds his Y onto the block if he has landed. The flag stays
+set on that landing frame and is cleared the next.
+
+**A jump** starts only in `Player_UpdateClimbOrJump` (`$E444`), reached on
+the ground or in front of a ladder: A newly pressed (`LDX
+Joy1_ChangedButtonMask`, `BPL` at `$E44B`), not climbing, and the block above
+his head passable. It sets `$03` and runs `PLAYER_JUMP_CURVE` (`$E4D6`), one
+step a frame: up 8, 4, 4, 4, 4, 2, 2, 1, 1, 1, 1 (32 pixels in 11 frames),
+level for 10, and back down the same way, 32 frames in all, the first step on
+the frame A goes down. A block overhead stops the rise and skips to the
+curve's middle. He lands when the block below is solid during the falling
+half (`@_setLandedOnBlock` clears `PLAYER_JUMPING` that frame). A jump that
+runs out of curve in the air carries on as an ordinary fall.
+
+So A on the last frame on a ledge jumps, and A one frame later, in the air,
+does nothing. A on the frame he lands is lost too: the jump check next runs
+the frame after.
+
+**Sideways** (`Player_CheckHandleJump`): on the ground, or with the Wing
+Boots, the D-pad walks him (and a swing on the ground stops him). In the air
+(`Player_Flags & $05`) there is no control: if moving, he keeps going the
+way he faces, still speeding up, and otherwise stops. So from the last frame
+on a ledge, his x is the same frame by frame whether he jumped or fell.
+
+**Knockback** (`Player_StatusFlag` `$02`) lasts 3 frames, from a hit's `$3C`
+to `$39`. `Player_HandleKnockback` sets `Player_Flags` to just his facing bit,
+flipped, which drops jumping, falling and the rest, and pushes him 8 pixels a
+frame the other way.
+
+**Ladders.** On one he hangs: in the air, the grab path catches him, so
+there is no fall. Up and Down climb, at `$A0`/256 and `$C0`/256 pixels a
+frame. `Player_IsClimbing` (`$ECF6`) is can climb, climbing, and either lined
+up with the ladder or not falling. Stepping off one sideways is a fall like
+any other.
+
+**In the air** is `Player_Flags & $05` to the rest of the game too:
+`GameLoop_CheckUseCurrentItem` refuses items then.
+
+**Doors.** Up at Apolune's temple door in mid-jump does nothing; on the
+ground it goes in. Jumping out of the temple's right edge carries the jump
+into the town, where he lands on his first update.
+
+**The pose.** `Player_GetBodySpriteFrameOffset` (`$ECAC`, for the body) and
+`Maybe_Player_CalcAnimFrame` (`$B927`, bank 14, for the weapon, the shield and
+`Player_CheckShieldHitByMagic`) apply the same rule: jumping, frame 3 (or the
+swing's 4-6); climbing, 7; swinging, 4-6; the Wing Boots with A held, 3;
+moving, the walk cycle 0, 1, 2, 1 from `Player_MovementTick`; otherwise 0.
+Only a jump or Wing Boots flight shows frame 3, so a fall looked like walking
+on air, frozen mid-step, since the walk tick stops in the air. The shield sits
+in the same place in frames 0-3, and the weapon only hits while swinging, so
+the pose in the air is the picture alone. The jump pose is 8 sprites to the
+walk's 7, which changes the sprite rotation the next frame.
+
 ## Input and casting
 
 | Address | Name | Notes |
 |---|---|---|
 | `$0016` | `Joy1_ButtonMask` | Buttons held. The bits of `Joy1_ChangedButtonMask`, plus Down=`$04`, Left=`$02`, Right=`$01` |
 | `$0018` | `Joy1_PrevButtonMask` | The held mask at the read before. While the screen scrolls, `Game_UpdatePlayerOnScroll` copies it back into `Joy1_ButtonMask` |
-| `$00A4` | `Player_Flags` | `$80` attacking, `$40` facing right, `$20` moving, `$10` climbing, `$08` a ladder to climb, `$04` falling, `$02` holding to climb, `$01` jumping |
+| `$00A4` | `Player_Flags` | `$80` attacking, `$40` facing right, `$20` moving, `$10` climbing, `$08` a ladder to climb, `$04` falling (in the air without jumping; see The hero's movement), `$02` holding to climb, `$01` jumping |
 | `$02B3` | `CastMagic_Type` | The spell on screen, `$FF` for none. Each spell's handler takes it back to `$FF` when it hits or leaves |
 | `$039A` | `Player_MP` | At most 80 |
 | `$03A9-$03AC` | `MagicInventory` | Spells owned. `NumberOfMagicSpells` (`$03C5`) counts them |
@@ -355,9 +521,11 @@ the screen's right edge knocks him onto the next screen.
   `Joy1_ButtonMask`, and sets `Joy1_ChangedButtonMask` to the buttons held now
   and not before. Each pass of the main loop starts with `WaitForNextFrame`,
   which waits for a fresh NMI, so a newly pressed button is seen by one pass.
-  On a lag frame, a read the loop never waited for is replaced unseen, and a
-  button new in it is lost. A cycle-host frame ends at the start of VBlank
-  (scanline 241, dot 1), so each frame begins with that read.
+  On a lag frame, an NMI the loop did not wait for
+  (`Game_InterruptsHandledLatch` still set) skips the read altogether: the
+  masks keep their values, and a button pressed and let go within lag frames
+  is never seen. A cycle-host frame ends at the start of VBlank (scanline
+  241, dot 1), so each frame begins with that read, when there is one.
 - **Who reads the masks, in `Game_MainLoop`'s order:**
   - `GameLoop_UpdatePlayer` (`$E0CA`): `Player_CheckHandleAttack` swings the
     sword on a new B, unless climbing. `Player_CheckHandleEnterDoor` goes
@@ -716,3 +884,31 @@ addresses, and `tools/check_allocations.py` enforces it.
   `Player_UseMattock` calls it (from `$C64C`) and for no other item. Both
   features' sites at `$C8DC` run one callback, which does the work of whichever
   are on. It keeps no state of its own.
+- **Falling pose** (`fax_falling.c`). In the air without a jump (falling, not
+  jumping, swinging or climbing, and not on the frame he lands), both pose
+  routines return frame 3, the jump pose. It hooks their entries, and
+  observes `@_setFalling` and `@_checkCapFall`'s branch to tell a landing from
+  a fall. Its save-state record is that one bit.
+- **Forgiving jumps** (`fax_jumps.c`). Coyote time: A within 5 updates of
+  walking off a block he could have jumped from makes the ground check at
+  `$E3B2` find ground, after adding this update's 8-pixel fall step itself.
+  The game's own jump then starts from where he is, so the arc is the best
+  original jump's (A on the last frame on the ledge), later and 8 pixels lower
+  per frame of delay: never above it, and every frame at the same x. Whether
+  he could have jumped from the ledge (the block over his head) is asked of
+  `Player_CheckIfPassable` in an isolated call. Jump buffering: A newly
+  pressed in the air counts for 6 updates; on the first update on the ground
+  within them, the jump check at `$E44B` sees A, so the jump is the one the
+  original makes with A pressed then. Neither applies with the Wing Boots
+  running, in knockback, while climbing, or across a change of screen or
+  area. It counts updates at `Player_CheckHandleVertMovement`'s entry, not
+  frames, and keeps a 7-byte save-state record.
+- **Hold A to speed up text** (`fax_text_speed.c`). While A is held (and not
+  on the frame it goes down), a hook at `TextBox_ShowNextChar_IfReady` rounds
+  `TextBox_Timer` up to a multiple of 4, so a character types every frame,
+  and clears `TextBox_PlayTextSound` on all but every 4th frame, so the
+  typing sound keeps its rhythm. Page breaks and questions still wait for a
+  new press. It writes nothing else and keeps no state. It reads only the A
+  bit of the joypad masks, which the Magic button never changes (it ORs in
+  Up and B, for `Player_CastMagic` alone, outside any message loop), and
+  writes neither mask.
