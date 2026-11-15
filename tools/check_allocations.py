@@ -56,8 +56,16 @@ def main():
                           "add a [[shared_site]] saying why that is safe")
 
     claims = [(f["package"], r) for f in features for r in f.get("rom", [])]
+    shared_rom = allocations.get("shared_rom", [])
+
+    def shared(pa, a, pb, b):
+        """A [[shared_rom]] covers both claims and names both features."""
+        return any(sr["bank"] == a["bank"] and {pa, pb} <= set(sr["packages"]) and
+                   sr["start"] <= min(a["start"], b["start"]) and max(a["end"], b["end"]) <= sr["end"]
+                   for sr in shared_rom)
+
     for (pa, a), (pb, b) in combinations(claims, 2):
-        if a["bank"] == b["bank"] and a["start"] < b["end"] and b["start"] < a["end"]:
+        if a["bank"] == b["bank"] and a["start"] < b["end"] and b["start"] < a["end"] and not shared(pa, a, pb, b):
             errors.append(f"bank {a['bank']} ${a['start']:04X}-${a['end'] - 1:04X} ({pa}: {a['use']}) overlaps "
                           f"${b['start']:04X}-${b['end'] - 1:04X} ({pb}: {b['use']})")
     if args.rom:

@@ -222,7 +222,7 @@ static void menu_row(const Menu *m, int row, char out[MENU_COLS + 1], bool *curs
         } else if (s->status == FAX_SAVE_OK) {
             char gold[16];
             snprintf(gold, sizeof gold, "Gold %lu", (unsigned long)s->p.gold);
-            snprintf(text, sizeof text, "    %-13sExp %u", gold, s->p.experience);
+            snprintf(text, sizeof text, "    %-12s %s%u", gold, "Exp ", s->p.experience);
         }
     }
     snprintf(out, MENU_COLS + 1, "%s", text);

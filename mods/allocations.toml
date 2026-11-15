@@ -1,7 +1,8 @@
 # What each feature takes from the game, so features cannot quietly collide.
 # tools/check_allocations.py fails when:
 #   - a game.toml hook site belongs to no feature (by id prefix),
-#   - two features claim overlapping ROM,
+#   - two features claim overlapping ROM and no [[shared_rom]] says why that is
+#     safe,
 #   - a claimed ROM range is not unused ($FF) in the stock image (with --rom),
 #   - two features that can be enabled together hook the same address and no
 #     [[shared_site]] below says why that is safe.
@@ -123,3 +124,42 @@ rom = []
 # Reads the joypad masks' A bit, which the Magic button never changes: it ORs
 # in Up and B only between Player_CastMagic and GameLoop_CheckUseCurrentItem,
 # where no message types.
+
+[[feature]]
+package = "faxanadu.enhancement.save-files"
+source = "fax_files.c"
+hooks = "faxanadu.files."
+# Supplied through read overrides; the ROM image itself is never changed.
+rom = [
+    { bank = 12, start = 0xAE10, end = 0xAE18, use = "the Guru's choice (menu or question) and its own SAY step" },
+    { bank = 13, start = 0xB45B, end = 0xB48B, use = "message $C3, the Guru's line slot, shared with Guru travel" },
+]
+# One read override on used ROM: the immediate operand of LDA #$10 in
+# IScriptAction_ShowBuySellMenu ($8631, bank 12), the menu's message ID. It is
+# $C3 only from the Guru's menu step until the end of that frame (the menu
+# reads it at once), then the stock $10 again, so the shops' menu never sees
+# it. Writes TempleSpawnPoint (the saved Guru), the joypad's changed mask on
+# the title screen, DAT_0687 (Start or Continue), IScriptOrCHRAddr and
+# IScriptOffset, and the progress Password_Load would write when continuing.
+
+[[shared_rom]]
+bank = 13
+start = 0xB45B
+end = 0xB48B
+packages = ["faxanadu.enhancement.guru-travel", "faxanadu.enhancement.save-files"]
+why = """Message $C3, one line slot for the Guru's lines. Each feature writes \
+its line there just before the step that shows it, and the two never show a \
+line at once: Save files' choice comes first and starts Guru travel's part \
+through fax_travel_begin. After a save state loads, Save files puts its line \
+back in state_loaded, after Guru travel's record has restored its own."""
+
+[[shared_site]]
+addr = 0x826E   # IScripts_InvokeNextAction
+hooks = ["faxanadu.travel.next-action", "faxanadu.files.next-action"]
+why = """Neither handles the call; each only steers the interpreter by writing \
+IScriptOrCHRAddr. Neither redirects to an address the other acts on: with a \
+file in play Guru travel leaves the script's ends to Save files \
+(fax_files_guru_choice), Save files acts on the Gurus' own actions and its \
+own steps, and it undoes SET_SPAWN_POINT's raise at the next action rather \
+than skipping it, so Guru travel still meets the Guru there. So the two may \
+run in either order."""

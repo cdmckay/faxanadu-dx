@@ -350,7 +350,7 @@ bool fax_save_progress_from_mantra(const char *mantra, FaxSaveProgress *p) {
 
 /* ---- files ---- */
 
-static bool sidecar_path(const char *name, char out[1100]) {
+static bool save_path(const char *name, char out[1100]) {
 #ifdef CYC_WITH_SDL
     char *base = SDL_GetBasePath();
     if (!base) return false;
@@ -365,7 +365,7 @@ bool fax_save_file_path(int file, char out[1100]) {
     char name[32];
     if (file < 1 || file > FAX_SAVE_FILES) return false;
     snprintf(name, sizeof name, "faxanadu_file%d.txt", file);
-    return sidecar_path(name, out);
+    return save_path(name, out);
 }
 
 FaxSaveStatus fax_save_file_read(int file, FaxSaveRecord *r) {
@@ -412,7 +412,7 @@ bool fax_save_file_erase(int file) {
 
 /* ---- the file in play ---- */
 
-static bool enabled;
+static bool save_files;
 static int active;
 static FaxSaveRecord current;
 static FaxSaveListener listeners[8];
@@ -428,11 +428,11 @@ static void tell(FaxSaveEvent event) {
 }
 
 void fax_save_set_enabled(bool on) {
-    enabled = on;
+    save_files = on;
     if (!on) active = 0;
 }
-bool fax_save_enabled(void) { return enabled; }
-int fax_save_file(void) { return enabled ? active : 0; }
+bool fax_save_enabled(void) { return save_files; }
+int fax_save_file(void) { return save_files ? active : 0; }
 const FaxSaveRecord *fax_save_current(void) { return &current; }
 
 const char *fax_save_get(const char *key) {
