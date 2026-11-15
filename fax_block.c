@@ -80,7 +80,7 @@
 #define FLASH_HIT                       0xAB44u  /* SpriteBehavior_FlashScreenHitPlayer, greyscale just cleared:
                                                     LDA #$04, JSR Sound_PlayEffect, iframes, knockback, 10 HP */
 #define FLASH_FINISH                    0xAB60u  /* LDX CurrentSpriteIndex, JMP Sprite_FinishBehavior */
-#define DRAW_WEAPON                    0xB7D6u  /* Player_DrawWeapon: LDA IScript_PortraitID, BPL return. The main
+#define DRAW_WEAPON                     0xB7D6u  /* Player_DrawWeapon: LDA IScript_PortraitID, BPL return. The main
                                                     loops and Game_DrawScreenInFrozenState call it right after
                                                     Player_DrawBody */
 /* Bank 12 */

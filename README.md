@@ -124,12 +124,11 @@ It keeps its short reach, so the Long Sword is still an upgrade.
 on a controller, with a shield (or the Battle Helmet) in hand to stand your
 ground and raise it: enemy magic from the front, and Sugata's flash from any
 side, is stopped with the shield's sound. Contact and sword damage are as
-before. While you hold it, your shield is held up before your face, so you can
-see you're blocking; the Battle Helmet has no shield to show, so you glint in
-the shield's colors as you raise it. The first time you get a shield or the
-Battle Helmet, the game adds a line naming your key, once (remembered in
-`faxanadu_block.txt` next to the game). Rebind it with `BlockKey` and
-`BlockButton` in `config.ini`, as for the Magic button.
+before. As you raise it, you glint twice in the shield's colors, so you can
+see you're blocking. The first time you get a shield or the Battle Helmet, the
+game adds a line naming your key, once (remembered in `faxanadu_block.txt`
+next to the game). Rebind it with `BlockKey` and `BlockButton` in
+`config.ini`, as for the Magic button.
 
 **Sugata's flash** is on by default (Mods to turn it off). Sugata, in the Mist,
 blinks for half a second before it flashes, and the band of the screen its

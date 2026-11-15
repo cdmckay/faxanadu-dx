@@ -21,8 +21,8 @@ game fills each frame and the picture (or Seamless world's) is drawn from.
    (1) for 4 frames, his own (0) for 4, the shield's for 4, then his own
    while Block is still held. The shadow OAM is read every frame, on one
    connection; the shield's sprites never change. The pictures show it too:
-   the glint changes only the hero's body, and the picture between the beats
-   and after them is the one before Block went up.
+   around the hero, the glint changes only his box, and the picture between
+   the beats and after them is the one before Block went up.
 4. At normal speed: A pressed in the air just before landing a jump is kept
    by forgiving jumps; Block going up before the landing drops it, so he
    does not jump on landing.
@@ -46,6 +46,7 @@ INTERRUPT_COUNTER = 0x1A                       # counts every NMI: one a frame
 JUMP_CURVE, JUMPING = 0xA6, 0x01               # Player_JumpCurveIndex; Player_Flags' jumping bit
 HUD, SHIELD_TILES = 32, range(0x30, 0x36)      # Sprite_Draw adds the HUD; Sprites_PPUOffset $30 for the shield
 GLINT_BEAT, GLINT = 4, 12                      # frames a beat; frames in all: on, off, on
+ROOM_W, ROOM_H = 256, 208                      # a room in Seamless world's picture, under the HUD
 NAMES = {SMALL: "small", LARGE: "large", MAGIC: "magic", HELMET: "helmet"}
 
 
@@ -103,15 +104,18 @@ def png(path):
     return bpp, [raw[y * stride + 1:(y + 1) * stride] for y in range(height)]
 
 
-def changed(before, after):
-    """Where two pictures differ, (left, top, right, bottom); None if nowhere."""
+def changed(before, after, box):
+    """Where two pictures differ within box (left, top, right, bottom), as
+    a box; None if nowhere."""
     (bpp, a), (_, b) = png(before), png(after)
     assert len(a) == len(b) and len(a[0]) == len(b[0]), (before.name, after.name)
+    left, top, right, bottom = box
     xs, ys = [], []
-    for y, (ra, rb) in enumerate(zip(a, b)):
+    for y in range(max(top, 0), min(bottom, len(a))):
+        ra, rb = a[y][left * bpp:right * bpp], b[y][left * bpp:right * bpp]
         if ra != rb:
             ys.append(y)
-            xs += [x // bpp for x in range(len(ra)) if ra[x] != rb[x]]
+            xs += [left + x // bpp for x in range(len(ra)) if ra[x] != rb[x]]
     return (min(xs), min(ys), max(xs) + 1, max(ys) + 1) if ys else None
 
 
@@ -149,6 +153,20 @@ def main():
         """The hero's sprites this frame."""
         return parse(g.ram(SHADOW_OAM, 256), (g.ram(POS_X), g.ram(POS_Y)))
 
+    def around_hero(margin):
+        """The hero's 16x32 box in the picture, `margin` wider each way. His
+        sprites are a line below their OAM Y, which includes the HUD. Seamless
+        world composes rooms of 256x208 under the HUD, the active one at its
+        place less the camera (fax_world.c); elsewhere in its picture other
+        rooms' actors move, so pictures are compared only here."""
+        x, y = g.ram(POS_X), g.ram(POS_Y) + HUD + 1
+        world = g.tcp("fax_world")
+        if world["enabled"]:
+            room = g.tcp("fax_world_room")["xy"]
+            x += room[0] * ROOM_W - world["camera"][0]
+            y += room[1] * ROOM_H - world["camera"][1]
+        return x - margin, y - margin, x + 16 + margin, y + 32 + margin
+
     def into_eolis(shield, name):
         """From the gate, with `shield` in the shield slot, into Eolis: its
         tiles load on the way. Returns a save state there, facing right, once
@@ -184,7 +202,7 @@ def main():
         there is one of each frame parity (the game swaps its sprite slots
         each frame, so where the shield and the body overlap, which is in
         front alternates); then press V and read on until the glint is well
-        over, with Block's state, and a screenshot in each read from the
+        over, with Block's state, and a screenshot in each read after the
         first that shows it. A read is one read_ram from InterruptCounter to
         the shadow OAM, so its frame and its sprites are one moment, and the
         commands sent with it are served at the same one. Returns
@@ -285,10 +303,14 @@ def main():
         print("ok: without a shield Block does nothing; the Battle Helmet has no shield to draw, and glints")
         g.close()
 
-        # 3. The glint, at normal speed: 4 frames on, 4 off, 4 on.
+        # 3. The glint, at normal speed: 4 frames on, 4 off, 4 on. A picture
+        # shows the shadow OAM the PPU took at the frame's start, the frame
+        # before's; Seamless world's shows the frame's own, as it captures
+        # the room when the main loop's pass ends.
         g.realtime = True
         glinted = {}
         g.launch()
+        lag = 0 if g.tcp("fax_world")["enabled"] else 1
         for shield in (SMALL, LARGE, MAGIC, HELMET):
             for facing in ("right", "left"):
                 name = f"{NAMES[shield]}-{facing}"
@@ -301,6 +323,7 @@ def main():
                 assert body and all(p == 0 for _, _, p in body), body
                 assert (down != []) == (shield != HELMET), down
                 glints = block()["glints"]
+                hero = around_hero(8)
                 seen, counts, befores, shots, pressed = watch_glint(name)
                 timeline = [(f, "".join(str(p) for _, _, p in b)) for f, (_, b) in sorted(seen.items())]
                 for frame, (shield_now, body_now) in seen.items():
@@ -318,21 +341,22 @@ def main():
                 start = named.pop()
                 beats = [any(lo <= f - start < hi for f in seen) for lo, hi in ((0, 4), (4, 8), (8, 12), (12, 24))]
                 assert all(beats), (name, start, timeline)
-                # A picture is drawn from the shadow OAM of the frame before;
-                # it is compared with one from before V of the same parity.
+                # Each picture is compared with one from before V of the same
+                # parity, around the hero: the glint changes his box alone.
                 still = {f % 2: path for f, path in befores.items()}
                 pictured = {}
                 for frame, path in sorted(shots.items()):
-                    shown = frame - 1 - start
+                    shown = frame - lag - start
                     kind = "on" if glinting(shown) else "between" if shown < GLINT else "over"
-                    spot = changed(still[frame % 2], path)
+                    spot = changed(still[frame % 2], path, hero)
                     if kind == "on":
-                        assert spot and spot[2] - spot[0] <= 16 and spot[3] - spot[1] <= 32, (path.name, spot)
+                        assert spot and spot[0] >= hero[0] + 8 and spot[1] >= hero[1] + 8, (path.name, hero, spot)
+                        assert spot[2] <= hero[2] - 8 and spot[3] <= hero[3] - 8, (path.name, hero, spot)
                     else:
                         assert spot is None, (path.name, kind, spot)
-                    pictured.setdefault(kind, path)
+                    pictured.setdefault(kind, (path, still[frame % 2]))
                 assert set(pictured) == {"on", "between", "over"}, (name, start, sorted(shots), pictured)
-                glinted[name] = pictured["on"]
+                glinted[name] = *pictured["on"], hero
                 state = block()
                 assert state["raised"] and state["glints"] == glints + 1 and state["glint"] == 0, state
                 let_go()
@@ -369,7 +393,9 @@ def main():
             break
         else:
             raise AssertionError("could not press A and raise Block within a jump's last frames")
-        print("the glint pictured:", ", ".join(p.name for p in glinted.values()))
+        for name, (glint, before, (left, top, right, bottom)) in glinted.items():
+            print(f"the glint pictured: {name}: {glint.name}, before it {before.name}, the hero at "
+                  f"{left + 8},{top + 8} to {right - 8},{bottom - 8}")
     except BaseException:
         if g.running():
             g.shot("failure")
