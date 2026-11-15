@@ -391,10 +391,14 @@ static int title_hook(uint16_t addr) {
     int file = menu_press(&menu, pressed, &moved);
     uint8_t mask = (uint8_t)(pressed & ~(BUTTON_START | BUTTON_SELECT));
     if (moved) play_sound(SOUND_CURSOR);
+    FaxSaveRecord r;
+    if (file && slots[file - 1].status == FAX_SAVE_OK &&
+        (fax_save_file_read(file, &r) != FAX_SAVE_OK || !fax_save_progress_get(&r, &pending))) {
+        scan();   /* it changed on disk since: show what it is now */
+        file = 0;
+    }
     if (file) {
-        FaxSaveRecord r;
-        if (slots[file - 1].status == FAX_SAVE_OK && fax_save_file_read(file, &r) == FAX_SAVE_OK &&
-            fax_save_progress_get(&r, &pending)) {
+        if (slots[file - 1].status == FAX_SAVE_OK) {
             continuing = file;
             furthest = pending.furthest;
             cyc_mod_poke(START_SCREEN_CHOICE, 1);

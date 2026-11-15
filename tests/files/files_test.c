@@ -462,6 +462,14 @@ static void title(void) {
     CHECK(title_hook(START_SCREEN_INPUT) == 1 && ram[JOY1_CHANGED] == BUTTON_START && ram[START_SCREEN_CHOICE] == 0);
     CHECK(fax_save_file() == 1 && continuing == 0 && furthest == 0 && !exists("faxanadu_file1.txt"));
     CHECK(mantra_screen_hook(PASSWORD_SCREEN_SHOW) == 0 && start_spawn_hook(START_SPAWN) == 0);
+    /* A file damaged since the title showed it is not continued, nor started over. */
+    enter_title();
+    CHECK(slots[2].status == FAX_SAVE_OK);
+    write_text("faxanadu_file3.txt", "broken\n");
+    menu.cursor = 2;
+    ram[JOY1_CHANGED] = BUTTON_A;
+    CHECK(title_hook(START_SCREEN_INPUT) == 1 && ram[JOY1_CHANGED] == BUTTON_A && fax_save_file() == 0);
+    CHECK(slots[2].status == FAX_SAVE_MALFORMED && title_up);
     /* Off, the title is the game's own. */
     deactivate();
     ram[JOY1_CHANGED] = BUTTON_START;
