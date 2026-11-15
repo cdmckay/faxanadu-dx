@@ -59,7 +59,7 @@ and data tables after it shifted). Not supported: the build rejects it.
 | `$0127` | `SoundEffect_State_Counter` | The playing sound effect's tick; the typing sound runs 1-4 |
 | `$0208-$020B` | `TextBox_X`, `TextBox_Y`, `TextBox_Width`, `TextBox_Height` | The box last opened or closed, in tiles (see *The text box*) |
 | `$0212` | `TextBox_PlayTextSound` | The typing sound plays for a character if set |
-| `$0213` | `MessageID` | 0 once a message has typed out; otherwise stale after a conversation |
+| `$0213` | `MessageID` | 0 once a message has typed out; otherwise stale after a conversation, and still stale (with `$0215`) as the next script's portrait opens, until its first message loads |
 | `$0214` | `Message_ProcessedLength` | Bytes of the message read, from an offset, not 0. Wraps with the address |
 | `$0215` | `TextBox_MessagePaused` | Nonzero while a `$FC` pause waits for A |
 | `$021D` | `TextBox_Timer` | Characters type when it is a multiple of 4. `Messages_Load` zeroes it |
@@ -132,7 +132,7 @@ the portrait (`IScripts_OpenForPortrait`) and opens the dialogue box.
 | Portrait | Buildings (`Area_CurrentScreen` in area 4) |
 |---|---|
 | King | `$07` (Eolis, the King's room) |
-| Guru | The 8 temples (*Temples and spawning*), and `$42` in the Castle of Fraternal (Dartmoor `$1E`) |
+| Guru | The 8 temples (*Temples and spawning*), and `$42` in the Castle of Fraternal (Dartmoor `$1E`, block `$A7`) |
 | Martial Artist | `$06` (Eolis) |
 | Magician | `$05` (Eolis), `$1C` (the "magic hall outside town", Mist `$29`) |
 | Doctor | `$0C`, `$11`, `$1B`, `$24`, `$2C`, `$3F`: the hospitals |
@@ -143,7 +143,14 @@ the portrait (`IScripts_OpenForPortrait`) and opens the dialogue box.
 
 The secret "Guru" of the Tower of Fortress ($48, $58 "the Guri") is the man in
 building `$15`, a temple room on Trunk `$2D`, but his script (`ISCRIPT_A18A`)
-has no portrait.
+has no portrait. Nor do the King at the end (`ISCRIPT_KING_END_GAME`, "Glad
+you're back.", building `$44`) and the Smoking Man of `$3D` (`ISCRIPT_A331`);
+the priest of `$3B` has no script. The Nurse in Daybreak's meat shop is the
+`SPRITE_NPC_NURSE` sprite, as in the hospitals.
+
+To list who is where: read area 4's sprite lists (`SPRITE_INFO_VICTIM_SCREEN_*`,
+one area off), map each `ISCRIPT_ENTRYPOINT_*` through `ISCRIPT_ADDRS_L` to its
+script, and read the script's first byte.
 
 How the dialogue names them: "the king" / "The King is waiting for you." ($27,
 $33), "The Guru of Conflate" ($94) and "the Guru in the Castle of Fraternal"

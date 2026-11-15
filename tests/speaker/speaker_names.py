@@ -14,9 +14,11 @@ Eolis building it edits where the shop's door leads (save-state RAM, an
 external prerequisite, as tests/zones/zone_names.py does), walks out onto that
 building's door and goes in: the Guru (twice: the Ring of Elf, then Guru
 travel's offer), the King, the King's guard outside (no portrait, no name), the
-Martial Artist, and the Tool Seller through his shop's list. Each conversation
-is screenshot in OUT, and the tab is checked in the picture itself: its corner
-is the game's own frame tile, and it holds a line of text.
+Martial Artist, and the Tool Seller through his shop's list. Last, the shop's
+door leads to the Castle of Fraternal's temple, for the longest name, "Guru of
+Fraternal". Each conversation is screenshot in OUT, and the tab is checked in
+the picture itself: its corner is the game's own frame tile, and it holds a
+line of text.
 """
 import argparse
 import json
@@ -34,13 +36,15 @@ PORT = 0                                                            # set in mai
 AREA, SCREEN, PLAYER_X = 0x24, 0x63, 0x9E
 TEXTBOX_CLOSED, MESSAGE_ID, TEXTBOX_PAUSED = 0x20C, 0x213, 0x215
 GOLD, SPECIAL_ITEMS, HP = 0x392, 0x42C, 0x431
-AREA_SAVED_AREA, AREA_SAVED_SCREEN, PLAYER_SAVED_POS = 0x3D5, 0x3D6, 0x3D8
-TEMPLE_SPAWN_POINT = 0x439
+AREA_SAVED_AREA, AREA_SAVED_SCREEN, SCREEN_SAVED_PALETTE, PLAYER_SAVED_POS = 0x3D5, 0x3D6, 0x3D7, 0x3D8
+AREA_REGION, TEMPLE_SPAWN_POINT = 0x435, 0x439
+DARTMOOR, PALETTE_FRATERNAL, REGION_DARTMOOR = 6, 0x0D, 4          # as tests/zones/zone_names.py warps there
 RING_OF_ELF = 0x80
 BUILDINGS = 4
 NO_PORTRAIT = 0xFF
 OFFER = 1                                                           # fax_travel.c's "Shall I send..."
 PORTRAIT_BOX, TAB_X = (16, 112), 80                                 # tiles 2,14 and column 10, in pixels
+PORTRAIT_BOX_RIGHT = (72, 112)                                      # its top-right corner, tile 9,14
 
 
 def tcp(cmd, **kw):
@@ -160,16 +164,19 @@ def png(path):
     return width, height, rows
 
 
-def check_tab(path, row, length):
-    """The tab in the presented picture: its top-left corner is the game's own
-    frame tile (the portrait box's corner, pixel for pixel), and its line holds
-    the name: `length` characters of the text box's text color on black."""
+def check_tab(path, row, length, inside):
+    """The tab in the presented picture: its top corners are the game's own
+    frame tiles (the portrait box's, pixel for pixel), `inside` cells apart,
+    and its line holds the name: `length` characters of the text box's text
+    color on black."""
     width, height, px = png(path)
     ox = (width - 256) // 2 if width >= 256 else 0                 # where Seamless puts the native picture
     block = lambda x, y: [px[y + r][ox + x + c] for r in range(8) for c in range(8)]
     assert block(TAB_X, row * 8) == block(*PORTRAIT_BOX), f"{path.name}: no frame corner at the tab"
     assert block(TAB_X, row * 8 - 8) != block(*PORTRAIT_BOX), f"{path.name}: the tab is not where expected"
-    line = [px[row * 8 + 8 + r][ox + TAB_X + 8 + c] for r in range(8) for c in range(8 * (length + 2))]
+    right = TAB_X + (inside + 1) * 8
+    assert block(right, row * 8) == block(*PORTRAIT_BOX_RIGHT), f"{path.name}: the tab's right corner is not at {right}"
+    line = [px[row * 8 + 8 + r][ox + TAB_X + 8 + c] for r in range(8) for c in range(8 * inside)]
     lit = [p for p in line if p != (0, 0, 0)]
     assert len(set(lit)) == 1 and len(lit) >= 8 * length, f"{path.name}: no line of text in the tab"
 
@@ -252,15 +259,16 @@ def main():
         until(f"area {area} screen {screen:#x}", lambda: (ram(AREA), ram(SCREEN)) == (area, screen))
         wait(30)
 
-    def go_in(source, name, screen, door, writes=None):
-        """From inside a building, walk out onto Eolis's door `door` (block YX)
-        on `screen`, and go in."""
+    def go_in(source, name, screen, door, writes=None, area=0):
+        """From inside a building, walk out onto the door `door` (block YX) on
+        `screen` of `area` (Eolis unless the writes also give its palette and
+        region), and go in."""
         target = out / f"{name}.cycstate"
-        fixture(source, target, {AREA_SAVED_AREA: 0, AREA_SAVED_SCREEN: screen, PLAYER_SAVED_POS: door,
-                                 HP: 0x50, **(writes or {})}, banner={5: 0, 6: screen})
+        fixture(source, target, {AREA_SAVED_AREA: area, AREA_SAVED_SCREEN: screen, PLAYER_SAVED_POS: door,
+                                 HP: 0x50, **(writes or {})}, banner={5: area, 6: screen})
         tcp("load_state", path=str(target))
         walk_out()
-        settled_in(0, screen)
+        settled_in(area, screen)
         column = (door & 15) * 16
         walk_to(column - 6, column + 4)
         act("up", 4, 10)
@@ -284,6 +292,10 @@ def main():
                     break                                   # at the counter
         act("up", 4, 10)
         until("a portrait", lambda: speaker()["portrait"] != NO_PORTRAIT, 600)
+        # Until the first line types, MessageID and TextBox_MessagePaused hold
+        # whatever was there before (after a door to another area, $F0 $F0 $F0),
+        # which can read as typed out.
+        until("the first line to start typing", lambda: not typed(), 600)
 
     def tab(name, row=13, label=None):
         """Wait for the tab `name` over a typed-out page, check it on screen, screenshot it."""
@@ -294,7 +306,7 @@ def main():
         assert (state["col"], state["row"]) == (10, row), state
         assert state["cols"] == len(name) + (4 if len(name) <= 16 else 2), state
         path = shot(label or name.lower().replace(" ", "-"))
-        check_tab(path, row, len(name))
+        check_tab(path, row, len(name), state["cols"] - 2)
         return path
 
     def finish(button="a"):
@@ -416,6 +428,17 @@ def main():
         act("b", 6, 14)                                     # leave the list: the end
         finish("b")
         print("ok: the Tool Seller is named, on his shop's list as well")
+
+        # 7. The longest name: the Guru in the Castle of Fraternal (building
+        # $42, DARTMOOR_DOOR_LOCATIONS: screen $1E, block $A7). At 17
+        # characters it fills its tab without the blank cells.
+        go_in(shop, "fraternal-temple", 0x1E, 0xA7, {SCREEN_SAVED_PALETTE: PALETTE_FRATERNAL,
+                                                     AREA_REGION: REGION_DARTMOOR}, area=DARTMOOR)
+        assert ram(SCREEN) == 0x42, ram(SCREEN)
+        talk()
+        tab("Guru of Fraternal")
+        finish()
+        print("ok: the Guru of Fraternal, the longest name, fits his tab")
         print("screenshots:", ", ".join(p.name for p in shots))
     except BaseException:
         shot("failure")
