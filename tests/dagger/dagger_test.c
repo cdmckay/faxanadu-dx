@@ -80,8 +80,8 @@ static bool hits(Reach r, uint8_t wx, uint8_t wy, uint8_t sx, uint8_t sy, uint8_
  * (PTR_ARRAY_PRG14__b89f for X, by facing; PTR_ARRAY_PRG14__b90f for Y): the
  * dagger at (x + 14, y + 8) then (x + 24, y + 6), the swords at (x + 16, y + 8)
  * then (x + 24, y + 6). A Zozura is 16 by 16 (MAYBE_SPRITE_EXTENTS) and stands
- * at y + 16 on the same ground; a Monodron is 16 by 32. */
-enum { HERO_X = 120, HERO_Y = 144, ZOZURA = 16, MONODRON_HEIGHT = 32 };
+ * at y + 16 on the same ground. */
+enum { HERO_X = 120, HERO_Y = 144, ZOZURA = 16 };
 typedef struct { uint8_t dx, dy; } Phase;
 static const Phase dagger_phases[] = { { 14, 8 }, { 24, 6 } }, sword_phases[] = { { 16, 8 }, { 24, 6 } };
 static const Phase *phases(int weapon) { return weapon == DAGGER ? dagger_phases : sword_phases; }
@@ -157,28 +157,44 @@ static void low_enemies(void) {
     CHECK(!swing(DAGGER, HERO_X + 32, ground, ZOZURA, ZOZURA));
 }
 
-/* Every height a sprite can be at: the taller dagger hits whatever the stock
- * one hits, and its new hits are only 13-16 pixels below the hero's top, at
- * the hero's knees. Nothing above the swing is hit, and its box spans what
- * the Long Sword's does. */
-static void nothing_above(void) {
-    for (unsigned h = 0; h < 2; ++h) {
-        uint8_t ey = h ? MONODRON_HEIGHT : ZOZURA;
-        for (unsigned sy = 0; sy < 240; ++sy) {
-            stock();
-            bool before = swing(DAGGER, HERO_X + 20, (uint8_t)sy, ZOZURA, ey);
-            on();
-            bool after = swing(DAGGER, HERO_X + 20, (uint8_t)sy, ZOZURA, ey);
-            CHECK(!before || after);
-            if (after && !before) CHECK(sy > HERO_Y + 12 && sy <= HERO_Y + 16);
-            if (sy + ey <= HERO_Y + 6) CHECK(!after);                     /* wholly above the swing */
+/* A few enemies' extents, as MAYBE_SPRITE_EXTENTS ($B407, bank 14) has them:
+ * the low crawler, a flier that hovers at the hero's head, the common tall
+ * walker, and the two boss shapes that are not 32 tall. */
+static const struct { const char *name; uint8_t ex, ey; } enemies[] = {
+    { "Zozura", 16, 16 }, { "Hornet", 16, 16 }, { "Monodron", 16, 32 },
+    { "Pakukame", 32, 24 }, { "Rokusutahn", 32, 16 },
+};
+
+/* Every height each of those enemies can be at, over every column near the
+ * swing: the taller dagger hits whatever the stock one hits, and its new hits
+ * are only enemies whose top is 11-16 pixels below the hero's, from his waist
+ * to his knees (13-16 where the first hit phase reaches across, 11-14 where
+ * only the second does). An enemy higher up, or wholly above the swing, is
+ * hit exactly as before: the Y reach only stretches the box down. At the
+ * same spot, the box is exactly as tall as the Long Sword's. */
+static void every_height(void) {
+    for (unsigned e = 0; e < sizeof enemies / sizeof *enemies; ++e) {
+        uint8_t ex = enemies[e].ex, ey = enemies[e].ey;
+        unsigned added = 0;
+        for (unsigned sx = HERO_X - 40; sx <= HERO_X + 56; ++sx)
+            for (unsigned sy = 0; sy < 240; ++sy) {
+                stock();
+                bool before = swing(DAGGER, (uint8_t)sx, (uint8_t)sy, ex, ey);
+                on();
+                bool after = swing(DAGGER, (uint8_t)sx, (uint8_t)sy, ex, ey);
+                CHECK(!before || after);
+                if (after && !before) { ++added; CHECK(sy > HERO_Y + 10 && sy <= HERO_Y + 16); }
+                if (sy <= HERO_Y + 10) CHECK(after == before);            /* higher up: unchanged */
+                if (sy + ey <= HERO_Y + 6) CHECK(!after);                 /* wholly above the swing */
+            }
+        if (!added) { fprintf(stderr, "FAIL: the taller dagger reaches no new %s\n", enemies[e].name); exit(1); }
+        for (unsigned sy = 0; sy < 240; ++sy)
             for (unsigned p = 0; p < 2; ++p) {
                 uint8_t wx = (uint8_t)(HERO_X + sword_phases[p].dx), wy = (uint8_t)(HERO_Y + sword_phases[p].dy);
-                bool dagger = hits(reach(DAGGER), wx, wy, wx, (uint8_t)sy, ZOZURA, ey);
-                bool sword = hits(reach(LONG_SWORD), wx, wy, wx, (uint8_t)sy, ZOZURA, ey);
+                bool dagger = hits(reach(DAGGER), wx, wy, wx, (uint8_t)sy, ex, ey);
+                bool sword = hits(reach(LONG_SWORD), wx, wy, wx, (uint8_t)sy, ex, ey);
                 CHECK(dagger == sword);                                    /* the same height */
             }
-        }
     }
 }
 
@@ -188,7 +204,7 @@ int main(void) {
     refuses_other_layouts();
     save_states();
     low_enemies();
-    nothing_above();
+    every_height();
     printf("dagger_test: %u checks passed\n", checks);
     return 0;
 }
