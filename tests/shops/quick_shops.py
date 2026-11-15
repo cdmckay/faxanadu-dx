@@ -24,7 +24,9 @@ building), the gold, and what the hero carries.
    and the Dragon Slayer with no price. A sells the J key, which this shop does
    not sell; on the Dragon Slayer the hint says "Not for sale" and A does
    nothing; a Red Potion sells. B leaves at once, with no closing line. Gold
-   and inventory are checked after each step.
+   and inventory are checked after each step. Next door, the Key Seller's
+   list opens the same way, and he buys a Red Potion for 80 (half the lowest
+   tool shop's price).
 2. A full inventory (8 items and 3 more weapons) is two pages: Down from the
    bottom of the first turns to the second, a sale there keeps the page, and
    Select goes back to buying; selling the last item empties the list ("You
@@ -326,9 +328,12 @@ def main():
         until("the building", lambda: ram(AREA) == BUILDINGS)
         wait(40)
 
-    def to_counter():
+    def to_counter(stop=0):
+        """Walk left to the counter, or to x `stop`."""
         for _ in range(60):
             before = ram(PLAYER_X)
+            if before <= stop:
+                return
             act("left", 8, 2)
             if ram(PLAYER_X) == before:
                 return
@@ -461,6 +466,19 @@ def main():
         assert ram(MESSAGE_ID) == 0, "a closing line"
         shot("left")
         print("ok: B leaves at once, with no closing line")
+
+        # The key shop next door (building 3: screen 3, block $9D): the same.
+        go_in(start, "key-shop", 3, 0x9D, carrying(0, [], [RED_POTION]))
+        to_counter(stop=80)                                 # he stands at block $84, x 64
+        act("up", 4, 6)
+        state = list_up("buy", "the Key Seller's list, straight away")
+        assert state["list"] == [ITEM | KEY_J] and state["prices"] == [100], state
+        state = press("select", "sell")
+        assert state["list"] == [ITEM | RED_POTION] and state["prices"] == [80], state
+        shot("key-shop-sell-list")
+        act("b", 4, 6)
+        until("the conversation's end", lambda: ram(PORTRAIT) == NO_PORTRAIT, 300)
+        print("ok: the Key Seller's list opens at once, and he buys a Red Potion for 80, a tool shop's half")
 
         # 2. Two pages: 8 items, and the Long Sword, the Giant Blade and the Dragon Slayer.
         many = [KEY_J, KEY_Q, KEY_K, MATTOCK, RED_POTION, RED_POTION, KEY_A, RED_POTION]
