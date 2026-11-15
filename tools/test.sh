@@ -51,4 +51,7 @@ build-cycle/FaxanaduRecomp "$ROM" --frames 600 --no-save | grep "mode="
 if [ "$QUICK" = 1 ]; then echo "(end-to-end runs skipped: --quick)"; exit 0; fi
 echo "== end to end: Guru travel"
 python3 tests/travel/guru_travel.py --build build-cycle --rom "$ROM" --out "$OUT/travel-e2e"
+echo "== end to end: Guru travel with Seamless on"
+python3 tests/travel/guru_travel.py --build build-cycle --rom "$ROM" --out "$OUT/travel-e2e-seamless" \
+  --game-arg=--world-view=seamless
 echo "all checks passed"
