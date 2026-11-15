@@ -63,6 +63,13 @@ Guru brings you back with all your gold and experience, instead of your
 title's starting amounts. The rest of death is as before: full HP and MP at
 your furthest temple, and the timed items are gone.
 
+**Zone respawn** is on by default (Mods to turn it off). When you die, the
+Guru still speaks, then you come back where you last entered the tower,
+castle, town or region you died in, with full HP and MP, instead of at a
+temple. Until you have entered one, and after continuing or a Guru's
+journey until you walk out of the temple, you wake at the temple as before.
+Continuing a file still starts you at the Guru you last saved with.
+
 **Pendant fix** is on by default (Mods to turn it off). The Pendant was meant
 to make your weapon hit a quarter harder, but a reversed check in the
 original gave that bonus to everyone without it, and finding the Pendant took
