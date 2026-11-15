@@ -209,7 +209,7 @@ static void block_takes_the_press(void) {
                 }
                 block_up = false;
             }
-            CHECK(same(&t[0], &t[1], 0, FRAMES) && buffered_jumps == 0 && !buffered);
+            CHECK(same(&t[0], &t[1], 0, FRAMES) && buffered_jumps == 0 && !buffered && blocked_presses == 1);
             CHECK(t[1].f[40].y == 160 && !(t[1].f[40].flags & F_JUMPING));
         }
     }

@@ -55,7 +55,10 @@ if(NESRECOMP_BACKEND STREQUAL "cycle")
     target_include_directories(FaxanaduRecomp PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}"
         "${NESRECOMP_ROOT}/runner/include" "${NESRECOMP_ROOT}/runner/src")
     target_compile_definitions(FaxanaduRecomp PRIVATE CYC_CONTENT_TOOLS)
+    # The packages are replaced, not merged, so one removed or folded into
+    # another (Block and Sugata's flash into Shields) does not linger.
     add_custom_command(TARGET FaxanaduRecomp POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E rm -rf "$<TARGET_FILE_DIR:FaxanaduRecomp>/mods/packages"
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${CMAKE_CURRENT_SOURCE_DIR}/mods/preloaded" "$<TARGET_FILE_DIR:FaxanaduRecomp>/mods")
     return()

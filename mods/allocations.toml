@@ -195,13 +195,14 @@ than skipping it, so Guru travel still meets the Guru there. So the two may \
 run in either order."""
 
 [[feature]]
-package = "faxanadu.enhancement.block"
+package = "faxanadu.enhancement.shields"
 source = "fax_block.c"
 hooks = "faxanadu.block."
 rom = []
 # Hooks GameLoop_CountdownItems ($C88F), Player_HandleHitByMagic ($87DC),
 # Player_HandleTouchEnemyMagic ($8999) and IScriptAction_EndScript ($82B4),
-# which no other feature hooks, and Sugata's flash's damage, shared (below).
+# which no other feature hooks, and Sugata's flash's damage ($AB44), which
+# fax_sugata.c, in the same mod, hooks too (below).
 # Writes the stack (a return address, as a JSR would) and, when the tutorial
 # speaks, IScriptOrCHRAddr and IScriptOffset. It plays sound $0C with
 # Sound_PlayEffect. Its host input callback clears the d-pad, A and B while
@@ -209,7 +210,7 @@ rom = []
 # borrows Guru travel's SAY step and message $C3 slot (claimed above,
 # fax_travel.h) through the same read overrides rather than claiming ROM of its
 # own: 55 of the 64 overrides are Guru travel's, and its line would need 48
-# more. It speaks only as the script that gave the hero his first shield-slot
+# more. It sets those overrides itself, so it speaks with Guru travel off too. It speaks only as the script that gave the hero his first shield-slot
 # item ends (a shop's, or the Battle Helmet's pickup, ISCRIPT_GOT_BATTLE_HELMET
 # at $A698), never in a Guru's, and Guru travel writes its own line into the
 # slot again before each one it says.
@@ -224,13 +225,18 @@ rom = []
 # the slots Player_DrawBody just drew.
 
 [[feature]]
-package = "faxanadu.enhancement.sugata-flash"
+package = "faxanadu.enhancement.shields"
 source = "fax_sugata.c"
 hooks = "faxanadu.sugata."
 rom = []
-# Hooks SpriteBehavior_FlashScreenHitPlayer ($AB26, $AB36, and $AB44, shared
-# with Block below) and SpriteUpdateHandler_Enemy_Sugata ($929F), which only
-# Sugata runs. Writes PPU_Mask's greyscale bit (clearing what the behavior
+# Sugata's flash, in one mod with Block (fax_block.c), whose button it needs
+# for the Magic Shield's reflection. Hooks SpriteBehavior_FlashScreenHitPlayer
+# ($AB26, $AB36, and $AB44, the damage, with Block's site there) and
+# SpriteUpdateHandler_Enemy_Sugata ($929F), which only Sugata runs. Its site
+# at $AB44 is first in game.toml: it handles the call when the flash is out of
+# reach, the Magic Shield reflects it, or Ointment keeps the HP (only with
+# Block down), and Block's is then skipped; otherwise it returns 0 and Block's
+# stops the flash if Block is up. Both finish the behavior through $AB60. Writes PPU_Mask's greyscale bit (clearing what the behavior
 # just set), Temp_00 and the stack, and Sugata's HP and knockback through
 # Player_HitEnemyWithMagic's own code when the Magic Shield reflects. Under
 # Ointment it writes what the flash itself writes, Player_InvincibilityPhase
@@ -238,12 +244,3 @@ rom = []
 # over the presented picture, after Seamless composes it and before the zone
 # banner.
 
-[[shared_site]]
-addr = 0xAB44   # SpriteBehavior_FlashScreenHitPlayer's damage
-hooks = ["faxanadu.sugata.hit", "faxanadu.block.flash"]
-why = """Sugata's flash's site is first in game.toml. It handles the call when \
-the flash is out of reach, the Magic Shield reflects it, or Ointment keeps \
-the HP (only with Block down), and then Block's is skipped; otherwise it \
-returns 0 and Block's stops the flash if Block is up. Both finish the \
-behavior the same way, through $AB60. With either feature off, the other's \
-site works alone."""

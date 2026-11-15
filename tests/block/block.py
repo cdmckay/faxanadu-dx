@@ -26,15 +26,19 @@ real SDL key and controller events.
    removed from the save state), picked up as the first shield-slot item: the
    line follows "I've got the Battle Helmet." Picked up again once taught:
    nothing.
+   With the Gurus' features off (Guru travel and Save files), whose SAY step
+   and message slot the line borrows: the line still shows.
 4. config.ini rebinds it (BlockKey = S, BlockButton = leftstick), and the
    window writes the bindings back; the line names the device last used.
-5. With Block off in the mod selection, V does nothing.
+5. With Shields (Block and Sugata's flash) off in the mod selection, V does
+   nothing.
 """
 import argparse
 from pathlib import Path
 import re
 import sys
 import time
+import tomllib
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from harness import (Game, fixture, AREA, BUILDINGS, TOWNS, POS_X, POS_Y, PLAYER_FLAGS, FACING_RIGHT, MESSAGE_ID,  # noqa: E402
@@ -49,7 +53,7 @@ HOOD_MAGIC, MAGIC_DAMAGE = 0x51, 8                                # the Executio
 SHIELD_HEIGHT, HEAD_HEIGHT = 150, 136                             # the shot's Y, the hero on the ledge at 144
 THANK_YOU, OUR_LINE = 0x02, 0xC3                                # "Thank you for shopping."; Guru travel's slot
 LINE = "Hold V to raise\nyour shield\nagainst magic."
-PACKAGE, FEATURE = "faxanadu.enhancement.block", "block"
+PACKAGE = "faxanadu.enhancement.shields"    # Block and Sugata's flash, one mod
 
 
 def main():
@@ -65,6 +69,19 @@ def main():
 
     def block():
         return g.tcp("block_state")
+
+    def switch_off(which):
+        """The mod selection: every feature of the packages `which` picks off,
+        the rest as they come. Returns the packages."""
+        picked, text = [], "format_version = 1\n"
+        for manifest in sorted((g.out / "game" / "mods" / "packages").glob("*/*/manifest.toml")):
+            data = tomllib.loads(manifest.read_text())
+            if which(data["id"]):
+                picked.append(data["id"])
+                text += "".join(f'\n[[feature]]\npackage_id = "{data["id"]}"\nid = "{f["id"]}"\nenabled = false\n'
+                                for f in data.get("feature", []))
+        (g.out / "game" / "mods" / "state.toml").write_text(text)
+        return picked
 
     def shot_at(cast, slot, name, y, writes, hold=None, picture=None):
         """From `cast`, the Hood's shot in `slot` moved to height `y`: play it
@@ -268,6 +285,21 @@ def main():
         print("ok: picked up again once taught, only the game's line")
         g.close()
 
+        # 3c. With the Gurus off (Guru travel and Save files): the line borrows
+        # Guru travel's step and slot, but supplies them itself.
+        sidecar.unlink()
+        gurus = switch_off(lambda package: "guru" in package or "save-files" in package)
+        g.launch()
+        assert gurus and not g.tcp("travel_state")["enabled"] and not block()["taught"], gurus
+        g.load(tool_shop)
+        g.wait(4)
+        said, _ = talk_and_buy()
+        state = block()
+        assert said == [THANK_YOU, OUR_LINE] and state["tutorials"] == 1 and state["line"] == LINE, (said, state)
+        print(f"ok: with {', '.join(gurus)} off, the first shield still gets the line")
+        g.close()
+        switch_off(lambda package: False)
+
         # 4. config.ini rebinds it.
         text = g.config.read_text()
         assert re.search(r"^BlockKey = V$", text, re.M) and re.search(r"^BlockButton = b$", text, re.M), text
@@ -295,8 +327,7 @@ def main():
               "and the line names the one last used")
 
         # 5. Off.
-        (g.out / "game" / "mods" / "state.toml").write_text(
-            f'format_version = 1\n\n[[feature]]\npackage_id = "{PACKAGE}"\nid = "{FEATURE}"\nenabled = false\n')
+        assert switch_off(lambda package: package == PACKAGE) == [PACKAGE]
         g.launch()
         assert not block()["enabled"]
         g.load(cast)
