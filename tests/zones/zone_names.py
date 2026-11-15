@@ -144,8 +144,17 @@ def main():
         walk_out()
         settled_in(0, 8)
         assert zone()["banners"] == 1, zone()
-        walk_to(186, 196)                                  # the door, column 12
-        act("up", 4, 10)
+        # Player_CheckHandleEnterDoor reads Up only on the frame it goes down,
+        # and not while the screen scrolls or he is off the door's block (this
+        # screen's Monodron can knock him off). Press until the key's line shows.
+        for _ in range(5):
+            walk_to(186, 196)                              # the door, column 12
+            act("up", 4, 10)
+            try:
+                until("the key's line", lambda: box_open() or ram(AREA) == 1, 120)
+                break
+            except AssertionError:
+                pass
         for _ in range(40):                                # "You used the key"
             if ram(AREA) == 1:
                 break
