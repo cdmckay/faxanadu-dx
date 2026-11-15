@@ -18,21 +18,20 @@ game fills each frame and the picture (or Seamless world's) is drawn from.
 2. With no shield, nothing changes; with the Battle Helmet, no shield is drawn.
 3. At normal speed: Block going up with the Battle Helmet makes the hero's
    sprites glint in the shield's palette (1), then go back to his own (0)
-   while Block is still held.
+   while Block is still held. The glint is 12 frames, which a lagging
+   script can miss: up to 5 tries, each counting game frames.
 4. At normal speed: A pressed in the air just before landing a jump is kept
    by forgiving jumps; Block going up before the landing drops it, so he
    does not jump on landing.
 
 Screenshots of each, in OUT.
 """
-import argparse
 from pathlib import Path
 import sys
-import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from harness import (Game, fixture, POS_X, POS_Y, PLAYER_FLAGS, FACING_RIGHT, SELECTED_SHIELD, ENTITIES,  # noqa: E402
-                     SMALL, LARGE, MAGIC, HELMET, NO_SHIELD)
+from harness import (Game, fixture, parse_args, POS_X, POS_Y, PLAYER_FLAGS, FACING_RIGHT, SELECTED_SHIELD,  # noqa: E402
+                     ENTITIES, SMALL, LARGE, MAGIC, HELMET, NO_SHIELD)
 
 SHADOW_OAM, SHIELD_BOX = 0x700, 0x39B         # Player_ShieldPositionX/Y
 JUMP_CURVE, JUMPING = 0xA6, 0x01               # Player_JumpCurveIndex; Player_Flags' jumping bit
@@ -42,23 +41,17 @@ NAMES = {SMALL: "small", LARGE: "large", MAGIC: "magic", HELMET: "helmet"}
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    for key in ("build", "rom", "out"):
-        ap.add_argument("--" + key, type=Path, required=True)
-    ap.add_argument("--game-arg", action="append", default=[],
-                    help="extra game option, e.g. --game-arg=--world-view=seamless (repeatable)")
-    ap.add_argument("--port", type=int, default=0, help="TCP port (default: a free one)")
-    args = ap.parse_args()
-    g = Game(args.build, args.rom, args.out, args.game_arg, False, args.port)
+    g = Game.from_args(parse_args(__doc__))
 
     def block():
         return g.tcp("block_state")
 
-    def sprites(at=None):
+    def sprites(at=None, oam=None):
         """The hero's sprites this frame, from the shadow OAM: the shield's and
         the body's, each as (x, y, palette) relative to the hero (OAM Y
-        includes the HUD). `at`: where he is, if known (one read fewer)."""
-        oam = g.ram(SHADOW_OAM, 256)
+        includes the HUD). `at`: where he is, and `oam`: the shadow OAM, if
+        already read."""
+        oam = oam or g.ram(SHADOW_OAM, 256)
         x, y = at or (g.ram(POS_X), g.ram(POS_Y))
         shield, body = [], []
         for i in range(4, 256, 4):                 # sprite 0 is the status bar's
@@ -152,21 +145,33 @@ def main():
         g.close()
 
         # 3. The Battle Helmet's glint, at normal speed: it lasts 12 frames.
+        # The script can lag past all 12 on a loaded machine; an attempt that
+        # saw none lets go and holds Block again from the same state.
         g.realtime = True
         g.launch()
-        g.load(states[HELMET])
-        g.wait(10)
-        _, body = sprites()
-        assert body and all(p == 0 for _, _, p in body), body
-        g.shot("helmet-down")
-        before = block()["glints"]
-        at = g.ram(POS_X), g.ram(POS_Y)
-        g.tcp("key", name="V", frames=120)
-        glinted, end = False, time.time() + 2
-        while time.time() < end and not glinted:            # one read a frame
-            _, now = sprites(at)
-            glinted = bool(now) and all(p == 1 for _, _, p in now) and len(now) == len(body)
-        assert glinted, "the body's sprites in the shield's palette"
+        for attempt in range(5):
+            g.load(states[HELMET])
+            g.wait(10)
+            _, body = sprites()
+            assert body and all(p == 0 for _, _, p in body), body
+            if attempt == 0:
+                g.shot("helmet-down")
+            before = block()["glints"]
+            at = g.ram(POS_X), g.ram(POS_Y)
+            g.tcp("key", name="V", frames=120)
+            glinted, end = False, g.frame() + 60
+            while not glinted:                              # one read a frame: its number and the OAM
+                ping, oam = g.batch(("ping", {}), ("read_ram", dict(addr=SHADOW_OAM, len=256)))
+                if ping["frame"] >= end:
+                    break
+                _, now = sprites(at, bytes.fromhex(oam["hex"]))
+                glinted = bool(now) and all(p == 1 for _, _, p in now) and len(now) == len(body)
+            if glinted:
+                break
+            assert block()["glints"] == before + 1, "Block going up with the Battle Helmet glints"
+            let_go()
+        else:
+            raise AssertionError("the body's sprites in the shield's palette, in 5 tries")
         g.shot("helmet-glint")                              # the picture shows the frame before
         g.wait(20)
         _, after = sprites()
@@ -205,7 +210,7 @@ def main():
             break
         else:
             raise AssertionError("could not press A and raise Block within a jump's last frames")
-        print("screenshots:", ", ".join(p.name for p in g.shots))
+        print("screenshots:", ", ".join(g.shots))
     except BaseException:
         if g.running():
             g.shot("failure")
