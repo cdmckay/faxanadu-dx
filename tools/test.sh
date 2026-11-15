@@ -78,6 +78,9 @@ cmake --build "$OUT/shops" -j"$JOBS" >/dev/null
 cmake -S tests/respawn -B "$OUT/respawn" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/respawn" -j"$JOBS" >/dev/null
 "$OUT/respawn/respawn_test"
+cmake -S tests/recharge -B "$OUT/recharge" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/recharge" -j"$JOBS" >/dev/null
+"$OUT/recharge/recharge_test"
 cmake -S tests/slain -B "$OUT/slain" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/slain" -j"$JOBS" >/dev/null
 "$OUT/slain/slain_test"
@@ -161,6 +164,9 @@ respawn_e2e() {  # NAME [ARGS...]
 }
 respawn_e2e respawn-e2e & respawn=$!
 respawn_e2e respawn-e2e-seamless --game-arg=--world-view=seamless & respawn_seamless=$!
+echo "== end to end: recharging items, alongside them"
+python3 tests/recharge/recharging_items.py --build build-cycle --rom "$ROM" --out "$OUT/recharge-e2e" \
+  > "$OUT/recharge-e2e.log" 2>&1 & recharge=$!
 echo "== end to end: Slain by, by default and with Seamless on, alongside them"
 slain_e2e() {  # NAME [ARGS...]
   local name="$1"; shift
@@ -219,6 +225,8 @@ wait "$respawn" || failed=1
 sed 's/^/[respawn]  /' "$OUT/respawn-e2e.log"
 wait "$respawn_seamless" || failed=1
 sed 's/^/[resp+sw]  /' "$OUT/respawn-e2e-seamless.log"
+wait "$recharge" || failed=1
+sed 's/^/[recharge] /' "$OUT/recharge-e2e.log"
 wait "$slain" || failed=1
 sed 's/^/[slain]    /' "$OUT/slain-e2e.log"
 wait "$slain_seamless" || failed=1

@@ -23,6 +23,7 @@
 #include "fax_sugata.h"
 #include "fax_shops.h"
 #include "fax_respawn.h"
+#include "fax_recharge.h"
 #include "fax_slain.h"
 #ifdef CYC_WITH_SDL
 #include "cyc_tcp.h"
@@ -297,6 +298,7 @@ static void tcp_setup(void *ctx) {
     fax_sugata_tcp_setup();
     fax_shops_tcp_setup();
     fax_respawn_tcp_setup();
+    fax_recharge_tcp_setup();
     fax_slain_tcp_setup();
 }
 #endif
