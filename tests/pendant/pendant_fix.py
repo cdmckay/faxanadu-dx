@@ -78,7 +78,8 @@ def main():
         hero = ram(HERO_X)
         assert ram(SCREEN) == ZOZURA_SCREEN and ram(SPRITE_ENTITY + TARGET) == ZOZURA
         for _ in range(600):
-            entity, hp = ram(SPRITE_ENTITY + TARGET), ram(SPRITE_HP + TARGET)
+            target = ram(SPRITE_ENTITY + TARGET, SPRITE_HP - SPRITE_ENTITY + 1)   # one frame's entity and HP
+            entity, hp = target[0], target[-1]
             if entity != ZOZURA or hp != enemy_hp:
                 break
             if hero - ram(SPRITE_X + TARGET) <= REACH and not ram(PLAYER_FLAGS) & ATTACKING:
