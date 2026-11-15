@@ -193,6 +193,26 @@ What a feature can rely on, and the traps:
   headless runs at about 370 fps.
 - A save state's RAM is in its `HW  ` chunk at offset 23, 2 KiB, with no
   checksum. Edit it to set up test fixtures (`tests/travel/guru_travel.py`).
+- A hook site can be any instruction, a branch included. At a branch the
+  callback sees the flags the instruction before set, and steers the branch by
+  changing them (and the register they came from) with `cyc_mod_set_regs`.
+  Forgiving jumps does this twice, so the game's own code does the rest.
+- TCP input lands at no particular frame. For anything that depends on the
+  frame a button goes down, run the same build headless from a save state:
+  `--load-state S --input FILE --frames N --frame-log LOG --mods-root DIR`.
+  `--input` lines are `<frame> <BUTTONS>` (`RIGHT+A`, `-` for none), in the
+  host's frame numbers, which a loaded state continues; a run with
+  `--frames 0` prints the state's frame. The frame log holds every frame's
+  CPU RAM (after a `CYCFRAME` and version header, per frame: 9 words, the
+  palette, OAM, then RAM). `--screenshot` saves the last frame.
+  `tests/movement/play.py` wraps this.
+- Save a state after a screen has finished scrolling
+  (`Screen_ScrollDirection` `$54` is `$FF`): the main loop does not update
+  the hero while it scrolls, so a state saved mid-scroll ignores input for a
+  second after loading.
+- With the Seamless world on, the hero's routines can run in an isolated
+  scope where `cyc_mod_isolated()` is true. A hook that keeps state must leave
+  it alone there.
 
 ## Far calls (`MMC1_LoadBankAndJump`)
 
@@ -315,6 +335,110 @@ The stock Hand Dagger passes over a Zozura; the swords hit one about 30
 pixels left of the hero (his x minus its x). A Zozura that reaches a hero at
 the screen's right edge knocks him onto the next screen.
 
+## The hero's movement (bank 15)
+
+`GameLoop_UpdatePlayer` (`$E0CA`) runs once a frame, unless the screen is
+scrolling: `Player_CheckHandleAttack`, `Player_CheckHandleVertMovement`
+(`$E2C8`), `Player_CheckHandleJump` (`$E174`, which despite its name is the
+sideways movement and knockback), `Player_HandleIFrames`, then doors, the
+breakable block, the Mascon block and screen edges. The main loop then draws
+the shield, the body and the weapon, and only later updates the other actors,
+which is when the weapon hits and magic meets the shield.
+
+| Address | Name | Notes |
+|---|---|---|
+| `$0016` | `Joy1_ButtonMask` | Buttons held. `$0019` has those newly pressed |
+| `$0054` | `Screen_ScrollDirection` | `$FF` when the screen is not scrolling |
+| `$009D`, `$009E` | `Player_PosX_Frac`, `Player_PosX_Block` | 8.8 fixed point |
+| `$00A0` | `Player_ClimbFlySpeedModifier` | The fraction for climbing and Wing Boots flight |
+| `$00A1` | `Player_PosY` | His top: he is 32 pixels tall, so standing on block row 12 he is at 160 |
+| `$00A3` | `Player_MovementTick` | Advances only while walking on the ground or climbing; picks the walk frame |
+| `$00A4` | `Player_Flags` | Below |
+| `$00A5` | `Player_StatusFlag` | `$01` attack held, `$02` knockback, `$80` Wing Boots running |
+| `$00A6` | `Player_JumpCurveIndex` | 0-31 through a jump; 32 after one |
+| `$00A9`, `$00AA` | `Player_MoveAcceleration` | Walking speed, 8.8: `$C0` from a standstill, up to `$180` |
+| `$00AD` | `Player_InvincibilityPhase` | `$3C` on a hit, down to 0. Knockback ends at `$39` |
+| `$0700-$07FF` | Shadow OAM | DMA'd each frame. The game rotates sprite order from frame to frame |
+
+**`Player_Flags`** (`$A4`), as the code uses it, not quite as the labels say:
+
+| Bit | Name | Meaning |
+|---|---|---|
+| `$01` | `PLAYER_JUMPING` | In a jump's curve. Set when one starts; cleared on landing, at the curve's end, by climbing, and by knockback |
+| `$02` | holding to climb | Set with a jump, cleared on a frame on the ground without a new A press. Nothing we found reads it |
+| `$04` | `PLAYER_FALLING_OFF` | **In the air without jumping**: walking off a ledge, stepping off a ladder, knocked off one, or the rest of a jump that outlasts its curve. Not only ladders, as its name suggests |
+| `$08` | can climb | A climbable block at his head or feet (`Player_CheckIfOnLadder` sets it every frame) |
+| `$10` | climbing | Up or Down pressed in front of a ladder; cleared away from one |
+| `$20` | moving | Walking, or carried sideways in the air |
+| `$40` | facing right | |
+| `$80` | attacking | Through the swing's 8 + 3 + 8 frames |
+
+**On the ground** means `Player_CheckIfPassable` (`$E6C8`) finds the way down
+blocked: the block under his feet, at `Y + $20`, from `X + 4`, and the next
+block too when `X & 15` is 4-11, so his feet are 8 pixels wide. (The call in
+`Player_HandleVertLadderOrJump` loads the direction into A instead of X, as
+chipx86 notes, so it checks whatever X holds; in practice that is down.)
+
+**Each frame without a jump**, `Player_HandleVertLadderOrJump` (`$E399`)
+asks that at `$E3AD`. With ground below (`$E3B2` branches on the answer),
+`Player_GrabClimbLadderOrJump` clears `PLAYER_FALLING_OFF` and runs
+`Player_UpdateClimbOrJump`. In the air, `@_setFalling` (`$E3D1`) sets
+`PLAYER_FALLING_OFF`; in front of a ladder he is caught (the same grab path),
+and otherwise he drops **8 pixels, every frame, from the first**: no gravity,
+no speed-up (1 pixel with the Wing Boots and A held). `@_checkCapFall`
+(`$E423`) then rounds his Y onto the block if he has landed. The flag stays
+set on that landing frame and is cleared the next.
+
+**A jump** starts only in `Player_UpdateClimbOrJump` (`$E444`), reached on
+the ground or in front of a ladder: A newly pressed (`LDX
+Joy1_ChangedButtonMask`, `BPL` at `$E44B`), not climbing, and the block above
+his head passable. It sets `$03` and runs `PLAYER_JUMP_CURVE` (`$E4D6`), one
+step a frame: up 8, 4, 4, 4, 4, 2, 2, 1, 1, 1, 1 (32 pixels in 11 frames),
+level for 10, and back down the same way, 32 frames in all, the first step on
+the frame A goes down. A block overhead stops the rise and skips to the
+curve's middle. He lands when the block below is solid during the falling
+half (`@_setLandedOnBlock` clears `PLAYER_JUMPING` that frame). A jump that
+runs out of curve in the air carries on as an ordinary fall.
+
+So A on the last frame on a ledge jumps, and A one frame later, in the air,
+does nothing. A on the frame he lands is lost too: the jump check next runs
+the frame after.
+
+**Sideways** (`Player_CheckHandleJump`): on the ground, or with the Wing
+Boots, the D-pad walks him (and a swing on the ground stops him). In the air
+(`Player_Flags & $05`) there is no control: if moving, he keeps going the
+way he faces, still speeding up, and otherwise stops. So from the last frame
+on a ledge, his x is the same frame by frame whether he jumped or fell.
+
+**Knockback** (`Player_StatusFlag` `$02`) lasts 3 frames, from a hit's `$3C`
+to `$39`. `Player_HandleKnockback` sets `Player_Flags` to just his facing bit,
+flipped, which drops jumping, falling and the rest, and pushes him 8 pixels a
+frame the other way.
+
+**Ladders.** On one he hangs: in the air, the grab path catches him, so
+there is no fall. Up and Down climb, at `$A0`/256 and `$C0`/256 pixels a
+frame. `Player_IsClimbing` (`$ECF6`) is can climb, climbing, and either lined
+up with the ladder or not falling. Stepping off one sideways is a fall like
+any other.
+
+**In the air** is `Player_Flags & $05` to the rest of the game too:
+`GameLoop_CheckUseCurrentItem` refuses items then.
+
+**Doors.** Up at Apolune's temple door in mid-jump does nothing; on the
+ground it goes in. Jumping out of the temple's right edge carries the jump
+into the town, where he lands on his first update.
+
+**The pose.** `Player_GetBodySpriteFrameOffset` (`$ECAC`, for the body) and
+`Maybe_Player_CalcAnimFrame` (`$B927`, bank 14, for the weapon, the shield and
+`Player_CheckShieldHitByMagic`) apply the same rule: jumping, frame 3 (or the
+swing's 4-6); climbing, 7; swinging, 4-6; the Wing Boots with A held, 3;
+moving, the walk cycle 0, 1, 2, 1 from `Player_MovementTick`; otherwise 0.
+Only a jump or Wing Boots flight shows frame 3, so a fall looked like walking
+on air, frozen mid-step, since the walk tick stops in the air. The shield sits
+in the same place in frames 0-3, and the weapon only hits while swinging, so
+the pose in the air is the picture alone. The jump pose is 8 sprites to the
+walk's 7, which changes the sprite rotation the next frame.
+
 ## Features and what they use
 
 `mods/allocations.toml` lists each feature's ROM, hook sites and shared
@@ -337,3 +461,22 @@ addresses, and `tools/check_allocations.py` enforces it.
   of the reversed branch meet, and sets `Temp_00` from
   `WEAPON_STRENGTHS[Y]` and the Pendant bit before the Glove adds its bonus.
   It keeps no state.
+- **Falling pose** (`fax_falling.c`). In the air without a jump (falling, not
+  jumping, swinging or climbing, and not on the frame he lands), both pose
+  routines return frame 3, the jump pose. It hooks their entries, and
+  observes `@_setFalling` and `@_checkCapFall`'s branch to tell a landing from
+  a fall. Its save-state record is that one bit.
+- **Forgiving jumps** (`fax_jumps.c`). Coyote time: A within 5 updates of
+  walking off a block he could have jumped from makes the ground check at
+  `$E3B2` find ground, after adding this update's 8-pixel fall step itself.
+  The game's own jump then starts from where he is, so the arc is the best
+  original jump's (A on the last frame on the ledge), later and 8 pixels lower
+  per frame of delay: never above it, and every frame at the same x. Whether
+  he could have jumped from the ledge (the block over his head) is asked of
+  `Player_CheckIfPassable` in an isolated call. Jump buffering: A newly
+  pressed in the air counts for 6 updates; on the first update on the ground
+  within them, the jump check at `$E44B` sees A, so the jump is the one the
+  original makes with A pressed then. Neither applies with the Wing Boots
+  running, in knockback, while climbing, or across a change of screen or
+  area. It counts updates at `Player_CheckHandleVertMovement`'s entry, not
+  frames, and keeps a 7-byte save-state record.

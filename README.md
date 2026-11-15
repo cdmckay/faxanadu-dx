@@ -56,6 +56,16 @@ it away. Now your weapon does its base damage until you find the Pendant, and
 the original's full damage once you have it. The Glove adds its bonus as
 before.
 
+**Falling pose** is on by default (Mods to turn it off). Walking off a ledge,
+the hero used to fall standing or mid-step, as if walking on air. Now he shows
+the jump pose until he lands, as in a jump.
+
+**Forgiving jumps** is on by default (Mods to turn it off). A pressed up to 5
+frames after you walk off a ledge still jumps, from where you are (coyote
+time), and A pressed in the air up to 6 frames before you land jumps as you
+land (jump buffering). No jump goes higher or further than a well-timed one
+in the original. The Wing Boots, ladders and knockback work as before.
+
 Optional **Seamless** appears first in Mods, marked **Experimental** and
 disabled by default. It joins connected rooms, advances neighboring actors,
 and adapts the world view to your window with Fit to screen. Mouse wheel

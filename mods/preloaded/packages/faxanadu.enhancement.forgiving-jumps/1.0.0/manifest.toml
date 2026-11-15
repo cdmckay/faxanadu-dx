@@ -1,0 +1,24 @@
+format_version = 1
+id = "faxanadu.enhancement.forgiving-jumps"
+version = "1.0.0"
+name = "Forgiving jumps"
+author = "faxanadu-remaster"
+description = "A jump pressed a moment late, just after walking off a ledge, or a moment early, just before landing, still happens. No jump reaches higher or further than a well-timed one in the original."
+license = "MIT"
+resolver = "declarative"
+save_compatibility = "shared"
+
+[[target]]
+game_id = "faxanadu-usa"
+rom_crc32 = "57dd23d1"
+
+[[feature]]
+id = "forgiving-jumps"
+name = "Forgiving jumps"
+description = "A pressed up to 5 frames after walking off a ledge still jumps, from where you are. A pressed in the air jumps as you land, if you land within 6 frames. Wing Boots, ladders and knockback work as before."
+group = "Gameplay"
+default_enabled = true
+
+[[plugin]]
+feature = "forgiving-jumps"
+id = "faxanadu.forgiving-jumps"

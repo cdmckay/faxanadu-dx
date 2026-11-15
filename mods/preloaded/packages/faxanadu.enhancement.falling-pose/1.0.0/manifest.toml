@@ -1,0 +1,24 @@
+format_version = 1
+id = "faxanadu.enhancement.falling-pose"
+version = "1.0.0"
+name = "Falling pose"
+author = "faxanadu-remaster"
+description = "The hero falls in the jump pose. In the original, walking off a ledge kept him standing or mid-step all the way down, as if walking on air."
+license = "MIT"
+resolver = "declarative"
+save_compatibility = "shared"
+
+[[target]]
+game_id = "faxanadu-usa"
+rom_crc32 = "57dd23d1"
+
+[[feature]]
+id = "falling-pose"
+name = "Falling pose"
+description = "Walking off a ledge or a ladder, the hero shows the jump pose until he lands, as he does in a jump. Jumping, climbing, attacking and the Wing Boots look as before."
+group = "Display"
+default_enabled = true
+
+[[plugin]]
+feature = "falling-pose"
+id = "faxanadu.falling-pose"
