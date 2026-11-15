@@ -1,0 +1,15 @@
+cmake_minimum_required(VERSION 3.20)
+project(FaxanaduSpeakerTests C)
+set(CMAKE_C_STANDARD 11)
+if(NOT NESRECOMP_ROOT)
+    message(FATAL_ERROR "Set NESRECOMP_ROOT to the game's cycle engine checkout")
+endif()
+# fax_zone.c, fax_text.c and fax_speaker.c are included by the test, against a
+# model of the machine.
+add_executable(speaker_test speaker_test.c)
+target_include_directories(speaker_test PRIVATE ../.. ${NESRECOMP_ROOT}/runner/include ${NESRECOMP_ROOT}/runner/cyc)
+if(NOT MSVC)
+    target_compile_options(speaker_test PRIVATE -Wall -Wextra)
+endif()
+enable_testing()
+add_test(NAME speaker_unit COMMAND speaker_test)

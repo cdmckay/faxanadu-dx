@@ -57,6 +57,9 @@ cmake -S tests/movement -B "$OUT/movement" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/
 cmake --build "$OUT/movement" -j"$JOBS" >/dev/null
 "$OUT/movement/pose_test"
 "$OUT/movement/jumps_test"
+cmake -S tests/speaker -B "$OUT/speaker" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/speaker" -j"$JOBS" >/dev/null
+"$OUT/speaker/speaker_test"
 cmake -S tests/dagger -B "$OUT/dagger" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/dagger" -j"$JOBS" >/dev/null
 "$OUT/dagger/dagger_test"
@@ -99,6 +102,13 @@ python3 tests/movement/falling_pose.py --build build-cycle --rom "$ROM" --out "$
   > "$OUT/pose-e2e.log" 2>&1 & pose=$!
 python3 tests/movement/forgiving_jumps.py --build build-cycle --rom "$ROM" --out "$OUT/jumps-e2e" \
   > "$OUT/jumps-e2e.log" 2>&1 & jumps=$!
+echo "== end to end: speaker names, by default and with Seamless on, alongside them"
+speaker_e2e() {  # NAME [ARGS...]
+  local name="$1"; shift
+  python3 tests/speaker/speaker_names.py --build build-cycle --rom "$ROM" --out "$OUT/$name" "$@" > "$OUT/$name.log" 2>&1
+}
+speaker_e2e speaker-e2e & speaker=$!
+speaker_e2e speaker-e2e-seamless --game-arg=--world-view=seamless & speaker_seamless=$!
 echo "== end to end: Hold A to speed up text, alongside them"
 python3 tests/text_speed/text_speed.py --build build-cycle --rom "$ROM" --out "$OUT/text-speed-e2e" \
   > "$OUT/text-speed-e2e.log" 2>&1 & text_speed=$!
@@ -126,6 +136,10 @@ wait "$pose" || failed=1
 sed 's/^/[pose]     /' "$OUT/pose-e2e.log"
 wait "$jumps" || failed=1
 sed 's/^/[jumps]    /' "$OUT/jumps-e2e.log"
+wait "$speaker" || failed=1
+sed 's/^/[speaker]  /' "$OUT/speaker-e2e.log"
+wait "$speaker_seamless" || failed=1
+sed 's/^/[spkr+sw]  /' "$OUT/speaker-e2e-seamless.log"
 wait "$text_speed" || failed=1
 sed 's/^/[text]     /' "$OUT/text-speed-e2e.log"
 wait "$dagger" || failed=1

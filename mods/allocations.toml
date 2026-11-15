@@ -74,6 +74,14 @@ rom = []
 # the presented picture (fax_text.c), after Seamless has composed it.
 
 [[feature]]
+package = "faxanadu.enhancement.speaker-names"
+source = "fax_speaker.c"
+hooks = "faxanadu.speaker-names."
+rom = []
+# No hooks and no ROM: it reads RAM and the nametable when the picture is
+# presented and draws over it (fax_text.c), after Seamless and zone names.
+
+[[feature]]
 package = "faxanadu.enhancement.auto-keys"
 source = "fax_keys.c"
 hooks = "faxanadu.auto-keys."
