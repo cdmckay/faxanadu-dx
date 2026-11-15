@@ -181,6 +181,11 @@ What a feature can rely on, and the traps:
   `dpleft`). `action` takes NES names (`a`, `left`, `up`). Durations are in
   frames, so a test that waits on frames and game state, never the clock,
   runs the same uncapped.
+- TCP `key` (an SDL key name) and `pad` reach the game as window events, as
+  a real key or controller does, so the host extras' `event` sees them. The
+  window keeps `config.ini` beside the executable and writes it at first
+  start; its `[Game]` keys go to the host extras' `load_setting`, and
+  `save_settings` writes them back whenever the window saves.
 - `--uncapped` (with `--exit-after N`) runs the window as fast as it can:
   about 290 fps, 5x real time. The cycle-accurate machine is the limit; even
   headless runs at about 370 fps.
@@ -243,6 +248,55 @@ and Y, and RTSes into the routine. So at the entry of a far-called routine:
 row (5) holds →, ←, DEL and END at columns 0-3, and Up from row 0 wraps to it.
 A on END (row 5, column 3) checks the mantra and continues.
 
+## Input and casting
+
+| Address | Name | Notes |
+|---|---|---|
+| `$0016` | `Joy1_ButtonMask` | Buttons held. The bits of `Joy1_ChangedButtonMask`, plus Down=`$04`, Left=`$02`, Right=`$01` |
+| `$0018` | `Joy1_PrevButtonMask` | The held mask at the read before. While the screen scrolls, `Game_UpdatePlayerOnScroll` copies it back into `Joy1_ButtonMask` |
+| `$00A4` | `Player_Flags` | `$80` attacking, `$40` facing right, `$20` moving, `$10` climbing, `$08` a ladder to climb, `$04` falling, `$02` holding to climb, `$01` jumping |
+| `$02B3` | `CastMagic_Type` | The spell on screen, `$FF` for none. Each spell's handler takes it back to `$FF` when it hits or leaves |
+| `$039A` | `Player_MP` | At most 80 |
+| `$03A9-$03AC` | `MagicInventory` | Spells owned. `NumberOfMagicSpells` (`$03C5`) counts them |
+| `$03C0` | `SelectedMagic` | 0 Deluge, 1 Thunder, 2 Fire, 3 Death, 4 Tilte; `$FF` none |
+
+- **The pad is read once a frame, in the NMI.** `Input_HandleOnInterrupt`
+  copies `Joy1_ButtonMask` to `Joy1_PrevButtonMask`, reads the pad into
+  `Joy1_ButtonMask`, and sets `Joy1_ChangedButtonMask` to the buttons held now
+  and not before. Each pass of the main loop starts with `WaitForNextFrame`,
+  which waits for a fresh NMI, so a newly pressed button is seen by one pass.
+  On a lag frame, a read the loop never waited for is replaced unseen, and a
+  button new in it is lost. A cycle-host frame ends at the start of VBlank
+  (scanline 241, dot 1), so each frame begins with that read.
+- **Who reads the masks, in `Game_MainLoop`'s order:**
+  - `GameLoop_UpdatePlayer` (`$E0CA`): `Player_CheckHandleAttack` swings the
+    sword on a new B, unless climbing. `Player_CheckHandleEnterDoor` goes
+    through a door on a new Up.
+  - `Player_CastMagic` (`$BA5B`, bank 14, `JSR` at `$DB5F`): see below.
+  - `GameLoop_CheckUseCurrentItem` (`$C478`, `JSR` at `$DB62`): Down held and
+    a new B use the selected item, unless jumping or falling.
+  - `Sprites_UpdateAll`: touching an NPC, `Player_CheckHandlePressUpOnNPC`
+    runs its script when the changed mask is exactly Up (`$08`).
+  - `GameLoop_CheckShowPlayerMenu` (Select) and `GameLoop_CheckPauseGame`
+    (Start).
+- **Casting.** `Player_CastMagic` runs the spell's handler instead while one
+  is on screen (`CastMagic_Type` positive), and does nothing while climbing
+  (`Player_IsClimbing`: `Player_Flags` `$08` and `$10`). Otherwise it casts
+  when Up is held and B newly pressed: `SelectedMagic` below 5, and
+  `Player_ReduceMP` (fixed bank) takes `MAGIC_COSTS` (`$B7A9`, bank 14: 2, 4,
+  6, 10, 16) or refuses. The spell starts from the hero and flies the way he
+  faces.
+- **Up+B is clumsy by design.** The sword swings on the same new B, so the
+  stock combo always swings and casts. At a door the new Up goes through it
+  first, in `GameLoop_UpdatePlayer`, and `Game_SetupEnterScreen` waits for the
+  next frame, whose read no longer has B new: Up+B at a door enters it and
+  casts nothing. Next to an NPC, a new Up alone talks.
+- `EndGame_MainLoop` calls `Player_CastMagic` too (`JSR` at `$DC0B`), with the
+  buttons `EndGame_MovePlayerTowardKing` plays.
+- The opening: a new game's hero stops at x=53 on the first screen for a long
+  monologue (A pages it), then walks on. The gate of Eolis is a door at
+  x=188-199 there (area 0, screen 0; Up leads to screen 1).
+
 ## Features and what they use
 
 `mods/allocations.toml` lists each feature's ROM, hook sites and shared
@@ -260,3 +314,12 @@ addresses, and `tools/check_allocations.py` enforces it.
   `Player_SetInitialExpAndGold` and returns at once when the far call's resume
   address is `Player_HandleDeath`'s, and leaves the start screen's call alone.
   It keeps no state.
+- **Magic button** (`fax_magic.c`). A bindable button (C, or Y on a
+  controller) casts the selected spell. On a press, it ORs Up held and B new
+  into the joypad masks at `Player_CastMagic`'s entry, when `Game_MainLoop`
+  called it, and puts the real masks back at `GameLoop_CheckUseCurrentItem`'s
+  entry, so no door, sword, item, NPC or next pad read sees them. If the NMI
+  read the pad in between (a lag frame), it recomputes the changed mask
+  against the real one. A press lasts one frame, as a pad read does. The
+  bindings are `MagicKey` and `MagicButton` in `config.ini` [Game], in the
+  host's own key and button names.
