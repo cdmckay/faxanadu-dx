@@ -1,0 +1,15 @@
+cmake_minimum_required(VERSION 3.20)
+project(FaxanaduRespawnTests C)
+set(CMAKE_C_STANDARD 11)
+if(NOT NESRECOMP_ROOT)
+    message(FATAL_ERROR "Set NESRECOMP_ROOT to the game's cycle engine checkout")
+endif()
+# fax_zone.c and fax_respawn.c are included by the test, against a model of the
+# machine.
+add_executable(respawn_test respawn_test.c)
+target_include_directories(respawn_test PRIVATE ../.. ${NESRECOMP_ROOT}/runner/include ${NESRECOMP_ROOT}/runner/cyc)
+if(NOT MSVC)
+    target_compile_options(respawn_test PRIVATE -Wall -Wextra)
+endif()
+enable_testing()
+add_test(NAME respawn_unit COMMAND respawn_test)

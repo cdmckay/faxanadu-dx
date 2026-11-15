@@ -264,3 +264,23 @@ rom = []
 # which no other feature hooks. Save files' override of the Buy/Sell menu's
 # operand ($8631) is for the Guru's menu: with Quick shops on, a shop never
 # runs that menu.
+
+[[feature]]
+package = "faxanadu.enhancement.zone-respawn"
+source = "fax_respawn.c"
+hooks = "faxanadu.zone-respawn."
+rom = []
+# Hooks Screen_SetupNew ($DD13), Player_HandleDeath's JSR Screen_FadeToBlack
+# after the gold and experience far call ($D9A0), Player_Spawn's JSR
+# Game_SpawnInTemple ($DB1D) and Game_SetupEnterBuilding ($DAAF), which no
+# other feature hooks, so no site is shared and link order cannot matter.
+# Guru travel's journey returns into $DB1D; this site only observes it
+# (returns 0), and travel's own site is at Game_SpawnInTemple ($DD61). A death
+# with a checkpoint skips the JSR at $DB1D as if it returned at once, so
+# Player_Spawn goes on at $DB20, where Save files' spawned hook saves the file
+# as at every respawn; then $DAAF, called from there, runs
+# Game_SetupExitBuilding instead. Writes, only then: Area_SavedArea,
+# Area_SavedScreen, Screen_SavedPalette, Player_SavedPosXY ($03D5-$03D8),
+# Area_Region, Areas_DefaultMusic, the facing bit of Player_Flags, and a
+# return address pushed on the stack at each site, as a JSR would. No read
+# overrides.
