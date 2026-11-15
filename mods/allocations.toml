@@ -3,9 +3,13 @@
 #   - a game.toml hook site belongs to no feature (by id prefix),
 #   - two features claim overlapping ROM,
 #   - a claimed ROM range is not unused ($FF) in the stock image (with --rom),
+#   - an overridden ROM byte is not its declared stock value (with --rom),
 #   - two features that can be enabled together hook the same address and no
 #     [[shared_site]] below says why that is safe.
 # Features that share a manifest exclusive group are never enabled together.
+# ROM claims come in two kinds: `rom` takes unused ($FF) bytes for new data,
+# and `overrides` takes existing bytes the feature serves with other values,
+# one byte per entry of `stock` (what the stock image holds there).
 # Update this file with the feature, and docs/GAME_INTERNALS.md with it.
 
 [[feature]]
@@ -70,6 +74,14 @@ rom = []
 # the presented picture (fax_text.c), after Seamless has composed it.
 
 [[feature]]
+package = "faxanadu.enhancement.speaker-names"
+source = "fax_speaker.c"
+hooks = "faxanadu.speaker-names."
+rom = []
+# No hooks and no ROM: it reads RAM and the nametable when the picture is
+# presented and draws over it (fax_text.c), after Seamless and zone names.
+
+[[feature]]
 package = "faxanadu.enhancement.auto-keys"
 source = "fax_keys.c"
 hooks = "faxanadu.auto-keys."
@@ -123,6 +135,16 @@ rom = []
 # Reads the joypad masks' A bit, which the Magic button never changes: it ORs
 # in Up and B only between Player_CastMagic and GameLoop_CheckUseCurrentItem,
 # where no message types.
+
+[[feature]]
+package = "faxanadu.enhancement.taller-dagger"
+source = "fax_dagger.c"
+hooks = "faxanadu.taller-dagger."
+rom = []
+# Served through a read override; the ROM image itself is never changed.
+overrides = [
+    { bank = 14, start = 0xB898, stock = [0x04], use = "MAYBE_WEAPON_RANGES: the dagger's Y reach, served as $08" },
+]
 
 [[feature]]
 package = "faxanadu.enhancement.recharging-items"

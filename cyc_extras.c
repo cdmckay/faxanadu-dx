@@ -11,10 +11,12 @@
 #include "fax_pendant.h"
 #include "fax_magic.h"
 #include "fax_banner.h"
+#include "fax_speaker.h"
 #include "fax_keys.h"
 #include "fax_falling.h"
 #include "fax_jumps.h"
 #include "fax_text_speed.h"
+#include "fax_dagger.h"
 #include "fax_recharge.h"
 #ifdef CYC_WITH_SDL
 #include "cyc_tcp.h"
@@ -180,6 +182,7 @@ static void power_on(void *ctx) {
     fax_world_reset();
     fax_travel_step();
     fax_banner_reset();
+    fax_dagger_step();
     if (compile_path[0]) {
         int n = chr_override_compile_dir(compile_path);
         exit(n < 0 ? 2 : 0);
@@ -223,6 +226,7 @@ static void frame_end(void *ctx) {
     fax_travel_step();
     fax_magic_frame_end();
     fax_banner_step();
+    fax_dagger_step();
     if (tiles_enabled || tile_dump) chr_override_frame_end();
     if (!cyc_host_saves_enabled() || frame % 900) return;
     if (!(cyc_mod_peek(0x042C) | cyc_mod_peek(0x042D) | cyc_mod_peek(0x0437) | cyc_mod_peek(0x0439))) return;
@@ -267,15 +271,18 @@ static void tcp_setup(void *ctx) {
     fax_pendant_tcp_setup();
     fax_magic_tcp_setup();
     fax_banner_tcp_setup();
+    fax_speaker_tcp_setup();
     fax_keys_tcp_setup();
     fax_falling_tcp_setup();
     fax_jumps_tcp_setup();
     fax_text_speed_tcp_setup();
+    fax_dagger_tcp_setup();
     fax_recharge_tcp_setup();
 }
 #endif
 static const uint32_t *present(void *ctx,int *w,int *h) {
-    (void)ctx;return fax_banner_present(fax_world_present(w,h,cyc_frame_argb()),w,h);
+    (void)ctx;
+    return fax_speaker_present(fax_banner_present(fax_world_present(w,h,cyc_frame_argb()),w,h),w,h);
 }
 static void event(void *ctx,const void *e,int player) {
     (void)ctx;(void)player;
