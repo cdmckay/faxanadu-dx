@@ -412,6 +412,10 @@ What a feature can rely on, and the traps:
   `dpleft`). `action` takes NES names (`a`, `left`, `up`). Durations are in
   frames, so a test that waits on frames and game state, never the clock,
   runs the same uncapped.
+- With `--tcp N` the window prints `[cyc tcp] listening on 127.0.0.1:N`, or
+  `[cyc tcp] cannot listen on port N` and **runs on without TCP**. A client
+  that connects to N then talks to whatever else holds it, another test's
+  game included. `tests/e2e/fax_e2e.py` waits for its own game's line.
 - TCP `action` returns at once and holds the button for its frames, so two
   `action`s sent back to back are held together: `left` then `a` jumps left
   (`tests/speaker/speaker_names.py` climbs the King's stairs that way).
@@ -424,7 +428,8 @@ What a feature can rely on, and the traps:
   about 290 fps, 5x real time. The cycle-accurate machine is the limit; even
   headless runs at about 370 fps.
 - A save state's RAM is in its `HW  ` chunk at offset 23, 2 KiB, with no
-  checksum. Edit it to set up test fixtures (`tests/travel/guru_travel.py`).
+  checksum. Edit it to set up test fixtures (`fixture()` in
+  `tests/e2e/fax_e2e.py`).
 - A site at a **branch** sees the flags the instruction before set, and can
   steer the branch by changing them (and the register they came from) with
   `cyc_mod_set_regs`, then returning 0. Forgiving jumps does this twice, so
@@ -453,8 +458,16 @@ What a feature can rely on, and the traps:
   host's frame numbers, which a loaded state continues; a run with
   `--frames 0` prints the state's frame. The frame log holds every frame's
   CPU RAM (after a `CYCFRAME` and version header, per frame: 9 words, the
-  palette, OAM, then RAM). `--screenshot` saves the last frame.
+  palette, OAM, then RAM). `--screenshot` saves the last frame, and
+  `--save-state F:PATH` saves a state after frame F.
   `tests/movement/play.py` wraps this.
+- The window's TCP server reads every line it has and serves them all before
+  the next frame (`cyc_tcp_poll`, then the held inputs tick, then the frame).
+  So a `load_state` and an `action` sent in one write hold the button from the
+  loaded state's first frame, exactly: TCP input that lands on a chosen frame,
+  in the window. `batch()` in `tests/e2e/fax_e2e.py` sends them;
+  `tests/movement/forgiving_jumps.py` presses on the 2nd frame off a ledge
+  that way.
 - Save a state after a screen has finished scrolling
   (`Screen_ScrollDirection` `$54` is `$FF`): the main loop does not update
   the hero while it scrolls, so a state saved mid-scroll ignores input for a
@@ -661,8 +674,10 @@ and `Player_AddExperienceFromSprite` redraws the experience through
 `PPUBuffer_QueueCommandOrLength`, which waits for buffer space
 (`PPUBuffer_WaitForCapacity`). That wait, or a lag frame, can put a frame
 boundary between the two (a host frame ends at VBlank, wherever the CPU is),
-so a read over TCP can see the wrapped HP with the entity unchanged. A test that tells a kill from a hit should wait a frame after the
-HP changes before it reads the entity.
+so a read over TCP can see the wrapped HP with the entity unchanged. A test
+that tells a kill from a hit should read the entity and HP in one `read_ram`,
+call a wrapped HP a kill, and wait (in frames) for the entity to change
+(`tests/pendant/pendant_fix.py`).
 
 **Eolis, for tests.** A new game starts on Eolis (area 0) screen 0, outside
 the gate, with the intro's trigger (`SPRITE_TRIGGER_INTRO`, `$4F`) in sprite
@@ -1023,6 +1038,12 @@ walk's 7, which changes the sprite rotation the next frame.
     runs its script when the changed mask is exactly Up (`$08`).
   - `GameLoop_CheckShowPlayerMenu` (Select) and `GameLoop_CheckPauseGame`
     (Start).
+- **So one Up from a test can go unseen.** It counts on one pass only, and
+  `GameLoop_UpdatePlayer` skips the door check while the screen scrolls
+  (`Screen_ScrollDirection` below 4) and finds no door off its block, where an
+  enemy's knockback can leave the hero. Press until the door's line or the
+  speaker's portrait shows (`tests/zones/zone_names.py`,
+  `tests/speaker/speaker_names.py`).
 - **Casting.** `Player_CastMagic` runs the spell's handler instead while one
   is on screen (`CastMagic_Type` positive), and does nothing while climbing
   (`Player_IsClimbing`: `Player_Flags` `$08` and `$10`). Otherwise it casts

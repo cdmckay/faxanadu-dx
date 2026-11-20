@@ -1,20 +1,18 @@
 """The game in a hidden window over TCP, for Block's and Sugata's flash's end-to-end tests.
 
 The game runs uncapped and the tests wait on the game's own state, never on
-the clock, on a free TCP port, so any number can run in parallel. Save-state
-RAM is edited (an external prerequisite, not coverage) to set up fixtures:
-a shield, gold, or where a building's door leads (Area_Saved*, as
-tests/zones/zone_names.py does) to walk out anywhere.
+the clock, on a reserved TCP port (tests/e2e/fax_e2e.py), so any number can
+run in parallel. Save-state RAM is edited (an external prerequisite, not
+coverage) to set up fixtures: a shield, gold, or where a building's door leads
+(Area_Saved*, as tests/zones/zone_names.py does) to walk out anywhere.
 """
-import json
-import os
 from pathlib import Path
-import shutil
-import socket
-import struct
-import subprocess
+import sys
 import time
-import zlib
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
+import fax_e2e  # noqa: E402
+from fax_e2e import fixture, parse_args  # noqa: E402,F401  (block.py and sugata_flash.py import them here)
 
 AREA, SCREEN, POS_X, POS_Y = 0x24, 0x63, 0x9E, 0xA1
 PLAYER_FLAGS, FACING_RIGHT = 0xA4, 0x40
@@ -29,102 +27,18 @@ BUILDINGS, TOWNS = 4, 3
 SMALL, LARGE, MAGIC, HELMET, NO_SHIELD = 0, 1, 2, 3, 0xFF
 
 
-def free_port():
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+class Game(fax_e2e.Game):
+    """fax_e2e.Game, polling a little faster, with what Block's and Sugata's
+    flash's tests add."""
 
-
-def chunks(data):
-    assert data[:8] == b"CYCSTATE"
-    pos = 32
-    while pos < len(data):
-        tag, size = struct.unpack_from("<4sI", data, pos)
-        pos += 8
-        yield tag, pos, size
-        pos += size
-        if tag == b"END ":
-            return
-
-
-def fixture(source, target, writes):
-    """Copy a save state, changing RAM (`writes`: address -> byte)."""
-    data = bytearray(Path(source).read_bytes())
-    pos, size = next((p, n) for t, p, n in chunks(data) if t == b"HW  ")
-    assert size == 2072, "Unqualified hardware ABI"
-    for address, value in writes.items():
-        data[pos + 23 + address] = value
-    Path(target).write_bytes(data)
-
-
-class Game:
     def __init__(self, build, rom, out, game_args=(), realtime=False, port=0):
-        image = Path(rom).read_bytes()
-        assert zlib.crc32(image[16:]) == 0x57DD23D1, "the original Faxanadu (USA) ROM is required"
-        self.rom, self.out = Path(rom).resolve(), Path(out).resolve()
-        self.args = [part for arg in game_args for part in arg.split("=", 1)]
-        self.realtime, self.port = realtime, port or free_port()
-        shutil.rmtree(self.out, ignore_errors=True)
-        (self.out / "game").mkdir(parents=True)
-        shutil.copy2(Path(build) / "FaxanaduRecomp", self.out / "game")
-        for folder in ("assets", "mods"):
-            shutil.copytree(Path(build) / folder, self.out / "game" / folder)
+        super().__init__(build, rom, out, game_args, realtime, port)
         self.config = self.out / "game" / "config.ini"
-        self.log = open(self.out / "game.log", "w")
-        self.proc = None
-        self.shots = []
-
-    # ---- the process ----
-    def launch(self, *extra):
-        extra = self.args + list(extra)
-        if not self.realtime:
-            extra += ["--uncapped", "--exit-after", "100000000"]
-        env = dict(os.environ, NESRECOMP_NO_LAUNCHER="1", SDL_VIDEODRIVER="dummy", SDL_AUDIODRIVER="dummy")
-        self.proc = subprocess.Popen([str(self.out / "game" / "FaxanaduRecomp"), str(self.rom), "--hidden",
-                                      "--tcp", str(self.port), *extra], env=env, stdout=self.log,
-                                     stderr=subprocess.STDOUT)
-        for _ in range(100):
-            try:
-                return self.frame()
-            except OSError:
-                time.sleep(0.1)
-        raise AssertionError("the game did not start")
-
-    def close(self):
-        if not self.proc:
-            return
-        try:
-            self.tcp("quit")
-        except Exception:
-            self.proc.kill()
-        self.proc.wait(10)
-        self.proc = None
-
-    def running(self):
-        return self.proc is not None and self.proc.poll() is None
-
-    # ---- TCP ----
-    def tcp(self, cmd, **kw):
-        with socket.create_connection(("127.0.0.1", self.port), 5) as s:
-            s.settimeout(30)
-            f = s.makefile("rwb", buffering=0)
-            f.write((json.dumps(dict(id=1, cmd=cmd, **kw)) + "\n").encode())
-            reply = json.loads(f.readline())
-        if not reply.get("ok"):
-            raise RuntimeError(f"{cmd}: {reply}")
-        return reply
-
-    def frame(self):
-        return self.tcp("ping")["frame"]
 
     def wait(self, frames):
         end = self.frame() + frames
         while self.frame() < end:
             time.sleep(0.003)
-
-    def ram(self, addr, n=1):
-        data = bytes.fromhex(self.tcp("read_ram", addr=addr, len=n)["hex"])
-        return data[0] if n == 1 else data
 
     def until(self, what, test, frames=1200):
         end = self.frame() + frames
@@ -145,12 +59,6 @@ class Game:
 
     def load(self, path):
         self.tcp("load_state", path=str(path))
-
-    def shot(self, name):
-        path = self.out / f"{len(self.shots):02d}-{name}.png"
-        self.tcp("screenshot", layer="picture", path=str(path))
-        self.shots.append(path)
-        return path
 
     # ---- the game ----
     def where(self):

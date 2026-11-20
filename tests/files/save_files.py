@@ -20,19 +20,14 @@ Copies the build to OUT/game (the save files are written beside it), then:
      continues the imported file, and erases a file from the file select.
 --shots DIR also copies the screenshots worth showing there.
 """
-import argparse
-import json
-import os
 from pathlib import Path
 import shutil
-import socket
-import struct
-import subprocess
 import sys
-import time
-import zlib
 
-PORT = 0                                                            # set in main
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
+import fax_e2e  # noqa: E402
+from fax_e2e import Game, act, fixture, frame, parser, ram, tcp, typed, wait  # noqa: E402
+
 JOY_CHANGED, AREA, SCREEN = 0x19, 0x24, 0x63
 MESSAGE_ID, TEXTBOX_PAUSED = 0x213, 0x215
 EXPERIENCE, GOLD, SPECIAL_ITEMS, QUESTS, TITLE, PLAYER_IS_DEAD, TEMPLE_SPAWN_POINT, NEXT_TITLE = (
@@ -56,56 +51,8 @@ PROGRESS = {
 }
 
 
-def tcp(cmd, **kw):
-    with socket.create_connection(("127.0.0.1", PORT), 5) as s:
-        s.settimeout(60)
-        f = s.makefile("rwb", buffering=0)
-        f.write((json.dumps(dict(id=1, cmd=cmd, **kw)) + "\n").encode())
-        reply = json.loads(f.readline())
-    if not reply.get("ok"):
-        raise RuntimeError(f"{cmd}: {reply}")
-    return reply
-
-
-def free_port():
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
-def frame():
-    return tcp("ping")["frame"]
-
-
-def wait(frames):
-    end = frame() + frames
-    while frame() < end:
-        time.sleep(0.005)
-
-
-def ram(addr, n=1):
-    data = bytes.fromhex(tcp("read_ram", addr=addr, len=n)["hex"])
-    return data[0] if n == 1 else data
-
-
 def until(what, test, frames=1500):
-    end = frame() + frames
-    while frame() < end:
-        if test():
-            return
-        time.sleep(0.005)
-    raise AssertionError(f"timed out waiting for {what}")
-
-
-def act(name, frames=6, after=8):
-    tcp("action", name=name, frames=frames)
-    wait(frames + after)
-
-
-def typed():
-    """The text box is waiting for a button."""
-    message, _, paused = ram(MESSAGE_ID, 3)
-    return message == 0 or paused != 0
+    fax_e2e.until(what, test, frames)
 
 
 def files():
@@ -118,27 +65,6 @@ def travel():
 
 def in_temple(temple):
     return (ram(AREA), ram(SCREEN)) == (BUILDINGS, TEMPLE_SCREEN[temple])
-
-
-def chunks(data):
-    assert data[:8] == b"CYCSTATE"
-    pos = 32
-    while pos < len(data):
-        tag, size = struct.unpack_from("<4sI", data, pos)
-        pos += 8
-        yield tag, pos, size
-        pos += size
-        if tag == b"END ":
-            return
-
-
-def fixture(source, target, writes):
-    data = bytearray(source.read_bytes())
-    pos, size = next((p, n) for t, p, n in chunks(data) if t == b"HW  ")
-    assert size == 2072, "Unqualified hardware ABI"
-    for address, value in writes.items():
-        data[pos + 23 + address] = value
-    target.write_bytes(data)
 
 
 def progress_writes(p):
@@ -185,22 +111,12 @@ def file_progress(f):
 
 
 def main():
-    global PORT
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    for key in ("build", "rom", "out"):
-        ap.add_argument("--" + key, type=Path, required=True)
+    ap = parser(__doc__)
     ap.add_argument("--shots", type=Path, help="copy the screenshots worth showing here")
-    ap.add_argument("--port", type=int, default=0, help="TCP port (default: a free one)")
-    ap.add_argument("--realtime", action="store_true", help="run at normal speed instead of uncapped")
     args = ap.parse_args()
-    PORT = args.port or free_port()
-    image = args.rom.read_bytes()
-    assert zlib.crc32(image[16:]) == 0x57DD23D1, "the original Faxanadu (USA) ROM is required"
-    out = args.out.resolve()
-    shutil.rmtree(out, ignore_errors=True)
-    env = dict(os.environ, NESRECOMP_NO_LAUNCHER="1", SDL_VIDEODRIVER="dummy", SDL_AUDIODRIVER="dummy")
-    game = None
-    shots = []
+    game = Game.from_args(args)                                     # the build in OUT/game
+    game.timeout = 60
+    out = game.out
     worth = {}
 
     def install(folder):
@@ -210,35 +126,14 @@ def main():
             shutil.copytree(args.build / sub, folder / sub)
 
     def launch(folder, *extra):
-        nonlocal game
-        extra = list(extra)
-        if not args.realtime:
-            extra += ["--uncapped", "--exit-after", "100000000"]
-        log = open(out / "game.log", "a")
-        game = subprocess.Popen([str(folder / "FaxanaduRecomp"), str(args.rom.resolve()), "--hidden",
-                                 "--tcp", str(PORT), *extra], env=env, stdout=log, stderr=subprocess.STDOUT)
-        for _ in range(100):
-            try:
-                frame()
-                break
-            except OSError:
-                time.sleep(0.1)
-        else:
-            raise AssertionError("the game did not start")
+        """Start the copy of the game in `folder`, and wait for the file select."""
+        game.exe = folder / "FaxanaduRecomp"
+        game.launch(*extra)
         until("the file select", lambda: files()["shown"], 2000)
         wait(10)
 
-    def close():
-        try:
-            tcp("quit")
-        except Exception:
-            game.kill()
-        game.wait(10)
-
     def shot(name, keep=None):
-        path = out / f"{len(shots):02d}-{name}.png"
-        tcp("screenshot", layer="picture", path=str(path))
-        shots.append(path.name)
+        path = game.shot(name)
         if keep:
             worth[keep] = path
 
@@ -288,7 +183,6 @@ def main():
     try:
         # 1. A new game in file 2.
         gamedir = out / "game"
-        install(gamedir)
         launch(gamedir)
         state = files()
         assert [s["status"] for s in state["slots"]] == [MISSING] * 3, state
@@ -358,7 +252,7 @@ def main():
         print("ok: file 2 holds exact gold, experience, title, items, quests, spawn point and Gurus")
 
         # 3. Quit, relaunch, continue file 2.
-        close()
+        game.close()
         launch(gamedir)
         state = files()
         assert [s["status"] for s in state["slots"]] == [MISSING, OK, MISSING], state
@@ -413,7 +307,7 @@ def main():
         tcp("load_state", path=str(out / "other.cycstate"))
         other = tcp("mantra_now")["mantra"]
         assert mantra != other
-        close()
+        game.close()
 
         # 5. Importing mantras.
         imports = out / "imports"
@@ -430,12 +324,12 @@ def main():
         assert file_progress(f1) == dict(expect, next_title=4, experience=4800, gold=1600), file_progress(f1)
         assert mantra in (imports / "faxanadu_imported.txt").read_text()
         print("ok: the first run imports faxanadu.srm's mantra and faxanadu_gurus.txt into file 1")
-        close()
+        game.close()
         launch(imports, "--password", other)
         state = files()
         assert state["imports"] == 1 and [s["status"] for s in state["slots"]] == [OK, OK, MISSING], state
         assert read_file(imports / "faxanadu_file2.txt")["items"] == "16"
-        close()
+        game.close()
         launch(imports, "--password", other)
         assert files()["imports"] == 0, "a mantra is imported once"
         print("ok: --password imports into the first empty file, once")
@@ -446,7 +340,7 @@ def main():
         assert progress == file_progress(f1) and spawn == CONFLATE, progress
         assert travel()["visited"] == 0b100011
         print("ok: continuing the imported file gives the mantra's progress and the visited Gurus")
-        close()
+        game.close()
 
         # 6. Erasing a file.
         launch(imports)
@@ -464,7 +358,7 @@ def main():
         assert not (imports / "faxanadu_file2.txt").exists() and state["rows"][2].endswith("2 New game"), state
         assert (imports / "faxanadu_file1.txt").exists()
         print("ok: erasing file 2 from the file select")
-        print("screenshots:", ", ".join(shots))
+        print("screenshots:", ", ".join(game.shots))
         if args.shots:
             args.shots.mkdir(parents=True, exist_ok=True)
             for name, path in worth.items():
@@ -476,7 +370,7 @@ def main():
             pass
         raise
     finally:
-        close()
+        game.close()
 
 
 if __name__ == "__main__":

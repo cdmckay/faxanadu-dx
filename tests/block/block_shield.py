@@ -22,14 +22,14 @@ game fills each frame and the picture (or Seamless world's) is drawn from.
    while Block is still held. The shadow OAM is read every frame, on one
    connection; the shield's sprites never change. The pictures show it too:
    around the hero, the glint changes only his box, and the picture between
-   the beats and after them is the one before Block went up.
+   the beats and after them is the one before Block went up. A lagging
+   script can miss a beat: up to 5 tries each, counting game frames.
 4. At normal speed: A pressed in the air just before landing a jump is kept
    by forgiving jumps; Block going up before the landing drops it, so he
    does not jump on landing.
 
 Screenshots of each, in OUT.
 """
-import argparse
 import json
 from pathlib import Path
 import socket
@@ -38,8 +38,8 @@ import sys
 import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from harness import (Game, fixture, POS_X, POS_Y, PLAYER_FLAGS, FACING_RIGHT, SELECTED_SHIELD, ENTITIES,  # noqa: E402
-                     SMALL, LARGE, MAGIC, HELMET, NO_SHIELD)
+from harness import (Game, fixture, parse_args, POS_X, POS_Y, PLAYER_FLAGS, FACING_RIGHT, SELECTED_SHIELD,  # noqa: E402
+                     ENTITIES, SMALL, LARGE, MAGIC, HELMET, NO_SHIELD)
 
 SHADOW_OAM, SHIELD_BOX = 0x700, 0x39B         # Player_ShieldPositionX/Y
 INTERRUPT_COUNTER = 0x1A                       # counts every NMI: one a frame
@@ -120,14 +120,7 @@ def changed(before, after, box):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    for key in ("build", "rom", "out"):
-        ap.add_argument("--" + key, type=Path, required=True)
-    ap.add_argument("--game-arg", action="append", default=[],
-                    help="extra game option, e.g. --game-arg=--world-view=seamless (repeatable)")
-    ap.add_argument("--port", type=int, default=0, help="TCP port (default: a free one)")
-    args = ap.parse_args()
-    g = Game(args.build, args.rom, args.out, args.game_arg, False, args.port)
+    g = Game.from_args(parse_args(__doc__))
 
     def block():
         return g.tcp("block_state")
@@ -208,7 +201,8 @@ def main():
         commands sent with it are served at the same one. Returns
         {frame: (shield, body)}, {frame: Block's glint counter} after V,
         {frame: screenshot} before V and after the glint shows, and the first
-        frame read after V was sent."""
+        frame read after V was sent. Gives up 60 frames after V if no read
+        has shown the glint."""
         at = g.ram(POS_X), g.ram(POS_Y)
         line = Line(g.port)
         seen, counts, befores, shots, first, pressed = {}, {}, {}, {}, None, None
@@ -229,7 +223,7 @@ def main():
                 seen[frame] = parse(ram[SHADOW_OAM - INTERRUPT_COUNTER:], at)
                 if shoot:
                     (shots if pressed else befores)[frame] = path
-                    g.shots.append(path)
+                    g.shots.append(path.name)
                 if pressed is None:
                     if len({f % 2 for f in befores}) == 2:
                         line.batch(("key", dict(name="V", frames=120)))
@@ -239,12 +233,11 @@ def main():
                 body = seen[frame][1]
                 if first is None and body and all(p == 1 for _, _, p in body):
                     first = frame
-                if first is not None and frame - first > 2 * GLINT:
+                if first is not None and frame - first > 2 * GLINT or first is None and frame - pressed > 60:
                     break
         finally:
             line.close()
         assert pressed is not None, f"{name}: every picture before V had the same frame parity"
-        assert first is not None, f"{name}: the body never took the shield's palette"
         return seen, counts, befores, shots, pressed
 
     try:
@@ -314,55 +307,70 @@ def main():
         for shield in (SMALL, LARGE, MAGIC, HELMET):
             for facing in ("right", "left"):
                 name = f"{NAMES[shield]}-{facing}"
-                g.load(states[shield])
-                g.wait(10)
-                if facing == "left":
-                    g.act("left", 2, 10)
-                assert bool(g.ram(PLAYER_FLAGS) & FACING_RIGHT) == (facing == "right")
-                down, body = sprites()
-                assert body and all(p == 0 for _, _, p in body), body
-                assert (down != []) == (shield != HELMET), down
-                glints = block()["glints"]
-                hero = around_hero(8)
-                seen, counts, befores, shots, pressed = watch_glint(name)
-                timeline = [(f, "".join(str(p) for _, _, p in b)) for f, (_, b) in sorted(seen.items())]
-                for frame, (shield_now, body_now) in seen.items():
-                    assert shield_now == down, (name, frame, shield_now, down)
-                    assert len(body_now) == len(body), (name, frame, body_now)
-                # The glint's first frame: after the last read without it, and
-                # no later than the first with it; one that every read agrees
-                # with. Block's counter (draws left after this frame's) names it.
-                first = min(f for f, (_, b) in seen.items() if all(p == 1 for _, _, p in b))
-                assert first >= pressed, (name, pressed, timeline)
-                starts = [a for a in range(max(f for f in seen if f < first) + 1, first + 1)
-                          if all(all(p == glinting(f - a) for _, _, p in b) for f, (_, b) in seen.items())]
-                named = {f - (GLINT - 1 - left) for f, left in counts.items() if left}
-                assert len(named) == 1 and named <= set(starts), (name, starts, named, timeline)
-                start = named.pop()
-                beats = [any(lo <= f - start < hi for f in seen) for lo, hi in ((0, 4), (4, 8), (8, 12), (12, 24))]
-                assert all(beats), (name, start, timeline)
-                # Each picture is compared with one from before V of the same
-                # parity, around the hero: the glint changes his box alone.
-                still = {f % 2: path for f, path in befores.items()}
-                pictured = {}
-                for frame, path in sorted(shots.items()):
-                    shown = frame - lag - start
-                    kind = "on" if glinting(shown) else "between" if shown < GLINT else "over"
-                    spot = changed(still[frame % 2], path, hero)
-                    if kind == "on":
-                        assert spot and spot[0] >= hero[0] + 8 and spot[1] >= hero[1] + 8, (path.name, hero, spot)
-                        assert spot[2] <= hero[2] - 8 and spot[3] <= hero[3] - 8, (path.name, hero, spot)
-                    else:
-                        assert spot is None, (path.name, kind, spot)
-                    pictured.setdefault(kind, (path, still[frame % 2]))
-                assert set(pictured) == {"on", "between", "over"}, (name, start, sorted(shots), pictured)
-                glinted[name] = *pictured["on"], hero
-                state = block()
-                assert state["raised"] and state["glints"] == glints + 1 and state["glint"] == 0, state
-                let_go()
-                print(f"ok: {name}: Block going up, the body glints in the shield's palette for frames 1-4 and 9-12 "
-                      f"({len(seen)} reads, every {(max(seen) - min(seen)) / (len(seen) - 1):.1f} frames), the shield "
-                      f"as the game draws it; the pictures agree")
+                # A read takes about 3 frames, and on a loaded machine the
+                # script can lag past a whole beat: an attempt whose reads or
+                # pictures miss one lets go and holds Block again from the
+                # same state. What the reads do show must be right every time.
+                for attempt in range(5):
+                    g.load(states[shield])
+                    g.wait(10)
+                    if facing == "left":
+                        g.act("left", 2, 10)
+                    assert bool(g.ram(PLAYER_FLAGS) & FACING_RIGHT) == (facing == "right")
+                    down, body = sprites()
+                    assert body and all(p == 0 for _, _, p in body), body
+                    assert (down != []) == (shield != HELMET), down
+                    glints = block()["glints"]
+                    hero = around_hero(8)
+                    seen, counts, befores, shots, pressed = watch_glint(name)
+                    timeline = [(f, "".join(str(p) for _, _, p in b)) for f, (_, b) in sorted(seen.items())]
+                    for frame, (shield_now, body_now) in seen.items():
+                        assert shield_now == down, (name, frame, shield_now, down)
+                        assert len(body_now) == len(body), (name, frame, body_now)
+                    lit = [f for f, (_, b) in seen.items() if all(p == 1 for _, _, p in b)]
+                    if not lit:                                # no read landed in a beat
+                        let_go()
+                        continue
+                    # The glint's first frame: after the last read without it,
+                    # and no later than the first with it; one that every read
+                    # agrees with. Block's counter (draws left after this
+                    # frame's) names it.
+                    first = min(lit)
+                    assert first >= pressed, (name, pressed, timeline)
+                    starts = [a for a in range(max(f for f in seen if f < first) + 1, first + 1)
+                              if all(all(p == glinting(f - a) for _, _, p in b) for f, (_, b) in seen.items())]
+                    named = {f - (GLINT - 1 - left) for f, left in counts.items() if left}
+                    assert len(named) == 1 and named <= set(starts), (name, starts, named, timeline)
+                    start = named.pop()
+                    beats = [any(lo <= f - start < hi for f in seen) for lo, hi in ((0, 4), (4, 8), (8, 12), (12, 24))]
+                    # Each picture is compared with one from before V of the
+                    # same parity, around the hero: the glint changes his box
+                    # alone.
+                    still = {f % 2: path for f, path in befores.items()}
+                    pictured = {}
+                    for frame, path in sorted(shots.items()):
+                        shown = frame - lag - start
+                        kind = "on" if glinting(shown) else "between" if shown < GLINT else "over"
+                        spot = changed(still[frame % 2], path, hero)
+                        if kind == "on":
+                            assert spot and spot[0] >= hero[0] + 8 and spot[1] >= hero[1] + 8, (path.name, hero, spot)
+                            assert spot[2] <= hero[2] - 8 and spot[3] <= hero[3] - 8, (path.name, hero, spot)
+                        else:
+                            assert spot is None, (path.name, kind, spot)
+                        pictured.setdefault(kind, (path, still[frame % 2]))
+                    if not all(beats) or set(pictured) != {"on", "between", "over"}:
+                        let_go()
+                        continue
+                    glinted[name] = *pictured["on"], hero
+                    state = block()
+                    assert state["raised"] and state["glints"] == glints + 1 and state["glint"] == 0, state
+                    let_go()
+                    print(f"ok: {name}: Block going up, the body glints in the shield's palette for frames 1-4 and "
+                          f"9-12 ({len(seen)} reads, every {(max(seen) - min(seen)) / (len(seen) - 1):.1f} frames), "
+                          f"the shield as the game draws it; the pictures agree (try {attempt + 1})")
+                    break
+                else:
+                    raise AssertionError(f"{name}: the reads or pictures missed a beat of the glint in 5 tries")
 
         # 4. The jump buffer, at normal speed, with the Small Shield. A goes in
         # within the jump's last 6 frames, then V at once; an attempt counts
