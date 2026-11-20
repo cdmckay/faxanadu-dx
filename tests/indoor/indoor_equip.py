@@ -42,7 +42,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import (Game, act, features_toml, fixture, frame, parse_args, ram, tcp, typed,  # noqa: E402
+from fax_e2e import (Game, act, features_toml, fixture, parse_args, ram, tcp, typed,  # noqa: E402
                      until, wait)
 
 AREA, SCREEN, PLAYER_X, PLAYER_Y = 0x24, 0x63, 0x9E, 0xA1
@@ -129,9 +129,9 @@ def main():
     ROM = game.image
     extra_args = [part for arg in game.game_args for part in arg.split("=", 1)]
 
-    def launch(on=True):
+    def launch(on=True, at=None):
         game.set_features({PACKAGE: on})
-        game.launch()
+        game.launch(at=at)
         assert indoor()["enabled"] == on, indoor()
 
     def mods(on):
@@ -294,10 +294,7 @@ def main():
         assert weapons() == weapons_before + [LONG_SWORD], weapons()
 
     try:
-        launch()
-        until("the title", lambda: frame() > 700)
-        tcp("pad", buttons="start", frames=10)
-        until("the Eolis gate", lambda: ram(AREA) == EOLIS and frame() > 1900)
+        launch(at="gate")
         walk_to(186, 196)                                   # the gate, column 12
         act("up", 4, 10)
         until("Eolis", lambda: (ram(AREA), ram(SCREEN)) == (EOLIS, 1))
