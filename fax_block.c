@@ -27,11 +27,9 @@
  *     range and the Magic Shield's reflection first, at the same site.
  * Contact damage and everything else is untouched.
  *
- * It shows: while Block is up, the shield is drawn raised, before the hero's
- * face and out in front (the drawing only; the shield's box stays where the
- * game puts it). With the Battle Helmet, which has no shield drawn, or in a
- * pose with a shield of its own (a swing, a ladder), the hero glints in the
- * shield's colors as Block goes up.
+ * It shows: as Block goes up, the hero glints twice in the shield's colors,
+ * with any shield-slot item. The shield itself is drawn where the game draws
+ * it.
  *
  * The first time the hero comes to own anything for the shield slot (a shop,
  * or the Battle Helmet's pickup, whose script runs before the helmet is
@@ -68,11 +66,8 @@
 #define SPRITE_BOX_LEFT       0x03E2u   /* Sprite_GetBounds: the current sprite's box, this frame */
 #define SPRITE_BOX_WIDTH      0x03E4u
 #define PLAYER_IS_DEAD        0x0438u
-#define TEMP_00               0x0000u   /* in Player_DrawShield: the pose, 0-7 (Maybe_Player_CalcAnimFrame) */
 #define SPRITES_START_SLOT_RANGE 0x001Cu   /* Sprite_Draw writes slot * 4 EOR it */
 #define SPRITES_SPRITE_SLOT   0x0025u   /* the next sprite slot Sprite_Draw writes */
-#define ARG_DRAW_SPRITE_POS_X 0x0027u   /* where Sprite_Draw draws */
-#define ARG_DRAW_SPRITE_POS_Y 0x0028u
 #define SHADOW_OAM            0x0700u   /* SPRITE_0_RANGE_1_START: Y, tile, attributes (palette in bits 0-1), X */
 /* Bank 14 */
 #define PLAYER_HANDLE_HIT_BY_MAGIC      0x87DCu  /* LDX CurrentSpriteIndex, LDY CurrentSprites_Entities,X,
@@ -85,9 +80,6 @@
 #define FLASH_HIT                       0xAB44u  /* SpriteBehavior_FlashScreenHitPlayer, greyscale just cleared:
                                                     LDA #$04, JSR Sound_PlayEffect, iframes, knockback, 10 HP */
 #define FLASH_FINISH                    0xAB60u  /* LDX CurrentSpriteIndex, JMP Sprite_FinishBehavior */
-#define DRAW_SHIELD_AT                  0xB9C3u  /* Player_DrawShield, its box and drawing place set: LDA Temp_00
-                                                    (the pose), PHA, JSR Player_CalculateVisibility (at the drawing
-                                                    place), ..., JMP Sprite_SetPlayerAppearanceAddr */
 #define DRAW_WEAPON                     0xB7D6u  /* Player_DrawWeapon: LDA IScript_PortraitID, BPL return. The main
                                                     loops and Game_DrawScreenInFrozenState call it right after
                                                     Player_DrawBody */
@@ -241,46 +233,26 @@ static int flash_hook(uint16_t addr) {
 
 /* ---- what Block looks like ----
  *
- * Player_DrawShield sets the shield's box (Player_ShieldPositionX/Y: the
- * hero's front half, 8 pixels below his top), then copies it to
- * Arg_DrawSprite_PosX/Y and draws the shield there, in the shield's palette
- * (1). At DRAW_SHIELD_AT the box is set and the drawing has not begun: with
- * Block up, the drawing moves up to the hero's face and out in front, and the
- * box stays where the game put it, so what the shield stops is as before.
- * Only the upright poses (standing, walking, a jump) raise it: a swing and a
- * ladder have shield poses of their own, which stay.
+ * As Block goes up, with any shield-slot item, the hero glints: the body's
+ * sprites (drawn between Player_DrawBody's entry and Player_DrawWeapon's,
+ * which the game always calls in turn) take the shield's palette (1), twice,
+ * GLINT_BEAT draws each. The shield is drawn where the game draws it, already
+ * in that palette, and its box is the game's.
  *
- * Where nothing is raised (the Battle Helmet, which has no shield drawn, or a
- * shield in a swing or on a ladder), the hero glints instead as Block goes
- * up: the body's sprites (drawn between Player_DrawBody's entry and
- * Player_DrawWeapon's, which the game always calls in turn) take the shield's
- * palette, twice, GLINT_BEAT draws each.
- *
- * Both only draw, and count only in the live machine: an isolated one that
- * allows hooks would draw the same. (Seamless world's redraw of the hero at a
- * room's edge allows none, so the part of him past the edge is the game's
- * own pose there.) */
-enum { RAISE_UP = 6, RAISE_FORWARD = 2, UPRIGHT_POSES = 4 };
+ * The glint only draws, and counts only in the live machine: an isolated one
+ * that allows hooks would draw the same. (Seamless world's redraw of the hero
+ * at a room's edge allows none, so the part of him past the edge is the
+ * game's own pose there.) */
 enum { GLINT_BEAT = 4, GLINT_DRAWS = 3 * GLINT_BEAT, SHIELD_PALETTE = 1 };
 enum { NO_SLOT = 0xFF };
 
 static unsigned glint;                  /* draws of the glint left */
 static bool was_up = true;              /* Block was up at the last draw; true: no glint on loading */
-static bool shield_up;                  /* this draw raised the shield */
 static uint8_t body_from[2] = { NO_SLOT, NO_SLOT };   /* Sprites_SpriteSlot at Player_DrawBody: live, isolated */
-static unsigned shields_raised, glints;
+static unsigned glints;
 
 /* Block is up, as the picture shows it: in an isolated machine too. */
 static bool up_as_drawn(void) { return enabled && held() && shield_slot_item(peek(SELECTED_SHIELD)); }
-
-/* Where the raised shield is drawn, from where the game draws it: RAISE_UP
- * higher, before the hero's face, and RAISE_FORWARD further the way he faces,
- * short of wrapping past the screen's edge. */
-static void raise_shield(uint8_t *x, uint8_t *y, bool facing_right) {
-    if (facing_right) *x = *x > 255 - RAISE_FORWARD ? 255 : (uint8_t)(*x + RAISE_FORWARD);
-    else *x = *x < RAISE_FORWARD ? 0 : (uint8_t)(*x - RAISE_FORWARD);
-    *y = *y < RAISE_UP ? 0 : (uint8_t)(*y - RAISE_UP);
-}
 
 /* The glint's draw `left` of GLINT_DRAWS shows the shield's palette: the
  * first and last beats. */
@@ -294,18 +266,6 @@ static uint8_t next_slot(uint8_t slot) {
     return slot & 0x20 ? slot : (uint8_t)(slot + 1);
 }
 
-/* Player_DrawShield, its place set (DRAW_SHIELD_AT): the drawing goes up. */
-static int shield_draw_hook(uint16_t addr) {
-    (void)addr;
-    if (!up_as_drawn() || peek(TEMP_00) >= UPRIGHT_POSES) return 0;
-    uint8_t x = peek(ARG_DRAW_SPRITE_POS_X), y = peek(ARG_DRAW_SPRITE_POS_Y);
-    raise_shield(&x, &y, peek(PLAYER_FLAGS) & FACING_RIGHT);
-    cyc_mod_poke(ARG_DRAW_SPRITE_POS_X, x);
-    cyc_mod_poke(ARG_DRAW_SPRITE_POS_Y, y);
-    if (!cyc_mod_isolated()) { shield_up = true; ++shields_raised; }
-    return 0;
-}
-
 /* Player_DrawBody: its sprites start at this slot. */
 static int draw_body_hook(uint16_t addr) {
     (void)addr;
@@ -313,8 +273,8 @@ static int draw_body_hook(uint16_t addr) {
     return 0;
 }
 
-/* Player_DrawWeapon, after the body: Block going up starts a glint, unless
- * the shield went up with it; the body's sprites glint while it lasts. */
+/* Player_DrawWeapon, after the body: Block going up starts a glint; the
+ * body's sprites glint while it lasts. */
 static int draw_weapon_hook(uint16_t addr) {
     (void)addr;
     bool isolated = cyc_mod_isolated();
@@ -323,9 +283,8 @@ static int draw_weapon_hook(uint16_t addr) {
     bool up = up_as_drawn();
     unsigned left = up ? glint : 0;
     if (!isolated) {
-        if (up && !was_up && !shield_up) { left = GLINT_DRAWS; ++glints; }
+        if (up && !was_up) { left = GLINT_DRAWS; ++glints; }
         was_up = up;
-        shield_up = false;
         glint = left ? left - 1 : 0;
     }
     if (from == NO_SLOT || !glinting(left)) return 0;
@@ -493,7 +452,6 @@ void fax_block_frame_end(void) {
 static void picture_reset(void) {
     glint = 0;
     was_up = true;
-    shield_up = false;
     body_from[0] = body_from[1] = NO_SLOT;
 }
 
@@ -504,8 +462,8 @@ void fax_block_loaded(void) {
 
 static const char *const hook_ids[] = {
     "faxanadu.block.main-loop", "faxanadu.block.shield-hit", "faxanadu.block.touch-magic",
-    "faxanadu.block.flash", "faxanadu.block.end-script", "faxanadu.block.shield-draw",
-    "faxanadu.block.draw-body", "faxanadu.block.draw-weapon" };
+    "faxanadu.block.flash", "faxanadu.block.end-script", "faxanadu.block.draw-body",
+    "faxanadu.block.draw-weapon" };
 static void hooks(int on) {
     for (unsigned i = 0; i < sizeof hook_ids / sizeof hook_ids[0]; ++i) nes_mod_set_function_hook_enabled(hook_ids[i], on);
 }
@@ -516,7 +474,7 @@ static void deactivate(void) {
     owned = true;
     phase = QUIET;
     magic_blocked = shield_saved = flashes_blocked = tutorials = stood = 0;
-    shields_raised = glints = 0;
+    glints = 0;
     picture_reset();
     hooks(0);
 }
@@ -624,11 +582,11 @@ static void block_state(int id, const char *line_in) {
              "\"enabled\":%s,\"binding\":%s,\"held\":%s,\"raised\":%s,\"in_play\":%s,\"stood\":%u,"
              "\"magic_blocked\":%u,\"shield_saved\":%u,\"flashes_blocked\":%u,"
              "\"taught\":%s,\"tutorials\":%u,\"saying\":%s,\"owned\":%s,\"line\":%s,"
-             "\"shields_raised\":%u,\"glints\":%u,\"glint\":%u",
+             "\"glints\":%u,\"glint\":%u",
              enabled ? "true" : "false", text, held() ? "true" : "false", fax_block_raised() ? "true" : "false",
              in_play() ? "true" : "false", stood, magic_blocked, shield_saved, flashes_blocked,
              taught ? "true" : "false", tutorials, phase == SAYING ? "true" : "false", owned ? "true" : "false", said,
-             shields_raised, glints, glint);
+             glints, glint);
     cyc_tcp_ok(id, fields);
 }
 void fax_block_tcp_setup(void) {
@@ -649,9 +607,8 @@ NES_MOD_CONSTRUCTOR(register_block) {
         !nes_mod_register_function_entry_plugin(hook_ids[2], PLAYER_HANDLE_TOUCH_ENEMY_MAGIC, touch_magic_hook) ||
         !nes_mod_register_function_entry_plugin(hook_ids[3], FLASH_HIT, flash_hook) ||
         !nes_mod_register_function_entry_plugin(hook_ids[4], ISCRIPT_ACTION_END_SCRIPT, end_script_hook) ||
-        !nes_mod_register_function_entry_plugin(hook_ids[5], DRAW_SHIELD_AT, shield_draw_hook) ||
-        !nes_mod_register_function_entry_plugin(hook_ids[6], DRAW_BODY, draw_body_hook) ||
-        !nes_mod_register_function_entry_plugin(hook_ids[7], DRAW_WEAPON, draw_weapon_hook) ||
+        !nes_mod_register_function_entry_plugin(hook_ids[5], DRAW_BODY, draw_body_hook) ||
+        !nes_mod_register_function_entry_plugin(hook_ids[6], DRAW_WEAPON, draw_weapon_hook) ||
         !nes_mod_register_reset_callback(deactivate) ||
         !nes_mod_register_activation_plugin("faxanadu.block", activate) ||
         !nes_mod_register_savestate_hook("faxanadu.block", state_get, state_set) ||
