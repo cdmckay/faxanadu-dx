@@ -17,7 +17,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 import fax_e2e  # noqa: E402
-from fax_e2e import Game, act, fixture, parse_args, ram, tcp, typed, until, wait  # noqa: E402
+from fax_e2e import Game, act, fixture, hurry, parse_args, ram, tcp, typed, until, wait  # noqa: E402
 
 TEMPLE_SPAWN_POINT, PLAYER_IS_DEAD, MESSAGE_ID, TEXTBOX_PAUSED = 0x439, 0x438, 0x213, 0x215
 AREA, SCREEN, HP, MP, GOLD = 0x24, 0x63, 0x431, 0x39A, 0x392
@@ -41,7 +41,7 @@ def die_and_respawn(temple):
         if typed():
             act("a")
         else:
-            wait(10)
+            hurry(10)
     until(f"temple {temple}", lambda: in_temple(temple))
 
 

@@ -630,6 +630,26 @@ def act(name, frames=6, after=8):
     wait(frames + after)
 
 
+def hurry(frames=10):
+    """Wait `frames` frames holding A for all but the last 2. Hold A to speed
+    up text (the remaster's) types a character every frame while A is held,
+    not every 4th, and holding never turns a page, which takes a new press:
+    for a loop that presses A on each page once it has typed, the same
+    presses, sooner. Nothing else may be waiting for A."""
+    tcp("action", name="a", frames=max(1, frames - 2))
+    wait(frames)
+
+
+def until_typed(what="the page to type out", frames=1200):
+    """until() the text box waits for a button, hurrying it with A; for a
+    step that presses A next."""
+    end = frame() + frames
+    while not typed():
+        if frame() >= end:
+            raise AssertionError(f"timed out waiting for {what}")
+        hurry(4)
+
+
 def hold(button, done, frames=600, renew=8):
     """Hold `button` (a TCP action) until done() is true, or `frames` frames
     have run, and let go at once: an action replaces the button's hold, so a

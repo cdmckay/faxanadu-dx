@@ -56,7 +56,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 import fax_e2e  # noqa: E402
-from fax_e2e import Game, act, chunks, frame, hold, parse_args, ram, tcp, typed, until, wait  # noqa: E402
+from fax_e2e import Game, act, batch, chunks, frame, hold, hurry, parse_args, ram, tcp, typed, until, until_typed, wait  # noqa: E402
 
 AREA, SCREEN, PLAYER_X, PLAYER_Y, PLAYER_FLAGS, PLAYER_STATUS = 0x24, 0x63, 0x9E, 0xA1, 0xA4, 0xA5
 SCREEN_READY = 0x0E
@@ -85,6 +85,7 @@ FLIGHTS, COOLDOWN, FREEZE = (30, 40, 50, 60), 60, 15              # the game's s
 FLIGHT = FLIGHTS[0]                                                 # a Novice's: the lowest band
 ELIXIR_PRICE, ELIXIR_ROW = 320, 2                                   # EOLIS_TOOL_SHOP_ITEMS: dagger, potion, Elixir
 SECOND = 64
+INTERRUPT_COUNTER = 0x1A                                            # counts NMIs; the game's second is & $3F == 0
 PACKAGE = ("faxanadu.remastered", "remastered")                  # the one switch: off is the original game
 PARTS = ("bands", "boots-flight", "boots-cooldown", "boots-death", "glass-freeze", "glass-cooldown", "boss",
          "elixir", "tool-shop", "finds", "spring", "travel", "save", "apolune-guru", "original")
@@ -141,6 +142,30 @@ def fixture(source, target, writes, record=None):
         assert any(tag == b"MOD " and data[p:p + 64].rstrip(b"\0") == RECORD for tag, p, _ in chunks(data)), \
             "the state has no recharging items record"
     fax_e2e.fixture(source, target, writes, {RECORD.decode(): record} if record else None)
+
+
+def cooldown_started(which, frames=60):
+    """Wait for the `which` ("boots" or "glass") cooldown to start, reading it
+    with InterruptCounter in one batch, so both are one frame's: (its first
+    value, the state, whether the game's second may have ticked since it
+    started). It counts down on the game's second (InterruptCounter & $3F ==
+    0), so it reads one less if that came between its start and the read:
+    possible only if it came after the last read that saw no cooldown."""
+    key, last = f"{which}_cooldown", None
+    end = frame() + frames
+    while frame() < end:
+        s, counter = batch(("recharge_state", {}), ("read_ram", dict(addr=INTERRUPT_COUNTER, len=1)))
+        now = int(counter["hex"], 16)
+        if s[key] > 0:
+            ticked = last is None or any((last + d) & 0x3F == 0 for d in range(1, (now - last & 0xFF) + 1))
+            return s[key], s, ticked
+        last = now
+    raise AssertionError(f"timed out waiting for the {which} cooldown")
+
+
+def fresh(value, ticked):
+    """A cooldown just started: COOLDOWN, or one less after a game second."""
+    return value == COOLDOWN or ticked and value == COOLDOWN - 1
 
 
 def walk_out():
@@ -219,7 +244,7 @@ def main():
         for _ in range(20):
             if not box_open():
                 return
-            until("the page to type out", typed, frames)
+            until_typed("the page to type out", frames)
             act("a", 6, 14)
         raise AssertionError("the box did not close")
 
@@ -339,7 +364,7 @@ def main():
             if typed():
                 act("a", 6, 20)
             else:
-                wait(4)
+                hurry(4)
         assert not box_open(), f"the shop did not close (saw {seen})"
         return seen
 
@@ -392,9 +417,8 @@ def main():
             begun = frame()
             dismiss(WING_BOOTS_GONE, (FLIGHT + 2) * SECOND)
             flown = frame() - begun
-            until("the cooldown", lambda: state()["boots_cooldown"] > 0, 60)
-            s = state()
-            assert s["boots_cooldown"] == COOLDOWN and not s["boots_ready"] and s["hud"] == COOLDOWN, s
+            value, s, ticked = cooldown_started("boots")
+            assert fresh(value, ticked) and not s["boots_ready"] and s["hud"] == value, s
             hud_shot("boots-recharging", range(COOLDOWN - 2, COOLDOWN + 1))
             blinks = set()
             for _ in range(40):
@@ -455,10 +479,9 @@ def main():
             shot("hour-glass")
             print("ok: the Hour Glass freezes the Zozuras for 15 s and halves HP (80 to 40)")
             dismiss(HOUR_GLASS_GONE, (FREEZE + 2) * SECOND)
+            value, s, ticked = cooldown_started("glass")
             clear(ZOZURA)
-            until("the cooldown", lambda: state()["glass_cooldown"] > 0, 60)
-            s = state()
-            assert s["glass_cooldown"] == COOLDOWN and s["hud"] == COOLDOWN and items() == ([], HOUR_GLASS), s
+            assert fresh(value, ticked) and s["hud"] == value and items() == ([], HOUR_GLASS), s
             refused = state()["refused"]
             use()
             wait(30)
@@ -512,8 +535,8 @@ def main():
             ended = frame() - entered
             assert 5 <= left <= 12 and ended <= 2 * SECOND, (left, ended)
             dismiss(HOUR_GLASS_GONE, 300)
-            until("the cooldown", lambda: state()["glass_cooldown"] > 0, 60)
-            assert state()["glass_cooldown"] == COOLDOWN, state()
+            value, s, ticked = cooldown_started("glass")
+            assert fresh(value, ticked), s
             print(f"ok: walking onto the boss's screen with {left} s of the Hour Glass left ends it within "
                   f"{ended} frames (LimitItemDurations), then its cooldown starts")
 
@@ -707,7 +730,7 @@ def main():
                 if typed():
                     act("a", 6, 14)
                 else:
-                    wait(4)
+                    hurry(4)
             assert tcp("travel_state")["text"] == TRAVEL_TO_GURU + 1, tcp("travel_state")
             flying, cooling = ram(DURATION_WING_BOOTS), state()["glass_cooldown"]
             act("a", 6, 14)
@@ -719,8 +742,8 @@ def main():
             assert s["boots_running"] == 1 and 0 < after < flying and ram(PLAYER_STATUS) & 0x80, (s, after)
             assert 0 < s["glass_cooldown"] < cooling, s
             dismiss(WING_BOOTS_GONE, (FLIGHT + 2) * SECOND)
-            until("the cooldown", lambda: state()["boots_cooldown"] > 0, 60)
-            assert state()["boots_cooldown"] == COOLDOWN, state()
+            value, s2, ticked = cooldown_started("boots")
+            assert fresh(value, ticked), s2
             print(f"ok: a Guru travel journey from Eolis to Apolune keeps the flight ({flying} s left before, {after} "
                   f"after) and the Hour Glass's cooldown ({cooling} s, then {s['glass_cooldown']}), and the flight's "
                   "cooldown follows it")
@@ -741,7 +764,7 @@ def main():
                 if typed():
                     act("a", 6, 14)
                 else:
-                    wait(4)
+                    hurry(4)
             assert tcp("files_state")["saves"] == saves + 1, tcp("files_state")
             for _ in range(20):                                         # B closes what follows
                 if not box_open():
@@ -793,7 +816,7 @@ def main():
                 if typed():
                     act("a", 6, 14)
                 else:
-                    wait(4)
+                    hurry(4)
             assert tcp("files_state")["saves"] == saves + 1 and MEDITATE_WITH_YOU in seen, (tcp("files_state"), sorted(seen))
             for _ in range(20):                                         # B closes what follows
                 if not box_open():

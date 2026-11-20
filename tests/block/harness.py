@@ -41,7 +41,7 @@ def _gate_door(g):
         if fax_e2e.typed():
             act("a", 4, 8)
         else:
-            g.wait(10)
+            fax_e2e.hurry(10)
         act("right", 6, 2)
     for _ in range(200):
         if g.ram(POS_X) >= 192:
@@ -115,7 +115,7 @@ class Game(fax_e2e.Game):
                 if self.typed():
                     self.act("a", 6, 14)
                 else:
-                    self.wait(4)
+                    fax_e2e.hurry(4)
                 continue
             x = self.ram(POS_X)
             if x_min <= x <= x_max:

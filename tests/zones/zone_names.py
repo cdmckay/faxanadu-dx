@@ -22,7 +22,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import Game, act, fixture, hold, parse_args, ram, step_toward, tcp, typed, until, wait  # noqa: E402
+from fax_e2e import Game, act, fixture, hold, hurry, parse_args, ram, step_toward, tcp, typed, until, wait  # noqa: E402
 
 AREA, SCREEN, PLAYER_X = 0x24, 0x63, 0x9E
 TEXTBOX_CLOSED, MESSAGE_ID, TEXTBOX_PAUSED = 0x20C, 0x213, 0x215
@@ -74,7 +74,7 @@ def main():
                 if typed():
                     act("a", 6, 14)
                 else:
-                    wait(4)
+                    hurry(4)
                 continue
             x = ram(PLAYER_X)
             if x_min <= x <= x_max:
@@ -182,7 +182,7 @@ def main():
                 if box_open() and typed():
                     act("a", 6, 14)
                 else:
-                    wait(10)
+                    hurry(10)
             settled_in(1, 0)
             banner("Trunk", before + 1)
             print("ok: the door out of Eolis names the Trunk, once")
@@ -204,7 +204,7 @@ def main():
                 if typed():
                     act("a")
                 else:
-                    wait(10)
+                    hurry(10)
             until("Conflate's temple", lambda: (ram(AREA), ram(SCREEN)) == (BUILDINGS, TEMPLE_SCREEN[CONFLATE]))
             wait(60)
             before = zone()["banners"]

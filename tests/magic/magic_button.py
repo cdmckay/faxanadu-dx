@@ -29,7 +29,7 @@ import sys
 import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import Game, act, fixture, frame, parse_args, ram, tcp, typed, until, wait  # noqa: E402
+from fax_e2e import Game, act, fixture, frame, hurry, parse_args, ram, tcp, typed, until, wait  # noqa: E402
 
 AREA, SCREEN, POS_X = 0x24, 0x63, 0x9E
 PLAYER_FLAGS, ATTACKING = 0xA4, 0x80
@@ -113,7 +113,7 @@ def main():
             if typed():
                 act("a", 4, 8)
             else:
-                wait(10)
+                hurry(10)
             act("right", 6, 2)
         assert ram(POS_X) > 54, "the opening is over"
         for _ in range(200):
@@ -186,7 +186,7 @@ def main():
             if typed():
                 act("a")
             else:
-                wait(10)
+                hurry(10)
         until("Conflate's temple", lambda: where() == (BUILDINGS, CONFLATE_TEMPLE))
         wait(60)
         act("left", 170, 10)

@@ -45,7 +45,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 import fax_e2e  # noqa: E402
-from fax_e2e import Game, act, chosen, fixture, hold, parser, ram, step_toward, tcp, typed, until, wait  # noqa: E402
+from fax_e2e import Game, act, chosen, fixture, hold, hurry, parser, ram, step_toward, tcp, typed, until, wait  # noqa: E402
 
 AREA, SCREEN, PLAYER_X, PLAYER_Y, PLAYER_FLAGS = 0x24, 0x63, 0x9E, 0xA1, 0xA4
 SCREEN_READY_STATE, SCROLL_DIRECTION, INTERRUPTS_ON = 0x0E, 0x54, 0x13
@@ -133,7 +133,7 @@ def _respawn_temple(g):
         if box_open() and typed():
             act("a", 6, 14)
         else:
-            wait(10)
+            hurry(10)
     else:
         raise AssertionError("the hero did not wake in Eolis's temple")
     wait(30)
@@ -161,7 +161,7 @@ def main():
             if box_open() and typed():
                 act("a", 6, 14)
             else:
-                wait(10)
+                hurry(10)
         raise AssertionError(f"timed out paging to {what}")
 
     def walk_to(x_min, x_max):
@@ -171,7 +171,7 @@ def main():
                 if typed():
                     act("a", 6, 14)
                 else:
-                    wait(4)
+                    hurry(4)
                 continue
             x = ram(PLAYER_X)
             if x_min <= x <= x_max:
