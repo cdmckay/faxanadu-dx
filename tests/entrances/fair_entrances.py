@@ -241,7 +241,7 @@ def main():
                 runs.run(there, walk, exit_frame + 60, False, save=(exit_frame + 59, raw))
                 fixture(raw, ready, {**clear, STATUS: 0, X: col * 16, X_FRACTION: 0, Y: row * 16,
                                      FLAGS: 0x00 if kind == "left" else 0x40})
-            return ready
+            return there, ready
 
         def scrolled_in(rams, area, screen):
             """The first update on (area, screen) after a scroll: the frame after
@@ -259,11 +259,11 @@ def main():
                 state = temple
                 sched, frames = [(0, "RIGHT"), (exit_frame, "-")], exit_frame + 120
             elif way[0] == "edge":
-                state = edge_state(tag, area, way)
+                there, state = edge_state(tag, area, way)
                 key = HOLD[way[1]]
                 sched, frames = ([(0, key)] if key else []), 420
                 if seamless:
-                    seamless_edges.append((name, state, key, (area, screen, entity, stock, moved)))
+                    seamless_edges.append((name, there, key, (area, screen, entity, stock, moved)))
                     continue
             elif way[0] == "building":
                 fixture(temple, state, {SAVED_AREA: area, SAVED_SCREEN: screen, SAVED_PALETTE: palette,
@@ -316,10 +316,15 @@ def main():
             # machine loads the room (Seamless's isolated one, or the game's
             # own scroll where a seam is not joined): the move's use count.
             table = [tuple(m) for m in game.tcp("entrances_state")["table"]]
-            for name, state, key, (area, screen, entity, stock, moved) in seamless_edges:
+            for name, there, key, (area, screen, entity, stock, moved) in seamless_edges:
                 i = table.index((area, screen, entity, stock, moved))
                 used = game.tcp("entrances_state")["uses"][i]
-                game.tcp("load_state", path=str(state))
+                game.tcp("load_state", path=str(there))            # out of the temple, onto the source screen
+                for _ in range(200):
+                    if game.ram(AREA) != BUILDINGS:
+                        break
+                    game.tcp("action", name="right", frames=2)
+                    game.wait(2)
                 for _ in range(60):
                     if game.tcp("entrances_state")["uses"][i] > used:
                         break
