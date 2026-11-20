@@ -70,6 +70,12 @@ temple. Until you have entered one, and after continuing or a Guru's
 journey until you walk out of the temple, you wake at the temple as before.
 Continuing a file still starts you at the Guru you last saved with.
 
+**Fair entrances** is on by default (Mods to turn it off). A few enemies stand
+where a door, a building's or a temple's way out puts you, and hit you before
+you could possibly react, such as the knight at the door of Mascon's temple in
+the Mist. They start a little way off instead, so you see them coming. Every
+other enemy is where the original puts it, however hard.
+
 **Pendant fix** is on by default (Mods to turn it off). The Pendant was meant
 to make your weapon hit a quarter harder, but a reversed check in the
 original gave that bonus to everyone without it, and finding the Pendant took

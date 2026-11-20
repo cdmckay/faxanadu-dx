@@ -302,6 +302,18 @@ rom = []
 # recharge.wingboots, recharge.hourglass and recharge.elixir in the file in
 # play (fax_save.h), when Save files has one.
 
+[[feature]]
+package = "faxanadu.enhancement.fair-entrances"
+source = "fax_entrances.c"
+hooks = "faxanadu.fair-entrances."
+rom = []
+# Hooks Sprites_PopulateNextAvailableSprite ($C205), which no other feature
+# hooks, and writes CurrentSprite_XPos and CurrentSprite_YPos ($0389, $038A)
+# there, before the routine copies them into a sprite slot. Seamless calls
+# fax_entrances_room_loaded on its isolated machines, where it writes a moved
+# enemy's CurrentSprites_XPos_Full and CurrentSprites_YPos slot ($BA-$C9).
+# No read overrides: bank 11's placement bytes are served as they are.
+
 [[shared_site]]
 addr = 0xC4BF   # Player_ClearSelectedItem
 hooks = ["faxanadu.reusable-tools.mattock", "faxanadu.recharge.keep"]

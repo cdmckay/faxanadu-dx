@@ -4,6 +4,7 @@
  * room-local state travels at a seam; inventory, player, stack and audio do not.
  * Door/region/script transitions retain their original ownership. */
 #include "fax_world.h"
+#include "fax_entrances.h"
 #include "cyc_mod.h"
 #include "cyc_core.h"
 #include "cyc_render.h"
@@ -211,6 +212,8 @@ static bool initialize(unsigned id){
     bool ok=call(0xd127,0,0); /* Area_LoadScrollData, table + four collision borders */
     if(ok)ok=call(0xd276,0,0); /* Area_LoadBlockProperties */
     if(ok)ok=bank(14)&&call(0xc130,0,0)&&call(0xc1b4,0,0);
+    /* Hooks are off in this scope: Fair entrances moves its enemies here. */
+    if(ok)fax_entrances_room_loaded();
     transfer=r;speculative=true;cyc_mod_allow_isolated_hooks(true);
     if(ok)ok=call(0xc28d,0,0);
     drain();speculative=false;transfer=NULL;
