@@ -11,3 +11,13 @@ void fax_banner_step(void);    /* the end of each machine frame */
  * banner over it while one shows; otherwise `picture` itself. */
 const uint32_t *fax_banner_present(const uint32_t *picture, int *w, int *h);
 void fax_banner_tcp_setup(void);
+
+/* The banner's box with `line` in it, below the HUD and centered, over
+ * `picture` (or the engine's own) at alpha 0-255. Returns the banner's
+ * canvas, or `picture` if there is nothing to draw or the font is not
+ * loaded. For other features' lines: Slain by (fax_slain.c) says what killed
+ * the hero. Drawn over a zone name if one was drawn this frame. */
+const uint32_t *fax_banner_draw(const uint32_t *picture, int *w, int *h, const char *line, unsigned alpha);
+/* Put away the zone name showing, as walking into a building does, for a
+ * line that takes the banner's place. */
+void fax_banner_hide(void);

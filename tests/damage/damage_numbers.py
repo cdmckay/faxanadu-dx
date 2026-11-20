@@ -9,7 +9,7 @@ parallel.
 
 Starts a new game once. To skip the walk-in (an external prerequisite, not
 coverage), a save-state RAM fixture drops the intro's trigger and stands the
-hero at Eolis's gate. He goes in and walks left out of town to two Zozura
+hero at Eolis's gate, with full HP and Ointment for the walk. He goes in and walks left out of town to two Zozura
 (9 HP, 7 of damage) crawling along the ground on Eolis screen 4, and the game
 is saved there. Every case starts from that save, its RAM edited: the Long
 Sword in hand (8 a hit with the Pendant fix and no Pendant), Leather Armor,
@@ -32,7 +32,9 @@ walk-in leaves them anywhere. A swing or a cast goes in with its case's load
 4. Deluge through the Magic button (C), 64 pixels from the Zozura: it loses 6
    (MAGIC_DAMAGE), and a 6 shows over it.
 5. Under Ointment the Zozura touches him for 2 seconds: no HP, no number.
-6. With the remaster off: the same kill, and no number.
+6. A killing touch (5 HP left): Slain by's "Slain by a Zozura" shows in the
+   banner, and the 7 shows whole below the banner's box.
+7. With the remaster off: the same kill, and no number.
 
 The pictures are taken with the state, at one frame boundary (batch): every
 number is drawn at its room's place in the picture plus its own (the screen's
@@ -52,6 +54,7 @@ AREA, SCREEN, POS_X, POS_Y, PLAYER_FLAGS, STATUS, IFRAMES = 0x24, 0x63, 0x9E, 0x
 SPRITE_X, SPRITE_Y, ENTITIES, SPRITE_FLAGS, SPRITE_HP, HIT_COUNTER = 0xBA, 0xC2, 0x2CC, 0x2DC, 0x344, 0x34C   # 8 slots
 PAUSED, MP, SELECTED_WEAPON, SELECTED_ARMOR, SELECTED_MAGIC = 0x120, 0x39A, 0x3BD, 0x3BE, 0x3C0
 PLAYER_CUR_WEAPON, DURATION_OINTMENT, DURATION_GLOVE, SPECIAL_ITEMS, HP = 0x3C8, 0x427, 0x428, 0x42C, 0x431
+PLAYER_IS_DEAD = 0x438
 EOLIS, TOWN, ZOZURA_SCREEN, GATE_DOOR_X = 0, 1, 4, 195
 INTRO_TRIGGER, ZOZURA = 0x4F, 0x47
 NEAR, FAR = 7, 6                                    # the Zozura's slots: the nearer, the one behind it
@@ -218,7 +221,9 @@ def main():
         assert (ram(AREA), ram(SCREEN), ram(ENTITIES + 7)) == (EOLIS, 0, INTRO_TRIGGER)
         gate, door = out / "gate.cycstate", out / "door.cycstate"
         tcp("save_state", path=str(gate))
-        fixture(gate, door, {ENTITIES + 7: 0xFF, POS_X: GATE_DOOR_X})
+        # Ointment and full HP for the walk: with Seamless on, the Zozura roam before he arrives, and a
+        # new game's HP does not outlast three of their touches. Each case puts both back.
+        fixture(gate, door, {ENTITIES + 7: 0xFF, POS_X: GATE_DOOR_X, HP: FULL, DURATION_OINTMENT: 0x40})
         tcp("load_state", path=str(door))
         wait(10)
         act("up", 6, 10)
@@ -231,6 +236,7 @@ def main():
         until("the Zozura", lambda: ram(SCREEN) == ZOZURA_SCREEN and
               (ram(ENTITIES + FAR), ram(ENTITIES + NEAR)) == (ZOZURA, ZOZURA), 300)
         until("the screen to settle", lambda: ram(0x0E) == 0 and ram(0x54) == 0xFF and ram(0x13) != 0, 300)
+        assert ram(HP) > 0 and not ram(PLAYER_IS_DEAD), "he arrives alive"
         zozura = out / "arrived.cycstate"
         tcp("save_state", path=str(zozura))
         # The cases' base: everyone in place, and no number left from the walk-in.
@@ -330,9 +336,21 @@ def main():
         s = state()
         assert ram(HP) == FULL and s["hero"] == before and s["live"] == 0, s
         print("ok: under Ointment the Zozura's touch takes nothing, and nothing shows")
+
+        # 6. A killing touch: "Slain by a Zozura" in the banner, and the hit's 7 clear of it.
+        case("slain", {POS_X: 192, SPRITE_X + NEAR: 192 - 24, HP: 5, HP + 1: 0})
+        until("Slain by", lambda: tcp("slain_state")["showing"] is not None, 300)
+        wait(12)                                            # the line at full strength
+        s = look("slain-by")
+        line = tcp("slain_state")["showing"]
+        taken = [n for n in s["numbers"] if n["kind"] == "taken"]
+        assert line == "Slain by a Zozura" and ram(HP) == 0, (line, ram(HP))
+        assert [n["amount"] for n in taken] == [zozura_damage] and taken[0]["alpha"] == 255, s
+        assert taken[0]["drawn"][1] - 1 >= HUD + 32, "below the banner's box (8 to 32 under the HUD)"
+        print(f"ok: a killing touch shows \"{line}\" and, below its box and whole, the hit's {zozura_damage}")
         game.close()
 
-        # 6. The remaster off: the same kill, no number.
+        # 7. The remaster off: the same kill, no number.
         game.set_features({(PACKAGE, FEATURE): False})
         game.launch()
         assert not state()["enabled"]

@@ -142,6 +142,11 @@ name appears below the status bar for about two seconds in the game's own
 text box, as the dialogue names it ("Tower of Suffer", "Castle of
 Fraternal"). Shops, houses and temples show nothing.
 
+**Slain by.** When something takes your last HP, the same banner names it
+while you fall: "Slain by a Sugata", "Slain by an Execution Hood", "Slain
+by Poison". A shot or a falling rock is named after whoever cast it. The
+Guru's words that follow are as before.
+
 **Speaker names.** When someone with a portrait talks to you, their name sits
 on a tab above the dialogue box for the whole conversation, as the game names
 them: "Guru of Apolune", "King of Eolis", "Martial Artist", "Key Seller".

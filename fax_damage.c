@@ -36,8 +36,8 @@
  * ($25) for damage taken, outlined in black ($0F). They hold still while a
  * box or menu is open or the game is paused, and hide while a box is open.
  * While the hero's HP reads 0 (from a killing hit until he comes back) they
- * keep below the strip under the HUD where the zone names banner tells what
- * killed him. Drawn at present time, after Sugata's band and before the
+ * keep below the strip under the HUD where Slain by (fax_slain.c) tells what
+ * killed him, in the zone names banner's box. Drawn at present time, after Sugata's band and before the
  * banner.
  *
  * The numbers live in this feature's save-state record. See
