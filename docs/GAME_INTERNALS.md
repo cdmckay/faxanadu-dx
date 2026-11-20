@@ -928,11 +928,15 @@ numbers reads it:
   HUD's bar drops by 2 or 3 as the fraction carries. A shot on the shield
   takes whole HP (`SPRITE_ENTITY_DAMAGES >> (SelectedShield + 1)`), none when
   that is 0, and the flash and the Poison whole HP too.
-- **A hit freezes an enemy** for 8 frames: `CurrentSprites_HitCounter` (`$034C`)
-  is set to 8, and while it counts down the sprite loop runs no behavior for
-  it (it blinks, 2 frames on, 2 off), so it stands where the hit landed. The
-  weapon's hit also sets the enemy's facing (`CurrentSprites_Flags` bit 0) to
-  the hero's, so a crawler like the Zozura turns and crawls away after it.
+- **A weapon's hit knocks an enemy back.** It sets the enemy's facing
+  (`CurrentSprites_Flags` bit 0) to the hero's and `CurrentSprites_HitCounter`
+  (`$034C`) to 8. While the counter runs, `Sprites_UpdateAll` (`$8000`) runs
+  no behavior or hit checks for it: each frame it decrements the counter and,
+  for every enemy but Tamazutsu, Pakukame and Zorugeriru (`$2C`, `$30`,
+  `$31`), moves it 2 pixels the way it faces
+  (`Sprites_Something_SomethingAndMoveHoriz`, `MoveSpriteHorizIfPossible`):
+  16 pixels away from the hero over the 8 frames, if nothing blocks it. Its
+  place after a hit is where the hit landed plus 2 × (8 − the counter).
 - **The box an enemy is hit in** is `CurrentSprites_XPos_Full`/`_YPos`, its
   top-left, and `MAYBE_SPRITE_EXTENTS` (`$B407`), width and height by entity
   × 2, for entities `$00-$64`.

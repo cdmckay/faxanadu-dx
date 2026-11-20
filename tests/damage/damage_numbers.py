@@ -21,8 +21,9 @@ walk-in leaves them anywhere.
    and its number is still the hit's 8; the other keeps 1 of its 9 and shows
    8 too. Both show at once without touching (the older moved out of the
    newer's way). Each starts centered over the box the weapon checks, 8 above
-   its top, where RAM says the Zozura stood (the survivor's hit counter still
-   runs, so it has not moved). White, the light color.
+   its top, where RAM says the Zozura stood: the survivor's, read while its
+   hit counter runs, is where it is now plus the knockback so far (2 pixels a
+   frame). White, the light color.
 2. A number rises a pixel every 3 frames in the same column, holds while the
    game is paused, and is gone after 60 frames.
 3. The Zozura reaches the hero: his HP drops by its 7 and a pink 7 rises over
@@ -57,6 +58,7 @@ HERO_AT, NEAR_AT, FAR_AT, GROUND = 240, 150, 70, 144   # where each case puts th
 FACING_RIGHT = 0x01                                 # CurrentSprites_Flags
 LONG_SWORD, DELUGE = 1, 0
 REACH = 34                                          # swing when the nearer one is this close
+KNOCKED = 8                                         # frames a weapon's hit knocks an enemy back (its hit counter)
 STEP, LIFE, ABOVE, GLYPH = 3, 60, 8, 7              # fax_damage.h and .c
 HUD, FULL = 32, 0x50
 PACKAGE, FEATURE = "faxanadu.remastered", "remastered"
@@ -245,12 +247,15 @@ def main():
         killed, survivor = (next(n for n in dealt if n["slot"] == slot) for slot in (NEAR, FAR))
         place = [memory[SPRITE_X + FAR], memory[SPRITE_Y + FAR]]
         assert survivor["target"][1:] == place[1:] + extents, (survivor, place)
-        if survivor["age"] < 8:                     # read while its hit still freezes it: exactly there
-            assert memory[HIT_COUNTER + FAR] > 0 and survivor["target"][0] == place[0], (survivor, place)
-            where = "exactly where RAM has it"
-        else:                                       # the script lagged: it has crawled since, a pixel a frame at most
-            assert abs(survivor["target"][0] - place[0]) <= survivor["age"], (survivor, place)
-            where = f"within {abs(survivor['target'][0] - place[0])} pixels of where RAM has it {survivor['age']} frames on"
+        # The hit knocks it back 2 pixels a frame, the way the hero faces (left), for the 8 frames its hit
+        # counter runs; read while it runs, that is exactly where it was hit from.
+        counter, moved = memory[HIT_COUNTER + FAR], survivor["target"][0] - place[0]
+        if counter:
+            assert moved == 2 * (KNOCKED - counter), (survivor, place, counter)
+            where = f"exactly where RAM has it, {moved} pixels of knockback on"
+        else:                                       # the script lagged past it: knocked back 16, then crawling
+            assert 0 <= moved <= 2 * KNOCKED + survivor["age"], (survivor, place)
+            where = f"{moved} pixels from where RAM has it {survivor['age']} frames on"
         for n in dealt:
             tx, ty, tw, th = n["target"]
             assert n["x"] == tx + tw // 2 - n["w"] // 2, n                       # centered over the box
