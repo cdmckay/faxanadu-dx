@@ -116,10 +116,18 @@ def main():
         W = next(i for i, p in enumerate(plain) if p[1] > 80)      # the first frame off the ledge
         land = next(i for i in range(W, frames) if plain[i][1] == 160) + 1   # the first frame back on the floor
         assert plain[W - 1][1] == 80 and plain[W][1] == 88 and land == W + 10, (W, land)
-        best = path(game.headless(ledge, press(W - 1), frames, off))
+        # Every run below, at once: the best jump, the original with A late,
+        # the feature with A late, A one frame too late, and A on landing.
+        runs = ([(ledge, press(W - 1), frames, off)] +
+                [(ledge, press(W + k), frames, off) for k in range(COYOTE_FRAMES + 1)] +
+                [(ledge, press(W + k), frames, on) for k in range(COYOTE_FRAMES)] +
+                [(ledge, press(W + COYOTE_FRAMES), frames, on), (ledge, press(land), frames, off)])
+        got = [path(r) for r in game.headless_all(runs)]
+        best, originals = got[0], got[1:COYOTE_FRAMES + 2]
+        coyotes, (late, on_landing) = got[COYOTE_FRAMES + 2:-2], got[-2:]
         assert best[W - 1][2] & JUMPING and best[W - 1][1] == 72, "A on the last frame on the ledge jumps"
-        for k in range(COYOTE_FRAMES + 1):
-            assert path(game.headless(ledge, press(W + k), frames, off)) == plain, f"the original: A {k + 1} late"
+        for k, original in enumerate(originals):
+            assert original == plain, f"the original: A {k + 1} late"
         print(f"ok: the original jumps with A on frame {W - 1}, the last on the ledge; from frame {W} A does nothing")
 
         def peak(p):
@@ -131,8 +139,7 @@ def main():
             return i, p[i][0]
 
         print(f"   best jump: peak y={peak(best)} (32 above the ledge), lands on frame {lands(best)[0]} at x={lands(best)[1]}")
-        for k in range(COYOTE_FRAMES):
-            t = path(game.headless(ledge, press(W + k), frames, on))
+        for k, t in enumerate(coyotes):
             assert t[:W + k] == plain[:W + k] and t[W + k][2] & JUMPING, f"A on frame {W + k} jumps"
             for i in range(frames):
                 assert t[i][0] == best[i][0], f"k={k}, frame {i}: x {t[i][0]}, the best jump's {best[i][0]}"
@@ -141,8 +148,6 @@ def main():
             assert lands(t)[0] <= lands(best)[0] and lands(t)[1] <= lands(best)[1]
             print(f"ok: A {k + 1} frame(s) late jumps: peak y={peak(t)} ({8 * (k + 1)} below the best), "
                   f"lands on frame {lands(t)[0]} at x={lands(t)[1]}; never above or beyond the best jump")
-        late = path(game.headless(ledge, press(W + COYOTE_FRAMES), frames, on))
-        on_landing = path(game.headless(ledge, press(land), frames, off))
         assert late[:land] == plain[:land] and late[land:] == on_landing[land:]
         print(f"ok: A {COYOTE_FRAMES + 1} frames late falls as before; then, {land - W - COYOTE_FRAMES} frames "
               "before landing, it is a buffered press and he jumps on landing")
@@ -152,11 +157,13 @@ def main():
         once = path(game.headless(floor, jump, 80, off))
         ground = next(i for i in range(6, 80) if not once[i][2] & JUMPING) + 1
         assert once[ground - 1][1] == 160 and ground == 5 + 32, ground
-        again = path(game.headless(floor, jump + [(ground, "A"), (ground + 1, "-")], 80, off))
+        early = [jump + [(ground - j, "A"), (ground - j + 1, "-")] for j in range(BUFFER_FRAMES + 2)]
+        got = [path(r) for r in game.headless_all([(floor, jump + [(ground, "A"), (ground + 1, "-")], 80, off)] +
+                                                  [(floor, e, 80, mods) for e in early for mods in (on, off)])]
+        again = got[0]
         assert again[ground][2] & JUMPING
         for j in range(BUFFER_FRAMES + 2):
-            schedule = jump + [(ground - j, "A"), (ground - j + 1, "-")]
-            t_on, t_off = path(game.headless(floor, schedule, 80, on)), path(game.headless(floor, schedule, 80, off))
+            t_on, t_off = got[1 + 2 * j], got[2 + 2 * j]
             if 1 <= j <= BUFFER_FRAMES:
                 assert t_on[:ground] == once[:ground] and t_on[ground:] == again[ground:], f"A {j} early"
                 assert t_off == once
@@ -165,40 +172,50 @@ def main():
         print(f"ok: A 1-{BUFFER_FRAMES} frames before the first frame on the floor jumps then, as the original does "
               f"with A on that frame; {BUFFER_FRAMES + 1} before, or on it, as before")
 
-        # 4. As before.
-        def same(state, schedule, frames, what, writes=None):
+        # 4. As before: each case the same off and on, the runs of a step at once.
+        def case(name, state, writes=None):
             if writes:
-                fixture(state, out / "case.cycstate", writes)
-                state = out / "case.cycstate"
-            a, b = path(game.headless(state, schedule, frames, off)), path(game.headless(state, schedule, frames, on))
-            assert a == b, what
-            return a
+                fixture(state, out / f"case-{name}.cycstate", writes)
+                state = out / f"case-{name}.cycstate"
+            return state
 
-        for k in range(COYOTE_FRAMES):
-            t = same(ledge, walk + [(W + k, "RIGHT+A"), (W + k + 25, "RIGHT")], 90, f"Wing Boots, A {k + 1} late",
-                     {DURATION_WING_BOOTS: 0x40})
+        def same(cases):
+            """(state, schedule, frames, what) cases, each run off and on at once:
+            their paths, each the same both ways."""
+            got = [path(r) for r in game.headless_all(
+                [(state, schedule, frames, mods) for state, schedule, frames, _ in cases for mods in (off, on)])]
+            for i, (_, _, _, what) in enumerate(cases):
+                assert got[2 * i] == got[2 * i + 1], what
+            return got[::2]
+
+        boots = case("boots", ledge, {DURATION_WING_BOOTS: 0x40})
+        knock = {FLAGS: 0, STATUS: KNOCKBACK, IFRAMES: 0x3C}
+        knocked = case("knock", ledge, knock)
+        got = same([(boots, walk + [(W + k, "RIGHT+A"), (W + k + 25, "RIGHT")], 90, f"Wing Boots, A {k + 1} late")
+                    for k in range(COYOTE_FRAMES)] + [(knocked, [(0, "-")], 40, "knockback")])
+        for k, t in enumerate(got[:COYOTE_FRAMES]):
             assert t[W + k + 10][1] - t[W + k + 9][1] == 1, "hovering"
         print("ok: Wing Boots: A in the air is flying, as before")
-        knock = {FLAGS: 0, STATUS: KNOCKBACK, IFRAMES: 0x3C}
-        pushed = same(ledge, [(0, "-")], 40, "knockback", knock)
+        pushed = got[-1]
         drop = next(i for i, p in enumerate(pushed) if p[1] > 80)
-        for k in range(4):
-            same(ledge, [(0, "-"), (drop + k, "A"), (drop + k + 1, "-")], 40, f"knocked off, A {k + 1} late", knock)
-        print(f"ok: knocked off the ledge (in the air from frame {drop}), A on the next 4 frames does nothing, as before")
         climbed = path(game.headless(ladder, [(0, "-"), (5, "LEFT"), (30, "-")], 40, off))
-        drop = next(i for i, p in enumerate(climbed) if p[2] & FALLING)
-        same(ladder, [(0, "-"), (5, "LEFT"), (30, "-"), (drop, "LEFT+A"), (drop + 1, "LEFT")], 40, "off a ladder")
-        print(f"ok: stepping off a ladder (frame {drop}), A at once does nothing, as before")
-        out_door = same(temple, [(0, "RIGHT"), (35, "RIGHT+A"), (36, "RIGHT"), (60, "RIGHT+A"), (61, "RIGHT")], 110,
-                        "jumping out of the temple")
+        off_ladder = next(i for i, p in enumerate(climbed) if p[2] & FALLING)
+        door = [(0, "RIGHT"), (35, "RIGHT+A"), (36, "RIGHT"), (60, "RIGHT+A"), (61, "RIGHT")]
+        got = same([(knocked, [(0, "-"), (drop + k, "A"), (drop + k + 1, "-")], 40, f"knocked off, A {k + 1} late")
+                    for k in range(4)] +
+                   [(ladder, [(0, "-"), (5, "LEFT"), (30, "-"), (off_ladder, "LEFT+A"), (off_ladder + 1, "LEFT")], 40,
+                     "off a ladder"), (temple, door, 110, "jumping out of the temple")])
+        print(f"ok: knocked off the ledge (in the air from frame {drop}), A on the next 4 frames does nothing, as before")
+        print(f"ok: stepping off a ladder (frame {off_ladder}), A at once does nothing, as before")
+        out_door = got[-1]
         assert out_door[59][2] & JUMPING and out_door[59][3] == 4 and out_door[100][3] == 3
         print("ok: jumping out of the temple's door with A pressed again just before: no jump in the town, as before")
 
         # 5. Screenshots: A 3 frames late, near the top of the coyote jump, and the original's fall.
         shots = out / "shots"
         shots.mkdir(exist_ok=True)
-        game.headless(ledge, press(W + 2), W + 12, on, shots / "coyote-jump.png")
-        game.headless(ledge, press(W + 2), W + 6, off, shots / "late-press-original.png")
+        game.headless_all([(ledge, press(W + 2), W + 12, on, shots / "coyote-jump.png"),
+                           (ledge, press(W + 2), W + 6, off, shots / "late-press-original.png")])
         print("screenshots:", ", ".join(str(p) for p in sorted(shots.glob("*.png"))))
     except BaseException:
         if game.proc and game.proc.poll() is None:

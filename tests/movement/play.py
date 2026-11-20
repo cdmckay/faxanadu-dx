@@ -13,12 +13,16 @@ forgiving_jumps.py).
   on or off through the mod selection (off is the original game), and
   screenshots come from them too.
 """
+from concurrent.futures import ThreadPoolExecutor
+import hashlib
+import os
 from pathlib import Path
 import re
 import shutil
 import struct
 import subprocess
 import sys
+import tempfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 import fax_e2e  # noqa: E402
@@ -77,16 +81,25 @@ class Game(fax_e2e.Game):
             (root / "state.toml").write_text(fax_e2e.features_toml(selection(original)))
         return root
 
+    def continues_at(self, state):
+        """The frame a save state continues at (a run of no frames prints it),
+        remembered by the state's bytes."""
+        key = hashlib.sha256(Path(state).read_bytes()).hexdigest()
+        starts = self.__dict__.setdefault("_starts", {})
+        if key not in starts:
+            probe = subprocess.run([str(self.exe), str(self.rom), "--load-state", str(state), "--frames", "0",
+                                    "--no-save"], capture_output=True, text=True)
+            starts[key] = int(re.search(r"continuing at frame (\d+)", probe.stdout).group(1))
+        return starts[key]
+
     def headless(self, state, schedule, frames, mods, screenshot=None, save=None):
         """Run from `state` for `frames` frames, holding buttons on a schedule
         of (frame, buttons) pairs counted from the state's frame ("RIGHT+A",
         "-" for none). Returns each frame's CPU RAM, after the frame. With
         `save`, (frame, path): also save a state after that frame."""
-        probe = subprocess.run([str(self.exe), str(self.rom), "--load-state", str(state), "--frames", "0", "--no-save"],
-                               capture_output=True, text=True)
-        start = int(re.search(r"continuing at frame (\d+)", probe.stdout).group(1))
-        run = self.out / "run"
-        run.mkdir(exist_ok=True)
+        start = self.continues_at(state)
+        run = Path(tempfile.mkdtemp(prefix="run-", dir=self.out))
+        mods = shutil.copytree(mods, run / "mods")                  # its own: a run writes its selection back
         (run / "input.txt").write_text("".join(f"{start + at} {buttons}\n" for at, buttons in sorted(schedule)))
         log = run / "frames.bin"
         args = [str(self.exe), str(self.rom), "--load-state", str(state), "--input", str(run / "input.txt"),
@@ -99,7 +112,7 @@ class Game(fax_e2e.Game):
         done = subprocess.run(args, capture_output=True, text=True)
         assert done.returncode == 0, done.stdout + done.stderr
         data = log.read_bytes()
-        log.unlink()
+        shutil.rmtree(run)
         assert data[:8] == b"CYCFRAME"
         rams, pos = [], 12
         while pos < len(data):
@@ -109,6 +122,15 @@ class Game(fax_e2e.Game):
             pos += head[3] + sum(head[4:9])
         assert len(rams) == frames, (len(rams), frames)
         return rams
+
+    def headless_all(self, runs):
+        """headless(*run) for each run at once, each its own process; their
+        results, in order."""
+        runs = list(runs)
+        for state in {str(run[0]) for run in runs}:                 # each state's start, once
+            self.continues_at(state)
+        with ThreadPoolExecutor(max_workers=min(len(runs), os.cpu_count() or 4)) as pool:
+            return list(pool.map(lambda run: self.headless(*run), runs))
 
 
 
