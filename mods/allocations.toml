@@ -408,3 +408,18 @@ rom = []
 # before Player_ReduceHP is reached: a hit they stop never gets here. Writes
 # nothing to the machine; it draws its line through the zone names banner
 # (fax_banner_draw), which needs no hooks either. No read overrides.
+
+[[feature]]
+id = "indoor-equip"
+package = "faxanadu.remastered"
+plugin = "faxanadu.indoor-equip"
+source = "fax_indoor.c"
+hooks = "faxanadu.indoor-equip."
+rom = []
+# Hooks Game_EnterBuilding after its weapon clear ($DE0B), Player_SetWeapon's
+# area check ($EDF1) and the Select menu's (bank 12, $8B88), which no other
+# feature hooks. Writes Player_CurWeapon ($03C8) on the way into a building,
+# from SelectedWeapon, and clears Z at the two branches. Zone respawn's site at
+# Game_SetupEnterBuilding ($DAAF) runs before $DE0B and, when it swaps in
+# Game_SetupExitBuilding, $DE0B is never reached: that loader sets
+# Player_CurWeapon itself. No read overrides.

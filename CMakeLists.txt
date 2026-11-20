@@ -50,6 +50,7 @@ if(NESRECOMP_BACKEND STREQUAL "cycle")
             fax_respawn.c
             fax_recharge.c
             fax_slain.c
+            fax_indoor.c
         MODS GAME_ID "faxanadu-usa"
         PLAYERS 1 REGION NTSC PASSWORD_SAVE "faxanadu.srm" PASSWORD_SAVE_LABEL "Mantra"
         BOXART "${CMAKE_CURRENT_SOURCE_DIR}/boxart.tga")
@@ -65,7 +66,7 @@ if(NESRECOMP_BACKEND STREQUAL "cycle")
     set(FAX_OLD_PACKAGES)
     foreach(old auto-keys block death-keeps-gold falling-pose forgiving-jumps guru-travel magic-button
             pendant-fix quick-shops recharging-items reusable-tools save-files slain-by speaker-names
-            sugata-flash taller-dagger text-speed zone-names zone-respawn)
+            sugata-flash taller-dagger text-speed zone-names zone-respawn indoor-equip)
         list(APPEND FAX_OLD_PACKAGES "$<TARGET_FILE_DIR:FaxanaduRecomp>/mods/packages/faxanadu.enhancement.${old}")
     endforeach()
     add_custom_command(TARGET FaxanaduRecomp POST_BUILD

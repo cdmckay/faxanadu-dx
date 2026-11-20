@@ -589,3 +589,27 @@ id = "faxanadu.slain-by.spawn"
 addr = 0xa202
 bank = 14
 bytes = "8a 48 b9 cc 02 0a aa bd 2d ad 99 54"
+
+# Equip indoors (fax_indoor.c): Game_EnterBuilding right after it clears the
+# weapon in hand, where the hook puts SelectedWeapon back, and the two area
+# checks that refuse a weapon (Player_SetWeapon) and any menu choice
+# (PlayerMenu_HandleInventoryMenuInput) in a building: their BEQ, whose Z the
+# hook clears.
+
+[[mod_function_hook]]
+id = "faxanadu.indoor-equip.enter"
+addr = 0xde0b
+bank = 15
+bytes = "ad d1 03 85 fa a5 24 8d d5 03 a5 63"
+
+[[mod_function_hook]]
+id = "faxanadu.indoor-equip.set-weapon"
+addr = 0xedf1
+bank = 15
+bytes = "f0 0c 68 8d bd 03 8d c8 03 20 45 ed"
+
+[[mod_function_hook]]
+id = "faxanadu.indoor-equip.menu"
+addr = 0x8b88
+bank = 12
+bytes = "f0 5b ad 0e 02 c9 03 b0 3d ad bd 03"

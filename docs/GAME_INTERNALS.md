@@ -263,7 +263,10 @@ faxanatools' `messages.py` decodes and encodes them; `fax_travel.c`'s
   `$8140 + t * 16` in ROM; `fax_text_box_rom` draws the frame from there on
   screens whose pattern tables hold something else, like the title.
   `TextBox_Closed` (`$020C`) is 0 while a box or the Select menu is open, and
-  nonzero once one has closed (also before the first).
+  nonzero once one has closed (also before the first). Only `TextBox_Open`
+  and `TextBox_Close` store it by name, yet walking out of a building into the
+  towns (area 3, Forepaw's screen 2) it read 0 with no box up, so a test
+  should not take 0 alone for an open box outside Eolis.
 - **Where boxes go**, in tiles of the 256 x 240 screen (the HUD is rows 0-3),
   as `TextBox_X`, `TextBox_Y`, `TextBox_Width`, `TextBox_Height` (`$0208-$020B`)
   hold them; the frame is inside the size, and text starts 2 tiles in:
@@ -656,7 +659,7 @@ and the Glove adds its bonus after either.
 | `$02CC` | `CurrentSprites_Entities` | `$FF` for an empty slot |
 | `$0344` | `CurrentSprites_HP` | Set from `SPRITE_ENTITIES_HP` (`$B5A9`, by entity) when the sprite loads |
 | `$034C` | `CurrentSprites_HitCounter` | 8 on a hit; no new hit until it counts down |
-| `$03BD`, `$03C8` | `SelectedWeapon`, `Player_CurWeapon` | 0 Hand Dagger to 3 Dragon Slayer. `Player_CurWeapon` is `$FF` in buildings |
+| `$03BD`, `$03C8` | `SelectedWeapon`, `Player_CurWeapon` | 0 Hand Dagger to 3 Dragon Slayer. `Player_CurWeapon` is the weapon in hand: `$FF` in buildings in the original (see *Weapons and the menu in buildings*) |
 | `$0428` | `DurationGlove` | `$FF` when not running |
 | `$042C` | `SpecialItems` | Bits: `$01` Black Onyx, `$02` Pendant, `$04` Magical Rod, `$08` Elixir, `$10` Demon's Ring, `$20` Ring of Dworf, `$40` Ring of Ruby, `$80` Ring of Elf |
 
@@ -757,6 +760,66 @@ the swords.
 With the **Taller dagger**, `$B898` is served as `$08` through a read
 override, so the dagger's box is as tall as the swords' and reaches their
 low enemies, from the same short distance as before.
+
+## Weapons and the menu in buildings
+
+In a building (`Area_CurrentArea` 4) the original keeps the weapon out of the
+hero's hand, and the Select menu from equipping anything, in three places.
+Nothing else is gated.
+
+| Address | Code | Does |
+|---|---|---|
+| `$DE06` | `Game_EnterBuilding`: `LDA #$FF`, `STA Player_CurWeapon` | Clears the weapon in hand on every way in: a door (`Player_EnterDoorToInside`, then `Game_SetupEnterBuilding`), `Player_Spawn` (a death, a continue, Guru travel's journey) and the ending's walk to the King (`EndGame_MoveToKingsRoom`, building `$44`). `Game_ExitBuilding` (`$DE66`) sets it from `SelectedWeapon` again |
+| `$EDED` | `Player_SetWeapon` (`$EDEC`): `LDA Area_CurrentArea`, `CMP #$04`, `BEQ @_cannotEquip` (`$EDF1`) | In a building it only stores `SelectedWeapon`: no `Player_CurWeapon`, no `Player_DrawSprite` |
+| `$8B83` | `@_hasInput` in `PlayerMenu_HandleInventoryMenuInput` (bank 12): `LDA Area_CurrentArea`, `CMP #$04`, `BEQ PlayerMenu_HandleInvalidChoice` (`$8B88`) | A on any entry of any list (weapons, armor, shields, magic, items) plays the invalid-choice sound (`$0D`) and keeps the list up |
+
+- **The menu opens indoors.** `GameLoop_CheckShowPlayerMenu` refuses only
+  Eolis's screen 0; in a building only the choice is refused. The menu boxes
+  are `PlayerMenu_Show`'s (2,6, 10 x 14) and, for a list,
+  `PlayerMenu_ShowSubmenu`'s (4,8, 20 x 18); `PlayerMenu_SelectedInventory`
+  (`$020E`) is the list, and `DataArray` its entries.
+- **The hero swings indoors, bare-handed.** `Player_CheckHandleAttack` checks
+  only climbing. `Player_DrawWeapon` and `Player_HitSpriteWithWeapon` return
+  at once without `Player_CurWeapon`, so nothing is drawn or hit. Magic
+  (`Player_CastMagic`) is not gated at all.
+- **The weapon's tiles have room.** `Player_LoadWeaponTilesToPPU` loads them
+  to PPU `$0380` (`$0340` for the Dragon Slayer, whose set has no shield), from
+  `Screen_SetupNew`'s `Player_DrawSpriteImmediately` and from
+  `Player_DrawSprite`. The common sprites load to `$0400-$08FF`
+  (`Sprites_LoadCommon`) and a screen's own from `$0900`, indoors as out. In
+  the shadow OAM the weapon is tiles `$38-$3F` in sprite palette 1.
+- **Townsfolk cannot be hit.** `Player_HitSpriteWithWeapon` and a spell's
+  `Sprite_CheckHitByCastMagic` (`$8ADC`) go on only for `SPRITE_CATEGORIES_BY_ENTITY`
+  (`$B544`, bank 14) 0, an enemy, and 7, a boss. Every NPC (entities `$34-$45`:
+  the sellers, the Gurus, the King, the townsfolk) is 2, whose collision
+  handler is the one Up talks through. They have 0 HP (`SPRITE_ENTITIES_HP`),
+  so were one an enemy, any hit would kill it. A swing at a seller across his
+  counter or at a Guru overlaps him by the game's own reach test and changes
+  nothing (`tests/indoor/indoor_equip.py`). chipx86's comments on the
+  categories table name the entity after each byte's: the byte for `$4F`, the
+  intro's trigger, says "Item: Mattock".
+- **Enemies in buildings.** Eight buildings' sprite lists (bank 11, area 4)
+  hold enemies, all behind doors off the Mist and Dartmoor. In the original
+  the sword passes through them, since no weapon is in hand, and only magic
+  hurts them; they hurt the hero as anywhere.
+
+  | Building | Door | Holds |
+  |---|---|---|
+  | `$1D` | Mist `$06`, block `$93` | Sir Gawaine (`$1F`, 35 HP) at `$87` |
+  | `$1F` | Mist `$06`, `$9B` | The Wing Boots, a Giant Strider |
+  | `$35` | Dartmoor `$02`, `$42` | Sir Gawaine |
+  | `$36` | Dartmoor `$02`, `$45` | A Grimlock |
+  | `$37` | Dartmoor `$02`, `$4B` | A Red Potion, a Grimlock |
+  | `$38` | Dartmoor `$02`, `$4E` | A Maskman |
+  | `$39` | Dartmoor `$03`, `$AC` | Sir Gawaine |
+  | `$43` | Dartmoor `$1F`, `$AD` | Ointment, a Wolfman |
+
+  The Mist's screen 6 also holds temple 3's door (`$1E`, between the two).
+- **For tests:** Forepaw's tool shop (Long Sword 1600) is building `$0F`,
+  through the towns' (area 3) screen 2, block `$9D`, palette `$1B`
+  (`PALETTE_TOWN`); its Tool Seller stands behind the counter as Eolis's does.
+  A building's way in puts the hero at `BUILDING_START_POSITIONS` by its
+  layout (x 224), facing left.
 
 ## Shields and enemy magic (bank 14)
 
@@ -2139,6 +2202,16 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
   temple is laid out as before, and the checkpoint is forgotten until the hero
   walks out. Its save-state record holds the checkpoint and where a death is
   (see "Entrances and zone respawn").
+- **Equip indoors** (`fax_indoor.c`). The Select menu equips anything in a
+  building, and the hero keeps his weapon in hand there (see *Weapons and the
+  menu in buildings*). At `$DE0B`, right after `Game_EnterBuilding` clears
+  `Player_CurWeapon`, it sets it from `SelectedWeapon`, before
+  `Screen_SetupNew` loads the hero's tiles; at `Player_SetWeapon`'s `BEQ`
+  (`$EDF1`) and the menu's (`$8B88`, bank 12) it clears Z, so both go on as
+  outdoors. The game then draws the weapon and swings it with its own code.
+  When Zone respawn swaps `Game_SetupExitBuilding` in at `$DAAF`, `$DE0B` is
+  not reached, and that loader sets the weapon itself. No ROM, no read
+  overrides, no state.
 
 - **Save files** (`fax_save.c`, `fax_files.c`). Three files instead of
   mantras; see "Save files" below.
