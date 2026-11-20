@@ -240,23 +240,27 @@ def main():
         case("both", {SPRITE_X + FAR: NEAR_AT - 4, SPRITE_HP + NEAR: 1})
         memory, s = swing_at_both()
         assert memory[ENTITIES + FAR] == ZOZURA and memory[SPRITE_HP + FAR] == zozura_hp - sword, memory[SPRITE_HP + FAR]
-        assert memory[HIT_COUNTER + FAR] > 0, "the survivor is still frozen by its hit: it has not moved since"
         dealt = [n for n in s["numbers"] if n["kind"] == "dealt"]
         assert [n["amount"] for n in dealt] == [sword, sword], s
+        killed, survivor = (next(n for n in dealt if n["slot"] == slot) for slot in (NEAR, FAR))
         place = [memory[SPRITE_X + FAR], memory[SPRITE_Y + FAR]]
-        survivor = next(n for n in dealt if n["target"][:2] == place)
-        killed = next(n for n in dealt if n is not survivor)
-        assert survivor["target"] == place + extents, (survivor, place)
+        assert survivor["target"][1:] == place[1:] + extents, (survivor, place)
+        if survivor["age"] < 8:                     # read while its hit still freezes it: exactly there
+            assert memory[HIT_COUNTER + FAR] > 0 and survivor["target"][0] == place[0], (survivor, place)
+            where = "exactly where RAM has it"
+        else:                                       # the script lagged: it has crawled since, a pixel a frame at most
+            assert abs(survivor["target"][0] - place[0]) <= survivor["age"], (survivor, place)
+            where = f"within {abs(survivor['target'][0] - place[0])} pixels of where RAM has it {survivor['age']} frames on"
         for n in dealt:
             tx, ty, tw, th = n["target"]
             assert n["x"] == tx + tw // 2 - n["w"] // 2, n                       # centered over the box
             assert n["y"] == ty - ABOVE - n["lift"] - n["age"] // STEP, n       # risen from 8 above its top
-        assert killed["target"][1] == place[1] and abs(killed["target"][0] - place[0]) <= 8, (killed, place)
+        assert killed["target"][1] == place[1] and abs(killed["target"][0] - survivor["target"][0]) <= 8, dealt
         assert apart(*dealt) and s["crowded"] >= 1 and dealt[0]["lift"] != 0, s   # the older one moved
         s = look("kill-and-hit")
         assert len(s["numbers"]) == 2 and all(n["drawn"] for n in s["numbers"]), s
         print(f"ok: a kill of a Zozura left 1 HP shows the hit's whole {sword}, the other's hit {sword} too; each "
-              "centered over its box, both shown at once and apart, in the HUD's digits")
+              f"centered over its box (the survivor's {where}), both shown at once and apart, in the HUD's digits")
 
         # 2. The float: a pixel every 3 frames, in the same column; held while paused; gone after 60.
         first = s["numbers"][-1]
@@ -289,7 +293,7 @@ def main():
         taken = [n for n in s["numbers"] if n["kind"] == "taken"]
         assert s["hero"] - before == 1 and len(taken) == 1, s
         assert taken[0]["amount"] == FULL - memory[HP] == zozura_damage, (taken, memory[HP])
-        assert taken[0]["target"] == hero + [16, 32] and taken[0]["x"] == hero[0] + 8 - 3, (taken, hero)
+        assert taken[0]["slot"] == -1 and taken[0]["target"] == hero + [16, 32] and taken[0]["x"] == hero[0] + 8 - 3, (taken, hero)
         look("hero-hit")
         print(f"ok: the Zozura's touch takes {zozura_damage} HP, and a pink {zozura_damage} rises over the hero "
               f"from where he stood ({hero[0]}, {hero[1]})")

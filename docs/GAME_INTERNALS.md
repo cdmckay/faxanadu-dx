@@ -2012,7 +2012,7 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
   `Player_HP_U` is 0 (from a killing hit until the respawn) keep below the
   zone banner's box (8 to 32 pixels under the HUD), where a death's line goes.
   Drawn after Sugata's band, so it does not grey them, and before the zone
-  banner, which covers them. Its save-state record holds the numbers (15 bytes
+  banner, which covers them. Its save-state record holds the numbers (16 bytes
   each), and a state loaded with the remaster off restores none.
 - **Quick shops** (`fax_shops.c`). Up on a shopkeeper opens his buy list at
   once, Select switches to the sell list and back, a purchase or a sale keeps

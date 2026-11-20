@@ -143,7 +143,7 @@ static void weapon_and_magic_hits(void) {
     Number *n = &numbers[0];
     CHECK(n->kind == DEALT && n->amount == 8 && n->area == 0 && n->room == 4 && n->age == 0);
     CHECK(n->x == 120 + 8 - 3 && n->y == 160 - ABOVE && n->lift == 0);           /* centered, 8 above its top */
-    CHECK(n->tx == 120 && n->ty == 160 && n->tw == 16 && n->th == 16);
+    CHECK(n->tx == 120 && n->ty == 160 && n->tw == 16 && n->th == 16 && n->slot == 7);
     /* The kill: 1 HP left, the whole hit shows. */
     sword(7, 8);
     CHECK(count == 2 && numbers[1].amount == 8 && ram[SPRITE_HP + 7] == 0xF9);
@@ -182,7 +182,7 @@ static void the_hero_hit(void) {
     CHECK(count == 1 && seen.hero == 1 && ram[PLAYER_HP_U] == 73);
     Number *n = &numbers[0];
     CHECK(n->kind == TAKEN && n->amount == 7 && n->x == 192 + 8 - 3 && n->y == 144 - ABOVE);
-    CHECK(n->tx == 192 && n->ty == 144 && n->tw == 16 && n->th == 32);
+    CHECK(n->tx == 192 && n->ty == 144 && n->tw == 16 && n->th == 32 && n->slot == HERO);
     hero_takes(2, 0x40);                 /* armor's quarter off: 2.25, rounded */
     hero_takes(1, 0xC0);                 /* 1.75 */
     hero_takes(0, 0x20);                 /* an eighth: still a hit */
@@ -468,6 +468,8 @@ static void the_record(void) {
     memcpy(bad, buf, (size_t)len); bad[3] = 0;                                /* an amount */
     CHECK(!model_state_set("faxanadu.damage-numbers", bad, len));
     memcpy(bad, buf, (size_t)len); bad[6] = FAX_DAMAGE_LIFE;                  /* an age */
+    CHECK(!model_state_set("faxanadu.damage-numbers", bad, len));
+    memcpy(bad, buf, (size_t)len); bad[2 + 15] = 8;                           /* a slot */
     CHECK(!model_state_set("faxanadu.damage-numbers", bad, len));
     memcpy(bad, buf, (size_t)len); bad[1] = FAX_DAMAGE_MAX + 1;
     CHECK(!model_state_set("faxanadu.damage-numbers", bad, len));

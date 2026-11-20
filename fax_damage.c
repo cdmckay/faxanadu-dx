@@ -94,12 +94,14 @@ enum { CELL = 8, GLYPH_H = 7, ABOVE = 8 };   /* a digit's glyph is 7 by 7; a num
 enum { GAP = 2 };                            /* rows between two outlines: one apart, one for the pace's rounding */
 enum { BANNER_TOP = 8, BANNER_H = 3 * CELL };  /* the zone names banner's box, below the HUD */
 enum { DEALT, TAKEN };
+enum { HERO = 0xFF };
 
 typedef struct {
     uint8_t kind, amount, area, room, age;
     int16_t x, y;            /* the first digit's top-left when it appeared, in its room's pixels */
     int16_t lift;            /* pixels moved up (down if negative) out of newer numbers' way */
     uint8_t tx, ty, tw, th;  /* the box the hit landed on */
+    uint8_t slot;            /* the enemy's sprite slot; HERO for the hero */
 } Number;
 
 static bool enabled, failed, loaded;
@@ -161,7 +163,7 @@ static void make_room(void) {
     }
 }
 
-static void spawn(unsigned kind, unsigned amount, int tx, int ty, int tw, int th) {
+static void spawn(unsigned kind, unsigned slot, unsigned amount, int tx, int ty, int tw, int th) {
     if (!amount) { ++seen.nothing; return; }
     if (amount > 255) amount = 255;
     if (count == FAX_DAMAGE_MAX) memmove(numbers, numbers + 1, --count * sizeof *numbers);
@@ -170,7 +172,7 @@ static void spawn(unsigned kind, unsigned amount, int tx, int ty, int tw, int th
     if (x > ROOM_W - 1 - w) x = ROOM_W - 1 - w;
     numbers[count++] = (Number){ (uint8_t)kind, (uint8_t)amount, q(AREA_CURRENT_AREA), q(AREA_CURRENT_SCREEN), 0,
                                  (int16_t)x, (int16_t)(ty - ABOVE), 0, (uint8_t)tx, (uint8_t)ty, (uint8_t)tw,
-                                 (uint8_t)th };
+                                 (uint8_t)th, (uint8_t)slot };
     make_room();
 }
 
@@ -184,7 +186,8 @@ static void enemy_hit(unsigned slot, unsigned amount) {
         if (ew && ew <= 64) w = (int)ew;
         if (eh && eh <= 64) h = (int)eh;
     }
-    spawn(DEALT, amount, q((uint16_t)(CURRENT_SPRITES_XPOS + slot)), q((uint16_t)(CURRENT_SPRITES_YPOS + slot)), w, h);
+    spawn(DEALT, slot, amount, q((uint16_t)(CURRENT_SPRITES_XPOS + slot)), q((uint16_t)(CURRENT_SPRITES_YPOS + slot)),
+          w, h);
 }
 
 void fax_damage_enemy_hit(unsigned slot, unsigned amount) {
@@ -210,8 +213,8 @@ static int hero_hook(uint16_t addr) {
     if (!enabled) return 0;
     if (cyc_mod_isolated()) { ++seen.isolated; return 0; }
     ++seen.hero;
-    spawn(TAKEN, fax_damage_hero_amount(q(HEALTH_DELTA_U), q(HEALTH_DELTA_L)), q(PLAYER_POS_X), q(PLAYER_POS_Y),
-          HERO_W, HERO_H);
+    spawn(TAKEN, HERO, fax_damage_hero_amount(q(HEALTH_DELTA_U), q(HEALTH_DELTA_L)), q(PLAYER_POS_X),
+          q(PLAYER_POS_Y), HERO_W, HERO_H);
     return 0;
 }
 
@@ -362,7 +365,7 @@ const uint32_t *fax_damage_present(const uint32_t *picture, int *w, int *h) {
 
 /* ---- the machine's record ---- */
 
-enum { VERSION = 1, ENTRY = 15, RECORD_MAX = 2 + FAX_DAMAGE_MAX * ENTRY };
+enum { VERSION = 1, ENTRY = 16 };
 static void put16(uint8_t *p, int v) { p[0] = (uint8_t)v; p[1] = (uint8_t)((unsigned)v >> 8); }
 static int16_t get16(const uint8_t *p) { return (int16_t)(p[0] | p[1] << 8); }
 static int state_get(uint8_t *buf, int cap) {
@@ -374,7 +377,7 @@ static int state_get(uint8_t *buf, int cap) {
         uint8_t *p = buf + 2 + i * ENTRY;
         p[0] = n->kind; p[1] = n->amount; p[2] = n->area; p[3] = n->room; p[4] = n->age;
         put16(p + 5, n->x); put16(p + 7, n->y); put16(p + 9, n->lift);
-        p[11] = n->tx; p[12] = n->ty; p[13] = n->tw; p[14] = n->th;
+        p[11] = n->tx; p[12] = n->ty; p[13] = n->tw; p[14] = n->th; p[15] = n->slot;
     }
     return len;
 }
@@ -383,7 +386,7 @@ static int state_validate(const uint8_t *buf, int len) {
     if (len < 2 || buf[0] != VERSION || buf[1] > FAX_DAMAGE_MAX || len != 2 + buf[1] * ENTRY) return 0;
     for (unsigned i = 0; i < buf[1]; ++i) {
         const uint8_t *p = buf + 2 + i * ENTRY;
-        if (p[0] > TAKEN || !p[1] || p[4] >= FAX_DAMAGE_LIFE) return 0;
+        if (p[0] > TAKEN || !p[1] || p[4] >= FAX_DAMAGE_LIFE || (p[15] >= SLOTS && p[15] != HERO)) return 0;
     }
     return 1;
 }
@@ -393,7 +396,7 @@ static int state_set(const uint8_t *buf, int len) {
     for (unsigned i = 0; i < count; ++i) {
         const uint8_t *p = buf + 2 + i * ENTRY;
         numbers[i] = (Number){ p[0], p[1], p[2], p[3], p[4], get16(p + 5), get16(p + 7), get16(p + 9),
-                               p[11], p[12], p[13], p[14] };
+                               p[11], p[12], p[13], p[14], p[15] };
     }
     return 1;
 }
@@ -414,9 +417,9 @@ static void damage_state(int id, const char *line) {
         char where[32] = "null";
         if (drawn[i].shown) snprintf(where, sizeof where, "[%d,%d]", drawn[i].x, drawn[i].y);
         at += snprintf(out + at, sizeof out - (size_t)at,
-                       "%s{\"kind\":\"%s\",\"amount\":%u,\"area\":%u,\"room\":%u,\"age\":%u,\"x\":%d,\"y\":%d,"
+                       "%s{\"kind\":\"%s\",\"slot\":%d,\"amount\":%u,\"area\":%u,\"room\":%u,\"age\":%u,\"x\":%d,\"y\":%d,"
                        "\"w\":%d,\"h\":%d,\"lift\":%d,\"target\":[%u,%u,%u,%u],\"alpha\":%u,\"drawn\":%s}",
-                       i ? "," : "", n->kind == TAKEN ? "taken" : "dealt", n->amount, n->area, n->room, n->age, n->x,
+                       i ? "," : "", n->kind == TAKEN ? "taken" : "dealt", n->slot == HERO ? -1 : n->slot, n->amount, n->area, n->room, n->age, n->x,
                        top_of(n), width_of(n->amount), GLYPH_H, n->lift, n->tx, n->ty, n->tw, n->th,
                        fax_damage_alpha(n->age), where);
     }
