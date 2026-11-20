@@ -114,7 +114,8 @@ typedef enum { GURU_IDLE, GURU_MENU, GURU_QUESTION, GURU_SAVED, GURU_PHASES } Gu
 typedef enum { PICK, ERASE, CONFIRM } Mode;
 typedef struct { uint8_t mode, cursor, target; } Menu;   /* cursor: files 0-2, 3 the Erase row */
 typedef struct { FaxSaveStatus status; FaxSaveProgress p; } Slot;
-enum { MENU_ROWS = 10, MENU_COLS = 26, ERASE_ROW = 3 };
+/* Rows: two for each file, a blank, then Erase. */
+enum { MENU_ROWS = 8, MENU_COLS = 26, ERASE_ROW = 3 };
 
 static bool enabled, failed;
 static Menu menu;
@@ -206,14 +207,14 @@ static void load_names(void) {
  * whether the cursor is on it. */
 static void menu_row(const Menu *m, int row, char out[MENU_COLS + 1], bool *cursor) {
     char text[64] = "";
-    int file = row / 3, part = row % 3;
+    int file = row / 2, part = row % 2;
     *cursor = false;
     if (row == MENU_ROWS - 1) {
         if (m->mode == PICK) snprintf(text, sizeof text, "  Erase a file");
         else if (m->mode == ERASE) snprintf(text, sizeof text, "  Erase which file?");
         else snprintf(text, sizeof text, "  Erase file %d? A yes B no", m->target + 1);
         *cursor = m->mode == PICK && m->cursor == ERASE_ROW;
-    } else if (file < FAX_SAVE_FILES && part < 2) {
+    } else if (file < FAX_SAVE_FILES) {
         const Slot *s = &slots[file];
         if (part == 0) {
             *cursor = (m->mode == CONFIRM ? m->target : m->cursor) == file && !(m->mode == PICK && m->cursor == ERASE_ROW);
@@ -658,8 +659,9 @@ const uint32_t *fax_files_present(const uint32_t *picture, int *w, int *h) {
         canvas = grown; capacity = n;
     }
     memcpy(canvas, from, n * sizeof *canvas);
-    /* Under the logo, over the stock START / CONTINUE and the notices. */
-    int x = cyc_render_native_origin(width) + 16, y = 144;
+    /* Over the stock START / CONTINUE and the notices (y 160-239), leaving the
+     * rows between them and the logo to REMASTERED (fax_title.c). */
+    int x = cyc_render_native_origin(width) + 16, y = 160;
     uint32_t colors[4];
     for (int v = 0; v < 4; ++v) colors[v] = cyc_render_color(menu_palette[v]);
     fax_text_box_rom(canvas, width, height, x, y, MENU_COLS, MENU_ROWS, colors, 255);

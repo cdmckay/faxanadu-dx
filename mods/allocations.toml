@@ -410,6 +410,21 @@ rom = []
 # (fax_banner_draw), which needs no hooks either. No read overrides.
 
 [[feature]]
+id = "title-remastered"
+package = "faxanadu.remastered"
+plugin = "faxanadu.title-remastered"
+source = "fax_title.c"
+hooks = "faxanadu.title-remastered."
+rom = []
+# Hooks only Game_ShowStartScreen's @_afterCheckHandleInputFarJump ($FC7A),
+# which no other feature hooks, and returns 0 there: it notes that the title's
+# loop ran this frame and writes nothing. Save files' handled
+# StartScreen_CheckHandleInput returns to $FC7A as its RTS would, so the site
+# fires each frame of the title. The word is drawn over the presented picture
+# (fax_text.c), in rows the title leaves black (y 148-155), above Save files'
+# file select (from y 160).
+
+[[feature]]
 id = "indoor-equip"
 package = "faxanadu.remastered"
 plugin = "faxanadu.indoor-equip"

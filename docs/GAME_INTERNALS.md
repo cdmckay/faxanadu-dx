@@ -563,10 +563,18 @@ to `StartScreen_CheckHandleInput` (`$9F44`, bank 12), then at
   `Password_Load` has succeeded, and leaves nothing else that
   `Player_Spawn` needs: skipping it (handling its far call) after putting the
   progress in RAM continues as a mantra would.
+- `@_afterCheckHandleInputFarJump` (`$FC7A`) runs once a frame for as long
+  as the title is up, with Save files on or off (its handled
+  `StartScreen_CheckHandleInput` returns there as the RTS would), and never
+  after Start: a hook there that only notes the frame tells a feature the
+  title is up. REMASTERED on the title does that.
 - The picture: the logo and its border fill y 16-143; START and CONTINUE are
-  on y 160-166 and the three notices on 184, 200 and 216, so y 144-239 is
-  free for a box of 12 cells. The background palettes are `$0F $05 $18 $38`
-  (the logo's border), `$0F $17 $27 $30` (the white text), `$0F $0F $16 $28`
+  on y 160-166 and the three notices on 184, 200 and 216, black between.
+  REMASTERED takes y 148-155 (its glyphs light 148-154), and the file select
+  y 160-239, a box of 10 cells over START / CONTINUE and the notices. The
+  background palettes are `$0F $05 $18 $38` (the logo's border; `$38`, light
+  yellow, is its highlights and REMASTERED's color),
+  `$0F $17 $27 $30` (the white text), `$0F $0F $16 $28`
   and `$0F $0F $00 $10`; `UI_AttributeDataIndex` is 1. The playfield's
   pattern table holds the title's tiles, not the text box's, so a box drawn
   there takes the frame from ROM (`HUD_TILES_START`, bank 10; see The text
@@ -2000,6 +2008,17 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
   characters loses the tab's blank cells, so no tab is wider than the dialogue
   box. No hooks, no ROM, no state: it reads RAM and the nametable when the
   picture is presented, and draws after Seamless and zone names.
+- **REMASTERED on the title** (`fax_title.c`, with `fax_text.c`). The word
+  under the logo, centered on it (x 88-167 natively), on y 148-155, in the
+  dialogue font and palette entry 3 (`$38`, the logo's light yellow), drawn
+  over the presented picture after speaker names and before Save files' file
+  select. A hook at `@_afterCheckHandleInputFarJump` (`$FC7A`) that only
+  observes notes each frame the title's loop runs; the word shows on the
+  presents after such a frame, so it goes with the frame Start leaves the
+  loop. In a wider picture (Seamless, the wide modes) it follows the native
+  picture's origin; a picture scaled smaller than the native one is left
+  alone. Its save-state record is whether the loop ran last frame, so a state
+  loaded on the title shows the word before a frame runs. No ROM.
 
 - **Auto keys** (`fax_keys.c`). Up at a locked door opens it with its key from
   anywhere in the inventory. At `Game_RunDoorRequirementHandler` it lends the
@@ -2250,7 +2269,10 @@ kept: continuing fills HP and MP and clears the timed items, as a mantra did.
 
 **The file select.** A hook at `StartScreen_CheckHandleInput` runs it instead
 of the title's own input (see The title screen), and the file select is drawn
-over the picture below the logo. Up and Down move, A or Start take a file:
+over the picture: a box of 10 cells on y 160-239, over START / CONTINUE and
+the notices, with two rows a file (its name, then its gold and experience), a
+blank and "Erase a file". It leaves y 144-159, the black between it and the
+logo, to REMASTERED on the title. Up and Down move, A or Start take a file:
 an empty one starts a new game through the stock Start path (nothing is
 written until the first save), a saved one continues. "Erase a file" picks a
 file, then asks "Erase file N? A yes B no"; B steps back.

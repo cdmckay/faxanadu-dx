@@ -62,6 +62,9 @@ cmake --build "$OUT/movement" -j"$JOBS" >/dev/null
 cmake -S tests/files -B "$OUT/files" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/files" -j"$JOBS" >/dev/null
 FAX_FILES_TEST_DIR="$OUT/files/scratch" "$OUT/files/files_test"
+cmake -S tests/title -B "$OUT/title" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/title" -j"$JOBS" >/dev/null
+"$OUT/title/title_test"
 cmake -S tests/speaker -B "$OUT/speaker" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/speaker" -j"$JOBS" >/dev/null
 "$OUT/speaker/speaker_test"
@@ -153,6 +156,13 @@ python3 tests/text_speed/text_speed.py --build build-cycle --rom "$ROM" --out "$
 echo "== end to end: Save files, alongside them"
 python3 tests/files/save_files.py --build build-cycle --rom "$ROM" --out "$OUT/files-e2e" \
   > "$OUT/files-e2e.log" 2>&1 & files=$!
+echo "== end to end: REMASTERED on the title, by default and with Seamless on, alongside them"
+title_e2e() {  # NAME [ARGS...]
+  local name="$1"; shift
+  python3 tests/title/title_remastered.py --build build-cycle --rom "$ROM" --out "$OUT/$name" "$@" > "$OUT/$name.log" 2>&1
+}
+title_e2e title-e2e & title=$!
+title_e2e title-e2e-seamless --game-arg=--world-view=seamless & title_seamless=$!
 echo "== end to end: the taller dagger, alongside them"
 python3 tests/dagger/taller_dagger.py --build build-cycle --rom "$ROM" --out "$OUT/dagger-e2e" \
   > "$OUT/dagger-e2e.log" 2>&1 & dagger=$!
@@ -230,6 +240,10 @@ wait "$text_speed" || failed=1
 sed 's/^/[text]     /' "$OUT/text-speed-e2e.log"
 wait "$files" || failed=1
 sed 's/^/[files]    /' "$OUT/files-e2e.log"
+wait "$title" || failed=1
+sed 's/^/[title]    /' "$OUT/title-e2e.log"
+wait "$title_seamless" || failed=1
+sed 's/^/[title+sw] /' "$OUT/title-e2e-seamless.log"
 wait "$dagger" || failed=1
 sed 's/^/[dagger]   /' "$OUT/dagger-e2e.log"
 wait "$block" || failed=1

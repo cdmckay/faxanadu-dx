@@ -590,6 +590,16 @@ addr = 0xa202
 bank = 14
 bytes = "8a 48 b9 cc 02 0a aa bd 2d ad 99 54"
 
+# REMASTERED on the title (fax_title.c): Game_ShowStartScreen's loop, after
+# the far call to StartScreen_CheckHandleInput (which Save files takes over),
+# notes once a frame that the title is up. It only observes.
+
+[[mod_function_hook]]
+id = "faxanadu.title-remastered.loop"
+addr = 0xfc7a
+bank = 15
+bytes = "a5 19 29 10 f0 ee a9 08 85 fa ad 87"   # @_afterCheckHandleInputFarJump: LDA Joy1_ChangedButtonMask, AND #$10
+
 # Equip indoors (fax_indoor.c): Game_EnterBuilding right after it clears the
 # weapon in hand, where the hook puts SelectedWeapon back, and the two area
 # checks that refuse a weapon (Player_SetWeapon) and any menu choice

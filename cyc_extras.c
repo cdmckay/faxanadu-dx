@@ -18,6 +18,7 @@
 #include "fax_text_speed.h"
 #include "fax_save.h"
 #include "fax_files.h"
+#include "fax_title.h"
 #include "fax_dagger.h"
 #include "fax_block.h"
 #include "fax_sugata.h"
@@ -194,6 +195,7 @@ static void power_on(void *ctx) {
     fax_travel_step();
     fax_banner_reset();
     fax_files_power_on();
+    fax_title_power_on();
     fax_dagger_step();
     if (compile_path[0]) {
         int n = chr_override_compile_dir(compile_path);
@@ -240,6 +242,7 @@ static void frame_end(void *ctx) {
     fax_banner_step();
     fax_slain_frame_end();
     fax_files_frame_end();
+    fax_title_frame_end();
     fax_dagger_step();
     fax_block_frame_end();
     fax_sugata_frame_end();
@@ -294,6 +297,7 @@ static void tcp_setup(void *ctx) {
     fax_jumps_tcp_setup();
     fax_text_speed_tcp_setup();
     fax_files_tcp_setup();
+    fax_title_tcp_setup();
     fax_dagger_tcp_setup();
     fax_block_tcp_setup();
     fax_sugata_tcp_setup();
@@ -306,7 +310,7 @@ static void tcp_setup(void *ctx) {
 #endif
 static const uint32_t *present(void *ctx,int *w,int *h) {
     (void)ctx;
-    const uint32_t *picture=fax_files_present(fax_speaker_present(fax_slain_present(fax_banner_present(fax_sugata_present(fax_world_present(w,h,cyc_frame_argb()),w,h),w,h),w,h),w,h),w,h);
+    const uint32_t *picture=fax_files_present(fax_title_present(fax_speaker_present(fax_slain_present(fax_banner_present(fax_sugata_present(fax_world_present(w,h,cyc_frame_argb()),w,h),w,h),w,h),w,h),w,h),w,h);
     return fax_shops_present(picture,w,h);
 }
 static void event(void *ctx,const void *e,int player) {

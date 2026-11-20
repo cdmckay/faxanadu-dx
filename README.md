@@ -22,6 +22,12 @@ How the game works, as far as we've learned it, is in
 
 ## What's new
 
+### The title
+
+**REMASTERED on the title.** The title screen shows REMASTERED under the
+FAXANADU logo, in the game's own font and the light yellow of the logo. The
+rest of the title is the original's.
+
 ### Saving and the Gurus
 
 **Save files.** The title screen offers three files, as in Zelda: pick an
