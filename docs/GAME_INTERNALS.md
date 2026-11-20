@@ -363,10 +363,13 @@ What a feature can rely on, and the traps:
   (setting it back to the stock byte keeps the slot). Guru travel takes 55
   (its 48-byte line slot and 7 step bytes), the Taller dagger 1, and Save
   files shares the slot and adds 5 (4 step bytes and the menu's operand), or
-  8 if it ever ran with Guru travel off (its own 3-byte SAY): 61 to 64 of 64
-  with all three on. Quick shops takes none. A new message for the text box
-  should share the slot, and anything more needs the table made larger or
-  Guru travel's slot cut to its longest line.
+  8 if Guru travel's steps are not served (its own 3-byte SAY): 61 to 64 of
+  64. Block borrows Guru travel's SAY step and slot, and Quick shops takes
+  none. `tools/check_allocations.py` counts every byte claimed in
+  `mods/allocations.toml` once and fails past 64, so the claims, now 64, are
+  the budget. A new message for the text box should share the slot, and
+  anything more needs the table made larger or Guru travel's slot cut to its
+  longest line.
 - An override works on an **immediate operand** in used ROM (the recompiler
   reads immediates at run time), not only on data: Save files changes the
   Buy/Sell menu's `LDA #$10` for one menu. Put such a byte back as soon as it
@@ -377,11 +380,14 @@ What a feature can rely on, and the traps:
   stack first to return somewhere else. That's how Guru travel enters the
   respawn path. When a site handles, later sites at the same address are
   skipped that time, so declare shared addresses in `mods/allocations.toml`.
-  Sites at one address run in the order their callbacks were registered
-  (`nes_mod_function_entry` walks its table in order), which is the order of
-  the features' constructors, so the link order of `HOST_EXTRAS`, not the
-  order of `game.toml`. Write sites that share an address to work in either
-  order.
+  Sites at one address run in the order `game.toml` declares them:
+  `cyc_hooks_fire` (`nesrecomp/runner/cyc/cyc_hooks.c`) walks
+  `cyc_native_hook_sites`, which the recompiler generates in `game.toml`'s
+  order, and stops at the first that handles or leaves the address. The link
+  order of `HOST_EXTRAS` plays no part. Every feature is on at once, so a
+  shared address's `[[shared_site]]` lists its hooks in that order and says
+  why that order is right; `$AB44` depends on it (Sugata's flash's site before
+  Block's). The legacy backend builds no features.
 - **A jump from any site.** Handling pulls the return address from S + 1 and
   S + 2 and goes on at it + 1. So a site anywhere can go anywhere in the same
   routine or another: push the target - 1 (high byte first, as a JSR does)
@@ -1221,8 +1227,8 @@ replays any entrance. `Game_SetupExitBuilding` (`$DABE`) wraps it as the
 other `Game_Setup*` do and returns, so a prepared stack can return into it and
 then into `Game_MainLoop`.
 
-**Zone respawn** (`fax_respawn.c`) uses four sites, none shared, so the link
-order of features' hooks never matters to it:
+**Zone respawn** (`fax_respawn.c`) uses four sites, none shared, so the order
+of hooks at one address never matters to it:
 
 - `Screen_SetupNew` (`$DD13`): a load into a different zone records the way
   in as the checkpoint. A building (area 4) changes nothing: its way out
@@ -1440,14 +1446,16 @@ the shop's own, but shows **OWNED** where its price was; the hint reads
 by return, so no gold is taken and no refusal shows. Owned
 (`fax_shops_owned`):
 
-| Item | Owned when |
-|---|---|
-| Wing Boots, Hour Glass | Recharging items is on, and he has it (selected, or in the Items list) |
-| The A, K, Q, J and Jo keys, the Mattock | Reusable tools is on, and he has it |
-| Elixir | Charged (its `SpecialItems` bit, whatever is on), or spent (recharging items) |
+| Item | Kept by | Owned when |
+|---|---|---|
+| Wing Boots, Hour Glass | Recharging items | He has it: selected, or in the Items list |
+| The A, K, Q, J and Jo keys, the Mattock | Reusable tools | He has it |
+| Elixir | Recharging items | Charged (its `SpecialItems` bit) or spent |
 
-Without the feature that keeps it, an item is used up, so a second sells as in
-the original. Shops sell only the J, Q and K keys; the A and Jo keys are in the
+The rule asks each keeper whether it is on (`fax_recharge_on`,
+`fax_reusable_tools_on`), so an item counts only while it is kept; in the one
+mod they always are. A charged Elixir counts either way, since the game refuses
+a second. Shops sell only the J, Q and K keys; the A and Jo keys are in the
 rule for completeness. OWNED is five letters, in the five cells `Shop_Draw`
 gives a price (column 23, an entry's second row, right-aligned), painted over
 the price as an unsellable item's is. The sell list is unchanged: an owned item
@@ -1588,10 +1596,8 @@ jumping or falling, `Player_Flags & $05`):
   a hero holding them another, until his list is full (checked in the game:
   Forepaw sold a second pair). An earlier note here said shops never sell
   what you hold; that holds only for the Elixir. `Player_PickUpItem` adds a
-  duplicate too. With recharging items, a find recharges instead, and Quick
-  shops lists a pair or an Hour Glass he has as owned (see *Shops*); with
-  Quick shops off, the game's shop still sells a second, which then takes a
-  list slot.
+  duplicate too. With the remaster, a find recharges instead, and Quick
+  shops lists a pair or an Hour Glass he has as owned (see *Shops*).
 
 | Item | Shops | In the world (bank 11's lists: area, screen, block `YX`) |
 |---|---|---|
@@ -1645,10 +1651,11 @@ ends within a second of walking onto it (checked too).
 clears the bit, runs script `$85` ("I've used Elixir.") and refills HP and MP;
 clear, it sets `PlayerIsDead`. The menu's Player page draws a picture for each
 `SpecialItems` bit, the Elixir's included, on its last row. A mantra keeps
-the bit. With recharging items a spent Elixir is still the hero's: its hook at
-`Shop_GetPlayerHasSelectedItem` returns C set for it, so the game's shop
-refuses it as it refuses a charged one, and Quick shops lists it as owned.
-Buying one never charges it; a Guru, or one found in the world, does.
+the bit. With recharging items a spent Elixir is still the hero's
+(`fax_recharge_elixir_spent`), so Quick shops lists it as owned, as it does a
+charged one. Its bit is clear, so the game's own shop would sell one to a spent
+Elixir; through Quick shops, buying one never charges it. A Guru, or one found
+in the world, does.
 
 **Flying.** While `Player_StatusFlag` has `$80` and A is held,
 `Player_CheckHandleVertMovement` (`$E2C8`) treats the hero as on a ladder
@@ -1715,6 +1722,13 @@ rest of the way to Victim, were not checked.
 
 `mods/allocations.toml` lists each feature's ROM, hook sites and shared
 addresses, and `tools/check_allocations.py` enforces it.
+
+Every feature below is a trusted plugin of the one Faxanadu Remastered mod
+(`mods/preloaded/packages/faxanadu.remastered`, feature `remastered`), so
+they are on or off together, and may rely on each other. Each still checks
+its own `enabled` flag, which the mod runtime sets for all of them at once:
+"with X off" below means with the remaster off, or X turning itself off on an
+unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
 
 - **Guru travel** (`fax_travel.c`). After the mantra or a new title, the Guru
   says "All Gurus / meditate as one." and offers "Shall I send / you to
@@ -1827,7 +1841,7 @@ addresses, and `tools/check_allocations.py` enforces it.
 - **Recharging items** (`fax_recharge.c`, with the use-up list in
   `fax_items.h`). The Wing Boots and the Hour Glass are kept and recharge, and
   the Elixir is kept and a Guru charges it again. Its sites are in the fixed
-  bank, but for two in bank 12 (`$826E` and `$8482`, below):
+  bank, but for `$826E` in bank 12 (below):
   - `Player_UseWingBoots` and `Player_UseHourGlass`, at entry: not ready, it
     plays the "invalid choice" sound (`$0D`, `Sound_PlayEffect` in a committed
     call) and returns to the main loop as the routine's RTS would.
@@ -1847,12 +1861,8 @@ addresses, and `tools/check_allocations.py` enforces it.
   - `Player_UseElixir`: the Elixir is spent. `SpecialItems`' bit stays the
     game's own "a revive is in reserve", so `Player_ReduceHP`, the Player page
     and the Spring of Trunk go by whether it is charged.
-  - `Shop_GetPlayerHasSelectedItem` (`$8482`, bank 12), at a shop's A: with
-    the Elixir under the cursor and spent, it sets C and returns, as the
-    routine does for a charged one, so the shop says "You can't carry any
-    more." and a purchase never charges it. Quick shops' buy list never gets
-    here with it: it lists the Elixir as owned (`fax_recharge_elixir_spent`)
-    and ignores A on it.
+  - No shop charges a spent Elixir: Quick shops lists it as owned
+    (`fax_recharge_elixir_spent`) and ignores A on it.
   - `Player_PickUpItem`, with A the Wing Boots or the Hour Glass and the hero
     holding one (selected or listed): ready at once, and nothing added, even
     with the list full. Found during a run, the run goes on and no cooldown

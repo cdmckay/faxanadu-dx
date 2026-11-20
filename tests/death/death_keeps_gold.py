@@ -14,10 +14,12 @@ temple. Then he dies:
 1. With the feature on, he comes back at Mascon's Guru with the same gold,
    experience and earned title. The rest of death is the game's: full HP and
    MP, the Mattock bit and the Wing Boots gone.
-2. Continuing from his mantra on the title screen (with Save files off, so the
-   title's Continue and the mantra screen are the game's) still sets gold and
-   experience from his title, as the original does.
-3. With the feature off in the mod selection, the same death resets them to
+2. His mantra, the remaster's way: --password imports it into the first
+   empty save file, with his title's gold and experience, and continuing that
+   file from the file select starts him with them, as continuing a mantra
+   always has. Continuing goes through Player_SetInitialExpAndGold as the
+   mantra screen's END does, and this feature lets that call through.
+3. With the remaster off in the mod selection, the same death resets them to
    his title's, as the original does.
 """
 import argparse
@@ -37,16 +39,13 @@ EXPERIENCE, GOLD, PLAYER_TITLE, NEXT_PLAYER_TITLE = 0x390, 0x392, 0x437, 0x4ED
 HP, MP, QUESTS, DURATION_WING_BOOTS = 0x431, 0x39A, 0x42D, 0x429
 TEMPLE_SPAWN_POINT, PLAYER_IS_DEAD, MESSAGE_ID, TEXTBOX_PAUSED = 0x439, 0x438, 0x213, 0x215
 AREA, SCREEN = 0x24, 0x63
-START_CHOICE = 0x687                                                # DAT_0687: 0 start, 1 continue
-PASSWORD_COL, PASSWORD_ROW, PASSWORD_LENGTH = 0x662, 0x663, 0x666
-END_ROW, END_COL = 5, 3                                             # END on the mantra screen
 MATTOCK_BARRIER = 0x10
 BUILDINGS, MASCON, MASCON_TEMPLE = 4, 3, 0x1E
 NEGATIVE_THOUGHTS = 0x24                                            # the death message
 PLAYER_TITLE_EXP_NEEDED, PLAYER_TITLE_GOLD = 0xF749, 0xF767         # fixed bank, a word per title
 SOLDIER = 3
 HERO = dict(experience=5000, gold=12345)
-PACKAGE, FEATURE = "faxanadu.enhancement.death-keeps-gold", "death-keeps-gold"
+PACKAGE, FEATURE = "faxanadu.remastered", "remastered"          # the one switch: off is the original game
 
 
 def tcp(cmd, **kw):
@@ -242,52 +241,39 @@ def main():
         mantra = tcp("mantra_now")["mantra"]
         close()
 
-        # 2. Continuing from his mantra still sets gold and experience from the title.
-        # The title's Continue and the mantra screen are the game's own with
-        # Save files off.
-        (out / "game" / "mods" / "state.toml").write_text(
-            'format_version = 1\n\n[[feature]]\npackage_id = "faxanadu.enhancement.save-files"\n'
-            'id = "save-files"\nenabled = false\n')
+        # 2. His mantra, imported into a save file and continued, still starts
+        # him with his title's gold and experience.
         launch("--password", mantra)
-        until("the title", lambda: frame() > 700)
-        for _ in range(4):
-            if ram(START_CHOICE) == 1:
-                break
-            act("select")
-        assert ram(START_CHOICE) == 1, "Continue is chosen"
-        act("start")
-        until("the mantra to be filled in", lambda: ram(PASSWORD_LENGTH) == len(mantra), 600)
-        for _ in range(8):
-            if ram(PASSWORD_ROW) == END_ROW:
-                break
-            act("up")                                                   # wraps to the last row
-        for _ in range(8):
-            if ram(PASSWORD_COL) == END_COL:
-                break
-            act("right")
-        assert (ram(PASSWORD_ROW), ram(PASSWORD_COL)) == (END_ROW, END_COL), "the cursor is on END"
-        shot("mantra")
-        act("a")
+        until("the file select", lambda: tcp("files_state")["title"], 2000)
+        files = tcp("files_state")
+        imported = [i + 1 for i, s in enumerate(files["slots"]) if s["status"] == 0 and
+                    (s["title"], s["gold"], s["experience"]) == (SOLDIER, stock_gold, stock_exp)]
+        assert files["imports"] == 1 and len(imported) == 1, f"one file holds the mantra's hero: {files}"
+        while tcp("files_state")["cursor"] != imported[0] - 1:
+            act("down")
+        shot("imported-file")
+        tcp("pad", buttons="start", frames=10)
+        until(f"file {imported[0]} in play", lambda: tcp("files_state")["file"] == imported[0], 300)
         until("Mascon's temple", in_mascon_temple)
         wait(60)
         shot("continued")
         assert hero() == dict(experience=stock_exp, gold=stock_gold, title=SOLDIER, next_title=SOLDIER), hero()
         state = tcp("death_state")
         assert state["enabled"] and (state["kept"], state["passed"]) == (0, 1), state
-        print(f"ok: continuing from the mantra still starts a Soldier with {stock_gold} gold "
-              f"and {stock_exp} experience")
+        print(f"ok: his mantra, imported into file {imported[0]} and continued, still starts a Soldier with "
+              f"{stock_gold} gold and {stock_exp} experience")
         close()
 
-        # 3. With the feature off, the same death resets them, as the original does.
+        # 3. With the remaster off, the same death resets them, as the original does.
         (out / "game" / "mods" / "state.toml").write_text(
             f'format_version = 1\n\n[[feature]]\npackage_id = "{PACKAGE}"\nid = "{FEATURE}"\nenabled = false\n')
         launch()
-        assert not tcp("death_state")["enabled"], "the feature is off"
+        assert not tcp("death_state")["enabled"], "the remaster is off"
         tcp("load_state", path=str(dying))
         die_and_respawn()
         shot("respawned-off")
         assert hero() == dict(experience=stock_exp, gold=stock_gold, title=SOLDIER, next_title=SOLDIER), hero()
-        print(f"ok: turned off, the same death leaves {stock_gold} gold and {stock_exp} experience, "
+        print(f"ok: with the remaster off, the same death leaves {stock_gold} gold and {stock_exp} experience, "
               "the title's, as the original does")
         print("screenshots:", ", ".join(shots))
     except BaseException:

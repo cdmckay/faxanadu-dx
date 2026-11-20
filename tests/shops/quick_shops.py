@@ -42,9 +42,10 @@ building), the gold, and what the hero carries.
    the visit counter set to show it, its hornets cleared) is owned the same,
    carried into the shop. And at Eolis's key shop, a J key held: OWNED, and A
    does nothing.
-4. With Quick shops off, the same Up shows the shop's greeting and then the
-   Buy/Sell menu's own line, as before (Save files serves another line for
-   that menu at a Guru's, and only there).
+4. With the remaster off, the original: the same Up shows the shop's
+   greeting and then the Buy/Sell menu's own line. (With it on, a shop never
+   runs that menu, so Save files' line for it, served at a Guru's, never
+   reaches a shop.)
 
 Each list is checked in the picture too: the list's frame, and its hint line
 inside it, in the text color, and an owned item's OWNED in its price's cells.
@@ -89,7 +90,7 @@ POTION_ROW, BOOTS_ROW = 3, 4
 LIST_FRAME = (80, 64)                                               # the list's top-left frame tile, tile 10,8
 HINT = (96, 208)                                                    # its hint line: tile 12,26
 PAGE_ROW, LINE_END = 72, 224                                        # the page: row 9, ending at column 27
-PACKAGE = ("faxanadu.enhancement.quick-shops", "quick-shops")
+PACKAGE = ("faxanadu.remastered", "remastered")                  # the one switch: off is the original game
 
 
 def tcp(cmd, **kw):
@@ -725,7 +726,7 @@ def main():
         leave()
         close()
 
-        # 4. Off: the shop is as it was.
+        # 4. The remaster off: the shop is the original's.
         launch(on=False)
         tcp("load_state", path=str(out / "tool-shop.cycstate"))
         walk_out()
@@ -742,8 +743,7 @@ def main():
         until("the greeting to type out", typed, 600)
         act("a", 4, 6)
         until("the Buy/Sell menu's own line", lambda: ram(MESSAGE_ID) == BUY_OR_SELL, 600)
-        print("ok: with Quick shops off, the Tool Seller greets you and asks Buy or Sell as before "
-              "(Save files' line for the Guru's menu stays the Guru's)")
+        print("ok: with the remaster off, the Tool Seller greets you and asks Buy or Sell, as the original does")
         print("screenshots:", ", ".join(p.name for p in shots))
     except BaseException:
         shot("failure")

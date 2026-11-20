@@ -17,9 +17,9 @@
  * decides as it always did, and the item menu shows the Elixir exactly when it
  * is charged. A pickup gives one to a spent Elixir, a recharge. A spent Elixir
  * is still the hero's, as a charged one is, so buying one never recharges it:
- * the game's shop refuses it as it refuses a charged one ("You can't carry any
- * more."), and Quick shops lists it as owned (fax_recharge_elixir_spent). The
- * Spring of Trunk still takes a charged one for good.
+ * Quick shops lists it as owned and ignores A on it (fax_recharge_elixir_spent),
+ * where the game's shop would have sold one to a spent Elixir, its bit being
+ * clear. The Spring of Trunk still takes a charged one for good.
  *
  * How, on the unchanged ROM:
  * - Player_UseWingBoots / Player_UseHourGlass entry: refuse when not ready.
@@ -34,8 +34,6 @@
  *   UI_DrawTimeValue writes it. Flight time stays the game's steady count.
  * - Player_UseElixir: the Elixir is spent. IScripts_InvokeNextAction, at the
  *   first action of a Guru's script: a spent Elixir is charged again.
- * - Shop_GetPlayerHasSelectedItem (a shop's A) on a spent Elixir: the hero has
- *   it, so the shop refuses it.
  * - Player_PickUpItem: a duplicate recharges instead of being added.
  * - Game_ClearTimedItems (every spawn but a Guru journey): both ready, or a
  *   continued file's cooldowns.
@@ -76,8 +74,6 @@
 #define GAME_SHOW_START_SCREEN  0xFC65u  /* LDX #$FF, TXS: the title, from Game_InitStateForStartScreen only */
 /* Bank 12 */
 #define ISCRIPTS_INVOKE_NEXT_ACTION 0x826Eu  /* JSR IScripts_LoadByte: the action at IScriptOrCHRAddr + IScriptOffset */
-#define SHOP_GET_PLAYER_HAS_SELECTED_ITEM 0x8482u  /* LDX Menu_CursorPos, LDA DataArray,X: C set if the hero has it,
-                                                      and IScriptAction_OpenShop then says "You can't carry any more." */
 #define EOLIS_GURU_FIRST        0xA0BDu  /* ISCRIPT_EOLIS_GURU's first action: CHECK_FOR_ITEM Ring of Elf */
 /* RAM */
 #define INTERRUPT_COUNTER       0x001Au  /* +1 each NMI; the game's second is when & $3F == 0 */
@@ -88,8 +84,6 @@
 #define PPU_BUFFER              0x0500u  /* 256 bytes, circular: [length][addr hi][addr lo][tiles] */
 #define ITEM_INVENTORY          0x03ADu
 #define SELECTED_ITEM           0x03C1u
-#define MENU_CURSOR_POS         0x021Eu  /* the shop list's cursor */
-#define DATA_ARRAY              0x0220u  /* the shop list's items, 8 at most */
 #define NUMBER_OF_ITEMS         0x03C6u
 #define DURATION_WING_BOOTS     0x0429u  /* $FF when not running */
 #define DURATION_HOUR_GLASS     0x042Au
@@ -97,9 +91,6 @@
 #define PLAYER_TITLE            0x0437u  /* 0-15 */
 /* Values */
 #define BIT_ELIXIR              0x08u
-#define SPECIAL_ELIXIR          0x92u    /* the Elixir's full item ID, as a shop lists it */
-#define SHOP_ENTRIES            8
-#define FLAG_CARRY              0x01u
 #define SOUND_INVALID_CHOICE    0x0Du
 #define HUD_TIME                0x2058u  /* UI_DrawTimeValue's two digits */
 #define PPU_BUFFER_ROOM         0x24u    /* PPUBuffer_HasCapacity: at least 36 bytes free, or empty */
@@ -150,7 +141,7 @@ typedef struct { uint8_t pending, cooldown[TIMED]; } Resume;
 static Resume resume;
 static Show drawn;                 /* what this module last queued on T: */
 static bool drawn_valid;
-static unsigned flights, freezes, refused, kept, pickups, revives, guru_recharges, spawns, shop_refusals;   /* TCP */
+static unsigned flights, freezes, refused, kept, pickups, revives, guru_recharges, spawns;   /* for TCP */
 
 /* ---- the rules, on plain values ---- */
 
@@ -352,24 +343,7 @@ static int guru_hook(uint16_t addr) {
     return 0;
 }
 
-/* Shop_GetPlayerHasSelectedItem, as a shop's A checks the item under its
- * cursor: a spent Elixir is the hero's, so return C set, as the routine does
- * for a charged one; the shop says "You can't carry any more." and keeps the
- * gold. Quick shops never comes here with it: its list shows it as owned, and
- * A on it does nothing. */
-static int shop_hook(uint16_t addr) {
-    (void)addr;
-    if (cyc_mod_isolated() || !charge.elixir_spent) return 0;
-    unsigned cursor = q(MENU_CURSOR_POS);
-    if (cursor >= SHOP_ENTRIES || q((uint16_t)(DATA_ARRAY + cursor)) != SPECIAL_ELIXIR) return 0;
-    CycModRegs regs;
-    cyc_mod_regs(&regs);
-    regs.p |= FLAG_CARRY;
-    cyc_mod_set_regs(&regs);
-    ++shop_refusals;
-    return 1;
-}
-
+/* For Quick shops (fax_shops.c), which lists what the hero owns. */
 bool fax_recharge_on(void) { return enabled; }
 bool fax_recharge_elixir_spent(void) { return enabled && charge.elixir_spent; }
 
@@ -447,8 +421,7 @@ static int state_set(const uint8_t *buf, int len) {
 static const char *const hook_ids[] = {
     "faxanadu.recharge.elixir", "faxanadu.recharge.keep", "faxanadu.recharge.use-boots",
     "faxanadu.recharge.flight", "faxanadu.recharge.use-glass", "faxanadu.recharge.spawn",
-    "faxanadu.recharge.tick", "faxanadu.recharge.pick-up", "faxanadu.recharge.title", "faxanadu.recharge.guru",
-    "faxanadu.recharge.shop" };
+    "faxanadu.recharge.tick", "faxanadu.recharge.pick-up", "faxanadu.recharge.title", "faxanadu.recharge.guru" };
 static void hooks(bool on) {
     for (unsigned i = 0; i < sizeof hook_ids / sizeof hook_ids[0]; ++i) nes_mod_set_function_hook_enabled(hook_ids[i], on);
 }
@@ -457,7 +430,7 @@ static void deactivate(void) {
     memset(&charge, 0, sizeof charge);
     resume = (Resume){ 0 };
     drawn_valid = false;
-    flights = freezes = refused = kept = pickups = revives = guru_recharges = spawns = shop_refusals = 0;
+    flights = freezes = refused = kept = pickups = revives = guru_recharges = spawns = 0;
     hooks(false);
 }
 static void activate(void) {
@@ -475,13 +448,13 @@ static void recharge_state(int id, const char *line) {
              "\"enabled\":%s,\"boots_ready\":%s,\"boots_running\":%u,\"boots_cooldown\":%u,"
              "\"glass_ready\":%s,\"glass_running\":%u,\"glass_cooldown\":%u,"
              "\"elixir_spent\":%s,\"elixir_charged\":%s,\"flights\":%u,\"freezes\":%u,\"refused\":%u,"
-             "\"kept\":%u,\"pickups\":%u,\"revives\":%u,\"guru_recharges\":%u,\"spawns\":%u,\"shop_refusals\":%u,"
+             "\"kept\":%u,\"pickups\":%u,\"revives\":%u,\"guru_recharges\":%u,\"spawns\":%u,"
              "\"hud\":%d,\"hud_blank\":%s,\"hud_drawn\":%d,\"hud_drawn_blank\":%s",
              enabled ? "true" : "false", ready(&charge, BOOTS) ? "true" : "false", charge.running[BOOTS],
              charge.cooldown[BOOTS], ready(&charge, GLASS) ? "true" : "false", charge.running[GLASS],
              charge.cooldown[GLASS], charge.elixir_spent ? "true" : "false",
              q(SPECIAL_ITEMS) & BIT_ELIXIR ? "true" : "false", flights, freezes, refused, kept, pickups, revives,
-             guru_recharges, spawns, shop_refusals, s.value, s.blank ? "true" : "false", drawn_valid ? drawn.value : SHOW_GAME,
+             guru_recharges, spawns, s.value, s.blank ? "true" : "false", drawn_valid ? drawn.value : SHOW_GAME,
              drawn_valid && drawn.blank ? "true" : "false");
     cyc_tcp_ok(id, fields);
 }
@@ -500,8 +473,7 @@ NES_MOD_CONSTRUCTOR(register_recharge) {
         { PLAYER_USE_WING_BOOTS, use_hook }, { WING_BOOTS_SET_FLIGHT, flight_hook },
         { PLAYER_USE_HOUR_GLASS, use_hook }, { GAME_CLEAR_TIMED_ITEMS, spawn_hook },
         { GAME_LOOP_COUNTDOWN, tick_hook }, { PLAYER_PICK_UP_ITEM, pick_up_hook },
-        { GAME_SHOW_START_SCREEN, title_hook }, { ISCRIPTS_INVOKE_NEXT_ACTION, guru_hook },
-        { SHOP_GET_PLAYER_HAS_SELECTED_ITEM, shop_hook } };
+        { GAME_SHOW_START_SCREEN, title_hook }, { ISCRIPTS_INVOKE_NEXT_ACTION, guru_hook } };
     for (unsigned i = 0; i < sizeof sites / sizeof sites[0]; ++i)
         if (!nes_mod_register_function_entry_plugin(hook_ids[i], sites[i].addr, sites[i].cb)) abort();
     if (!nes_mod_register_reset_callback(deactivate) ||

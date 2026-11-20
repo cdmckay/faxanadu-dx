@@ -6,12 +6,12 @@ A hidden window over TCP gets the hero to Trunk (see play.py), uncapped, on a
 free port. The frame-exact checks run the same build headless from save
 states made there, with RAM fixtures for the hero's place and kit, and a
 button schedule, and read his position and flags every frame, with the
-feature on and off:
+remaster on and off (off is the original game):
 
 1. In the window, at normal speed: A pressed just after walking off Trunk's
    ledge jumps (forgiving_jumps_state counts a coyote jump), and A pressed
    just before landing a jump on the floor jumps again on landing (a buffered
-   jump). With the feature off in the mod selection, neither.
+   jump). With the remaster off in the mod selection, neither.
 2. Coyote time. A on the last frame on the ledge is the original's best jump;
    a frame later the original just falls. With the feature on, A on any of
    the first 5 frames off the ledge jumps: every frame he is where the best
@@ -24,7 +24,7 @@ feature on and off:
    it), stepping off a ladder (no coyote time), and jumping out of a door
    (a press made in the temple does not jump in the town).
 5. Screenshots: a coyote jump near its top, and the original game's fall
-   (both features off) with the same late press.
+   (the remaster off) with the same late press.
 """
 import argparse
 from pathlib import Path
@@ -34,7 +34,6 @@ import time
 from play import (CAN_CLIMB, CLIMBING, DURATION_WING_BOOTS, FALLING, FLAGS, HP, IFRAMES, JC, JUMPING, KNOCKBACK,
                   LADDER_SCREEN, LEDGE_SCREEN, RIGHT, STATUS, X, Y, AREA, Game, fixture, no_actors)
 
-FEATURE = "forgiving-jumps"
 COYOTE_FRAMES, BUFFER_FRAMES = 5, 6
 
 
@@ -99,15 +98,15 @@ def main():
         coyote, buffered = live(True)
         assert coyote == 1 and buffered == 1, (coyote, buffered)
         print("ok: in the window, A just after walking off the ledge jumped, and A just before landing jumped on landing")
-        game.select(off=[FEATURE])
+        game.select(original=True)
         coyote, buffered = live(False)
         assert coyote == 0 and buffered == 0
-        print("ok: turned off, neither")
+        print("ok: with the remaster off, neither")
         game.select()
         game.realtime = False
 
         # 2. Coyote time, frame by frame.
-        on, off = game.mods("mods-on"), game.mods("mods-off", off=[FEATURE])
+        on, off = game.mods("mods-on"), game.mods("mods-off", original=True)
         walk = [(0, "-"), (5, "RIGHT")]
         frames = 110
 
@@ -200,8 +199,7 @@ def main():
         shots = out / "shots"
         shots.mkdir(exist_ok=True)
         game.headless(ledge, press(W + 2), W + 12, on, shots / "coyote-jump.png")
-        original = game.mods("mods-original", off=[FEATURE, "falling-pose"])
-        game.headless(ledge, press(W + 2), W + 6, original, shots / "late-press-original.png")
+        game.headless(ledge, press(W + 2), W + 6, off, shots / "late-press-original.png")
         print("screenshots:", ", ".join(str(p) for p in sorted(shots.glob("*.png"))))
     except BaseException:
         if game.proc and game.proc.poll() is None:
