@@ -39,6 +39,12 @@ tools/disassembly.sh                                 # chipx86's disassembly, ve
 There is no CI: nothing builds without the ROM, which cannot be distributed.
 `tools/test.sh` is the gate, so run it before every PR.
 
+Its end-to-end runs start every game at once, a core each, so they take a
+machine-wide lock: a second checkout's suite prints that it is waiting, then
+runs. Several workers share this machine, so while developing run
+`tools/test.sh --quick` plus your own feature's end-to-end test directly, and
+the full suite once before the PR.
+
 ## Building features
 
 Features are C on an **unchanged ROM**. The game's code stays as the
