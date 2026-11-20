@@ -47,7 +47,8 @@ STATES = {
     "recharging-items": ("recharge_state", "enabled"),
     "forgiving-jumps": ("forgiving_jumps_state", "enabled"), "falling-pose": ("falling_pose_state", "enabled"),
     "text-speed": ("text_speed_state", "enabled"), "zone-names": ("zone_state", "enabled"),
-    "speaker-names": ("speaker_state", "enabled"), "indoor-equip": ("indoor_equip_state", "enabled"),
+    "speaker-names": ("speaker_state", "enabled"), "slain-by": ("slain_state", "enabled"),
+    "indoor-equip": ("indoor_equip_state", "enabled"),
 }
 START_CHOICE = 0x687                                                # DAT_0687: 0 Start, 1 Continue
 PASSWORD_COL, PASSWORD_ROW, PASSWORD_LENGTH = 0x662, 0x663, 0x666

@@ -114,9 +114,9 @@ and costs half your HP, then recharges for 60 seconds. While one recharges,
 T: on the status bar blinks the seconds left, and using it does nothing.
 Dying makes both ready. The Elixir still revives you, then stays with you,
 spent, until you talk to a Guru; the menu's Player page shows it only while
-it is charged. Finding one you already own recharges it, and a shop sells you
-an Elixir only to charge a spent one. Your save file keeps the cooldowns and
-whether the Elixir is spent.
+it is charged. Finding one you already own recharges it; buying does not, since
+a shop won't sell you a second Elixir, charged or spent. Your save file keeps
+the cooldowns and whether the Elixir is spent.
 
 ### Shops and text
 
@@ -128,6 +128,9 @@ Any shop buys anything you carry: half its price where a shop sells it,
 otherwise 100 Golds. Up from the top or Down from the bottom turns the page of
 a long list. The Dragon Slayer, the Battle Suit and the Battle Helmet are not
 for sale, and what you have equipped or selected is not offered, as before.
+What you already have for good, the Wing Boots, the Hour Glass, the Elixir
+(charged or spent), a key or the Mattock, keeps its place in a shop's list but
+says OWNED instead of a price, and A on it does nothing.
 
 **Hold A to speed up text.** Text types at the game's own pace; hold A and it
 types 4 times as fast. A page break or a question still waits for a fresh
@@ -138,6 +141,11 @@ press A to go on.
 name appears below the status bar for about two seconds in the game's own
 text box, as the dialogue names it ("Tower of Suffer", "Castle of
 Fraternal"). Shops, houses and temples show nothing.
+
+**Slain by.** When something takes your last HP, the same banner names it
+while you fall: "Slain by a Sugata", "Slain by an Execution Hood", "Slain
+by Poison". A shot or a falling rock is named after whoever cast it. The
+Guru's words that follow are as before.
 
 **Speaker names.** When someone with a portrait talks to you, their name sits
 on a tab above the dialogue box for the whole conversation, as the game names

@@ -49,6 +49,7 @@ if(NESRECOMP_BACKEND STREQUAL "cycle")
             fax_shops.c
             fax_respawn.c
             fax_recharge.c
+            fax_slain.c
             fax_indoor.c
         MODS GAME_ID "faxanadu-usa"
         PLAYERS 1 REGION NTSC PASSWORD_SAVE "faxanadu.srm" PASSWORD_SAVE_LABEL "Mantra"
@@ -64,8 +65,8 @@ if(NESRECOMP_BACKEND STREQUAL "cycle")
     # still holds them, and they would claim its plugins a second time.
     set(FAX_OLD_PACKAGES)
     foreach(old auto-keys block death-keeps-gold falling-pose forgiving-jumps guru-travel magic-button
-            pendant-fix quick-shops recharging-items reusable-tools save-files speaker-names sugata-flash
-            taller-dagger text-speed zone-names zone-respawn indoor-equip)
+            pendant-fix quick-shops recharging-items reusable-tools save-files slain-by speaker-names
+            sugata-flash taller-dagger text-speed zone-names zone-respawn indoor-equip)
         list(APPEND FAX_OLD_PACKAGES "$<TARGET_FILE_DIR:FaxanaduRecomp>/mods/packages/faxanadu.enhancement.${old}")
     endforeach()
     add_custom_command(TARGET FaxanaduRecomp POST_BUILD

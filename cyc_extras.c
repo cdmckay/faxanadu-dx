@@ -24,6 +24,7 @@
 #include "fax_shops.h"
 #include "fax_respawn.h"
 #include "fax_recharge.h"
+#include "fax_slain.h"
 #include "fax_indoor.h"
 #ifdef CYC_WITH_SDL
 #include "cyc_tcp.h"
@@ -237,6 +238,7 @@ static void frame_end(void *ctx) {
     fax_travel_step();
     fax_magic_frame_end();
     fax_banner_step();
+    fax_slain_frame_end();
     fax_files_frame_end();
     fax_dagger_step();
     fax_block_frame_end();
@@ -298,12 +300,13 @@ static void tcp_setup(void *ctx) {
     fax_shops_tcp_setup();
     fax_respawn_tcp_setup();
     fax_recharge_tcp_setup();
+    fax_slain_tcp_setup();
     fax_indoor_tcp_setup();
 }
 #endif
 static const uint32_t *present(void *ctx,int *w,int *h) {
     (void)ctx;
-    const uint32_t *picture=fax_files_present(fax_speaker_present(fax_banner_present(fax_sugata_present(fax_world_present(w,h,cyc_frame_argb()),w,h),w,h),w,h),w,h);
+    const uint32_t *picture=fax_files_present(fax_speaker_present(fax_slain_present(fax_banner_present(fax_sugata_present(fax_world_present(w,h,cyc_frame_argb()),w,h),w,h),w,h),w,h),w,h);
     return fax_shops_present(picture,w,h);
 }
 static void event(void *ctx,const void *e,int player) {

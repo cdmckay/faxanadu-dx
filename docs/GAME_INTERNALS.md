@@ -70,13 +70,17 @@ and data tables after it shifted). Not supported: the build rejects it.
 | `$0214` | `Message_ProcessedLength` | Bytes of the message read, from an offset, not 0. Wraps with the address |
 | `$0215` | `TextBox_MessagePaused` | Nonzero while a `$FC` pause waits for A |
 | `$021D` | `TextBox_Timer` | Characters type when it is a multiple of 4. `Messages_Load` zeroes it |
+| `$02CC-$02D3` | `CurrentSprites_Entities` | Each sprite slot's entity, `$FF` empty (see *What killed the hero*) |
+| `$0378` | `CurrentSpriteIndex` | The slot whose behavior or collision is running |
 | `$0390`, `$0392-$0394` | `Experience`, `Gold` | Gold is 24-bit little-endian |
 | `$039A` | `Player_MP` | |
 | `$03C7` | `IScript_PortraitID` | The portrait showing, `$FF` for none (see *Portraits*) |
+| `$042C` | `SpecialItems` | Bit flags; `$08` the Elixir, which saves a death once |
 | `$042D` | `Quests` | Bit flags |
 | `$0431`, `$0432` | `Player_HP_U`, `Player_HP_L` | |
 | `$0438` | `PlayerIsDead` | Set it to 1 and the main loop runs the death path |
 | `$0439` | `TempleSpawnPoint` | Where death respawns and a mantra continues, 0-7. In the original, the furthest temple reached; with Save files, the temple of the Guru last saved with |
+| `$04BC`, `$04BD` | `Arg_PlayerHealthDelta_L`, `_U` | The HP `Player_ReduceHP` takes: fraction, whole |
 | `$0600-$061F` | `Password_EnteredChars` | The mantra screen's characters, as 6-bit values (shares `ScreenBuffer`) |
 | `$0666` | `Password_EnteredCharsLength` | |
 | `$0687` | `DAT_0687` | The title's choice: 0 Start, 1 Continue |
@@ -956,6 +960,118 @@ only user of `$1F`:
   through `SpriteUpdateHandler_Invisible` (`$8C98`) hides it that frame. The
   presented picture lags the sprites by a frame or two.
 
+## What killed the hero (bank 14, bank 15)
+
+**Every loss of HP goes through `Player_ReduceHP` (`$C08E`, fixed bank)**,
+which subtracts `Arg_PlayerHealthDelta` (`$04BC` fraction, `$04BD` whole) from
+`Player_HP` (`$0432` fraction, `$0431` whole) as one 16-bit number. A borrow
+kills: it zeroes the HP and sets `PlayerIsDead`, unless `SpecialItems`
+(`$042C`) bit `$08`, the Elixir, is set, when it jumps to `Player_UseElixir`
+instead. HP equal to the damage leaves him alive at 0. Nothing else lowers
+HP (the other writes to `$0431` are the spawn's 80, `Game_LoadFirstLevel`,
+healing and the HUD's cap). It has exactly four callers, found by scanning the
+ROM for `JSR`/`JMP $C08E`:
+
+| Caller | Call | Damage | The hit's source |
+|---|---|---|---|
+| `Player_ApplyDamage` (`$8A79`, bank 14) | `JMP` at `$8AD4` | `SPRITE_ENTITY_DAMAGES[entity]` less armor | The sprite at `CurrentSpriteIndex` (`$0378`): an enemy's, a boss's or a shot's touch, through `Player_HandleTouchEnemy` (`$89AE`) |
+| `Player_HandleHitByMagic` (`$87DC`, bank 14) | `JMP` at `$87FD` | A shot's damage, shifted down by the shield | The shot at `CurrentSpriteIndex`, on the shield |
+| `SpriteBehavior_FlashScreenHitPlayer` (bank 14) | `JSR` at `$AB5D`, resumes at `$AB60` | 10 | Sugata's flash |
+| `Player_PickUpPoison` (`$C83C`, fixed bank) | `JSR` at `$C85D`, resumes at `$C860` | 16 | The Poison, after its "I've touched Poison." (message `$BB`, IScript `$91`) |
+
+So at `Player_ReduceHP`'s entry the word at S + 1 tells the Poison and the
+flash apart (the two `JMP` callers leave their caller's return there), and
+`CurrentSprites_Entities[CurrentSpriteIndex]` (`$02CC` + slot, 8 slots, `$FF`
+empty) is everything else. `CurrentSprite_CheckHitPlayer` sends a touch to a
+handler by `SPRITE_CATEGORIES_BY_ENTITY` (`$B544`): 0 enemy and 7 boss to
+`Player_HandleTouchEnemy`, 6 magic to `Player_HandleTouchEnemyMagic`; the
+others (bread, NPCs, effects, triggers, items) do no harm.
+
+**Shots and rocks are sprites spawned by other sprites, and every such spawn
+goes through `Sprite_Maybe_ResetState` (`$A202`, bank 14)** with X the
+spawner's slot and Y the new one, its entity already stored. All seven of its
+callers store a new entity at `CurrentSprites_Entities,Y` and `JMP` there:
+
+| Spawned | Damage | By | Code |
+|---|---|---|---|
+| `$03` (a falling rock, chipx86's "Enemy: ?") | 31 | Zorugeriru (`$31`) | `SpriteBehavior_Zorugeriru__9e13` |
+| `$09` Lilith | 6 | Pakukame (`$30`) | `SpriteBehavior_Pakukame` |
+| `$0A` (fire) | 28 | Ripasheiku (`$2D`), King Grieve (`$32`) | `Sprite_CastMagic` (`$A0F6`), from both behaviors |
+| `$51` (a shot) | 8 | Nash (`$0D`), Ishiisu (`$0F`), Execution Hood (`$10`) | `FUN_PRG14__a0a0`, which falls into `SpriteBehavior_ExecutionHood__a0ad` |
+| `$53` (fire) | 28 | Shadow Eura (`$33`) | `SpriteBehavior_ShadowEura__a12d` |
+| `$54` (a fireball) | 8 | Charron (`$15`) | `BScript_Action_CastMagic` (`$9239`), behavior-script action 7. `FUN_PRG14__a1cc` also makes one and has no caller |
+
+- **chipx86's comments in two tables are off by one.**
+  `SPRITE_CATEGORIES_BY_ENTITY`'s skip Zorugeriru, so from `$31` on each
+  comment names the entity before (its values are right: `$31`-`$33` are
+  bosses, `$46` and `$47` enemies). `SPRITE_BSCRIPTS`' put Charron's script at
+  `$14` (the lightning ball): entity `$15`, Charron, runs
+  `BSCRIPTS_ENEMY_UNUSED_21`, the script that casts. The `SPRITE_*` constants
+  in `DEFS.asm` and `SPRITE_UPDATE_HANDLERS`' comments are right.
+- **The death plays out over 256 frames.** `Player_HandleDeath` (`$D8EC`)
+  plays sound `$16` and loops once a frame until `Screen_TransitionCounter`
+  (`$03DB`) wraps, dissolving the hero (`Player_DrawDeathAnimation`), then
+  runs the Guru's words. Nothing reads the pad in between.
+- **The NES manual names no enemy.** The USA instruction booklet (27 pages,
+  archive.org's `NESManuals` scan) names places, items and titles: of what
+  hurts, only the Poison ("The hero's power will decrease by a fixed
+  amount"). The names below are chipx86's `SPRITE_*` constants, written as a
+  player would say one of them; StrategyWiki's enemy list spells them the
+  same, but for "Mask Man" and "Wolf Man".
+
+**The names Slain by uses** (`fax_slain.c`), for every entity that can hurt
+the hero. The unused enemies (`$12`, the snake boss's round body, `$16`,
+`$1D`, `$24`, `$25`, `$27`, `$29`, `$2B`, `$46`) appear on no screen and are
+spawned by nothing, so they have none.
+
+| Entity | chipx86 | Shown | Where, for a test |
+|---|---|---|---|
+| `$04` | `SPRITE_ENEMY_RAIDEN` | a Raiden | |
+| `$05` | `SPRITE_ENEMY_NECRON_AIDES` | a Necron Aide (one of them) | |
+| `$06` | `SPRITE_ENEMY_ZOMBIE` | a Zombie | Trunk `$06` |
+| `$07` | `SPRITE_ENEMY_HORNET` | a Hornet | |
+| `$08` | `SPRITE_ENEMY_BIHORUDA` | a Bihoruda | |
+| `$09` | `SPRITE_ENEMY_LILITH` | a Lilith | |
+| `$0B` | `SPRITE_ENEMY_YUINARU` | a Yuinaru | |
+| `$0C` | `SPRITE_ENEMY_SNOWMAN` | a Snowman | |
+| `$0D` | `SPRITE_ENEMY_NASH` | a Nash | Mist `$2A`, its only screen |
+| `$0E` | `SPRITE_ENEMY_FIRE_GIANT` | a Fire Giant | |
+| `$0F` | `SPRITE_ENEMY_ISHIISU` | an Ishiisu | |
+| `$10` | `SPRITE_ENEMY_EXECUTION_HOOD` | an Execution Hood | Zenis `$10`, its only screen (see *Shields and enemy magic*) |
+| `$11` | `SPRITE_BOSS_ROKUSUTAHN` | a Rokusutahn | |
+| `$15` | `SPRITE_ENEMY_CHARRON` | a Charron | |
+| `$17` | `SPRITE_ENEMY_GERIBUTA` | a Geributa | |
+| `$18` | `SPRITE_ENEMY_SUGATA` | a Sugata (its touch or its flash) | Mist `$1E` (see *Sugata's flash*) |
+| `$19` | `SPRITE_ENEMY_GRIMLOCK` | a Grimlock | |
+| `$1A` | `SPRITE_ENEMY_GIANT_BEES` | a Giant Bee (one of them) | |
+| `$1B` | `SPRITE_ENEMY_MYCONID` | a Myconid | |
+| `$1C` | `SPRITE_ENEMY_NAGA` | a Naga | |
+| `$1E` | `SPRITE_ENEMY_GIANT_STRIDER` | a Giant Strider | |
+| `$1F` | `SPRITE_ENEMY_SIR_GAWAINE` | a Sir Gawaine | |
+| `$20` | `SPRITE_ENEMY_MASKMAN` | a Maskman | |
+| `$21` | `SPRITE_ENEMY_WOLFMAN` | a Wolfman | |
+| `$22` | `SPRITE_ENEMY_YAREEKA` | a Yareeka | |
+| `$23` | `SPRITE_ENEMY_MAGMAN` | a Magman | |
+| `$26` | `SPRITE_ENEMY_IKEDA` | an Ikeda | |
+| `$28` | `SPRITE_ENEMY_LAMPREY` | a Lamprey | |
+| `$2A` | `SPRITE_ENEMY_MONODRON` | a Monodron | Trunk `$00`, where the Trunk's door from Eolis arrives |
+| `$2C` | `SPRITE_ENEMY_TAMAZUTSU` | a Tamazutsu | |
+| `$2D` | `SPRITE_BOSS_RIPASHEIKU` | a Ripasheiku | Trunk `$15`, the Tower of Trunk's top: a building's door edited to area 1, screen `$15`, palette `$07`, position `$91`, region 1 arrives in its room |
+| `$2E` | `SPRITE_BOSS_ZORADOHNA` | a Zoradohna | |
+| `$2F` | `SPRITE_BOSS_BORABOHRA` | a Borabohra | |
+| `$30` | `SPRITE_BOSS_PAKUKAME` | a Pakukame | |
+| `$31` | `SPRITE_BOSS_ZORUGERIRU` | a Zorugeriru (and its rocks) | Trunk `$3B` |
+| `$32` | `SPRITE_BOSS_KING_GRIEVE` | King Grieve (his fire too) | Dartmoor `$15`, `$16` |
+| `$33` | `SPRITE_BOSS_SHADOW_EURA` | Shadow Eura (its fire too) | Zenis `$00` |
+| `$47` | `SPRITE_ENEMY_ZOZURA` | a Zozura | Zenis `$10`, Trunk `$02` |
+| `$03`, `$0A`, `$51`, `$53`, `$54` | rocks and shots | whoever spawned it, from the table above | |
+| | `Player_PickUpPoison` | Poison | message `$BB`, "I've touched Poison." |
+
+"a" or "an" goes by the name's first sound; King Grieve and Shadow Eura, the
+two with a name of their own, take none. The longest line, "Slain by an
+Execution Hood", is 26 characters: 30 tiles with the banner's blanks and
+frame, inside the screen's 32.
+
 ## The hero's movement (bank 15)
 
 `GameLoop_UpdatePlayer` (`$E0CA`) runs once a frame, unless the screen is
@@ -1450,14 +1566,18 @@ script), the A and Jo keys (gifts), the Poison, or the last fight's gear.
    returns C clear and B C set. Select and the rest are ignored.
 3. B ends the script at once (`$83FF`: `JMP IScriptAction_EndScript`), with
    no line.
-4. A: `Shop_GetPlayerHasSelectedItem` (`$8482`) refuses a weapon, armor,
+4. A (`$8402`, the `BCC` target after the wait at `$83FA`):
+   `Shop_GetPlayerHasSelectedItem` (`$8482`) refuses a weapon, armor,
    shield or spell the hero has (in hand or in its list), and a SpecialItems
    item (rings, Elixir, Magical Rod, Pendant, Black Onyx) he has. Other items
    can be bought again and again, until their list is full
-   (`MAX_INVENTORY_SLOTS`, `$847D`: 4, 4, 4, 4, 8). Either refusal closes the
-   list and ends with "You can't carry any more." (`$06`, at `$8469`).
-   Then `IScripts_CheckEnoughMoney`; short, "This is not enough Golds."
-   (`$03`, `IScripts_ShowNotEnoughMoney`, `$837C`).
+   (`MAX_INVENTORY_SLOTS`, `$847D`: 4, 4, 4, 4, 8): an Items ID has bit 7
+   set, the routine compares it only with the eight special IDs, and returns
+   C clear. So a hero holding Wing Boots, the Hour Glass, a key or the Mattock
+   can buy another (checked in the game: Forepaw's shop sold a second pair).
+   Either refusal closes the list and ends with "You can't carry any more."
+   (`$06`, at `$8469`). Then `IScripts_CheckEnoughMoney`; short, "This is not
+   enough Golds." (`$03`, `IScripts_ShowNotEnoughMoney`, `$837C`).
 5. Bought: `Player_AddToInventory`, then `IScripts_ProgressivelySubtractGold`
    takes 10 Golds a frame and then waits 60 frames, then (`$8463`)
    `Maybe_Shop_DrawTextBox` (`$8471`: two frames, close the list, open the
@@ -1517,6 +1637,30 @@ they are refused even if one were. The selected item and what is equipped are
 in no list either, as in the original. The rest are safe to sell: every other
 key, the Mattock, the Wing Boots and the potions can be bought again, and the
 A and Jo keys' givers hand out another to a hero without one.
+
+**What the hero owns, with Quick shops.** An item he already has for good keeps
+its row in every buy list, so the list, its cursor positions and its pages are
+the shop's own, but shows **OWNED** where its price was; the hint reads
+"Already owned" while the cursor is on it, and A on it does nothing: a hook at
+`$8402`, before `Shop_GetPlayerHasSelectedItem`, re-enters the wait at `$83FA`
+by return, so no gold is taken and no refusal shows. Owned
+(`fax_shops_owned`):
+
+| Item | Kept by | Owned when |
+|---|---|---|
+| Wing Boots, Hour Glass | Recharging items | He has it: selected, or in the Items list |
+| The A, K, Q, J and Jo keys, the Mattock | Reusable tools | He has it |
+| Elixir | Recharging items | Charged (its `SpecialItems` bit) or spent |
+
+The rule asks each keeper whether it is on (`fax_recharge_on`,
+`fax_reusable_tools_on`), so an item counts only while it is kept; in the one
+mod they always are. A charged Elixir counts either way, since the game refuses
+a second. Shops sell only the J, Q and K keys; the A and Jo keys are in the
+rule for completeness. OWNED is five letters, in the five cells `Shop_Draw`
+gives a price (column 23, an entry's second row, right-aligned), painted over
+the price as an unsellable item's is. The sell list is unchanged: an owned item
+sells, at its price. Weapons, armor, shields and spells the hero has are not
+marked: the game refuses them ("You can't carry any more."), as before.
 
 ## Doors and keys
 
@@ -1645,11 +1789,15 @@ jumping or falling, `Player_Flags & $05`):
   from `Game_Start` and `Player_Spawn`, so every death ends them, but not on a
   Guru travel journey, which enters `Player_Spawn` past it: a flight or a
   freeze carries on in the other temple.
-- **Shops never sell what you hold.** `Shop_GetPlayerHasSelectedItem` (`$8482`, bank 12) refuses
-  any item already selected or listed, and a special item whose bit is set,
-  with "You can't carry any more." (message `$06`). In the original, then, a
-  second pair of Wing Boots or a second Hour Glass came only from the world:
-  `Player_PickUpItem` adds a duplicate like anything else.
+- **Shops sell a second.** `Shop_GetPlayerHasSelectedItem` (`$8482`, bank
+  12) refuses only a weapon, armor, shield or spell already selected or
+  listed, and a special item whose bit is set ("You can't carry any more.",
+  message `$06`). The Wing Boots and the Hour Glass are Items, so a shop sells
+  a hero holding them another, until his list is full (checked in the game:
+  Forepaw sold a second pair). An earlier note here said shops never sell
+  what you hold; that holds only for the Elixir. `Player_PickUpItem` adds a
+  duplicate too. With the remaster, a find recharges instead, and Quick
+  shops lists a pair or an Hour Glass he has as owned (see *Shops*).
 
 | Item | Shops | In the world (bank 11's lists: area, screen, block `YX`) |
 |---|---|---|
@@ -1703,7 +1851,11 @@ ends within a second of walking onto it (checked too).
 clears the bit, runs script `$85` ("I've used Elixir.") and refills HP and MP;
 clear, it sets `PlayerIsDead`. The menu's Player page draws a picture for each
 `SpecialItems` bit, the Elixir's included, on its last row. A mantra keeps
-the bit.
+the bit. With recharging items a spent Elixir is still the hero's
+(`fax_recharge_elixir_spent`), so Quick shops lists it as owned, as it does a
+charged one. Its bit is clear, so the game's own shop would sell one to a spent
+Elixir; through Quick shops, buying one never charges it. A Guru, or one found
+in the world, does.
 
 **Flying.** While `Player_StatusFlag` has `$80` and A is held,
 `Player_CheckHandleVertMovement` (`$E2C8`) treats the hero as on a ladder
@@ -1819,7 +1971,23 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
   settled. A temple whose way out is not where the hero last stood means a
   respawn or a Guru travel journey, and makes the next zone's name show. The
   banner is held while a box is open or the game is paused. Its save-state
-  record keeps the banner as it was.
+  record keeps the banner as it was. Its drawing, `fax_banner_draw`, takes any
+  line, so Slain by draws in the same box.
+
+- **Slain by** (`fax_slain.c`, drawn by `fax_banner.c`). When a hit takes the
+  hero's last HP, the banner says what it came from, "Slain by a Sugata", from
+  that frame through the dissolve, fading out at frame 248 of its 256, before
+  the Guru speaks, and puts away any zone name showing. Two hooks, both only
+  observing (see *What killed the hero*): at `Player_ReduceHP` (`$C08E`) it
+  names the source of a hit that kills (HP below the damage, no Elixir), and
+  at `Sprite_Maybe_ResetState` (`$A202`) it keeps each slot's spawner, which
+  names a shot or a rock; a slot forgets it when its sprite goes. A shot whose
+  spawn it never saw (with Seamless on, a neighboring room's) is named by the
+  only kind of caster of it on screen, or not at all. A death nothing caused
+  names nothing. Both hooks keep no state in Seamless's isolated rooms. Its
+  save-state record is the line and its age, and each slot's spawn (21
+  bytes). It loads the game's font itself, so it does not rely on Zone names
+  having drawn first.
 
 - **Speaker names** (`fax_speaker.c`, with `fax_zone.c` and `fax_text.c`).
   While a portrait's frame is on screen, the speaker's name sits on a tab
@@ -1888,8 +2056,8 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
   its stock value.
 - **Recharging items** (`fax_recharge.c`, with the use-up list in
   `fax_items.h`). The Wing Boots and the Hour Glass are kept and recharge, and
-  the Elixir is kept and a Guru charges it again. All its sites are in the
-  fixed bank:
+  the Elixir is kept and a Guru charges it again. Its sites are in the fixed
+  bank, but for `$826E` in bank 12 (below):
   - `Player_UseWingBoots` and `Player_UseHourGlass`, at entry: not ready, it
     plays the "invalid choice" sound (`$0D`, `Sound_PlayEffect` in a committed
     call) and returns to the main loop as the routine's RTS would.
@@ -1905,11 +2073,12 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
     cooldown (else the Wing Boots', else the Hour Glass's), blank 16 frames in
     64, queued through the PPU buffer as `UI_DrawTimeValue` queues it, when
     `PPUBuffer_HasCapacity` would allow it. A spent Elixir whose bit came back
-    (bought or found) is charged.
+    (found) is charged.
   - `Player_UseElixir`: the Elixir is spent. `SpecialItems`' bit stays the
-    game's own "a revive is in reserve", so `Player_ReduceHP`, the Player page,
-    the shops and the Spring of Trunk all go by whether it is charged: a shop
-    sells one only to a spent Elixir, which charges it at the shop's price.
+    game's own "a revive is in reserve", so `Player_ReduceHP`, the Player page
+    and the Spring of Trunk go by whether it is charged.
+  - No shop charges a spent Elixir: Quick shops lists it as owned
+    (`fax_recharge_elixir_spent`) and ignores A on it.
   - `Player_PickUpItem`, with A the Wing Boots or the Hour Glass and the hero
     holding one (selected or listed): ready at once, and nothing added, even
     with the list full. Found during a run, the run goes on and no cooldown
@@ -1997,7 +2166,7 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
   anything carried (see *Shops*), 8 to a page: Up from the top or Down from
   the bottom turns the page. No ROM and no read overrides. It steers the
   script at `IScripts_InvokeNextAction` (its first action goes to BUY; BUY + 3
-  and SELL + 3 go back to their list) and jumps by return at seven sites of
+  and SELL + 3 go back to their list) and jumps by return at eight sites of
   its own: OpenShop's entry, past "What would you like?" to `$83EA`;
   `$8463`, past the purchase's close; `$86BC`, where it replaces the sell
   scan's list with a page of everything carried and goes on at `Shop_Draw`
@@ -2010,13 +2179,17 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
   `Maybe_Shop_DrawTextBox` to `IScriptAction_EndScript`, so the list is closed
   when the script ends, as after the original's purchase, and a line Block
   adds there (its tutorial, after the first shield) shows in the dialogue box;
-  and `$838E`, where a shop's message goes back to the list. Presses while a
-  list is drawn, or the gold counts, are lost, as in the original: the game
-  reads the pad only in the list's wait. The hint line ("Select to sell", "Select to
-  buy", "Not for sale") is drawn on the list's row 26 and the page ("1 of 2")
-  on row 9, at present time, while the list's four frame corners show; an
-  unsellable item's price cells are painted the box's inside. Its save-state
-  record holds the conversation (17 bytes).
+  `$838E`, where a shop's message goes back to the list; and `$8402`, the buy
+  list's A, back to the wait (`$83FA`) for an item the hero owns (see
+  *Shops*), which it asks reusable tools and recharging items about
+  (`fax_reusable_tools_on`, `fax_recharge_on`, `fax_recharge_elixir_spent`).
+  Presses while a list is drawn, or the gold counts, are lost, as in the
+  original: the game reads the pad only in the list's wait. The hint line
+  ("Select to sell", "Select to buy", "Not for sale", "Already owned") is drawn
+  on the list's row 26 and the page ("1 of 2") on row 9, at present time,
+  while the list's four frame corners show; an unsellable item's price cells
+  are painted the box's inside, and an owned item's too, with OWNED in them.
+  Its save-state record holds the conversation (17 bytes).
 - **Zone respawn** (`fax_respawn.c`). Dying comes back at the last entrance
   into the zone (tower, castle, town or region) the hero died in, after the
   Guru's words, instead of at the temple. A hook at `Screen_SetupNew` records
