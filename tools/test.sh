@@ -22,7 +22,7 @@ while [ $# -gt 0 ]; do
     *) echo "unknown arg: $1" >&2; exit 2;;
   esac
 done
-[ -f "$ROM" ] || { echo "No ROM at $ROM; see README, Building from Source" >&2; exit 2; }
+[ -f "$ROM" ] || { echo "No ROM at $ROM; see the README" >&2; exit 2; }
 cd "$REPO"
 JOBS="$(nproc 2>/dev/null || echo 4)"
 OUT="$REPO/build-tests"
@@ -178,6 +178,9 @@ respawn_e2e respawn-e2e-seamless --game-arg=--world-view=seamless & respawn_seam
 echo "== end to end: recharging items, alongside them"
 python3 tests/recharge/recharging_items.py --build build-cycle --rom "$ROM" --out "$OUT/recharge-e2e" \
   > "$OUT/recharge-e2e.log" 2>&1 & recharge=$!
+echo "== end to end: the one Faxanadu Remastered switch, on by default and off for the original, alongside them"
+python3 tests/remastered/one_switch.py --build build-cycle --rom "$ROM" --out "$OUT/one-switch-e2e" \
+  > "$OUT/one-switch-e2e.log" 2>&1 & one_switch=$!
 failed=0
 wait "$default" || failed=1
 sed 's/^/[default]  /' "$OUT/travel-e2e.log"
@@ -231,5 +234,7 @@ wait "$respawn_seamless" || failed=1
 sed 's/^/[resp+sw]  /' "$OUT/respawn-e2e-seamless.log"
 wait "$recharge" || failed=1
 sed 's/^/[recharge] /' "$OUT/recharge-e2e.log"
+wait "$one_switch" || failed=1
+sed 's/^/[switch]   /' "$OUT/one-switch-e2e.log"
 [ "$failed" = 0 ] || { echo "end-to-end tests failed; screenshots in $OUT/*-e2e*/" >&2; exit 1; }
 echo "all checks passed"

@@ -9,8 +9,9 @@ forgiving_jumps.py).
   ladder hanging over the floor.
 - Headless runs of the same build from those save states, with a button
   schedule and a per-frame log of RAM (--input, --frame-log), for anything
-  that depends on the exact frame a button goes down. Each takes the feature
-  on or off through its own mod selection, and screenshots come from them too.
+  that depends on the exact frame a button goes down. Each takes the remaster
+  on or off through the mod selection (off is the original game), and
+  screenshots come from them too.
 """
 from pathlib import Path
 import re
@@ -34,8 +35,12 @@ SELECTED_WEAPON, SELECTED_ARMOR, SELECTED_SHIELD, PLAYER_CUR_WEAPON = 0x3BD, 0x3
 LONG_SWORD, LEATHER_ARMOR, SMALL_SHIELD = 1, 0, 0
 APOLUNE, TRUNK, BUILDINGS, NEGATIVE_THOUGHTS = 1, 1, 4, 0x24
 LEDGE_SCREEN, LADDER_SCREEN = 7, 6
-PACKAGES = {"falling-pose": "faxanadu.enhancement.falling-pose",
-            "forgiving-jumps": "faxanadu.enhancement.forgiving-jumps"}
+PACKAGE, FEATURE = "faxanadu.remastered", "remastered"          # the one switch: off is the original game
+
+
+def selection(original=False):
+    """The features for set_features(): the remaster on (the default), or off for the original game."""
+    return {(PACKAGE, FEATURE): False} if original else {}
 
 
 def no_actors():
@@ -46,9 +51,9 @@ class Game(fax_e2e.Game):
     """The build, copied to OUT/game, in a hidden window driven over TCP
     (fax_e2e.Game), with what the movement tests add."""
 
-    def select(self, off=()):
-        """The mod selection: every feature on (the defaults) but those in `off`."""
-        self.set_features({(PACKAGES[f], f): False for f in off})
+    def select(self, original=False):
+        """The mod selection: the remaster on (the default), or off for the original."""
+        self.set_features(selection(original))
 
     def settle(self):
         """Until the screen has stopped scrolling (Screen_ScrollDirection $FF):
@@ -113,13 +118,13 @@ class Game(fax_e2e.Game):
         assert LEDGE_SCREEN in states and LADDER_SCREEN in states, f"did not reach Trunk: {self.ram(AREA)}/{self.ram(SCREEN)}"
         return states
 
-    def mods(self, name, off=()):
+    def mods(self, name, original=False):
         """A mod catalog for headless runs: the build's packages, with the
-        features in `off` turned off."""
+        remaster on, or off for the original."""
         root = self.out / name
         if not root.exists():
             shutil.copytree(self.out / "game" / "mods" / "packages", root / "packages")
-            (root / "state.toml").write_text(fax_e2e.features_toml({(PACKAGES[f], f): False for f in off}))
+            (root / "state.toml").write_text(fax_e2e.features_toml(selection(original)))
         return root
 
     def headless(self, state, schedule, frames, mods, screenshot=None, save=None):

@@ -15,9 +15,9 @@ The next person should never have to rediscover it.
 
 ## Workflow
 
-- Work from an issue, on a branch, through a PR on **cdmckay/faxanadu-remaster**.
+- Work from an issue, on a branch, through a PR on **cdmckay/faxanadu-remastered**.
   `gh` defaults to the upstream parent for a fork, so always pass
-  `-R cdmckay/faxanadu-remaster` (and `--base master` for PRs).
+  `-R cdmckay/faxanadu-remastered` (and `--base master` for PRs).
 - Merge with a merge commit once `tools/test.sh` passes and the PR's test plan
   is run.
 - The remote is HTTPS; push with `gh` as the credential helper if git has none.
@@ -79,7 +79,19 @@ recompiler produced it; features observe and steer it.
   `batch()` (a `load_state`, then the `action`), or runs headless from that
   state with `--input`. Never count on two TCP commands being a few frames
   apart.
-- A feature is a mod package under `mods/preloaded/packages/`, so players can
-  turn it off in the launcher.
+- **Everything the remaster adds goes into the one Faxanadu Remastered mod**
+  (`mods/preloaded/packages/faxanadu.remastered`), never a new package: add a
+  `[[plugin]]` under its `remastered` feature. The launcher has one switch for
+  it: on is the remaster, off is the original game. Seamless, the view
+  inherited from upstream, is the only other package.
+- **Features inside the mod may rely on each other.** They are always on
+  together, so one may call another's functions or build on its behavior.
+  Each still keeps its own C file and hook-site prefix, and
+  `tools/check_allocations.py` treats every two as enabled together: an
+  address two features hook needs a `[[shared_site]]` saying why they work in
+  the order they run (game.toml's).
+- **Tests play the remaster with it on.** "The original" checks run with the
+  whole mod off, never one feature. A hidden test-only switch for one feature
+  is a last resort, for a check that is otherwise impossible.
 - Match the game's voice and limits for any new dialogue: 16 columns, 4 lines,
   plain words.

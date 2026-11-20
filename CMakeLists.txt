@@ -58,7 +58,17 @@ if(NESRECOMP_BACKEND STREQUAL "cycle")
     target_include_directories(FaxanaduRecomp PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}"
         "${NESRECOMP_ROOT}/runner/include" "${NESRECOMP_ROOT}/runner/src")
     target_compile_definitions(FaxanaduRecomp PRIVATE CYC_CONTENT_TOOLS)
+    # The remaster's features were packages of their own before they became
+    # the one Faxanadu Remastered package (#56). A build folder from then
+    # still holds them, and they would claim its plugins a second time.
+    set(FAX_OLD_PACKAGES)
+    foreach(old auto-keys block death-keeps-gold falling-pose forgiving-jumps guru-travel magic-button
+            pendant-fix quick-shops recharging-items reusable-tools save-files speaker-names sugata-flash
+            taller-dagger text-speed zone-names zone-respawn)
+        list(APPEND FAX_OLD_PACKAGES "$<TARGET_FILE_DIR:FaxanaduRecomp>/mods/packages/faxanadu.enhancement.${old}")
+    endforeach()
     add_custom_command(TARGET FaxanaduRecomp POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E rm -rf ${FAX_OLD_PACKAGES}
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${CMAKE_CURRENT_SOURCE_DIR}/mods/preloaded" "$<TARGET_FILE_DIR:FaxanaduRecomp>/mods")
     return()

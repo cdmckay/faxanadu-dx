@@ -13,17 +13,15 @@ another screen of the same area, Area_ScreenToTheRight pointed at it, so that
 walking off the edge loads it the game's own way. The Mattock is selected in
 the item menu, as a player would.
 
-1. Both features on (the default). Without a J key, Up at Eolis's exit door
+1. The remaster on (the default). Without a J key, Up at Eolis's exit door
    gives the door's own "mark of Jack" and the door stays shut. With the J key
    unselected and the Mattock selected, the door opens with "I've used key.",
    and afterwards the key is still in the inventory and the Mattock still
    selected. The same key then opens a second door, Trunk's tower door. The
    Mattock breaks the wall beside the tower and is still selected.
-2. Both off: the unselected key leaves the door shut; selected, it opens the
-   door and is used up. The Mattock is used up too.
-3. Auto keys alone: the unselected key opens the door and is used up; the
-   Mattock stays selected.
-4. Reusable tools alone: a selected key opens the door and stays selected.
+2. A selected key opens the door the game's own way, and stays selected.
+3. The remaster off, the original: the unselected key leaves the door shut;
+   selected, it opens the door and is used up. The Mattock is used up too.
 """
 from pathlib import Path
 import sys
@@ -44,8 +42,7 @@ WALL_BLOCKS = (0xA3, 0xB3)                                          # (3,10), (3
 WALL_BLOCK = 0x63
 WALL_STOP = 0x20                                                    # the hero's x up against it
 MENU_ITEM_ROW = 4                                                   # WEAPON ARMOR SHIELD MAGIC ITEM PLAYER
-PACKAGES = {"auto": ("faxanadu.enhancement.auto-keys", "auto-keys"),
-            "reuse": ("faxanadu.enhancement.reusable-tools", "reusable-tools")}
+PACKAGE, FEATURE = "faxanadu.remastered", "remastered"          # the one switch: off is the original game
 
 
 def typed():
@@ -69,13 +66,12 @@ def main():
     game = Game.from_args(args)
     out = game.out
 
-    def launch(**enabled):
-        """Start the game with the two features on or off (both on by default)."""
-        game.set_features({PACKAGES[name]: on for name, on in enabled.items()})
+    def launch(remastered=True):
+        """Start the game with the remaster, and so both features, on or off."""
+        game.set_features({(PACKAGE, FEATURE): remastered})
         game.launch()
         state = tcp("keys_state")
-        want = {"auto": True, "reuse": True, **enabled}
-        assert (state["auto"], state["reuse"]) == (want["auto"], want["reuse"]), state
+        assert (state["auto"], state["reuse"]) == (remastered, remastered), state
 
     def clear_enemies():
         game.poke({SPRITE_ENTITIES + slot: 0xFF for slot in range(8)})
@@ -188,7 +184,7 @@ def main():
         no_key = out / "no-key.cycstate"
         fixture(town, no_key, {HP: 0x50, ITEM_INVENTORY: MATTOCK, NUMBER_OF_ITEMS: 1, SELECTED_ITEM: NO_ITEM})
 
-        # 1. Both on. Without the key, the door's own message.
+        # 1. The remaster on. Without the key, the door's own message.
         tcp("load_state", path=str(no_key))
         select(MATTOCK)
         assert open_eolis_exit({MARK_OF_JACK, USED_KEY}) == MARK_OF_JACK
@@ -243,8 +239,20 @@ def main():
         print("ok: the Mattock broke the wall in Trunk and is still selected; the hero walks through")
         game.close()
 
-        # 2. Both off: the game as it was.
-        launch(auto=False, reuse=False)
+        # 2. A selected key: the game's own check opens the door, and the key stays selected.
+        launch()
+        tcp("load_state", path=str(keys))
+        select(KEY_J)
+        assert open_eolis_exit({MARK_OF_JACK, USED_KEY}) == USED_KEY
+        dismiss_into(TRUNK, 0)
+        assert items() == ([MATTOCK], KEY_J), items()
+        state = tcp("keys_state")
+        assert (state["auto_opened"], state["keys_kept"]) == (0, 1), state
+        print("ok: a selected J key opens the door and stays selected")
+        game.close()
+
+        # 3. The remaster off: the original.
+        launch(remastered=False)
         tcp("load_state", path=str(keys))
         select(MATTOCK)
         assert open_eolis_exit({MARK_OF_JACK, USED_KEY}) == MARK_OF_JACK
@@ -263,29 +271,8 @@ def main():
         assert items() == ([], NO_ITEM), items()
         state = tcp("keys_state")
         assert (state["auto_opened"], state["keys_kept"], state["mattock_kept"]) == (0, 0, 0), state
-        print("ok: turned off, the unselected key leaves the door shut, and a selected key and the Mattock "
-              "are used up, as in the original")
-        game.close()
-
-        # 3. Auto keys alone: the door opens, the key is used up, the selection stays.
-        launch(auto=True, reuse=False)
-        tcp("load_state", path=str(keys))
-        select(MATTOCK)
-        assert open_eolis_exit({MARK_OF_JACK, USED_KEY}) == USED_KEY
-        dismiss_into(TRUNK, 0)
-        assert items() == ([], MATTOCK), items()
-        print("ok: auto keys alone opens the door with the unselected key, uses it up and keeps the Mattock selected")
-        game.close()
-
-        # 4. Reusable tools alone: a selected key stays selected.
-        launch(auto=False, reuse=True)
-        tcp("load_state", path=str(keys))
-        select(KEY_J)
-        assert open_eolis_exit({MARK_OF_JACK, USED_KEY}) == USED_KEY
-        dismiss_into(TRUNK, 0)
-        assert items() == ([MATTOCK], KEY_J), items()
-        assert tcp("keys_state")["keys_kept"] == 1
-        print("ok: reusable tools alone keeps a selected key selected after it opens the door")
+        print("ok: with the remaster off, the unselected key leaves the door shut, and a selected key and the "
+              "Mattock are used up, as in the original")
         print("screenshots:", ", ".join(game.shots))
     except BaseException:
         if game.running():

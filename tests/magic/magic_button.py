@@ -21,7 +21,7 @@ and walks the hero to the gate of Eolis, a door. Then it edits save-state RAM
    temple), Magic casts without starting a conversation; Up talks.
 7. config.ini rebinds it (MagicKey = V, MagicButton = b), and the window
    writes the bindings back.
-8. With the feature off in the mod selection, C does nothing.
+8. With the remaster off in the mod selection, as the original, C does nothing.
 """
 from pathlib import Path
 import re
@@ -41,7 +41,7 @@ OUTSIDE_EOLIS, INSIDE_EOLIS = (0, 0), (0, 1)                        # (area, scr
 GATE = range(188, 200)                                              # Up there goes through the gate
 MEDITATE_WITH_YOU, NEGATIVE_THOUGHTS = 0x22, 0x24                  # the Guru's greeting; the death message
 DELUGE_COST = 2
-PACKAGE, FEATURE = "faxanadu.enhancement.magic-button", "magic-button"
+PACKAGE, FEATURE = "faxanadu.remastered", "remastered"          # the one switch: off is the original game
 
 
 def never(what, test, frames):
@@ -228,15 +228,15 @@ def main():
         assert re.search(r"^MagicKey = V$", text, re.M) and re.search(r"^MagicButton = b$", text, re.M), text
         print("ok: MagicKey = V and MagicButton = b in config.ini move it to V and B, and stay there")
 
-        # 8. Off.
+        # 8. The remaster off: the original.
         game.set_features({(PACKAGE, FEATURE): False})
         game.launch()
-        assert not tcp("magic_state")["enabled"], "the feature is off"
+        assert not tcp("magic_state")["enabled"], "the remaster is off"
         tcp("load_state", path=str(gate))
         nothing_with("key", "V")
         nothing_with("pad", "b")
         assert tcp("magic_state")["presses"] == 0
-        print("ok: turned off, the Magic button does nothing")
+        print("ok: with the remaster off, the Magic button does nothing")
         print("screenshots:", ", ".join(game.shots))
     except BaseException:
         if game.running():

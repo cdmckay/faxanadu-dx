@@ -29,7 +29,7 @@ def main():
     try:
         game.launch()
         ...
-        game.set_features({(PACKAGE, FEATURE): False})     # mods/state.toml
+        game.set_features({("faxanadu.remastered", "remastered"): False})   # the original game
         game.close()
         game.launch()
         ...
