@@ -3,8 +3,8 @@
     python3 tests/remastered/one_switch.py --build build-cycle --rom "Faxanadu (USA).nes" --out /tmp/one-switch
 
 The game runs uncapped and the script waits on the game's own state, never on
-the clock, on a free TCP port, so any number of runs can go in parallel. It
-uses Block's test harness (tests/block/harness.py).
+the clock, on a reserved TCP port (tests/e2e/fax_e2e.py), so any number of
+runs can go in parallel. It uses Block's test harness (tests/block/harness.py).
 
 Copies the build to OUT and starts it with no mod selection, as a fresh
 install does:
@@ -25,7 +25,6 @@ install does:
 Screenshots of the file select, the original title, the mantra screen and the
 shop's two lines go in OUT.
 """
-import argparse
 from pathlib import Path
 import re
 import sys
@@ -33,7 +32,7 @@ import tomllib
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tests" / "block"))
-from harness import AREA, BUILDINGS, MESSAGE_ID, POS_X, Game, fixture  # noqa: E402
+from harness import AREA, BUILDINGS, MESSAGE_ID, POS_X, Game, fixture, parse_args  # noqa: E402
 
 PACKAGE, FEATURE = "faxanadu.remastered", "remastered"
 SEAMLESS = ("faxanadu.enhancement.seamless-world", "seamless-world")
@@ -66,18 +65,11 @@ def selection(text):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    for key in ("build", "rom", "out"):
-        ap.add_argument("--" + key, type=Path, required=True)
-    ap.add_argument("--game-arg", action="append", default=[],
-                    help="extra game option, e.g. --game-arg=--world-view=seamless (repeatable)")
-    ap.add_argument("--port", type=int, default=0, help="TCP port (default: a free one)")
-    ap.add_argument("--realtime", action="store_true", help="run at normal speed instead of uncapped")
-    args = ap.parse_args()
+    args = parse_args(__doc__)
     remaster = sorted(f["id"] for f in tomllib.loads((ROOT / "mods/allocations.toml").read_text())["feature"]
                       if f["package"] == PACKAGE)
     assert remaster == sorted(STATES), f"every feature of the remaster has a state here: {remaster}"
-    g = Game(args.build, args.rom, args.out, args.game_arg, args.realtime, args.port)
+    g = Game.from_args(args)
     state_toml = g.out / "game" / "mods" / "state.toml"
     state_toml.unlink(missing_ok=True)                              # a fresh install: no selection yet
 
@@ -172,7 +164,7 @@ def main():
         chosen = selection(state_toml.read_text())
         assert chosen == {(PACKAGE, FEATURE): False, SEAMLESS: False}, f"still off: {chosen}"
         print("ok: the runtime keeps the selection with the remaster off")
-        print("screenshots:", ", ".join(p.name for p in g.shots))
+        print("screenshots:", ", ".join(g.shots))
     except BaseException:
         if g.running():
             g.shot("failure")

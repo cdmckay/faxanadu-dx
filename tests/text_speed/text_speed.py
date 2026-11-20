@@ -22,19 +22,17 @@ the furthest temple (an external prerequisite, not coverage). Then:
 Screenshots of each held wait, and of the greeting after the same frames
 held and not held, go in OUT.
 """
-import argparse
-import os
 from pathlib import Path
 import shutil
 import struct
 import subprocess
 import sys
 import time
-import zlib
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "travel"))
+from fax_e2e import Game, act, chunks, fixture, frame, parse_args, ram, tcp, typed, until, wait  # noqa: E402
 import guru_travel as gt  # noqa: E402
-from guru_travel import act, frame, ram, tcp, typed, until, wait  # noqa: E402
 
 MESSAGE_ID, PROCESSED, PAUSED = 0x213, 0x214, 0x215   # MessageID, Message_ProcessedLength, TextBox_MessagePaused
 INTERRUPT_COUNTER = 0x1A                               # counts every NMI: one a frame
@@ -91,7 +89,7 @@ def time_page():
 def state_ram(path, addr):
     """A byte of CPU RAM in a save state."""
     data = path.read_bytes()
-    pos = next(p for tag, p, _ in gt.chunks(data) if tag == b"HW  ")
+    pos = next(p for tag, p, _ in chunks(data) if tag == b"HW  ")
     return data[pos + 23 + addr]
 
 
@@ -104,30 +102,9 @@ def still(what, test, frames=120):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    for key in ("build", "rom", "out"):
-        ap.add_argument("--" + key, type=Path, required=True)
-    ap.add_argument("--port", type=int, default=0, help="TCP port (default: a free one)")
-    args = ap.parse_args()
-    gt.PORT = args.port or gt.free_port()
-    assert zlib.crc32(args.rom.read_bytes()[16:]) == 0x57DD23D1, "the original Faxanadu (USA) ROM is required"
-    out = args.out.resolve()
-    shutil.rmtree(out, ignore_errors=True)
-    (out / "game").mkdir(parents=True)
-    shutil.copy2(args.build / "FaxanaduRecomp", out / "game")
-    for folder in ("assets", "mods"):
-        shutil.copytree(args.build / folder, out / "game" / folder)
-    env = dict(os.environ, NESRECOMP_NO_LAUNCHER="1", SDL_VIDEODRIVER="dummy", SDL_AUDIODRIVER="dummy")
-    log = open(out / "game.log", "w")
-    game = subprocess.Popen([str(out / "game" / "FaxanaduRecomp"), str(args.rom.resolve()), "--hidden",
-                             "--tcp", str(gt.PORT), "--uncapped", "--exit-after", "100000000"],
-                            env=env, stdout=log, stderr=subprocess.STDOUT)
-    shots = []
-
-    def shot(name):
-        path = out / f"{len(shots):02d}-{name}.png"
-        tcp("screenshot", layer="picture", path=str(path))
-        shots.append(path.name)
+    args = parse_args(__doc__)
+    game = Game.from_args(args)
+    out, shots = game.out, game.shots
 
     def headless(name, state, buttons, mods):
         """Run SAME_FRAMES frames headless from `state` holding `buttons` ("-" for
@@ -139,12 +116,12 @@ def main():
         (folder / "input.txt").write_text(f"{start} {buttons}\n")
         final = folder / "final.cycstate"
         with open(folder / "run.log", "w") as run_log:
-            subprocess.run([str(out / "game" / "FaxanaduRecomp"), str(args.rom.resolve()), "--no-save",
+            subprocess.run([str(game.exe), str(game.rom), "--no-save",
                             "--mods-root", str(mods), "--load-state", str(state),
                             "--frames", str(start + SAME_FRAMES), "--input", str(folder / "input.txt"),
                             "--screenshot", str(folder / "picture.png"),
                             "--save-state", f"{start + SAME_FRAMES - 1}:{final}"],
-                           cwd=folder, env=env, stdout=run_log, stderr=subprocess.STDOUT, timeout=120, check=True)
+                           cwd=folder, env=game.env, stdout=run_log, stderr=subprocess.STDOUT, timeout=120, check=True)
         assert state_ram(final, MESSAGE_ID) == MEDITATE_WITH_YOU, f"{name}: still the greeting"
         shot = out / f"{len(shots):02d}-{name}.png"
         shutil.copy2(folder / "picture.png", shot)
@@ -174,12 +151,7 @@ def main():
         until(f"line {expect}", lambda: line() == expect, 300)
 
     try:
-        for _ in range(100):
-            try:
-                frame()
-                break
-            except OSError:
-                time.sleep(0.1)
+        game.launch()
         assert tcp("text_speed_state")["enabled"], "Hold A to speed up text is on by default"
         until("the title", lambda: frame() > 700)
         tcp("pad", buttons="start", frames=10)
@@ -187,7 +159,7 @@ def main():
         gate = out / "gate.cycstate"
         tcp("save_state", path=str(gate))
         dead = out / "conflate-death.cycstate"
-        gt.fixture(gate, dead, {gt.TEMPLE_SPAWN_POINT: gt.CONFLATE, gt.PLAYER_IS_DEAD: 1})
+        fixture(gate, dead, {gt.TEMPLE_SPAWN_POINT: gt.CONFLATE, gt.PLAYER_IS_DEAD: 1})
 
         # 1. The death message: "Don't have/negative/thoughts." $FC "Remember/your mantra."
         tcp("load_state", path=str(dead))
@@ -197,7 +169,7 @@ def main():
         stopped = ram(PROCESSED)
         still("held A waits at the page break",
               lambda: ram(PAUSED) != 0 and ram(MESSAGE_ID) == NEGATIVE_THOUGHTS and ram(PROCESSED) == stopped)
-        shot("page-break-held")
+        game.shot("page-break-held")
         release_a()
         assert ram(PAUSED) != 0, "releasing A does not go on"
         hold_a()                                     # press again, and keep holding
@@ -206,7 +178,7 @@ def main():
         offset = ram(ISCRIPT_OFFSET)
         still("held A waits at the end of the message",
               lambda: ram(ISCRIPT_OFFSET) == offset and not gt.in_temple(gt.CONFLATE))
-        shot("message-end-held")
+        game.shot("message-end-held")
         release_a()
         act("a")
         until("Conflate's temple", lambda: gt.in_temple(gt.CONFLATE), 600)
@@ -231,7 +203,7 @@ def main():
         until("the greeting to type out", typed)
         offset = ram(ISCRIPT_OFFSET)
         still("held A does not go on to the mantra", lambda: ram(ISCRIPT_OFFSET) == offset)
-        shot("greeting-typed-out-held")
+        game.shot("greeting-typed-out-held")
         release_a()
 
         tcp("load_state", path=str(temple))
@@ -286,14 +258,14 @@ def main():
         next_message_typed()
         still("held A does not answer the offer",
               lambda: line() == gt.OFFER and tcp("travel_state")["phase"] == OFFER_PHASE)
-        shot("offer-held")
+        game.shot("offer-held")
         release_a()
         hold_a()                                     # press again, and keep holding
         until("the first destination", lambda: line() == gt.TO_GURU + 0)
         next_message_typed()
         still("held A does not choose Eolis", lambda: (lambda s: s["text"] == gt.TO_GURU + 0 and s["dest"] == -1
                                                        and s["phase"] == ASKING_PHASE)(tcp("travel_state")))
-        shot("destination-held")
+        game.shot("destination-held")
         act("b")                                     # with A still held: B asks about the next, the farewell here
         until("the farewell", lambda: line() == gt.FAREWELL)
         release_a()
@@ -301,17 +273,11 @@ def main():
         print("ok: held A answers neither Guru travel question; a new press does, and B still declines")
         print("screenshots:", ", ".join(shots))
     except BaseException:
-        try:
-            shot("failure")
-        except Exception:
-            pass
+        if game.running():
+            game.shot("failure")
         raise
     finally:
-        try:
-            tcp("quit")
-        except Exception:
-            game.kill()
-        game.wait(10)
+        game.close()
 
 
 if __name__ == "__main__":

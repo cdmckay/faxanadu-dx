@@ -13,16 +13,16 @@ forgiving_jumps.py).
   on or off through the mod selection (off is the original game), and
   screenshots come from them too.
 """
-import json
-import os
 from pathlib import Path
 import re
 import shutil
-import socket
 import struct
 import subprocess
-import time
-import zlib
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
+import fax_e2e  # noqa: E402
+from fax_e2e import fixture  # noqa: E402  (falling_pose.py and forgiving_jumps.py import it from here)
 
 # RAM
 JOY, AREA, SCROLL_DIRECTION, SCREEN = 0x16, 0x24, 0x54, 0x63
@@ -39,123 +39,21 @@ PACKAGE, FEATURE = "faxanadu.remastered", "remastered"          # the one switch
 
 
 def selection(original=False):
-    """mods/state.toml with the remaster on (the default), or off for the original game."""
-    return "format_version = 1\n" + (
-        f'\n[[feature]]\npackage_id = "{PACKAGE}"\nid = "{FEATURE}"\nenabled = false\n' if original else "")
-
-
-def free_port():
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
-def chunks(data):
-    assert data[:8] == b"CYCSTATE"
-    pos = 32
-    while pos < len(data):
-        tag, size = struct.unpack_from("<4sI", data, pos)
-        pos += 8
-        yield tag, pos, size
-        pos += size
-        if tag == b"END ":
-            return
-
-
-def fixture(source, target, writes):
-    """A copy of a save state with CPU RAM bytes changed (the HW chunk, offset 23)."""
-    data = bytearray(Path(source).read_bytes())
-    pos, size = next((p, n) for t, p, n in chunks(data) if t == b"HW  ")
-    assert size == 2072, "Unqualified hardware ABI"
-    for address, value in writes.items():
-        data[pos + 23 + address] = value
-    Path(target).write_bytes(data)
+    """The features for set_features(): the remaster on (the default), or off for the original game."""
+    return {(PACKAGE, FEATURE): False} if original else {}
 
 
 def no_actors():
     return {SPRITE_ENTITY + i: 0xFF for i in range(8)}
 
 
-class Game:
-    """The build, copied to OUT/game, in a hidden window driven over TCP."""
-
-    def __init__(self, build, rom, out, game_args=(), realtime=False):
-        self.rom, self.out, self.game_args, self.realtime = Path(rom).resolve(), Path(out), list(game_args), realtime
-        image = self.rom.read_bytes()
-        assert zlib.crc32(image[16:]) == 0x57DD23D1, "the original Faxanadu (USA) ROM is required"
-        shutil.rmtree(self.out, ignore_errors=True)
-        (self.out / "game").mkdir(parents=True)
-        shutil.copy2(Path(build) / "FaxanaduRecomp", self.out / "game")
-        for folder in ("assets", "mods"):
-            shutil.copytree(Path(build) / folder, self.out / "game" / folder)
-        self.exe = self.out / "game" / "FaxanaduRecomp"
-        self.port, self.proc, self.shots = 0, None, []
-        self.log = open(self.out / "game.log", "w")
-
-    def tcp(self, cmd, **kw):
-        with socket.create_connection(("127.0.0.1", self.port), 5) as s:
-            s.settimeout(30)
-            f = s.makefile("rwb", buffering=0)
-            f.write((json.dumps(dict(id=1, cmd=cmd, **kw)) + "\n").encode())
-            reply = json.loads(f.readline())
-        if not reply.get("ok"):
-            raise RuntimeError(f"{cmd}: {reply}")
-        return reply
-
-    def frame(self):
-        return self.tcp("ping")["frame"]
-
-    def wait(self, frames):
-        end = self.frame() + frames
-        while self.frame() < end:
-            time.sleep(0.005)
-
-    def ram(self, addr, n=1):
-        data = bytes.fromhex(self.tcp("read_ram", addr=addr, len=n)["hex"])
-        return data[0] if n == 1 else data
-
-    def until(self, what, test, frames=1200):
-        end = self.frame() + frames
-        while self.frame() < end:
-            if test():
-                return
-            time.sleep(0.005)
-        raise AssertionError(f"timed out waiting for {what}")
-
-    def launch(self, *extra):
-        self.port = free_port()
-        extra = [part for arg in self.game_args for part in arg.split("=", 1)] + list(extra)
-        if not self.realtime:
-            extra += ["--uncapped", "--exit-after", "100000000"]
-        env = dict(os.environ, NESRECOMP_NO_LAUNCHER="1", SDL_VIDEODRIVER="dummy", SDL_AUDIODRIVER="dummy")
-        self.proc = subprocess.Popen([str(self.exe), str(self.rom), "--hidden", "--tcp", str(self.port), *extra],
-                                     env=env, stdout=self.log, stderr=subprocess.STDOUT)
-        for _ in range(100):
-            try:
-                return self.frame()
-            except OSError:
-                time.sleep(0.1)
-        raise AssertionError("the game did not start")
-
-    def close(self):
-        if not self.proc:
-            return
-        try:
-            self.tcp("quit")
-        except Exception:
-            self.proc.kill()
-        self.proc.wait(10)
-        self.proc = None
-
-    def shot(self, name):
-        path = self.out / f"{len(self.shots):02d}-{name}.png"
-        self.tcp("screenshot", layer="picture", path=str(path))
-        self.shots.append(path)
-        return path
+class Game(fax_e2e.Game):
+    """The build, copied to OUT/game, in a hidden window driven over TCP
+    (fax_e2e.Game), with what the movement tests add."""
 
     def select(self, original=False):
         """The mod selection: the remaster on (the default), or off for the original."""
-        (self.out / "game" / "mods" / "state.toml").write_text(selection(original))
+        self.set_features(selection(original))
 
     def settle(self):
         """Until the screen has stopped scrolling (Screen_ScrollDirection $FF):
@@ -226,13 +124,14 @@ class Game:
         root = self.out / name
         if not root.exists():
             shutil.copytree(self.out / "game" / "mods" / "packages", root / "packages")
-            (root / "state.toml").write_text(selection(original))
+            (root / "state.toml").write_text(fax_e2e.features_toml(selection(original)))
         return root
 
-    def headless(self, state, schedule, frames, mods, screenshot=None):
+    def headless(self, state, schedule, frames, mods, screenshot=None, save=None):
         """Run from `state` for `frames` frames, holding buttons on a schedule
         of (frame, buttons) pairs counted from the state's frame ("RIGHT+A",
-        "-" for none). Returns each frame's CPU RAM, after the frame."""
+        "-" for none). Returns each frame's CPU RAM, after the frame. With
+        `save`, (frame, path): also save a state after that frame."""
         probe = subprocess.run([str(self.exe), str(self.rom), "--load-state", str(state), "--frames", "0", "--no-save"],
                                capture_output=True, text=True)
         start = int(re.search(r"continuing at frame (\d+)", probe.stdout).group(1))
@@ -245,6 +144,8 @@ class Game:
                 "--frame-log-frames", f"{start}:{start + frames - 1}", "--mods-root", str(mods), "--no-save"]
         if screenshot:
             args += ["--screenshot", str(screenshot)]
+        if save:
+            args += ["--save-state", f"{start + save[0]}:{save[1]}"]
         done = subprocess.run(args, capture_output=True, text=True)
         assert done.returncode == 0, done.stdout + done.stderr
         data = log.read_bytes()
