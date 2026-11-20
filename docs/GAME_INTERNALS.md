@@ -1387,14 +1387,18 @@ script), the A and Jo keys (gifts), the Poison, or the last fight's gear.
    returns C clear and B C set. Select and the rest are ignored.
 3. B ends the script at once (`$83FF`: `JMP IScriptAction_EndScript`), with
    no line.
-4. A: `Shop_GetPlayerHasSelectedItem` (`$8482`) refuses a weapon, armor,
+4. A (`$8402`, the `BCC` target after the wait at `$83FA`):
+   `Shop_GetPlayerHasSelectedItem` (`$8482`) refuses a weapon, armor,
    shield or spell the hero has (in hand or in its list), and a SpecialItems
    item (rings, Elixir, Magical Rod, Pendant, Black Onyx) he has. Other items
    can be bought again and again, until their list is full
-   (`MAX_INVENTORY_SLOTS`, `$847D`: 4, 4, 4, 4, 8). Either refusal closes the
-   list and ends with "You can't carry any more." (`$06`, at `$8469`).
-   Then `IScripts_CheckEnoughMoney`; short, "This is not enough Golds."
-   (`$03`, `IScripts_ShowNotEnoughMoney`, `$837C`).
+   (`MAX_INVENTORY_SLOTS`, `$847D`: 4, 4, 4, 4, 8): an Items ID has bit 7
+   set, the routine compares it only with the eight special IDs, and returns
+   C clear. So a hero holding Wing Boots, the Hour Glass, a key or the Mattock
+   can buy another (checked in the game: Forepaw's shop sold a second pair).
+   Either refusal closes the list and ends with "You can't carry any more."
+   (`$06`, at `$8469`). Then `IScripts_CheckEnoughMoney`; short, "This is not
+   enough Golds." (`$03`, `IScripts_ShowNotEnoughMoney`, `$837C`).
 5. Bought: `Player_AddToInventory`, then `IScripts_ProgressivelySubtractGold`
    takes 10 Golds a frame and then waits 60 frames, then (`$8463`)
    `Maybe_Shop_DrawTextBox` (`$8471`: two frames, close the list, open the
@@ -1454,6 +1458,30 @@ they are refused even if one were. The selected item and what is equipped are
 in no list either, as in the original. The rest are safe to sell: every other
 key, the Mattock, the Wing Boots and the potions can be bought again, and the
 A and Jo keys' givers hand out another to a hero without one.
+
+**What the hero owns, with Quick shops.** An item he already has for good keeps
+its row in every buy list, so the list, its cursor positions and its pages are
+the shop's own, but shows **OWNED** where its price was; the hint reads
+"Already owned" while the cursor is on it, and A on it does nothing: a hook at
+`$8402`, before `Shop_GetPlayerHasSelectedItem`, re-enters the wait at `$83FA`
+by return, so no gold is taken and no refusal shows. Owned
+(`fax_shops_owned`):
+
+| Item | Kept by | Owned when |
+|---|---|---|
+| Wing Boots, Hour Glass | Recharging items | He has it: selected, or in the Items list |
+| The A, K, Q, J and Jo keys, the Mattock | Reusable tools | He has it |
+| Elixir | Recharging items | Charged (its `SpecialItems` bit) or spent |
+
+The rule asks each keeper whether it is on (`fax_recharge_on`,
+`fax_reusable_tools_on`), so an item counts only while it is kept; in the one
+mod they always are. A charged Elixir counts either way, since the game refuses
+a second. Shops sell only the J, Q and K keys; the A and Jo keys are in the
+rule for completeness. OWNED is five letters, in the five cells `Shop_Draw`
+gives a price (column 23, an entry's second row, right-aligned), painted over
+the price as an unsellable item's is. The sell list is unchanged: an owned item
+sells, at its price. Weapons, armor, shields and spells the hero has are not
+marked: the game refuses them ("You can't carry any more."), as before.
 
 ## Doors and keys
 
@@ -1582,11 +1610,15 @@ jumping or falling, `Player_Flags & $05`):
   from `Game_Start` and `Player_Spawn`, so every death ends them, but not on a
   Guru travel journey, which enters `Player_Spawn` past it: a flight or a
   freeze carries on in the other temple.
-- **Shops never sell what you hold.** `Shop_GetPlayerHasSelectedItem` (`$8482`, bank 12) refuses
-  any item already selected or listed, and a special item whose bit is set,
-  with "You can't carry any more." (message `$06`). In the original, then, a
-  second pair of Wing Boots or a second Hour Glass came only from the world:
-  `Player_PickUpItem` adds a duplicate like anything else.
+- **Shops sell a second.** `Shop_GetPlayerHasSelectedItem` (`$8482`, bank
+  12) refuses only a weapon, armor, shield or spell already selected or
+  listed, and a special item whose bit is set ("You can't carry any more.",
+  message `$06`). The Wing Boots and the Hour Glass are Items, so a shop sells
+  a hero holding them another, until his list is full (checked in the game:
+  Forepaw sold a second pair). An earlier note here said shops never sell
+  what you hold; that holds only for the Elixir. `Player_PickUpItem` adds a
+  duplicate too. With the remaster, a find recharges instead, and Quick
+  shops lists a pair or an Hour Glass he has as owned (see *Shops*).
 
 | Item | Shops | In the world (bank 11's lists: area, screen, block `YX`) |
 |---|---|---|
@@ -1640,7 +1672,11 @@ ends within a second of walking onto it (checked too).
 clears the bit, runs script `$85` ("I've used Elixir.") and refills HP and MP;
 clear, it sets `PlayerIsDead`. The menu's Player page draws a picture for each
 `SpecialItems` bit, the Elixir's included, on its last row. A mantra keeps
-the bit.
+the bit. With recharging items a spent Elixir is still the hero's
+(`fax_recharge_elixir_spent`), so Quick shops lists it as owned, as it does a
+charged one. Its bit is clear, so the game's own shop would sell one to a spent
+Elixir; through Quick shops, buying one never charges it. A Guru, or one found
+in the world, does.
 
 **Flying.** While `Player_StatusFlag` has `$80` and A is held,
 `Player_CheckHandleVertMovement` (`$E2C8`) treats the hero as on a ladder
@@ -1825,8 +1861,8 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
   its stock value.
 - **Recharging items** (`fax_recharge.c`, with the use-up list in
   `fax_items.h`). The Wing Boots and the Hour Glass are kept and recharge, and
-  the Elixir is kept and a Guru charges it again. All its sites are in the
-  fixed bank:
+  the Elixir is kept and a Guru charges it again. Its sites are in the fixed
+  bank, but for `$826E` in bank 12 (below):
   - `Player_UseWingBoots` and `Player_UseHourGlass`, at entry: not ready, it
     plays the "invalid choice" sound (`$0D`, `Sound_PlayEffect` in a committed
     call) and returns to the main loop as the routine's RTS would.
@@ -1842,11 +1878,12 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
     cooldown (else the Wing Boots', else the Hour Glass's), blank 16 frames in
     64, queued through the PPU buffer as `UI_DrawTimeValue` queues it, when
     `PPUBuffer_HasCapacity` would allow it. A spent Elixir whose bit came back
-    (bought or found) is charged.
+    (found) is charged.
   - `Player_UseElixir`: the Elixir is spent. `SpecialItems`' bit stays the
-    game's own "a revive is in reserve", so `Player_ReduceHP`, the Player page,
-    the shops and the Spring of Trunk all go by whether it is charged: a shop
-    sells one only to a spent Elixir, which charges it at the shop's price.
+    game's own "a revive is in reserve", so `Player_ReduceHP`, the Player page
+    and the Spring of Trunk go by whether it is charged.
+  - No shop charges a spent Elixir: Quick shops lists it as owned
+    (`fax_recharge_elixir_spent`) and ignores A on it.
   - `Player_PickUpItem`, with A the Wing Boots or the Hour Glass and the hero
     holding one (selected or listed): ready at once, and nothing added, even
     with the list full. Found during a run, the run goes on and no cooldown
@@ -1934,7 +1971,7 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
   anything carried (see *Shops*), 8 to a page: Up from the top or Down from
   the bottom turns the page. No ROM and no read overrides. It steers the
   script at `IScripts_InvokeNextAction` (its first action goes to BUY; BUY + 3
-  and SELL + 3 go back to their list) and jumps by return at seven sites of
+  and SELL + 3 go back to their list) and jumps by return at eight sites of
   its own: OpenShop's entry, past "What would you like?" to `$83EA`;
   `$8463`, past the purchase's close; `$86BC`, where it replaces the sell
   scan's list with a page of everything carried and goes on at `Shop_Draw`
@@ -1947,13 +1984,17 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
   `Maybe_Shop_DrawTextBox` to `IScriptAction_EndScript`, so the list is closed
   when the script ends, as after the original's purchase, and a line Block
   adds there (its tutorial, after the first shield) shows in the dialogue box;
-  and `$838E`, where a shop's message goes back to the list. Presses while a
-  list is drawn, or the gold counts, are lost, as in the original: the game
-  reads the pad only in the list's wait. The hint line ("Select to sell", "Select to
-  buy", "Not for sale") is drawn on the list's row 26 and the page ("1 of 2")
-  on row 9, at present time, while the list's four frame corners show; an
-  unsellable item's price cells are painted the box's inside. Its save-state
-  record holds the conversation (17 bytes).
+  `$838E`, where a shop's message goes back to the list; and `$8402`, the buy
+  list's A, back to the wait (`$83FA`) for an item the hero owns (see
+  *Shops*), which it asks reusable tools and recharging items about
+  (`fax_reusable_tools_on`, `fax_recharge_on`, `fax_recharge_elixir_spent`).
+  Presses while a list is drawn, or the gold counts, are lost, as in the
+  original: the game reads the pad only in the list's wait. The hint line
+  ("Select to sell", "Select to buy", "Not for sale", "Already owned") is drawn
+  on the list's row 26 and the page ("1 of 2") on row 9, at present time,
+  while the list's four frame corners show; an unsellable item's price cells
+  are painted the box's inside, and an owned item's too, with OWNED in them.
+  Its save-state record holds the conversation (17 bytes).
 - **Zone respawn** (`fax_respawn.c`). Dying comes back at the last entrance
   into the zone (tower, castle, town or region) the hero died in, after the
   Guru's words, instead of at the temple. A hook at `Screen_SetupNew` records
