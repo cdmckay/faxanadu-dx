@@ -49,6 +49,7 @@ STATES = {
     "text-speed": ("text_speed_state", "enabled"), "zone-names": ("zone_state", "enabled"),
     "speaker-names": ("speaker_state", "enabled"), "slain-by": ("slain_state", "enabled"),
     "title-remastered": ("title_state", "enabled"),
+    "indoor-equip": ("indoor_equip_state", "enabled"),
 }
 START_CHOICE = 0x687                                                # DAT_0687: 0 Start, 1 Continue
 PASSWORD_COL, PASSWORD_ROW, PASSWORD_LENGTH = 0x662, 0x663, 0x666

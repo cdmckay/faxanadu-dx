@@ -84,6 +84,12 @@ sword hits, like the Zozura crawling outside Eolis. Now its swing reaches as
 low as the swords', so it hits them. It keeps its short reach, so the Long
 Sword is still an upgrade.
 
+**Weapons indoors.** In shops, houses and temples the Select menu equips what
+you choose, as it does outside, and you keep your weapon in hand: buy a sword
+and swing it on the spot. Swinging at townsfolk does nothing, as before. In
+the few rooms with enemies inside, in the Mist and Dartmoor, your sword now
+hurts them too; in the original only magic did.
+
 ### Getting around
 
 **Forgiving jumps.** A pressed up to 5 frames after you walk off a ledge still
