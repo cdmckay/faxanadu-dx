@@ -8,12 +8,15 @@ each run takes a free TCP port, and any number can go in parallel.
 
 Copies the build to OUT (so the faxanadu_gurus.txt sidecar stays there) and
 starts a new game over TCP. It walks through Eolis's gate, into a shop and out,
-and through the door out of Eolis into the Trunk. Then it relaunches with the
-Gurus of Eolis, Apolune and Conflate visited (as tests/travel/guru_travel.py
-does), respawns in Conflate, travels to Apolune's Guru, and walks out of each
-temple. Last, it edits where a temple's door leads (save-state RAM, an external
-prerequisite) to walk out into the Tower of Fortress and the Castle of
-Fraternal. A screenshot of each banner is saved in OUT.
+and through the door out of Eolis into the Trunk, with the enemies on Eolis's
+screen 8 cleared before the walk to that door (save-state RAM, an external
+prerequisite). Then it relaunches with the Gurus of Eolis, Apolune and
+Conflate visited (as tests/travel/guru_travel.py does), dies outside Eolis's
+gate with Conflate's temple his spawn point (before any entrance, so zone
+respawn wakes him at that temple, as the original does), travels to
+Apolune's Guru, and walks out of each temple. Last, it edits where a temple's
+door leads (save-state RAM too) to walk out into the Tower of Fortress and
+the Castle of Fraternal. A screenshot of each banner is saved in OUT.
 """
 import argparse
 import json
@@ -33,6 +36,7 @@ TEXTBOX_CLOSED, MESSAGE_ID, TEXTBOX_PAUSED = 0x20C, 0x213, 0x215
 AREA_SAVED_AREA, AREA_SAVED_SCREEN, SCREEN_SAVED_PALETTE, PLAYER_SAVED_POS = 0x3D5, 0x3D6, 0x3D7, 0x3D8
 HP, AREA_REGION, PLAYER_IS_DEAD, TEMPLE_SPAWN_POINT = 0x431, 0x435, 0x438, 0x439
 SELECTED_ITEM, KEY_J = 0x3C1, 0x07                                 # Game_OpenDoorWithJKey's check
+SPRITE_ENTITIES = 0x2CC                                             # CurrentSprites_Entities, 8 slots
 BUILDINGS, TOWNS = 4, 3
 TEMPLE_SCREEN = {1: 0x0B, 5: 0x2B}                                  # DEST_SCREEN_FOR_TEMPLE_SPAWN: Apolune, Conflate
 APOLUNE, CONFLATE = 1, 5
@@ -242,6 +246,8 @@ def main():
         tcp("pad", buttons="start", frames=10)
         until("the Eolis gate", lambda: zone()["area"] == 0 and frame() > 1900)
         assert zone()["banners"] == 0 and zone()["here"] is None, zone()
+        outside = out / "outside-gate.cycstate"                    # before any entrance
+        tcp("save_state", path=str(outside))
         print("ok: no banner outside Eolis's gate")
 
         # 1. Through the gate (door at block column 12): Eolis.
@@ -274,6 +280,13 @@ def main():
         walk_out()
         settled_in(0, 8)
         assert zone()["banners"] == 1, zone()
+        # The screen's enemies cleared (a prerequisite, not coverage): one hits
+        # the hero for 20 HP every few hundred frames, and a run slowed by a busy
+        # machine can lose that many before it reaches the door.
+        raw, clear = out / "eolis-8-raw.cycstate", out / "eolis-8-clear.cycstate"
+        tcp("save_state", path=str(raw))
+        fixture(raw, clear, {**{SPRITE_ENTITIES + i: 0xFF for i in range(8)}, HP: 0x50})
+        tcp("load_state", path=str(clear))
         walk_to(186, 196)                                  # the door, column 12
         act("up", 4, 10)
         for _ in range(40):                                # "You used the key"
@@ -290,15 +303,13 @@ def main():
         tcp("save_state", path=str(gate))
         close()
 
-        # 4. Respawn in Conflate, then travel to Apolune's Guru. Zone respawn
-        #    is off: on, dying in the Trunk comes back at its door, not a temple.
+        # 4. Respawn in Conflate, then travel to Apolune's Guru. He dies outside
+        #    Eolis's gate, before any entrance, so zone respawn wakes him at his
+        #    temple; dying in the Trunk would bring him back at its door.
         (out / "game" / "faxanadu_gurus.txt").write_text("Eolis\nApolune\nConflate\n")
-        (out / "game" / "mods" / "state.toml").write_text(
-            'format_version = 1\n\n[[feature]]\npackage_id = "faxanadu.enhancement.zone-respawn"\n'
-            'id = "zone-respawn"\nenabled = false\n')
         launch()
         dead = out / "conflate-death.cycstate"
-        fixture(gate, dead, {TEMPLE_SPAWN_POINT: CONFLATE, PLAYER_IS_DEAD: 1})
+        fixture(outside, dead, {TEMPLE_SPAWN_POINT: CONFLATE, PLAYER_IS_DEAD: 1})
         tcp("load_state", path=str(dead))
         until("the death message", lambda: ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 600)
         for _ in range(40):

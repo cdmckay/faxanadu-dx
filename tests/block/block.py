@@ -29,7 +29,7 @@ real SDL key and controller events.
    nothing.
 4. config.ini rebinds it (BlockKey = S, BlockButton = leftstick), and the
    window writes the bindings back; the line names the device last used.
-5. With Block off in the mod selection, V does nothing.
+5. With the remaster off in the mod selection, as the original, V does nothing.
 """
 import argparse
 from pathlib import Path
@@ -50,7 +50,7 @@ HOOD_MAGIC, MAGIC_DAMAGE = 0x51, 8                                # the Executio
 SHIELD_HEIGHT, HEAD_HEIGHT = 150, 136                             # the shot's Y, the hero on the ledge at 144
 OUR_LINE, PORTRAIT, NO_PORTRAIT = 0xC3, 0x3C7, 0xFF              # Guru travel's slot; IScript_PortraitID
 LINE = "Hold V to raise\nyour shield\nagainst magic."
-PACKAGE, FEATURE = "faxanadu.enhancement.block", "block"
+PACKAGE, FEATURE = "faxanadu.remastered", "remastered"          # the one switch: off is the original game
 
 
 def main():
@@ -301,7 +301,7 @@ def main():
         print("ok: BlockKey = S and BlockButton = leftstick move it to S and L3, stay in config.ini, "
               "and the line names the one last used")
 
-        # 5. Off.
+        # 5. The remaster off: the original.
         (g.out / "game" / "mods" / "state.toml").write_text(
             f'format_version = 1\n\n[[feature]]\npackage_id = "{PACKAGE}"\nid = "{FEATURE}"\nenabled = false\n')
         g.launch()
@@ -315,7 +315,7 @@ def main():
         g.until("the shot to be gone", lambda: g.ram(ENTITIES + slot) != HOOD_MAGIC, 200)
         g.wait(10)
         assert hp - g.hp() == MAGIC_DAMAGE and block()["magic_blocked"] == 0
-        print("ok: turned off, holding the key stops nothing")
+        print("ok: with the remaster off, holding the key stops nothing")
         print("screenshots:", ", ".join(p.name for p in g.shots))
     except BaseException:
         if g.running():

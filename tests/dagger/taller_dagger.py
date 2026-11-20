@@ -30,7 +30,7 @@ pixels away and the swords from 31; it hurts the hero from 15.
    reach.
 2. Nothing under the hero's feet: swung at the top of a jump, right over the
    Zozura, the taller dagger passes over it, as the Long Sword does.
-3. With the feature off in the mod selection, the dagger's reach is the
+3. With the remaster off in the mod selection, the dagger's reach is the
    original (8, 4). The same close swing passes over the Zozura, and so does
    every swing after it, until it reaches the hero and hurts him. The Long
    Sword's reach and hit are as with the feature on.
@@ -78,7 +78,7 @@ JUMP_AT = 27                                                        # jump when 
 GROUND = 144                                                        # Player_PosY standing on screen 4
 TOUGH = 60                                                          # a Zozura's HP that no hit here ends
 FULL_HP = 0x50
-PACKAGE, FEATURE = "faxanadu.enhancement.taller-dagger", "taller-dagger"
+PACKAGE, FEATURE = "faxanadu.remastered", "remastered"          # the one switch: off is the original game
 
 
 def tcp(cmd, **kw):
@@ -308,7 +308,7 @@ def main():
             f'format_version = 1\n\n[[feature]]\npackage_id = "{PACKAGE}"\nid = "{FEATURE}"\nenabled = false\n')
         launch()
         state = tcp("dagger_state")
-        assert not state["enabled"] and not state["served"], f"the feature is off: {state}"
+        assert not state["enabled"] and not state["served"], f"the remaster is off: {state}"
         got = swing(zozura, DAGGER, CLOSE, name="stock-dagger-passes-over")
         assert got["reaches"] == {STOCK}, f"the original dagger's reach: {got}"
         assert not got["hit"] and got["swings"] == 1, f"the stock dagger passes over a Zozura: {got}"

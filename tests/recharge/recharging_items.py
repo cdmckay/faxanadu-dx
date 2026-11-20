@@ -44,9 +44,11 @@ used with Down+B, as a player would.
    the file in play (file 1, which Start on the title began). A Guru's save
    writes the cooldowns; quitting and continuing the file puts them back, and
    an Elixir the file says is spent stays spent.
-10. With Save files and Guru travel off: Apolune's Guru, giving only the
-    mantra, charges a spent Elixir.
-11. Turned off: the pair is used up after one 40 s (Novice) flight.
+10. A temple Guru: Apolune's, whose conversation Save files and Guru travel
+    steer (Eolis's, in 4, takes another path), charges a spent Elixir at his
+    first action.
+11. With the remaster off, the original: the pair is used up after one 40 s
+    (Novice) flight.
 """
 import argparse
 import json
@@ -77,8 +79,6 @@ GOT_WING_BOOTS, GOT_HOUR_GLASS, GOT_ELIXIR = 0xB3, 0xB4, 0xB0        # "I'm hold
 WING_BOOTS_GONE, HOUR_GLASS_GONE, NEGATIVE_THOUGHTS, HO_HO_HO = 0xC0, 0xC1, 0x24, 0x57
 SHOP_HELLO, WHAT_WOULD_YOU_LIKE, CANT_CARRY_MORE = 0x0F, 0x14, 0x06
 FILE, GURU_SAVED = "faxanadu_file1.txt", 3                          # Start on the title: a new game in file 1
-SAVE_FILES = ("faxanadu.enhancement.save-files", "save-files")
-GURU_TRAVEL = ("faxanadu.enhancement.guru-travel", "guru-travel")
 MEDITATE_WITH_YOU = 0x22                                            # a temple Guru's greeting, then the mantra
 EOLIS, TRUNK, BUILDINGS = 0, 1, 4
 EOLIS_TEMPLE, APOLUNE_TEMPLE, TOOL_SHOP = 0x02, 0x0B, 0x04          # building numbers
@@ -90,7 +90,7 @@ FLIGHTS, COOLDOWN, FREEZE = (30, 40, 50, 60), 60, 15              # the game's s
 FLIGHT = FLIGHTS[0]                                                 # a Novice's: the lowest band
 ELIXIR_PRICE, ELIXIR_ROW = 320, 2                                   # EOLIS_TOOL_SHOP_ITEMS: dagger, potion, Elixir
 SECOND = 64
-PACKAGE = ("faxanadu.enhancement.recharging-items", "recharging-items")
+PACKAGE = ("faxanadu.remastered", "remastered")                  # the one switch: off is the original game
 RECORD = b"faxanadu.recharge"                                       # its save-state record: version, boots
 #                                                                     running and cooldown, glass running and
 #                                                                     cooldown, the Elixir spent
@@ -241,14 +241,13 @@ def main():
     game = None
     shots = []
 
-    def launch(on=True, gurus=None, off=()):
-        """Start the game with recharging items on or off, and the (package, feature) pairs in `off` off."""
+    def launch(on=True, gurus=None):
+        """Start the game with the remaster, and so recharging items, on or off."""
         nonlocal game
-        lines = ["format_version = 1"]
-        for (package, feature), enabled in [(PACKAGE, on)] + [(pf, False) for pf in off]:
-            lines += ["", "[[feature]]", f'package_id = "{package}"', f'id = "{feature}"',
-                      f"enabled = {'true' if enabled else 'false'}"]
-        (out / "game" / "mods" / "state.toml").write_text("\n".join(lines) + "\n")
+        package, feature = PACKAGE
+        (out / "game" / "mods" / "state.toml").write_text(
+            f'format_version = 1\n\n[[feature]]\npackage_id = "{package}"\nid = "{feature}"\n'
+            f"enabled = {'true' if on else 'false'}\n")
         if gurus:
             (out / "game" / "faxanadu_gurus.txt").write_text("".join(g + "\n" for g in gurus))
         extra = [part for arg in args.game_arg for part in arg.split("=", 1)]
@@ -847,10 +846,10 @@ def main():
               "and a spent Elixir in the file is still spent")
         close()
 
-        # 10. Without the Gurus' mods: with Save files and Guru travel off, Apolune's Guru only gives the mantra,
-        # and talking to him still charges a spent Elixir.
-        launch(off=(SAVE_FILES, GURU_TRAVEL))
-        assert not tcp("files_state")["enabled"] and not tcp("travel_state")["enabled"]
+        # 10. A temple Guru: Apolune's, whose conversation Save files and Guru travel steer, charges a spent
+        # Elixir at his first action, before either has moved the script.
+        launch()
+        assert tcp("files_state")["enabled"] and tcp("travel_state")["enabled"]
         plain = out / "apolune-death.cycstate"
         fixture(temple, plain, {TEMPLE_SPAWN_POINT: 1, PLAYER_IS_DEAD: 1, SPECIAL_ITEMS: 0}, {5: 1})
         tcp("load_state", path=str(plain))
@@ -858,23 +857,30 @@ def main():
         until("Apolune's temple", lambda: place() == (BUILDINGS, APOLUNE_TEMPLE) and settled(), 1800)
         wait(30)
         assert state()["elixir_spent"], state()
+        saves = tcp("files_state")["saves"]
         talk_to_guru()
         until("the Guru to charge it", lambda: state()["guru_recharges"] == 1, 120)
+        s = state()
+        assert s["elixir_charged"] and not s["elixir_spent"], s
         seen = set()
-        end = frame() + 40 * SECOND
-        while frame() < end and box_open():
+        end = frame() + 40 * SECOND                                  # his greeting, then "Remember my journey."
+        while frame() < end and tcp("files_state")["saves"] == saves:
             seen.add(ram(MESSAGE_ID))
             if typed():
                 act("a", 6, 14)
             else:
                 wait(4)
-        assert not box_open() and MEDITATE_WITH_YOU in seen, sorted(seen)
-        assert state()["elixir_charged"], state()
-        print("ok: with Save files and Guru travel off, Apolune's Guru gives the mantra, and talking to him "
-              "charges the spent Elixir")
+        assert tcp("files_state")["saves"] == saves + 1 and MEDITATE_WITH_YOU in seen, (tcp("files_state"), sorted(seen))
+        for _ in range(20):                                         # B closes what follows
+            if not box_open():
+                break
+            act("b", 6, 20)
+        assert not box_open() and state()["elixir_charged"], state()
+        print("ok: Apolune's Guru, whose conversation Save files and Guru travel steer, charges the spent Elixir "
+              "as he greets the hero, and remembers the journey")
         close()
 
-        # 11. Off: the original's one-use pair and its title-based flight.
+        # 11. The remaster off: the original's one-use pair and its title-based flight.
         launch(on=False)
         fixture(town, boots, {HP: 0x50, SELECTED_ITEM: WING_BOOTS, NUMBER_OF_ITEMS: 0, PLAYER_TITLE: 0, **no_one})
         tcp("load_state", path=str(boots))
@@ -882,7 +888,7 @@ def main():
         use()
         dismiss(USED_WING_BOOTS)
         assert ram(DURATION_WING_BOOTS) in (40, 39) and items() == ([], NO_ITEM), (ram(DURATION_WING_BOOTS), items())
-        print("ok: turned off, a Novice's Wing Boots fly 40 s and are used up, as in the original")
+        print("ok: with the remaster off, a Novice's Wing Boots fly 40 s and are used up, as in the original")
         print("screenshots:", ", ".join(shots))
     except BaseException:
         if game and game.poll() is None:

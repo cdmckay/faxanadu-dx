@@ -5,338 +5,235 @@ and fixes what has aged.
 
 ## Goals
 
-- **The real game underneath.** Faxanadu's own code runs as native code,
-  recompiled from your ROM, so the world, music, story and feel are the
-  original's. Features steer the game from outside; they don't rewrite it.
-- **Quality of life.** Conveniences the 1987 game lacks, like travelling
-  between Gurus and saving without writing down mantras. Where the game can
-  offer them itself, it does, in its own text box and voice.
+- **The real game underneath.** It runs Faxanadu's own code, built from your
+  ROM, so the world, music, story and feel are the original's. The remaster
+  steers the game from outside; it doesn't rewrite it.
+- **Quality of life.** Conveniences the 1987 game lacks, like saving without
+  writing down mantras and travelling between Gurus. Where the game can offer
+  them itself, it does, in its own text box and voice.
 - **Combat, tuned with care.** Combat may be adjusted to be a bit more fun,
   without losing what makes Faxanadu feel like Faxanadu.
-- **The original, one switch away.** Each change is a mod you can turn off in
-  the launcher.
+- **The original, one switch away.** Everything below is one mod, Faxanadu
+  Remastered, on by default. Switch it off in the launcher's Mods screen and
+  you play the original game, mantras and all.
 
-Built on Matthew Stanley's [FaxanaduRecomp](https://github.com/mstan/FaxanaduRecomp)
-and his [NESRecomp](https://github.com/mstan/nesrecomp) static recompiler.
 How the game works, as far as we've learned it, is in
 [docs/GAME_INTERNALS.md](docs/GAME_INTERNALS.md).
 
-> **Status: Playable.** The game runs from title screen through credits. No outstanding known bugs. Not 100% playtested — minor edge cases may exist, but normal gameplay is fully functional.
+## What's new
 
-[![FaxanaduRecomp showcase](media/title_screen.png)](https://www.youtube.com/watch?v=lLXSnK3HVW4)
+### The title
 
-## Default cycle controls
+**REMASTERED on the title.** The title screen shows REMASTERED under the
+FAXANADU logo, in the game's own font and the light yellow of the logo. The
+rest of the title is the original's.
 
-Default cycle controls: arrows move, Z is A, X is B, Enter is Start and
-Backslash is Select. Escape opens the menu, Tab fast-forwards, and F8/F9
-save/load the cycle state. Use Controls to remap inputs in `config.ini`.
-Older `keybinds.ini` and F5/F6/F7 instructions below apply to the legacy host.
+### Saving and the Gurus
 
-## Quick Start
+**Save files.** The title screen offers three files, as in Zelda: pick an
+empty one to start a new game, or a saved one to continue exactly as you left
+it: title, gold, experience, items, quests and the Gurus you have met. "Erase
+a file" clears one. A Guru no longer gives a mantra: he offers to remember
+your journey, and the Guru you last saved with is where you continue, and
+where you wake when there's no entrance to come back to. Talking to a Guru
+without saving leaves that where it was. Your file is also saved each time
+you come back from a death or a journey.
 
-1. Download `FaxanaduRecomp-windows-x64.zip` from [Releases](../../releases)
-2. Extract and run `FaxanaduRecomp.exe`
-3. Select your Faxanadu (USA) ROM when prompted — the path is saved for future launches
+**Guru travel.** A temple's Guru can send you to any other Guru you have
+visited: choose "Send me to another Guru." when he asks, or say yes after he
+remembers your journey. A to go, B to hear the next town. HP, MP, gold and
+your spawn point are kept.
 
-**Save files** is on by default (Mods to turn it off). The title screen offers
-three files, as in Zelda: pick an empty one to start a new game, or a saved one
-to continue exactly as you left it: title, gold, experience, items, quests and
-the Gurus you have met. "Erase a file" clears one. A Guru no longer gives a
-mantra: he offers to remember your journey, and the Guru you last saved with
-is where you come back when you die or continue. Talking to a Guru without
-saving leaves that where it was. Your file is also saved each time you come
-back to a temple. The files are `faxanadu_file1.txt` to `faxanadu_file3.txt`
-next to the game. The first time, your mantra in `faxanadu.srm` (and the Gurus
-in `faxanadu_gurus.txt`) goes into file 1; to bring in another mantra, enter it
-in the launcher's Mantra field or pass `--password`, and it goes into the first
-empty file.
+**Death keeps gold.** When you die, the Guru brings you back with all your
+gold and experience, instead of your title's starting amounts. You still come
+back with full HP and MP, and the timed items are gone, as before.
 
-**Guru travel** is on by default (Mods to turn it off). A temple's Guru can
-send you to any other Guru you have visited: choose "Send me to another Guru."
-when he asks, or say yes after he remembers your journey. A to go, B to hear
-the next town. HP, MP, gold and your spawn point are kept. The Gurus you have
-met are kept in your save file (with Save files off, in `faxanadu_gurus.txt`
-next to the game).
+**Zone respawn.** After the Guru's words, you come back where you last
+entered the tower, castle, town or region you died in, instead of at a
+temple. Until you have entered one, and after continuing or a Guru's journey
+until you walk out of the temple, you wake at the temple as before.
 
-**Death keeps gold** is on by default (Mods to turn it off). When you die, the
-Guru brings you back with all your gold and experience, instead of your
-title's starting amounts. The rest of death is as before: full HP and MP at
-your furthest temple, and the timed items are gone.
+### Combat
 
-**Zone respawn** is on by default (Mods to turn it off). When you die, the
-Guru still speaks, then you come back where you last entered the tower,
-castle, town or region you died in, with full HP and MP, instead of at a
-temple. Until you have entered one, and after continuing or a Guru's
-journey until you walk out of the temple, you wake at the temple as before.
-Continuing a file still starts you at the Guru you last saved with.
+**Block.** Hold V on the keyboard, or B on a controller, with a shield (or the
+Battle Helmet) in hand to stand your ground and raise it: enemy magic from the
+front, and Sugata's flash from any side, is stopped with the shield's sound.
+Contact and sword damage are as before. As you raise it, you glint twice in
+the shield's colors, so you can see you're blocking. The first time you get a
+shield or the Battle Helmet, the game adds a line naming your key, once.
 
-**Pendant fix** is on by default (Mods to turn it off). The Pendant was meant
-to make your weapon hit a quarter harder, but a reversed check in the
-original gave that bonus to everyone without it, and finding the Pendant took
-it away. Now your weapon does its base damage until you find the Pendant, and
-the original's full damage once you have it. The Glove adds its bonus as
-before.
+**Magic button.** C on the keyboard, or Y on a controller, casts your selected
+spell, as Up+B does, but without going through a door, talking to anyone or
+swinging your sword. Up+B still works.
 
-**Magic button** is on by default (Mods to turn it off). C on the keyboard, or
-Y on a controller, casts your selected spell, as Up+B does, but without going
-through a door, talking to anyone or swinging your sword. Up+B still works.
-To rebind it, set `MagicKey` (a key name, like `V` or `Left Shift`) and
-`MagicButton` (a controller button, like `b` or `leftshoulder`, or a trigger,
-like `lefttrigger+`) in the `[Game]` section of `config.ini`, next to the game.
-`none` unbinds either. Pick one that nothing else uses. The menu's Controls
-section shows the bindings.
+**Sugata's flash.** Sugata, in the Mist, blinks for half a second before it
+flashes, and the band of the screen its flash will reach dims faintly. The
+flash greys only that band and hurts only there: step out of it, or hold
+Block. With the Magic Shield, Block turns the flash back on Sugata. Ointment
+now keeps your HP, though the flash still knocks you back. In the original it
+hit you anywhere on the screen, Ointment or not.
 
-**Zone names** is on by default (Mods to turn it off). When you enter a
-different town, region, tower or castle, its name appears below the status bar
-for two seconds in the game's own text box, as the dialogue names it ("Tower of
-Suffer", "Castle of Fraternal"). Shops, houses and temples show nothing.
+**The Pendant, fixed.** The Pendant was meant to make your weapon hit a
+quarter harder, but a reversed check in the original gave that bonus to
+everyone without it, and finding the Pendant took it away. Now your weapon
+does its base damage until you find the Pendant, and the original's full
+damage once you have it. The Glove adds its bonus as before.
 
-**Speaker names** is on by default (Mods to turn it off). When someone with a
-portrait talks to you, their name sits on a tab above the dialogue box for
-the whole conversation, as the game names them: "Guru of Apolune", "King of
-Eolis", "Martial Artist", "Key Seller". People without a portrait show no
-name.
+**A taller dagger.** The Hand Dagger used to swing over low enemies that every
+sword hits, like the Zozura crawling outside Eolis. Now its swing reaches as
+low as the swords', so it hits them. It keeps its short reach, so the Long
+Sword is still an upgrade.
 
-**REMASTERED on the title** is on by default (Mods to turn it off). The title
-screen shows REMASTERED under the FAXANADU logo, in the game's own font and
-the light yellow of the logo. The rest of the title is the original's, and the
-word goes as soon as you start or continue.
+### Getting around
 
-**Auto keys** is on by default (Mods to turn it off). Press Up at a locked door
-and the right key from your inventory opens it, without selecting it first;
-whatever item you had selected stays selected.
-
-**Reusable tools** is on by default (Mods to turn it off). A key stays in your
-inventory after it opens a door, and the Mattock after it breaks a wall.
-Potions and the other consumables are still used up (Recharging items keeps
-the Wing Boots, the Hour Glass and the Elixir).
-
-**Recharging items** is on by default (Mods to turn it off). The Wing Boots,
-the Hour Glass and the Elixir are kept after use. The Wing Boots fly longer as
-your title rises (30, 40, 50 and 60 seconds, every four titles, where the
-original's flights got shorter), then recharge for 60 seconds. The Hour Glass
-still stops time for 15 seconds and costs half your HP, then recharges for 60
-seconds. While one recharges, T: on the status bar blinks the seconds left,
-and using it does nothing. Dying makes both ready. The Elixir still revives
-you, then stays with you, spent, until you talk to a Guru; the menu's Player
-page shows it only while it is charged. Finding one you already own recharges
-it, and a shop sells you an Elixir only to charge a spent one. Your save file
-keeps the cooldowns and whether the Elixir is spent.
-
-**Falling pose** is on by default (Mods to turn it off). Walking off a ledge,
-the hero used to fall standing or mid-step, as if walking on air. Now he shows
-the jump pose until he lands, as in a jump.
-
-**Forgiving jumps** is on by default (Mods to turn it off). A pressed up to 5
-frames after you walk off a ledge still jumps, from where you are (coyote
-time), and A pressed in the air up to 6 frames before you land jumps as you
-land (jump buffering). No jump goes higher or further than a well-timed one
+**Forgiving jumps.** A pressed up to 5 frames after you walk off a ledge still
+jumps, from where you are, and A pressed in the air up to 6 frames before you
+land jumps as you land. No jump goes higher or further than a well-timed one
 in the original. The Wing Boots, ladders and knockback work as before, and
 raising Block drops a press it was keeping, so you land standing your ground.
 
-**Hold A to speed up text** is on by default (Mods to turn it off). Text types
-at the game's own pace; hold A and it types 4 times as fast. A page break or a
-question still waits for a fresh press of A, so holding it never skips a page
-or answers for you: let go, then press A to go on.
+**A falling pose.** Walking off a ledge, the hero used to fall standing or
+mid-step, as if walking on air. Now he shows the jump pose until he lands, as
+in a jump.
 
-**Taller dagger** is on by default (Mods to turn it off). The Hand Dagger used
-to swing over low enemies that every sword hits, like the Zozura crawling
-outside Eolis. Now its swing reaches as low as the swords', so it hits them.
-It keeps its short reach, so the Long Sword is still an upgrade.
+### Keys and items
 
-**Block** is on by default (Mods to turn it off). Hold V on the keyboard, or B
-on a controller, with a shield (or the Battle Helmet) in hand to stand your
-ground and raise it: enemy magic from the front, and Sugata's flash from any
-side, is stopped with the shield's sound. Contact and sword damage are as
-before. As you raise it, you glint twice in the shield's colors, so you can
-see you're blocking. The first time you get a shield or the Battle Helmet, the
-game adds a line naming your key, once (remembered in `faxanadu_block.txt`
-next to the game). Rebind it with `BlockKey` and `BlockButton` in
-`config.ini`, as for the Magic button.
+**Keys that find themselves.** Press Up at a locked door and the right key
+from your inventory opens it, without selecting it first; whatever item you
+had selected stays selected.
 
-**Sugata's flash** is on by default (Mods to turn it off). Sugata, in the Mist,
-blinks for half a second before it flashes, and the band of the screen its
-flash will reach dims faintly. The flash greys only that band and hurts only
-there: step out of it, or hold Block. With the Magic Shield, Block turns the
-flash back on Sugata. Ointment now keeps your HP, though the flash still knocks
-you back. In the original it hit you anywhere on the screen, Ointment or not.
+**Tools that last.** A key stays in your inventory after it opens a door, and
+the Mattock after it breaks a wall. Potions and the other consumables are
+still used up.
 
-**Quick shops** is on by default (Mods to turn it off). Up on a shopkeeper
-opens his list straight away, with no greeting or questions. Select switches
-between buying and selling, buying or selling keeps you in the list with the
-cursor where it was, and B leaves. Prices, what you can carry and "This is not
-enough Golds." are the game's own. Any shop buys anything you carry: half its
-price where a shop sells it, otherwise 100 Golds. Up from the top or Down from
-the bottom turns the page of a long list. The Dragon Slayer, the Battle Suit
-and the Battle Helmet are not for sale, and what you have equipped or selected
-is not offered, as before.
+**Items that recharge.** The Wing Boots, the Hour Glass and the Elixir are
+kept after use. The Wing Boots fly longer as your title rises (30, 40, 50 and
+60 seconds, every four titles, where the original's flights got shorter),
+then recharge for 60 seconds. The Hour Glass still stops time for 15 seconds
+and costs half your HP, then recharges for 60 seconds. While one recharges,
+T: on the status bar blinks the seconds left, and using it does nothing.
+Dying makes both ready. The Elixir still revives you, then stays with you,
+spent, until you talk to a Guru; the menu's Player page shows it only while
+it is charged. Finding one you already own recharges it, and a shop sells you
+an Elixir only to charge a spent one. Your save file keeps the cooldowns and
+whether the Elixir is spent.
 
-Optional **Seamless** appears first in Mods, marked **Experimental** and
-disabled by default. It joins connected rooms, advances neighboring actors,
-and adapts the world view to your window with Fit to screen. Mouse wheel
-changes pixel zoom; F4 shows the connected map. Dialogue and pause preserve
-the expanded view. It passed a preliminary owner playtest; broader gameplay
-coverage and cross-room combat/projectiles remain incomplete. Seamless is
-local play only. See [details](docs/SEAMLESS-WORLD.md).
+### Shops and text
+
+**Quick shops.** Up on a shopkeeper opens his list straight away, with no
+greeting or questions. Select switches between buying and selling, buying or
+selling keeps you in the list with the cursor where it was, and B leaves.
+Prices, what you can carry and "This is not enough Golds." are the game's own.
+Any shop buys anything you carry: half its price where a shop sells it,
+otherwise 100 Golds. Up from the top or Down from the bottom turns the page of
+a long list. The Dragon Slayer, the Battle Suit and the Battle Helmet are not
+for sale, and what you have equipped or selected is not offered, as before.
+
+**Hold A to speed up text.** Text types at the game's own pace; hold A and it
+types 4 times as fast. A page break or a question still waits for a fresh
+press of A, so holding it never skips a page or answers for you: let go, then
+press A to go on.
+
+**Zone names.** When you enter a different town, region, tower or castle, its
+name appears below the status bar for about two seconds in the game's own
+text box, as the dialogue names it ("Tower of Suffer", "Castle of
+Fraternal"). Shops, houses and temples show nothing.
+
+**Speaker names.** When someone with a portrait talks to you, their name sits
+on a tab above the dialogue box for the whole conversation, as the game names
+them: "Guru of Apolune", "King of Eolis", "Martial Artist", "Key Seller".
+People without a portrait show no name.
+
+### A way to view it: Seamless
+
+**Seamless** is a separate option in the launcher's Mods screen, marked
+Experimental and off by default. It is a way to view the game rather than
+part of the remaster, so it has a switch of its own. It joins connected rooms
+into one continuous world, keeps neighboring rooms' actors moving, and fits
+the view to your window. The mouse wheel changes the pixel zoom, and F4 shows
+the connected map. It is still a preview, for local play only. See
+[docs/SEAMLESS-WORLD.md](docs/SEAMLESS-WORLD.md).
 
 ## Controls
 
-| NES Button | Keyboard |
-|------------|----------|
-| D-Pad      | Arrow keys |
-| A          | Z |
-| B          | X |
-| Start      | Enter |
-| Select     | Right Shift |
-| Magic (Up+B) | C (controller: Y) |
-| Block (hold, with a shield) | V (controller: B) |
+| | Keyboard | Controller |
+|---|---|---|
+| Move | Arrow keys | D-pad |
+| A (jump) | Z | A |
+| B (attack) | X | X |
+| Start | Enter | Start |
+| Select | Backslash | Back |
+| Magic | C | Y |
+| Block (hold, with a shield) | V | B |
+| Menu | Escape | Right shoulder |
+| Fast-forward (hold) | Tab | Right trigger |
+| Save states | F7 | Back + left stick |
+| Rewind | F8 | Back + right stick |
+| Fullscreen | F11 | |
+| Screenshot | F12 | |
 
-## Mantra (Password) Features
+The launcher's Controls page remaps them. To rebind Magic or Block, set
+`MagicKey` and `BlockKey` (a key name, like `V` or `Left Shift`) and
+`MagicButton` and `BlockButton` (a controller button, like `b` or
+`leftshoulder`, or a trigger, like `lefttrigger+`) in the `[Game]` section of
+`config.ini`, next to the game. `none` unbinds one. Pick ones nothing else
+uses.
 
-With Save files on (the default), mantras are only imported; see Save files
-above. What follows applies with Save files off.
+## Save files
 
-Faxanadu uses a mantra system instead of battery-backed saves. FaxanaduRecomp adds convenience features around this:
+Your three files are `faxanadu_file1.txt` to `faxanadu_file3.txt`, next to
+the game. Block remembers that it has shown its line in `faxanadu_block.txt`
+beside them.
 
-**Auto-load** — On startup, the game reads `saves.txt` (next to the exe) and auto-fills the most recent mantra on the password entry screen. No need to write down or retype passwords.
+Mantras from the original still work: the first time, your mantra in
+`faxanadu.srm` (and the Gurus in `faxanadu_gurus.txt`) goes into file 1. To
+bring in another, enter it in the launcher's Mantra field or pass
+`--password`, and it goes into the first empty file. Each mantra comes in
+once.
 
-**CLI override** — `--password STRING` overrides the `saves.txt` mantra for a single session.
+## The ROM it needs
 
-```
-FaxanaduRecomp.exe [ROM] --password "k8fPcv?,TwSYzGZQhMIQhCEA"
-```
+The remaster is built from your own copy of **Faxanadu (USA)**; it ships no
+game data. The build checks the ROM and rejects any other, including **Faxanadu
+(USA) (Rev A)**, a different revision.
 
-**saves.txt format** — One mantra per line, most recent first. Human-readable and copy-pasteable. You can edit this file manually to add or change your saved mantra.
-
-> **Note:** Auto-saving mantras from the priest dialog is not yet implemented. For now, write the mantra shown by the priest into `saves.txt` manually, or pass it via `--password`.
-
-## Save States
-
-| Key | Action |
-|-----|--------|
-| F5  | Toggle turbo (fast-forward) |
-| F6  | Save state → `C:\temp\quicksave.sav` |
-| F7  | Load state ← `C:\temp\quicksave.sav` |
-
-## ROM
-
-| Field | Value |
+| | ROM data only, iNES header excluded |
 |-------|-------|
-| Title | Faxanadu (USA) |
-| CRC32 | `57DD23D1` (ROM data only, iNES header excluded) |
-| MD5   | `b3bb9296b5e1e0c83e90b6da9e8a41aa` (ROM data only) |
-| SHA-1 | `5b05c8859f356013d37f0545f5de5fa1693da5da` (ROM data only) |
+| CRC32 | `57DD23D1` |
+| MD5   | `b3bb9296b5e1e0c83e90b6da9e8a41aa` |
+| SHA-1 | `5b05c8859f356013d37f0545f5de5fa1693da5da` |
 
-## Building from Source
+## Building and running on Linux
 
-The build recompiles your ROM at configure time, so it needs the original
-`Faxanadu (USA)` image (game data CRC32 `57DD23D1`). `Faxanadu (USA) (Rev A)`
-is a different revision and is rejected. Put the ROM at the repo root as
-`Faxanadu (USA).nes`; `*.nes` is gitignored.
+The Nix flake's devShell (`flake.nix`) has everything the build needs. With
+[direnv](https://direnv.net/), `direnv allow` loads it whenever you enter the
+repo; otherwise run the commands inside `nix develop`. Put your ROM at the
+repo root as `Faxanadu (USA).nes` (`*.nes` is gitignored).
 
 ```bash
-git clone https://github.com/cdmckay/faxanadu-remaster
-cd faxanadu-remaster
-
-# Windows
-setup.bat
-
-# Linux / macOS
+git clone https://github.com/cdmckay/faxanadu-remastered
+cd faxanadu-remastered
 ./setup.sh
-```
-
-This initializes the pinned [nesrecomp](https://github.com/mstan/nesrecomp)
-submodule and links the Nestopia oracle core.
-
-### Windows
-
-Prerequisites: Windows 10+, Visual Studio 2022, CMake 3.20+ (SDL2 is bundled)
-
-```bash
-cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DNESRECOMP_ROM="Faxanadu (USA).nes"
-cmake --build build --config Release
-```
-
-### Linux
-
-The Nix devShell in `flake.nix` provides CMake, Python, SDL2, GL, FreeType and
-HarfBuzz. With [direnv](https://direnv.net/), `direnv allow` loads it whenever
-you enter the repo; otherwise run the commands inside `nix develop`.
-
-```bash
 direnv allow
 cmake -S . -B build-cycle -DCMAKE_BUILD_TYPE=Release -DNESRECOMP_ROM="$PWD/Faxanadu (USA).nes"
 cmake --build build-cycle -j"$(nproc)"
 build-cycle/FaxanaduRecomp "Faxanadu (USA).nes"
 ```
 
-Without Nix, install the same packages from your distribution (on Debian:
-`cmake python3 libsdl2-dev libgl-dev libfreetype-dev libharfbuzz-dev`).
-nixpkgs' SDL2 is sdl2-compat on SDL3, which runs natively on Wayland and draws
-the window's title bar with libdecor on GNOME. Classic SDL2 prefers X11 (through
-XWayland); run with `SDL_VIDEODRIVER=wayland` to get native Wayland there.
+`setup.sh` fetches the code the build depends on. The game opens in its
+launcher first.
 
-Headless runs are handy for checks: `--frames 600 --screenshot shot.png`
-plays 600 frames without a window and saves the last one.
+## Credits
 
-## Architecture
-
-This is a **static recompiler**, not an emulator. The 6502 machine code in the ROM
-has been translated to C by [NESRecomp](nesrecomp/) and compiled to native x64.
-
-| File | Purpose |
-|------|---------|
-| `extras.c` | Faxanadu-specific hooks (mantra injection, auto-load) |
-| `game.cfg` | Recompiler config (dispatch tables, trampolines) |
-| `baserom_annotations.csv` | Address annotations for generated code |
-| `generated/faxanadu_full.c` | Recompiled 6502 code (committed) |
-| `generated/faxanadu_dispatch.c` | Dispatch table (committed) |
-| `reference/` | Reference screenshots for visual regression |
+- Built on Matthew Stanley's [FaxanaduRecomp](https://github.com/mstan/FaxanaduRecomp)
+  and [nesrecomp](https://github.com/mstan/nesrecomp).
+- [chipx86's annotated disassembly](https://github.com/chipx86/faxanadu) of
+  Faxanadu, which every feature is built on.
+- The Faxanadu 40th Anniversary Edition and Retranslation fan patches, for
+  ideas.
 
 ## License
 
-For this project's code covered by the [PolyForm Noncommercial License](LICENSE),
-[PERMISSIONS.md](PERMISSIONS.md) grants standing permission for voluntary
-donations, sponsorships, and advertising revenue, including support for broader
-development initiatives. Payment must not buy access to the software, games
-built with it, or their updates, features, or game content, including early access.
-
-Matthew Stanley has authority from the relevant copyright holders to grant
-these permissions for the project's PolyForm-covered code. Third-party
-components and code explicitly licensed under other terms retain those terms.
-
-PolyForm Noncommercial 1.0.0 — see [`LICENSE`](LICENSE). Third-party
-components retain their own licenses.
-
----
-
-<p align="center">
-  <sub><b>R.A.I.D. — Retro AI Development</b> · a Discord for AI-assisted retro reverse-engineering, decomp &amp; recomp</sub>
-</p>
-
-<p align="center">
-  <a href="https://discord.gg/Ad9BwSzctP"><img src=".github/raid-discord.png" alt="Join the Retro AI Development (R.A.I.D.) Discord" width="200"></a>
-</p>
-
-Cycle Windows builds use `tools/build.ps1 -Rom <original-ROM>`. Create a ROM-free
-ZIP with `tools/make_release.ps1 -Rom <original-ROM>`; `-SkipBuild -BuildDir
-build-cycle` packages an existing production cycle build. Legacy C remains
-available through explicit CMake selection.
-
-
-The October 2026 USA coverage pass exercises original entries for all six
-outside regions and encounters all eight real boss species, including King
-Grieve and Shadow Eura. Authored screen and sprite metadata were bound by
-reproducing both complete 16 KiB data banks against the supplied USA ROM.
-The probes assist screen selection, player health and entrance position;
-original screen initialization, actors and combat routines still run.
-These are encounter checks, with some routes ending in player death.
-
-All eight boss routes match native/interpreter machine hashes, pictures and
-complete states. After adding 958 observed ROM instruction starts, all eight
-routes and the earlier six region routes replay exactly against their
-pre-rebuild native and interpreter results on engine `0498965`. Earlier
-intro/region coverage added 1,103 valid starts. Item collection, mantra
-interactions and the ending require separate qualification. Areas 3 and 4
-are the towns/buildings profiles; dungeon screens belong to the surrounding
-regions. This build uses stock rendering.
+PolyForm Noncommercial 1.0.0, with the standing permissions in
+[PERMISSIONS.md](PERMISSIONS.md); see [LICENSE](LICENSE). Third-party
+components keep their own licenses.

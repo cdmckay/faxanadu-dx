@@ -21,7 +21,7 @@ out: the stock dagger passes over an enemy this low.
    without it. The Glove adds its bonus on top, either way.
 2. The same Zozura with its own 9 HP: with the Pendant one Long Sword hit (10)
    kills it; without, the hit (8) leaves it 1 HP. Screenshots of both.
-3. With the feature off in the mod selection, the original's reversed bonus:
+3. With the remaster off in the mod selection, the original's reversed bonus:
    a quarter more without the Pendant, the base strength with it.
 """
 import argparse
@@ -53,7 +53,7 @@ SPRITE_ENTITIES_HP = 0xB5A9                                         # bank 14, b
 LONG_SWORD, GIANT_BLADE, DRAGON_SLAYER = 1, 2, 3
 NAMES = {LONG_SWORD: "Long Sword", GIANT_BLADE: "Giant Blade", DRAGON_SLAYER: "Dragon Slayer"}
 KNOWN_HP = 60
-PACKAGE, FEATURE = "faxanadu.enhancement.pendant-fix", "pendant-fix"
+PACKAGE, FEATURE = "faxanadu.remastered", "remastered"          # the one switch: off is the original game
 
 
 def tcp(cmd, **kw):
@@ -260,11 +260,11 @@ def main():
         print("ok: a Zozura (9 HP) dies to one Long Sword hit with the Pendant, and is left 1 HP without it")
         close()
 
-        # 3. With the feature off, the original's reversed bonus.
+        # 3. With the remaster off, the original's reversed bonus.
         (out / "game" / "mods" / "state.toml").write_text(
             f'format_version = 1\n\n[[feature]]\npackage_id = "{PACKAGE}"\nid = "{FEATURE}"\nenabled = false\n')
         launch()
-        assert not tcp("pendant_state")["enabled"], "the feature is off"
+        assert not tcp("pendant_state")["enabled"], "the remaster is off"
         for weapon in (LONG_SWORD, DRAGON_SLAYER):
             for pendant in (False, True):
                 lost = hit(zozura, weapon, pendant)
@@ -272,7 +272,7 @@ def main():
                 assert lost == want, f"off, {NAMES[weapon]}, pendant={pendant}: took {lost}, expected {want}"
         assert tcp("pendant_state")["hits"] == 0, "the hook is off"
         assert hit(zozura, LONG_SWORD, False, enemy_hp=zozura_hp, name="original-no-pendant-kills") is None
-        print("ok: turned off, the original's bug: a quarter more without the Pendant, base strength with it")
+        print("ok: with the remaster off, the original's bug: a quarter more without the Pendant, base strength with it")
         print("screenshots:", ", ".join(shots))
     except BaseException:
         if game and game.poll() is None:

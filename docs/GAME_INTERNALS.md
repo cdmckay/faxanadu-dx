@@ -363,10 +363,13 @@ What a feature can rely on, and the traps:
   (setting it back to the stock byte keeps the slot). Guru travel takes 55
   (its 48-byte line slot and 7 step bytes), the Taller dagger 1, and Save
   files shares the slot and adds 5 (4 step bytes and the menu's operand), or
-  8 if it ever ran with Guru travel off (its own 3-byte SAY): 61 to 64 of 64
-  with all three on. Quick shops takes none. A new message for the text box
-  should share the slot, and anything more needs the table made larger or
-  Guru travel's slot cut to its longest line.
+  8 if Guru travel's steps are not served (its own 3-byte SAY): 61 to 64 of
+  64. Block borrows Guru travel's SAY step and slot, and Quick shops takes
+  none. `tools/check_allocations.py` counts every byte claimed in
+  `mods/allocations.toml` once and fails past 64, so the claims, now 64, are
+  the budget. A new message for the text box should share the slot, and
+  anything more needs the table made larger or Guru travel's slot cut to its
+  longest line.
 - An override works on an **immediate operand** in used ROM (the recompiler
   reads immediates at run time), not only on data: Save files changes the
   Buy/Sell menu's `LDA #$10` for one menu. Put such a byte back as soon as it
@@ -377,11 +380,14 @@ What a feature can rely on, and the traps:
   stack first to return somewhere else. That's how Guru travel enters the
   respawn path. When a site handles, later sites at the same address are
   skipped that time, so declare shared addresses in `mods/allocations.toml`.
-  Sites at one address run in the order their callbacks were registered
-  (`nes_mod_function_entry` walks its table in order), which is the order of
-  the features' constructors, so the link order of `HOST_EXTRAS`, not the
-  order of `game.toml`. Write sites that share an address to work in either
-  order.
+  Sites at one address run in the order `game.toml` declares them:
+  `cyc_hooks_fire` (`nesrecomp/runner/cyc/cyc_hooks.c`) walks
+  `cyc_native_hook_sites`, which the recompiler generates in `game.toml`'s
+  order, and stops at the first that handles or leaves the address. The link
+  order of `HOST_EXTRAS` plays no part. Every feature is on at once, so a
+  shared address's `[[shared_site]]` lists its hooks in that order and says
+  why that order is right; `$AB44` depends on it (Sugata's flash's site before
+  Block's). The legacy backend builds no features.
 - **A jump from any site.** Handling pulls the return address from S + 1 and
   S + 2 and goes on at it + 1. So a site anywhere can go anywhere in the same
   routine or another: push the target - 1 (high byte first, as a JSR does)
@@ -1229,8 +1235,8 @@ replays any entrance. `Game_SetupExitBuilding` (`$DABE`) wraps it as the
 other `Game_Setup*` do and returns, so a prepared stack can return into it and
 then into `Game_MainLoop`.
 
-**Zone respawn** (`fax_respawn.c`) uses four sites, none shared, so the link
-order of features' hooks never matters to it:
+**Zone respawn** (`fax_respawn.c`) uses four sites, none shared, so the order
+of hooks at one address never matters to it:
 
 - `Screen_SetupNew` (`$DD13`): a load into a different zone records the way
   in as the checkpoint. A building (area 4) changes nothing: its way out
@@ -1688,6 +1694,13 @@ rest of the way to Victim, were not checked.
 
 `mods/allocations.toml` lists each feature's ROM, hook sites and shared
 addresses, and `tools/check_allocations.py` enforces it.
+
+Every feature below is a trusted plugin of the one Faxanadu Remastered mod
+(`mods/preloaded/packages/faxanadu.remastered`, feature `remastered`), so
+they are on or off together, and may rely on each other. Each still checks
+its own `enabled` flag, which the mod runtime sets for all of them at once:
+"with X off" below means with the remaster off, or X turning itself off on an
+unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
 
 - **Guru travel** (`fax_travel.c`). After the mantra or a new title, the Guru
   says "All Gurus / meditate as one." and offers "Shall I send / you to
