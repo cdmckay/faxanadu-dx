@@ -27,7 +27,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import Game, act, fixture, frame, parse_args, ram, tcp, until, wait  # noqa: E402
+from fax_e2e import Game, act, fixture, parse_args, ram, tcp, until, wait  # noqa: E402
 
 AREA, SCREEN, SCREEN_TO_THE_RIGHT, PLAYER_X = 0x24, 0x63, 0x67, 0x9E
 MESSAGE_ID, HP = 0x213, 0x431
@@ -61,10 +61,18 @@ def items():
     return list(ram(ITEM_INVENTORY, 8)[:ram(NUMBER_OF_ITEMS)]), ram(SELECTED_ITEM)
 
 
+PARTS = ("no-key", "unselected", "selected", "original")            # each its own game
+
+
 def main():
-    args = parse_args(__doc__)
+    args = parse_args(__doc__, parts=PARTS)
     game = Game.from_args(args)
     out = game.out
+
+    def game_up():
+        """The game with the remaster on: the one running, if it is."""
+        if not game.running():
+            launch()
 
     def launch(remastered=True, at=None):
         """Start the game with the remaster, and so both features, on or off."""
@@ -160,116 +168,109 @@ def main():
         return press_up(expect)
 
     try:
-        # The hero at the Eolis gate, then through it into the town.
-        launch(at="gate")
-        for _ in range(200):                                        # the intro's lines stop him; A goes on
-            if ram(PLAYER_X) >= 184:
-                break
-            x = ram(PLAYER_X)
-            tcp("action", name="right", frames=8)
-            wait(8)
-            if ram(PLAYER_X) == x:
-                act("a", 6, 20)
-        act("up", 4, 10)
-        until("Eolis town", lambda: place() == (EOLIS, EOLIS_TOWN), 600)
-        wait(60)
-        town = out / "town.cycstate"
-        tcp("save_state", path=str(town))
+        # The hero in Eolis's town, with the J key and the Mattock, or the Mattock alone.
+        town = game.state("eolis-town")
         keys = out / "keys.cycstate"
         fixture(town, keys, {HP: 0x50, ITEM_INVENTORY: KEY_J, ITEM_INVENTORY + 1: MATTOCK,
                              NUMBER_OF_ITEMS: 2, SELECTED_ITEM: NO_ITEM})
         no_key = out / "no-key.cycstate"
         fixture(town, no_key, {HP: 0x50, ITEM_INVENTORY: MATTOCK, NUMBER_OF_ITEMS: 1, SELECTED_ITEM: NO_ITEM})
 
-        # 1. The remaster on. Without the key, the door's own message.
-        tcp("load_state", path=str(no_key))
-        select(MATTOCK)
-        assert open_eolis_exit({MARK_OF_JACK, USED_KEY}) == MARK_OF_JACK
-        game.shot("no-key-mark-of-jack")
-        dismiss_staying()
-        print("ok: without a J key, Up at Eolis's exit door says there is the mark of Jack, and it stays shut")
+        if args.wants("no-key"):
+            game_up()
+            # 1. The remaster on. Without the key, the door's own message.
+            tcp("load_state", path=str(no_key))
+            select(MATTOCK)
+            assert open_eolis_exit({MARK_OF_JACK, USED_KEY}) == MARK_OF_JACK
+            game.shot("no-key-mark-of-jack")
+            dismiss_staying()
+            print("ok: without a J key, Up at Eolis's exit door says there is the mark of Jack, and it stays shut")
 
-        # The J key unselected, the Mattock selected: the door opens.
-        tcp("load_state", path=str(keys))
-        select(MATTOCK)
-        assert items() == ([KEY_J], MATTOCK), items()
-        assert open_eolis_exit({MARK_OF_JACK, USED_KEY}) == USED_KEY
-        game.shot("door-opens-key-unselected")
-        dismiss_into(TRUNK, 0)
-        assert items() == ([KEY_J], MATTOCK), items()
-        state = tcp("keys_state")
-        assert (state["auto_opened"], state["keys_kept"], state["lent"]) == (1, 1, False), state
-        clear_enemies()
-        item_menu()
-        game.shot("key-still-in-inventory")
-        act("b", 4, 30)
-        assert items() == ([KEY_J], MATTOCK), items()
-        print("ok: the unselected J key opened Eolis's exit door with \"I've used key.\"; "
-              "the key is still in the inventory and the Mattock still selected")
+        if args.wants("unselected"):
+            game_up()
+            # The J key unselected, the Mattock selected: the door opens.
+            tcp("load_state", path=str(keys))
+            select(MATTOCK)
+            assert items() == ([KEY_J], MATTOCK), items()
+            assert open_eolis_exit({MARK_OF_JACK, USED_KEY}) == USED_KEY
+            game.shot("door-opens-key-unselected")
+            dismiss_into(TRUNK, 0)
+            assert items() == ([KEY_J], MATTOCK), items()
+            state = tcp("keys_state")
+            assert (state["auto_opened"], state["keys_kept"], state["lent"]) == (1, 1, False), state
+            clear_enemies()
+            item_menu()
+            game.shot("key-still-in-inventory")
+            act("b", 4, 30)
+            assert items() == ([KEY_J], MATTOCK), items()
+            print("ok: the unselected J key opened Eolis's exit door with \"I've used key.\"; "
+                  "the key is still in the inventory and the Mattock still selected")
 
-        # The same key opens a second door: Trunk's tower door.
-        game.poke({SCREEN_TO_THE_RIGHT: TOWER_DOOR})
-        enter("right", TRUNK, TOWER_DOOR)
-        walk_to(138)
-        assert press_up({MARK_OF_JACK, USED_KEY}) == USED_KEY
-        game.shot("second-door-same-key")
-        dismiss_into(TRUNK, TOWER)
-        assert items() == ([KEY_J], MATTOCK), items()
-        state = tcp("keys_state")
-        assert (state["auto_opened"], state["keys_kept"]) == (2, 2), state
-        print("ok: the same J key opened a second door, Trunk's tower, and is still in the inventory")
+            # The same key opens a second door: Trunk's tower door.
+            game.poke({SCREEN_TO_THE_RIGHT: TOWER_DOOR})
+            enter("right", TRUNK, TOWER_DOOR)
+            walk_to(138)
+            assert press_up({MARK_OF_JACK, USED_KEY}) == USED_KEY
+            game.shot("second-door-same-key")
+            dismiss_into(TRUNK, TOWER)
+            assert items() == ([KEY_J], MATTOCK), items()
+            state = tcp("keys_state")
+            assert (state["auto_opened"], state["keys_kept"]) == (2, 2), state
+            print("ok: the same J key opened a second door, Trunk's tower, and is still in the inventory")
 
-        # Out of the tower (no key needed) and on to the wall: the Mattock breaks it.
-        clear_enemies()
-        walk_to(8, "left")
-        act("up", 4, 10)
-        until("Trunk's tower door screen", lambda: place() == (TRUNK, TOWER_DOOR) and ram(PLAYER_X) < 0xF0, 900)
-        wait(30)
-        clear_enemies()
-        enter("right", TRUNK, WALL)
-        break_wall()
-        game.shot("wall-broken-mattock-kept")
-        assert [ram(SCREEN_BUFFER + b) for b in WALL_BLOCKS] != [WALL_BLOCK] * 2
-        assert items() == ([KEY_J], MATTOCK), items()
-        assert tcp("keys_state")["mattock_kept"] == 1
-        walk_to(64)                                                 # through where the wall was
-        print("ok: the Mattock broke the wall in Trunk and is still selected; the hero walks through")
-        game.close()
+            # Out of the tower (no key needed) and on to the wall: the Mattock breaks it.
+            clear_enemies()
+            walk_to(8, "left")
+            act("up", 4, 10)
+            until("Trunk's tower door screen", lambda: place() == (TRUNK, TOWER_DOOR) and ram(PLAYER_X) < 0xF0, 900)
+            wait(30)
+            clear_enemies()
+            enter("right", TRUNK, WALL)
+            break_wall()
+            game.shot("wall-broken-mattock-kept")
+            assert [ram(SCREEN_BUFFER + b) for b in WALL_BLOCKS] != [WALL_BLOCK] * 2
+            assert items() == ([KEY_J], MATTOCK), items()
+            assert tcp("keys_state")["mattock_kept"] == 1
+            walk_to(64)                                                 # through where the wall was
+            print("ok: the Mattock broke the wall in Trunk and is still selected; the hero walks through")
+            game.close()
 
-        # 2. A selected key: the game's own check opens the door, and the key stays selected.
-        launch()
-        tcp("load_state", path=str(keys))
-        select(KEY_J)
-        assert open_eolis_exit({MARK_OF_JACK, USED_KEY}) == USED_KEY
-        dismiss_into(TRUNK, 0)
-        assert items() == ([MATTOCK], KEY_J), items()
-        state = tcp("keys_state")
-        assert (state["auto_opened"], state["keys_kept"]) == (0, 1), state
-        print("ok: a selected J key opens the door and stays selected")
-        game.close()
+        if args.wants("selected"):
+            launch()
+            # 2. A selected key: the game's own check opens the door, and the key stays selected.
+            tcp("load_state", path=str(keys))
+            select(KEY_J)
+            assert open_eolis_exit({MARK_OF_JACK, USED_KEY}) == USED_KEY
+            dismiss_into(TRUNK, 0)
+            assert items() == ([MATTOCK], KEY_J), items()
+            state = tcp("keys_state")
+            assert (state["auto_opened"], state["keys_kept"]) == (0, 1), state
+            print("ok: a selected J key opens the door and stays selected")
+            game.close()
 
-        # 3. The remaster off: the original.
-        launch(remastered=False)
-        tcp("load_state", path=str(keys))
-        select(MATTOCK)
-        assert open_eolis_exit({MARK_OF_JACK, USED_KEY}) == MARK_OF_JACK
-        dismiss_staying()
-        select(KEY_J)
-        assert items() == ([MATTOCK], KEY_J), items()
-        assert press_up({MARK_OF_JACK, USED_KEY}) == USED_KEY
-        dismiss_into(TRUNK, 0)
-        assert items() == ([MATTOCK], NO_ITEM), items()
-        clear_enemies()
-        select(MATTOCK)
-        game.poke({SCREEN_TO_THE_RIGHT: WALL})
-        enter("right", TRUNK, WALL)
-        break_wall()
-        game.shot("off-mattock-used-up")
-        assert items() == ([], NO_ITEM), items()
-        state = tcp("keys_state")
-        assert (state["auto_opened"], state["keys_kept"], state["mattock_kept"]) == (0, 0, 0), state
-        print("ok: with the remaster off, the unselected key leaves the door shut, and a selected key and the "
-              "Mattock are used up, as in the original")
+        if args.wants("original"):
+            launch(remastered=False)
+            # 3. The remaster off: the original.
+            tcp("load_state", path=str(keys))
+            select(MATTOCK)
+            assert open_eolis_exit({MARK_OF_JACK, USED_KEY}) == MARK_OF_JACK
+            dismiss_staying()
+            select(KEY_J)
+            assert items() == ([MATTOCK], KEY_J), items()
+            assert press_up({MARK_OF_JACK, USED_KEY}) == USED_KEY
+            dismiss_into(TRUNK, 0)
+            assert items() == ([MATTOCK], NO_ITEM), items()
+            clear_enemies()
+            select(MATTOCK)
+            game.poke({SCREEN_TO_THE_RIGHT: WALL})
+            enter("right", TRUNK, WALL)
+            break_wall()
+            game.shot("off-mattock-used-up")
+            assert items() == ([], NO_ITEM), items()
+            state = tcp("keys_state")
+            assert (state["auto_opened"], state["keys_kept"], state["mattock_kept"]) == (0, 0, 0), state
+            print("ok: with the remaster off, the unselected key leaves the door shut, and a selected key and the "
+                  "Mattock are used up, as in the original")
         print("screenshots:", ", ".join(game.shots))
     except BaseException:
         if game.running():

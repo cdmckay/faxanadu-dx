@@ -102,139 +102,68 @@ else
 fi
 echo "== end to end: the shared helper's port reservation and relaunch"
 python3 tests/e2e/fax_e2e_test.py --build build-cycle --rom "$ROM" --out "$OUT/e2e-helper"
-echo "== end to end: Guru travel, by default and with Seamless on, in parallel"
-e2e() {  # NAME [ARGS...]: one run, in its own folder, on a free port
-  local name="$1"; shift
-  python3 tests/travel/guru_travel.py --build build-cycle --rom "$ROM" --out "$OUT/$name" "$@" \
-    > "$OUT/$name.log" 2>&1
+# Every end-to-end test at once, each in its own folder, on a free port. A
+# test that splits into parts (--parts here, first) runs each part as its own
+# game;
+# the saved games they start from are made once, from your ROM, and cached in
+# build-tests/fixtures.
+SW=--game-arg=--world-view=seamless
+E2E=(
+  "travel       tests/travel/guru_travel.py"
+  "travel+sw    tests/travel/guru_travel.py $SW"
+  "death        tests/death/death_keeps_gold.py"
+  "pendant      tests/pendant/pendant_fix.py"
+  "magic        tests/magic/magic_button.py"
+  "zones        tests/zones/zone_names.py"
+  "zones+sw     tests/zones/zone_names.py $SW"
+  "keys         tests/keys/auto_and_reusable_keys.py"
+  "pose         tests/movement/falling_pose.py"
+  "jumps        tests/movement/forgiving_jumps.py"
+  "speaker      tests/speaker/speaker_names.py"
+  "speaker+sw   tests/speaker/speaker_names.py $SW"
+  "text         tests/text_speed/text_speed.py"
+  "files        tests/files/save_files.py"
+  "dagger       tests/dagger/taller_dagger.py"
+  "block        tests/block/block.py"
+  "block+sw     tests/block/block.py $SW"
+  "sugata       tests/sugata/sugata_flash.py"
+  "sugata+sw    tests/sugata/sugata_flash.py $SW"
+  "glint        tests/block/block_shield.py"
+  "glint+sw     tests/block/block_shield.py $SW"
+  "shops        tests/shops/quick_shops.py"
+  "shops+sw     tests/shops/quick_shops.py $SW"
+  "respawn      tests/respawn/zone_respawn.py"
+  "respawn+sw   tests/respawn/zone_respawn.py $SW"
+  "recharge     tests/recharge/recharging_items.py"
+  "switch       tests/remastered/one_switch.py"
+)
+ms() { echo $(( $(date +%s%N) / 1000000 )); }
+E2E_START=$(ms)
+names=(); pids=()
+run_e2e() {  # NAME SCRIPT [ARGS...]: one run in $OUT/NAME-e2e; its log, and its finish in ms, beside it
+  local name="$1" script="$2"; shift 2
+  local folder="$OUT/${name//[+.]/-}-e2e"
+  { python3 "$script" --build build-cycle --rom "$ROM" --out "$folder" "$@" > "$folder.log" 2>&1
+    local code=$?; echo "$(( $(ms) - E2E_START ))" > "$folder.ms"; exit "$code"; } &
+  names+=("$name"); pids+=($!)
 }
-e2e travel-e2e & default=$!
-e2e travel-e2e-seamless --game-arg=--world-view=seamless & seamless=$!
-echo "== end to end: death keeps gold, alongside them"
-python3 tests/death/death_keeps_gold.py --build build-cycle --rom "$ROM" --out "$OUT/death-e2e" \
-  > "$OUT/death-e2e.log" 2>&1 & death=$!
-echo "== end to end: the Pendant fix, alongside them"
-python3 tests/pendant/pendant_fix.py --build build-cycle --rom "$ROM" --out "$OUT/pendant-e2e" \
-  > "$OUT/pendant-e2e.log" 2>&1 & pendant=$!
-echo "== end to end: the Magic button, alongside them"
-python3 tests/magic/magic_button.py --build build-cycle --rom "$ROM" --out "$OUT/magic-e2e" \
-  > "$OUT/magic-e2e.log" 2>&1 & magic=$!
-echo "== end to end: zone names, by default and with Seamless on, alongside them"
-zones_e2e() {  # NAME [ARGS...]
-  local name="$1"; shift
-  python3 tests/zones/zone_names.py --build build-cycle --rom "$ROM" --out "$OUT/$name" "$@" > "$OUT/$name.log" 2>&1
-}
-zones_e2e zones-e2e & zones=$!
-zones_e2e zones-e2e-seamless --game-arg=--world-view=seamless & zones_seamless=$!
-echo "== end to end: auto keys and reusable tools, alongside them"
-python3 tests/keys/auto_and_reusable_keys.py --build build-cycle --rom "$ROM" --out "$OUT/keys-e2e" \
-  > "$OUT/keys-e2e.log" 2>&1 & keys=$!
-echo "== end to end: the falling pose and forgiving jumps, alongside them"
-python3 tests/movement/falling_pose.py --build build-cycle --rom "$ROM" --out "$OUT/pose-e2e" \
-  > "$OUT/pose-e2e.log" 2>&1 & pose=$!
-python3 tests/movement/forgiving_jumps.py --build build-cycle --rom "$ROM" --out "$OUT/jumps-e2e" \
-  > "$OUT/jumps-e2e.log" 2>&1 & jumps=$!
-echo "== end to end: speaker names, by default and with Seamless on, alongside them"
-speaker_e2e() {  # NAME [ARGS...]
-  local name="$1"; shift
-  python3 tests/speaker/speaker_names.py --build build-cycle --rom "$ROM" --out "$OUT/$name" "$@" > "$OUT/$name.log" 2>&1
-}
-speaker_e2e speaker-e2e & speaker=$!
-speaker_e2e speaker-e2e-seamless --game-arg=--world-view=seamless & speaker_seamless=$!
-echo "== end to end: Hold A to speed up text, alongside them"
-python3 tests/text_speed/text_speed.py --build build-cycle --rom "$ROM" --out "$OUT/text-speed-e2e" \
-  > "$OUT/text-speed-e2e.log" 2>&1 & text_speed=$!
-echo "== end to end: Save files, alongside them"
-python3 tests/files/save_files.py --build build-cycle --rom "$ROM" --out "$OUT/files-e2e" \
-  > "$OUT/files-e2e.log" 2>&1 & files=$!
-echo "== end to end: the taller dagger, alongside them"
-python3 tests/dagger/taller_dagger.py --build build-cycle --rom "$ROM" --out "$OUT/dagger-e2e" \
-  > "$OUT/dagger-e2e.log" 2>&1 & dagger=$!
-echo "== end to end: Block, its glint and Sugata's flash, by default and with Seamless on, alongside them"
-block_e2e() {  # SCRIPT NAME [ARGS...]
-  local script="$1" name="$2"; shift 2
-  python3 "$script" --build build-cycle --rom "$ROM" --out "$OUT/$name" "$@" > "$OUT/$name.log" 2>&1
-}
-block_e2e tests/block/block.py block-e2e & block=$!
-block_e2e tests/block/block.py block-e2e-seamless --game-arg=--world-view=seamless & block_seamless=$!
-block_e2e tests/sugata/sugata_flash.py sugata-e2e & sugata=$!
-block_e2e tests/sugata/sugata_flash.py sugata-e2e-seamless --game-arg=--world-view=seamless & sugata_seamless=$!
-block_e2e tests/block/block_shield.py block-shield-e2e & block_shield=$!
-block_e2e tests/block/block_shield.py block-shield-e2e-seamless --game-arg=--world-view=seamless & block_shield_seamless=$!
-echo "== end to end: Quick shops, by default and with Seamless on, alongside them"
-shops_e2e() {  # NAME [ARGS...]
-  local name="$1"; shift
-  python3 tests/shops/quick_shops.py --build build-cycle --rom "$ROM" --out "$OUT/$name" "$@" > "$OUT/$name.log" 2>&1
-}
-shops_e2e shops-e2e & shops=$!
-shops_e2e shops-e2e-seamless --game-arg=--world-view=seamless & shops_seamless=$!
-echo "== end to end: zone respawn, by default and with Seamless on, alongside them"
-respawn_e2e() {  # NAME [ARGS...]
-  local name="$1"; shift
-  python3 tests/respawn/zone_respawn.py --build build-cycle --rom "$ROM" --out "$OUT/$name" "$@" > "$OUT/$name.log" 2>&1
-}
-respawn_e2e respawn-e2e & respawn=$!
-respawn_e2e respawn-e2e-seamless --game-arg=--world-view=seamless & respawn_seamless=$!
-echo "== end to end: recharging items, alongside them"
-python3 tests/recharge/recharging_items.py --build build-cycle --rom "$ROM" --out "$OUT/recharge-e2e" \
-  > "$OUT/recharge-e2e.log" 2>&1 & recharge=$!
-echo "== end to end: the one Faxanadu Remastered switch, on by default and off for the original, alongside them"
-python3 tests/remastered/one_switch.py --build build-cycle --rom "$ROM" --out "$OUT/one-switch-e2e" \
-  > "$OUT/one-switch-e2e.log" 2>&1 & one_switch=$!
+for entry in "${E2E[@]}"; do
+  read -r -a words <<< "$entry"
+  name="${words[0]}" script="${words[1]}" args=("${words[@]:2}")
+  if [ "${args[0]:-}" != --parts ]; then run_e2e "$name" "$script" "${args[@]}"; continue; fi
+  for part in $(python3 "$script" --list-parts); do run_e2e "$name.$part" "$script" --part "$part" "${args[@]:1}"; done
+done
+echo "== end to end: ${#names[@]} runs at once"
 failed=0
-wait "$default" || failed=1
-sed 's/^/[default]  /' "$OUT/travel-e2e.log"
-wait "$seamless" || failed=1
-sed 's/^/[seamless] /' "$OUT/travel-e2e-seamless.log"
-wait "$death" || failed=1
-sed 's/^/[death]    /' "$OUT/death-e2e.log"
-wait "$pendant" || failed=1
-sed 's/^/[pendant]  /' "$OUT/pendant-e2e.log"
-wait "$magic" || failed=1
-sed 's/^/[magic]    /' "$OUT/magic-e2e.log"
-wait "$zones" || failed=1
-sed 's/^/[zones]    /' "$OUT/zones-e2e.log"
-wait "$zones_seamless" || failed=1
-sed 's/^/[zones+sw] /' "$OUT/zones-e2e-seamless.log"
-wait "$keys" || failed=1
-sed 's/^/[keys]     /' "$OUT/keys-e2e.log"
-wait "$pose" || failed=1
-sed 's/^/[pose]     /' "$OUT/pose-e2e.log"
-wait "$jumps" || failed=1
-sed 's/^/[jumps]    /' "$OUT/jumps-e2e.log"
-wait "$speaker" || failed=1
-sed 's/^/[speaker]  /' "$OUT/speaker-e2e.log"
-wait "$speaker_seamless" || failed=1
-sed 's/^/[spkr+sw]  /' "$OUT/speaker-e2e-seamless.log"
-wait "$text_speed" || failed=1
-sed 's/^/[text]     /' "$OUT/text-speed-e2e.log"
-wait "$files" || failed=1
-sed 's/^/[files]    /' "$OUT/files-e2e.log"
-wait "$dagger" || failed=1
-sed 's/^/[dagger]   /' "$OUT/dagger-e2e.log"
-wait "$block" || failed=1
-sed 's/^/[block]    /' "$OUT/block-e2e.log"
-wait "$block_seamless" || failed=1
-sed 's/^/[block+sw] /' "$OUT/block-e2e-seamless.log"
-wait "$sugata" || failed=1
-sed 's/^/[sugata]   /' "$OUT/sugata-e2e.log"
-wait "$sugata_seamless" || failed=1
-sed 's/^/[sugata+sw] /' "$OUT/sugata-e2e-seamless.log"
-wait "$block_shield" || failed=1
-sed 's/^/[shield]   /' "$OUT/block-shield-e2e.log"
-wait "$block_shield_seamless" || failed=1
-sed 's/^/[shield+sw] /' "$OUT/block-shield-e2e-seamless.log"
-wait "$shops" || failed=1
-sed 's/^/[shops]    /' "$OUT/shops-e2e.log"
-wait "$shops_seamless" || failed=1
-sed 's/^/[shops+sw] /' "$OUT/shops-e2e-seamless.log"
-wait "$respawn" || failed=1
-sed 's/^/[respawn]  /' "$OUT/respawn-e2e.log"
-wait "$respawn_seamless" || failed=1
-sed 's/^/[resp+sw]  /' "$OUT/respawn-e2e-seamless.log"
-wait "$recharge" || failed=1
-sed 's/^/[recharge] /' "$OUT/recharge-e2e.log"
-wait "$one_switch" || failed=1
-sed 's/^/[switch]   /' "$OUT/one-switch-e2e.log"
+for i in "${!names[@]}"; do
+  folder="$OUT/${names[$i]//[+.]/-}-e2e"
+  wait "${pids[$i]}" || { failed=1; echo "== FAILED: ${names[$i]}"; }
+  sed "s/^/[${names[$i]}] /" "$folder.log"
+done
+echo "== end to end, slowest last (seconds after they started):"
+for i in "${!names[@]}"; do
+  folder="$OUT/${names[$i]//[+.]/-}-e2e"
+  printf '%s %s\n' "$(cat "$folder.ms")" "${names[$i]}"
+done | sort -n | awk '{ printf "  %6.1f  %s\n", $1 / 1000, $2 }'
 [ "$failed" = 0 ] || { echo "end-to-end tests failed; screenshots in $OUT/*-e2e*/" >&2; exit 1; }
 echo "all checks passed"

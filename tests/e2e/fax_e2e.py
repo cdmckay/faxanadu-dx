@@ -116,6 +116,7 @@ import shutil
 import socket
 import struct
 import subprocess
+import sys
 import tempfile
 import time
 import zlib
@@ -236,14 +237,15 @@ class _Stamped:
 
 
 if os.environ.get("FAX_E2E_STAMP"):
-    import sys
     sys.stdout = _Stamped(sys.stdout)
 
 
 @atexit.register
 def _report_time():
-    """What the test cost: its wall time, and the CPU its games (and other
-    children) and the script itself used."""
+    """What the test cost, if it launched a game: its wall time, and the CPU
+    its games (and other children) and the script itself used."""
+    if not _launched:
+        return
     games, script = resource.getrusage(resource.RUSAGE_CHILDREN), resource.getrusage(resource.RUSAGE_SELF)
     print(f"time: {time.monotonic() - _started:.1f} s, games {games.ru_utime + games.ru_stime:.1f} s CPU, "
           f"script {script.ru_utime + script.ru_stime:.1f} s CPU", flush=True)
@@ -252,6 +254,7 @@ def _report_time():
 # The game
 
 _game = None                               # the game launched last: the functions' target
+_launched = False                          # this process has launched a game
 
 
 def _current():
@@ -293,8 +296,9 @@ class Game:
         """Start the game. With `at`, a fixture's name: load that saved game
         at once (it is made first if it is not cached), and return the frame
         it continues at."""
-        global _game
+        global _game, _launched
         start_at = self.state(at) if at else None
+        _launched = True
         options = [part for arg in self.game_args for part in arg.split("=", 1)] + list(extra)
         if not self.realtime:
             options += UNCAPPED
@@ -517,7 +521,8 @@ def _fixture_key(game, name):
     """(tag, key) for the fixture `name` in `game`: the tag names the game
     options it was made with; the key changes with anything that could make
     the state stale: the ROM, the build's game and mods, the options, and the
-    recipes from power-on to it."""
+    source files of the recipes from power-on to it (with the constants and
+    helpers they use)."""
     if name not in _recipes:
         raise KeyError(f"no recipe for the fixture {name!r}")
     parts = [f"{zlib.crc32(game.image):08x}", _digest(game.build / "FaxanaduRecomp"), _digest(game.build / "mods"),
@@ -525,7 +530,7 @@ def _fixture_key(game, name):
     chain = name
     while chain:
         parent, how = _recipes[chain]
-        parts.append(f"{chain}\n{inspect.getsource(how)}")
+        parts.append(f"{chain}\n{_digest(inspect.getsourcefile(how))}")
         chain = parent
     tag = "".join("-" + "".join(c if c.isalnum() else "-" for c in arg.lstrip("-")) for arg in game.game_args)
     return tag, hashlib.sha256("\n".join(parts).encode()).hexdigest()[:16]
@@ -538,6 +543,40 @@ def _gate(g):
     g.until("the title", lambda: g.frame() > 700)
     g.tcp("pad", buttons="start", frames=10)
     g.until("the Eolis gate", lambda: g.ram(0x24) == 0 and g.frame() > 1900)   # Area_CurrentArea
+
+
+@recipe("eolis-town", parent="gate")
+def _eolis_town(g):
+    """Right through the hero's thoughts at the opening, through Eolis's
+    gate, into the town (screen 1)."""
+    x_pos = 0x9E                                                      # Player_PosX_Block
+    for _ in range(200):                                              # the lines stop him; A goes on
+        if g.ram(x_pos) >= 184:
+            break
+        x = g.ram(x_pos)
+        g.tcp("action", name="right", frames=8)
+        g.wait(8)
+        if g.ram(x_pos) == x:
+            g.tcp("action", name="a", frames=6)
+            g.wait(26)
+    g.tcp("action", name="up", frames=4)
+    g.wait(14)
+    g.until("Eolis town", lambda: (g.ram(0x24), g.ram(0x63)) == (0, 1), 600)   # Area_CurrentArea, _Screen
+    g.wait(60)
+
+
+@recipe("eolis-meat-shop", parent="eolis-town")
+def _eolis_meat_shop(g):
+    """Left to the meat shop's door (block column 3) and in."""
+    for _ in range(200):
+        if 41 <= g.ram(0x9E) <= 56:
+            break
+        g.tcp("action", name="left", frames=2)
+        g.wait(2)
+    g.tcp("action", name="up", frames=4)
+    g.wait(14)
+    g.until("the meat shop", lambda: g.ram(0x24) == 4)               # BUILDINGS
+    g.wait(30)
 
 
 def tcp(cmd, **kw):
@@ -614,8 +653,17 @@ def features_toml(features):
         for (package, feature), on in features.items())
 
 
-def parser(doc):
+def parser(doc, parts=()):
+    """The common options; with `parts`, a test's independent parts, also
+    --part (repeatable; every part if none) and --list-parts, which prints
+    them, one a line, and exits (tools/test.sh runs each as its own game)."""
+    if parts and "--list-parts" in sys.argv[1:]:
+        sys.__stdout__.write("".join(f"{part}\n" for part in parts))
+        sys.exit(0)
     ap = argparse.ArgumentParser(description=doc, formatter_class=argparse.RawDescriptionHelpFormatter)
+    if parts:
+        ap.add_argument("--part", action="append", choices=list(parts), help="run only this part (repeatable)")
+        ap.add_argument("--list-parts", action="store_true", help="print the parts, one a line, and exit")
     for key in ("build", "rom", "out"):
         ap.add_argument("--" + key, type=Path, required=True)
     ap.add_argument("--game-arg", action="append", default=[],
@@ -625,5 +673,14 @@ def parser(doc):
     return ap
 
 
-def parse_args(doc, argv=None):
-    return parser(doc).parse_args(argv)
+def parse_args(doc, argv=None, parts=()):
+    """parser(doc, parts)'s options. With parts, args.wants(name) says
+    whether this run plays that part; --list-parts prints them and exits."""
+    return chosen(parser(doc, parts).parse_args(argv), parts)
+
+
+def chosen(args, parts):
+    """Give args from a parser with `parts` its wants(name)."""
+    picked = set(getattr(args, "part", None) or parts)
+    args.wants = lambda name: name in picked
+    return args

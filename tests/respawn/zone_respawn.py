@@ -44,7 +44,8 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import Game, act, fixture, frame, parser, ram, tcp, typed, until, wait  # noqa: E402
+import fax_e2e  # noqa: E402
+from fax_e2e import Game, act, chosen, fixture, parser, ram, tcp, typed, until, wait  # noqa: E402
 
 AREA, SCREEN, PLAYER_X, PLAYER_Y, PLAYER_FLAGS = 0x24, 0x63, 0x9E, 0xA1, 0xA4
 SCREEN_READY_STATE, SCROLL_DIRECTION, INTERRUPTS_ON = 0x0E, 0x54, 0x13
@@ -85,6 +86,17 @@ ENTRANCES = [
     ("Branch", (2, 0x1F, 0x0A, 0x9C, 2), {SELECTED_ITEM: KEY_A}, (5, 0x00, 0xA6), (0xA5, 0x1F)),
     ("Dartmoor", (5, 0x27, 0x08, 0xA8, 3), {SPECIAL_ITEMS: RING_OF_DWORF}, (6, 0x00, 0x9E), (0xAF, 0x27)),
 ]
+# The parts tools/test.sh runs at once, each its own game: Eolis (1, 2), the
+# entrances (3) a few at a time, with the Tower of Trunk's checks that use its
+# state (4, 7), Guru travel (5) and Sugata's flash (6).
+GROUPS = {"Tower of Trunk": ("trunk-tower",), "Tower of Fortress": ("fortress-suffer",),
+          "Tower of Suffer": ("fortress-suffer",), "Tower of Mist": ("mist-fraternal",),
+          "Castle of Fraternal": ("mist-fraternal",), "Fortress of Zenis": ("zenis-trunk",), "Trunk": ("zenis-trunk",),
+          "Mist": ("mist-branch",), "Branch": ("mist-branch",), "Dartmoor": ("dartmoor",)}
+PARTS = ("eolis", "trunk-tower", "fortress-suffer", "mist-fraternal", "zenis-trunk", "mist-branch", "dartmoor",
+         "travel", "sugata")
+HERO_KIT = {EXPERIENCE: HERO["experience"] & 0xFF, EXPERIENCE + 1: HERO["experience"] >> 8,
+            GOLD: HERO["gold"] & 0xFF, GOLD + 1: HERO["gold"] >> 8, GOLD + 2: 0, HP: 0x50}
 
 
 def number(addr, n):
@@ -109,10 +121,28 @@ def respawn():
     return tcp("respawn_state")
 
 
+@fax_e2e.recipe("respawn-temple", parent="gate")
+def _respawn_temple(g):
+    """The hero, with his gold and experience, dead outside Eolis's gate
+    before any entrance: back in Eolis's temple, after the Guru's words."""
+    g.poke({**HERO_KIT, PLAYER_IS_DEAD: 1})
+    until("the Guru's words", lambda: ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 600)
+    for _ in range(80):
+        if at(BUILDINGS, EOLIS_TEMPLE):
+            break
+        if box_open() and typed():
+            act("a", 6, 14)
+        else:
+            wait(10)
+    else:
+        raise AssertionError("the hero did not wake in Eolis's temple")
+    wait(30)
+
+
 def main():
-    ap = parser(__doc__)
+    ap = parser(__doc__, PARTS)
     ap.add_argument("--only", action="append", default=[], help="run only these entrances (repeatable)")
-    args = ap.parse_args()
+    args = chosen(ap.parse_args(), PARTS)
     seamless = any("seamless" in arg for arg in args.game_arg)
     game = Game.from_args(args)
     out = game.out
@@ -221,66 +251,74 @@ def main():
         return came
 
     try:
-        game.launch(at="gate")
-        assert respawn()["enabled"], "zone respawn is on by default"
-        until("the Eolis gate", lambda: ram(HP) and at(0, 0), 3000)
-        raw = save("gate-raw")
+        raw = game.state("gate")
         gate = out / "gate.cycstate"
-        fixture(raw, gate, {EXPERIENCE: HERO["experience"] & 0xFF, EXPERIENCE + 1: HERO["experience"] >> 8,
-                            GOLD: HERO["gold"] & 0xFF, GOLD + 1: HERO["gold"] >> 8, GOLD + 2: 0, HP: 0x50})
+        fixture(raw, gate, HERO_KIT)
+        temple = game.state("respawn-temple")
 
-        # 1. No entrance yet: the temple, as before.
-        assert respawn()["zone"] is None
-        die(gate, "gate", BUILDINGS, EOLIS_TEMPLE)
-        state = respawn()
-        assert (state["respawns"], state["fallbacks"]) == (0, 1), state
-        wait(30)
-        temple = save("temple")
-        print("ok: with no entrance yet, death wakes at Eolis's temple, as before")
+        def game_up():
+            """The game, launched if it is not running."""
+            if not game.running():
+                game.launch()
+                assert respawn()["enabled"], "zone respawn is on by default"
 
-        # 2. Eolis, through its gate, and a screen further left.
-        tcp("load_state", path=str(gate))
-        walk_to(186, 196)
-        act("up", 4, 10)
-        until("Eolis", lambda: at(0, 1), 600)
-        entered = arrival()
-        state = respawn()
-        assert (state["zone"], state["area"], state["screen"], state["start"]) == ("Eolis", 0, 1, 0x99), state
-        assert (entered["x"], entered["y"]) == (0x90, 0x90), entered
-        handoffs = tcp("fax_world")["handoffs"] if seamless else 0
-        for _ in range(300):
-            if ram(SCREEN) == 2 and settled() and ram(PLAYER_X) < 200:
-                break
-            act("left", 4, 0)
-        assert ram(SCREEN) == 2, "a screen further into Eolis"
-        if seamless:
-            assert tcp("fax_world")["handoffs"] > handoffs, "Seamless handed the hero to the next room"
-        assert respawn()["screen"] == 1, "the walk set no checkpoint"
-        wait(10)
-        further = save("eolis-2")
-        files = tcp("files_state")
-        assert files["file"] == 1, "Save files has file 1 in play (on by default)"
-        came = die(further, "eolis", 0, 1, pictures=True)
-        assert came == entered, (came, entered)
-        saved = tcp("files_state")
-        assert saved["saves"] == files["saves"] + 1 and saved["spawn"] == 0, (files, saved)
-        record = dict(line.split(" = ", 1) for line in (out / "game" / "faxanadu_file1.txt").read_text().splitlines()
-                      if " = " in line)
-        assert (record["gold"], record["experience"], record["spawn"]) == \
-            (str(HERO["gold"]), str(HERO["experience"]), "0"), record
-        assert (ram(HP), ram(MP)) == (0x50, 0x50), "full HP and MP"
-        assert hero() == HERO, hero()
-        assert ram(TEMPLE_SPAWN_POINT) == 0, "the mantra's temple is unchanged"
-        state = respawn()
-        assert (state["respawns"], state["fallbacks"]) == (1, 1), state
-        print("ok: dying a screen into Eolis comes back at its gate, after the Guru, with gold and experience; "
-              "Save files wrote the file at the respawn, keeping its spawn point")
+        if args.wants("eolis"):
+            game_up()
+            tcp("load_state", path=str(gate))
+            until("the Eolis gate", lambda: ram(HP) and at(0, 0), 3000)
+            # 1. No entrance yet: the temple, as before.
+            assert respawn()["zone"] is None
+            die(gate, "gate", BUILDINGS, EOLIS_TEMPLE)
+            state = respawn()
+            assert (state["respawns"], state["fallbacks"]) == (0, 1), state
+            wait(30)
+            temple = save("temple")                            # as respawn-temple is
+            print("ok: with no entrance yet, death wakes at Eolis's temple, as before")
+
+            # 2. Eolis, through its gate, and a screen further left.
+            tcp("load_state", path=str(gate))
+            walk_to(186, 196)
+            act("up", 4, 10)
+            until("Eolis", lambda: at(0, 1), 600)
+            entered = arrival()
+            state = respawn()
+            assert (state["zone"], state["area"], state["screen"], state["start"]) == ("Eolis", 0, 1, 0x99), state
+            assert (entered["x"], entered["y"]) == (0x90, 0x90), entered
+            handoffs = tcp("fax_world")["handoffs"] if seamless else 0
+            for _ in range(300):
+                if ram(SCREEN) == 2 and settled() and ram(PLAYER_X) < 200:
+                    break
+                act("left", 4, 0)
+            assert ram(SCREEN) == 2, "a screen further into Eolis"
+            if seamless:
+                assert tcp("fax_world")["handoffs"] > handoffs, "Seamless handed the hero to the next room"
+            assert respawn()["screen"] == 1, "the walk set no checkpoint"
+            wait(10)
+            further = save("eolis-2")
+            files = tcp("files_state")
+            assert files["file"] == 1, "Save files has file 1 in play (on by default)"
+            came = die(further, "eolis", 0, 1, pictures=True)
+            assert came == entered, (came, entered)
+            saved = tcp("files_state")
+            assert saved["saves"] == files["saves"] + 1 and saved["spawn"] == 0, (files, saved)
+            record = dict(line.split(" = ", 1) for line in (out / "game" / "faxanadu_file1.txt").read_text().splitlines()
+                          if " = " in line)
+            assert (record["gold"], record["experience"], record["spawn"]) == \
+                (str(HERO["gold"]), str(HERO["experience"]), "0"), record
+            assert (ram(HP), ram(MP)) == (0x50, 0x50), "full HP and MP"
+            assert hero() == HERO, hero()
+            assert ram(TEMPLE_SPAWN_POINT) == 0, "the mantra's temple is unchanged"
+            state = respawn()
+            assert (state["respawns"], state["fallbacks"]) == (1, 1), state
+            print("ok: dying a screen into Eolis comes back at its gate, after the Guru, with gold and experience; "
+                  "Save files wrote the file at the respawn, keeping its spawn point")
 
         # 3. Every tower, castle and region, through its own door.
         inside = {}
         for name, (area, screen, palette, pos, region), opens, (in_area, in_screen, start), back in ENTRANCES:
-            if args.only and name not in args.only:
+            if args.only and name not in args.only or not any(args.wants(part) for part in GROUPS[name]):
                 continue
+            game_up()
             door = out / f"door-{name}.cycstate"
             fixture(temple, door, {AREA_SAVED_AREA: area, AREA_SAVED_SCREEN: screen, SCREEN_SAVED_PALETTE: palette,
                                    PLAYER_SAVED_POS: pos, AREA_REGION: region, HP: 0x50, **opens})
@@ -334,80 +372,83 @@ def main():
             assert hero() == HERO, hero()
             print("ok: dying a screen into the Tower of Trunk comes back at its door")
 
-        # 5. A Guru travel journey forgets the checkpoint: walking out of the
-        #    temple it lands in records the next, and a death comes back there.
-        game.close()
-        (out / "game" / "faxanadu_gurus.txt").write_text("Eolis\nApolune\nConflate\n")
-        game.launch()
-        die_in_conflate = out / "conflate.cycstate"
-        fixture(gate, die_in_conflate, {TEMPLE_SPAWN_POINT: CONFLATE})
-        die(die_in_conflate, "to-conflate", BUILDINGS, TEMPLE_SCREEN[CONFLATE])
-        walk_out()
-        until("Conflate", lambda: at(TOWNS, 0x08), 600)
-        state = respawn()
-        assert (state["zone"], state["screen"], state["start"]) == ("Conflate", 0x08, 0x99), state
-        through_door(0x99, "Conflate's temple", lambda: at(BUILDINGS, TEMPLE_SCREEN[CONFLATE]))
-        assert respawn()["zone"] == "Conflate", "a building changes nothing"
-        act("left", 170, 10)
-        act("up", 4, 10)
-        until("the Guru's greeting", lambda: ram(MESSAGE_ID) == MEDITATE_WITH_YOU)
-        for want, button in ((OFFER, "a"), (TO_GURU + 0, "b"), (TO_GURU + APOLUNE, "a"), (DEPART, "a")):
-            for _ in range(12):
-                until("a page to type out", typed)
-                if tcp("travel_state")["text"] == want:
-                    break
-                act("a")
-            assert tcp("travel_state")["text"] == want, tcp("travel_state")
-            act(button, 6, 30)
-        until("Apolune's temple", lambda: at(BUILDINGS, TEMPLE_SCREEN[APOLUNE]), 2400)
-        assert respawn()["zone"] is None, "the journey forgot Conflate"
-        walk_out()
-        until("Apolune", lambda: at(TOWNS, 0x01), 600)
-        entered = arrival()
-        state = respawn()
-        assert (state["zone"], state["screen"]) == ("Apolune", 0x01), state
-        came = die(save("apolune"), "apolune", TOWNS, 0x01)
-        assert came == entered, (came, entered)
-        assert ram(TEMPLE_SPAWN_POINT) == CONFLATE, "the furthest temple is unchanged"
-        print("ok: a Guru travel journey forgets the checkpoint; walking out of Apolune's temple records the "
-              "next, and dying comes back there")
+        if args.wants("travel"):
+            # 5. A Guru travel journey forgets the checkpoint: walking out of the
+            #    temple it lands in records the next, and a death comes back there.
+            game.close()
+            (out / "game" / "faxanadu_gurus.txt").write_text("Eolis\nApolune\nConflate\n")
+            game.launch()
+            die_in_conflate = out / "conflate.cycstate"
+            fixture(gate, die_in_conflate, {TEMPLE_SPAWN_POINT: CONFLATE})
+            die(die_in_conflate, "to-conflate", BUILDINGS, TEMPLE_SCREEN[CONFLATE])
+            walk_out()
+            until("Conflate", lambda: at(TOWNS, 0x08), 600)
+            state = respawn()
+            assert (state["zone"], state["screen"], state["start"]) == ("Conflate", 0x08, 0x99), state
+            through_door(0x99, "Conflate's temple", lambda: at(BUILDINGS, TEMPLE_SCREEN[CONFLATE]))
+            assert respawn()["zone"] == "Conflate", "a building changes nothing"
+            act("left", 170, 10)
+            act("up", 4, 10)
+            until("the Guru's greeting", lambda: ram(MESSAGE_ID) == MEDITATE_WITH_YOU)
+            for want, button in ((OFFER, "a"), (TO_GURU + 0, "b"), (TO_GURU + APOLUNE, "a"), (DEPART, "a")):
+                for _ in range(12):
+                    until("a page to type out", typed)
+                    if tcp("travel_state")["text"] == want:
+                        break
+                    act("a")
+                assert tcp("travel_state")["text"] == want, tcp("travel_state")
+                act(button, 6, 30)
+            until("Apolune's temple", lambda: at(BUILDINGS, TEMPLE_SCREEN[APOLUNE]), 2400)
+            assert respawn()["zone"] is None, "the journey forgot Conflate"
+            walk_out()
+            until("Apolune", lambda: at(TOWNS, 0x01), 600)
+            entered = arrival()
+            state = respawn()
+            assert (state["zone"], state["screen"]) == ("Apolune", 0x01), state
+            came = die(save("apolune"), "apolune", TOWNS, 0x01)
+            assert came == entered, (came, entered)
+            assert ram(TEMPLE_SPAWN_POINT) == CONFLATE, "the furthest temple is unchanged"
+            print("ok: a Guru travel journey forgets the checkpoint; walking out of Apolune's temple records the "
+                  "next, and dying comes back there")
 
-        # 6. Sugata's flash and Ointment. Into the Mist by the Branch's door back,
-        #    onto screen $1F, where Sugata lives: with 10 HP left, its flash
-        #    kills him, and he comes back at that door with no band or greyscale
-        #    left. Ointment is a timed item, and a death still ends it.
-        door = out / "door-mist-from-branch.cycstate"
-        fixture(temple, door, {AREA_SAVED_AREA: 5, AREA_SAVED_SCREEN: 0x00, SCREEN_SAVED_PALETTE: 0x08,
-                               PLAYER_SAVED_POS: 0xA5, AREA_REGION: 3, HP: 0x50})
-        tcp("load_state", path=str(door))
-        walk_out()
-        until("the Branch", lambda: at(5, 0x00), 600)
-        clear_screen("branch-0")
-        through_door(0xA5, "the Mist from the Branch", lambda: at(2, 0x1F))
-        entered = arrival()
-        state = respawn()
-        assert (state["zone"], state["screen"], state["start"]) == ("Mist", 0x1F, 0x9B), state
-        sugata = [i for i in range(8) if ram(SPRITE_ENTITIES + i) == SUGATA]
-        assert sugata, "Sugata is on the Mist's screen $1F"
-        raw = save("mist-1f")
-        weak = out / "mist-1f-weak.cycstate"
-        fixture(raw, weak, {HP: 10, **{SPRITE_ENTITIES + i: 0xFF for i in range(8) if i not in sugata}})
-        tcp("load_state", path=str(weak))
-        before = tcp("sugata_state")
-        until("Sugata's flash to kill him", lambda: ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 6000)
-        after = tcp("sugata_state")
-        assert after["in_reach"] > before["in_reach"], (before, after)
-        page_until("the Mist's door", lambda: at(2, 0x1F))
-        came = arrival()
-        assert came == entered, (came, entered)
-        assert tcp("sugata_state")["band"] != "flash" and not ram(PPU_MASK) & 1, "no flash left over"
-        assert (ram(HP), ram(MP)) == (0x50, 0x50)
-        anointed = out / "mist-1f-ointment.cycstate"
-        fixture(raw, anointed, {DURATION_OINTMENT: 0x20})
-        die(anointed, "ointment", 2, 0x1F)
-        assert ram(DURATION_OINTMENT) == 0xFF, "a death ends the Ointment, as in the original"
-        print("ok: Sugata's flash takes his last HP on the Mist's screen $1F: back at the Branch's door, "
-              "no band or greyscale left; a death still ends the Ointment")
+        if args.wants("sugata"):
+            game_up()
+            # 6. Sugata's flash and Ointment. Into the Mist by the Branch's door back,
+            #    onto screen $1F, where Sugata lives: with 10 HP left, its flash
+            #    kills him, and he comes back at that door with no band or greyscale
+            #    left. Ointment is a timed item, and a death still ends it.
+            door = out / "door-mist-from-branch.cycstate"
+            fixture(temple, door, {AREA_SAVED_AREA: 5, AREA_SAVED_SCREEN: 0x00, SCREEN_SAVED_PALETTE: 0x08,
+                                   PLAYER_SAVED_POS: 0xA5, AREA_REGION: 3, HP: 0x50})
+            tcp("load_state", path=str(door))
+            walk_out()
+            until("the Branch", lambda: at(5, 0x00), 600)
+            clear_screen("branch-0")
+            through_door(0xA5, "the Mist from the Branch", lambda: at(2, 0x1F))
+            entered = arrival()
+            state = respawn()
+            assert (state["zone"], state["screen"], state["start"]) == ("Mist", 0x1F, 0x9B), state
+            sugata = [i for i in range(8) if ram(SPRITE_ENTITIES + i) == SUGATA]
+            assert sugata, "Sugata is on the Mist's screen $1F"
+            raw = save("mist-1f")
+            weak = out / "mist-1f-weak.cycstate"
+            fixture(raw, weak, {HP: 10, **{SPRITE_ENTITIES + i: 0xFF for i in range(8) if i not in sugata}})
+            tcp("load_state", path=str(weak))
+            before = tcp("sugata_state")
+            until("Sugata's flash to kill him", lambda: ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 6000)
+            after = tcp("sugata_state")
+            assert after["in_reach"] > before["in_reach"], (before, after)
+            page_until("the Mist's door", lambda: at(2, 0x1F))
+            came = arrival()
+            assert came == entered, (came, entered)
+            assert tcp("sugata_state")["band"] != "flash" and not ram(PPU_MASK) & 1, "no flash left over"
+            assert (ram(HP), ram(MP)) == (0x50, 0x50)
+            anointed = out / "mist-1f-ointment.cycstate"
+            fixture(raw, anointed, {DURATION_OINTMENT: 0x20})
+            die(anointed, "ointment", 2, 0x1F)
+            assert ram(DURATION_OINTMENT) == 0xFF, "a death ends the Ointment, as in the original"
+            print("ok: Sugata's flash takes his last HP on the Mist's screen $1F: back at the Branch's door, "
+                  "no band or greyscale left; a death still ends the Ointment")
 
         # 7. The remaster off: the same death wakes at the temple, as the original.
         if "Tower of Trunk" in inside:
