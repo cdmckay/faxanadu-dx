@@ -7,7 +7,9 @@
 #   tools/test.sh --quick         # skip the end-to-end game runs
 #
 # Run inside the Nix devShell (direnv, or nix develop). The game build in
-# build-cycle is configured on first use.
+# build-cycle is configured on first use. The end-to-end runs start every game
+# at once, so only one suite on the machine runs them at a time: another
+# checkout's suite waits for the lock, then runs.
 set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 ROM="$REPO/Faxanadu (USA).nes"
@@ -91,6 +93,16 @@ cmake --build build-cycle -j"$JOBS" >/dev/null
 build-cycle/FaxanaduRecomp "$ROM" --frames 600 --no-save | grep "mode="
 
 if [ "$QUICK" = 1 ]; then echo "(end-to-end runs skipped: --quick)"; exit 0; fi
+# Two suites at once double every game's time and make the timing tests flaky,
+# so wait for any other checkout's end-to-end runs to finish. The lock is held
+# on fd 9 until this script exits.
+LOCK="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/faxanadu-remastered-e2e.lock"
+if command -v flock >/dev/null; then
+  exec 9>"$LOCK"
+  flock -n 9 || { echo "== waiting for another suite's end-to-end runs to finish ($LOCK)"; flock 9; }
+else
+  echo "(no flock: end-to-end runs may overlap another suite's)"
+fi
 echo "== end to end: Guru travel, by default and with Seamless on, in parallel"
 e2e() {  # NAME [ARGS...]: one run, in its own folder, on a free port
   local name="$1"; shift
@@ -139,7 +151,7 @@ python3 tests/files/save_files.py --build build-cycle --rom "$ROM" --out "$OUT/f
 echo "== end to end: the taller dagger, alongside them"
 python3 tests/dagger/taller_dagger.py --build build-cycle --rom "$ROM" --out "$OUT/dagger-e2e" \
   > "$OUT/dagger-e2e.log" 2>&1 & dagger=$!
-echo "== end to end: Block, its raised shield and Sugata's flash, by default and with Seamless on, alongside them"
+echo "== end to end: Block, its glint and Sugata's flash, by default and with Seamless on, alongside them"
 block_e2e() {  # SCRIPT NAME [ARGS...]
   local script="$1" name="$2"; shift 2
   python3 "$script" --build build-cycle --rom "$ROM" --out "$OUT/$name" "$@" > "$OUT/$name.log" 2>&1

@@ -2,8 +2,8 @@
 /* Block (fax_block.c): hold a bindable button (V, or B on a controller) with a
  * shield (or the Battle Helmet) in hand to stand still and stop enemy magic
  * from the front, and Sugata's flash from anywhere. The game teaches it once,
- * after the first shield-slot item, and shows: the shield drawn raised, or a
- * glint with the Battle Helmet. It registers its own hooks; the host
+ * after the first shield-slot item, and shows: the hero glints as Block goes
+ * up. It registers its own hooks; the host
  * passes it window events, the controller bytes and its config.ini [Game]
  * keys, and adds its TCP command and Controls row. */
 #include <stdbool.h>
