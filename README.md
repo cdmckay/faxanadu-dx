@@ -5,10 +5,9 @@ and fixes what has aged.
 
 ## Goals
 
-- **The real game underneath.** Faxanadu's own code runs as native code,
-  recompiled from your ROM, so the world, music, story and feel are the
-  original's. The remaster steers the game from outside; it doesn't rewrite
-  it.
+- **The real game underneath.** It runs Faxanadu's own code, built from your
+  ROM, so the world, music, story and feel are the original's. The remaster
+  steers the game from outside; it doesn't rewrite it.
 - **Quality of life.** Conveniences the 1987 game lacks, like saving without
   writing down mantras and travelling between Gurus. Where the game can offer
   them itself, it does, in its own text box and voice.
@@ -188,8 +187,8 @@ once.
 
 ## The ROM it needs
 
-The remaster recompiles your own copy of **Faxanadu (USA)**; it ships no game
-data. The build checks the ROM and rejects any other, including **Faxanadu
+The remaster is built from your own copy of **Faxanadu (USA)**; it ships no
+game data. The build checks the ROM and rejects any other, including **Faxanadu
 (USA) (Rev A)**, a different revision.
 
 | | ROM data only, iNES header excluded |
@@ -215,16 +214,13 @@ cmake --build build-cycle -j"$(nproc)"
 build-cycle/FaxanaduRecomp "Faxanadu (USA).nes"
 ```
 
-`setup.sh` checks out the pinned nesrecomp and recomp-ui submodules. The game
-opens in its launcher first.
+`setup.sh` fetches the code the build depends on. The game opens in its
+launcher first.
 
 ## Credits
 
-- [nesrecomp](https://github.com/mstan/nesrecomp), Matthew Stanley's NES
-  static recompiler, with its runtime and the
-  [recomp-ui](https://github.com/mstan/recomp-ui) launcher.
-- [FaxanaduRecomp](https://github.com/mstan/FaxanaduRecomp), his recompiled
-  Faxanadu, which this is a fork of.
+- Built on Matthew Stanley's [FaxanaduRecomp](https://github.com/mstan/FaxanaduRecomp)
+  and [nesrecomp](https://github.com/mstan/nesrecomp).
 - [chipx86's annotated disassembly](https://github.com/chipx86/faxanadu) of
   Faxanadu, which every feature is built on.
 - The Faxanadu 40th Anniversary Edition and Retranslation fan patches, for
