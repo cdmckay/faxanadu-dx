@@ -13,10 +13,9 @@ A test imports it with a sys.path line, so it still runs directly
         args = parse_args(__doc__)       # --build --rom --out, --game-arg, --port, --realtime
         game = Game.from_args(args)      # checks the ROM, copies the build to OUT/game
         try:
-            game.launch()                # a hidden window, uncapped, on a reserved port
-            until("the title", lambda: frame() > 700)
-            tcp("pad", buttons="start", frames=10)
-            game.shot("title")           # OUT/00-title.png
+            game.launch(at="gate")       # a hidden window, uncapped, on a reserved port,
+            until("the town", ...)       # started from a saved game (see Fixtures)
+            game.shot("town")            # OUT/00-town.png
         except BaseException:
             if game.running():
                 game.shot("failure")
@@ -24,7 +23,8 @@ A test imports it with a sys.path line, so it still runs directly
         finally:
             game.close()
 
-Never pick a port yourself: Game.launch() reserves one (see Ports).
+Never pick a port yourself: Game.launch() reserves one (see Ports). Start
+from a fixture, not from power-on, unless the boot is what is checked.
 
 Count game frames, never seconds: wait() and until() count the game's frames,
 so a test runs the same however loaded the machine is. A command is served
@@ -38,13 +38,20 @@ Game, one per test
         Checks the ROM is the original Faxanadu (USA), empties OUT, copies the
         build's FaxanaduRecomp, assets/ and mods/ to OUT/game (so sidecars such
         as faxanadu_gurus.txt and config.ini stay there) and opens OUT/game.log.
-    .launch(*extra)   Start the game: FaxanaduRecomp ROM --hidden --tcp PORT, the
+    .launch(*extra, at=None)
+                      Start the game: FaxanaduRecomp ROM --hidden --tcp PORT, the
                       --game-arg options, then `extra`, then --uncapped
                       --exit-after 100000000 unless realtime, with the hidden-window
                       environment (.env). Waits for this game's own "listening on"
                       line, then returns its first frame. If it cannot listen or
                       exits first, it is relaunched on another port (3 tries).
-                      Relaunching keeps the port.
+                      Relaunching keeps the port. With `at`, a fixture's name, the
+                      fixture is made first if need be, then loaded at once. A
+                      game already running is an error: close() it first.
+    .state(name)      The fixture `name` for this build and these options: its
+                      cached save state's Path, made first if it is not there.
+    .load(path) .save(name)
+                      load_state; save_state to OUT/name.cycstate (its Path).
     .close()          Quit over TCP (kill if that fails) and wait for the process.
     .running()        The game process is alive.
     .shot(name)       Screenshot the game's picture to OUT/NN-name.png, NN counting
@@ -75,6 +82,15 @@ Functions, on the game launched last
                                     then wait `frames + after`.
     typed()                         The text box waits for a button: MessageID
                                     clears, or TextBox_MessagePaused is set.
+    hold(button, done, frames=600)  Hold a button until done(), then let go at
+                                    once (an action replaces the button's hold).
+    step_toward(x_min, x_max, stop) One step of a walk to [x_min, x_max]: held
+                                    until 8 pixels short, then taps of 2 frames.
+    hurry(frames=10)                Wait with A held but for the last 2 frames:
+                                    the remaster's Hold A types 4x, and the A that
+                                    turns the page is still a new press. Only in a
+                                    loop that presses A on every typed page.
+    until_typed(what, frames)       until(typed), hurrying; before an A.
 
 Save states and the mod selection
     chunks(data)                    A CYCSTATE's chunks: (tag, offset, size).
@@ -84,7 +100,38 @@ Save states and the mod selection
                                     and bytes of mods' records ({record name:
                                     {offset: byte}}, e.g. "faxanadu.zone-names").
     features_toml(features)         state.toml text for {(package_id, feature_id): enabled}.
-    parse_args(doc) / parser(doc)   The common options, with `doc` as the help.
+    parse_args(doc, parts=()) / parser(doc, parts=())
+                                    The common options, with `doc` as the help. With
+                                    a test's parts, --part (repeatable) and
+                                    --list-parts too, and args.wants(name).
+
+Fixtures: the saved games tests start from
+    @recipe(name, parent=None)      Register how a fixture is made: a game of its
+                                    own is launched (with `parent`'s state loaded),
+                                    handed to the function, which plays to the spot,
+                                    and the state there is saved. "gate" (a new
+                                    game outside Eolis's gate), "eolis-town",
+                                    "eolis-meat-shop" and "eolis-zozuras" are here;
+                                    tests add their own.
+
+    Save states hold CHR RAM copied from the ROM, so they are made from your
+    ROM and never committed. Each is cached in build-tests/fixtures as
+    NAME[-options]-KEY.cycstate, made once under a lock however many tests ask
+    at once. KEY covers the ROM, the build's game and mods, the game options and
+    the source files of the recipes from power-on to it, so any change to them
+    makes it again (and drops the stale one). A recipe uses only its game and
+    the functions above, never the test's own game.
+
+Parts
+    A long test is split into parts that start from fixtures and need nothing
+    from each other; tools/test.sh runs each as its own game, at once (its
+    table marks the test --parts). Without --part a test runs every part, in
+    order, in one process.
+
+Time
+    A test that launched a game prints "time: W s, games G s CPU, script S s
+    CPU" as it exits. With FAX_E2E_STAMP=1 each line it prints starts with the
+    seconds since it started.
 
 Ports
     reserve_port(port=0) -> int     Hold a port for this process until it exits.

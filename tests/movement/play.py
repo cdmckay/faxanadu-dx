@@ -14,10 +14,8 @@ forgiving_jumps.py).
   screenshots come from them too.
 """
 from concurrent.futures import ThreadPoolExecutor
-import hashlib
 import os
 from pathlib import Path
-import re
 import shutil
 import struct
 import subprocess
@@ -82,15 +80,8 @@ class Game(fax_e2e.Game):
         return root
 
     def continues_at(self, state):
-        """The frame a save state continues at (a run of no frames prints it),
-        remembered by the state's bytes."""
-        key = hashlib.sha256(Path(state).read_bytes()).hexdigest()
-        starts = self.__dict__.setdefault("_starts", {})
-        if key not in starts:
-            probe = subprocess.run([str(self.exe), str(self.rom), "--load-state", str(state), "--frames", "0",
-                                    "--no-save"], capture_output=True, text=True)
-            starts[key] = int(re.search(r"continuing at frame (\d+)", probe.stdout).group(1))
-        return starts[key]
+        """The frame a save state continues at: the uint32 at its offset 28."""
+        return struct.unpack_from("<I", Path(state).read_bytes(), 28)[0]
 
     def headless(self, state, schedule, frames, mods, screenshot=None, save=None):
         """Run from `state` for `frames` frames, holding buttons on a schedule
@@ -127,8 +118,6 @@ class Game(fax_e2e.Game):
         """headless(*run) for each run at once, each its own process; their
         results, in order."""
         runs = list(runs)
-        for state in {str(run[0]) for run in runs}:                 # each state's start, once
-            self.continues_at(state)
         with ThreadPoolExecutor(max_workers=min(len(runs), os.cpu_count() or 4)) as pool:
             return list(pool.map(lambda run: self.headless(*run), runs))
 

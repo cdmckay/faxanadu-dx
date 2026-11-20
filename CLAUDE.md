@@ -39,9 +39,9 @@ tools/disassembly.sh                                 # chipx86's disassembly, ve
 There is no CI: nothing builds without the ROM, which cannot be distributed.
 `tools/test.sh` is the gate, so run it before every PR.
 
-Its end-to-end runs start every game at once, a core each, so they take a
-machine-wide lock: a second checkout's suite prints that it is waiting, then
-runs. Several workers share this machine, so while developing run
+Its end-to-end runs play a game a hardware thread at once, longest first, so
+they take a machine-wide lock: a second checkout's suite prints that it is
+waiting, then runs. Several workers share this machine, so while developing run
 `tools/test.sh --quick` plus your own feature's end-to-end test directly, and
 the full suite once before the PR.
 
@@ -79,6 +79,13 @@ recompiler produced it; features observe and steer it.
   `batch()` (a `load_state`, then the `action`), or runs headless from that
   state with `--input`. Never count on two TCP commands being a few frames
   apart.
+- **End-to-end tests start from saved games.** `game.launch(at=...)` loads a
+  fixture, made from your ROM by a recipe and cached in `build-tests/fixtures`;
+  boot from power-on only where the boot is what is checked. **Never commit a
+  save state:** it holds CHR RAM copied from the ROM. A test much longer than
+  the rest splits into parts that run at once. The suite's time is the frames
+  its games play, so walk, read and wait no longer than the check needs
+  ([tests/README.md](tests/README.md)).
 - **Everything the remaster adds goes into the one Faxanadu Remastered mod**
   (`mods/preloaded/packages/faxanadu.remastered`), never a new package: add a
   `[[plugin]]` under its `remastered` feature. The launcher has one switch for
