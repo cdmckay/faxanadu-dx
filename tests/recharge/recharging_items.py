@@ -145,12 +145,12 @@ def main():
     out = game.out
     shot, poke = game.shot, game.poke
 
-    def launch(on=True, gurus=None):
+    def launch(on=True, gurus=None, at=None):
         """Start the game with the remaster, and so recharging items, on or off."""
         game.set_features({PACKAGE: on})
         if gurus:
             (out / "game" / "faxanadu_gurus.txt").write_text("".join(g + "\n" for g in gurus))
-        game.launch()
+        game.launch(at=at)
         assert state()["enabled"] == on, state()
 
     def clear(entity=None):
@@ -322,10 +322,7 @@ def main():
         until("the Guru to speak", box_open, 300)
 
     try:
-        launch()
-        until("the title", lambda: frame() > 700)
-        tcp("pad", buttons="start", frames=10)
-        until("the Eolis gate", lambda: place() == (EOLIS, 0) and frame() > 1900)
+        launch(at="gate")
         for _ in range(200):                                        # the intro's lines stop him; A goes on
             if ram(PLAYER_X) >= 184:
                 break

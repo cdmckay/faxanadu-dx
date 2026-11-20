@@ -53,8 +53,8 @@ def main():
     game = Game(args.build, args.rom, args.out, args.game_arg)
     out = game.out
     try:
-        game.launch()
         states = game.to_trunk()
+        game.launch()
         ledge, floor, ladder = out / "ledge.cycstate", out / "floor.cycstate", out / "ladder.cycstate"
         fixture(states[LEDGE_SCREEN], ledge, {**no_actors(), X: 8, Y: 80, FLAGS: RIGHT, HP: 0x50})
         fixture(states[LEDGE_SCREEN], floor, {**no_actors(), X: 40, Y: 160, FLAGS: RIGHT, JC: 0x20, HP: 0x50})

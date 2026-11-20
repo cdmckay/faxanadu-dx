@@ -104,10 +104,14 @@ import argparse
 import atexit
 import errno
 import fcntl
+import hashlib
+import inspect
 import json
 import os
 from pathlib import Path
 import random
+import re
+import resource
 import shutil
 import socket
 import struct
@@ -123,6 +127,8 @@ PORTS = range(20000, 32768)
 _runtime = os.environ.get("XDG_RUNTIME_DIR")
 LOCKS = (Path(_runtime) / "faxanadu-e2e-ports" if _runtime and os.path.isdir(_runtime)
          else Path(tempfile.gettempdir()) / f"faxanadu-e2e-ports-{os.getuid()}")
+REPO = Path(__file__).resolve().parents[2]
+FIXTURES = REPO / "build-tests" / "fixtures"  # the saved games tests start from, made from your ROM
 LAUNCH_TRIES = 3
 LISTEN_TIMEOUT = 60                        # seconds for the game to open its TCP port
 MESSAGE_ID = 0x213                         # MessageID, Message_ProcessedLength, TextBox_MessagePaused
@@ -206,6 +212,43 @@ def _release_all():
         release_port(port)
 
 
+_started = time.monotonic()
+
+
+class _Stamped:
+    """stdout with the seconds since the test started before each line, and
+    flushed at once: FAX_E2E_STAMP=1 shows where a test's time goes."""
+
+    def __init__(self, stream):
+        self.stream, self.fresh = stream, True
+
+    def write(self, text):
+        for part in text.splitlines(keepends=True):
+            if self.fresh:
+                self.stream.write(f"[{time.monotonic() - _started:6.1f} s] ")
+            self.stream.write(part)
+            self.fresh = part.endswith("\n")
+        self.stream.flush()
+        return len(text)
+
+    def flush(self):
+        self.stream.flush()
+
+
+if os.environ.get("FAX_E2E_STAMP"):
+    import sys
+    sys.stdout = _Stamped(sys.stdout)
+
+
+@atexit.register
+def _report_time():
+    """What the test cost: its wall time, and the CPU its games (and other
+    children) and the script itself used."""
+    games, script = resource.getrusage(resource.RUSAGE_CHILDREN), resource.getrusage(resource.RUSAGE_SELF)
+    print(f"time: {time.monotonic() - _started:.1f} s, games {games.ru_utime + games.ru_stime:.1f} s CPU, "
+          f"script {script.ru_utime + script.ru_stime:.1f} s CPU", flush=True)
+
+
 # The game
 
 _game = None                               # the game launched last: the functions' target
@@ -224,6 +267,7 @@ class Game:
         self.rom = Path(rom).resolve()
         self.image = self.rom.read_bytes()
         assert zlib.crc32(self.image[16:]) == ROM_CRC32, "the original Faxanadu (USA) ROM is required"
+        self.build = Path(build).resolve()
         self.out = Path(out).resolve()
         shutil.rmtree(self.out, ignore_errors=True)
         (self.out / "game").mkdir(parents=True)
@@ -245,8 +289,12 @@ class Game:
         return cls(args.build, args.rom, args.out, getattr(args, "game_arg", ()),
                    getattr(args, "realtime", False), getattr(args, "port", 0))
 
-    def launch(self, *extra):
+    def launch(self, *extra, at=None):
+        """Start the game. With `at`, a fixture's name: load that saved game
+        at once (it is made first if it is not cached), and return the frame
+        it continues at."""
         global _game
+        start_at = self.state(at) if at else None
         options = [part for arg in self.game_args for part in arg.split("=", 1)] + list(extra)
         if not self.realtime:
             options += UNCAPPED
@@ -260,10 +308,16 @@ class Game:
             if not problem:
                 for _ in range(100):
                     try:
-                        return self.frame()
+                        frame = self.frame()
+                        break
                     except OSError:
                         time.sleep(0.1)
-                raise AssertionError("the game did not start")
+                else:
+                    raise AssertionError("the game did not start")
+                if start_at:
+                    self.load(start_at)
+                    frame = self.frame()
+                return frame
             self._stop()
             if self.fixed_port:
                 raise AssertionError(f"the game {problem} (see {self.log_path})")
@@ -364,6 +418,56 @@ class Game:
         self.shots.append(path.name)
         return path
 
+    def load(self, path):
+        """Load a save state."""
+        self.tcp("load_state", path=str(path))
+
+    def save(self, name):
+        """Save a state to OUT/name.cycstate; its Path."""
+        path = self.out / f"{name}.cycstate"
+        self.tcp("save_state", path=str(path))
+        return path
+
+    def state(self, name):
+        """The fixture `name` for this build and these game options: the
+        cached save state, made first (with its parents) if it is not there.
+        Each is made once, under a lock, however many tests ask at once."""
+        tag, key = _fixture_key(self, name)
+        path = FIXTURES / f"{name}{tag}-{key}.cycstate"
+        if path.exists():
+            return path
+        FIXTURES.mkdir(parents=True, exist_ok=True)
+        with open(path.with_suffix(".lock"), "w") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            if not path.exists():
+                self._make(name, path)
+                for old in FIXTURES.glob(f"{name}{tag}-*.cycstate"):     # the same fixture, made stale
+                    if old != path and re.fullmatch(re.escape(f"{name}{tag}-") + "[0-9a-f]{16}", old.stem):
+                        old.unlink(missing_ok=True)
+                        old.with_suffix(".lock").unlink(missing_ok=True)
+        return path
+
+    def _make(self, name, path):
+        """Play the fixture `name`'s recipe in a game of its own, and save it at `path`."""
+        global _game
+        parent, how = _recipes[name]
+        start_at = self.state(parent) if parent else None
+        before, began = _game, time.monotonic()
+        work = FIXTURES / "work" / f"{path.stem}-{os.getpid()}"
+        maker = type(self)(self.build, self.rom, work, self.game_args)
+        try:
+            maker.launch()
+            if start_at:
+                maker.load(start_at)
+            how(maker)
+            maker.tcp("save_state", path=str(path.with_suffix(".tmp")))
+            os.replace(path.with_suffix(".tmp"), path)
+        finally:
+            maker.close()
+            _game = before
+        shutil.rmtree(work, ignore_errors=True)
+        print(f"fixture: made {name} in {time.monotonic() - began:.1f} s", flush=True)
+
     def set_features(self, features):
         (self.out / "game" / "mods" / "state.toml").write_text(features_toml(features))
 
@@ -374,6 +478,66 @@ class Game:
         self.tcp("save_state", path=str(path))
         fixture(path, path, writes, records)
         self.tcp("load_state", path=str(path))
+
+
+# Fixtures: the saved games tests start from
+
+_recipes = {}                              # name: (parent fixture or None, how(game) plays to it)
+
+
+def recipe(name, parent=None):
+    """Register how the fixture `name` is made: a game launched (from power-on,
+    or with `parent`'s state loaded) is handed to the decorated function, which
+    plays to the spot; the state there is saved. A test then starts there with
+    Game.launch(at=name). Save states hold CHR RAM copied from the ROM, so they
+    are made from your ROM and cached in build-tests/fixtures, never committed."""
+    def register(how):
+        _recipes[name] = (parent, how)
+        return how
+    return register
+
+
+_digests = {}
+
+
+def _digest(path):
+    """sha256 of a file, or of every file under a folder, by name and content."""
+    path = Path(path)
+    if path not in _digests:
+        h = hashlib.sha256()
+        for f in sorted(path.rglob("*")) if path.is_dir() else [path]:
+            if f.is_file():
+                h.update(str(f.relative_to(path) if path.is_dir() else f.name).encode())
+                h.update(f.read_bytes())
+        _digests[path] = h.hexdigest()
+    return _digests[path]
+
+
+def _fixture_key(game, name):
+    """(tag, key) for the fixture `name` in `game`: the tag names the game
+    options it was made with; the key changes with anything that could make
+    the state stale: the ROM, the build's game and mods, the options, and the
+    recipes from power-on to it."""
+    if name not in _recipes:
+        raise KeyError(f"no recipe for the fixture {name!r}")
+    parts = [f"{zlib.crc32(game.image):08x}", _digest(game.build / "FaxanaduRecomp"), _digest(game.build / "mods"),
+             " ".join(game.game_args)]
+    chain = name
+    while chain:
+        parent, how = _recipes[chain]
+        parts.append(f"{chain}\n{inspect.getsource(how)}")
+        chain = parent
+    tag = "".join("-" + "".join(c if c.isalnum() else "-" for c in arg.lstrip("-")) for arg in game.game_args)
+    return tag, hashlib.sha256("\n".join(parts).encode()).hexdigest()[:16]
+
+
+@recipe("gate")
+def _gate(g):
+    """A new game (Start on the title: file 1, with Save files), outside
+    Eolis's gate once the opening has played."""
+    g.until("the title", lambda: g.frame() > 700)
+    g.tcp("pad", buttons="start", frames=10)
+    g.until("the Eolis gate", lambda: g.ram(0x24) == 0 and g.frame() > 1900)   # Area_CurrentArea
 
 
 def tcp(cmd, **kw):

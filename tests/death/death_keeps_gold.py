@@ -83,10 +83,7 @@ def main():
                     next_title=ram(NEXT_PLAYER_TITLE))
 
     try:
-        game.launch()
-        until("the title", lambda: frame() > 700)
-        tcp("pad", buttons="start", frames=10)
-        until("the Eolis gate", lambda: frame() > 1900)
+        game.launch(at="gate")
         assert tcp("death_state")["enabled"], "the feature is on by default"
         gate = out / "gate.cycstate"
         tcp("save_state", path=str(gate))

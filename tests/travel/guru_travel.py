@@ -89,10 +89,7 @@ def main():
     try:
         # A new game meets only Eolis's Guru: make the starting state, then
         # relaunch with the visited Gurus the scenarios need.
-        game.launch()
-        until("the title", lambda: frame() > 700)
-        tcp("pad", buttons="start", frames=10)
-        until("the Eolis gate", lambda: frame() > 1900)
+        game.launch(at="gate")
         assert tcp("travel_state")["visited"] == 1, "a new game has met only Eolis's Guru"
         gate = out / "gate.cycstate"
         tcp("save_state", path=str(gate))

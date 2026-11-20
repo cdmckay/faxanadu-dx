@@ -133,10 +133,7 @@ def main():
         return f"{ds[0]}-{ds[-1]}" if len(ds) > 1 else f"{ds[0]}"
 
     try:
-        game.launch()
-        until("the title", lambda: frame() > 700)
-        tcp("pad", buttons="start", frames=10)
-        until("the Eolis gate", lambda: frame() > 1900)
+        game.launch(at="gate")
         state = tcp("dagger_state")
         assert state["enabled"] and state["served"] and not state["failed"], f"on by default: {state}"
         assert (ram(AREA), ram(SCREEN), ram(SPRITE_ENTITY + 7)) == (EOLIS, GATE, INTRO_TRIGGER)

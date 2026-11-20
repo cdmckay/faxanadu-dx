@@ -103,10 +103,7 @@ def main():
         return strength[weapon] + (strength[weapon] // 4 if bonus else 0) + (glove[weapon] if gloved else 0)
 
     try:
-        game.launch()
-        until("the title", lambda: frame() > 700)
-        tcp("pad", buttons="start", frames=10)
-        until("the Eolis gate", lambda: frame() > 1900)
+        game.launch(at="gate")
         assert tcp("pendant_state")["enabled"], "the feature is on by default"
         assert (ram(AREA), ram(SCREEN), ram(SPRITE_ENTITY + 7)) == (EOLIS, GATE, INTRO_TRIGGER)
         gate = out / "gate.cycstate"

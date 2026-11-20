@@ -111,10 +111,7 @@ def main():
         walk_out()
 
     try:
-        game.launch()
-        until("the title", lambda: frame() > 700)
-        tcp("pad", buttons="start", frames=10)
-        until("the Eolis gate", lambda: zone()["area"] == 0 and frame() > 1900)
+        game.launch(at="gate")
         assert zone()["banners"] == 0 and zone()["here"] is None, zone()
         outside = out / "outside-gate.cycstate"                    # before any entrance
         tcp("save_state", path=str(outside))

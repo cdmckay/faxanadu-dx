@@ -102,12 +102,9 @@ def main():
         until("the spell to end", lambda: spell() == NO_SPELL, 600)
 
     try:
-        game.launch()
+        game.launch(at="gate")
         state = tcp("magic_state")
         assert state["enabled"] and state["binding"] == "C / Y", state
-        until("the title", lambda: frame() > 700)
-        tcp("pad", buttons="start", frames=10)
-        until("the opening", lambda: frame() > 1900)
         # The opening: the hero walks toward Eolis and stops to think aloud.
         act("right", 60, 10)
         for _ in range(60):

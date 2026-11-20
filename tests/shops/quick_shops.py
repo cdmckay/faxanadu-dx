@@ -170,9 +170,9 @@ def main():
     game = Game.from_args(args)
     out = game.out
 
-    def launch(on=True):
+    def launch(on=True, at=None):
         game.set_features({PACKAGE: on})
-        game.launch()
+        game.launch(at=at)
         assert shops()["enabled"] == on, shops()
 
     def walk_to(x_min, x_max):
@@ -257,10 +257,7 @@ def main():
         assert state["shown"] and (state["col"], state["row"]) == (10, 5), state
 
     try:
-        launch()
-        until("the title", lambda: frame() > 700)
-        tcp("pad", buttons="start", frames=10)
-        until("the Eolis gate", lambda: ram(AREA) == 0 and frame() > 1900)
+        launch(at="gate")
         walk_to(186, 196)                                   # the gate, column 12
         act("up", 4, 10)
         until("Eolis", lambda: (ram(AREA), ram(SCREEN)) == (0, 1))

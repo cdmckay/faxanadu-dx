@@ -66,10 +66,10 @@ def main():
     game = Game.from_args(args)
     out = game.out
 
-    def launch(remastered=True):
+    def launch(remastered=True, at=None):
         """Start the game with the remaster, and so both features, on or off."""
         game.set_features({(PACKAGE, FEATURE): remastered})
-        game.launch()
+        game.launch(at=at)
         state = tcp("keys_state")
         assert (state["auto"], state["reuse"]) == (remastered, remastered), state
 
@@ -161,10 +161,7 @@ def main():
 
     try:
         # The hero at the Eolis gate, then through it into the town.
-        launch()
-        until("the title", lambda: frame() > 700)
-        tcp("pad", buttons="start", frames=10)
-        until("the Eolis gate", lambda: frame() > 1900)
+        launch(at="gate")
         for _ in range(200):                                        # the intro's lines stop him; A goes on
             if ram(PLAYER_X) >= 184:
                 break

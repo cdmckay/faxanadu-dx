@@ -27,6 +27,29 @@ BUILDINGS, TOWNS = 4, 3
 SMALL, LARGE, MAGIC, HELMET, NO_SHIELD = 0, 1, 2, 3, 0xFF
 
 
+@fax_e2e.recipe("gate-door", parent="gate")
+def _gate_door(g):
+    """From outside Eolis's gate, right through the hero's thoughts at the
+    opening, to the gate (a door)."""
+    def act(name, frames=6, after=8):
+        g.tcp("action", name=name, frames=frames)
+        g.wait(frames + after)
+    act("right", 60, 10)
+    for _ in range(60):
+        if g.ram(POS_X) > 54:
+            break
+        if fax_e2e.typed():
+            act("a", 4, 8)
+        else:
+            g.wait(10)
+        act("right", 6, 2)
+    for _ in range(200):
+        if g.ram(POS_X) >= 192:
+            break
+        act("right", 6, 2)
+    assert (g.ram(AREA), g.ram(SCREEN)) == (0, 0) and 188 <= g.ram(POS_X) < 200, (g.ram(AREA), g.ram(POS_X))
+
+
 class Game(fax_e2e.Game):
     """fax_e2e.Game, polling a little faster, with what Block's and Sugata's
     flash's tests add."""
@@ -81,24 +104,9 @@ class Game(fax_e2e.Game):
         return self.ram(0x0E) == 0 and self.ram(0x54) == 0xFF and self.ram(0x13) != 0
 
     def new_game_at_gate(self):
-        """A new game, through the opening, to the gate of Eolis (a door)."""
-        self.until("the title", lambda: self.frame() > 700)
-        self.tcp("pad", buttons="start", frames=10)
-        self.until("the opening", lambda: self.frame() > 1900)
-        self.act("right", 60, 10)
-        for _ in range(60):
-            if self.ram(POS_X) > 54:
-                break
-            if self.typed():
-                self.act("a", 4, 8)
-            else:
-                self.wait(10)
-            self.act("right", 6, 2)
-        for _ in range(200):
-            if self.ram(POS_X) >= 192:
-                break
-            self.act("right", 6, 2)
-        assert self.where() == (0, 0) and 188 <= self.ram(POS_X) < 200, (self.where(), self.ram(POS_X))
+        """A new game, through the opening, to the gate of Eolis (a door):
+        the gate-door fixture."""
+        self.load(self.state("gate-door"))
 
     def walk_to(self, x_min, x_max):
         """Walk until the hero's X is in [x_min, x_max], paging through any text."""

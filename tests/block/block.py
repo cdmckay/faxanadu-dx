@@ -130,10 +130,9 @@ def main():
         raise AssertionError("could not pick up the Battle Helmet")
 
     try:
-        g.launch()
+        g.launch(at="gate-door")
         state = block()
         assert state["enabled"] and state["binding"] == "V / B" and not state["taught"], state
-        g.new_game_at_gate()
         gate = g.save("gate")
         g.act("up", 4, 10)
         g.until("Eolis", lambda: g.where() == (0, 1), 300)

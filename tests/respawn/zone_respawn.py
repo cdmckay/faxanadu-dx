@@ -221,10 +221,8 @@ def main():
         return came
 
     try:
-        game.launch()
+        game.launch(at="gate")
         assert respawn()["enabled"], "zone respawn is on by default"
-        until("the title", lambda: frame() > 700)
-        tcp("pad", buttons="start", frames=10)
         until("the Eolis gate", lambda: ram(HP) and at(0, 0), 3000)
         raw = save("gate-raw")
         gate = out / "gate.cycstate"

@@ -241,8 +241,7 @@ def main():
         return seen, counts, befores, shots, pressed
 
     try:
-        g.launch()
-        g.new_game_at_gate()
+        g.launch(at="gate-door")
         gate = g.save("gate")
         states = {}
 

@@ -205,10 +205,7 @@ def main():
 
     try:
         # A new game: through the gate and into Eolis's meat shop.
-        game.launch()
-        until("the title", lambda: frame() > 700)
-        tcp("pad", buttons="start", frames=10)
-        until("the Eolis gate", lambda: ram(AREA) == 0 and frame() > 1900)
+        game.launch(at="gate")
         assert not speaker()["shown"] and speaker()["name"] is None, speaker()
         walk_to(186, 196)                                   # the gate, column 12
         act("up", 4, 10)
