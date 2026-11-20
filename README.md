@@ -97,6 +97,11 @@ the whole conversation, as the game names them: "Guru of Apolune", "King of
 Eolis", "Martial Artist", "Key Seller". People without a portrait show no
 name.
 
+**REMASTERED on the title** is on by default (Mods to turn it off). The title
+screen shows REMASTERED under the FAXANADU logo, in the game's own font and
+the light yellow of the logo. The rest of the title is the original's, and the
+word goes as soon as you start or continue.
+
 **Auto keys** is on by default (Mods to turn it off). Press Up at a locked door
 and the right key from your inventory opens it, without selecting it first;
 whatever item you had selected stays selected.
