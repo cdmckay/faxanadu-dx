@@ -12,6 +12,7 @@
  * last name, so walking out shows the town's. Two zones with one name (the
  * Dartmoor region and its town) show it once. The banner holds still while a
  * text box or menu is open or the game is paused, and is hidden behind boxes.
+ * Slain by (fax_slain.c) draws its line in the same box with fax_banner_draw.
  * See docs/GAME_INTERNALS.md, "Areas, screens and zones". */
 #include "fax_banner.h"
 #include "fax_text.h"
@@ -128,32 +129,38 @@ void fax_banner_step(void) {
     if (t.showing != FAX_ZONE_NONE && !held() && ++t.age >= SHOWN) t.showing = FAX_ZONE_NONE;
 }
 
-const uint32_t *fax_banner_present(const uint32_t *picture, int *w, int *h) {
-    if (!enabled || failed || t.showing == FAX_ZONE_NONE || box_open()) return picture;
-    unsigned alpha = alpha_at(t.age);
-    if (!alpha) return picture;
+const uint32_t *fax_banner_draw(const uint32_t *picture, int *w, int *h, const char *line, unsigned alpha) {
+    if (!alpha || !line || !fax_text_loaded()) return picture;
     int width = 0, height = 0;
     const uint32_t *from = picture;
     if (from) width = *w, height = *h;
     else from = cyc_render_present(&width, &height);
     if (!from || width <= 0 || height <= 0) return picture;
     size_t n = (size_t)width * (size_t)height;
-    if (n > capacity) {
-        uint32_t *grown = realloc(canvas, n * sizeof *grown);
-        if (!grown) return picture;
-        canvas = grown; capacity = n;
+    if (from != canvas) {   /* a banner already drawn this frame is drawn over */
+        if (n > capacity) {
+            uint32_t *grown = realloc(canvas, n * sizeof *grown);
+            if (!grown) return picture;
+            canvas = grown; capacity = n;
+        }
+        memcpy(canvas, from, n * sizeof *canvas);
     }
-    memcpy(canvas, from, n * sizeof *canvas);
     /* Below the HUD (scaled down with the picture if it is under 256 wide), centered. */
-    const char *name = fax_zone(t.showing)->name;
-    int cols = (int)strlen(name) + 2 * PAD;
+    int cols = (int)strlen(line) + 2 * PAD;
     int box_w = (cols + 2) * FAX_TEXT_CELL;
     int hud = width < 256 ? HUD * width / 256 : HUD;
     int x = (width - box_w) / 2, y = hud + FAX_TEXT_CELL;
     fax_text_box(canvas, width, height, x, y, cols, 1, alpha);
-    fax_text_draw(canvas, width, height, x + (1 + PAD) * FAX_TEXT_CELL, y + FAX_TEXT_CELL, name, alpha);
+    fax_text_draw(canvas, width, height, x + (1 + PAD) * FAX_TEXT_CELL, y + FAX_TEXT_CELL, line, alpha);
     *w = width; *h = height;
     return canvas;
+}
+
+void fax_banner_hide(void) { t.showing = FAX_ZONE_NONE; }
+
+const uint32_t *fax_banner_present(const uint32_t *picture, int *w, int *h) {
+    if (!enabled || failed || t.showing == FAX_ZONE_NONE || box_open()) return picture;
+    return fax_banner_draw(picture, w, h, fax_zone(t.showing)->name, alpha_at(t.age));
 }
 
 /* Save states carry the banner, so loading one resumes it as it was. */
