@@ -3,10 +3,10 @@
     python3 tests/indoor/indoor_equip.py --build build-cycle --rom "Faxanadu (USA).nes" --out /tmp/indoor
 
 The game runs uncapped (about 5x real time; --realtime to watch it at normal
-speed) and the script waits on the game's own state, never on the clock, so
-each run takes a free TCP port, and any number can go in parallel. Anything
-that depends on the frame a button goes down (a swing) runs headless from a
-save state instead, with a button schedule and every frame's RAM.
+speed) on a port tests/e2e/fax_e2e.py reserves, and the script waits on the
+game's own frames and state, never on the clock. Anything that depends on the
+frame a button goes down (a swing) runs headless from a save state instead,
+with a button schedule and every frame's RAM.
 
 Copies the build to OUT, starts a new game over TCP, walks through Eolis's gate
 into the meat shop and saves a state there. Save-state RAM edits then set up
@@ -34,20 +34,17 @@ and the weapon in hand.
    with the dagger in hand, he holds nothing, and the menu refuses the sword
    (the menu stays up, the dagger still selected).
 """
-import argparse
-import json
-import os
 from pathlib import Path
 import re
 import shutil
-import socket
 import struct
 import subprocess
 import sys
-import time
-import zlib
 
-PORT = 0                                                            # set in main
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
+from fax_e2e import (Game, act, features_toml, fixture, frame, parse_args, ram, tcp, typed,  # noqa: E402
+                     until, wait)
+
 AREA, SCREEN, PLAYER_X, PLAYER_Y = 0x24, 0x63, 0x9E, 0xA1
 PLAYER_FLAGS, ATTACK_PHASE = 0xA4, 0xAE                             # Player_Flags, Player_AttackPhaseAnimFrame
 WEAPON_X, WEAPON_Y, RANGE_X, RANGE_Y = 0xCE, 0xD0, 0xD2, 0xD3       # Player_DrawWeapon's box
@@ -73,52 +70,6 @@ PACKAGE = ("faxanadu.remastered", "remastered")                  # the one switc
 ROM = b""
 
 
-def tcp(cmd, **kw):
-    with socket.create_connection(("127.0.0.1", PORT), 5) as s:
-        s.settimeout(30)
-        f = s.makefile("rwb", buffering=0)
-        f.write((json.dumps(dict(id=1, cmd=cmd, **kw)) + "\n").encode())
-        reply = json.loads(f.readline())
-    if not reply.get("ok"):
-        raise RuntimeError(f"{cmd}: {reply}")
-    return reply
-
-
-def free_port():
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
-def frame():
-    return tcp("ping")["frame"]
-
-
-def wait(frames):
-    end = frame() + frames
-    while frame() < end:
-        time.sleep(0.005)
-
-
-def ram(addr, n=1):
-    data = bytes.fromhex(tcp("read_ram", addr=addr, len=n)["hex"])
-    return data[0] if n == 1 else data
-
-
-def until(what, test, frames=1200):
-    end = frame() + frames
-    while frame() < end:
-        if test():
-            return
-        time.sleep(0.005)
-    raise AssertionError(f"timed out waiting for {what}")
-
-
-def act(name, frames=6, after=8):
-    tcp("action", name=name, frames=frames)
-    wait(frames + after)
-
-
 def indoor():
     return tcp("indoor_equip_state")
 
@@ -132,37 +83,9 @@ def gold():
     return lo | mid << 8 | hi << 16
 
 
-def waiting():
-    """The text box waits for a button: typed out, or at a pause."""
-    message, _, paused = ram(MESSAGE_ID, 3)
-    return message == 0 or paused != 0
-
-
 def extents(entity):
     base = 16 + 14 * 0x4000 + SPRITE_EXTENTS - 0x8000 + entity * 2
     return ROM[base], ROM[base + 1]
-
-
-def chunks(data):
-    assert data[:8] == b"CYCSTATE"
-    pos = 32
-    while pos < len(data):
-        tag, size = struct.unpack_from("<4sI", data, pos)
-        pos += 8
-        yield tag, pos, size
-        pos += size
-        if tag == b"END ":
-            return
-
-
-def fixture(source, target, writes):
-    """A copy of a save state with CPU RAM bytes changed (the HW chunk, offset 23)."""
-    data = bytearray(Path(source).read_bytes())
-    pos, size = next((p, n) for t, p, n in chunks(data) if t == b"HW  ")
-    assert size == 2072, "Unqualified hardware ABI"
-    for address, value in writes.items():
-        data[pos + 23 + address] = value
-    Path(target).write_bytes(data)
 
 
 def carrying(gold_amount, weapon, weapon_list=()):
@@ -199,73 +122,24 @@ def in_reach(mem, slot):
 
 
 def main():
-    global PORT, ROM
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    for key in ("build", "rom", "out"):
-        ap.add_argument("--" + key, type=Path, required=True)
-    ap.add_argument("--game-arg", action="append", default=[],
-                    help="extra game option, e.g. --game-arg=--world-view=seamless (repeatable)")
-    ap.add_argument("--port", type=int, default=0, help="TCP port (default: a free one)")
-    ap.add_argument("--realtime", action="store_true", help="run at normal speed instead of uncapped")
-    args = ap.parse_args()
-    PORT = args.port or free_port()
-    ROM = args.rom.read_bytes()
-    assert zlib.crc32(ROM[16:]) == 0x57DD23D1, "the original Faxanadu (USA) ROM is required"
-    out = args.out.resolve()
-    shutil.rmtree(out, ignore_errors=True)
-    (out / "game").mkdir(parents=True)
-    shutil.copy2(args.build / "FaxanaduRecomp", out / "game")
-    for folder in ("assets", "mods"):
-        shutil.copytree(args.build / folder, out / "game" / folder)
-    exe = out / "game" / "FaxanaduRecomp"
-    env = dict(os.environ, NESRECOMP_NO_LAUNCHER="1", SDL_VIDEODRIVER="dummy", SDL_AUDIODRIVER="dummy")
-    extra_args = [part for arg in args.game_arg for part in arg.split("=", 1)]
-    log = open(out / "game.log", "w")
-    game = None
-    shots = []
-
-    def selection(on):
-        package, feature = PACKAGE
-        return (f'format_version = 1\n\n[[feature]]\npackage_id = "{package}"\nid = "{feature}"\n'
-                f"enabled = {'true' if on else 'false'}\n")
+    global ROM
+    args = parse_args(__doc__)
+    game = Game.from_args(args)
+    out, exe = game.out, game.exe
+    ROM = game.image
+    extra_args = [part for arg in game.game_args for part in arg.split("=", 1)]
 
     def launch(on=True):
-        nonlocal game
-        (out / "game" / "mods" / "state.toml").write_text(selection(on))
-        extra = list(extra_args)
-        if not args.realtime:
-            extra += ["--uncapped", "--exit-after", "100000000"]
-        game = subprocess.Popen([str(exe), str(args.rom.resolve()), "--hidden", "--tcp", str(PORT), *extra],
-                                env=env, stdout=log, stderr=subprocess.STDOUT)
-        for _ in range(100):
-            try:
-                frame()
-                break
-            except OSError:
-                time.sleep(0.1)
-        else:
-            raise AssertionError("the game did not start")
+        game.set_features({PACKAGE: on})
+        game.launch()
         assert indoor()["enabled"] == on, indoor()
-
-    def close():
-        try:
-            tcp("quit")
-        except Exception:
-            game.kill()
-        game.wait(10)
-
-    def shot(name):
-        path = out / f"{len(shots):02d}-{name}.png"
-        tcp("screenshot", layer="picture", path=str(path))
-        shots.append(path)
-        return path
 
     def mods(on):
         """A mod catalog for headless runs: the build's packages, this feature on or off."""
         root = out / ("mods-on" if on else "mods-off")
         if not root.exists():
             shutil.copytree(out / "game" / "mods" / "packages", root / "packages")
-            (root / "state.toml").write_text(selection(on))
+            (root / "state.toml").write_text(features_toml({PACKAGE: on}))
         return root
 
     def headless(state, schedule, frames, on=True, screenshot=None):
@@ -273,7 +147,7 @@ def main():
         (frame, buttons) pairs counted from the state's frame. Returns each
         frame's CPU RAM, after the frame."""
         # With the game's options: a Seamless state's world record loads only with Seamless on.
-        probe = subprocess.run([str(exe), str(args.rom.resolve()), "--load-state", str(state), "--frames", "0",
+        probe = subprocess.run([str(exe), str(game.rom), "--load-state", str(state), "--frames", "0",
                                 "--mods-root", str(mods(on)), "--no-save", *extra_args], capture_output=True, text=True)
         found = re.search(r"continuing at frame (\d+)", probe.stdout)
         assert found, probe.stdout + probe.stderr
@@ -282,13 +156,13 @@ def main():
         run.mkdir(exist_ok=True)
         (run / "input.txt").write_text("".join(f"{start + at} {buttons}\n" for at, buttons in sorted(schedule)))
         frame_log = run / "frames.bin"
-        cmd = [str(exe), str(args.rom.resolve()), "--load-state", str(state), "--input", str(run / "input.txt"),
+        cmd = [str(exe), str(game.rom), "--load-state", str(state), "--input", str(run / "input.txt"),
                "--frames", str(start + frames), "--frame-log", str(frame_log),
                "--frame-log-frames", f"{start}:{start + frames - 1}", "--mods-root", str(mods(on)), "--no-save",
                *extra_args]
         if screenshot:
             cmd += ["--screenshot", str(screenshot)]
-            shots.append(screenshot)
+            game.shots.append(screenshot.name)
         done = subprocess.run(cmd, capture_output=True, text=True)
         assert done.returncode == 0, done.stdout + done.stderr
         data = frame_log.read_bytes()
@@ -310,7 +184,7 @@ def main():
         slot = slot_of(rams[0], entity)
         hits = [i for i, m in enumerate(rams) if m[PLAYER_FLAGS] & ATTACKING and m[ATTACK_PHASE] == 2]
         assert hits, "no swing"
-        headless(state, [(2, "B"), (5, "-")], hits[0] + 3, on, screenshot=out / f"{len(shots):02d}-{name}.png")
+        headless(state, [(2, "B"), (5, "-")], hits[0] + 3, on, screenshot=out / f"{len(game.shots):02d}-{name}.png")
         return rams, slot
 
     def walk_to(x_min, x_max):
@@ -318,7 +192,7 @@ def main():
         Eolis's gate. (TextBox_Closed reads 0 in the towns with no box open.)"""
         for _ in range(600):
             if (ram(AREA), ram(SCREEN)) == (EOLIS, 0) and ram(TEXTBOX_CLOSED) == 0:
-                if waiting():
+                if typed():
                     act("a", 6, 14)
                 else:
                     wait(4)
@@ -374,7 +248,7 @@ def main():
         for _ in range(200):
             if ram(PORTRAIT) == NO_PORTRAIT and ram(TEXTBOX_CLOSED) != 0:
                 return
-            if waiting():
+            if typed():
                 act("a", 6, 14)
             else:
                 wait(4)
@@ -385,7 +259,7 @@ def main():
         act("select", 4, 6)
         until("the menu", lambda: ram(TEXTBOX_CLOSED) == 0 and ram(TEXTBOX_X + 2) == MENU_WIDTH, 300)
         wait(30)
-        menu = shot(name)
+        menu = game.shot(name)
         act("a", 4, 6)
         until("the weapons list", lambda: ram(TEXTBOX_X + 2) == WEAPONS_WIDTH, 300)
         wait(30)
@@ -445,7 +319,7 @@ def main():
         assert gold() == 100, gold()
         menu_to_weapons()
         assert ram(DATA_ARRAY) == LONG_SWORD, ram(DATA_ARRAY, 4)          # the weapons listed
-        shot("weapons-indoors")
+        game.shot("weapons-indoors")
         act("a", 4, 6)
         until("the menu to close", lambda: ram(TEXTBOX_CLOSED) != 0, 300)
         wait(20)
@@ -454,7 +328,7 @@ def main():
         assert weapons() == [HAND_DAGGER] and state["menu_choices"] == 1 and state["weapons_set"] == 1, state
         frame_ram = ram(0, 0x800)
         assert weapon_drawn(frame_ram), "no weapon by the hero"
-        shot("long-sword-in-forepaws-shop")
+        game.shot("long-sword-in-forepaws-shop")
         counter = out / "counter.cycstate"
         tcp("save_state", path=str(counter))
         print("ok: bought the Long Sword, and the menu equips it in the shop: he holds it, the dagger is listed")
@@ -533,16 +407,16 @@ def main():
         for _ in range(60):
             if ram(AREA) == BUILDINGS and ram(SCREEN) == 2 and not ram(PLAYER_IS_DEAD) and ram(TEXTBOX_CLOSED):
                 break
-            if waiting():
+            if typed():
                 act("a", 6, 14)
             else:
                 wait(10)
         wait(30)
         assert (ram(AREA), ram(SCREEN)) == (BUILDINGS, 2), (ram(AREA), ram(SCREEN))
         assert indoor()["weapon_in_hand"] == LONG_SWORD and weapon_drawn(ram(0, 0x800)), indoor()
-        shot("respawned-with-the-sword")
+        game.shot("respawned-with-the-sword")
         print("ok: a death respawns at Eolis's Guru with the Long Sword in hand")
-        close()
+        game.close()
 
         # 6. The remaster off: the original. (Quick shops is off with it, so he
         #    brings the Long Sword rather than buying it.)
@@ -557,21 +431,19 @@ def main():
         act("a", 4, 30)
         assert ram(TEXTBOX_CLOSED) == 0 and ram(TEXTBOX_X + 2) == WEAPONS_WIDTH, "the menu closed"
         assert ram(SELECTED_WEAPON) == HAND_DAGGER and ram(PLAYER_CUR_WEAPON) == NONE
-        shot("off-the-menu-refuses")
+        game.shot("off-the-menu-refuses")
         act("b", 4, 6)
         until("the menu to close", lambda: ram(TEXTBOX_CLOSED) != 0, 300)
         state = indoor()
         assert state["entered"] == 0 and state["menu_choices"] == 0 and state["weapons_set"] == 0, state
         print("ok: with the remaster off, the hero comes in empty-handed and the menu refuses the Long Sword")
-        print("screenshots:", ", ".join(p.name for p in shots))
+        print("screenshots:", ", ".join(game.shots))
     except BaseException:
-        try:
-            shot("failure")
-        except Exception:
-            pass
+        if game.running():
+            game.shot("failure")
         raise
     finally:
-        close()
+        game.close()
 
 
 if __name__ == "__main__":
