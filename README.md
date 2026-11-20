@@ -79,6 +79,12 @@ everyone without it, and finding the Pendant took it away. Now your weapon
 does its base damage until you find the Pendant, and the original's full
 damage once you have it. The Glove adds its bonus as before.
 
+**Damage numbers.** Every hit that takes HP shows how much, in the status
+bar's own digits, floating up from where it landed and fading: white for the
+damage you deal, with your weapon, your magic or a reflected flash, and pink
+for the damage you take. A killing blow shows the whole hit. Hits that take
+nothing, through Ointment, Block or a moment of invincibility, show nothing.
+
 **A taller dagger.** The Hand Dagger used to swing over low enemies that every
 sword hits, like the Zozura crawling outside Eolis. Now its swing reaches as
 low as the swords', so it hits them. It keeps its short reach, so the Long

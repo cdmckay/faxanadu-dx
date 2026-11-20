@@ -76,6 +76,14 @@ static void reduce_enemy_hp(void) {
 static bool drawn;
 static void invisible(void) { drawn = false; }            /* SpriteUpdateHandler_Invisible */
 
+/* Damage numbers (fax_damage.c): a reflection's number, reported before the
+ * committed call, while the sprite is still Sugata. */
+static unsigned numbered, numbered_amount, numbered_slot, numbered_entity;
+void fax_damage_enemy_hit(unsigned slot, unsigned amount) {
+    ++numbered; numbered_amount = amount; numbered_slot = slot;
+    numbered_entity = ram[CURRENT_SPRITES_ENTITIES + slot];
+}
+
 /* SpriteBehavior_FlashScreenHitPlayer ($AB26), X the sprite. */
 static void flash_behavior(void) {
     unsigned x = SLOT;
@@ -139,7 +147,7 @@ static void scene(uint8_t hero_x, uint8_t shield, bool hold) {
     ram[CURRENT_SPRITES_HIT_BY_MAGIC + SLOT] = 0xFF;
     next_flash();
     test_block_hold(hold);
-    sound_count = 0; finished = 0; kills = 0;
+    sound_count = 0; finished = 0; kills = 0; numbered = 0;
 }
 /* Through the warning to the flash: returns the frames until the damage site. */
 static unsigned to_the_flash(void) {
@@ -228,6 +236,7 @@ static void the_magic_shield_reflects_it(void) {
     to_the_flash();
     CHECK(ram[HP_U] == 80 && ram[SPRITE_HP + SLOT] == SUGATA_HP - SUGATA_REFLECTED && reflected == 1);
     CHECK(sound_count == 1 && last_sound() == 0x02 && finished == 1 && test_block_flashes() == 0);
+    CHECK(numbered == 1 && numbered_amount == SUGATA_REFLECTED && numbered_slot == SLOT && numbered_entity == SUGATA);
     CHECK(ram[CURRENT_SPRITES_HIT_BY_MAGIC + SLOT] == 0 && ram[CURRENT_SPRITES_HIT_BY_MAGIC_IFRAMES + SLOT] == 4);
     for (int f = 0; f < 4; ++f) frame();                  /* knocked back, as a Deluge would, away from him */
     CHECK(ram[CURRENT_SPRITES_HIT_BY_MAGIC + SLOT] == 0xFF && ram[CURRENT_SPRITES_XPOS + SLOT] == 120 + 12);
@@ -245,12 +254,13 @@ static void the_magic_shield_reflects_it(void) {
     next_flash();
     to_the_flash();
     CHECK(ram[CURRENT_SPRITES_ENTITIES + SLOT] == DEATH && kills == 1 && reflected == 2 && ram[HP_U] == 80);
+    CHECK(numbered == 2 && numbered_amount == SUGATA_REFLECTED && numbered_entity == SUGATA);   /* the kill's too */
     CHECK(!(ram[PPU_MASK] & 1) && band.kind == NO_BAND);  /* its death ends the band, as the game's ends greyscale */
     CHECK(sounds[sound_count - 2] == 0x02 && last_sound() == 0x03);
     /* Out of reach, the Magic Shield has nothing to send back. */
     scene(20, MAGIC, true);
     to_the_flash();
-    CHECK(ram[SPRITE_HP + SLOT] == SUGATA_HP && reflected == 0);
+    CHECK(ram[SPRITE_HP + SLOT] == SUGATA_HP && reflected == 0 && numbered == 0);
     /* Without Block held, it is a shield like the others: it hurts. */
     scene(100, MAGIC, false);
     to_the_flash();

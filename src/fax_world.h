@@ -12,3 +12,7 @@ void fax_world_tcp_setup(void);
  * the HUD) sat in the last picture fax_world_present composed of the world;
  * false when it presented none (off, or a scene it shows as the original's). */
 bool fax_world_origin(int *x,int *y);
+/* The same for any room of `area` placed in the map around the active one:
+ * where its top-left sat in that picture. False when the picture showed no
+ * world, or showed another area, or the room is not on its map. */
+bool fax_world_room_origin(int area,int room,int *x,int *y);

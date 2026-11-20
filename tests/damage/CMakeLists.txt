@@ -1,0 +1,15 @@
+cmake_minimum_required(VERSION 3.20)
+project(FaxanaduDamageTests C)
+set(CMAKE_C_STANDARD 11)
+if(NOT NESRECOMP_ROOT)
+    message(FATAL_ERROR "Set NESRECOMP_ROOT to the game's cycle engine checkout")
+endif()
+# fax_damage.c is included by the test, against Block's model of the machine
+# (../block/model.c).
+add_executable(damage_test damage_test.c ../block/model.c)
+target_include_directories(damage_test PRIVATE ../block ../../src ${NESRECOMP_ROOT}/runner/include ${NESRECOMP_ROOT}/runner/cyc)
+if(NOT MSVC)
+    target_compile_options(damage_test PRIVATE -Wall -Wextra)
+endif()
+enable_testing()
+add_test(NAME damage_unit COMMAND damage_test)
