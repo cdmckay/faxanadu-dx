@@ -83,6 +83,9 @@ cmake --build "$OUT/respawn" -j"$JOBS" >/dev/null
 cmake -S tests/recharge -B "$OUT/recharge" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/recharge" -j"$JOBS" >/dev/null
 "$OUT/recharge/recharge_test"
+cmake -S tests/entrances -B "$OUT/entrances" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/entrances" -j"$JOBS" >/dev/null
+"$OUT/entrances/entrances_test"
 
 echo "== game build"
 [ -f build-cycle/CMakeCache.txt ] || cmake -S . -B build-cycle -DCMAKE_BUILD_TYPE=Release -DNESRECOMP_ROM="$ROM" >/dev/null
@@ -173,6 +176,13 @@ respawn_e2e() {  # NAME [ARGS...]
 }
 respawn_e2e respawn-e2e & respawn=$!
 respawn_e2e respawn-e2e-seamless --game-arg=--world-view=seamless & respawn_seamless=$!
+echo "== end to end: fair entrances, by default and with Seamless on, alongside them"
+entrances_e2e() {  # NAME [ARGS...]
+  local name="$1"; shift
+  python3 tests/entrances/fair_entrances.py --build build-cycle --rom "$ROM" --out "$OUT/$name" "$@" > "$OUT/$name.log" 2>&1
+}
+entrances_e2e entrances-e2e & entrances=$!
+entrances_e2e entrances-e2e-seamless --game-arg=--world-view=seamless & entrances_seamless=$!
 echo "== end to end: recharging items, alongside them"
 python3 tests/recharge/recharging_items.py --build build-cycle --rom "$ROM" --out "$OUT/recharge-e2e" \
   > "$OUT/recharge-e2e.log" 2>&1 & recharge=$!
@@ -229,5 +239,9 @@ wait "$respawn_seamless" || failed=1
 sed 's/^/[resp+sw]  /' "$OUT/respawn-e2e-seamless.log"
 wait "$recharge" || failed=1
 sed 's/^/[recharge] /' "$OUT/recharge-e2e.log"
+wait "$entrances" || failed=1
+sed 's/^/[entrance] /' "$OUT/entrances-e2e.log"
+wait "$entrances_seamless" || failed=1
+sed 's/^/[entr+sw]  /' "$OUT/entrances-e2e-seamless.log"
 [ "$failed" = 0 ] || { echo "end-to-end tests failed; screenshots in $OUT/*-e2e*/" >&2; exit 1; }
 echo "all checks passed"

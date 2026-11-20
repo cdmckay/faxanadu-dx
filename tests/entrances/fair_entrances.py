@@ -74,13 +74,13 @@ SPOTS = [
     ("Mist $1F, building $26's way out", (MIST, 0x1F, 0x0A), ("building", 0x94), (SUGATA, 0x95, 0x97)),
     ("the tower on Mist $20's way out", (MIST, 0x20, 0x0A), ("door", 0x50, 0x0B, 0xA2, None), (GAWAINE, 0x96, 0x46)),
     ("Mist $29, building $20's way out", (MIST, 0x29, 0x0A), ("building", 0x7C), (IKEDA, 0x7D, 0x7E)),
-    ("Trunk $06, building $20's way out", (TRUNK, 0x06, 0x06), ("building", 0x5A), (ZOMBIE, 0x5B, 0x5D)),
+    ("Trunk $06, building $20's way out", (TRUNK, 0x06, 0x06), ("building", 0x5A), (ZOMBIE, 0x5B, 0x5C)),
     ("Branch $0E, the door from $0F", (BRANCH, 0x0E, 0x08), ("door", 0x0F, 0x09, 0x60, None), (LAMPREY, 0x6D, 0x6A)),
     ("Branch $13, the door from $14", (BRANCH, 0x13, 0x09), ("door", 0x14, 0x08, 0x80, KEY_K), (MASKMAN, 0x8C, 0x9A)),
-    ("Dartmoor $02, building $22's way out", (DARTMOOR, 0x02, 0x0C), ("building", 0x4A), (GIANT_STRIDER, 0x49, 0x47)),
+    ("Dartmoor $02, building $22's way out", (DARTMOOR, 0x02, 0x0C), ("building", 0x4A), (GIANT_STRIDER, 0x49, 0xA9)),
     ("Dartmoor $03, building $24's way out", (DARTMOOR, 0x03, 0x0C), ("building", 0xAB), (LAMPREY, 0xAA, 0xA8)),
     ("Dartmoor $08, building $25's way out", (DARTMOOR, 0x08, 0x0C), ("building", 0x41), (GAWAINE, 0x42, 0x46)),
-    ("the Castle of Fraternal's way out", (DARTMOOR, 0x0C, 0x0C), ("door", 0x10, 0x0D, 0x90, None), (WOLFMAN, 0xAB, 0xA2)),
+    ("the Castle of Fraternal's way out", (DARTMOOR, 0x0C, 0x0C), ("door", 0x10, 0x0D, 0x90, None), (WOLFMAN, 0xAB, 0xAD)),
 ]
 
 
@@ -204,7 +204,8 @@ def main():
             rams, first = arrive(state, src[0], src[1], walk, exit_frame + 120, False)
             sched = walk + [(first, "UP"), (first + 4, "-")]
             if key is not None:
-                sched += [(first + 8 + 16 * k + (k % 2) * 0, "A" if k % 2 == 0 else "-") for k in range(40)]
+                for k in range(20):                          # "I've used key.": A, 6 frames, every 16
+                    sched += [(first + 10 + 16 * k, "A"), (first + 16 + 16 * k, "-")]
             rams = runs.run(state, sched, first + 700, False)
             left = next(i for i in range(first, len(rams)) if (rams[i][AREA], rams[i][SCREEN]) != src)
             assert rams[left][IFRAMES] == 0, f"hit on {src} before the door"
@@ -278,11 +279,16 @@ def main():
             assert room and room["live"], room
             after = game.tcp("entrances_state")
             assert after["seamless"] > before["seamless"], (before, after)
+            last = after.get("last_room", {})
+            assert (last.get("area"), last.get("screen"), last.get("entity"), last.get("from"), last.get("to")) == \
+                (MIST, 0x06, GAWAINE, 0x89, 0x9E), after
+            # Where he is now: he started at the new block and has moved at
+            # most a pixel a tick since (or the stock one, 80 pixels off).
             xs = [x for e, x in zip(room["entities"], room["x"]) if e == GAWAINE]
-            stock_x, moved_x = (0x89 & 0x0F) << 4, (0x9E & 0x0F) << 4
-            assert any(abs(x - moved_x) < abs(x - stock_x) for x in xs), (room, xs)
-            print(f"ok: Seamless loads the Mist's screen 6 beside screen 5 with Sir Gawaine at x={xs} "
-                  f"({room['ticks']} ticks in), from {moved_x}, not {stock_x}")
+            moved_x = (0x9E & 0x0F) << 4
+            assert any(abs(x - moved_x) <= room["ticks"] + 8 for x in xs), (room, xs)
+            print(f"ok: Seamless loads the Mist's screen 6 beside screen 5 with Sir Gawaine moved to $9E "
+                  f"(x={xs} after {room['ticks']} ticks), on its isolated machine")
         print(f"all fair entrances checks passed ({runs.count} headless runs)")
     finally:
         game.close()

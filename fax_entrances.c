@@ -4,7 +4,7 @@
  * react: on his first update, or within a few frames, whatever he presses.
  * This moves just those, a little way off; every other enemy stays where the
  * original puts it (#44). The spots and the measurements behind each move are
- * in docs/GAME_INTERNALS.md, "Fair entrances".
+ * in docs/GAME_INTERNALS.md, "Enemy placement and fair entrances".
  *
  * Each screen's sprites come from bank 11's placement list, one (entity, YX)
  * pair at a time: Screen_LoadSpriteInfo reads a pair into CurrentSprite_Entity,
@@ -14,7 +14,8 @@
  * building's or a temple's way out, a region's door and a town's edge; the
  * main loop for a scroll), so a hook at that routine's entry rewrites the
  * position of a listed enemy before anything reads it. No ROM is changed and
- * no read override is used: the placement byte is only ever read here.
+ * no read override is used: bank 11 serves its stock bytes, and only their
+ * copy in RAM is changed, before the slot is filled.
  *
  * Seamless (fax_world.c) loads a neighbouring room's sprites with the same
  * routine on an isolated machine, where hooks do not run, so it calls
@@ -58,14 +59,26 @@ enum { RAIDEN = 0x04, ZOMBIE = 0x06, SUGATA = 0x18, GIANT_STRIDER = 0x1E, SIR_GA
 enum { TRUNK = 1, MIST = 2, BRANCH = 5, DARTMOOR = 6 };
 
 static const FaxEntranceMove moves[] = {
-    { MIST, 0x06, SIR_GAWAINE, 0x89, 0x9D },
+    { TRUNK,    0x06, ZOMBIE,        0x5B, 0x5C },   /* building $20's way out (160,80): hit in 8 */
+    { MIST,     0x06, SIR_GAWAINE,   0x89, 0x9E },   /* Mascon's temple (144,128), building $22's (112,128): 0 */
+    { MIST,     0x17, RAIDEN,        0xA5, 0xA9 },   /* the Tower of Mist's way out (80,160): 0 */
+    { MIST,     0x1F, SUGATA,        0x95, 0x97 },   /* building $26's way out (64,144): 4 */
+    { MIST,     0x20, SIR_GAWAINE,   0x96, 0x46 },   /* the tower on $50-$52's way out (96,144): 0 */
+    { MIST,     0x29, IKEDA,         0x7D, 0x7E },   /* building $20's way out (192,112): 4 */
+    { BRANCH,   0x0E, LAMPREY,       0x6D, 0x6A },   /* the door from $0F (224,96): 3 */
+    { BRANCH,   0x13, MASKMAN,       0x8C, 0x9A },   /* the door from $14 (224,128): 16, no escape */
+    { DARTMOOR, 0x02, GIANT_STRIDER, 0x49, 0xA9 },   /* building $22's way out (160,64): 0 */
+    { DARTMOOR, 0x03, LAMPREY,       0xAA, 0xA8 },   /* building $24's way out (176,160): 3 */
+    { DARTMOOR, 0x08, SIR_GAWAINE,   0x42, 0x46 },   /* building $25's way out (16,64), (32,64): 0 */
+    { DARTMOOR, 0x0C, WOLFMAN,       0xAB, 0xAD },   /* the Castle of Fraternal's way out (144,64): 10 */
 };
 enum { MOVES = sizeof moves / sizeof moves[0] };
 
 static bool enabled;
 static unsigned moved;                       /* enemies the hook moved since the feature came on */
 static unsigned seamless;                    /* enemies moved in Seamless's isolated room loads */
-static int last = -1;                        /* the last move used, an index into moves */
+static int last = -1;                        /* the last move the hook used, an index into moves */
+static int last_room = -1;                   /* the last move made in an isolated room load */
 
 static uint8_t peek(uint16_t a) { return cyc_mod_peek(a); }
 static void poke(uint16_t a, uint8_t v) { cyc_mod_poke(a, v); }
@@ -103,6 +116,7 @@ unsigned fax_entrances_room_loaded(void) {
         if (i < 0) continue;
         poke((uint16_t)(SPRITE_X + k), (uint8_t)(moves[i].to << 4));
         poke((uint16_t)(SPRITE_Y + k), (uint8_t)(moves[i].to & 0xF0));
+        last_room = i;
         ++n;
     }
     seamless += n;
@@ -113,7 +127,7 @@ static const char *const hook_id = "faxanadu.fair-entrances.populate";
 static void deactivate(void) {
     enabled = false;
     moved = seamless = 0;
-    last = -1;
+    last = last_room = -1;
     nes_mod_set_function_hook_enabled(hook_id, 0);
 }
 static void activate(void) {
@@ -125,13 +139,18 @@ static void activate(void) {
 #ifdef CYC_WITH_SDL
 static void entrances_state(int id, const char *line) {
     (void)line;
-    char fields[240];
-    int n = snprintf(fields, sizeof fields, "\"enabled\":%s,\"moved\":%u,\"seamless\":%u,\"moves\":%d",
-                     enabled ? "true" : "false", moved, seamless, (int)MOVES);
-    if (last >= 0 && n > 0 && (size_t)n < sizeof fields)
-        snprintf(fields + n, sizeof fields - (size_t)n,
-                 ",\"last\":{\"area\":%u,\"screen\":%u,\"entity\":%u,\"from\":%u,\"to\":%u}",
-                 moves[last].area, moves[last].screen, moves[last].entity, moves[last].from, moves[last].to);
+    char fields[400];
+    size_t n = (size_t)snprintf(fields, sizeof fields, "\"enabled\":%s,\"moved\":%u,\"seamless\":%u,\"moves\":%d",
+                                enabled ? "true" : "false", moved, seamless, (int)MOVES);
+    const struct { const char *name; int i; } records[] = { { "last", last }, { "last_room", last_room } };
+    for (unsigned r = 0; r < 2; ++r) {
+        int i = records[r].i;
+        if (i < 0 || n >= sizeof fields) continue;
+        n += (size_t)snprintf(fields + n, sizeof fields - n,
+                              ",\"%s\":{\"area\":%u,\"screen\":%u,\"entity\":%u,\"from\":%u,\"to\":%u}",
+                              records[r].name, moves[i].area, moves[i].screen, moves[i].entity, moves[i].from,
+                              moves[i].to);
+    }
     cyc_tcp_ok(id, fields);
 }
 void fax_entrances_tcp_setup(void) {

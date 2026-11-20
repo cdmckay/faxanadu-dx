@@ -1260,6 +1260,104 @@ was saved with, through the temple, and any temple spawn forgets the
 checkpoint (the temple's door is the next way in), so a stored one would
 never be read.
 
+## Enemy placement and fair entrances (`fax_entrances.c`)
+
+**Where enemies start.** Bank 11's list for the screen (see "Areas, screens
+and zones") is read by `Screen_LoadSpriteInfo` (`$C1B4`) one (entity, `YX`)
+pair at a time into `CurrentSprite_Entity` (`$038B`), `CurrentSprite_YPos`
+(`$038A`, `YX & $F0`) and `CurrentSprite_XPos` (`$0389`, `YX << 4`), and
+`Sprites_PopulateNextAvailableSprite` (`$C205`, its only caller) copies them
+into the highest free of the 8 slots (`CurrentSprites_Entities`, `$02CC`;
+`CurrentSprites_XPos_Full`, `$BA`; `CurrentSprites_YPos`, `$C2`). Every way
+onto a screen loads it so: `Screen_SetupSprites` for every `Screen_Load`, and
+`Game_MainLoop` itself for a scroll (`@LAB_PRG15_MIRROR__dbaf` horizontally,
+before the scroll plays, and `__db91` vertically). The enemies do not move or
+show until the hero's **first update** on the screen (the main loop's first
+pass after the load or the scroll), and the first picture with them on it is
+the frame after that.
+
+Seamless loads a neighbouring room on an isolated machine with the same
+routine (`fax_world.c`'s `initialize`, `call(0xc1b4)`), before it allows
+hooks there, so a hook at `$C205` does not run for it.
+
+**What counts as unfair** (#44): an enemy that hits the hero on entering a
+screen before the player can possibly react. Measured for every way onto every
+screen with enemies, headless, from a temple's save state (its door edited to
+lead there, as `tests/zones/zone_names.py` does): every door within an area,
+region's door, town's edge, building's way out (at both columns: the door's
+and the one to its left, since `Game_EnterBuilding` keeps `Player_PosX_Block
+& $F0` and Up finds the door at `X + 7`), temple's way out, the Trunk's climb
+(`$0C` and `$16`), and every screen edge: walking left or right at each row
+the hero can stand at the edge, climbing a ladder up or down through it, and
+dropping through a hole, holding the way in and letting go at the first
+update. With nothing pressed after the arrival, the first hit
+(`Player_InvincibilityPhase` set to `$3C`) is timed from the first update.
+For the early ones, each move (walk left or right, jump straight or either
+way, swing, Up back through the door or into the building, Down) was then
+started at every frame k after the first update, to find the latest k that
+still avoids the hit. The first picture with the enemy shows on frame 1, and
+a player needs about 12 frames (200 ms) to respond to it, so **the first
+input that can be a reaction is at k = 13**: a way in is unfair when nothing
+pressed from then on avoids the hit.
+
+**The moves.** `fax_entrances.c` hooks `$C205` and rewrites
+`CurrentSprite_XPos` and `CurrentSprite_YPos` for a listed (area, screen,
+entity, placement) before the routine copies them; for Seamless's rooms,
+`fax_entrances_room_loaded` moves the listed enemies still on their placement
+in the slots, right after `initialize` loads them. No ROM is changed and no
+read override is used. Each new block is the nearest tried where, from every
+way onto the screen, nothing hits the hero within 30 frames of the first
+update (or ever, within 240). Zone respawn replays a zone's way in after a
+death, so two of these came back at every death: leaving the Tower of Mist
+enters the Mist (onto the Raiden), and leaving the Castle of Fraternal enters
+Dartmoor (above the wolfmen).
+
+| Screen | Way in (hero) | Enemy | Stock: hit, latest escape | Moved to | Then |
+|---|---|---|---|---|---|
+| Mist `$06` | Mascon's temple (144,128); building `$22` (112,128) | Sir Gawaine `$89` | 0, none; 0, none | `$9E` (224,144), the floor's right end | No hit from any way in |
+| Mist `$17` | The Tower of Mist's way out (80,160) | Raiden `$A5`, on the spot | 0, none | `$A9` (144,160) | First hit 36 |
+| Mist `$1F` | Building `$26` (64,144); (48,144) | Sugata `$95` | 4, Up at 4; 20, Left at 16 | `$97` (112,144) | 66, 82 |
+| Mist `$20` | The way out of the tower on `$50-$52` (96,144) | Sir Gawaine `$96`, in the same closet | 0, none | `$46` (96,64), on the closet's roof | No hit |
+| Mist `$29` | Building `$20` (192,112) | Ikeda `$7D` | 4, Up at 4 | `$7E` (224,112) | 104 (and 56 from (176,112), stock 162) |
+| Trunk `$06` | Building `$20` (160,80) | Zombie `$5B` | 8, Up at 8 | `$5C` (192,80) | 50 |
+| Branch `$0E` | The door from `$0F` (224,96) | Lamprey `$6D` | 3, none | `$6A` (160,96) | No hit |
+| Branch `$13` | The door from `$14` (224,128) | Maskman `$8C` | 16, none | `$9A` (160,144) | 57 |
+| Dartmoor `$02` | Building `$22` (160,64); (176,64) | Giant Strider `$49` | 0, none; 16, Up at 16 | `$A9` (144,160), the lower floor | No hit from any door |
+| Dartmoor `$03` | Building `$24` (176,160) | Lamprey `$AA` | 3, Right at 3 | `$A8` (128,160) | 105 |
+| Dartmoor `$08` | Building `$25` (16,64), (32,64) | Sir Gawaine `$42`, on the door | 0, none | `$46` (96,64) | No hit |
+| Dartmoor `$0C` | The Castle of Fraternal's way out (144,64): he drops to the floor | Wolfman `$AB` | 10, none (in the air) | `$AD` (208,160) | No hit |
+
+Why those blocks and not nearer ones, where nearer ones were tried:
+
+- Mist `$06`: Sir Gawaine's reach is wide (he hits at 32 pixels); `$9D`
+  (208,144) hits building `$23`'s way out at 0, and the platform the temple
+  and building `$22` share has no block clear of both.
+- Mist `$20`: the closet the tower opens into is five blocks wide, with the
+  ladder down to `$27` at its left; `$98` hits the arrival at 0 and `$94` the
+  climb up from `$27` at 28, as the stock block does.
+- Trunk `$06`: `$5D` (208,80) hits the walk in from `$07` at the platform's
+  height at 26.
+- Dartmoor `$02`: every block of the upper floor is near one of its four
+  buildings' doors (`$47` hits building `$21`'s way out at 20, `$48` building
+  `$22`'s at 16).
+- Dartmoor `$0C`: the floor's left blocks (`$A1`, `$A2`, `$A4`-`$A6`) hit the
+  walk in from `$0D` at 12-28; `$AC` still hits the landing at 10.
+
+**Near misses left alone** (fair: something pressed after k = 13 avoids the
+hit):
+
+| Screen | Way in (hero) | First hit, latest escape |
+|---|---|---|
+| Dartmoor `$02` | Building `$23` (208,64) | 48, Right at 40 |
+| Trunk `$06` | Building `$20` (144,80) | 50, a swing at 40 (and moved: 92) |
+| Dartmoor `$02` | Building `$21` (80,64) | 52, Up at 50 |
+| Branch `$00` | The Mist's region door (96,160) | 52, Left or a swing at 40 |
+| Dartmoor `$03` | Building `$24` (192,160) | 54, Up or Right at 50 |
+| Trunk `$29` | The door from `$28` (48,144) | 56, Left at 32 |
+
+Every other way in is first hit 60 or more frames after the first update, or
+not at all.
+
 ## Items and the inventory
 
 Five categories, each with a count, a selected entry and a list. Entries are
@@ -1932,6 +2030,16 @@ addresses, and `tools/check_allocations.py` enforces it.
   temple is laid out as before, and the checkpoint is forgotten until the hero
   walks out. Its save-state record holds the checkpoint and where a death is
   (see "Entrances and zone respawn").
+- **Fair entrances** (`fax_entrances.c`). The enemies placed where a way onto
+  their screen puts the hero, so they hit him before anyone could react, start
+  on another block (table in "Enemy placement and fair entrances"). A hook at
+  `Sprites_PopulateNextAvailableSprite` (`$C205`) rewrites
+  `CurrentSprite_XPos` and `CurrentSprite_YPos` for a listed placement before
+  the slot is filled; Seamless calls `fax_entrances_room_loaded` after loading
+  a neighbouring room on an isolated machine, where hooks do not run, and it
+  moves the listed enemies in that machine's slots. No ROM, no read overrides,
+  no state of its own: the positions are the game's sprite RAM, which save
+  states keep.
 
 - **Save files** (`fax_save.c`, `fax_files.c`). Three files instead of
   mantras; see "Save files" below.
