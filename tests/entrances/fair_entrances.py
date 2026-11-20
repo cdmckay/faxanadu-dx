@@ -51,6 +51,8 @@ from play import (Game, fixture, AREA, SCREEN, X, Y, IFRAMES, HP, TEMPLE_SPAWN_P
                   LONG_SWORD, LEATHER_ARMOR, SMALL_SHIELD, BUILDINGS, NEGATIVE_THOUGHTS)
 
 SPRITE_X, SPRITE_Y, SHADOW_OAM = 0xBA, 0xC2, 0x700
+X_FRACTION, FLAGS, STATUS = 0x9D, 0xA4, 0xA5                        # Player_PosX_Frac, Player_Flags, _StatusFlag
+HOLD = {"right": "RIGHT", "left": "LEFT", "up": "UP", "down": "DOWN", "drop": None}
 SAVED_AREA, SAVED_SCREEN, SAVED_PALETTE, SAVED_POS = 0x3D5, 0x3D6, 0x3D7, 0x3D8
 SELECTED_ITEM, AREA_REGION = 0x3C1, 0x435
 SCROLL_DIRECTION, SCREEN_READY, INTERRUPTS_ON = 0x54, 0x0E, 0x13
@@ -107,7 +109,7 @@ class Runs:
                 f'enabled = {"true" if on else "false"}\n')
         return root
 
-    def run(self, state, schedule, frames, on, screenshot=None):
+    def run(self, state, schedule, frames, on, screenshot=None, save=None):
         probe = subprocess.run([str(self.exe), str(self.rom), "--load-state", str(state), "--frames", "0",
                                 "--no-save", *self.args], capture_output=True, text=True)
         start = int(re.search(r"continuing at frame (\d+)", probe.stdout).group(1))
@@ -122,6 +124,8 @@ class Runs:
                "--no-save", *self.args]
         if screenshot:
             cmd += ["--screenshot", str(screenshot)]
+        if save:                                                    # (frame, path): a save state after that frame
+            cmd += ["--save-state", f"{start + save[0]}:{save[1]}"]
         done = subprocess.run(cmd, capture_output=True, text=True)
         assert done.returncode == 0, done.stdout + done.stderr
         data = log.read_bytes()
@@ -211,6 +215,41 @@ def main():
             assert rams[left][IFRAMES] == 0, f"hit on {src} before the door"
             return [step for step in sched if step[0] < left] + [(left, "-")], left
 
+        seamless_edges = []
+
+        def edge_state(tag, area, way):
+            """The hero at the edge of the source screen, its enemies gone, his
+            invincibility spent and HP full (prerequisites, not coverage): from
+            the walk out of the temple to there, saved a second later."""
+            _, kind, src, src_palette, col, row = way
+            there = out / f"{tag}-src.cycstate"
+            fixture(temple, there, {SAVED_AREA: area, SAVED_SCREEN: src, SAVED_PALETTE: src_palette,
+                                    SAVED_POS: row << 4 | col, AREA_REGION: REGION[area], HP: 0x50})
+            raw = out / f"{tag}-raw.cycstate"
+            ready = out / f"{tag}-edge.cycstate"
+            walk = [(0, "RIGHT"), (exit_frame, "-")]
+            clear = {**{SPRITE_ENTITY + k: 0xFF for k in range(8)}, IFRAMES: 0, HP: 0x50}
+            if kind == "drop":
+                # He falls on his first update there: saved as the screen
+                # finishes loading, before it.
+                rams = runs.run(there, walk, exit_frame + 60, False)
+                f = next(i for i in range(exit_frame, len(rams)) if (rams[i][AREA], rams[i][SCREEN]) == (area, src)
+                         and rams[i][SCREEN_READY] == 0 and rams[i][SCROLL_DIRECTION] == 0xFF)
+                runs.run(there, walk, f + 1, False, save=(f, raw))
+                fixture(raw, ready, clear)
+            else:
+                runs.run(there, walk, exit_frame + 60, False, save=(exit_frame + 59, raw))
+                fixture(raw, ready, {**clear, STATUS: 0, X: col * 16, X_FRACTION: 0, Y: row * 16,
+                                     FLAGS: 0x00 if kind == "left" else 0x40})
+            return ready
+
+        def scrolled_in(rams, area, screen):
+            """The first update on (area, screen) after a scroll: the frame after
+            the one the scroll ends on there."""
+            return next(i + 1 for i, r in enumerate(rams)
+                        if (r[AREA], r[SCREEN]) == (area, screen) and r[SCROLL_DIRECTION] == 0xFF
+                        and r[SCREEN_READY] == 0)
+
         for name, (area, screen, palette), way, (entity, stock, moved) in SPOTS:
             if args.only and not any(o in name for o in args.only):
                 continue
@@ -219,6 +258,13 @@ def main():
             if way[0] == "temple":
                 state = temple
                 sched, frames = [(0, "RIGHT"), (exit_frame, "-")], exit_frame + 120
+            elif way[0] == "edge":
+                state = edge_state(tag, area, way)
+                key = HOLD[way[1]]
+                sched, frames = ([(0, key)] if key else []), 420
+                if seamless:
+                    seamless_edges.append((name, state, key, (area, screen, entity, stock, moved)))
+                    continue
             elif way[0] == "building":
                 fixture(temple, state, {SAVED_AREA: area, SAVED_SCREEN: screen, SAVED_PALETTE: palette,
                                         SAVED_POS: way[1], AREA_REGION: REGION[area], HP: 0x50})
@@ -234,7 +280,11 @@ def main():
                 frames = left + 120
             seen = {}
             for on in (False, True):
-                rams, first = arrive(state, area, screen, sched, frames + SAFE + 40, on)
+                if way[0] == "edge":
+                    rams = runs.run(state, sched, frames, on)
+                    first = scrolled_in(rams, area, screen)
+                else:
+                    rams, first = arrive(state, area, screen, sched, frames + SAFE + 40, on)
                 before = rams[first - 1]
                 slots = [k for k in range(8) if before[SPRITE_ENTITY + k] == entity and
                          before[SPRITE_Y + k] | before[SPRITE_X + k] >> 4 in (stock, moved)]
@@ -243,7 +293,9 @@ def main():
                 k = slots[0]
                 at = before[SPRITE_Y + k] | before[SPRITE_X + k] >> 4
                 assert at == (moved if on else stock), f"{name}: the enemy starts at {at:#04x}, feature {on}"
-                hit = next((i - first for i in range(first, len(rams)) if rams[i][IFRAMES] == 0x3C), None)
+                assert before[IFRAMES] == 0, f"{name}: still invincible on arrival"
+                hit = next((i - first for i in range(first, len(rams))
+                            if rams[i][IFRAMES] == 0x3C and rams[i - 1][IFRAMES] != 0x3C), None)
                 hp = (rams[first - 1][HP], rams[-1][HP])
                 seen[on] = hit
                 if on:
@@ -256,6 +308,28 @@ def main():
                   f"frames after his first update; moved to {moved:#04x}, "
                   + ("nothing hits him" if seen[True] is None else f"the first hit is {seen[True]} frames in")
                   + f" ({SAFE} frames watched)", flush=True)
+
+        if seamless_edges:
+            # With Seamless on, an edge is no blind way in: the room beyond is
+            # on screen and its actors run before he crosses. What matters is
+            # that the enemy starts at its new block there too, whichever
+            # machine loads the room (Seamless's isolated one, or the game's
+            # own scroll where a seam is not joined): the move's use count.
+            table = [tuple(m) for m in game.tcp("entrances_state")["table"]]
+            for name, state, key, (area, screen, entity, stock, moved) in seamless_edges:
+                i = table.index((area, screen, entity, stock, moved))
+                used = game.tcp("entrances_state")["uses"][i]
+                game.tcp("load_state", path=str(state))
+                for _ in range(60):
+                    if game.tcp("entrances_state")["uses"][i] > used:
+                        break
+                    if key:
+                        game.tcp("action", name=key.lower(), frames=8)
+                    game.wait(8)
+                after = game.tcp("entrances_state")["uses"][i]
+                assert after > used, f"{name}: the move was not made ({used} -> {after})"
+                print(f"ok: {name}: with Seamless, the room beyond is loaded with {entity:#04x} at {moved:#04x}",
+                      flush=True)
 
         if seamless:
             # 3. Seamless's neighbouring room, loaded on an isolated machine.

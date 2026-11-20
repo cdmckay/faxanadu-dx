@@ -35,6 +35,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 /* Fixed bank */
 #define POPULATE_SPRITE     0xC205u   /* Sprites_PopulateNextAvailableSprite: LDX #$07, STX CurrentSpriteIndex */
@@ -79,6 +80,7 @@ static unsigned moved;                       /* enemies the hook moved since the
 static unsigned seamless;                    /* enemies moved in Seamless's isolated room loads */
 static int last = -1;                        /* the last move the hook used, an index into moves */
 static int last_room = -1;                   /* the last move made in an isolated room load */
+static unsigned uses[MOVES];                 /* each move's uses, by the hook or in a room load */
 
 static uint8_t peek(uint16_t a) { return cyc_mod_peek(a); }
 static void poke(uint16_t a, uint8_t v) { cyc_mod_poke(a, v); }
@@ -101,7 +103,7 @@ static int populate_hook(uint16_t addr) {
     if (i < 0) return 0;
     poke(CURRENT_X, (uint8_t)(moves[i].to << 4));
     poke(CURRENT_Y, (uint8_t)(moves[i].to & 0xF0));
-    if (!cyc_mod_isolated()) { ++moved; last = i; }
+    if (!cyc_mod_isolated()) { ++moved; ++uses[i]; last = i; }
     return 0;
 }
 
@@ -117,6 +119,7 @@ unsigned fax_entrances_room_loaded(void) {
         poke((uint16_t)(SPRITE_X + k), (uint8_t)(moves[i].to << 4));
         poke((uint16_t)(SPRITE_Y + k), (uint8_t)(moves[i].to & 0xF0));
         last_room = i;
+        ++uses[i];
         ++n;
     }
     seamless += n;
@@ -128,6 +131,7 @@ static void deactivate(void) {
     enabled = false;
     moved = seamless = 0;
     last = last_room = -1;
+    memset(uses, 0, sizeof uses);
     nes_mod_set_function_hook_enabled(hook_id, 0);
 }
 static void activate(void) {
@@ -139,7 +143,7 @@ static void activate(void) {
 #ifdef CYC_WITH_SDL
 static void entrances_state(int id, const char *line) {
     (void)line;
-    char fields[400];
+    char fields[2048];
     size_t n = (size_t)snprintf(fields, sizeof fields, "\"enabled\":%s,\"moved\":%u,\"seamless\":%u,\"moves\":%d",
                                 enabled ? "true" : "false", moved, seamless, (int)MOVES);
     const struct { const char *name; int i; } records[] = { { "last", last }, { "last_room", last_room } };
@@ -151,6 +155,13 @@ static void entrances_state(int id, const char *line) {
                               records[r].name, moves[i].area, moves[i].screen, moves[i].entity, moves[i].from,
                               moves[i].to);
     }
+    for (int i = 0; i < MOVES && n + 8 < sizeof fields; ++i)
+        n += (size_t)snprintf(fields + n, sizeof fields - n, "%s%u", i ? "," : ",\"uses\":[", uses[i]);
+    if (n + 2 < sizeof fields) { fields[n++] = ']'; fields[n] = 0; }
+    for (int i = 0; i < MOVES && n + 32 < sizeof fields; ++i)
+        n += (size_t)snprintf(fields + n, sizeof fields - n, "%s[%u,%u,%u,%u,%u]", i ? "," : ",\"table\":[",
+                              moves[i].area, moves[i].screen, moves[i].entity, moves[i].from, moves[i].to);
+    if (n + 2 < sizeof fields) { fields[n++] = ']'; fields[n] = 0; }
     cyc_tcp_ok(id, fields);
 }
 void fax_entrances_tcp_setup(void) {

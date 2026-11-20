@@ -178,6 +178,10 @@ int main(void) {
         for (unsigned j = 0; j < screens[i].n; ++j) n += move_for(&screens[i], j) != NULL;
         CHECK(moved == before + n);
         CHECK(last >= 0 && moves[last].area == screens[i].area && moves[last].screen == screens[i].screen);
+        for (unsigned j = 0; j < screens[i].n; ++j) {
+            const FaxEntranceMove *m = move_for(&screens[i], j);
+            if (m) CHECK(uses[m - moves] >= 1);
+        }
         /* Seamless's call after a live load: they are already moved. */
         CHECK(fax_entrances_room_loaded() == 0);
         check_moved(&screens[i]);
@@ -221,7 +225,8 @@ int main(void) {
     /* Reset: off again, the hook disabled, nothing kept. */
     deactivate();
     CHECK(hook_on == 0);
-    CHECK(moved == 0 && seamless == 0 && last == -1);
+    CHECK(moved == 0 && seamless == 0 && last == -1 && last_room == -1);
+    for (unsigned m = 0; m < MOVES; ++m) CHECK(uses[m] == 0);
     for (unsigned i = 0; i < SCREENS; ++i) {
         load_screen(&screens[i]);
         check_stock(&screens[i]);
