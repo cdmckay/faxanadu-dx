@@ -389,7 +389,7 @@ static int state_validate(const uint8_t *buf, int len) {
 }
 static int state_set(const uint8_t *buf, int len) {
     if (!state_validate(buf, len)) return 0;
-    count = len ? buf[1] : 0;
+    count = len && enabled ? buf[1] : 0;   /* a state saved with the remaster on, loaded with it off: none */
     for (unsigned i = 0; i < count; ++i) {
         const uint8_t *p = buf + 2 + i * ENTRY;
         numbers[i] = (Number){ p[0], p[1], p[2], p[3], p[4], get16(p + 5), get16(p + 7), get16(p + 9),

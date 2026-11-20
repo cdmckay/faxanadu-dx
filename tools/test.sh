@@ -83,6 +83,9 @@ cmake --build "$OUT/respawn" -j"$JOBS" >/dev/null
 cmake -S tests/recharge -B "$OUT/recharge" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/recharge" -j"$JOBS" >/dev/null
 "$OUT/recharge/recharge_test"
+cmake -S tests/damage -B "$OUT/damage" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/damage" -j"$JOBS" >/dev/null
+"$OUT/damage/damage_test"
 
 echo "== game build"
 [ -f build-cycle/CMakeCache.txt ] || cmake -S . -B build-cycle -DCMAKE_BUILD_TYPE=Release -DNESRECOMP_ROM="$ROM" >/dev/null
@@ -181,6 +184,13 @@ python3 tests/recharge/recharging_items.py --build build-cycle --rom "$ROM" --ou
 echo "== end to end: the one Faxanadu Remastered switch, on by default and off for the original, alongside them"
 python3 tests/remastered/one_switch.py --build build-cycle --rom "$ROM" --out "$OUT/one-switch-e2e" \
   > "$OUT/one-switch-e2e.log" 2>&1 & one_switch=$!
+echo "== end to end: damage numbers, by default and with Seamless on, alongside them"
+damage_e2e() {  # NAME [ARGS...]
+  local name="$1"; shift
+  python3 tests/damage/damage_numbers.py --build build-cycle --rom "$ROM" --out "$OUT/$name" "$@" > "$OUT/$name.log" 2>&1
+}
+damage_e2e damage-e2e & damage=$!
+damage_e2e damage-e2e-seamless --game-arg=--world-view=seamless & damage_seamless=$!
 failed=0
 wait "$default" || failed=1
 sed 's/^/[default]  /' "$OUT/travel-e2e.log"
@@ -236,5 +246,9 @@ wait "$recharge" || failed=1
 sed 's/^/[recharge] /' "$OUT/recharge-e2e.log"
 wait "$one_switch" || failed=1
 sed 's/^/[switch]   /' "$OUT/one-switch-e2e.log"
+wait "$damage" || failed=1
+sed 's/^/[damage]   /' "$OUT/damage-e2e.log"
+wait "$damage_seamless" || failed=1
+sed 's/^/[dmg+sw]   /' "$OUT/damage-e2e-seamless.log"
 [ "$failed" = 0 ] || { echo "end-to-end tests failed; screenshots in $OUT/*-e2e*/" >&2; exit 1; }
 echo "all checks passed"
