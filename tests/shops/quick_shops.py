@@ -50,19 +50,14 @@ building), the gold, and what the hero carries.
 Each list is checked in the picture too: the list's frame, and its hint line
 inside it, in the text color, and an owned item's OWNED in its price's cells.
 """
-import argparse
-import json
-import os
 from pathlib import Path
-import shutil
-import socket
 import struct
-import subprocess
 import sys
-import time
 import zlib
 
-PORT = 0                                                            # set in main
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
+from fax_e2e import Game, act, fixture, frame, parse_args, ram, tcp, until, wait  # noqa: E402
+
 AREA, SCREEN, PLAYER_X = 0x24, 0x63, 0x9E
 TEXTBOX_CLOSED, MESSAGE_ID = 0x20C, 0x213
 GOLD, HP = 0x392, 0x431
@@ -72,8 +67,8 @@ NUMBER_OF_WEAPONS, NUMBER_OF_ITEMS = 0x3C2, 0x3C6
 PORTRAIT = 0x3C7
 AREA_SAVED_AREA, AREA_SAVED_SCREEN, AREA_SAVED_PALETTE, PLAYER_SAVED_POS = 0x3D5, 0x3D6, 0x3D7, 0x3D8
 AREA_REGION, VISIT_COUNT = 0x435, 0x43A                             # Screen_TrackedVisitCount
-PLAYER_Y, SCREEN_READY, SPRITE_ENTITIES = 0xA1, 0x0E, 0x2CC          # CurrentSprites_Entities: 8 slots
-EOLIS, TRUNK, TOWNS, BUILDINGS, NO_PORTRAIT = 0, 1, 3, 4, 0xFF
+SCREEN_READY, SPRITE_ENTITIES = 0x0E, 0x2CC                         # CurrentSprites_Entities: 8 slots
+TRUNK, TOWNS, BUILDINGS, NO_PORTRAIT = 1, 3, 4, 0xFF
 FOREPAW, FOREPAW_TOOLS_DOOR, FOREPAW_TOOL_SHOP = 0x02, 0x9D, 0x0F    # the towns' screen 2, its door, building $0F
 PALETTE_TOWN, PALETTE_TOWER = 0x1B, 0x07
 HAND_DAGGER, LONG_SWORD, GIANT_BLADE, DRAGON_SLAYER = 0x00, 0x01, 0x02, 0x03
@@ -91,52 +86,6 @@ LIST_FRAME = (80, 64)                                               # the list's
 HINT = (96, 208)                                                    # its hint line: tile 12,26
 PAGE_ROW, LINE_END = 72, 224                                        # the page: row 9, ending at column 27
 PACKAGE = ("faxanadu.remastered", "remastered")                  # the one switch: off is the original game
-
-
-def tcp(cmd, **kw):
-    with socket.create_connection(("127.0.0.1", PORT), 5) as s:
-        s.settimeout(30)
-        f = s.makefile("rwb", buffering=0)
-        f.write((json.dumps(dict(id=1, cmd=cmd, **kw)) + "\n").encode())
-        reply = json.loads(f.readline())
-    if not reply.get("ok"):
-        raise RuntimeError(f"{cmd}: {reply}")
-    return reply
-
-
-def free_port():
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
-def frame():
-    return tcp("ping")["frame"]
-
-
-def wait(frames):
-    end = frame() + frames
-    while frame() < end:
-        time.sleep(0.005)
-
-
-def ram(addr, n=1):
-    data = bytes.fromhex(tcp("read_ram", addr=addr, len=n)["hex"])
-    return data[0] if n == 1 else data
-
-
-def until(what, test, frames=1200):
-    end = frame() + frames
-    while frame() < end:
-        if test():
-            return
-        time.sleep(0.005)
-    raise AssertionError(f"timed out waiting for {what}")
-
-
-def act(name, frames=6, after=8):
-    tcp("action", name=name, frames=frames)
-    wait(frames + after)
 
 
 def shops():
@@ -165,27 +114,6 @@ def waiting():
     """The text box waits for a button: typed out, or at a pause."""
     message, _, paused = ram(MESSAGE_ID, 3)
     return message == 0 or paused != 0
-
-
-def chunks(data):
-    assert data[:8] == b"CYCSTATE"
-    pos = 32
-    while pos < len(data):
-        tag, size = struct.unpack_from("<4sI", data, pos)
-        pos += 8
-        yield tag, pos, size
-        pos += size
-        if tag == b"END ":
-            return
-
-
-def fixture(source, target, writes):
-    data = bytearray(source.read_bytes())
-    pos, size = next((p, n) for t, p, n in chunks(data) if t == b"HW  ")
-    assert size == 2072, "Unqualified hardware ABI"
-    for address, value in writes.items():
-        data[pos + 23 + address] = value
-    target.write_bytes(data)
 
 
 def carrying(gold_amount, weapon_list, item_list, weapon=HAND_DAGGER):
@@ -245,6 +173,18 @@ def check_hint(path, text, page=None):
             assert len(lit) <= 1, f"{path.name}: {line!r} is not one color"
 
 
+def check_no_price(path, entry):
+    """Entry `entry` of the list shows no price: its price cells (Shop_Draw:
+    column 23, 5 digits, on the entry's second row) are the list's inside, as
+    the blank row over the first entry is."""
+    width, height, px = png(path)
+    ox = (width - 256) // 2 if width >= 256 else 0
+    inside = px[PAGE_ROW][ox + 96]
+    y = 88 + entry * 16
+    cells = {px[y + r][ox + 184 + c] for r in range(8) for c in range(40)}
+    assert cells == {inside}, f"{path.name}: entry {entry} shows a price"
+
+
 def price_cells(path, entry):
     """Entry `entry`'s five price cells (Shop_Draw: column 23, on the
     entry's second row): for each, the set of colors in it other than the
@@ -258,9 +198,8 @@ def price_cells(path, entry):
 
 def check_owned(path, entry):
     """Entry `entry` shows OWNED where its price was: five letters, one in
-    each of the price's cells, in one color. A price never fills all five:
-    the highest, Tilte's 15000, is the one five-digit price, and no Forepaw
-    price is."""
+    each of the price's cells, in one color. No price in these lists has five
+    digits, so a price never fills them all."""
     cells = price_cells(path, entry)
     assert all(cells), f"{path.name}: entry {entry}'s price cells are not five letters: {[len(c) for c in cells]}"
     assert len(set().union(*cells)) == 1, f"{path.name}: entry {entry}'s OWNED is not one color"
@@ -274,75 +213,15 @@ def check_priced(path, entry, price):
     assert not any(cells[:blank]) and all(cells[blank:]), f"{path.name}: entry {entry} is not priced {price}"
 
 
-def check_no_price(path, entry):
-    """Entry `entry` of the list shows no price: its price cells (Shop_Draw:
-    column 23, 5 digits, on the entry's second row) are the list's inside, as
-    the blank row over the first entry is."""
-    width, height, px = png(path)
-    ox = (width - 256) // 2 if width >= 256 else 0
-    inside = px[PAGE_ROW][ox + 96]
-    y = 88 + entry * 16
-    cells = {px[y + r][ox + 184 + c] for r in range(8) for c in range(40)}
-    assert cells == {inside}, f"{path.name}: entry {entry} shows a price"
-
-
 def main():
-    global PORT
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    for key in ("build", "rom", "out"):
-        ap.add_argument("--" + key, type=Path, required=True)
-    ap.add_argument("--game-arg", action="append", default=[],
-                    help="extra game option, e.g. --game-arg=--world-view=seamless (repeatable)")
-    ap.add_argument("--port", type=int, default=0, help="TCP port (default: a free one)")
-    ap.add_argument("--realtime", action="store_true", help="run at normal speed instead of uncapped")
-    args = ap.parse_args()
-    PORT = args.port or free_port()
-    image = args.rom.read_bytes()
-    assert zlib.crc32(image[16:]) == 0x57DD23D1, "the original Faxanadu (USA) ROM is required"
-    out = args.out.resolve()
-    shutil.rmtree(out, ignore_errors=True)
-    (out / "game").mkdir(parents=True)
-    shutil.copy2(args.build / "FaxanaduRecomp", out / "game")
-    for folder in ("assets", "mods"):
-        shutil.copytree(args.build / folder, out / "game" / folder)
-    env = dict(os.environ, NESRECOMP_NO_LAUNCHER="1", SDL_VIDEODRIVER="dummy", SDL_AUDIODRIVER="dummy")
-    log = open(out / "game.log", "w")
-    game = None
-    shots = []
+    args = parse_args(__doc__)
+    game = Game.from_args(args)
+    out = game.out
 
     def launch(on=True):
-        nonlocal game
-        package, feature = PACKAGE
-        (out / "game" / "mods" / "state.toml").write_text(
-            f'format_version = 1\n\n[[feature]]\npackage_id = "{package}"\nid = "{feature}"\n'
-            f"enabled = {'true' if on else 'false'}\n")
-        extra = [part for arg in args.game_arg for part in arg.split("=", 1)]
-        if not args.realtime:
-            extra += ["--uncapped", "--exit-after", "100000000"]
-        game = subprocess.Popen([str(out / "game" / "FaxanaduRecomp"), str(args.rom.resolve()), "--hidden",
-                                 "--tcp", str(PORT), *extra], env=env, stdout=log, stderr=subprocess.STDOUT)
-        for _ in range(100):
-            try:
-                frame()
-                break
-            except OSError:
-                time.sleep(0.1)
-        else:
-            raise AssertionError("the game did not start")
+        game.set_features({PACKAGE: on})
+        game.launch()
         assert shops()["enabled"] == on, shops()
-
-    def close():
-        try:
-            tcp("quit")
-        except Exception:
-            game.kill()
-        game.wait(10)
-
-    def shot(name):
-        path = out / f"{len(shots):02d}-{name}.png"
-        tcp("screenshot", layer="picture", path=str(path))
-        shots.append(path)
-        return path
 
     def walk_to(x_min, x_max):
         for _ in range(600):
@@ -421,20 +300,13 @@ def main():
         until("the sale", lambda: shops()["sold"] == before + 1, 2400)
         return list_up("sell")
 
-    def poke(writes):
-        """Edit RAM in the running game: save, edit the state, load it back."""
-        path = out / "poke.cycstate"
-        tcp("save_state", path=str(path))
-        fixture(path, path, writes)
-        tcp("load_state", path=str(path))
-
     def into_forepaws_shop():
         """From Forepaw's street, where the shop's door put the hero, go in
         and to the counter. The townsfolk are taken off the screen first, so
         none stands at the door: Up on one would talk to him."""
         until("Forepaw", lambda: (ram(AREA), ram(SCREEN)) == (TOWNS, FOREPAW) and ram(SCREEN_READY) == 0, 600)
         wait(30)
-        poke({SPRITE_ENTITIES + i: 0xFF for i in range(8)})
+        game.poke({SPRITE_ENTITIES + i: 0xFF for i in range(8)})
         wait(4)
         act("up", 4, 10)
         until("Forepaw's tool shop", lambda: (ram(AREA), ram(SCREEN)) == (BUILDINGS, FOREPAW_TOOL_SHOP))
@@ -498,7 +370,7 @@ def main():
         assert state["hint"] == "Select to sell" and state["page_label"] is None, state
         assert ram(MESSAGE_ID) == message_before, "a line was loaded before the list"
         speaker_on_list()
-        check_hint(shot("buy-list"), "Select to sell")
+        check_hint(game.shot("buy-list"), "Select to sell")
         print("ok: Up opens the buy list at once, with its hint, under the Tool Seller's name")
 
         press("down")
@@ -514,7 +386,7 @@ def main():
         act("a", 4, 6)
         until("This is not enough Golds.", lambda: ram(MESSAGE_ID) == NOT_ENOUGH_GOLDS, 600)
         until("the line to type out", typed, 600)
-        shot("not-enough-golds")
+        game.shot("not-enough-golds")
         assert gold() == 220 and not shops()["list_up"], (gold(), shops())
         act("a", 4, 6)
         state = list_up("buy", "the buy list, after the message")
@@ -526,13 +398,13 @@ def main():
         assert state["prices"] == [80, 80, 80, 100, 50, 800, 0], state
         assert state["hint"] == "Select to buy" and state["pages"] == 1 and state["page_label"] is None, state
         speaker_on_list()
-        check_hint(shot("sell-list"), "Select to buy")
+        check_hint(game.shot("sell-list"), "Select to buy")
         print("ok: Select opens the sell list: everything carried, at half a shop's price, 100 for the A key")
 
         for _ in range(4):
             press("down")
         assert shops()["cursor"] == 4, shops()
-        shot("sell-a-key-shops-item")
+        game.shot("sell-a-key-shops-item")
         state = sell()
         assert gold() == 220 + 50, gold()
         assert items() == [KEY_A, RED_POTION, RED_POTION, RED_POTION], items()
@@ -543,14 +415,14 @@ def main():
         press("down")
         state = shops()
         assert state["cursor"] == 5 and state["hint"] == "Not for sale", state
-        path = shot("dragon-slayer-not-for-sale")
+        path = game.shot("dragon-slayer-not-for-sale")
         check_hint(path, "Not for sale")
         check_no_price(path, 5)
         act("a", 4, 30)
         state = shops()
         assert state["refused"] == 1 and state["list_up"] and state["shown"] == "sell", state
         assert gold() == 270 and weapons() == [DRAGON_SLAYER, LONG_SWORD], (gold(), weapons())
-        shot("dragon-slayer-kept")
+        game.shot("dragon-slayer-kept")
         print("ok: the Dragon Slayer is not for sale, and A on it keeps it")
 
         for _ in range(5):
@@ -564,7 +436,7 @@ def main():
         act("b", 4, 6)
         until("the conversation's end", lambda: ram(PORTRAIT) == NO_PORTRAIT and ram(TEXTBOX_CLOSED) != 0, 300)
         assert ram(MESSAGE_ID) == 0, "a closing line"
-        shot("left")
+        game.shot("left")
         print("ok: B leaves at once, with no closing line")
 
         # The key shop next door (building 3: screen 3, block $9D): the same.
@@ -575,7 +447,7 @@ def main():
         assert state["list"] == [ITEM | KEY_J] and state["prices"] == [100], state
         state = press("select", "sell")
         assert state["list"] == [ITEM | RED_POTION] and state["prices"] == [80], state
-        shot("key-shop-sell-list")
+        game.shot("key-shop-sell-list")
         act("b", 4, 6)
         until("the conversation's end", lambda: ram(PORTRAIT) == NO_PORTRAIT, 300)
         print("ok: the Key Seller's list opens at once, and he buys a Red Potion for 80, a tool shop's half")
@@ -590,7 +462,7 @@ def main():
         assert state["pages"] == 2 and state["page"] == 0 and len(state["list"]) == 8, state
         assert state["list"] == [ITEM | v for v in reversed(many)], state
         assert state["hint"] == "Select to buy" and state["page_label"] == "1 of 2", state
-        check_hint(shot("sell-page-1"), "Select to buy", "1 of 2")
+        check_hint(game.shot("sell-page-1"), "Select to buy", "1 of 2")
         for _ in range(7):
             press("down")
         state = press("down", "sell")
@@ -599,7 +471,7 @@ def main():
         assert state["list"] == [DRAGON_SLAYER, GIANT_BLADE, LONG_SWORD] and state["cursor"] == 0, state
         assert state["prices"] == [0, 4250, 800] and state["hint"] == "Not for sale", state
         assert state["page_label"] == "2 of 2", state
-        path = shot("sell-page-2")
+        path = game.shot("sell-page-2")
         check_hint(path, "Not for sale", "2 of 2")
         check_no_price(path, 0)
         press("down")
@@ -625,7 +497,7 @@ def main():
         until("You have nothing to buy.", lambda: ram(MESSAGE_ID) == NOTHING_TO_SELL, 600)
         until("the line to type out", typed, 600)
         assert gold() == 50 and items() == [], (gold(), items())
-        shot("nothing-to-sell")
+        game.shot("nothing-to-sell")
         act("a", 4, 6)
         list_up("buy", "the buy list, with nothing to sell")
         print("ok: selling the last thing gives the game's own line, and back to buying")
@@ -642,7 +514,7 @@ def main():
             press("down")
         state = shops()
         assert state["cursor"] == BOOTS_ROW and state["hint"] == "Select to sell", state
-        path = shot("owned-before")
+        path = game.shot("owned-before")
         check_hint(path, "Select to sell")
         check_priced(path, BOOTS_ROW, 2800)
         state = buy(BOOTS_ROW)
@@ -659,18 +531,18 @@ def main():
         assert state["list"] == FOREPAW_LIST and state["prices"] == FOREPAW_PRICES, state
         assert state["owned"] == [False] * 4 + [True] and state["cursor"] == 0, state
         assert state["hint"] == "Select to sell", state
-        path = shot("owned-after")
+        path = game.shot("owned-after")
         check_hint(path, "Select to sell")
         check_owned(path, BOOTS_ROW)
         check_priced(path, POTION_ROW, 400)
         for _ in range(BOOTS_ROW):
             press("down")
         assert shops()["hint"] == "Already owned", shops()
-        path = shot("owned-hint")
+        path = game.shot("owned-hint")
         check_hint(path, "Already owned")
         check_owned(path, BOOTS_ROW)
         a_does_nothing(BOOTS_ROW)
-        check_owned(shot("owned-a-does-nothing"), BOOTS_ROW)
+        check_owned(game.shot("owned-a-does-nothing"), BOOTS_ROW)
         press("up")
         buy(POTION_ROW)
         assert gold() == 9000 - 2800 - 400 and items() == [RED_POTION, WING_BOOTS, RED_POTION], (gold(), items())
@@ -688,7 +560,7 @@ def main():
         until("Trunk $2D", lambda: (ram(AREA), ram(SCREEN)) == (TRUNK, 0x2D) and ram(SCREEN_READY) == 0, 600)
         wait(30)
         slots = ram(SPRITE_ENTITIES, 8)
-        poke({SPRITE_ENTITIES + i: 0xFF for i in range(8) if slots[i] == HORNET})   # it shows once they are gone
+        game.poke({SPRITE_ENTITIES + i: 0xFF for i in range(8) if slots[i] == HORNET})   # it shows once they are gone
         for _ in range(60):                                         # it lies by the wall on the left
             if ram(MESSAGE_ID) == GOT_WING_BOOTS:
                 break
@@ -708,7 +580,7 @@ def main():
         assert state["owned"] == [False] * 4 + [True], state
         for _ in range(BOOTS_ROW):
             press("down")
-        check_owned(shot("owned-found"), BOOTS_ROW)
+        check_owned(game.shot("owned-found"), BOOTS_ROW)
         a_does_nothing(BOOTS_ROW)
         print("ok: a pair found in the world is owned the same: OWNED, and A does nothing")
         leave()
@@ -720,11 +592,11 @@ def main():
         state = list_up("buy", "the Key Seller's list, the J key owned")
         assert state["list"] == [ITEM | KEY_J] and state["owned"] == [True], state
         assert state["hint"] == "Already owned", state
-        check_owned(shot("owned-key"), 0)
+        check_owned(game.shot("owned-key"), 0)
         a_does_nothing(0)
         print("ok: a J key held is owned at the key shop, and A does nothing")
         leave()
-        close()
+        game.close()
 
         # 4. The remaster off: the shop is the original's.
         launch(on=False)
@@ -744,12 +616,12 @@ def main():
         act("a", 4, 6)
         until("the Buy/Sell menu's own line", lambda: ram(MESSAGE_ID) == BUY_OR_SELL, 600)
         print("ok: with the remaster off, the Tool Seller greets you and asks Buy or Sell, as the original does")
-        print("screenshots:", ", ".join(p.name for p in shots))
+        print("screenshots:", ", ".join(game.shots))
     except BaseException:
-        shot("failure")
+        game.shot("failure")
         raise
     finally:
-        close()
+        game.close()
 
 
 if __name__ == "__main__":
