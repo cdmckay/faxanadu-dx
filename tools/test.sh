@@ -92,6 +92,9 @@ cmake --build "$OUT/slain" -j"$JOBS" >/dev/null
 cmake -S tests/indoor -B "$OUT/indoor" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/indoor" -j"$JOBS" >/dev/null
 "$OUT/indoor/indoor_test"
+cmake -S tests/damage -B "$OUT/damage" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/damage" -j"$JOBS" >/dev/null
+"$OUT/damage/damage_test"
 
 echo "== game build"
 [ -f build-cycle/CMakeCache.txt ] || cmake -S . -B build-cycle -DCMAKE_BUILD_TYPE=Release -DNESRECOMP_ROM="$ROM" >/dev/null
@@ -211,6 +214,13 @@ indoor_e2e() {  # NAME [ARGS...]
 }
 indoor_e2e indoor-e2e & indoor=$!
 indoor_e2e indoor-e2e-seamless --game-arg=--world-view=seamless & indoor_seamless=$!
+echo "== end to end: damage numbers, by default and with Seamless on, alongside them"
+damage_e2e() {  # NAME [ARGS...]
+  local name="$1"; shift
+  python3 tests/damage/damage_numbers.py --build build-cycle --rom "$ROM" --out "$OUT/$name" "$@" > "$OUT/$name.log" 2>&1
+}
+damage_e2e damage-e2e & damage=$!
+damage_e2e damage-e2e-seamless --game-arg=--world-view=seamless & damage_seamless=$!
 failed=0
 wait "$default" || failed=1
 sed 's/^/[default]  /' "$OUT/travel-e2e.log"
@@ -278,5 +288,9 @@ wait "$indoor" || failed=1
 sed 's/^/[indoor]   /' "$OUT/indoor-e2e.log"
 wait "$indoor_seamless" || failed=1
 sed 's/^/[indr+sw]  /' "$OUT/indoor-e2e-seamless.log"
+wait "$damage" || failed=1
+sed 's/^/[damage]   /' "$OUT/damage-e2e.log"
+wait "$damage_seamless" || failed=1
+sed 's/^/[dmg+sw]   /' "$OUT/damage-e2e-seamless.log"
 [ "$failed" = 0 ] || { echo "end-to-end tests failed; screenshots in $OUT/*-e2e*/" >&2; exit 1; }
 echo "all checks passed"

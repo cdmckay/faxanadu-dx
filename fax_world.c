@@ -467,6 +467,7 @@ finished:
 }
 void fax_world_reset(void){make_mask();memset(rooms,0,sizeof rooms);memset(raster_valid,0,sizeof raster_valid);area=active=-1;pending=-1;rom_ok=false;hud_valid=death_mode=script_mode=false;ticks=last_tick=handoffs=failures=portals=0;player_tick=collision_active=false;cyc_mod_set_ram_read_hook(NULL);}
 bool fax_world_origin(int *x,int *y){if(!origin_valid)return false;*x=origin_x;*y=origin_y;return true;}
+bool fax_world_room_origin(int a,int id,int *x,int *y){if(!origin_valid||a!=area||id<0||id>=(int)counts[area]||!rooms[id].owned)return false;*x=rooms[id].x*RW-camera_x;*y=HUD+rooms[id].y*RH-camera_y;return true;}
 void fax_world_loaded(void){memset(raster_valid,0,sizeof raster_valid);cyc_mod_set_ram_read_hook(collision_active?collision_read:NULL);}
 bool fax_world_option(const char *name,const char *value){
     if(!strcmp(name,"--world-view")){if(strcmp(value,"off")&&strcmp(value,"seamless")&&strcmp(value,"atlas"))return false;enabled=strcmp(value,"off")!=0;hooks(enabled);atlas=!strcmp(value,"atlas");if(enabled)nes_mod_set_local_only("Seamless world",1);return true;}

@@ -438,3 +438,20 @@ rom = []
 # Game_SetupEnterBuilding ($DAAF) runs before $DE0B and, when it swaps in
 # Game_SetupExitBuilding, $DE0B is never reached: that loader sets
 # Player_CurWeapon itself. No read overrides.
+
+[[feature]]
+id = "damage-numbers"
+package = "faxanadu.remastered"
+plugin = "faxanadu.damage-numbers"
+source = "fax_damage.c"
+hooks = "faxanadu.damage-numbers."
+rom = []
+# Hooks @_updateSpriteHP ($8891) and @_reduceEnemyHP ($81FD) in bank 14, and
+# Player_ReduceHP's SEC ($C091, not its entry), which no other feature hooks,
+# and only observes all three (returns 0): every hit plays out as without it.
+# The Pendant fix sets Temp_00 at $8884, before $8891 reads it, so the number
+# is the fixed damage. Sugata's flash and Block decide at $AB44 and
+# Player_HandleHitByMagic, before Player_ReduceHP is reached, so a hit they
+# stop shows nothing; Sugata's reflection runs $81FD in a committed call,
+# where no hook fires, and reports itself through fax_damage_enemy_hit. Writes
+# nothing to the machine and draws at present time. No ROM, no read overrides.

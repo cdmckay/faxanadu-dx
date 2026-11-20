@@ -623,3 +623,25 @@ id = "faxanadu.indoor-equip.menu"
 addr = 0x8b88
 bank = 12
 bytes = "f0 5b ad 0e 02 c9 03 b0 3d ad bd 03"
+
+# Damage numbers (fax_damage.c): the weapon's and magic's subtraction from an
+# enemy's HP (Temp_00 the damage, X the sprite), and Player_ReduceHP's after
+# its first load (Arg_PlayerHealthDelta still to take). All three only observe.
+
+[[mod_function_hook]]
+id = "faxanadu.damage-numbers.weapon"
+addr = 0x8891
+bank = 14
+bytes = "bd 44 03 38 e5 00 9d 44 03 b0 2a bd"   # Player_HitSpriteWithWeapon's @_updateSpriteHP
+
+[[mod_function_hook]]
+id = "faxanadu.damage-numbers.magic"
+addr = 0x81fd
+bank = 14
+bytes = "bd 44 03 38 e5 00 9d 44 03 b0 25 bd"   # Player_HitEnemyWithMagic's @_reduceEnemyHP
+
+[[mod_function_hook]]
+id = "faxanadu.damage-numbers.hero"
+addr = 0xc091
+bank = 15
+bytes = "38 ed bc 04 8d 32 04 ad 31 04 ed bd"   # Player_ReduceHP's SEC, SBC Arg_PlayerHealthDelta_L

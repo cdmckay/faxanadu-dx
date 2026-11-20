@@ -482,6 +482,10 @@ What a feature can rely on, and the traps:
 - With the Seamless world on, the hero's routines can run in an isolated
   scope where `cyc_mod_isolated()` is true. A hook that keeps state must leave
   it alone there.
+- With the Seamless world on, a neighboring room's actors keep moving before
+  the hero walks in, so where they are when he arrives depends on how long he
+  took. A test that walks in should put them in place in its save state, as
+  `tests/damage/damage_numbers.py` does with Eolis's Zozura.
 
 ## Far calls (`MMC1_LoadBankAndJump`)
 
@@ -968,6 +972,57 @@ only user of `$1F`:
   through `SpriteUpdateHandler_Invisible` (`$8C98`) hides it that frame. The
   presented picture lags the sprites by a frame or two.
 
+## Damage, dealt and taken (banks 14, 15)
+
+Every loss of HP, an enemy's or the hero's, is one subtraction in one of three
+places. Each has its amount in memory just before it, which is where Damage
+numbers reads it:
+
+| Address | Where | Before it |
+|---|---|---|
+| `$8891` (bank 14) | `Player_HitSpriteWithWeapon`'s `@_updateSpriteHP`: `LDA CurrentSprites_HP,X`, `SEC`, `SBC Temp_00`, `STA`, `BCS @_return` | `Temp_00` the hit's damage (*Weapon damage*), X the sprite |
+| `$81FD` (bank 14) | `Player_HitEnemyWithMagic`'s `@_reduceEnemyHP`, the same five instructions | `Temp_00` the spell's damage: `MAGIC_DAMAGE` (`$B7A0`: 6, 9, 24, 34, 38 for Deluge to Tilte), half again with the Magical Rod, then halved for a resisted spell and **0** for one resisted twice. A 0 still reaches the subtraction |
+| `$C08E` (fixed) | `Player_ReduceHP`: `LDA Player_HP_L`, `SEC` (`$C091`), `SBC Arg_PlayerHealthDelta_L`, ..., `SBC Arg_PlayerHealthDelta_U`, `BCS` alive | `Arg_PlayerHealthDelta_U`/`_L` (`$04BD`/`$04BC`), whole HP and 256ths |
+
+- **On an enemy** the subtraction is 8-bit and a borrow kills, so a kill's
+  damage is usually more than the HP that was left (a Zozura left 1 HP takes a
+  Long Sword's 8). The HP is stored wrapped.
+- **On the hero**, HP is 8.8 fixed point (`Player_HP_U` whole, `Player_HP_L`
+  the fraction). `Player_ReduceHP` is reached from four places (*What killed
+  the hero* tells them apart):
+  `Player_ApplyDamage` (`$8A79`, from `Player_HandleTouchEnemy`, an enemy's
+  or a shot's touch, after its iframe and Ointment checks),
+  `Player_HandleHitByMagic` (`$87DC`, a shot on the shield), Sugata's flash
+  (`$AB44`, which checks neither) and `Player_PickUpPoison` (`$C83C`, 16 HP,
+  after its message). A borrow sets the HP to 0 and uses the Elixir or sets
+  `PlayerIsDead`.
+- **Armor makes fractions.** `Player_ApplyDamage` takes
+  `SPRITE_ENTITY_DAMAGES[entity]` (`$B6D7`) whole HP and, with armor 1-3,
+  subtracts `ARMOR_DEFENSE_MULTIPLIERS` (`$8AD8`: 0, 1, 2, 4) eighths of it
+  (Studded Mail 7/8, Full Plate 6/8, the Battle Suit 4/8), and the Black Onyx
+  one eighth more. So a 3-damage enemy against Full Plate takes 2.25, and the
+  HUD's bar drops by 2 or 3 as the fraction carries. A shot on the shield
+  takes whole HP (`SPRITE_ENTITY_DAMAGES >> (SelectedShield + 1)`), none when
+  that is 0, and the flash and the Poison whole HP too.
+- **A weapon's hit knocks an enemy back.** It sets the enemy's facing
+  (`CurrentSprites_Flags` bit 0) to the hero's and `CurrentSprites_HitCounter`
+  (`$034C`) to 8. While the counter runs, `Sprites_UpdateAll` (`$8000`) runs
+  no behavior or hit checks for it: each frame it decrements the counter and,
+  for every enemy but Tamazutsu, Pakukame and Zorugeriru (`$2C`, `$30`,
+  `$31`), moves it 2 pixels the way it faces
+  (`Sprites_Something_SomethingAndMoveHoriz`, `MoveSpriteHorizIfPossible`):
+  16 pixels away from the hero over the 8 frames, if nothing blocks it. Its
+  place after a hit is where the hit landed plus 2 × (8 − the counter).
+- **The box an enemy is hit in** is `CurrentSprites_XPos_Full`/`_YPos`, its
+  top-left, and `MAYBE_SPRITE_EXTENTS` (`$B407`), width and height by entity
+  × 2, for entities `$00-$64`.
+- A Zozura's touch takes 7 (`SPRITE_ENTITY_DAMAGES[$47]`).
+
+**The HUD's digits** are background tiles `$30-$39` (the HUD writes numbers in
+ASCII): bank 10, `HUD_TILES_START` (`$8140`) + tile × 16. Each is a bold 7×7
+glyph in color 3 with a blank last row and column; the 5 has one color-1
+pixel.
+
 ## What killed the hero (bank 14, bank 15)
 
 **Every loss of HP goes through `Player_ReduceHP` (`$C08E`, fixed bank)**,
@@ -1297,7 +1352,10 @@ Other ways between screens and areas, in bank 15:
 - A screen has finished loading and is not scrolling when
   `Screen_ReadyState` (`$0E`) is 0, `Game_InterruptHandlersEnabled` (`$13`)
   is set and `Screen_ScrollDirection` (`$54`) is `$FF`. On the title screen
-  `$54` is 0. `Game_PausedState` (`$0120`) is 1 while Start pauses.
+  `$54` is 0. `Game_PausedState` (`$0120`) is nonzero while Start pauses:
+  `GameLoop_CheckPauseGame` stores 1, and the sound engine
+  (`Music_HandleOnInterrupt`, bank 5) sets bit 7 once it has muted, so it
+  reads `$81` from then on.
 
 Who and what is on each screen is in bank 11, `AREA_SPRITE_ADDRESSES`: for
 each screen, (entity, `YX`) pairs to a `$FF`, then the NPCs' interaction
@@ -2178,7 +2236,41 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
   anything else, it leaves the site to Block; Ointment running, the flash's
   own sound, iframes and knockback without `Player_ReduceHP`; otherwise the
   game's 10 HP. Two reflections kill Sugata (more than its 22 HP). Its
-  save-state record is each slot's warning count and the band.
+  save-state record is each slot's warning count and the band. A
+  reflection's committed call runs no hooks, so it reports its 12 to Damage
+  numbers itself (`fax_damage_enemy_hit`), before the call, while the sprite
+  is still Sugata.
+- **Damage numbers** (`fax_damage.c`). Every hit that takes HP shows how much,
+  in the HUD's digits (see *Damage, dealt and taken*), rising a pixel every 3
+  frames from 8 pixels above the box it landed on, centered (the enemy's
+  extents box; the hero's 16 × 32), for 60 frames, fading over the last 16:
+  color 3 of sprite palette 1, the shield's `$00 $25 $30`, which every area
+  has: white (`$30`) for damage dealt, pink (`$25`) for damage taken, read
+  from palette RAM so they fade with the screen, outlined in `$0F`. Three
+  sites, all observing (return 0): `$8891` and `$81FD` take `Temp_00` and X,
+  and `Player_ReduceHP`'s `SEC` (`$C091`, not its entry) takes
+  `Arg_PlayerHealthDelta`, rounded to the nearest whole HP and at least 1, so
+  the same enemy always shows the same number though the bar's drop varies
+  with the fraction. An amount of 0 shows nothing, and a hit the game stops
+  (iframes, Ointment, Block, a shield that takes all of a shot) never gets
+  there. A kill shows the hit's whole damage. Inside an isolated machine
+  (Seamless's neighboring rooms, where Sugata's flash still runs) nothing
+  shows. A number belongs to the area and room it landed in: Seamless draws
+  it at that room's place (`fax_world_room_origin`), so it stays put in the
+  world as the camera moves, and the original view only on its own screen,
+  and not while the screen scrolls; another area (a door, a building) drops
+  it. A new number stays where its hit landed and moves any older one in the
+  same room that it would touch out of the way, up if that one was higher,
+  else down, with two rows between outlines; as every number rises at one
+  pace, they never meet after. At most 16 show; a new one replaces the
+  oldest. They hold while `TextBox_Closed` is 0 or `Game_PausedState` is
+  nonzero, hide while a box is open, never cover the HUD, and while
+  `Player_HP_U` is 0 (from a killing hit until the respawn) keep below the
+  zone banner's box (8 to 32 pixels under the HUD), where Slain by
+  (`fax_slain.c`) says what killed him.
+  Drawn after Sugata's band, so it does not grey them, and before the zone
+  banner, which covers them. Its save-state record holds the numbers (16 bytes
+  each), and a state loaded with the remaster off restores none.
 - **Quick shops** (`fax_shops.c`). Up on a shopkeeper opens his buy list at
   once, Select switches to the sell list and back, a purchase or a sale keeps
   the list up with the cursor where it was, and B leaves. A shop buys
