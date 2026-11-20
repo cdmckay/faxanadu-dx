@@ -21,7 +21,8 @@ hit and every death is the game's own:
    with the Small Shield stops it, and with the Magic Shield sends it back:
    neither kills, and nothing is named.
 5. A boss, through the Tower of Trunk's top screen ($15): Ripasheiku.
-6. With Zone names off, the line still shows. With Slain by off, nothing does.
+6. With Faxanadu Remastered off (the original game), the same death names
+   nothing.
 """
 import argparse
 from pathlib import Path
@@ -42,8 +43,7 @@ HERO = dict(experience=4660, gold=12345)
 # Block and Sugata tests reach them, and the Tower of Trunk's last screen.
 PLACES = dict(trunk=(TRUNK, 0x00, 0x06, 0xA1, 1), zenis=(ZENIS, 0x10, 0x0F, 0x91, 5),
               mist=(MIST, 30, 0x0A, 0x92, 2), boss=(TRUNK, 0x15, 0x07, 0x91, 1))
-PACKAGE, FEATURE = "faxanadu.enhancement.slain-by", "slain-by"
-ZONE_NAMES = ("faxanadu.enhancement.zone-names", "zone-names")
+PACKAGE, FEATURE = "faxanadu.remastered", "remastered"          # the one switch: off is the original game
 
 
 def main():
@@ -208,22 +208,21 @@ def main():
         hit = die(boss, "ripasheiku", {HP: 1, HP_FRACTION: 0}, "Slain by a Ripasheiku", ("shot", "touch"), 3000)
         print(f"ok: Ripasheiku ({hit['how']}): \"Slain by a Ripasheiku\"")
 
-        # 6. Zone names off: the line still shows. Slain by off: nothing does.
-        for (package, feature), shows in ((ZONE_NAMES, True), ((PACKAGE, FEATURE), False)):
-            g.close()
-            (g.out / "game" / "mods" / "state.toml").write_text(
-                f'format_version = 1\n\n[[feature]]\npackage_id = "{package}"\nid = "{feature}"\nenabled = false\n')
-            g.launch()
-            assert g.tcp("zone_state")["enabled"] != shows and slain()["enabled"] == shows   # the one turned off
-            dying = g.out / "off-dying.cycstate"
-            fixture(g.out / "monodron-dying.cycstate", dying, {})
-            g.load(dying)
-            g.until("the killing hit", lambda: g.ram(PLAYER_IS_DEAD) or slain()["showing"], 300)
-            g.wait(40)
-            s = slain()
-            assert s["showing"] == ("Slain by a Monodron" if shows else None), s
-            g.until("the Guru's words", lambda: g.ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 600)
-        print("ok: with Zone names off the line still shows; with Slain by off, the death names nothing")
+        # 6. The remaster off: the original game's death, with nothing named.
+        g.close()
+        (g.out / "game" / "mods" / "state.toml").write_text(
+            f'format_version = 1\n\n[[feature]]\npackage_id = "{PACKAGE}"\nid = "{FEATURE}"\nenabled = false\n')
+        g.launch()
+        assert not slain()["enabled"], "Slain by is off with the remaster"
+        g.load(g.out / "monodron-dying.cycstate")
+        g.until("the killing hit", lambda: g.ram(PLAYER_IS_DEAD), 300)
+        for _ in range(6):
+            g.wait(20)
+            assert slain()["showing"] is None
+        g.until("the Guru's words", lambda: g.ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 600)
+        s = slain()
+        assert (s["deaths"], s["unnamed"]) == (0, 0), s
+        print("ok: with Faxanadu Remastered off, the Monodron's touch kills him and nothing is named")
         print("screenshots:", ", ".join(p.name for p in g.shots))
     except BaseException:
         if g.running():

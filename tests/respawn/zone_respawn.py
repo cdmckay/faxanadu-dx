@@ -36,7 +36,7 @@ game's (PlayerIsDead set):
    back arrives and Sugata lives, its flash takes his last 10 HP, and he
    comes back at that door with no band or greyscale left. Ointment, a timed
    item, still ends with a death.
-7. With the feature off in the mod selection, the same death in the tower
+7. With the remaster off in the mod selection, the same death in the tower
    wakes at the temple, as the original does.
 """
 import argparse
@@ -72,7 +72,7 @@ TOWNS = 3
 MEDITATE_WITH_YOU = 0x22                                            # the Guru's greeting
 OFFER, DEPART, TO_GURU = 1, 3, 4                                    # fax_travel.c's lines (TO_GURU + temple)
 PPU_MASK, DURATION_OINTMENT, SUGATA = 0x0B, 0x427, 0x18             # greyscale is bit 0; $FF: no Ointment
-PACKAGE, FEATURE = "faxanadu.enhancement.zone-respawn", "zone-respawn"
+PACKAGE, FEATURE = "faxanadu.remastered", "remastered"          # the one switch: off is the original game
 
 # Each entrance: the zone, where its door is (area, screen, palette, block YX,
 # region: what the temple's door is edited to lead to), what opens it, where
@@ -534,15 +534,15 @@ def main():
         print("ok: Sugata's flash takes his last HP on the Mist's screen $1F: back at the Branch's door, "
               "no band or greyscale left; a death still ends the Ointment")
 
-        # 7. Turned off, the same death wakes at the temple.
+        # 7. The remaster off: the same death wakes at the temple, as the original.
         if "Tower of Trunk" in inside:
             close()
             (out / "game" / "mods" / "state.toml").write_text(
                 f'format_version = 1\n\n[[feature]]\npackage_id = "{PACKAGE}"\nid = "{FEATURE}"\nenabled = false\n')
             launch()
-            assert not respawn()["enabled"], "the feature is off"
+            assert not respawn()["enabled"], "the remaster is off"
             die(inside["Tower of Trunk"], "off", BUILDINGS, EOLIS_TEMPLE)
-            print("ok: turned off, dying in the Tower of Trunk wakes at Eolis's temple, as the original does")
+            print("ok: with the remaster off, dying in the Tower of Trunk wakes at Eolis's temple, as the original does")
         print("screenshots:", ", ".join(shots))
     except BaseException:
         if game and game.poll() is None:
