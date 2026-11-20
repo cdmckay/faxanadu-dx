@@ -45,6 +45,21 @@ waiting, then runs. Several workers share this machine, so while developing run
 `tools/test.sh --quick` plus your own feature's end-to-end test directly, and
 the full suite once before the PR.
 
+## Layout
+
+- `src/`: the game's C. Each feature is `fax_<name>.c` and `.h`, listed in
+  CMakeLists.txt's `HOST_EXTRAS`, and `cyc_extras.c` calls them from the
+  cycle host. `override_text.c` serves text overrides; `extras.c`,
+  `nes_snapshot.c`, `verify_mode.c` and `watchdog.c` are only for the legacy
+  backend.
+- `game.toml` and `cyc_seeds.txt`: the recompiler's inputs.
+- `mods/`: the mod packages (`preloaded/`) and `allocations.toml`.
+- `tests/<feature>/`: a feature's unit test (with its `CMakeLists.txt`) and
+  end-to-end test; `tests/e2e/` is the shared helper.
+- `tools/`: `test.sh`, the allocation checker, the disassembly, ROM checks.
+- `docs/`: GAME_INTERNALS.md and the other notes. `assets/`: the launcher's
+  box art.
+
 ## Building features
 
 Features are C on an **unchanged ROM**. The game's code stays as the
@@ -55,7 +70,7 @@ recompiler produced it; features observe and steer it.
   overrides, and restore them from your save-state record.
 - Use the game's own routines where you can. Run memory-only routines with
   `cyc_mod_call_commit`, or enter them by returning from a hook with a
-  prepared stack, as `fax_travel.c` does.
+  prepared stack, as `src/fax_travel.c` does.
 - Name every address after its label in the disassembly, and comment what the
   stock bytes there are.
 - **Declare what a feature takes** in `mods/allocations.toml`: its ROM, its

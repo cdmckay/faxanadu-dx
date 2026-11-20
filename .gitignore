@@ -6,6 +6,7 @@ build/
 *.zip
 .mcp.json
 
+# setup.sh used to symlink this; nothing reads it, so it is safe to delete.
 nestopia-core
 
 # Dead FCEUX integration (replaced by Nestopia)

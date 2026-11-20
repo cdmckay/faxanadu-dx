@@ -29,9 +29,10 @@ used with Down+B, as a player would.
    hero ("I've used Elixir."). With 1 HP again, the next hit kills him; he
    respawns with it still spent, and the menu's Player page, which showed it,
    does not. Talking to Eolis's Guru charges it, and the page shows it again.
-5. Eolis's tool shop with a spent Elixir: buying one charges it, for its 320
-   gold. With it charged, the shop refuses a second ("You can't carry any
-   more.") and keeps the gold.
+5. Eolis's tool shop with a spent Elixir: it is still the hero's, so Quick
+   shops lists it as owned, "Already owned", and A on it does nothing: the
+   gold stays and it stays spent, since buying never charges it (a Guru
+   does). Charged, the same.
 6. Finds: a pair of Wing Boots (Trunk $2D) while they recharge, an Hour Glass
    (Trunk $13) while it recharges, and an Elixir (Trunk $3C) while it is spent:
    each is ready at once, and none is a second copy.
@@ -72,7 +73,6 @@ HOUR_GLASS, WING_BOOTS, NO_ITEM, BIT_ELIXIR, RING_OF_ELF = 0x0D, 0x0F, 0xFF, 0x0
 USED_HOUR_GLASS, USED_WING_BOOTS, USED_ELIXIR = 0xAC, 0xAD, 0xAF      # message IDs
 GOT_WING_BOOTS, GOT_HOUR_GLASS, GOT_ELIXIR = 0xB3, 0xB4, 0xB0        # "I'm holding ..."
 WING_BOOTS_GONE, HOUR_GLASS_GONE, NEGATIVE_THOUGHTS, HO_HO_HO = 0xC0, 0xC1, 0x24, 0x57
-SHOP_HELLO, WHAT_WOULD_YOU_LIKE, CANT_CARRY_MORE = 0x0F, 0x14, 0x06
 FILE, GURU_SAVED = "faxanadu_file1.txt", 3                          # Start on the title: a new game in file 1
 MEDITATE_WITH_YOU = 0x22                                            # a temple Guru's greeting, then the mantra
 EOLIS, TRUNK, BUILDINGS = 0, 1, 4
@@ -83,7 +83,7 @@ QUEST_SPRING_OF_SKY = 0x02
 TRAVEL_DEPART, TRAVEL_TO_GURU = 3, 4                                # fax_travel.c's lines (TO_GURU + temple)
 FLIGHTS, COOLDOWN, FREEZE = (30, 40, 50, 60), 60, 15              # the game's seconds (64 frames)
 FLIGHT = FLIGHTS[0]                                                 # a Novice's: the lowest band
-ELIXIR_PRICE, ELIXIR_ROW = 320, 2                                   # EOLIS_TOOL_SHOP_ITEMS: dagger, potion, Elixir
+ELIXIR_ROW = 2                                                      # EOLIS_TOOL_SHOP_ITEMS: dagger, potion, Elixir
 SECOND = 64
 INTERRUPT_COUNTER = 0x1A                                            # counts NMIs; the game's second is & $3F == 0
 PACKAGE = ("faxanadu.remastered", "remastered")                  # the one switch: off is the original game
@@ -306,67 +306,28 @@ def main():
         act("b", 4, 30)
         until("the menu to close", lambda: not box_open(), 120)
 
-    def quick_shops():
-        try:
-            return tcp("shops_state")["enabled"]
-        except RuntimeError:                                        # a build without Quick shops
-            return False
-
-    def buy(row):
-        """Talk to the shopkeeper and buy the item on `row` of the list. The
-        messages shown after choosing it. With Quick shops (on by default) Up
-        opens the list at once, a message goes back to it and B leaves; without,
-        it is the game's greeting, Buy/Sell, "What would you like?" and the list."""
-        seen = []
-        if quick_shops():
-            def list_waiting():
-                s = tcp("shops_state")
-                return s["shown"] == "buy" and s["list_up"]
-            act("up", 4, 10)
-            until("the list", list_waiting, 900)
-            wait(20)
-            for _ in range(row):
-                act("down", 4, 10)
-            before = tcp("shops_state")
-            act("a", 4, 4)
-            end = frame() + 20 * SECOND
-            while frame() < end:
-                m = ram(MESSAGE_ID)
-                if m and m not in seen:
-                    seen.append(m)
-                after = tcp("shops_state")
-                done = after["bought"] > before["bought"] or after["messages"] > before["messages"]
-                if done and list_waiting():
-                    break
-                if CANT_CARRY_MORE in seen and typed() and not list_waiting():
-                    act("a", 6, 14)                                 # the message, then back to the list
-                else:
-                    wait(4)
-            wait(20)
-            act("b", 4, 10)                                         # leave
-        else:
-            act("up", 4, 10)
-            until("the greeting", lambda: ram(MESSAGE_ID) == SHOP_HELLO, 300)
-            until("the greeting to type out", typed, 900)
-            act("a", 4, 40)                                         # to Buy / Sell
-            act("a", 4, 10)                                         # Buy
-            until("What would you like?", lambda: ram(MESSAGE_ID) == WHAT_WOULD_YOU_LIKE, 300)
-            until("the question to type out", typed, 900)
-            act("a", 4, 40)                                         # the list
-            for _ in range(row):
-                act("down", 4, 10)
-            act("a", 4, 4)
-        end = frame() + 30 * SECOND                                 # A to each line until the box closes
-        while frame() < end and box_open():
-            m = ram(MESSAGE_ID)
-            if m and m not in seen:
-                seen.append(m)
-            if typed():
-                act("a", 6, 20)
-            else:
-                hurry(4)
-        assert not box_open(), f"the shop did not close (saw {seen})"
-        return seen
+    def owned_in_shop(row, name):
+        """The item on `row` of the shopkeeper's list is the hero's: Quick
+        shops' list marks it owned, its hint says so, and A on it does
+        nothing, with no gold taken and no line. B leaves."""
+        def list_waiting():
+            s = tcp("shops_state")
+            return s["shown"] == "buy" and s["list_up"]
+        act("up", 4, 10)
+        until("the list", list_waiting, 900)
+        wait(20)
+        for _ in range(row):
+            act("down", 4, 10)
+        before, money = tcp("shops_state"), gold()
+        assert before["cursor"] == row and before["owned"][row] and before["hint"] == "Already owned", before
+        shot(name)
+        act("a", 4, 60)
+        after = tcp("shops_state")
+        assert after["ignored"] == before["ignored"] + 1, after
+        assert (after["bought"], after["messages"]) == (before["bought"], before["messages"]), after
+        assert list_waiting() and gold() == money, (after, gold())
+        act("b", 4, 10)
+        until("the shop to close", lambda: not box_open(), 600)
 
     def respawn(frames):
         """Page through the death message until the hero is back: at the temple, or with zone respawn (on by
@@ -584,23 +545,26 @@ def main():
 
         if args.wants("tool-shop"):
             start()
-            # 5. Eolis's tool shop: a spent Elixir is charged for its price; a charged one is not sold twice.
+            # 5. Eolis's tool shop: an Elixir, spent or charged, is the hero's, and buying never charges it.
+            gold_1000 = {GOLD: 0xE8, GOLD + 1: 0x03, GOLD + 2: 0}
             warp(shop, "tool-shop", EOLIS, 3, 0x9A, PALETTE_EOLIS, 0,
-                 {SPECIAL_ITEMS: 0, SELECTED_ITEM: NO_ITEM, NUMBER_OF_ITEMS: 0, GOLD: 0xE8, GOLD + 1: 0x03, GOLD + 2: 0},
-                 {5: 1})
+                 {SPECIAL_ITEMS: 0, SELECTED_ITEM: NO_ITEM, NUMBER_OF_ITEMS: 0, **gold_1000}, {5: 1})
             assert state()["elixir_spent"] and gold() == 1000, (state(), gold())
             enter_door(TOOL_SHOP)
             act("left", 120, 10)                                        # to the counter
-            seen = buy(ELIXIR_ROW)
+            owned_in_shop(ELIXIR_ROW, "shop-elixir-spent")
             wait(4)
             s = state()
-            assert gold() == 1000 - ELIXIR_PRICE and s["elixir_charged"] and not s["elixir_spent"], (gold(), s, seen)
-            assert CANT_CARRY_MORE not in seen, seen
-            seen = buy(ELIXIR_ROW)
-            assert CANT_CARRY_MORE in seen and gold() == 1000 - ELIXIR_PRICE, (seen, gold())
-            assert state()["elixir_charged"], state()
-            print(f"ok: the tool shop charges a spent Elixir for {ELIXIR_PRICE} gold, and refuses a second while it is "
-                  "charged (\"You can't carry any more.\")")
+            assert gold() == 1000 and s["elixir_spent"] and not s["elixir_charged"], (gold(), s)
+            warp(shop, "tool-shop-charged", EOLIS, 3, 0x9A, PALETTE_EOLIS, 0,
+                 {SPECIAL_ITEMS: BIT_ELIXIR, SELECTED_ITEM: NO_ITEM, NUMBER_OF_ITEMS: 0, **gold_1000})
+            enter_door(TOOL_SHOP)
+            act("left", 120, 10)
+            owned_in_shop(ELIXIR_ROW, "shop-elixir-charged")
+            s = state()
+            assert gold() == 1000 and s["elixir_charged"] and not s["elixir_spent"], (gold(), s)
+            print("ok: at the tool shop a spent Elixir is owned, A on it does nothing and it stays spent (a Guru charges "
+                  "it, not a purchase); a charged one is owned the same")
 
         if args.wants("finds"):
             start()

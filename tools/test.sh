@@ -7,9 +7,10 @@
 #   tools/test.sh --quick         # skip the end-to-end game runs
 #
 # Run inside the Nix devShell (direnv, or nix develop). The game build in
-# build-cycle is configured on first use. The end-to-end runs start every game
-# at once, so only one suite on the machine runs them at a time: another
-# checkout's suite waits for the lock, then runs.
+# build-cycle is configured on first use. The end-to-end runs fill every
+# hardware thread, so only one suite on the machine runs them at a time:
+# another checkout's suite waits for the lock, then runs. E2E_JOBS=N plays at
+# most N of its runs at once (default: one a thread).
 set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 ROM="$REPO/Faxanadu (USA).nes"
@@ -62,6 +63,9 @@ cmake --build "$OUT/movement" -j"$JOBS" >/dev/null
 cmake -S tests/files -B "$OUT/files" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/files" -j"$JOBS" >/dev/null
 FAX_FILES_TEST_DIR="$OUT/files/scratch" "$OUT/files/files_test"
+cmake -S tests/title -B "$OUT/title" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/title" -j"$JOBS" >/dev/null
+"$OUT/title/title_test"
 cmake -S tests/speaker -B "$OUT/speaker" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/speaker" -j"$JOBS" >/dev/null
 "$OUT/speaker/speaker_test"
@@ -83,6 +87,15 @@ cmake --build "$OUT/respawn" -j"$JOBS" >/dev/null
 cmake -S tests/recharge -B "$OUT/recharge" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/recharge" -j"$JOBS" >/dev/null
 "$OUT/recharge/recharge_test"
+cmake -S tests/slain -B "$OUT/slain" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/slain" -j"$JOBS" >/dev/null
+"$OUT/slain/slain_test"
+cmake -S tests/indoor -B "$OUT/indoor" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/indoor" -j"$JOBS" >/dev/null
+"$OUT/indoor/indoor_test"
+cmake -S tests/damage -B "$OUT/damage" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/damage" -j"$JOBS" >/dev/null
+"$OUT/damage/damage_test"
 
 echo "== game build"
 [ -f build-cycle/CMakeCache.txt ] || cmake -S . -B build-cycle -DCMAKE_BUILD_TYPE=Release -DNESRECOMP_ROM="$ROM" >/dev/null
@@ -136,6 +149,14 @@ E2E=(
   "respawn+sw   tests/respawn/zone_respawn.py --parts $SW"
   "recharge     tests/recharge/recharging_items.py --parts"
   "switch       tests/remastered/one_switch.py"
+  "title        tests/title/title_remastered.py"
+  "title+sw     tests/title/title_remastered.py $SW"
+  "slain        tests/slain/slain_by.py"
+  "slain+sw     tests/slain/slain_by.py $SW"
+  "indoor       tests/indoor/indoor_equip.py"
+  "indoor+sw    tests/indoor/indoor_equip.py $SW"
+  "damage       tests/damage/damage_numbers.py"
+  "damage+sw    tests/damage/damage_numbers.py $SW"
 )
 # At most E2E_JOBS runs play at once (default: one a hardware thread; 0: all
 # at once): a game is uncapped and takes a whole thread, and more of them

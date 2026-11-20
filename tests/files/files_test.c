@@ -109,11 +109,15 @@ int nes_mod_register_savestate_validator(const char *id, NESModSavestateValidate
 void nes_mod_set_local_only(const char *name, int required) { (void)name; (void)required; }
 bool fax_text_load(void) { return true; }
 bool fax_text_loaded(void) { return true; }
+static struct { int x, y, cols, rows, lines, first_line_y, last_line_y; } drawn;   /* the last file select drawn */
 void fax_text_box_rom(uint32_t *px, int w, int h, int x, int y, int cols, int rows, const uint32_t colors[4], unsigned alpha) {
-    (void)px; (void)w; (void)h; (void)x; (void)y; (void)cols; (void)rows; (void)colors; (void)alpha;
+    (void)px; (void)w; (void)h; (void)colors; (void)alpha;
+    drawn.x = x; drawn.y = y; drawn.cols = cols; drawn.rows = rows; drawn.lines = 0;
 }
 void fax_text_draw_color(uint32_t *px, int w, int h, int x, int y, const char *s, uint32_t color, unsigned alpha) {
-    (void)px; (void)w; (void)h; (void)x; (void)y; (void)s; (void)color; (void)alpha;
+    (void)px; (void)w; (void)h; (void)x; (void)s; (void)color; (void)alpha;
+    if (!drawn.lines++) drawn.first_line_y = y;
+    drawn.last_line_y = y;
 }
 uint32_t cyc_render_color(int entry) { return (uint32_t)entry; }
 int cyc_render_native_origin(int width) { return (width - 256) / 2; }
@@ -375,18 +379,24 @@ static void file_select(void) {
     bool cursor;
     menu_row(&menu, 0, text, &cursor);
     CHECK(cursor && !strcmp(text, "} 1 New game"));
-    menu_row(&menu, 3, text, &cursor);
+    menu_row(&menu, 1, text, &cursor);
+    CHECK(!cursor && !strcmp(text, ""));
+    menu_row(&menu, 2, text, &cursor);
     CHECK(!cursor && !strcmp(text, "  2 Adept        Conflate"));
-    menu_row(&menu, 4, text, &cursor);
+    menu_row(&menu, 3, text, &cursor);
     CHECK(!strcmp(text, "    Gold 11259375 Exp 4900"));
     slots[1].p.gold = 1234567;
-    menu_row(&menu, 4, text, &cursor);
+    menu_row(&menu, 3, text, &cursor);
     CHECK(!strcmp(text, "    Gold 1234567 Exp 4900"));   /* Exp under the town */
     slots[1].p.gold = 0xABCDEF;
-    menu_row(&menu, 6, text, &cursor);
+    menu_row(&menu, 4, text, &cursor);
     CHECK(!strcmp(text, "  3 Damaged file"));
-    menu_row(&menu, 9, text, &cursor);
-    CHECK(!strcmp(text, "  Erase a file"));
+    menu_row(&menu, 5, text, &cursor);
+    CHECK(!strcmp(text, ""));
+    menu_row(&menu, 6, text, &cursor);
+    CHECK(!strcmp(text, ""));                                  /* a blank before Erase */
+    menu_row(&menu, 7, text, &cursor);
+    CHECK(MENU_ROWS == 8 && !strcmp(text, "  Erase a file"));
 
     bool moved;
     Menu m = { PICK, 0, 0 };
@@ -401,16 +411,16 @@ static void file_select(void) {
     /* Erase: the cursor starts on the first file with something in it. */
     m.cursor = ERASE_ROW;
     CHECK(menu_press(&m, BUTTON_A, &moved) == 0 && m.mode == ERASE && m.cursor == 1);
-    menu_row(&m, 9, text, &cursor);
+    menu_row(&m, 7, text, &cursor);
     CHECK(!strcmp(text, "  Erase which file?"));
     CHECK(menu_press(&m, BUTTON_UP, &moved) == 0 && m.cursor == 0);
     CHECK(menu_press(&m, BUTTON_A, &moved) == 0 && m.mode == ERASE);                  /* nothing to erase */
     CHECK(menu_press(&m, BUTTON_B, &moved) == 0 && m.mode == PICK && m.cursor == ERASE_ROW);
     CHECK(menu_press(&m, BUTTON_A, &moved) == 0 && m.mode == ERASE && m.cursor == 1);
     CHECK(menu_press(&m, BUTTON_A, &moved) == 0 && m.mode == CONFIRM && m.target == 1);
-    menu_row(&m, 9, text, &cursor);
+    menu_row(&m, 7, text, &cursor);
     CHECK(!strcmp(text, "  Erase file 2? A yes B no"));
-    menu_row(&m, 3, text, &cursor);
+    menu_row(&m, 2, text, &cursor);
     CHECK(cursor);
     CHECK(menu_press(&m, BUTTON_DOWN, &moved) == 0 && m.mode == CONFIRM && m.target == 1);
     CHECK(menu_press(&m, BUTTON_B, &moved) == 0 && m.mode == ERASE);
@@ -420,6 +430,26 @@ static void file_select(void) {
     m.cursor = ERASE_ROW;
     CHECK(menu_press(&m, BUTTON_A, &moved) == 0 && m.mode == ERASE && m.cursor == 2);  /* the damaged one is left */
     remove_files();
+}
+
+/* Where the file select goes: over START / CONTINUE and the notices (rows
+ * 160-239), clear of the logo (to 143) and of REMASTERED (148-155,
+ * fax_title.c) above it. */
+static void placement(void) {
+    stock(); remove_files();
+    enter_title();
+    static uint32_t picture[256 * 240];
+    int w = 256, h = 240;
+    seen = 5;
+    CHECK(fax_files_present(picture, &w, &h) == picture);   /* the title's loop did not run */
+    seen = 0;
+    CHECK(fax_files_present(picture, &w, &h) != picture);
+    CHECK(drawn.x == 16 && drawn.y == 160 && drawn.cols == MENU_COLS && drawn.rows == MENU_ROWS);
+    CHECK(drawn.y + (drawn.rows + 2) * FAX_TEXT_CELL == 240);   /* the frame's bottom on the last row */
+    CHECK(drawn.lines == MENU_ROWS && drawn.first_line_y == 168 && drawn.last_line_y == 224);
+    static uint32_t wide[512 * 240];
+    w = 512;
+    CHECK(fax_files_present(wide, &w, &h) != wide && drawn.x == 128 + 16 && drawn.y == 160);
 }
 
 /* The title's loop: the game sees Start only when a file is chosen. */
@@ -745,6 +775,7 @@ int main(void) {
     files_on_disk();
     api();
     file_select();
+    placement();
     title();
     importing();
     choices();

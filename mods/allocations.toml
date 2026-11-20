@@ -31,7 +31,7 @@
 id = "guru-travel"
 package = "faxanadu.remastered"
 plugin = "faxanadu.guru-travel"
-source = "fax_travel.c"
+source = "src/fax_travel.c"
 hooks = "faxanadu.travel."
 # Supplied through read overrides; the ROM image itself is never changed.
 rom = [
@@ -45,7 +45,7 @@ rom = [
 id = "seamless-world"
 package = "faxanadu.enhancement.seamless-world"
 plugin = "faxanadu.seamless-world"
-source = "fax_world.c"
+source = "src/fax_world.c"
 hooks = "faxanadu.world."
 rom = []
 
@@ -60,7 +60,7 @@ the last at this address."""
 id = "death-keeps-gold"
 package = "faxanadu.remastered"
 plugin = "faxanadu.death-keeps-gold"
-source = "fax_death.c"
+source = "src/fax_death.c"
 hooks = "faxanadu.death-keeps-gold."
 rom = []
 # Hooks only Player_SetInitialExpAndGold ($95B1, bank 12), which no other
@@ -74,7 +74,7 @@ rom = []
 id = "pendant-fix"
 package = "faxanadu.remastered"
 plugin = "faxanadu.pendant-fix"
-source = "fax_pendant.c"
+source = "src/fax_pendant.c"
 hooks = "faxanadu.pendant-fix."
 rom = []
 # Hooks only @_checkGlove ($8884, bank 14), which no other feature hooks, and
@@ -84,7 +84,7 @@ rom = []
 id = "magic-button"
 package = "faxanadu.remastered"
 plugin = "faxanadu.magic-button"
-source = "fax_magic.c"
+source = "src/fax_magic.c"
 hooks = "faxanadu.magic-button."
 rom = []
 # Hooks Player_CastMagic ($BA5B, bank 14) and GameLoop_CheckUseCurrentItem
@@ -97,7 +97,7 @@ rom = []
 id = "zone-names"
 package = "faxanadu.remastered"
 plugin = "faxanadu.zone-names"
-source = "fax_banner.c"
+source = "src/fax_banner.c"
 hooks = "faxanadu.zone-names."
 rom = []
 # No hooks and no ROM: it reads RAM at the end of each frame and draws over
@@ -107,7 +107,7 @@ rom = []
 id = "speaker-names"
 package = "faxanadu.remastered"
 plugin = "faxanadu.speaker-names"
-source = "fax_speaker.c"
+source = "src/fax_speaker.c"
 hooks = "faxanadu.speaker-names."
 rom = []
 # No hooks and no ROM: it reads RAM and the nametable when the picture is
@@ -117,7 +117,7 @@ rom = []
 id = "auto-keys"
 package = "faxanadu.remastered"
 plugin = "faxanadu.auto-keys"
-source = "fax_keys.c"
+source = "src/fax_keys.c"
 hooks = "faxanadu.auto-keys."
 rom = []
 # Writes SelectedItem, ItemInventory and NumberOfItems, as selecting and using
@@ -127,7 +127,7 @@ rom = []
 id = "reusable-tools"
 package = "faxanadu.remastered"
 plugin = "faxanadu.reusable-tools"
-source = "fax_keys.c"
+source = "src/fax_keys.c"
 hooks = "faxanadu.reusable-tools."
 rom = []
 # Writes SelectedItem only, putting back the key the game just cleared.
@@ -145,7 +145,7 @@ Game_UnlockDoorWithUsableItem is the caller."""
 id = "falling-pose"
 package = "faxanadu.remastered"
 plugin = "faxanadu.falling-pose"
-source = "fax_falling.c"
+source = "src/fax_falling.c"
 hooks = "faxanadu.falling-pose."
 rom = []
 # Hooks Player_GetBodySpriteFrameOffset ($ECAC) and Maybe_Player_CalcAnimFrame
@@ -157,7 +157,7 @@ rom = []
 id = "forgiving-jumps"
 package = "faxanadu.remastered"
 plugin = "faxanadu.forgiving-jumps"
-source = "fax_jumps.c"
+source = "src/fax_jumps.c"
 hooks = "faxanadu.forgiving-jumps."
 rom = []
 # Hooks Player_CheckHandleVertMovement ($E2C8) at its entry and two branches
@@ -170,7 +170,7 @@ rom = []
 id = "text-speed"
 package = "faxanadu.remastered"
 plugin = "faxanadu.text-speed"
-source = "fax_text_speed.c"
+source = "src/fax_text_speed.c"
 hooks = "faxanadu.text-speed."
 rom = []
 # Writes only TextBox_Timer ($021D) and TextBox_PlayTextSound ($0212), at
@@ -183,7 +183,7 @@ rom = []
 id = "taller-dagger"
 package = "faxanadu.remastered"
 plugin = "faxanadu.taller-dagger"
-source = "fax_dagger.c"
+source = "src/fax_dagger.c"
 hooks = "faxanadu.taller-dagger."
 rom = []
 # Served through a read override; the ROM image itself is never changed.
@@ -195,7 +195,7 @@ overrides = [
 id = "save-files"
 package = "faxanadu.remastered"
 plugin = "faxanadu.save-files"
-source = "fax_files.c"
+source = "src/fax_files.c"
 hooks = "faxanadu.files."
 # Supplied through read overrides; the ROM image itself is never changed.
 # $AE14, where B on the question goes on to, is never read: the next-action
@@ -267,7 +267,7 @@ there. So all four may run in any order."""
 id = "block"
 package = "faxanadu.remastered"
 plugin = "faxanadu.block"
-source = "fax_block.c"
+source = "src/fax_block.c"
 hooks = "faxanadu.block."
 # Borrowed from Guru travel (fax_travel.h) and served through the same read
 # overrides, rather than ROM of its own: 55 of the 64 overrides are Guru
@@ -298,7 +298,7 @@ rom = [
 id = "sugata-flash"
 package = "faxanadu.remastered"
 plugin = "faxanadu.sugata-flash"
-source = "fax_sugata.c"
+source = "src/fax_sugata.c"
 hooks = "faxanadu.sugata."
 rom = []
 # Hooks SpriteBehavior_FlashScreenHitPlayer ($AB26, $AB36, and $AB44, shared
@@ -325,7 +325,7 @@ site first would stop a flash the Magic Shield should turn back."""
 id = "quick-shops"
 package = "faxanadu.remastered"
 plugin = "faxanadu.shops"
-source = "fax_shops.c"
+source = "src/fax_shops.c"
 hooks = "faxanadu.shops."
 rom = []
 # No ROM and no read overrides. Writes only the game's own variables, while a
@@ -336,13 +336,16 @@ rom = []
 # files (declared above); its other sites are in the shops' list actions,
 # which no other feature hooks. Save files' override of the Buy/Sell menu's
 # operand ($8631) is for the Guru's menu: a shop never runs that menu, since
-# Quick shops opens its list instead.
+# Quick shops opens its list instead. It reads, never writes, whether reusable
+# tools and recharging items are on and the Elixir is spent (fax_keys.h,
+# fax_recharge.h), to show what the hero owns; its buy list's A ($8402) skips
+# the game's checks for an owned item.
 
 [[feature]]
 id = "zone-respawn"
 package = "faxanadu.remastered"
 plugin = "faxanadu.zone-respawn"
-source = "fax_respawn.c"
+source = "src/fax_respawn.c"
 hooks = "faxanadu.zone-respawn."
 rom = []
 # Hooks Screen_SetupNew ($DD13), Player_HandleDeath's JSR Screen_FadeToBlack
@@ -364,7 +367,7 @@ rom = []
 id = "recharging-items"
 package = "faxanadu.remastered"
 plugin = "faxanadu.recharge"
-source = "fax_recharge.c"
+source = "src/fax_recharge.c"
 hooks = "faxanadu.recharge."
 rom = []
 # Writes DurationWingBoots (through A at its STA),
@@ -390,3 +393,65 @@ why = """Both observe and return 0, so both always run, in either order. Block \
 only notes that Game_MainLoop got this far this frame; recharging items \
 counts its cooldowns and queues T: before the game's own countdowns, which \
 neither changes."""
+
+[[feature]]
+id = "slain-by"
+package = "faxanadu.remastered"
+plugin = "faxanadu.slain-by"
+source = "src/fax_slain.c"
+hooks = "faxanadu.slain-by."
+rom = []
+# Hooks Player_ReduceHP ($C08E) and Sprite_Maybe_ResetState ($A202, bank 14),
+# which no other feature hooks, and only observes both (returns 0), so the
+# death path and every hit play out as without it. Sugata's flash (its sites
+# at $AB26-$AB44) and Block (at Player_HandleHitByMagic and $AB44) decide
+# before Player_ReduceHP is reached: a hit they stop never gets here. Writes
+# nothing to the machine; it draws its line through the zone names banner
+# (fax_banner_draw), which needs no hooks either. No read overrides.
+
+[[feature]]
+id = "title-remastered"
+package = "faxanadu.remastered"
+plugin = "faxanadu.title-remastered"
+source = "src/fax_title.c"
+hooks = "faxanadu.title-remastered."
+rom = []
+# Hooks only Game_ShowStartScreen's @_afterCheckHandleInputFarJump ($FC7A),
+# which no other feature hooks, and returns 0 there: it notes that the title's
+# loop ran this frame and writes nothing. Save files' handled
+# StartScreen_CheckHandleInput returns to $FC7A as its RTS would, so the site
+# fires each frame of the title. The word is drawn over the presented picture
+# (fax_text.c), in rows the title leaves black (y 148-155), above Save files'
+# file select (from y 160).
+
+[[feature]]
+id = "indoor-equip"
+package = "faxanadu.remastered"
+plugin = "faxanadu.indoor-equip"
+source = "src/fax_indoor.c"
+hooks = "faxanadu.indoor-equip."
+rom = []
+# Hooks Game_EnterBuilding after its weapon clear ($DE0B), Player_SetWeapon's
+# area check ($EDF1) and the Select menu's (bank 12, $8B88), which no other
+# feature hooks. Writes Player_CurWeapon ($03C8) on the way into a building,
+# from SelectedWeapon, and clears Z at the two branches. Zone respawn's site at
+# Game_SetupEnterBuilding ($DAAF) runs before $DE0B and, when it swaps in
+# Game_SetupExitBuilding, $DE0B is never reached: that loader sets
+# Player_CurWeapon itself. No read overrides.
+
+[[feature]]
+id = "damage-numbers"
+package = "faxanadu.remastered"
+plugin = "faxanadu.damage-numbers"
+source = "src/fax_damage.c"
+hooks = "faxanadu.damage-numbers."
+rom = []
+# Hooks @_updateSpriteHP ($8891) and @_reduceEnemyHP ($81FD) in bank 14, and
+# Player_ReduceHP's SEC ($C091, not its entry), which no other feature hooks,
+# and only observes all three (returns 0): every hit plays out as without it.
+# The Pendant fix sets Temp_00 at $8884, before $8891 reads it, so the number
+# is the fixed damage. Sugata's flash and Block decide at $AB44 and
+# Player_HandleHitByMagic, before Player_ReduceHP is reached, so a hit they
+# stop shows nothing; Sugata's reflection runs $81FD in a committed call,
+# where no hook fires, and reports itself through fax_damage_enemy_hit. Writes
+# nothing to the machine and draws at present time. No ROM, no read overrides.
