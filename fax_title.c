@@ -123,9 +123,9 @@ static void title_state(int id, const char *line) {
     char fields[256];
     snprintf(fields, sizeof fields,
              "\"enabled\":%s,\"font\":%s,\"shown\":%s,\"seen\":%u,\"word\":\"%s\",\"x\":%d,\"y\":%d,"
-             "\"width\":%d,\"color\":%d,\"presents\":%u",
+             "\"width\":%d,\"color\":%d,\"argb\":%lu,\"presents\":%u",
              enabled ? "true" : "false", fax_text_loaded() ? "true" : "false", title_up() ? "true" : "false", seen,
-             WORD, drawn_x, drawn_y, drawn_w, WORD_COLOR, shown_frames);
+             WORD, drawn_x, drawn_y, drawn_w, WORD_COLOR, (unsigned long)cyc_render_color(WORD_COLOR), shown_frames);
     cyc_tcp_ok(id, fields);
 }
 void fax_title_tcp_setup(void) {
