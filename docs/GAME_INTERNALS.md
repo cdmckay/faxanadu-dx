@@ -70,13 +70,17 @@ and data tables after it shifted). Not supported: the build rejects it.
 | `$0214` | `Message_ProcessedLength` | Bytes of the message read, from an offset, not 0. Wraps with the address |
 | `$0215` | `TextBox_MessagePaused` | Nonzero while a `$FC` pause waits for A |
 | `$021D` | `TextBox_Timer` | Characters type when it is a multiple of 4. `Messages_Load` zeroes it |
+| `$02CC-$02D3` | `CurrentSprites_Entities` | Each sprite slot's entity, `$FF` empty (see *What killed the hero*) |
+| `$0378` | `CurrentSpriteIndex` | The slot whose behavior or collision is running |
 | `$0390`, `$0392-$0394` | `Experience`, `Gold` | Gold is 24-bit little-endian |
 | `$039A` | `Player_MP` | |
 | `$03C7` | `IScript_PortraitID` | The portrait showing, `$FF` for none (see *Portraits*) |
+| `$042C` | `SpecialItems` | Bit flags; `$08` the Elixir, which saves a death once |
 | `$042D` | `Quests` | Bit flags |
 | `$0431`, `$0432` | `Player_HP_U`, `Player_HP_L` | |
 | `$0438` | `PlayerIsDead` | Set it to 1 and the main loop runs the death path |
 | `$0439` | `TempleSpawnPoint` | Where death respawns and a mantra continues, 0-7. In the original, the furthest temple reached; with Save files, the temple of the Guru last saved with |
+| `$04BC`, `$04BD` | `Arg_PlayerHealthDelta_L`, `_U` | The HP `Player_ReduceHP` takes: fraction, whole |
 | `$0600-$061F` | `Password_EnteredChars` | The mantra screen's characters, as 6-bit values (shares `ScreenBuffer`) |
 | `$0666` | `Password_EnteredCharsLength` | |
 | `$0687` | `DAT_0687` | The title's choice: 0 Start, 1 Continue |
@@ -900,6 +904,118 @@ only user of `$1F`:
 - `SpriteUpdateHandler_Enemy_Sugata` (`$929F`) draws Sugata; returning
   through `SpriteUpdateHandler_Invisible` (`$8C98`) hides it that frame. The
   presented picture lags the sprites by a frame or two.
+
+## What killed the hero (bank 14, bank 15)
+
+**Every loss of HP goes through `Player_ReduceHP` (`$C08E`, fixed bank)**,
+which subtracts `Arg_PlayerHealthDelta` (`$04BC` fraction, `$04BD` whole) from
+`Player_HP` (`$0432` fraction, `$0431` whole) as one 16-bit number. A borrow
+kills: it zeroes the HP and sets `PlayerIsDead`, unless `SpecialItems`
+(`$042C`) bit `$08`, the Elixir, is set, when it jumps to `Player_UseElixir`
+instead. HP equal to the damage leaves him alive at 0. Nothing else lowers
+HP (the other writes to `$0431` are the spawn's 80, `Game_LoadFirstLevel`,
+healing and the HUD's cap). It has exactly four callers, found by scanning the
+ROM for `JSR`/`JMP $C08E`:
+
+| Caller | Call | Damage | The hit's source |
+|---|---|---|---|
+| `Player_ApplyDamage` (`$8A79`, bank 14) | `JMP` at `$8AD4` | `SPRITE_ENTITY_DAMAGES[entity]` less armor | The sprite at `CurrentSpriteIndex` (`$0378`): an enemy's, a boss's or a shot's touch, through `Player_HandleTouchEnemy` (`$89AE`) |
+| `Player_HandleHitByMagic` (`$87DC`, bank 14) | `JMP` at `$87FD` | A shot's damage, shifted down by the shield | The shot at `CurrentSpriteIndex`, on the shield |
+| `SpriteBehavior_FlashScreenHitPlayer` (bank 14) | `JSR` at `$AB5D`, resumes at `$AB60` | 10 | Sugata's flash |
+| `Player_PickUpPoison` (`$C83C`, fixed bank) | `JSR` at `$C85D`, resumes at `$C860` | 16 | The Poison, after its "I've touched Poison." (message `$BB`, IScript `$91`) |
+
+So at `Player_ReduceHP`'s entry the word at S + 1 tells the Poison and the
+flash apart (the two `JMP` callers leave their caller's return there), and
+`CurrentSprites_Entities[CurrentSpriteIndex]` (`$02CC` + slot, 8 slots, `$FF`
+empty) is everything else. `CurrentSprite_CheckHitPlayer` sends a touch to a
+handler by `SPRITE_CATEGORIES_BY_ENTITY` (`$B544`): 0 enemy and 7 boss to
+`Player_HandleTouchEnemy`, 6 magic to `Player_HandleTouchEnemyMagic`; the
+others (bread, NPCs, effects, triggers, items) do no harm.
+
+**Shots and rocks are sprites spawned by other sprites, and every such spawn
+goes through `Sprite_Maybe_ResetState` (`$A202`, bank 14)** with X the
+spawner's slot and Y the new one, its entity already stored. All seven of its
+callers store a new entity at `CurrentSprites_Entities,Y` and `JMP` there:
+
+| Spawned | Damage | By | Code |
+|---|---|---|---|
+| `$03` (a falling rock, chipx86's "Enemy: ?") | 31 | Zorugeriru (`$31`) | `SpriteBehavior_Zorugeriru__9e13` |
+| `$09` Lilith | 6 | Pakukame (`$30`) | `SpriteBehavior_Pakukame` |
+| `$0A` (fire) | 28 | Ripasheiku (`$2D`), King Grieve (`$32`) | `Sprite_CastMagic` (`$A0F6`), from both behaviors |
+| `$51` (a shot) | 8 | Nash (`$0D`), Ishiisu (`$0F`), Execution Hood (`$10`) | `FUN_PRG14__a0a0`, which falls into `SpriteBehavior_ExecutionHood__a0ad` |
+| `$53` (fire) | 28 | Shadow Eura (`$33`) | `SpriteBehavior_ShadowEura__a12d` |
+| `$54` (a fireball) | 8 | Charron (`$15`) | `BScript_Action_CastMagic` (`$9239`), behavior-script action 7. `FUN_PRG14__a1cc` also makes one and has no caller |
+
+- **chipx86's comments in two tables are off by one.**
+  `SPRITE_CATEGORIES_BY_ENTITY`'s skip Zorugeriru, so from `$31` on each
+  comment names the entity before (its values are right: `$31`-`$33` are
+  bosses, `$46` and `$47` enemies). `SPRITE_BSCRIPTS`' put Charron's script at
+  `$14` (the lightning ball): entity `$15`, Charron, runs
+  `BSCRIPTS_ENEMY_UNUSED_21`, the script that casts. The `SPRITE_*` constants
+  in `DEFS.asm` and `SPRITE_UPDATE_HANDLERS`' comments are right.
+- **The death plays out over 256 frames.** `Player_HandleDeath` (`$D8EC`)
+  plays sound `$16` and loops once a frame until `Screen_TransitionCounter`
+  (`$03DB`) wraps, dissolving the hero (`Player_DrawDeathAnimation`), then
+  runs the Guru's words. Nothing reads the pad in between.
+- **The NES manual names no enemy.** The USA instruction booklet (27 pages,
+  archive.org's `NESManuals` scan) names places, items and titles: of what
+  hurts, only the Poison ("The hero's power will decrease by a fixed
+  amount"). The names below are chipx86's `SPRITE_*` constants, written as a
+  player would say one of them; StrategyWiki's enemy list spells them the
+  same, but for "Mask Man" and "Wolf Man".
+
+**The names Slain by uses** (`fax_slain.c`), for every entity that can hurt
+the hero. The unused enemies (`$12`, the snake boss's round body, `$16`,
+`$1D`, `$24`, `$25`, `$27`, `$29`, `$2B`, `$46`) appear on no screen and are
+spawned by nothing, so they have none.
+
+| Entity | chipx86 | Shown | Where, for a test |
+|---|---|---|---|
+| `$04` | `SPRITE_ENEMY_RAIDEN` | a Raiden | |
+| `$05` | `SPRITE_ENEMY_NECRON_AIDES` | a Necron Aide (one of them) | |
+| `$06` | `SPRITE_ENEMY_ZOMBIE` | a Zombie | Trunk `$06` |
+| `$07` | `SPRITE_ENEMY_HORNET` | a Hornet | |
+| `$08` | `SPRITE_ENEMY_BIHORUDA` | a Bihoruda | |
+| `$09` | `SPRITE_ENEMY_LILITH` | a Lilith | |
+| `$0B` | `SPRITE_ENEMY_YUINARU` | a Yuinaru | |
+| `$0C` | `SPRITE_ENEMY_SNOWMAN` | a Snowman | |
+| `$0D` | `SPRITE_ENEMY_NASH` | a Nash | Mist `$2A`, its only screen |
+| `$0E` | `SPRITE_ENEMY_FIRE_GIANT` | a Fire Giant | |
+| `$0F` | `SPRITE_ENEMY_ISHIISU` | an Ishiisu | |
+| `$10` | `SPRITE_ENEMY_EXECUTION_HOOD` | an Execution Hood | Zenis `$10`, its only screen (see *Shields and enemy magic*) |
+| `$11` | `SPRITE_BOSS_ROKUSUTAHN` | a Rokusutahn | |
+| `$15` | `SPRITE_ENEMY_CHARRON` | a Charron | |
+| `$17` | `SPRITE_ENEMY_GERIBUTA` | a Geributa | |
+| `$18` | `SPRITE_ENEMY_SUGATA` | a Sugata (its touch or its flash) | Mist `$1E` (see *Sugata's flash*) |
+| `$19` | `SPRITE_ENEMY_GRIMLOCK` | a Grimlock | |
+| `$1A` | `SPRITE_ENEMY_GIANT_BEES` | a Giant Bee (one of them) | |
+| `$1B` | `SPRITE_ENEMY_MYCONID` | a Myconid | |
+| `$1C` | `SPRITE_ENEMY_NAGA` | a Naga | |
+| `$1E` | `SPRITE_ENEMY_GIANT_STRIDER` | a Giant Strider | |
+| `$1F` | `SPRITE_ENEMY_SIR_GAWAINE` | a Sir Gawaine | |
+| `$20` | `SPRITE_ENEMY_MASKMAN` | a Maskman | |
+| `$21` | `SPRITE_ENEMY_WOLFMAN` | a Wolfman | |
+| `$22` | `SPRITE_ENEMY_YAREEKA` | a Yareeka | |
+| `$23` | `SPRITE_ENEMY_MAGMAN` | a Magman | |
+| `$26` | `SPRITE_ENEMY_IKEDA` | an Ikeda | |
+| `$28` | `SPRITE_ENEMY_LAMPREY` | a Lamprey | |
+| `$2A` | `SPRITE_ENEMY_MONODRON` | a Monodron | Trunk `$00`, where the Trunk's door from Eolis arrives |
+| `$2C` | `SPRITE_ENEMY_TAMAZUTSU` | a Tamazutsu | |
+| `$2D` | `SPRITE_BOSS_RIPASHEIKU` | a Ripasheiku | Trunk `$15`, the Tower of Trunk's top: a building's door edited to area 1, screen `$15`, palette `$07`, position `$91`, region 1 arrives in its room |
+| `$2E` | `SPRITE_BOSS_ZORADOHNA` | a Zoradohna | |
+| `$2F` | `SPRITE_BOSS_BORABOHRA` | a Borabohra | |
+| `$30` | `SPRITE_BOSS_PAKUKAME` | a Pakukame | |
+| `$31` | `SPRITE_BOSS_ZORUGERIRU` | a Zorugeriru (and its rocks) | Trunk `$3B` |
+| `$32` | `SPRITE_BOSS_KING_GRIEVE` | King Grieve (his fire too) | Dartmoor `$15`, `$16` |
+| `$33` | `SPRITE_BOSS_SHADOW_EURA` | Shadow Eura (its fire too) | Zenis `$00` |
+| `$47` | `SPRITE_ENEMY_ZOZURA` | a Zozura | Zenis `$10`, Trunk `$02` |
+| `$03`, `$0A`, `$51`, `$53`, `$54` | rocks and shots | whoever spawned it, from the table above | |
+| | `Player_PickUpPoison` | Poison | message `$BB`, "I've touched Poison." |
+
+"a" or "an" goes by the name's first sound; King Grieve and Shadow Eura, the
+two with a name of their own, take none. The longest line, "Slain by an
+Execution Hood", is 26 characters: 30 tiles with the banner's blanks and
+frame, inside the screen's 32.
 
 ## The hero's movement (bank 15)
 
@@ -1800,7 +1916,23 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
   settled. A temple whose way out is not where the hero last stood means a
   respawn or a Guru travel journey, and makes the next zone's name show. The
   banner is held while a box is open or the game is paused. Its save-state
-  record keeps the banner as it was.
+  record keeps the banner as it was. Its drawing, `fax_banner_draw`, takes any
+  line, so Slain by draws in the same box.
+
+- **Slain by** (`fax_slain.c`, drawn by `fax_banner.c`). When a hit takes the
+  hero's last HP, the banner says what it came from, "Slain by a Sugata", from
+  that frame through the dissolve, fading out at frame 248 of its 256, before
+  the Guru speaks, and puts away any zone name showing. Two hooks, both only
+  observing (see *What killed the hero*): at `Player_ReduceHP` (`$C08E`) it
+  names the source of a hit that kills (HP below the damage, no Elixir), and
+  at `Sprite_Maybe_ResetState` (`$A202`) it keeps each slot's spawner, which
+  names a shot or a rock; a slot forgets it when its sprite goes. A shot whose
+  spawn it never saw (with Seamless on, a neighboring room's) is named by the
+  only kind of caster of it on screen, or not at all. A death nothing caused
+  names nothing. Both hooks keep no state in Seamless's isolated rooms. Its
+  save-state record is the line and its age, and each slot's spawn (21
+  bytes). It loads the game's font itself, so it does not rely on Zone names
+  having drawn first.
 
 - **Speaker names** (`fax_speaker.c`, with `fax_zone.c` and `fax_text.c`).
   While a portrait's frame is on screen, the speaker's name sits on a tab

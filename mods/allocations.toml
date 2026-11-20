@@ -395,6 +395,21 @@ counts its cooldowns and queues T: before the game's own countdowns, which \
 neither changes."""
 
 [[feature]]
+id = "slain-by"
+package = "faxanadu.remastered"
+plugin = "faxanadu.slain-by"
+source = "fax_slain.c"
+hooks = "faxanadu.slain-by."
+rom = []
+# Hooks Player_ReduceHP ($C08E) and Sprite_Maybe_ResetState ($A202, bank 14),
+# which no other feature hooks, and only observes both (returns 0), so the
+# death path and every hit play out as without it. Sugata's flash (its sites
+# at $AB26-$AB44) and Block (at Player_HandleHitByMagic and $AB44) decide
+# before Player_ReduceHP is reached: a hit they stop never gets here. Writes
+# nothing to the machine; it draws its line through the zone names banner
+# (fax_banner_draw), which needs no hooks either. No read overrides.
+
+[[feature]]
 id = "title-remastered"
 package = "faxanadu.remastered"
 plugin = "faxanadu.title-remastered"

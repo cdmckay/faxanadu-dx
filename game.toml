@@ -575,6 +575,21 @@ addr = 0x826e
 bank = 12
 bytes = "20 a4 87 aa bd 93 82 48 bd 7b 82 48"   # IScripts_InvokeNextAction: a Guru's first action charges the Elixir
 
+# Slain by (fax_slain.c): every loss of HP, and every sprite another spawns
+# (a shot, a rock). Both only observe.
+
+[[mod_function_hook]]
+id = "faxanadu.slain-by.reduce-hp"
+addr = 0xc08e
+bank = 15
+bytes = "ad 32 04 38 ed bc 04 8d 32 04 ad 31"
+
+[[mod_function_hook]]
+id = "faxanadu.slain-by.spawn"
+addr = 0xa202
+bank = 14
+bytes = "8a 48 b9 cc 02 0a aa bd 2d ad 99 54"
+
 # REMASTERED on the title (fax_title.c): Game_ShowStartScreen's loop, after
 # the far call to StartScreen_CheckHandleInput (which Save files takes over),
 # notes once a frame that the title is up. It only observes.
