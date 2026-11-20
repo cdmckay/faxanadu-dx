@@ -7,7 +7,7 @@ endif()
 # fax_damage.c is included by the test, against Block's model of the machine
 # (../block/model.c).
 add_executable(damage_test damage_test.c ../block/model.c)
-target_include_directories(damage_test PRIVATE ../block ../.. ${NESRECOMP_ROOT}/runner/include ${NESRECOMP_ROOT}/runner/cyc)
+target_include_directories(damage_test PRIVATE ../block ../../src ${NESRECOMP_ROOT}/runner/include ${NESRECOMP_ROOT}/runner/cyc)
 if(NOT MSVC)
     target_compile_options(damage_test PRIVATE -Wall -Wextra)
 endif()

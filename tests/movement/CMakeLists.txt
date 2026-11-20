@@ -8,7 +8,7 @@ endif()
 # a model of the machine and the hero's update.
 foreach(test pose jumps)
     add_executable(${test}_test ${test}_test.c)
-    target_include_directories(${test}_test PRIVATE ../.. ${NESRECOMP_ROOT}/runner/include ${NESRECOMP_ROOT}/runner/cyc)
+    target_include_directories(${test}_test PRIVATE ../../src ${NESRECOMP_ROOT}/runner/include ${NESRECOMP_ROOT}/runner/cyc)
     if(NOT MSVC)
         target_compile_options(${test}_test PRIVATE -Wall -Wextra)
     endif()

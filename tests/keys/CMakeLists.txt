@@ -6,7 +6,7 @@ if(NOT NESRECOMP_ROOT)
 endif()
 # fax_keys.c is included by the test, against a model of the machine.
 add_executable(keys_test keys_test.c)
-target_include_directories(keys_test PRIVATE ../.. ${NESRECOMP_ROOT}/runner/include ${NESRECOMP_ROOT}/runner/cyc)
+target_include_directories(keys_test PRIVATE ../../src ${NESRECOMP_ROOT}/runner/include ${NESRECOMP_ROOT}/runner/cyc)
 if(NOT MSVC)
     target_compile_options(keys_test PRIVATE -Wall -Wextra)
 endif()

@@ -243,6 +243,9 @@ build-cycle/FaxanaduRecomp "Faxanadu (USA).nes"
 `setup.sh` fetches the code the build depends on. The game opens in its
 launcher first.
 
+The game's C is in `src/` (each feature is a `fax_<name>.c`), its tests in
+`tests/`, the mod in `mods/`, scripts in `tools/` and notes in `docs/`.
+
 ## Credits
 
 - Built on Matthew Stanley's [FaxanaduRecomp](https://github.com/mstan/FaxanaduRecomp)
