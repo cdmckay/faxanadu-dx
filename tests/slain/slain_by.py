@@ -24,12 +24,11 @@ hit and every death is the game's own:
 6. With Faxanadu Remastered off (the original game), the same death names
    nothing.
 """
-import argparse
 from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "block"))
-from harness import (Game, fixture, AREA, SCREEN, POS_X, POS_Y, ENTITIES, SPRITE_X, SPRITE_Y, SELECTED_SHIELD,  # noqa: E402
+from harness import (Game, fixture, parse_args, AREA, SCREEN, POS_X, POS_Y, ENTITIES, SPRITE_X, SPRITE_Y, SELECTED_SHIELD,  # noqa: E402
                      SMALL, MAGIC, HP, PLAYER_IS_DEAD, MESSAGE_ID, GOLD)
 
 HP_FRACTION, EXPERIENCE = 0x432, 0x390
@@ -47,15 +46,8 @@ PACKAGE, FEATURE = "faxanadu.remastered", "remastered"          # the one switch
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    for key in ("build", "rom", "out"):
-        ap.add_argument("--" + key, type=Path, required=True)
-    ap.add_argument("--game-arg", action="append", default=[],
-                    help="extra game option, e.g. --game-arg=--world-view=seamless (repeatable)")
-    ap.add_argument("--port", type=int, default=0, help="TCP port (default: a free one)")
-    ap.add_argument("--realtime", action="store_true", help="run at normal speed instead of uncapped")
-    args = ap.parse_args()
-    g = Game(args.build, args.rom, args.out, args.game_arg, args.realtime, args.port)
+    args = parse_args(__doc__)
+    g = Game.from_args(args)
 
     def slain():
         return g.tcp("slain_state")
@@ -210,8 +202,7 @@ def main():
 
         # 6. The remaster off: the original game's death, with nothing named.
         g.close()
-        (g.out / "game" / "mods" / "state.toml").write_text(
-            f'format_version = 1\n\n[[feature]]\npackage_id = "{PACKAGE}"\nid = "{FEATURE}"\nenabled = false\n')
+        g.set_features({(PACKAGE, FEATURE): False})
         g.launch()
         assert not slain()["enabled"], "Slain by is off with the remaster"
         g.load(g.out / "monodron-dying.cycstate")
@@ -223,7 +214,7 @@ def main():
         s = slain()
         assert (s["deaths"], s["unnamed"]) == (0, 0), s
         print("ok: with Faxanadu Remastered off, the Monodron's touch kills him and nothing is named")
-        print("screenshots:", ", ".join(p.name for p in g.shots))
+        print("screenshots:", ", ".join(g.shots))
     except BaseException:
         if g.running():
             g.shot("failure")
