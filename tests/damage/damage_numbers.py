@@ -15,9 +15,10 @@ is saved there. Every case starts from that save, its RAM edited: the Long
 Sword in hand (8 a hit with the Pendant fix and no Pendant), Leather Armor,
 full HP, no knockback or iframes, and where he and the Zozura stand, crawling
 toward him: with Seamless on, the room's actors move before he arrives, so the
-walk-in leaves them anywhere.
+walk-in leaves them anywhere. A swing or a cast goes in with its case's load
+(batch), so it starts on the state's first frame however far the script lags.
 
-1. Swinging at both Zozura, 4 pixels apart: the nearer one, left 1 HP, dies,
+1. One swing at both Zozura, 26 and 30 pixels off: the nearer, left 1 HP, dies,
    and its number is still the hit's 8; the other keeps 1 of its 9 and shows
    8 too. Both show at once without touching (the older moved out of the
    newer's way). Each starts centered over the box the weapon checks, 8 above
@@ -28,9 +29,9 @@ walk-in leaves them anywhere.
    game is paused, and is gone after 60 frames.
 3. The Zozura reaches the hero: his HP drops by its 7 and a pink 7 rises over
    him, from where he stood when it touched him.
-4. Deluge through the Magic button (C): the Zozura loses 6 (MAGIC_DAMAGE), and
-   a 6 shows over it.
-5. Under Ointment the Zozura crawls into him: no HP, no number.
+4. Deluge through the Magic button (C), 64 pixels from the Zozura: it loses 6
+   (MAGIC_DAMAGE), and a 6 shows over it.
+5. Under Ointment the Zozura touches him for 2 seconds: no HP, no number.
 6. With the remaster off: the same kill, and no number.
 
 The pictures are taken with the state, at one frame boundary (batch): every
@@ -47,7 +48,7 @@ import zlib
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 from fax_e2e import Game, act, batch, chunks, fixture, frame, parse_args, ram, tcp, until, wait  # noqa: E402
 
-AREA, SCREEN, POS_X, POS_Y, PLAYER_FLAGS, STATUS, IFRAMES, ATTACKING = 0x24, 0x63, 0x9E, 0xA1, 0xA4, 0xA5, 0xAD, 0x80
+AREA, SCREEN, POS_X, POS_Y, PLAYER_FLAGS, STATUS, IFRAMES = 0x24, 0x63, 0x9E, 0xA1, 0xA4, 0xA5, 0xAD
 SPRITE_X, SPRITE_Y, ENTITIES, SPRITE_FLAGS, SPRITE_HP, HIT_COUNTER = 0xBA, 0xC2, 0x2CC, 0x2DC, 0x344, 0x34C   # 8 slots
 PAUSED, MP, SELECTED_WEAPON, SELECTED_ARMOR, SELECTED_MAGIC = 0x120, 0x39A, 0x3BD, 0x3BE, 0x3C0
 PLAYER_CUR_WEAPON, DURATION_OINTMENT, DURATION_GLOVE, SPECIAL_ITEMS, HP = 0x3C8, 0x427, 0x428, 0x42C, 0x431
@@ -56,8 +57,11 @@ INTRO_TRIGGER, ZOZURA = 0x4F, 0x47
 NEAR, FAR = 7, 6                                    # the Zozura's slots: the nearer, the one behind it
 HERO_AT, NEAR_AT, FAR_AT, GROUND = 240, 150, 70, 144   # where each case puts them (the Zozura 16 lower)
 FACING_RIGHT = 0x01                                 # CurrentSprites_Flags
+SWING = ("action", dict(name="b", frames=2))
 LONG_SWORD, DELUGE = 1, 0
-REACH = 34                                          # swing when the nearer one is this close
+IN_REACH = 26                                       # the nearer Zozura this far from him: a swing's first hit
+                                                    # phase, 8 frames on, hits both (the swords reach 31, it
+                                                    # hurts him from 15, and they crawl about 3 in 8 frames)
 KNOCKED = 8                                         # frames a weapon's hit knocks an enemy back (its hit counter)
 STEP, LIFE, ABOVE, GLYPH = 3, 60, 8, 7              # fax_damage.h and .c
 HUD, FULL = 32, 0x50
@@ -179,7 +183,9 @@ def main():
         data = path.read_bytes()
         return data[next(p for t, p, n in chunks(data) if t == b"HW  ") + 23 + addr]
 
-    def case(name, writes):
+    def case(name, writes, *press):
+        """Load the base save with `writes`, and `press` ((cmd, {args}) input
+        held from the loaded state's first frame, so no script lag moves it)."""
         path = out / f"{name}.cycstate"
         zozura_at = {}
         for slot, x in ((NEAR, NEAR_AT), (FAR, FAR_AT)):
@@ -189,21 +195,19 @@ def main():
                                PLAYER_CUR_WEAPON: LONG_SWORD, SELECTED_WEAPON: LONG_SWORD, HP: FULL,
                                SELECTED_ARMOR: 0, SPECIAL_ITEMS: 0, DURATION_GLOVE: 0xFF,
                                DURATION_OINTMENT: 0xFF, **zozura_at, **writes})
-        tcp("load_state", path=str(path))
+        batch(("load_state", dict(path=str(path))), *press)
         assert ram(SCREEN) == ZOZURA_SCREEN
 
-    def swing_at_both():
-        """Swing as the Zozura come, until both have been hit. RAM and the
-        state, read together right after the second hit."""
-        before = state()["weapon"]
-        for _ in range(900):
+    def swung_at_both():
+        """After a swing from the load's first frame: RAM and the state, read
+        together once both Zozura have been hit."""
+        end = frame() + 120
+        while frame() < end:
             memory, s = watch()
+            assert memory[SCREEN] == ZOZURA_SCREEN, "still on screen 4"
             if memory[ENTITIES + NEAR] != ZOZURA and memory[SPRITE_HP + FAR] != zozura_hp:
-                assert s["weapon"] - before == 2, s
                 return memory, s
-            if memory[POS_X] - memory[SPRITE_X + NEAR] <= REACH and not memory[PLAYER_FLAGS] & ATTACKING:
-                tcp("action", name="b", frames=2)
-        raise AssertionError("the swings never hit both Zozura")
+        raise AssertionError(f"the swing did not hit both Zozura: {s}")
 
     try:
         game.launch()
@@ -232,15 +236,18 @@ def main():
         # The cases' base: everyone in place, and no number left from the walk-in.
         case("placed", {})
         until("no numbers", lambda: state()["live"] == 0, LIFE + 10)
-        assert ram(SPRITE_X + NEAR) < HERO_AT - REACH, "the Zozura are still far off"
+        assert ram(SPRITE_X + NEAR) < HERO_AT - IN_REACH - 8, "the Zozura are still far off"
         zozura = out / "zozura.cycstate"
         tcp("save_state", path=str(zozura))
         print(f"ok: on Eolis screen 4 with two Zozura (the hero at x {ram(POS_X)}, them at "
               f"{ram(SPRITE_X + NEAR)} and {ram(SPRITE_X + FAR)})")
 
         # 1. Both Zozura: a kill (1 HP left) and a hit, 8 each, shown at once and apart.
-        case("both", {SPRITE_X + FAR: NEAR_AT - 4, SPRITE_HP + NEAR: 1})
-        memory, s = swing_at_both()
+        before = state()["weapon"]
+        case("both", {SPRITE_X + NEAR: HERO_AT - IN_REACH, SPRITE_X + FAR: HERO_AT - IN_REACH - 4, SPRITE_HP + NEAR: 1},
+             SWING)
+        memory, s = swung_at_both()
+        assert s["weapon"] - before == 2, s
         assert memory[ENTITIES + FAR] == ZOZURA and memory[SPRITE_HP + FAR] == zozura_hp - sword, memory[SPRITE_HP + FAR]
         dealt = [n for n in s["numbers"] if n["kind"] == "dealt"]
         assert [n["amount"] for n in dealt] == [sword, sword], s
@@ -286,7 +293,7 @@ def main():
               f"{first['age']} to {moved['age']}), holds while paused, and is gone after {LIFE} frames")
 
         # 3. The Zozura reaches the hero: pink, his HP's loss, over him.
-        case("hurt", {POS_X: 192})
+        case("hurt", {POS_X: 192, SPRITE_X + NEAR: 192 - 24})
         before, hero = state()["hero"], None
         for _ in range(600):
             memory, s = watch()
@@ -304,10 +311,9 @@ def main():
               f"from where he stood ({hero[0]}, {hero[1]})")
 
         # 4. Deluge, through the Magic button.
-        case("deluge", {SELECTED_MAGIC: DELUGE, MP: 80, SPRITE_HP + NEAR: 60})
         before = state()["magic"]
-        until("the Zozura to come", lambda: ram(POS_X) - ram(SPRITE_X + NEAR) <= 72, 600)
-        tcp("key", name="C", frames=3)
+        case("deluge", {SELECTED_MAGIC: DELUGE, MP: 80, SPRITE_HP + NEAR: 60, SPRITE_X + NEAR: HERO_AT - 64},
+             ("key", dict(name="C", frames=3)))
         until("the spell's hit", lambda: ram(SPRITE_HP + NEAR) != 60, 300)
         memory, s = watch()
         dealt = [n for n in s["numbers"] if n["kind"] == "dealt"]
@@ -317,10 +323,10 @@ def main():
         print(f"ok: Deluge from the Magic button takes {deluge} and shows {deluge}")
 
         # 5. Ointment: no HP, no number.
-        case("ointment", {POS_X: 192, DURATION_OINTMENT: 0x40})
         before = state()["hero"]
-        until("the Zozura to reach him", lambda: abs(ram(SPRITE_X + NEAR) - ram(POS_X)) < 15, 600)
-        wait(60)
+        case("ointment", {POS_X: 192, DURATION_OINTMENT: 0x40, SPRITE_X + NEAR: 192 - 8})   # touching him
+        assert abs(ram(SPRITE_X + NEAR) - ram(POS_X)) < 15
+        wait(120)
         s = state()
         assert ram(HP) == FULL and s["hero"] == before and s["live"] == 0, s
         print("ok: under Ointment the Zozura's touch takes nothing, and nothing shows")
@@ -330,14 +336,8 @@ def main():
         game.set_features({(PACKAGE, FEATURE): False})
         game.launch()
         assert not state()["enabled"]
-        case("off", {SPRITE_HP + NEAR: 1})
-        for _ in range(600):
-            if ram(ENTITIES + NEAR) != ZOZURA:
-                break
-            if ram(POS_X) - ram(SPRITE_X + NEAR) <= REACH and not ram(PLAYER_FLAGS) & ATTACKING:
-                tcp("action", name="b", frames=2)
-        else:
-            raise AssertionError("the hero never killed the Zozura")
+        case("off", {SPRITE_X + NEAR: HERO_AT - IN_REACH, SPRITE_HP + NEAR: 1}, SWING)
+        until("the kill", lambda: ram(ENTITIES + NEAR) != ZOZURA, 120)
         s = look("off")
         assert s["live"] == 0 and s["weapon"] == 0, s
         print("ok: with the remaster off, the kill shows no number")
