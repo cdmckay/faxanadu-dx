@@ -1,20 +1,36 @@
 # What each feature takes from the game, so features cannot quietly collide.
-# tools/check_allocations.py fails when:
-#   - a game.toml hook site belongs to no feature (by id prefix),
-#   - two features claim overlapping ROM and no [[shared_rom]] says why that is
-#     safe,
+#
+# Every feature of the remaster is a trusted plugin of the one Faxanadu
+# Remastered switch (package faxanadu.remastered, feature `remastered`), so
+# they are always on together, and may rely on each other. Seamless, the view
+# inherited from upstream, is its own package and can be on with them.
+# tools/check_allocations.py treats every two features below as enabled
+# together, unless their manifest features share an exclusive group, and fails
+# when:
+#   - a game.toml hook site belongs to no feature, or to two (by id prefix),
+#   - a manifest's [[plugin]] belongs to no feature here, or a feature's
+#     `plugin` is not in its package's manifest,
+#   - two features hook the same address and no [[shared_site]] lists exactly
+#     the hooks there, in the order they run, with why that is safe. On the
+#     cycle host that order is game.toml's: cyc_hooks_fire walks the sites in
+#     the order game.toml declares them, not HOST_EXTRAS link order,
+#   - two features claim overlapping ROM and no [[shared_rom]] names both and
+#     says why that is safe,
+#   - a [[shared_site]] or [[shared_rom]] no longer matches what it covers,
+#   - the bytes claimed, all served through read overrides, need more entries
+#     than the override table has (CYC_MOD_READ_OVERRIDES_MAX, 64),
 #   - a claimed ROM range is not unused ($FF) in the stock image (with --rom),
-#   - an overridden ROM byte is not its declared stock value (with --rom),
-#   - two features that can be enabled together hook the same address and no
-#     [[shared_site]] below says why that is safe.
-# Features that share a manifest exclusive group are never enabled together.
+#   - an overridden ROM byte is not its declared stock value (with --rom).
 # ROM claims come in two kinds: `rom` takes unused ($FF) bytes for new data,
 # and `overrides` takes existing bytes the feature serves with other values,
-# one byte per entry of `stock` (what the stock image holds there).
+# one byte per entry of `stock` (what the stock image holds there). Claim
+# every byte a feature serves, even one it borrows from another feature.
 # Update this file with the feature, and docs/GAME_INTERNALS.md with it.
 
 [[feature]]
-package = "faxanadu.enhancement.guru-travel"
+id = "guru-travel"
+package = "faxanadu.remastered"
+plugin = "faxanadu.guru-travel"
 source = "fax_travel.c"
 hooks = "faxanadu.travel."
 # Supplied through read overrides; the ROM image itself is never changed.
@@ -26,7 +42,9 @@ rom = [
 # and IScriptOffset, and the stack at $01FA-$01FF when a journey starts.
 
 [[feature]]
+id = "seamless-world"
 package = "faxanadu.enhancement.seamless-world"
+plugin = "faxanadu.seamless-world"
 source = "fax_world.c"
 hooks = "faxanadu.world."
 rom = []
@@ -39,16 +57,23 @@ fire. Guru travel handles the call only to start a journey, and its site is \
 the last at this address."""
 
 [[feature]]
-package = "faxanadu.enhancement.death-keeps-gold"
+id = "death-keeps-gold"
+package = "faxanadu.remastered"
+plugin = "faxanadu.death-keeps-gold"
 source = "fax_death.c"
 hooks = "faxanadu.death-keeps-gold."
 rom = []
 # Hooks only Player_SetInitialExpAndGold ($95B1, bank 12), which no other
 # feature hooks, and writes nothing: it tells a death from a mantra by the far
 # call's return address, so it needs no hook at Player_HandleDeath ($D8EC).
+# Save files continues a file through the mantra's path, so this passes that
+# call as a mantra's, and Save files then puts back the file's own gold and
+# experience at $FC95.
 
 [[feature]]
-package = "faxanadu.enhancement.pendant-fix"
+id = "pendant-fix"
+package = "faxanadu.remastered"
+plugin = "faxanadu.pendant-fix"
 source = "fax_pendant.c"
 hooks = "faxanadu.pendant-fix."
 rom = []
@@ -56,7 +81,9 @@ rom = []
 # writes only Temp_00 there, which the routine sets for this hit just before.
 
 [[feature]]
-package = "faxanadu.enhancement.magic-button"
+id = "magic-button"
+package = "faxanadu.remastered"
+plugin = "faxanadu.magic-button"
 source = "fax_magic.c"
 hooks = "faxanadu.magic-button."
 rom = []
@@ -67,7 +94,9 @@ rom = []
 # this one in game.toml, or the real masks are never restored.
 
 [[feature]]
-package = "faxanadu.enhancement.zone-names"
+id = "zone-names"
+package = "faxanadu.remastered"
+plugin = "faxanadu.zone-names"
 source = "fax_banner.c"
 hooks = "faxanadu.zone-names."
 rom = []
@@ -75,7 +104,9 @@ rom = []
 # the presented picture (fax_text.c), after Seamless has composed it.
 
 [[feature]]
-package = "faxanadu.enhancement.speaker-names"
+id = "speaker-names"
+package = "faxanadu.remastered"
+plugin = "faxanadu.speaker-names"
 source = "fax_speaker.c"
 hooks = "faxanadu.speaker-names."
 rom = []
@@ -83,7 +114,9 @@ rom = []
 # presented and draws over it (fax_text.c), after Seamless and zone names.
 
 [[feature]]
-package = "faxanadu.enhancement.auto-keys"
+id = "auto-keys"
+package = "faxanadu.remastered"
+plugin = "faxanadu.auto-keys"
 source = "fax_keys.c"
 hooks = "faxanadu.auto-keys."
 rom = []
@@ -91,7 +124,9 @@ rom = []
 # a key would. Shares fax_keys.c with reusable tools.
 
 [[feature]]
-package = "faxanadu.enhancement.reusable-tools"
+id = "reusable-tools"
+package = "faxanadu.remastered"
+plugin = "faxanadu.reusable-tools"
 source = "fax_keys.c"
 hooks = "faxanadu.reusable-tools."
 rom = []
@@ -101,13 +136,15 @@ rom = []
 addr = 0xC8DC   # UI_ClearSelectedItemPic
 hooks = ["faxanadu.auto-keys.unlocked", "faxanadu.reusable-tools.unlocked"]
 why = """Both sites run the same callback, fax_keys.c's unlocked_hook, which \
-finishes the door for whichever of the two features are on. When the first \
-site handles the call the second is skipped; when it does not, the second \
-finds nothing to do either. It acts only when Game_UnlockDoorWithUsableItem \
-is the caller."""
+finishes the door for both features. When the first site handles the call the \
+second is skipped; when it does not, the second finds nothing to do either, \
+so the order does not matter. It acts only when \
+Game_UnlockDoorWithUsableItem is the caller."""
 
 [[feature]]
-package = "faxanadu.enhancement.falling-pose"
+id = "falling-pose"
+package = "faxanadu.remastered"
+plugin = "faxanadu.falling-pose"
 source = "fax_falling.c"
 hooks = "faxanadu.falling-pose."
 rom = []
@@ -117,7 +154,9 @@ rom = []
 # feature hooks these. Writes nothing in RAM: it answers the pose routines in A.
 
 [[feature]]
-package = "faxanadu.enhancement.forgiving-jumps"
+id = "forgiving-jumps"
+package = "faxanadu.remastered"
+plugin = "faxanadu.forgiving-jumps"
 source = "fax_jumps.c"
 hooks = "faxanadu.forgiving-jumps."
 rom = []
@@ -125,11 +164,12 @@ rom = []
 # inside the hero's vertical update: the ground check ($E3B2) and the jump
 # check ($E44B). No other feature hooks these. Writes only Player_PosY (the
 # fall step of a coyote jump) and the registers at those branches. Reads
-# Block's fax_block_raised() (false with Block off): while Block is up it
-# keeps no press.
+# Block's fax_block_raised(): while Block is up it keeps no press.
 
 [[feature]]
-package = "faxanadu.enhancement.text-speed"
+id = "text-speed"
+package = "faxanadu.remastered"
+plugin = "faxanadu.text-speed"
 source = "fax_text_speed.c"
 hooks = "faxanadu.text-speed."
 rom = []
@@ -140,7 +180,9 @@ rom = []
 # where no message types.
 
 [[feature]]
-package = "faxanadu.enhancement.taller-dagger"
+id = "taller-dagger"
+package = "faxanadu.remastered"
+plugin = "faxanadu.taller-dagger"
 source = "fax_dagger.c"
 hooks = "faxanadu.taller-dagger."
 rom = []
@@ -150,12 +192,17 @@ overrides = [
 ]
 
 [[feature]]
-package = "faxanadu.enhancement.save-files"
+id = "save-files"
+package = "faxanadu.remastered"
+plugin = "faxanadu.save-files"
 source = "fax_files.c"
 hooks = "faxanadu.files."
 # Supplied through read overrides; the ROM image itself is never changed.
+# $AE14, where B on the question goes on to, is never read: the next-action
+# hook steers the interpreter on before it is, so it is not served.
 rom = [
-    { bank = 12, start = 0xAE10, end = 0xAE18, use = "the Guru's choice (menu or question) and its own SAY step" },
+    { bank = 12, start = 0xAE10, end = 0xAE14, use = "the Guru's choice: the menu (0F SAY) or the question (16 C3 SAY)" },
+    { bank = 12, start = 0xAE15, end = 0xAE18, use = "its own SAY step (03 C3 00), for when Guru travel's is not served" },
     { bank = 13, start = 0xB45B, end = 0xB48B, use = "message $C3, the Guru's line slot, shared with Guru travel" },
 ]
 overrides = [
@@ -177,17 +224,31 @@ overrides = [
 bank = 13
 start = 0xB45B
 end = 0xB48B
-packages = ["faxanadu.enhancement.guru-travel", "faxanadu.enhancement.save-files"]
-why = """Message $C3, one line slot for the Guru's lines. Each feature writes \
-its line there just before the step that shows it, and the two never show a \
-line at once: Save files' choice comes first and starts Guru travel's part \
-through fax_travel_begin. After a save state loads, Save files puts its line \
-back in state_loaded, after Guru travel's record has restored its own."""
+features = ["guru-travel", "save-files", "block"]
+why = """Message $C3, one line slot for the lines the remaster adds to \
+scripts. Each feature writes its line there just before the step that shows \
+it, and none shows a line while another's is up: Save files' choice comes \
+first in a Guru's conversation and starts Guru travel's part through \
+fax_travel_begin, and Block's line follows only the end of a shop's script or \
+the Battle Helmet's pickup, never a Guru's. Guru travel and Save files write \
+their own line again before each one they say. After a save state loads, Save \
+files puts its line back in state_loaded, after Guru travel's record has \
+restored its own, and Block puts back its line if it was saying it."""
+
+[[shared_rom]]
+bank = 12
+start = 0xAE00
+end = 0xAE07
+features = ["guru-travel", "block"]
+why = """Guru travel's SAY step, $AE00-$AE02: SHOW_MESSAGE $C3, END. Block \
+serves the same three bytes there to show its line from message $C3, so \
+whichever served them last, the step is the same. Block never touches Guru \
+travel's ASK step ($AE03-$AE06)."""
 
 [[shared_site]]
 addr = 0x826E   # IScripts_InvokeNextAction
-hooks = ["faxanadu.files.next-action", "faxanadu.recharge.guru", "faxanadu.shops.next-action",
-         "faxanadu.travel.next-action"]
+hooks = ["faxanadu.travel.next-action", "faxanadu.files.next-action", "faxanadu.shops.next-action",
+         "faxanadu.recharge.guru"]
 why = """None handles the call; Save files, Guru travel and Quick shops only \
 steer the interpreter by writing IScriptOrCHRAddr. None redirects to an \
 address another acts on: with a file in play Guru travel leaves the script's \
@@ -200,13 +261,21 @@ then only on its two list steps; no Guru's script has that layout, and no \
 shop's has a Guru's action or step. Recharging items only reads: at a Guru's \
 first action (a temple Guru's SET_SPAWN_POINT, or $A0BD for Eolis's), which \
 none redirects, it charges a spent Elixir (SpecialItems), which none reads \
-there. So all four may run in any order, and each works with the others off."""
+there. So all four may run in any order."""
 
 [[feature]]
-package = "faxanadu.enhancement.block"
+id = "block"
+package = "faxanadu.remastered"
+plugin = "faxanadu.block"
 source = "fax_block.c"
 hooks = "faxanadu.block."
-rom = []
+# Borrowed from Guru travel (fax_travel.h) and served through the same read
+# overrides, rather than ROM of its own: 55 of the 64 overrides are Guru
+# travel's, and a line of its own would need 48 more.
+rom = [
+    { bank = 12, start = 0xAE00, end = 0xAE03, use = "Guru travel's SAY step, to show its line" },
+    { bank = 13, start = 0xB45B, end = 0xB48B, use = "message $C3, the line slot, for its line" },
+]
 # Hooks GameLoop_CountdownItems ($C88F), Player_HandleHitByMagic ($87DC),
 # Player_HandleTouchEnemyMagic ($8999) and IScriptAction_EndScript ($82B4),
 # which no other feature hooks, and Sugata's flash's damage, shared (below).
@@ -214,13 +283,9 @@ rom = []
 # speaks, IScriptOrCHRAddr and IScriptOffset. It plays sound $0C with
 # Sound_PlayEffect. Its host input callback clears the d-pad, A and B while
 # Block is up in play; no other feature has an input callback. The tutorial
-# borrows Guru travel's SAY step and message $C3 slot (claimed above,
-# fax_travel.h) through the same read overrides rather than claiming ROM of its
-# own: 55 of the 64 overrides are Guru travel's, and its line would need 48
-# more. It speaks only as the script that gave the hero his first shield-slot
-# item ends (a shop's, or the Battle Helmet's pickup, ISCRIPT_GOT_BATTLE_HELMET
-# at $A698), never in a Guru's, and Guru travel writes its own line into the
-# slot again before each one it says.
+# speaks only as the script that gave the hero his first shield-slot item ends
+# (a shop's, or the Battle Helmet's pickup, ISCRIPT_GOT_BATTLE_HELMET at
+# $A698), never in a Guru's.
 # What Block looks like: Player_DrawBody ($EBEE) and Player_DrawWeapon
 # ($B7D6), at their entries, which no other feature hooks (Seamless hooks
 # Player_DrawShield's entry, $B982, and the falling pose
@@ -230,7 +295,9 @@ rom = []
 # (Player_ShieldPositionX/Y).
 
 [[feature]]
-package = "faxanadu.enhancement.sugata-flash"
+id = "sugata-flash"
+package = "faxanadu.remastered"
+plugin = "faxanadu.sugata-flash"
 source = "fax_sugata.c"
 hooks = "faxanadu.sugata."
 rom = []
@@ -247,15 +314,17 @@ rom = []
 [[shared_site]]
 addr = 0xAB44   # SpriteBehavior_FlashScreenHitPlayer's damage
 hooks = ["faxanadu.sugata.hit", "faxanadu.block.flash"]
-why = """Sugata's flash's site is first in game.toml. It handles the call when \
-the flash is out of reach, the Magic Shield reflects it, or Ointment keeps \
-the HP (only with Block down), and then Block's is skipped; otherwise it \
-returns 0 and Block's stops the flash if Block is up. Both finish the \
-behavior the same way, through $AB60. With either feature off, the other's \
-site works alone."""
+why = """The order matters, and game.toml fixes it: Sugata's flash's site \
+comes first. It handles the call when the flash is out of reach, the Magic \
+Shield reflects it, or Ointment keeps the HP (only with Block down), and then \
+Block's is skipped; otherwise it returns 0 and Block's stops the flash if \
+Block is up. Both finish the behavior the same way, through $AB60. Block's \
+site first would stop a flash the Magic Shield should turn back."""
 
 [[feature]]
-package = "faxanadu.enhancement.quick-shops"
+id = "quick-shops"
+package = "faxanadu.remastered"
+plugin = "faxanadu.shops"
 source = "fax_shops.c"
 hooks = "faxanadu.shops."
 rom = []
@@ -266,18 +335,20 @@ rom = []
 # return. It shares IScripts_InvokeNextAction ($826E) with Guru travel and Save
 # files (declared above); its other sites are in the shops' list actions,
 # which no other feature hooks. Save files' override of the Buy/Sell menu's
-# operand ($8631) is for the Guru's menu: with Quick shops on, a shop never
-# runs that menu.
+# operand ($8631) is for the Guru's menu: a shop never runs that menu, since
+# Quick shops opens its list instead.
 
 [[feature]]
-package = "faxanadu.enhancement.zone-respawn"
+id = "zone-respawn"
+package = "faxanadu.remastered"
+plugin = "faxanadu.zone-respawn"
 source = "fax_respawn.c"
 hooks = "faxanadu.zone-respawn."
 rom = []
 # Hooks Screen_SetupNew ($DD13), Player_HandleDeath's JSR Screen_FadeToBlack
 # after the gold and experience far call ($D9A0), Player_Spawn's JSR
 # Game_SpawnInTemple ($DB1D) and Game_SetupEnterBuilding ($DAAF), which no
-# other feature hooks, so no site is shared and link order cannot matter.
+# other feature hooks, so no site is shared.
 # Guru travel's journey returns into $DB1D; this site only observes it
 # (returns 0), and travel's own site is at Game_SpawnInTemple ($DD61). A death
 # with a checkpoint skips the JSR at $DB1D as if it returned at once, so
@@ -290,15 +361,17 @@ rom = []
 # overrides.
 
 [[feature]]
-package = "faxanadu.enhancement.recharging-items"
+id = "recharging-items"
+package = "faxanadu.remastered"
+plugin = "faxanadu.recharge"
 source = "fax_recharge.c"
 hooks = "faxanadu.recharge."
 rom = []
 # Writes DurationWingBoots (through A at its STA),
 # SpecialItems' Elixir bit (when a Guru recharges it) and T:'s two tiles
 # through the PPU buffer, as UI_DrawTimeValue queues them. Its own observing
-# site at IScripts_InvokeNextAction ($826E) hears a Guru's first action, with
-# Save files and Guru travel on or off. No read overrides. Keeps the fields
+# site at IScripts_InvokeNextAction ($826E) hears a Guru's first action, which
+# Save files and Guru travel leave where it is. No read overrides. Keeps the fields
 # recharge.wingboots, recharge.hourglass and recharge.elixir in the file in
 # play (fax_save.h), when Save files has one.
 
@@ -308,7 +381,7 @@ hooks = ["faxanadu.reusable-tools.mattock", "faxanadu.recharge.keep"]
 why = """Each handles only the calls fax_items.h gives it, told by the JSR's \
 return address: reusable tools Player_UseMattock's, recharging items \
 Player_UseWingBoots' and Player_UseHourGlass's. A call one handles the other \
-would pass, so either may fire first, and each works with the other off."""
+would pass, so either may fire first."""
 
 [[shared_site]]
 addr = 0xC88F   # GameLoop_CountdownItems
@@ -319,7 +392,9 @@ counts its cooldowns and queues T: before the game's own countdowns, which \
 neither changes."""
 
 [[feature]]
-package = "faxanadu.enhancement.indoor-equip"
+id = "indoor-equip"
+package = "faxanadu.remastered"
+plugin = "faxanadu.indoor-equip"
 source = "fax_indoor.c"
 hooks = "faxanadu.indoor-equip."
 rom = []

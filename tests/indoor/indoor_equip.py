@@ -27,11 +27,12 @@ and the weapon in hand.
    end (the Ring of Elf, the first time).
 4. The room behind the door on the Mist's screen 6 (building $1D), one of the
    few buildings with an enemy in it (Sir Gawaine): the sword now hurts him.
-   With the feature off, and the weapon out of hand as the original leaves it,
-   the same swing does nothing.
+   With the remaster off, and the weapon out of hand as the original leaves
+   it, the same swing does nothing.
 5. A death in the meat shop respawns at Eolis's Guru with the sword in hand.
-6. With the feature off, the original: no weapon in hand indoors, and the menu
-   refuses the Long Sword (the menu stays up, the dagger still selected).
+6. With the remaster off, the original: carrying the Long Sword into the shop
+   with the dagger in hand, he holds nothing, and the menu refuses the sword
+   (the menu stays up, the dagger still selected).
 """
 import argparse
 import json
@@ -68,7 +69,7 @@ RING_OF_ELF, NEGATIVE_THOUGHTS = 0x80, 0x24
 WEAPON_TILES = range(0x38, 0x40)                  # PLAYER_WEAPON_TILE_PPU_ADDRS: $0380 on, but the Dragon Slayer's
 MENU_WIDTH, WEAPONS_WIDTH = 0x0A, 0x14            # PlayerMenu_Show's box, PlayerMenu_ShowSubmenu's
 SPRITE_EXTENTS = 0xB407                           # MAYBE_SPRITE_EXTENTS, bank 14: (EX, EY) by entity
-PACKAGE = ("faxanadu.enhancement.indoor-equip", "indoor-equip")
+PACKAGE = ("faxanadu.remastered", "remastered")                  # the one switch: off is the original game
 ROM = b""
 
 
@@ -519,8 +520,8 @@ def main():
         fixture(room, out / "sir-gawaine-stock.cycstate", {**near, PLAYER_CUR_WEAPON: NONE})
         rams = headless(out / "sir-gawaine-stock.cycstate", [(2, "B"), (5, "-")], 40, on=False)
         assert any(m[PLAYER_FLAGS] & ATTACKING for m in rams), "no swing"
-        assert all(m[SPRITE_HP + slot] == hp and not m[HIT_COUNTER + slot] for m in rams), "a hit without the feature"
-        assert not any(weapon_drawn(m) for m in rams), "a weapon drawn without the feature"
+        assert all(m[SPRITE_HP + slot] == hp and not m[HIT_COUNTER + slot] for m in rams), "a hit in the original"
+        assert not any(weapon_drawn(m) for m in rams), "a weapon drawn in the original"
         print(f"ok: in the Mist's room $1D the Long Sword hurts Sir Gawaine ({hp} HP); in the original, "
               "with no weapon in hand indoors, the same swing passes through him")
 
@@ -543,14 +544,15 @@ def main():
         print("ok: a death respawns at Eolis's Guru with the Long Sword in hand")
         close()
 
-        # 6. Off: the original.
+        # 6. The remaster off: the original. (Quick shops is off with it, so he
+        #    brings the Long Sword rather than buying it.)
         launch(on=False)
-        tcp("load_state", path=str(forepaw))
+        carried = out / "forepaw-tools-door-off.cycstate"
+        fixture(forepaw, carried, {WEAPONS: LONG_SWORD, NUMBER_OF_WEAPONS: 1})
+        tcp("load_state", path=str(carried))
         enter()
         assert ram(PLAYER_CUR_WEAPON) == NONE and ram(SELECTED_WEAPON) == HAND_DAGGER
-        assert not weapon_drawn(ram(0, 0x800)), "a weapon drawn without the feature"
-        to_counter()
-        buy_long_sword()
+        assert not weapon_drawn(ram(0, 0x800)), "a weapon drawn in the original"
         menu_to_weapons("off-menu-indoors")
         act("a", 4, 30)
         assert ram(TEXTBOX_CLOSED) == 0 and ram(TEXTBOX_X + 2) == WEAPONS_WIDTH, "the menu closed"
@@ -560,7 +562,7 @@ def main():
         until("the menu to close", lambda: ram(TEXTBOX_CLOSED) != 0, 300)
         state = indoor()
         assert state["entered"] == 0 and state["menu_choices"] == 0 and state["weapons_set"] == 0, state
-        print("ok: with Equip indoors off, the hero comes in empty-handed and the menu refuses the Long Sword")
+        print("ok: with the remaster off, the hero comes in empty-handed and the menu refuses the Long Sword")
         print("screenshots:", ", ".join(p.name for p in shots))
     except BaseException:
         try:
