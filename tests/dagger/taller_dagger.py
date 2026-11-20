@@ -40,19 +40,12 @@ frame): the taller dagger hitting the Zozura, the Long Sword hitting it from
 further out, the taller dagger missing from there, the taller dagger passing
 over it in a jump, and the original dagger passing over it from close in.
 """
-import argparse
-import json
-import os
 from pathlib import Path
-import shutil
-import socket
-import struct
-import subprocess
 import sys
-import time
-import zlib
 
-PORT = 0                                                            # set in main
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
+from fax_e2e import Game, fixture, frame, parse_args, ram, tcp, until, wait  # noqa: E402
+
 AREA, SCREEN, HERO_X, HERO_Y = 0x24, 0x63, 0x9E, 0xA1               # Player_PosX_Block, Player_PosY
 PLAYER_FLAGS, ATTACKING, FACING_RIGHT = 0xA4, 0x80, 0x40
 ATTACK_PHASE = 0xAE                                                 # Player_AttackPhaseAnimFrame: 0, 1, 2
@@ -81,119 +74,12 @@ FULL_HP = 0x50
 PACKAGE, FEATURE = "faxanadu.remastered", "remastered"          # the one switch: off is the original game
 
 
-def tcp(cmd, **kw):
-    with socket.create_connection(("127.0.0.1", PORT), 5) as s:
-        s.settimeout(30)
-        f = s.makefile("rwb", buffering=0)
-        f.write((json.dumps(dict(id=1, cmd=cmd, **kw)) + "\n").encode())
-        reply = json.loads(f.readline())
-    if not reply.get("ok"):
-        raise RuntimeError(f"{cmd}: {reply}")
-    return reply
-
-
-def free_port():
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
-def frame():
-    return tcp("ping")["frame"]
-
-
-def wait(frames):
-    end = frame() + frames
-    while frame() < end:
-        time.sleep(0.005)
-
-
-def ram(addr, n=1):
-    data = bytes.fromhex(tcp("read_ram", addr=addr, len=n)["hex"])
-    return data[0] if n == 1 else data
-
-
-def until(what, test, frames=1200):
-    end = frame() + frames
-    while frame() < end:
-        if test():
-            return
-        time.sleep(0.005)
-    raise AssertionError(f"timed out waiting for {what}")
-
-
-def chunks(data):
-    assert data[:8] == b"CYCSTATE"
-    pos = 32
-    while pos < len(data):
-        tag, size = struct.unpack_from("<4sI", data, pos)
-        pos += 8
-        yield tag, pos, size
-        pos += size
-        if tag == b"END ":
-            return
-
-
-def fixture(source, target, writes):
-    data = bytearray(source.read_bytes())
-    pos, size = next((p, n) for t, p, n in chunks(data) if t == b"HW  ")
-    assert size == 2072, "Unqualified hardware ABI"
-    for address, value in writes.items():
-        data[pos + 23 + address] = value
-    target.write_bytes(data)
-
-
 def main():
-    global PORT
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    for key in ("build", "rom", "out"):
-        ap.add_argument("--" + key, type=Path, required=True)
-    ap.add_argument("--game-arg", action="append", default=[],
-                    help="extra game option, e.g. --game-arg=--world-view=seamless (repeatable)")
-    ap.add_argument("--port", type=int, default=0, help="TCP port (default: a free one)")
-    ap.add_argument("--realtime", action="store_true", help="run at normal speed instead of uncapped")
-    args = ap.parse_args()
-    PORT = args.port or free_port()
-    image = args.rom.read_bytes()
-    assert zlib.crc32(image[16:]) == 0x57DD23D1, "the original Faxanadu (USA) ROM is required"
-    ranges = image[16 + 14 * 0x4000 + WEAPON_RANGES - 0x8000:][:8]
+    args = parse_args(__doc__)
+    game = Game.from_args(args)
+    ranges = game.image[16 + 14 * 0x4000 + WEAPON_RANGES - 0x8000:][:8]
     assert list(ranges) == [8, 4, 16, 8, 16, 8, 16, 8], f"MAYBE_WEAPON_RANGES: {ranges.hex()}"
-    out = args.out.resolve()
-    shutil.rmtree(out, ignore_errors=True)
-    (out / "game").mkdir(parents=True)
-    shutil.copy2(args.build / "FaxanaduRecomp", out / "game")
-    for folder in ("assets", "mods"):
-        shutil.copytree(args.build / folder, out / "game" / folder)
-    env = dict(os.environ, NESRECOMP_NO_LAUNCHER="1", SDL_VIDEODRIVER="dummy", SDL_AUDIODRIVER="dummy")
-    log = open(out / "game.log", "w")
-    game = None
-    shots = []
-
-    def launch(*extra):
-        nonlocal game
-        extra = [part for arg in args.game_arg for part in arg.split("=", 1)] + list(extra)
-        if not args.realtime:
-            extra += ["--uncapped", "--exit-after", "100000000"]
-        game = subprocess.Popen([str(out / "game" / "FaxanaduRecomp"), str(args.rom.resolve()), "--hidden",
-                                 "--tcp", str(PORT), *extra], env=env, stdout=log, stderr=subprocess.STDOUT)
-        for _ in range(100):
-            try:
-                return frame()
-            except OSError:
-                time.sleep(0.1)
-        raise AssertionError("the game did not start")
-
-    def close():
-        try:
-            tcp("quit")
-        except Exception:
-            game.kill()
-        game.wait(10)
-
-    def shot(name):
-        path = out / f"{len(shots):02d}-{name}.png"
-        tcp("screenshot", layer="picture", path=str(path))
-        shots.append(path.name)
+    out = game.out
 
     def swing(zozura, weapon, aim, jump=False, again=False, name=None):
         """Load the Zozura save with this weapon, and swing once the nearer
@@ -222,7 +108,7 @@ def main():
             if attacking and m[ATTACK_PHASE] == 1:
                 got["phase1"].append((d, m[HERO_Y]))
                 if name:
-                    shot(name)
+                    game.shot(name)
                     name = None
             if m[SPRITE_HP + TARGET] < TOUGH:
                 got["hit"] = True
@@ -247,7 +133,7 @@ def main():
         return f"{ds[0]}-{ds[-1]}" if len(ds) > 1 else f"{ds[0]}"
 
     try:
-        launch()
+        game.launch()
         until("the title", lambda: frame() > 700)
         tcp("pad", buttons="start", frames=10)
         until("the Eolis gate", lambda: frame() > 1900)
@@ -301,12 +187,11 @@ def main():
                   f"in reach across (first hit phase at {first_phase(got)}), it passes over the Zozura")
         state = tcp("dagger_state")
         assert state["served"] and not state["failed"], f"still served after every load: {state}"
-        close()
+        game.close()
 
         # 3. Off: the original dagger passes over it; the Long Sword is the same.
-        (out / "game" / "mods" / "state.toml").write_text(
-            f'format_version = 1\n\n[[feature]]\npackage_id = "{PACKAGE}"\nid = "{FEATURE}"\nenabled = false\n')
-        launch()
+        game.set_features({(PACKAGE, FEATURE): False})
+        game.launch()
         state = tcp("dagger_state")
         assert not state["enabled"] and not state["served"], f"the remaster is off: {state}"
         got = swing(zozura, DAGGER, CLOSE, name="stock-dagger-passes-over")
@@ -323,14 +208,13 @@ def main():
         assert got["reaches"] == {SWORD} and got["hit"], f"the Long Sword, off: {got}"
         print(f"ok: the Long Sword's reach is {SWORD} on and off, and it hits from {SWORD_RANGE} pixels both "
               f"ways (first hit phase at {first_phase(on_sword)} on, {first_phase(got)} off)")
-        print("screenshots:", ", ".join(shots))
+        print("screenshots:", ", ".join(game.shots))
     except BaseException:
-        if game and game.poll() is None:
-            shot("failure")
+        if game.running():
+            game.shot("failure")
         raise
     finally:
-        if game:
-            close()
+        game.close()
 
 
 if __name__ == "__main__":
