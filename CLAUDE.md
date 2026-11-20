@@ -39,6 +39,12 @@ tools/disassembly.sh                                 # chipx86's disassembly, ve
 There is no CI: nothing builds without the ROM, which cannot be distributed.
 `tools/test.sh` is the gate, so run it before every PR.
 
+Its end-to-end runs start every game at once, a core each, so they take a
+machine-wide lock: a second checkout's suite prints that it is waiting, then
+runs. Several workers share this machine, so while developing run
+`tools/test.sh --quick` plus your own feature's end-to-end test directly, and
+the full suite once before the PR.
+
 ## Building features
 
 Features are C on an **unchanged ROM**. The game's code stays as the
@@ -73,10 +79,6 @@ recompiler produced it; features observe and steer it.
   `batch()` (a `load_state`, then the `action`), or runs headless from that
   state with `--input`. Never count on two TCP commands being a few frames
   apart.
-- **While developing, run `tools/test.sh --quick` and your feature's
-  end-to-end test directly; run the full `tools/test.sh` once, before opening
-  the PR.** Each full run starts every end-to-end game at once, a core each,
-  and several workers share the machine.
 - A feature is a mod package under `mods/preloaded/packages/`, so players can
   turn it off in the launcher.
 - Match the game's voice and limits for any new dialogue: 16 columns, 4 lines,

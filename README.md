@@ -103,8 +103,20 @@ whatever item you had selected stays selected.
 
 **Reusable tools** is on by default (Mods to turn it off). A key stays in your
 inventory after it opens a door, and the Mattock after it breaks a wall.
-Potions, the Elixir, the Hour Glass, the Wing Boots and the other consumables
-are still used up.
+Potions and the other consumables are still used up (Recharging items keeps
+the Wing Boots, the Hour Glass and the Elixir).
+
+**Recharging items** is on by default (Mods to turn it off). The Wing Boots,
+the Hour Glass and the Elixir are kept after use. The Wing Boots fly longer as
+your title rises (30, 40, 50 and 60 seconds, every four titles, where the
+original's flights got shorter), then recharge for 60 seconds. The Hour Glass
+still stops time for 15 seconds and costs half your HP, then recharges for 60
+seconds. While one recharges, T: on the status bar blinks the seconds left,
+and using it does nothing. Dying makes both ready. The Elixir still revives
+you, then stays with you, spent, until you talk to a Guru; the menu's Player
+page shows it only while it is charged. Finding one you already own recharges
+it, and a shop sells you an Elixir only to charge a spent one. Your save file
+keeps the cooldowns and whether the Elixir is spent.
 
 **Falling pose** is on by default (Mods to turn it off). Walking off a ledge,
 the hero used to fall standing or mid-step, as if walking on air. Now he shows
@@ -131,12 +143,11 @@ It keeps its short reach, so the Long Sword is still an upgrade.
 on a controller, with a shield (or the Battle Helmet) in hand to stand your
 ground and raise it: enemy magic from the front, and Sugata's flash from any
 side, is stopped with the shield's sound. Contact and sword damage are as
-before. While you hold it, your shield is held up before your face, so you can
-see you're blocking; the Battle Helmet has no shield to show, so you glint in
-the shield's colors as you raise it. The first time you get a shield or the
-Battle Helmet, the game adds a line naming your key, once (remembered in
-`faxanadu_block.txt` next to the game). Rebind it with `BlockKey` and
-`BlockButton` in `config.ini`, as for the Magic button.
+before. As you raise it, you glint twice in the shield's colors, so you can
+see you're blocking. The first time you get a shield or the Battle Helmet, the
+game adds a line naming your key, once (remembered in `faxanadu_block.txt`
+next to the game). Rebind it with `BlockKey` and `BlockButton` in
+`config.ini`, as for the Magic button.
 
 **Sugata's flash** is on by default (Mods to turn it off). Sugata, in the Mist,
 blinks for half a second before it flashes, and the band of the screen its

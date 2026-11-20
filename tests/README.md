@@ -3,7 +3,9 @@
 `tools/test.sh` runs every check: allocations, the C unit tests, the game
 build, then every end-to-end test at once. `tools/test.sh --quick` skips the
 end-to-end runs. While developing, run `--quick` and your own end-to-end test
-directly; run the full suite before a PR.
+directly; run the full suite before a PR. The end-to-end part takes a
+machine-wide `flock` (`$XDG_RUNTIME_DIR/faxanadu-remastered-e2e.lock`), so a
+second checkout's suite waits for the first's games to finish.
 
 ## End-to-end tests and `e2e/fax_e2e.py`
 
@@ -63,8 +65,9 @@ from a state with `--input`. `game.poke(writes)` edits RAM in the running game
 
 ### Ports
 
-Never pick a port in a test. `Game.launch()` reserves one with
-`reserve_port()`, which:
+Never pick a port in a test. The suite lock keeps two suites apart, but one
+suite starts every game at once, and tests run directly alongside a suite, so
+`Game.launch()` reserves a port with `reserve_port()`, which:
 
 - takes an exclusive `flock` on `<port>.lock` in
   `$XDG_RUNTIME_DIR/faxanadu-e2e-ports` (or the temp dir), shared by every
