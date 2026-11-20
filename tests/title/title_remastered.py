@@ -3,11 +3,10 @@
     python3 tests/title/title_remastered.py --build build-cycle --rom "Faxanadu (USA).nes" --out /tmp/title
 
 The game runs uncapped (about 5x real time; --realtime to watch it at normal
-speed) and the script waits on the game's own state, never on the clock, so
-each run takes a free TCP port and any number can go in parallel.
+speed) and the script waits on the game's own frames, never on the clock, on a
+reserved TCP port (tests/e2e/fax_e2e.py), so any number can go in parallel.
 
-Copies the build to a folder of OUT for each launch (Save files writes beside
-the game), then:
+Copies the build to OUT/game, then:
   1. Screenshots the title with the remaster on (REMASTERED over Save files'
      file select) and, on the same frame, with the whole remaster off (the
      original title, START / CONTINUE and the notices), and compares them. The
@@ -26,61 +25,21 @@ title with the word's pixels painted in from the remaster's picture
 --shots DIR copies the pictures worth showing there, named after
 --shot-prefix.
 """
-import argparse
-import json
-import os
 from pathlib import Path
 import shutil
-import socket
 import struct
-import subprocess
 import sys
-import time
 import zlib
 
-PORT = 0                                                            # set per launch
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
+from fax_e2e import Game, frame, parser, tcp, until, wait  # noqa: E402
+
 WORD = "REMASTERED"
 GLYPHS = 16 + 13 * 16384                                            # TILE_GLYPHS_START: bank 13, $8000, from $20
 LOGO_ROWS, LOGO_LEFT, LOGO_RIGHT = (16, 144), 16, 240               # the logo and its border, natively
 BAND = (144, 160)                                                   # black between the logo and START / CONTINUE
 CLEAR = 4                                                           # rows of black the word keeps from the art
 REMASTER = ("faxanadu.remastered", "remastered")
-
-
-def tcp(cmd, **kw):
-    with socket.create_connection(("127.0.0.1", PORT), 5) as s:
-        s.settimeout(60)
-        f = s.makefile("rwb", buffering=0)
-        f.write((json.dumps(dict(id=1, cmd=cmd, **kw)) + "\n").encode())
-        reply = json.loads(f.readline())
-    if not reply.get("ok"):
-        raise RuntimeError(f"{cmd}: {reply}")
-    return reply
-
-
-def free_port():
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
-def frame():
-    return tcp("ping")["frame"]
-
-
-def wait(frames):
-    end = frame() + frames
-    while frame() < end:
-        time.sleep(0.005)
-
-
-def until(what, test, frames=1500):
-    end = frame() + frames
-    while frame() < end:
-        if test():
-            return
-        time.sleep(0.005)
-    raise AssertionError(f"timed out waiting for {what}")
 
 
 def title():
@@ -196,67 +155,23 @@ def absent(path, state, mask):
 
 
 def main():
-    global PORT
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    for key in ("build", "rom", "out"):
-        ap.add_argument("--" + key, type=Path, required=True)
-    ap.add_argument("--game-arg", action="append", default=[],
-                    help="extra game option, e.g. --game-arg=--world-view=seamless (repeatable)")
+    ap = parser(__doc__)
     ap.add_argument("--shots", type=Path, help="copy the pictures worth showing here")
     ap.add_argument("--shot-prefix", default="", help="prefix for the copied pictures' names")
-    ap.add_argument("--realtime", action="store_true", help="run at normal speed instead of uncapped")
     args = ap.parse_args()
-    rom = args.rom.read_bytes()
-    assert zlib.crc32(rom[16:]) == 0x57DD23D1, "the original Faxanadu (USA) ROM is required"
-    mask = word_mask(rom)
+    g = Game.from_args(args)
+    mask = word_mask(g.image)
     assert len(mask) > 100, "no glyphs where the font should be"
-    out = args.out.resolve()
-    shutil.rmtree(out, ignore_errors=True)
-    out.mkdir(parents=True)
-    env = dict(os.environ, NESRECOMP_NO_LAUNCHER="1", SDL_VIDEODRIVER="dummy", SDL_AUDIODRIVER="dummy")
-    game = None
-    shots, worth = [], {}
+    worth = {}
 
-    def launch(name, remaster):
-        """Start the game in its own folder with the remaster on or off."""
-        nonlocal game
-        global PORT
-        folder = out / name
-        folder.mkdir()
-        shutil.copy2(args.build / "FaxanaduRecomp", folder)
-        for sub in ("assets", "mods"):
-            shutil.copytree(args.build / sub, folder / sub)
-        (folder / "mods" / "state.toml").write_text(
-            f'format_version = 1\n\n[[feature]]\npackage_id = "{REMASTER[0]}"\nid = "{REMASTER[1]}"\n'
-            f"enabled = {'true' if remaster else 'false'}\n")
-        extra = [part for arg in args.game_arg for part in arg.split("=", 1)]
-        if not args.realtime:
-            extra += ["--uncapped", "--exit-after", "100000000"]
-        PORT = free_port()
-        game = subprocess.Popen([str(folder / "FaxanaduRecomp"), str(args.rom.resolve()), "--hidden",
-                                 "--tcp", str(PORT), *extra], env=env, stdout=open(folder / "game.log", "w"),
-                                stderr=subprocess.STDOUT)
-        for _ in range(100):
-            try:
-                frame()
-                break
-            except OSError:
-                time.sleep(0.1)
-        else:
-            raise AssertionError("the game did not start")
+    def launch(remaster):
+        """Start the game with the whole remaster on or off."""
+        g.set_features({REMASTER: remaster})
+        g.launch()
         assert title()["enabled"] == remaster and tcp("files_state")["enabled"] == remaster, title()
 
-    def close():
-        try:
-            tcp("quit")
-        except Exception:
-            game.kill()
-        game.wait(10)
-
     def shot(name, keep=None):
-        path = out / f"{len(shots):02d}-{name}.png"
-        tcp("screenshot", layer="picture", path=str(path))
-        shots.append(path.name)
+        path = g.shot(name)
         if keep:
             worth[keep] = path
         return path
@@ -272,7 +187,7 @@ def main():
         # 1. The remaster's title against the original's, on the same frame
         # (the title is still from the frame it is drawn, and drawn on the
         # same frame in every run).
-        launch("remastered", True)
+        launch(True)
         at = title_at()
         state = title()
         remaster = shot("file-select", "file-select")
@@ -287,18 +202,18 @@ def main():
         assert a != b, "the cursor did not move"
         assert all(a[y][x] == b[y][x] for y in range(*BAND) for x in range(len(a[0]))), "the word changed"
         print("ok: moving the file select's cursor leaves the word as it was")
-        close()
-        launch("original", False)
+        g.close()
+        launch(False)
         until(f"frame {at}", lambda: frame() >= at, at + 600)
         assert not title()["shown"]
         original = shot("original-title", "original-title")
-        close()
+        g.close()
         composite = compare(remaster, original, state, mask)
-        write_png(out / "start-continue-composite.png", composite)
-        worth["start-continue-composite"] = out / "start-continue-composite.png"
+        write_png(g.out / "start-continue-composite.png", composite)
+        worth["start-continue-composite"] = g.out / "start-continue-composite.png"
 
         # 3. A new game in file 1: the word goes at once, and stays gone.
-        launch("new-game", True)
+        launch(True)
         title_at()
         assert tcp("files_state")["cursor"] == 0
         tcp("pad", buttons="start", frames=10)
@@ -311,16 +226,17 @@ def main():
         assert not title()["shown"] and title()["seen"] == 255
         absent(shot("eolis"), state, mask)
         print("ok: starting a game takes the word away; it does not come back in the game")
-        close()
-        game = None
-        print("screenshots:", ", ".join(shots), "and start-continue-composite.png (a composite)")
+        print("screenshots:", ", ".join(g.shots), "and start-continue-composite.png (a composite)")
         if args.shots:
             args.shots.mkdir(parents=True, exist_ok=True)
             for name, path in worth.items():
                 shutil.copy2(path, args.shots / f"{args.shot_prefix}{name}.png")
+    except BaseException:
+        if g.running():
+            g.shot("failure")
+        raise
     finally:
-        if game and game.poll() is None:
-            close()
+        g.close()
 
 
 if __name__ == "__main__":
