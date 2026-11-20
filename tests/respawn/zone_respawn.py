@@ -4,7 +4,8 @@
     python3 tests/respawn/zone_respawn.py ... --game-arg=--world-view=seamless
 
 The game runs uncapped and the script waits on the game's own state, never on
-the clock, and takes a free TCP port, so any number can run in parallel.
+the clock, on a reserved TCP port (tests/e2e/fax_e2e.py), so any number can
+run in parallel.
 
 Copies the build to OUT and starts a new game over TCP. Save-state RAM edits
 set up what the scenarios need (external prerequisites, not coverage): the
@@ -39,19 +40,12 @@ game's (PlayerIsDead set):
 7. With the remaster off in the mod selection, the same death in the tower
    wakes at the temple, as the original does.
 """
-import argparse
-import json
-import os
 from pathlib import Path
-import shutil
-import socket
-import struct
-import subprocess
 import sys
-import time
-import zlib
 
-PORT = 0                                                            # set in main
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
+from fax_e2e import Game, act, fixture, frame, parser, ram, tcp, typed, until, wait  # noqa: E402
+
 AREA, SCREEN, PLAYER_X, PLAYER_Y, PLAYER_FLAGS = 0x24, 0x63, 0x9E, 0xA1, 0xA4
 SCREEN_READY_STATE, SCROLL_DIRECTION, INTERRUPTS_ON = 0x0E, 0x54, 0x13
 EXPERIENCE, GOLD, HP, MP = 0x390, 0x392, 0x431, 0x39A
@@ -93,61 +87,8 @@ ENTRANCES = [
 ]
 
 
-def tcp(cmd, **kw):
-    with socket.create_connection(("127.0.0.1", PORT), 5) as s:
-        s.settimeout(30)
-        f = s.makefile("rwb", buffering=0)
-        f.write((json.dumps(dict(id=1, cmd=cmd, **kw)) + "\n").encode())
-        reply = json.loads(f.readline())
-    if not reply.get("ok"):
-        raise RuntimeError(f"{cmd}: {reply}")
-    return reply
-
-
-def free_port():
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
-def frame():
-    return tcp("ping")["frame"]
-
-
-def wait(frames):
-    end = frame() + frames
-    while frame() < end:
-        time.sleep(0.005)
-
-
-def ram(addr, n=1):
-    data = bytes.fromhex(tcp("read_ram", addr=addr, len=n)["hex"])
-    return data[0] if n == 1 else data
-
-
 def number(addr, n):
     return int.from_bytes(ram(addr, n), "little")
-
-
-def until(what, test, frames=1200):
-    end = frame() + frames
-    while frame() < end:
-        if test():
-            return
-        time.sleep(0.005)
-    raise AssertionError(f"timed out waiting for {what}")
-
-
-def act(name, frames=6, after=8):
-    tcp("action", name=name, frames=frames)
-    wait(frames + after)
-
-
-def typed():
-    """The text box is waiting for a button: the message has typed out
-    (MessageID clears) or reached a pause (TextBox_MessagePaused)."""
-    message, _, paused = ram(MESSAGE_ID, 3)
-    return message == 0 or paused != 0
 
 
 def box_open():
@@ -168,78 +109,14 @@ def respawn():
     return tcp("respawn_state")
 
 
-def chunks(data):
-    assert data[:8] == b"CYCSTATE"
-    pos = 32
-    while pos < len(data):
-        tag, size = struct.unpack_from("<4sI", data, pos)
-        pos += 8
-        yield tag, pos, size
-        pos += size
-        if tag == b"END ":
-            return
-
-
-def fixture(source, target, writes):
-    data = bytearray(source.read_bytes())
-    pos, size = next((p, n) for t, p, n in chunks(data) if t == b"HW  ")
-    assert size == 2072, "Unqualified hardware ABI"
-    for address, value in writes.items():
-        data[pos + 23 + address] = value
-    target.write_bytes(data)
-
-
 def main():
-    global PORT
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    for key in ("build", "rom", "out"):
-        ap.add_argument("--" + key, type=Path, required=True)
-    ap.add_argument("--game-arg", action="append", default=[],
-                    help="extra game option, e.g. --game-arg=--world-view=seamless (repeatable)")
-    ap.add_argument("--port", type=int, default=0, help="TCP port (default: a free one)")
-    ap.add_argument("--realtime", action="store_true", help="run at normal speed instead of uncapped")
+    ap = parser(__doc__)
     ap.add_argument("--only", action="append", default=[], help="run only these entrances (repeatable)")
     args = ap.parse_args()
-    PORT = args.port or free_port()
     seamless = any("seamless" in arg for arg in args.game_arg)
-    image = args.rom.read_bytes()
-    assert zlib.crc32(image[16:]) == 0x57DD23D1, "the original Faxanadu (USA) ROM is required"
-    out = args.out.resolve()
-    shutil.rmtree(out, ignore_errors=True)
-    (out / "game").mkdir(parents=True)
-    shutil.copy2(args.build / "FaxanaduRecomp", out / "game")
-    for folder in ("assets", "mods"):
-        shutil.copytree(args.build / folder, out / "game" / folder)
-    env = dict(os.environ, NESRECOMP_NO_LAUNCHER="1", SDL_VIDEODRIVER="dummy", SDL_AUDIODRIVER="dummy")
-    log = open(out / "game.log", "w")
-    game = None
-    shots = []
-
-    def launch():
-        nonlocal game
-        extra = [part for arg in args.game_arg for part in arg.split("=", 1)]
-        if not args.realtime:
-            extra += ["--uncapped", "--exit-after", "100000000"]
-        game = subprocess.Popen([str(out / "game" / "FaxanaduRecomp"), str(args.rom.resolve()), "--hidden",
-                                 "--tcp", str(PORT), *extra], env=env, stdout=log, stderr=subprocess.STDOUT)
-        for _ in range(100):
-            try:
-                return frame()
-            except OSError:
-                time.sleep(0.1)
-        raise AssertionError("the game did not start")
-
-    def close():
-        try:
-            tcp("quit")
-        except Exception:
-            game.kill()
-        game.wait(10)
-
-    def shot(name):
-        path = out / f"{len(shots):02d}-{name}.png"
-        tcp("screenshot", layer="picture", path=str(path))
-        shots.append(path.name)
+    game = Game.from_args(args)
+    out = game.out
+    shot = game.shot
 
     def save(name):
         path = out / f"{name}.cycstate"
@@ -344,7 +221,7 @@ def main():
         return came
 
     try:
-        launch()
+        game.launch()
         assert respawn()["enabled"], "zone respawn is on by default"
         until("the title", lambda: frame() > 700)
         tcp("pad", buttons="start", frames=10)
@@ -461,9 +338,9 @@ def main():
 
         # 5. A Guru travel journey forgets the checkpoint: walking out of the
         #    temple it lands in records the next, and a death comes back there.
-        close()
+        game.close()
         (out / "game" / "faxanadu_gurus.txt").write_text("Eolis\nApolune\nConflate\n")
-        launch()
+        game.launch()
         die_in_conflate = out / "conflate.cycstate"
         fixture(gate, die_in_conflate, {TEMPLE_SPAWN_POINT: CONFLATE})
         die(die_in_conflate, "to-conflate", BUILDINGS, TEMPLE_SCREEN[CONFLATE])
@@ -536,21 +413,19 @@ def main():
 
         # 7. The remaster off: the same death wakes at the temple, as the original.
         if "Tower of Trunk" in inside:
-            close()
-            (out / "game" / "mods" / "state.toml").write_text(
-                f'format_version = 1\n\n[[feature]]\npackage_id = "{PACKAGE}"\nid = "{FEATURE}"\nenabled = false\n')
-            launch()
+            game.close()
+            game.set_features({(PACKAGE, FEATURE): False})
+            game.launch()
             assert not respawn()["enabled"], "the remaster is off"
             die(inside["Tower of Trunk"], "off", BUILDINGS, EOLIS_TEMPLE)
             print("ok: with the remaster off, dying in the Tower of Trunk wakes at Eolis's temple, as the original does")
-        print("screenshots:", ", ".join(shots))
+        print("screenshots:", ", ".join(game.shots))
     except BaseException:
-        if game and game.poll() is None:
-            shot("failure")
+        if game.running():
+            game.shot("failure")
         raise
     finally:
-        if game:
-            close()
+        game.close()
 
 
 if __name__ == "__main__":

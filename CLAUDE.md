@@ -64,8 +64,21 @@ recompiler produced it; features observe and steer it.
 - **Test every feature two ways.** Unit tests in C cover its logic against a
   model of the machine (`tests/travel/travel_test.c`). An end-to-end test plays
   it in a hidden window over TCP (`tests/travel/guru_travel.py`). Add both to
-  `tools/test.sh`. Give each end-to-end run its own free port and output
-  folder: several sessions may run the suite at once.
+  `tools/test.sh`. Give each end-to-end run its own output folder: several
+  sessions may run the suite at once.
+- **End-to-end tests use the shared helper,
+  [tests/e2e/fax_e2e.py](tests/e2e/fax_e2e.py)**, for the port, launching the
+  game, the TCP client, save-state fixtures and screenshots. Never write your
+  own `free_port()`: the helper reserves each port for the whole test, against
+  every suite on the machine, and relaunches the game if the port is taken
+  anyway. [tests/README.md](tests/README.md) shows how.
+- **End-to-end tests count game frames, never seconds.** The helper's
+  `wait()` and `until()` count the game's frames, and the script can lag any
+  number of frames behind the game on a loaded machine. Input that must land
+  on a given frame goes in with the save state it starts from, in one
+  `batch()` (a `load_state`, then the `action`), or runs headless from that
+  state with `--input`. Never count on two TCP commands being a few frames
+  apart.
 - **Everything the remaster adds goes into the one Faxanadu Remastered mod**
   (`mods/preloaded/packages/faxanadu.remastered`), never a new package: add a
   `[[plugin]]` under its `remastered` feature. The launcher has one switch for
