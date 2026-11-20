@@ -425,8 +425,8 @@ bytes = "ad c7 03 10 fa ad c8 03 30 f5 a5 a7"
 # Quick shops (fax_shops.c): a shop's script and its two list actions,
 # IScriptAction_OpenShop and IScriptAction_ShowSellMenu, steered at their
 # steps: the first action, "What would you like?", the list kept up after a
-# purchase or a sale, the sell list's contents, its A, the menu's input each
-# frame, and the end of a shop's message.
+# purchase or a sale, the sell list's contents, each list's A, the menu's
+# input each frame, and the end of a shop's message.
 
 [[mod_function_hook]]
 id = "faxanadu.shops.next-action"
@@ -475,6 +475,12 @@ id = "faxanadu.shops.final"
 addr = 0x838e
 bank = 12
 bytes = "4c b4 82 20 a4 87 cd 39 04 90 03 8d"
+
+[[mod_function_hook]]
+id = "faxanadu.shops.buy-pick"
+addr = 0x8402
+bank = 12
+bytes = "20 82 84 b0 62 ae 1e 02 bd 20 02 c9"   # IScriptAction_OpenShop's A: JSR Shop_GetPlayerHasSelectedItem
 
 # Zone respawn (fax_respawn.c): every screen load (the way into a zone), the
 # death path after the Guru's words, Player_Spawn's JSR Game_SpawnInTemple,
@@ -568,3 +574,9 @@ id = "faxanadu.recharge.guru"
 addr = 0x826e
 bank = 12
 bytes = "20 a4 87 aa bd 93 82 48 bd 7b 82 48"   # IScripts_InvokeNextAction: a Guru's first action charges the Elixir
+
+[[mod_function_hook]]
+id = "faxanadu.recharge.shop"
+addr = 0x8482
+bank = 12
+bytes = "ae 1e 02 bd 20 02 10 35 a2 00 c9 80"   # Shop_GetPlayerHasSelectedItem: LDX Menu_CursorPos, LDA DataArray,X

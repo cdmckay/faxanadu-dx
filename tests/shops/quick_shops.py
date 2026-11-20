@@ -32,12 +32,22 @@ building), the gold, and what the hero carries.
    Select goes back to buying; selling the last item empties the list ("You
    have nothing to buy.", the game's own line) and the list goes back to
    buying.
-3. With Quick shops off, the same Up shows the shop's greeting and then the
+3. Owned, at Forepaw's tool shop (Long Sword 1600, Studded Mail 2500, Small
+   Shield 1100, Red Potion 400, Wing Boots 2800), with 9000 Golds and a Red
+   Potion: the Wing Boots are priced, and buying them marks them OWNED at once.
+   Leaving and coming back, they keep their row with OWNED where the price
+   was, the hint says "Already owned" on them, and A there does nothing: no
+   gold, no line, the list as it was. The Red Potion above still buys. Then a
+   pair found in the world (Trunk $2D, where one lies on one visit in four:
+   the visit counter set to show it, its hornets cleared) is owned the same,
+   carried into the shop. And at Eolis's key shop, a J key held: OWNED, and A
+   does nothing.
+4. With Quick shops off, the same Up shows the shop's greeting and then the
    Buy/Sell menu's own line, as before (Save files serves another line for
    that menu at a Guru's, and only there).
 
 Each list is checked in the picture too: the list's frame, and its hint line
-inside it, in the text color.
+inside it, in the text color, and an owned item's OWNED in its price's cells.
 """
 import argparse
 import json
@@ -59,13 +69,23 @@ WEAPONS, ITEMS = 0x39D, 0x3AD                                       # WeaponInve
 SELECTED_WEAPON, SELECTED_ITEM = 0x3BD, 0x3C1
 NUMBER_OF_WEAPONS, NUMBER_OF_ITEMS = 0x3C2, 0x3C6
 PORTRAIT = 0x3C7
-AREA_SAVED_AREA, AREA_SAVED_SCREEN, PLAYER_SAVED_POS = 0x3D5, 0x3D6, 0x3D8
-BUILDINGS, NO_PORTRAIT = 4, 0xFF
+AREA_SAVED_AREA, AREA_SAVED_SCREEN, AREA_SAVED_PALETTE, PLAYER_SAVED_POS = 0x3D5, 0x3D6, 0x3D7, 0x3D8
+AREA_REGION, VISIT_COUNT = 0x435, 0x43A                             # Screen_TrackedVisitCount
+PLAYER_Y, SCREEN_READY, SPRITE_ENTITIES = 0xA1, 0x0E, 0x2CC          # CurrentSprites_Entities: 8 slots
+EOLIS, TRUNK, TOWNS, BUILDINGS, NO_PORTRAIT = 0, 1, 3, 4, 0xFF
+FOREPAW, FOREPAW_TOOLS_DOOR, FOREPAW_TOOL_SHOP = 0x02, 0x9D, 0x0F    # the towns' screen 2, its door, building $0F
+PALETTE_TOWN, PALETTE_TOWER = 0x1B, 0x07
 HAND_DAGGER, LONG_SWORD, GIANT_BLADE, DRAGON_SLAYER = 0x00, 0x01, 0x02, 0x03
-KEY_A, KEY_K, KEY_Q, KEY_J, MATTOCK, RED_POTION = 0x04, 0x05, 0x06, 0x07, 0x09, 0x10
+STUDDED_MAIL, SMALL_SHIELD = 0x21, 0x40
+KEY_A, KEY_K, KEY_Q, KEY_J, MATTOCK, WING_BOOTS, RED_POTION = 0x04, 0x05, 0x06, 0x07, 0x09, 0x0F, 0x10
 DELUGE, ELIXIR = 0x60, 0x92
 ITEM = 0x80                                                         # the Items category, in a full ID
 NOT_ENOUGH_GOLDS, NOTHING_TO_SELL, GREETING, BUY_OR_SELL = 0x03, 0x12, 0x0F, 0x10   # message IDs
+GOT_WING_BOOTS = 0xB3                                               # "I'm holding Wing Boots."
+HORNET = 0x07
+FOREPAW_LIST = [LONG_SWORD, STUDDED_MAIL, SMALL_SHIELD, ITEM | RED_POTION, ITEM | WING_BOOTS]
+FOREPAW_PRICES = [1600, 2500, 1100, 400, 2800]
+POTION_ROW, BOOTS_ROW = 3, 4
 LIST_FRAME = (80, 64)                                               # the list's top-left frame tile, tile 10,8
 HINT = (96, 208)                                                    # its hint line: tile 12,26
 PAGE_ROW, LINE_END = 72, 224                                        # the page: row 9, ending at column 27
@@ -224,6 +244,35 @@ def check_hint(path, text, page=None):
             assert len(lit) <= 1, f"{path.name}: {line!r} is not one color"
 
 
+def price_cells(path, entry):
+    """Entry `entry`'s five price cells (Shop_Draw: column 23, on the
+    entry's second row): for each, the set of colors in it other than the
+    list's inside."""
+    width, height, px = png(path)
+    ox = (width - 256) // 2 if width >= 256 else 0
+    inside = px[PAGE_ROW][ox + 96]
+    y = 88 + entry * 16
+    return [{px[y + r][ox + 184 + 8 * k + c] for r in range(8) for c in range(8)} - {inside} for k in range(5)]
+
+
+def check_owned(path, entry):
+    """Entry `entry` shows OWNED where its price was: five letters, one in
+    each of the price's cells, in one color. A price never fills all five:
+    the highest, Tilte's 15000, is the one five-digit price, and no Forepaw
+    price is."""
+    cells = price_cells(path, entry)
+    assert all(cells), f"{path.name}: entry {entry}'s price cells are not five letters: {[len(c) for c in cells]}"
+    assert len(set().union(*cells)) == 1, f"{path.name}: entry {entry}'s OWNED is not one color"
+
+
+def check_priced(path, entry, price):
+    """Entry `entry` shows a price of `price`'s digits, right-aligned: its
+    leading cells are empty."""
+    cells = price_cells(path, entry)
+    blank = 5 - len(str(price))
+    assert not any(cells[:blank]) and all(cells[blank:]), f"{path.name}: entry {entry} is not priced {price}"
+
+
 def check_no_price(path, entry):
     """Entry `entry` of the list shows no price: its price cells (Shop_Draw:
     column 23, 5 digits, on the entry's second row) are the list's inside, as
@@ -370,6 +419,52 @@ def main():
         act("a", 4, 6)
         until("the sale", lambda: shops()["sold"] == before + 1, 2400)
         return list_up("sell")
+
+    def poke(writes):
+        """Edit RAM in the running game: save, edit the state, load it back."""
+        path = out / "poke.cycstate"
+        tcp("save_state", path=str(path))
+        fixture(path, path, writes)
+        tcp("load_state", path=str(path))
+
+    def into_forepaws_shop():
+        """From Forepaw's street, where the shop's door put the hero, go in
+        and to the counter. The townsfolk are taken off the screen first, so
+        none stands at the door: Up on one would talk to him."""
+        until("Forepaw", lambda: (ram(AREA), ram(SCREEN)) == (TOWNS, FOREPAW) and ram(SCREEN_READY) == 0, 600)
+        wait(30)
+        poke({SPRITE_ENTITIES + i: 0xFF for i in range(8)})
+        wait(4)
+        act("up", 4, 10)
+        until("Forepaw's tool shop", lambda: (ram(AREA), ram(SCREEN)) == (BUILDINGS, FOREPAW_TOOL_SHOP))
+        wait(40)
+        to_counter()
+
+    def to_forepaw(source, name, writes):
+        """From inside a building, walk out onto Forepaw's tool shop door
+        (the towns' screen 2, block $9D), and go in."""
+        target = out / f"{name}.cycstate"
+        fixture(source, target, {AREA_SAVED_AREA: TOWNS, AREA_SAVED_SCREEN: FOREPAW, AREA_SAVED_PALETTE: PALETTE_TOWN,
+                                 PLAYER_SAVED_POS: FOREPAW_TOOLS_DOOR, AREA_REGION: TRUNK, **writes})
+        tcp("load_state", path=str(target))
+        walk_out()
+        into_forepaws_shop()
+
+    def leave():
+        act("b", 4, 6)
+        until("the conversation's end", lambda: ram(PORTRAIT) == NO_PORTRAIT and ram(TEXTBOX_CLOSED) != 0, 300)
+
+    def a_does_nothing(row):
+        """A on the owned item at `row`: nothing bought, no line, the list as it was."""
+        before, money, carried = shops(), gold(), items()
+        act("a", 4, 60)
+        state = shops()
+        assert state["ignored"] == before["ignored"] + 1, state
+        assert (state["bought"], state["messages"]) == (before["bought"], before["messages"]), state
+        assert state["shown"] == "buy" and state["list_up"] and state["cursor"] == row, state
+        assert state["hint"] == "Already owned" and state["list"] == before["list"], state
+        assert gold() == money and items() == carried, (gold(), items())
+        return state
 
     def speaker_on_list():
         state = tcp("speaker_state")
@@ -535,9 +630,102 @@ def main():
         print("ok: selling the last thing gives the game's own line, and back to buying")
         act("b", 4, 6)
         until("the conversation's end", lambda: ram(PORTRAIT) == NO_PORTRAIT, 300)
+
+        # 3. Owned: Forepaw's tool shop. Buy the Wing Boots.
+        to_forepaw(start, "forepaw", carrying(9000, [], [RED_POTION]))
+        act("up", 4, 6)
+        state = list_up("buy", "Forepaw's buy list")
+        assert state["list"] == FOREPAW_LIST and state["prices"] == FOREPAW_PRICES, state
+        assert state["owned"] == [False] * 5, state
+        for _ in range(BOOTS_ROW):
+            press("down")
+        state = shops()
+        assert state["cursor"] == BOOTS_ROW and state["hint"] == "Select to sell", state
+        path = shot("owned-before")
+        check_hint(path, "Select to sell")
+        check_priced(path, BOOTS_ROW, 2800)
+        state = buy(BOOTS_ROW)
+        assert gold() == 9000 - 2800 and items() == [RED_POTION, WING_BOOTS], (gold(), items())
+        assert state["owned"] == [False] * 4 + [True] and state["hint"] == "Already owned", state
+        print("ok: Forepaw sells the Wing Boots, and once bought they are owned at once")
+
+        # Leave, and come back: the row says OWNED, A does nothing, and the Red Potion still buys.
+        leave()
+        walk_out()
+        into_forepaws_shop()
+        act("up", 4, 6)
+        state = list_up("buy", "Forepaw's buy list, again")
+        assert state["list"] == FOREPAW_LIST and state["prices"] == FOREPAW_PRICES, state
+        assert state["owned"] == [False] * 4 + [True] and state["cursor"] == 0, state
+        assert state["hint"] == "Select to sell", state
+        path = shot("owned-after")
+        check_hint(path, "Select to sell")
+        check_owned(path, BOOTS_ROW)
+        check_priced(path, POTION_ROW, 400)
+        for _ in range(BOOTS_ROW):
+            press("down")
+        assert shops()["hint"] == "Already owned", shops()
+        path = shot("owned-hint")
+        check_hint(path, "Already owned")
+        check_owned(path, BOOTS_ROW)
+        a_does_nothing(BOOTS_ROW)
+        check_owned(shot("owned-a-does-nothing"), BOOTS_ROW)
+        press("up")
+        buy(POTION_ROW)
+        assert gold() == 9000 - 2800 - 400 and items() == [RED_POTION, WING_BOOTS, RED_POTION], (gold(), items())
+        print("ok: back again, the Wing Boots say OWNED and \"Already owned\", A on them does nothing, "
+              "and the Red Potion still buys")
+        leave()
+
+        # A pair found in the world, Trunk $2D's (one visit in four), is owned the same.
+        target = out / "find-boots.cycstate"
+        fixture(start, target, {AREA_SAVED_AREA: TRUNK, AREA_SAVED_SCREEN: 0x2D, AREA_SAVED_PALETTE: PALETTE_TOWER,
+                                PLAYER_SAVED_POS: 0x31, AREA_REGION: TRUNK, VISIT_COUNT: 3,
+                                **carrying(9000, [], [RED_POTION])})
+        tcp("load_state", path=str(target))
+        walk_out()
+        until("Trunk $2D", lambda: (ram(AREA), ram(SCREEN)) == (TRUNK, 0x2D) and ram(SCREEN_READY) == 0, 600)
+        wait(30)
+        slots = ram(SPRITE_ENTITIES, 8)
+        poke({SPRITE_ENTITIES + i: 0xFF for i in range(8) if slots[i] == HORNET})   # it shows once they are gone
+        for _ in range(60):                                         # it lies by the wall on the left
+            if ram(MESSAGE_ID) == GOT_WING_BOOTS:
+                break
+            act("left", 2, 2)
+        until("the find", lambda: ram(MESSAGE_ID) == GOT_WING_BOOTS, 600)
+        for _ in range(20):
+            if ram(TEXTBOX_CLOSED) != 0:
+                break
+            until("the line to type out", waiting, 900)
+            act("a", 6, 14)
+        wait(10)
+        found = items()
+        assert found == [RED_POTION, WING_BOOTS], found
+        to_forepaw(start, "forepaw-found", carrying(9000, [], found))
+        act("up", 4, 6)
+        state = list_up("buy", "Forepaw's buy list, with found boots")
+        assert state["owned"] == [False] * 4 + [True], state
+        for _ in range(BOOTS_ROW):
+            press("down")
+        check_owned(shot("owned-found"), BOOTS_ROW)
+        a_does_nothing(BOOTS_ROW)
+        print("ok: a pair found in the world is owned the same: OWNED, and A does nothing")
+        leave()
+
+        # A J key held, at Eolis's key shop.
+        go_in(start, "key-owned", 3, 0x9D, carrying(1000, [], [KEY_J]))
+        to_counter(stop=80)
+        act("up", 4, 6)
+        state = list_up("buy", "the Key Seller's list, the J key owned")
+        assert state["list"] == [ITEM | KEY_J] and state["owned"] == [True], state
+        assert state["hint"] == "Already owned", state
+        check_owned(shot("owned-key"), 0)
+        a_does_nothing(0)
+        print("ok: a J key held is owned at the key shop, and A does nothing")
+        leave()
         close()
 
-        # 3. Off: the shop is as it was.
+        # 4. Off: the shop is as it was.
         launch(on=False)
         tcp("load_state", path=str(out / "tool-shop.cycstate"))
         walk_out()

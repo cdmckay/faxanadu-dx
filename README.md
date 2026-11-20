@@ -115,8 +115,8 @@ seconds. While one recharges, T: on the status bar blinks the seconds left,
 and using it does nothing. Dying makes both ready. The Elixir still revives
 you, then stays with you, spent, until you talk to a Guru; the menu's Player
 page shows it only while it is charged. Finding one you already own recharges
-it, and a shop sells you an Elixir only to charge a spent one. Your save file
-keeps the cooldowns and whether the Elixir is spent.
+it; buying one does not, since a shop won't sell you a second Elixir, charged
+or spent. Your save file keeps the cooldowns and whether the Elixir is spent.
 
 **Falling pose** is on by default (Mods to turn it off). Walking off a ledge,
 the hero used to fall standing or mid-step, as if walking on air. Now he shows
@@ -164,7 +164,10 @@ enough Golds." are the game's own. Any shop buys anything you carry: half its
 price where a shop sells it, otherwise 100 Golds. Up from the top or Down from
 the bottom turns the page of a long list. The Dragon Slayer, the Battle Suit
 and the Battle Helmet are not for sale, and what you have equipped or selected
-is not offered, as before.
+is not offered, as before. What you already have for good, the Wing Boots, the
+Hour Glass, the Elixir (charged or spent), a key or the Mattock, keeps its
+place in a shop's list but says OWNED instead of a price, and A on it does
+nothing.
 
 Optional **Seamless** appears first in Mods, marked **Experimental** and
 disabled by default. It joins connected rooms, advances neighboring actors,

@@ -28,9 +28,11 @@ used with Down+B, as a player would.
    hero ("I've used Elixir."). With 1 HP again, the next hit kills him; he
    respawns with it still spent, and the menu's Player page, which showed it,
    does not. Talking to Eolis's Guru charges it, and the page shows it again.
-5. Eolis's tool shop with a spent Elixir: buying one charges it, for its 320
-   gold. With it charged, the shop refuses a second ("You can't carry any
-   more.") and keeps the gold.
+5. Eolis's tool shop with a spent Elixir: it is still the hero's, so Quick
+   shops (on by default) lists it as owned, "Already owned", and A on it does
+   nothing: the gold stays and it stays spent, since buying never charges it
+   (a Guru does). Charged, the same. (With Quick shops off, the game's shop
+   refuses it, "You can't carry any more.")
 6. Finds: a pair of Wing Boots (Trunk $2D) while they recharge, an Hour Glass
    (Trunk $13) while it recharges, and an Elixir (Trunk $3C) while it is spent:
    each is ready at once, and none is a second copy.
@@ -88,7 +90,7 @@ QUEST_SPRING_OF_SKY = 0x02
 TRAVEL_DEPART, TRAVEL_TO_GURU = 3, 4                                # fax_travel.c's lines (TO_GURU + temple)
 FLIGHTS, COOLDOWN, FREEZE = (30, 40, 50, 60), 60, 15              # the game's seconds (64 frames)
 FLIGHT = FLIGHTS[0]                                                 # a Novice's: the lowest band
-ELIXIR_PRICE, ELIXIR_ROW = 320, 2                                   # EOLIS_TOOL_SHOP_ITEMS: dagger, potion, Elixir
+ELIXIR_ROW = 2                                                      # EOLIS_TOOL_SHOP_ITEMS: dagger, potion, Elixir
 SECOND = 64
 PACKAGE = ("faxanadu.enhancement.recharging-items", "recharging-items")
 RECORD = b"faxanadu.recharge"                                       # its save-state record: version, boots
@@ -439,6 +441,34 @@ def main():
         assert not box_open(), f"the shop did not close (saw {seen})"
         return seen
 
+    def owned_in_shop(row, name):
+        """The item on `row` of the shopkeeper's list is the hero's. With Quick
+        shops the list marks it owned, its hint says so, and A on it does
+        nothing: no gold, no line. Without, the game's shop refuses it."""
+        if not quick_shops():
+            seen = buy(row)
+            assert CANT_CARRY_MORE in seen, seen
+            return
+
+        def list_waiting():
+            s = tcp("shops_state")
+            return s["shown"] == "buy" and s["list_up"]
+        act("up", 4, 10)
+        until("the list", list_waiting, 900)
+        wait(20)
+        for _ in range(row):
+            act("down", 4, 10)
+        before, money = tcp("shops_state"), gold()
+        assert before["cursor"] == row and before["owned"][row] and before["hint"] == "Already owned", before
+        shot(name)
+        act("a", 4, 60)
+        after = tcp("shops_state")
+        assert after["ignored"] == before["ignored"] + 1, after
+        assert (after["bought"], after["messages"]) == (before["bought"], before["messages"]), after
+        assert list_waiting() and gold() == money, (after, gold())
+        act("b", 4, 10)
+        until("the shop to close", lambda: not box_open(), 600)
+
     def respawn(frames):
         """Page through the death message until the hero is back: at the temple, or with zone respawn (on by
         default) at the entrance to the zone he died in."""
@@ -646,23 +676,26 @@ def main():
         status_shot("status-elixir-recharged")
         print("ok: talking to Eolis's Guru charges the spent Elixir, and the status page shows it again")
 
-        # 5. Eolis's tool shop: a spent Elixir is charged for its price; a charged one is not sold twice.
+        # 5. Eolis's tool shop: an Elixir, spent or charged, is the hero's, and buying never charges it.
+        gold_1000 = {GOLD: 0xE8, GOLD + 1: 0x03, GOLD + 2: 0}
         warp(shop, "tool-shop", EOLIS, 3, 0x9A, PALETTE_EOLIS, 0,
-             {SPECIAL_ITEMS: 0, SELECTED_ITEM: NO_ITEM, NUMBER_OF_ITEMS: 0, GOLD: 0xE8, GOLD + 1: 0x03, GOLD + 2: 0},
-             {5: 1})
+             {SPECIAL_ITEMS: 0, SELECTED_ITEM: NO_ITEM, NUMBER_OF_ITEMS: 0, **gold_1000}, {5: 1})
         assert state()["elixir_spent"] and gold() == 1000, (state(), gold())
         enter_door(TOOL_SHOP)
         act("left", 120, 10)                                        # to the counter
-        seen = buy(ELIXIR_ROW)
+        owned_in_shop(ELIXIR_ROW, "shop-elixir-spent")
         wait(4)
         s = state()
-        assert gold() == 1000 - ELIXIR_PRICE and s["elixir_charged"] and not s["elixir_spent"], (gold(), s, seen)
-        assert CANT_CARRY_MORE not in seen, seen
-        seen = buy(ELIXIR_ROW)
-        assert CANT_CARRY_MORE in seen and gold() == 1000 - ELIXIR_PRICE, (seen, gold())
-        assert state()["elixir_charged"], state()
-        print(f"ok: the tool shop charges a spent Elixir for {ELIXIR_PRICE} gold, and refuses a second while it is "
-              "charged (\"You can't carry any more.\")")
+        assert gold() == 1000 and s["elixir_spent"] and not s["elixir_charged"], (gold(), s)
+        warp(shop, "tool-shop-charged", EOLIS, 3, 0x9A, PALETTE_EOLIS, 0,
+             {SPECIAL_ITEMS: BIT_ELIXIR, SELECTED_ITEM: NO_ITEM, NUMBER_OF_ITEMS: 0, **gold_1000})
+        enter_door(TOOL_SHOP)
+        act("left", 120, 10)
+        owned_in_shop(ELIXIR_ROW, "shop-elixir-charged")
+        s = state()
+        assert gold() == 1000 and s["elixir_charged"] and not s["elixir_spent"], (gold(), s)
+        print("ok: at the tool shop a spent Elixir is owned, A on it does nothing and it stays spent (a Guru charges "
+              "it, not a purchase); a charged one is owned the same")
 
         # 6. Finds: each recharges what it duplicates.
         warp(shop, "find-boots", TRUNK, 0x2D, 0x31, PALETTE_TOWER, 1,

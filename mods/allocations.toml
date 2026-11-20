@@ -267,7 +267,11 @@ rom = []
 # files (declared above); its other sites are in the shops' list actions,
 # which no other feature hooks. Save files' override of the Buy/Sell menu's
 # operand ($8631) is for the Guru's menu: with Quick shops on, a shop never
-# runs that menu.
+# runs that menu. It reads, never writes, whether reusable tools and
+# recharging items are on and the Elixir is spent (fax_keys.h,
+# fax_recharge.h), to show what the hero owns; its buy list's A ($8402) skips
+# Shop_GetPlayerHasSelectedItem ($8482, recharging items' site) only for an
+# owned item.
 
 [[feature]]
 package = "faxanadu.enhancement.zone-respawn"
@@ -298,7 +302,10 @@ rom = []
 # SpecialItems' Elixir bit (when a Guru recharges it) and T:'s two tiles
 # through the PPU buffer, as UI_DrawTimeValue queues them. Its own observing
 # site at IScripts_InvokeNextAction ($826E) hears a Guru's first action, with
-# Save files and Guru travel on or off. No read overrides. Keeps the fields
+# Save files and Guru travel on or off. At Shop_GetPlayerHasSelectedItem
+# ($8482, bank 12), which no other feature hooks, it sets C for a spent Elixir
+# under a shop's cursor and returns, as the routine does for a charged one.
+# No read overrides. Keeps the fields
 # recharge.wingboots, recharge.hourglass and recharge.elixir in the file in
 # play (fax_save.h), when Save files has one.
 

@@ -45,17 +45,24 @@
  *   there is nothing left to sell.
  * - An item no shop buys is listed without a price, the hint says "Not for
  *   sale" while the cursor is on it, and A on it is ignored.
+ * - An item the hero already has for good (fax_shops_owned: the Wing Boots,
+ *   the Hour Glass, the Elixir, the keys and the Mattock, as the features that
+ *   keep them are on) keeps its row in the buy list, with OWNED where its price
+ *   was; the hint says "Already owned" while the cursor is on it, and A on it
+ *   is ignored, before the game's own checks: no gold, no refusal.
  *
  * A step is entered "by return": a hook writes the address it wants on the
  * stack where the routine's RTS will pull it, or pushes a chain of them, and
  * handles the instruction, so the scheduler returns there (docs/GAME_INTERNALS.md,
  * "The engine"). Every jump keeps the stack where the game's own JMP would.
  *
- * The hint line ("Select: Sell", "Select: Buy", "Not for sale", and the page)
- * sits on the list's last row, inside its frame, in the game's font
- * (fax_text.c), while the list's frame is on screen. See
+ * The hint line ("Select to sell", "Select to buy", "Not for sale", "Already
+ * owned", and the page) sits on the list's last row, inside its frame, in the
+ * game's font (fax_text.c), while the list's frame is on screen. See
  * docs/GAME_INTERNALS.md, "Shops". */
 #include "fax_shops.h"
+#include "fax_keys.h"
+#include "fax_recharge.h"
 #include "fax_text.h"
 #include "cyc_mod.h"
 #include "cyc_render.h"
@@ -84,7 +91,11 @@
 #define DATA_ARRAY          0x0220u   /* the list's items, 8 at most: costs follow at $0228 and $0230 */
 #define SHOP_ITEM_COSTS_L   0x0228u
 #define SHOP_ITEM_COSTS_U   0x0230u
+#define ITEM_INVENTORY      0x03ADu   /* the Items list, NumberOfItems entries */
+#define SELECTED_ITEM       0x03C1u   /* the Items' selection, in no list; $FF for none */
 #define NUMBER_OF_WEAPONS   0x03C2u   /* then armor, shields, spells, items */
+#define NUMBER_OF_ITEMS     0x03C6u
+#define SPECIAL_ITEMS       0x042Cu   /* the rings, the Elixir ($08), ...: bits, in no list */
 #define ISCRIPT_PORTRAIT_ID 0x03C7u   /* $FF once IScriptAction_EndScript has run */
 /* Bank 12 */
 #define INVOKE_NEXT_ACTION  0x826Eu   /* IScripts_InvokeNextAction: JSR IScripts_LoadByte, TAX, dispatch */
@@ -92,6 +103,8 @@
 #define FINAL_MESSAGE_END   0x838Eu   /* IScripts_ShowFinalMessage's @_endScript: JMP IScriptAction_EndScript */
 #define OPEN_SHOP           0x83D8u   /* IScriptAction_OpenShop: LDA #$14 ("What would you like?"), its loop */
 #define OPEN_SHOP_LIST      0x83EAu   /* ... after the loop: JSR IScripts_LoadByte (the items), Populate, Draw */
+#define BUY_WAIT            0x83FAu   /* ... JSR IScripts_WaitForMenuInput, BCC to BUY_PICK, JMP EndScript */
+#define BUY_PICK            0x8402u   /* ... A: JSR Shop_GetPlayerHasSelectedItem, the room, the gold, the item */
 #define BOUGHT              0x8463u   /* ... after Player_AddToInventory and the gold: JSR Maybe_Shop_DrawTextBox,
                                          JMP IScripts_InvokeNextAction */
 #define MAYBE_SHOP_DRAW_TEXTBOX 0x8471u  /* closes the list and opens the dialogue box again */
@@ -115,6 +128,7 @@ enum { SHOW_MESSAGE = 0x03, OPEN_SHOP_ACTION = 0x08, SHOW_BUY_SELL_MENU = 0x0F, 
 enum { BUTTON_A = 0x80, BUTTON_B = 0x40, BUTTON_SELECT = 0x20, BUTTON_UP = 0x08, BUTTON_DOWN = 0x04 };
 enum { SOUND_CURSOR = 0x0B };                     /* Menu_UpdateAndDraw's */
 enum { CATEGORIES = 5, ITEMS = 4, PAGE = 8, MOST = 4 + 4 + 4 + 4 + 8 };
+enum { BIT_ELIXIR = 0x08 };                       /* SpecialItems' */
 enum { BUY, SELL, NONE };
 /* Shop_Draw's list, in tiles: its box and its rows (an entry is two rows). */
 enum { LIST_X = 10, LIST_Y = 8, LIST_W = 20, LIST_H = 20, HINT_COL = LIST_X + 2, HINT_ROW = LIST_Y + LIST_H - 2,
@@ -146,7 +160,7 @@ typedef struct {
 static bool enabled, failed, priced;
 static Session shop;
 static uint16_t lowest[256];   /* by item: the lowest price any shop asks, 0 if none sells it */
-static unsigned opened, bought, sold, refused, switched, turned, messages;
+static unsigned opened, bought, sold, refused, ignored, switched, turned, messages;
 static unsigned waits;         /* frames a list has waited for a button: it reads the pad */
 
 static uint8_t q(uint16_t addr) { return cyc_mod_peek(addr); }
@@ -178,6 +192,48 @@ uint16_t fax_shops_sell_price(uint8_t id, uint16_t here, uint16_t lowest_price) 
      * game is a multiple of 20, so this never rounds. */
     uint16_t price = here ? here / 2 : lowest_price ? lowest_price / 2 : FLAT;
     return (uint16_t)(price - price % 10);
+}
+
+/* ---- what the hero owns ---- */
+
+bool fax_shops_owned(uint8_t id, const FaxShopsHero *h) {
+    bool kept;
+    switch (id) {
+    case 0x92:                                   /* SPECIAL_ELIXIR: a bit, one at most; spent, still his */
+        return (h->special & BIT_ELIXIR) || h->elixir_spent;
+    case 0x8D: case 0x8F:                        /* the Hour Glass, the Wing Boots: they recharge */
+        kept = h->recharging;
+        break;
+    case 0x84: case 0x85: case 0x86: case 0x87: case 0x88:   /* the A, K, Q, J and Jo keys */
+    case 0x89:                                   /* the Mattock */
+        kept = h->reusable;
+        break;
+    default:
+        return false;
+    }
+    if (!kept) return false;                     /* used up: a second is worth buying */
+    uint8_t item = id & 0x1F;                    /* the selected item is in no list (Player_Equip) */
+    if (h->selected == item) return true;
+    for (unsigned i = 0; i < h->count && i < sizeof h->items; ++i)
+        if (h->items[i] == item) return true;
+    return false;
+}
+
+static FaxShopsHero hero_now(void) {
+    FaxShopsHero h = { .selected = q(SELECTED_ITEM), .count = q(NUMBER_OF_ITEMS), .special = q(SPECIAL_ITEMS),
+                       .elixir_spent = fax_recharge_elixir_spent(), .recharging = fax_recharge_on(),
+                       .reusable = fax_reusable_tools_on() };
+    if (h.count > sizeof h.items) h.count = sizeof h.items;
+    for (unsigned i = 0; i < h.count; ++i) h.items[i] = q((uint16_t)(ITEM_INVENTORY + i));
+    return h;
+}
+static bool owned(uint8_t id) {
+    FaxShopsHero h = hero_now();
+    return fax_shops_owned(id, &h);
+}
+/* The list on screen is the buy list, and its entry `i` is owned. */
+static bool owned_entry(unsigned i) {
+    return shop.shown == BUY && i < q(ARG_STRINGS_COUNT) && i < PAGE && owned(q((uint16_t)(DATA_ARRAY + i)));
 }
 
 /* The layout every shop's script has, from its first byte. */
@@ -331,6 +387,17 @@ static int open_hook(uint16_t addr) {
     return go(false, OPEN_SHOP_LIST, 0, 0, -1);
 }
 
+/* OpenShop's A, before the game's checks: an item the hero owns stays, and
+ * the list waits again, as for an item no shop buys in the sell list. */
+static int buy_pick_hook(uint16_t addr) {
+    (void)addr;
+    if (!here() || !in_step(BUY, 3)) return 0;
+    unsigned cursor = q(MENU_CURSOR_POS);
+    if (cursor >= PAGE || !owned(q((uint16_t)(DATA_ARRAY + cursor)))) return 0;
+    ++ignored;
+    return go(false, BUY_WAIT, 0, 0, -1);
+}
+
 /* After a purchase: keep the list up and go on (to BUY + 3, which comes back). */
 static int bought_hook(uint16_t addr) {
     (void)addr;
@@ -451,6 +518,8 @@ static bool hint(char out[HINT_COLS + 1]) {
     if (shop.shown == SELL && cursor < q(ARG_STRINGS_COUNT) && cursor < PAGE &&
         fax_shops_never_buys(q((uint16_t)(DATA_ARRAY + cursor))))
         say = "Not for sale";
+    else if (owned_entry(cursor))
+        say = "Already owned";
     snprintf(out, HINT_COLS + 1, "%s", say);
     return true;
 }
@@ -490,20 +559,28 @@ static void to_picture(int w, int h, int *x, int *y) {
 
 /* Shop_Draw writes a price's last digit even for 0 (UI_DrawDigitsNoLeadingZeroes
  * blanks all but the units), so an item no shop buys would read "0". Its
- * price cells are painted the box's inside again: tile 0, all color 0. */
-static void blank_prices(uint32_t *px, int w, int h) {
+ * price cells are painted the box's inside again: tile 0, all color 0. An
+ * owned item's are too, and OWNED is written in them, in the text's color:
+ * five letters where five digits go, so it ends where the prices end. */
+#define OWNED_LABEL "OWNED"
+static void cover_prices(uint32_t *px, int w, int h) {
     enum { PRICE_COL = LIST_X + 13, PRICE_COLS = 5 };   /* Shop_Draw: X + 13, 5 digits, on an entry's second row */
-    if (shop.shown != SELL) return;
+    _Static_assert(sizeof OWNED_LABEL - 1 == PRICE_COLS, "OWNED fills the price's cells");
     unsigned count = q(ARG_STRINGS_COUNT);
     uint32_t inside = cyc_render_color(0);
     for (unsigned i = 0; i < count && i < PAGE; ++i) {
-        if (!fax_shops_never_buys(q((uint16_t)(DATA_ARRAY + i)))) continue;
+        bool unsold = shop.shown == SELL && fax_shops_never_buys(q((uint16_t)(DATA_ARRAY + i)));
+        bool mine = owned_entry(i);
+        if (!unsold && !mine) continue;
         int x0 = PRICE_COL * FAX_TEXT_CELL, y0 = (LIST_Y + 3 + 2 * (int)i) * FAX_TEXT_CELL;
-        int x1 = x0 + PRICE_COLS * FAX_TEXT_CELL, y1 = y0 + FAX_TEXT_CELL;
+        int x1 = x0 + PRICE_COLS * FAX_TEXT_CELL, y1 = y0 + FAX_TEXT_CELL, x = x0, y = y0;
         to_picture(w, h, &x0, &y0);
         to_picture(w, h, &x1, &y1);
-        for (int y = y0 < 0 ? 0 : y0; y < y1 && y < h; ++y)
-            for (int x = x0 < 0 ? 0 : x0; x < x1 && x < w; ++x) px[(size_t)y * (size_t)w + (size_t)x] = inside;
+        for (int py = y0 < 0 ? 0 : y0; py < y1 && py < h; ++py)
+            for (int pxl = x0 < 0 ? 0 : x0; pxl < x1 && pxl < w; ++pxl) px[(size_t)py * (size_t)w + (size_t)pxl] = inside;
+        if (!mine) continue;
+        to_picture(w, h, &x, &y);
+        fax_text_draw(px, w, h, x, y, OWNED_LABEL, 255);
     }
 }
 
@@ -530,7 +607,7 @@ const uint32_t *fax_shops_present(const uint32_t *picture, int *w, int *h) {
         canvas = grown; capacity = n;
     }
     memcpy(canvas, from, n * sizeof *canvas);
-    blank_prices(canvas, width, height);
+    cover_prices(canvas, width, height);
     int x = HINT_COL * FAX_TEXT_CELL, y = HINT_ROW * FAX_TEXT_CELL;
     to_picture(width, height, &x, &y);
     fax_text_draw(canvas, width, height, x, y, line, 255);
@@ -548,14 +625,15 @@ const uint32_t *fax_shops_present(const uint32_t *picture, int *w, int *h) {
 
 static const char *const hook_ids[] = {
     "faxanadu.shops.next-action", "faxanadu.shops.open", "faxanadu.shops.bought", "faxanadu.shops.sell-list",
-    "faxanadu.shops.sell-pick", "faxanadu.shops.sold", "faxanadu.shops.menu", "faxanadu.shops.final" };
+    "faxanadu.shops.sell-pick", "faxanadu.shops.sold", "faxanadu.shops.menu", "faxanadu.shops.final",
+    "faxanadu.shops.buy-pick" };
 static void hooks(int on) {
     for (unsigned i = 0; i < sizeof hook_ids / sizeof hook_ids[0]; ++i) nes_mod_set_function_hook_enabled(hook_ids[i], on);
 }
 static void deactivate(void) {
     enabled = failed = priced = false;
     shop = (Session){ .shown = NONE };
-    opened = bought = sold = refused = switched = turned = messages = waits = 0;
+    opened = bought = sold = refused = ignored = switched = turned = messages = waits = 0;
     hooks(0);
 }
 static void activate(void) {
@@ -596,29 +674,30 @@ static int state_set(const uint8_t *buf, int len) {
 #ifdef CYC_WITH_SDL
 static void shops_state(int id, const char *line) {
     (void)line;
-    char fields[1024], items[64] = "", prices[96] = "", say[HINT_COLS + 1], page[HINT_COLS + 1];
+    char fields[1152], items[64] = "", prices[96] = "", mine[64] = "", say[HINT_COLS + 1], page[HINT_COLS + 1];
     unsigned count = q(ARG_STRINGS_COUNT);
     if (count > PAGE) count = PAGE;
     for (unsigned i = 0; i < count; ++i) {
-        size_t a = strlen(items), b = strlen(prices);
+        size_t a = strlen(items), b = strlen(prices), c = strlen(mine);
         snprintf(items + a, sizeof items - a, "%s%u", i ? "," : "", q((uint16_t)(DATA_ARRAY + i)));
         snprintf(prices + b, sizeof prices - b, "%s%u", i ? "," : "",
                  q((uint16_t)(SHOP_ITEM_COSTS_L + i)) | q((uint16_t)(SHOP_ITEM_COSTS_U + i)) << 8);
+        snprintf(mine + c, sizeof mine - c, "%s%s", i ? "," : "", owned_entry(i) ? "true" : "false");
     }
     bool hinted = hint(say), up = list_shown(), paged = page_label(page);
     static const char *const modes[] = { "buy", "sell", "none" };
     snprintf(fields, sizeof fields,
              "\"enabled\":%s,\"active\":%s,\"mode\":\"%s\",\"shown\":\"%s\",\"page\":%u,\"pages\":%d,"
-             "\"selling\":%u,\"cursor\":%u,\"list\":[%s],\"prices\":[%s],\"list_up\":%s,\"hint\":%s%s%s,"
-             "\"page_label\":%s%s%s,"
-             "\"script\":%u,\"opened\":%u,\"bought\":%u,\"sold\":%u,\"refused\":%u,\"switched\":%u,"
-             "\"turned\":%u,\"messages\":%u,\"waits\":%u",
+             "\"selling\":%u,\"cursor\":%u,\"list\":[%s],\"prices\":[%s],\"owned\":[%s],\"list_up\":%s,"
+             "\"hint\":%s%s%s,\"page_label\":%s%s%s,"
+             "\"script\":%u,\"opened\":%u,\"bought\":%u,\"sold\":%u,\"refused\":%u,\"ignored\":%u,"
+             "\"switched\":%u,\"turned\":%u,\"messages\":%u,\"waits\":%u",
              enabled ? "true" : "false", shop.active ? "true" : "false", modes[shop.mode <= SELL ? shop.mode : 2],
              modes[shop.shown <= NONE ? shop.shown : 2], shop.page, pages(), shop.selling, q(MENU_CURSOR_POS),
-             items, prices, up ? "true" : "false", hinted && up ? "\"" : "", hinted && up ? say : "null",
+             items, prices, mine, up ? "true" : "false", hinted && up ? "\"" : "", hinted && up ? say : "null",
              hinted && up ? "\"" : "", hinted && up && paged ? "\"" : "", hinted && up && paged ? page : "null",
-             hinted && up && paged ? "\"" : "", shop.script.base, opened, bought, sold, refused, switched, turned, messages,
-             waits);
+             hinted && up && paged ? "\"" : "", shop.script.base, opened, bought, sold, refused, ignored, switched, turned,
+             messages, waits);
     cyc_tcp_ok(id, fields);
 }
 void fax_shops_tcp_setup(void) {
@@ -630,9 +709,10 @@ void fax_shops_tcp_setup(void) {}
 
 NES_MOD_CONSTRUCTOR(register_shops) {
     static const uint16_t at[] = { INVOKE_NEXT_ACTION, OPEN_SHOP, BOUGHT, SELL_LIST, SELL_PICK, SOLD, MENU_UPDATE,
-                                   FINAL_MESSAGE_END };
+                                   FINAL_MESSAGE_END, BUY_PICK };
     static const NESModFunctionEntryCallback cb[] = { next_action_hook, open_hook, bought_hook, sell_list_hook,
-                                                      sell_pick_hook, sold_hook, menu_hook, final_hook };
+                                                      sell_pick_hook, sold_hook, menu_hook, final_hook,
+                                                      buy_pick_hook };
     for (unsigned i = 0; i < sizeof at / sizeof at[0]; ++i)
         if (!nes_mod_register_function_entry_plugin(hook_ids[i], at[i], cb[i])) abort();
     if (!nes_mod_register_reset_callback(deactivate) ||

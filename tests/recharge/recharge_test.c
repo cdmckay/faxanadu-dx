@@ -294,11 +294,22 @@ static void pick_up(uint8_t item) {
 }
 /* Player_PickUpElixir: the script, then SpecialItems |= the Elixir. */
 static void pick_up_elixir(void) { script = SCRIPT_GOT_ELIXIR; ram[SPECIAL_ITEMS] |= BIT_ELIXIR; }
-/* IScriptAction_OpenShop buying the Elixir: Shop_GetPlayerHasSelectedItem
- * refuses a special item whose bit is set, else Player_AddToInventory sets it
- * and the price is paid. The message shown, or 0. */
-static int buy_elixir(unsigned price) {
-    if (ram[SPECIAL_ITEMS] & BIT_ELIXIR) return CANT_CARRY_MORE;
+/* IScriptAction_OpenShop's A on the Elixir, at `cursor` in the list (the
+ * game's shop, as with Quick shops off): JSR Shop_GetPlayerHasSelectedItem
+ * ($8402), whose hook site runs first, refuses a special item whose bit is
+ * set; else Player_AddToInventory sets it and the price is paid. The message
+ * shown, or 0. */
+static int buy_elixir(unsigned price, unsigned cursor, uint8_t item) {
+    ram[MENU_CURSOR_POS] = (uint8_t)cursor;
+    ram[DATA_ARRAY + cursor] = item;
+    cpu.s = 0xF0;
+    cpu.p = 0;
+    jsr(0x8402);
+    bool has;
+    if (fire(SHOP_GET_PLAYER_HAS_SELECTED_ITEM)) has = cpu.p & FLAG_CARRY;
+    else has = ram[SPECIAL_ITEMS] & BIT_ELIXIR;
+    CHECK(rts() == 0x8405 && cpu.s == 0xF0);                 /* BCS, back in OpenShop */
+    if (has) return CANT_CARRY_MORE;
     ram[SPECIAL_ITEMS] |= BIT_ELIXIR;
     ram[GOLD] = (uint8_t)(ram[GOLD] - price);
     return 0;
@@ -339,7 +350,7 @@ static void check_t_blinks(int v) {
 
 /* ---- tests ---- */
 static void registers(void) {
-    CHECK(site_count == 10 && !strcmp(plugin_id, "faxanadu.recharge") && reset_cb == deactivate);
+    CHECK(site_count == 11 && !strcmp(plugin_id, "faxanadu.recharge") && reset_cb == deactivate);
     CHECK(save_get && save_set && save_validate);
     play(true);
     for (int i = 0; i < site_count; ++i) CHECK(sites[i].on);
@@ -540,27 +551,49 @@ static void elixir(void) {
     CHECK(!(ram[SPECIAL_ITEMS] & BIT_ELIXIR) && revives == 0);
 }
 
-static void elixir_found_or_bought(void) {
-    /* A spent Elixir: a find charges it, and so does a purchase, at the price. */
+static void elixir_found_not_bought(void) {
+    /* A spent Elixir: a find charges it. */
     play(true);
     ram[SPECIAL_ITEMS] = BIT_ELIXIR;
     hurt();
-    CHECK(charge.elixir_spent);
+    CHECK(charge.elixir_spent && fax_recharge_elixir_spent() && fax_recharge_on());
     pick_up_elixir();
     frames(1);
     CHECK(!charge.elixir_spent && (ram[SPECIAL_ITEMS] & BIT_ELIXIR) && script == SCRIPT_GOT_ELIXIR);
+    /* A purchase does not: spent, it is still his, and the game's shop
+     * refuses it as it refuses a charged one, keeping the gold. */
     hurt();
     ram[GOLD] = 200;
-    CHECK(buy_elixir(120) == 0 && ram[GOLD] == 80);
+    CHECK(buy_elixir(120, 2, SPECIAL_ELIXIR) == CANT_CARRY_MORE && ram[GOLD] == 200 && shop_refusals == 1);
     frames(1);
-    CHECK(!charge.elixir_spent && (ram[SPECIAL_ITEMS] & BIT_ELIXIR));
-    /* Charged, the shop refuses a second: you hold one at most. */
-    CHECK(buy_elixir(120) == CANT_CARRY_MORE && ram[GOLD] == 80);
-    /* The Spring of Trunk's CONSUME_ITEM takes a charged one for good. */
+    CHECK(charge.elixir_spent && !(ram[SPECIAL_ITEMS] & BIT_ELIXIR));
+    /* Another item under the cursor is the game's to decide. */
+    CHECK(buy_elixir(120, 3, 0x90) == 0 && shop_refusals == 1);
+    ram[SPECIAL_ITEMS] &= (uint8_t)~BIT_ELIXIR;
+    ram[GOLD] = 200;
+    /* A Guru charges it; charged, the game's own check refuses a second. */
+    meet_guru(0);
+    CHECK(!charge.elixir_spent && !fax_recharge_elixir_spent());
+    CHECK(buy_elixir(120, 2, SPECIAL_ELIXIR) == CANT_CARRY_MORE && ram[GOLD] == 200 && shop_refusals == 1);
+    /* The Spring of Trunk's CONSUME_ITEM takes a charged one for good: no
+     * longer his, so a Guru gives none and a shop sells one. */
     ram[SPECIAL_ITEMS] &= (uint8_t)~BIT_ELIXIR;
     frames(1);
     meet_guru(0);
     CHECK(!(ram[SPECIAL_ITEMS] & BIT_ELIXIR) && !charge.elixir_spent);
+    CHECK(buy_elixir(120, 2, SPECIAL_ELIXIR) == 0 && ram[GOLD] == 80 && (ram[SPECIAL_ITEMS] & BIT_ELIXIR));
+    /* In Seamless's isolated scope, nothing. */
+    hurt();
+    isolated = true;
+    CHECK(buy_elixir(120, 2, SPECIAL_ELIXIR) == 0 && shop_refusals == 1);
+    isolated = false;
+    /* Turned off, the original: used up by its revive, so a shop sells another. */
+    play(false);
+    CHECK(!fax_recharge_on() && !fax_recharge_elixir_spent());
+    ram[SPECIAL_ITEMS] = BIT_ELIXIR;
+    hurt();
+    ram[GOLD] = 200;
+    CHECK(buy_elixir(120, 2, SPECIAL_ELIXIR) == 0 && ram[GOLD] == 80);
 }
 
 static void finds_recharge(void) {
@@ -777,7 +810,7 @@ int main(void) {
     dying_makes_both_ready();
     guru_travel_keeps_them();
     elixir();
-    elixir_found_or_bought();
+    elixir_found_not_bought();
     finds_recharge();
     other_items_untouched();
     new_game_and_mantra();
