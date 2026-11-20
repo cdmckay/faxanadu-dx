@@ -93,3 +93,7 @@ id = "faxanadu.zone-names"
 [[plugin]]
 feature = "remastered"
 id = "faxanadu.speaker-names"
+
+[[plugin]]
+feature = "remastered"
+id = "faxanadu.damage-numbers"

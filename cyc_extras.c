@@ -24,6 +24,7 @@
 #include "fax_shops.h"
 #include "fax_respawn.h"
 #include "fax_recharge.h"
+#include "fax_damage.h"
 #ifdef CYC_WITH_SDL
 #include "cyc_tcp.h"
 #include <SDL.h>
@@ -240,6 +241,7 @@ static void frame_end(void *ctx) {
     fax_dagger_step();
     fax_block_frame_end();
     fax_sugata_frame_end();
+    fax_damage_frame_end();
     if (tiles_enabled || tile_dump) chr_override_frame_end();
     /* Save files replace the mantra; faxanadu.srm is then only for importing. */
     if (!cyc_host_saves_enabled() || frame % 900 || fax_save_enabled()) return;
@@ -297,11 +299,12 @@ static void tcp_setup(void *ctx) {
     fax_shops_tcp_setup();
     fax_respawn_tcp_setup();
     fax_recharge_tcp_setup();
+    fax_damage_tcp_setup();
 }
 #endif
 static const uint32_t *present(void *ctx,int *w,int *h) {
     (void)ctx;
-    const uint32_t *picture=fax_files_present(fax_speaker_present(fax_banner_present(fax_sugata_present(fax_world_present(w,h,cyc_frame_argb()),w,h),w,h),w,h),w,h);
+    const uint32_t *picture=fax_files_present(fax_speaker_present(fax_banner_present(fax_damage_present(fax_sugata_present(fax_world_present(w,h,cyc_frame_argb()),w,h),w,h),w,h),w,h),w,h);
     return fax_shops_present(picture,w,h);
 }
 static void event(void *ctx,const void *e,int player) {
