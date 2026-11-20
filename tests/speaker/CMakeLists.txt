@@ -7,7 +7,7 @@ endif()
 # fax_zone.c, fax_text.c and fax_speaker.c are included by the test, against a
 # model of the machine.
 add_executable(speaker_test speaker_test.c)
-target_include_directories(speaker_test PRIVATE ../.. ${NESRECOMP_ROOT}/runner/include ${NESRECOMP_ROOT}/runner/cyc)
+target_include_directories(speaker_test PRIVATE ../../src ${NESRECOMP_ROOT}/runner/include ${NESRECOMP_ROOT}/runner/cyc)
 if(NOT MSVC)
     target_compile_options(speaker_test PRIVATE -Wall -Wextra)
 endif()

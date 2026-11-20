@@ -7,7 +7,7 @@ endif()
 # fax_text.c and fax_shops.c are included by the test, against a model of the
 # machine.
 add_executable(shops_test shops_test.c)
-target_include_directories(shops_test PRIVATE ../.. ${NESRECOMP_ROOT}/runner/include ${NESRECOMP_ROOT}/runner/cyc)
+target_include_directories(shops_test PRIVATE ../../src ${NESRECOMP_ROOT}/runner/include ${NESRECOMP_ROOT}/runner/cyc)
 if(NOT MSVC)
     target_compile_options(shops_test PRIVATE -Wall -Wextra)
 endif()

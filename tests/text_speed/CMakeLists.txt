@@ -6,7 +6,7 @@ if(NOT NESRECOMP_ROOT)
 endif()
 # fax_text_speed.c is included by the test, against a model of the machine.
 add_executable(text_speed_test text_speed_test.c)
-target_include_directories(text_speed_test PRIVATE ../.. ${NESRECOMP_ROOT}/runner/include ${NESRECOMP_ROOT}/runner/cyc)
+target_include_directories(text_speed_test PRIVATE ../../src ${NESRECOMP_ROOT}/runner/include ${NESRECOMP_ROOT}/runner/cyc)
 if(NOT MSVC)
     target_compile_options(text_speed_test PRIVATE -Wall -Wextra)
 endif()

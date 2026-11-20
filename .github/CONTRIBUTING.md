@@ -4,8 +4,8 @@
 
 License each contribution under the terms already applicable to the files
 being changed. For contributions to code covered by the
-[PolyForm Noncommercial License](LICENSE), also grant the
-[additional permissions in `PERMISSIONS.md`](PERMISSIONS.md) for the rights
+[PolyForm Noncommercial License](../LICENSE), also grant the
+[additional permissions in `PERMISSIONS.md`](../PERMISSIONS.md) for the rights
 you control in your contribution, and authorize Matthew Stanley to grant
 those same additional permissions for it.
 

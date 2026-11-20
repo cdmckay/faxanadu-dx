@@ -12,7 +12,8 @@ Replace in-game text strings by editing a JSON file.
 
 ### Quick start
 
-1. Copy `text_overrides.json` next to the game executable.
+1. Copy the template, `tools/text_overrides.json` (every verified string,
+   all replacements empty), next to the game executable.
 2. Edit the `"replacement"` fields.  Leave `"replacement": ""` to keep
    the original text.
 3. Launch the game with `--text-overrides text_overrides.json`.

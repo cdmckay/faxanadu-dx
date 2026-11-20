@@ -1928,8 +1928,9 @@ rest of the way to Victim, were not checked.
 
 ## Features and what they use
 
-`mods/allocations.toml` lists each feature's ROM, hook sites and shared
-addresses, and `tools/check_allocations.py` enforces it.
+Each feature's C is in `src/` (`src/fax_<name>.c`), and `src/cyc_extras.c`
+calls each one from the host. `mods/allocations.toml` lists each feature's ROM,
+hook sites and shared addresses, and `tools/check_allocations.py` enforces it.
 
 Every feature below is a trusted plugin of the one Faxanadu Remastered mod
 (`mods/preloaded/packages/faxanadu.remastered`, feature `remastered`), so

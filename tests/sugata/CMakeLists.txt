@@ -7,7 +7,7 @@ endif()
 # fax_sugata.c is included by the test and fax_block.c by block_link.c, against
 # a model of the machine (../block/model.c).
 add_executable(sugata_test sugata_test.c block_link.c ../block/model.c)
-target_include_directories(sugata_test PRIVATE ../block ../.. ${NESRECOMP_ROOT}/runner/include ${NESRECOMP_ROOT}/runner/cyc)
+target_include_directories(sugata_test PRIVATE ../block ../../src ${NESRECOMP_ROOT}/runner/include ${NESRECOMP_ROOT}/runner/cyc)
 if(NOT MSVC)
     target_compile_options(sugata_test PRIVATE -Wall -Wextra)
 endif()

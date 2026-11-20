@@ -6,7 +6,7 @@ if(NOT NESRECOMP_ROOT)
 endif()
 # fax_indoor.c is included by the test, against a model of the machine.
 add_executable(indoor_test indoor_test.c)
-target_include_directories(indoor_test PRIVATE ../.. ${NESRECOMP_ROOT}/runner/include ${NESRECOMP_ROOT}/runner/cyc)
+target_include_directories(indoor_test PRIVATE ../../src ${NESRECOMP_ROOT}/runner/include ${NESRECOMP_ROOT}/runner/cyc)
 if(NOT MSVC)
     target_compile_options(indoor_test PRIVATE -Wall -Wextra)
 endif()
