@@ -7,7 +7,7 @@
 #include <stdint.h>
 
 void fax_shops_tcp_setup(void);
-/* Draw the list's hint line ("Select: Sell") over the picture, after
+/* Draw the list's hint line ("Select to sell") over the picture, after
  * Seamless, zone names and speaker names; returns the picture to show. */
 const uint32_t *fax_shops_present(const uint32_t *picture, int *w, int *h);
 
@@ -20,3 +20,17 @@ uint16_t fax_shops_sell_price(uint8_t id, uint16_t here, uint16_t lowest);
  * SpecialItems bits (the rings, the Magical Rod, the Elixir, the Pendant, the
  * Black Onyx). */
 bool fax_shops_never_buys(uint8_t id);
+
+/* What the hero has, for fax_shops_owned: SelectedItem and the Items list
+ * (its first `count` entries), as IDs within the Items category, SpecialItems,
+ * and the features that keep items after use. */
+typedef struct {
+    uint8_t selected, count, items[8], special;
+    bool elixir_spent;            /* recharging items: it revived him, and waits for a Guru */
+    bool recharging, reusable;    /* recharging items and reusable tools are on */
+} FaxShopsHero;
+/* An item in a buy list (its full ID) that the hero already has for good, so
+ * Quick shops shows it as owned and A on it does nothing: the Wing Boots and
+ * the Hour Glass with recharging items, and a key or the Mattock with reusable
+ * tools, selected or in his list; and the Elixir, charged or spent. */
+bool fax_shops_owned(uint8_t id, const FaxShopsHero *hero);

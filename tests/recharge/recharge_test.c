@@ -1,8 +1,8 @@
 /* Unit tests for recharging items (fax_recharge.c), without the emulator or a
  * ROM. The module runs against a model of the machine: CPU RAM, the
  * registers, the hook sites as the engine dispatches them, the PPU buffer as
- * the NMI drains it into the HUD's T:, and the item, countdown, death, pickup
- * and shop code played step by step as the disassembly has them (the JSRs push
+ * the NMI drains it into the HUD's T:, and the item, countdown, death and
+ * pickup code played step by step as the disassembly has them (the JSRs push
  * their real return addresses). So the tests check what the player holds,
  * sees and hears rather than restate the module's constants. */
 #include "fax_recharge.c"
@@ -120,10 +120,9 @@ static uint16_t rts(void) { uint8_t lo = pull(); return (uint16_t)((lo | pull() 
 
 /* ---- the game, as the disassembly has it ---- */
 enum { WING_BOOTS = 0x0F, HOUR_GLASS = 0x0D, RED_POTION = 0x10, MATTOCK = 0x09, NO_ITEM = 0xFF };
-enum { HP_U = 0x0431, HP_L = 0x0432, PLAYER_IS_DEAD = 0x0438, GOLD = 0x0392, DURATION_GLOVE = 0x0428 };
+enum { HP_U = 0x0431, HP_L = 0x0432, PLAYER_IS_DEAD = 0x0438, DURATION_GLOVE = 0x0428 };
 enum { SCRIPT_USED_HOUR_GLASS = 0x82, SCRIPT_USED_WING_BOOTS = 0x83, SCRIPT_USED_ELIXIR = 0x85,
        SCRIPT_GOT_ELIXIR = 0x86, SCRIPT_GOT_WING_BOOTS = 0x89, SCRIPT_GOT_HOUR_GLASS = 0x8A };
-enum { CANT_CARRY_MORE = 0x06 };
 static const uint8_t STOCK_FLIGHT[BANDS] = { 40, 30, 20, 10 };    /* TITLE_TO_WINGBOOTS_DURATION ($C599) */
 static int picture;                         /* the item the HUD's picture tiles show */
 static int script;                          /* the last item script run */
@@ -294,15 +293,6 @@ static void pick_up(uint8_t item) {
 }
 /* Player_PickUpElixir: the script, then SpecialItems |= the Elixir. */
 static void pick_up_elixir(void) { script = SCRIPT_GOT_ELIXIR; ram[SPECIAL_ITEMS] |= BIT_ELIXIR; }
-/* IScriptAction_OpenShop buying the Elixir: Shop_GetPlayerHasSelectedItem
- * refuses a special item whose bit is set, else Player_AddToInventory sets it
- * and the price is paid. The message shown, or 0. */
-static int buy_elixir(unsigned price) {
-    if (ram[SPECIAL_ITEMS] & BIT_ELIXIR) return CANT_CARRY_MORE;
-    ram[SPECIAL_ITEMS] |= BIT_ELIXIR;
-    ram[GOLD] = (uint8_t)(ram[GOLD] - price);
-    return 0;
-}
 /* Game_ShowStartScreen: power-on or a reset, before a new game or a mantra. */
 static void title_screen(void) { CHECK(!fire(GAME_SHOW_START_SCREEN)); }
 
@@ -540,27 +530,34 @@ static void elixir(void) {
     CHECK(!(ram[SPECIAL_ITEMS] & BIT_ELIXIR) && revives == 0);
 }
 
-static void elixir_found_or_bought(void) {
-    /* A spent Elixir: a find charges it, and so does a purchase, at the price. */
+static void elixir_found_not_bought(void) {
+    /* Spent, the Elixir is still his: fax_recharge_elixir_spent says so, and
+     * Quick shops lists it as owned, so no purchase charges it. A find does. */
     play(true);
+    CHECK(fax_recharge_on() && !fax_recharge_elixir_spent());
     ram[SPECIAL_ITEMS] = BIT_ELIXIR;
     hurt();
-    CHECK(charge.elixir_spent);
+    CHECK(charge.elixir_spent && fax_recharge_elixir_spent());
     pick_up_elixir();
     frames(1);
-    CHECK(!charge.elixir_spent && (ram[SPECIAL_ITEMS] & BIT_ELIXIR) && script == SCRIPT_GOT_ELIXIR);
+    CHECK(!charge.elixir_spent && !fax_recharge_elixir_spent() && (ram[SPECIAL_ITEMS] & BIT_ELIXIR) &&
+          script == SCRIPT_GOT_ELIXIR);
+    /* A Guru charges it too. */
     hurt();
-    ram[GOLD] = 200;
-    CHECK(buy_elixir(120) == 0 && ram[GOLD] == 80);
-    frames(1);
-    CHECK(!charge.elixir_spent && (ram[SPECIAL_ITEMS] & BIT_ELIXIR));
-    /* Charged, the shop refuses a second: you hold one at most. */
-    CHECK(buy_elixir(120) == CANT_CARRY_MORE && ram[GOLD] == 80);
-    /* The Spring of Trunk's CONSUME_ITEM takes a charged one for good. */
+    CHECK(fax_recharge_elixir_spent());
+    meet_guru(0);
+    CHECK(!fax_recharge_elixir_spent() && (ram[SPECIAL_ITEMS] & BIT_ELIXIR));
+    /* The Spring of Trunk's CONSUME_ITEM takes a charged one for good: neither
+     * charged nor spent, it is no longer his, and a Guru gives none. */
     ram[SPECIAL_ITEMS] &= (uint8_t)~BIT_ELIXIR;
     frames(1);
     meet_guru(0);
-    CHECK(!(ram[SPECIAL_ITEMS] & BIT_ELIXIR) && !charge.elixir_spent);
+    CHECK(!(ram[SPECIAL_ITEMS] & BIT_ELIXIR) && !charge.elixir_spent && !fax_recharge_elixir_spent());
+    /* Turned off, the original: its revive uses it up, and none is spent. */
+    play(false);
+    ram[SPECIAL_ITEMS] = BIT_ELIXIR;
+    hurt();
+    CHECK(!fax_recharge_on() && !fax_recharge_elixir_spent() && !(ram[SPECIAL_ITEMS] & BIT_ELIXIR));
 }
 
 static void finds_recharge(void) {
@@ -777,7 +774,7 @@ int main(void) {
     dying_makes_both_ready();
     guru_travel_keeps_them();
     elixir();
-    elixir_found_or_bought();
+    elixir_found_not_bought();
     finds_recharge();
     other_items_untouched();
     new_game_and_mantra();

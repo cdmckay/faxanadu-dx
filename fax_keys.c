@@ -156,6 +156,8 @@ static int mattock_hook(uint16_t addr) {
     return 1;
 }
 
+bool fax_reusable_tools_on(void) { return reuse_on; }
+
 static const char *const door_id = "faxanadu.auto-keys.door";
 static const char *const auto_unlocked_id = "faxanadu.auto-keys.unlocked";
 static const char *const reuse_unlocked_id = "faxanadu.reusable-tools.unlocked";
