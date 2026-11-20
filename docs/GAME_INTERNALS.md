@@ -433,6 +433,19 @@ What a feature can rely on, and the traps:
   game a few frames apart. To time something to the frame over TCP, read
   `InterruptCounter` with the state in one `read_ram`. A save state's frame,
   which a headless run from it continues, is the `uint32` at offset 28.
+- **A TCP reply takes about 3 frames at normal speed,** on a kept-open
+  connection too: `cyc_tcp.c`'s `send_line` sends the line and its newline
+  apart, and Nagle's algorithm holds the newline until the client's delayed
+  ACK (up to 40 ms on Linux). Commands sent together on one connection are
+  served at the same frame boundary, so a `read_ram` sent with others is one
+  moment with them (`tests/block/block_shield.py` reads Block's glint this
+  way). Read a kept-open socket buffered: a 4 KB reply a byte at a time is
+  slower still.
+- **Which frame a screenshot shows.** TCP `screenshot` (layer `picture`)
+  between two frames shows the sprites of the shadow OAM the frame before
+  wrote, which the PPU took at the last frame's start. In Seamless world it
+  shows the last frame's own: `fax_world.c` captures the active room when
+  the main loop's pass ends.
 - TCP input lands at no particular frame. For anything that depends on the
   frame a button goes down, run the same build headless from a save state:
   `--load-state S --input FILE --frames N --frame-log LOG --mods-root DIR`.
@@ -813,9 +826,15 @@ body, then the weapon: `JSR Player_DrawShield`, `Player_DrawBody` (`$EBEE`),
   shield's (`$00 $25 $30`: grey, pink, white). All three sprite palette sets
   (bank 11, `$81C0` + 16 × n, loaded by `Screen_LoadSpritePalette`) have these
   two; palettes 2 and 3 are the area's actors'.
-- **Block's raised shield** (`fax_block.c`) changes `Arg_DrawSprite_PosX/Y` at
-  `$B9C3`: the box is set by then, so it moves the picture (and its
-  visibility) and never what the shield stops.
+- **Moving the shield's picture** without moving what it stops: change
+  `Arg_DrawSprite_PosX/Y` at `$B9C3`, where the box is already set. Block
+  once drew the shield 6 pixels up and 2 out there while it was held (#53);
+  it looked wrong, and the glint replaced it (#58).
+- **Where the shield and the body overlap,** which is in front alternates
+  each frame: `Sprites_StartSlotRange` flips which half of the shadow OAM
+  the parts' slots land in, and the lower OAM index is drawn in front. A
+  picture of the hero standing still matches only one from a frame of the
+  same parity, at those pixels.
 
 **Zenis, for tests.** On the fortress of Zenis's screen 16 (area 7, palette
 `$0F`, region 5, position `$91`), an Execution Hood casts a shot (`$51`,
@@ -1863,15 +1882,12 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
   fields. Its save-state record is what the hero owned and whether the line
   is showing. The tutorial sets the SAY step's and the slot's read overrides
   itself, so it speaks with Guru travel off too.
-  It shows. At `$B9C3` (see *How the shield is drawn*), in the upright poses
-  (0-3), Block up moves the shield's drawing 6 pixels up and 2 the way he
-  faces, before his face, short of wrapping past the screen's edge; the box
-  stays. A swing and a ladder keep their own shield poses. Where nothing is
-  raised (the Battle Helmet, or a shield in a swing or on a ladder), Block
-  going up makes the hero glint: at `Player_DrawWeapon`'s entry the body's
-  slots, noted at `Player_DrawBody`'s, take palette 1, the shield's colors,
-  for draws 1-4 and 9-12 of 12, and stop at once if Block is let go. Both only
-  draw. Seamless world's redraw of the hero past a room's edge runs in an
+  It shows. With any shield-slot item, in any pose, Block going up makes the
+  hero glint: at `Player_DrawWeapon`'s entry the body's slots, noted at
+  `Player_DrawBody`'s, take palette 1, the shield's colors, for draws 1-4 and
+  9-12 of 12, and stop at once if Block is let go. The shield's own sprites,
+  already in palette 1, and its box are the game's (see *How the shield is
+  drawn*). The glint only draws. Seamless world's redraw of the hero past a room's edge runs in an
   isolated machine without hooks, so that part of him is the stock pose (the
   falling pose's is the same). The glint is not in the save-state record: a
   load starts it over, and a button held through the load does not start one.

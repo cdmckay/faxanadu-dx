@@ -286,15 +286,13 @@ rom = [
 # speaks only as the script that gave the hero his first shield-slot item ends
 # (a shop's, or the Battle Helmet's pickup, ISCRIPT_GOT_BATTLE_HELMET at
 # $A698), never in a Guru's.
-# What Block looks like: Player_DrawShield after it sets the shield's box
-# ($B9C3), Player_DrawBody ($EBEE) and Player_DrawWeapon ($B7D6), at their
-# entries, which no other feature hooks (Seamless hooks Player_DrawShield's
-# entry, $B982, and the falling pose Maybe_Player_CalcAnimFrame, $B927, a
-# different instruction each). While Block is up it writes
-# Arg_DrawSprite_PosX/Y ($27, $28) there, so the shield is drawn raised, never
-# Player_ShieldPositionX/Y, the shield's box; and as it goes up with nothing
-# raised, the palette bits of the body's sprites in the shadow OAM ($0700),
-# the slots Player_DrawBody just drew.
+# What Block looks like: Player_DrawBody ($EBEE) and Player_DrawWeapon
+# ($B7D6), at their entries, which no other feature hooks (Seamless hooks
+# Player_DrawShield's entry, $B982, and the falling pose
+# Maybe_Player_CalcAnimFrame, $B927). As Block goes up it writes the palette
+# bits of the body's sprites in the shadow OAM ($0700), the slots
+# Player_DrawBody just drew; never the shield's sprites or its box
+# (Player_ShieldPositionX/Y).
 
 [[feature]]
 id = "sugata-flash"

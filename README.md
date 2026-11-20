@@ -53,11 +53,9 @@ until you walk out of the temple, you wake at the temple as before.
 **Block.** Hold V on the keyboard, or B on a controller, with a shield (or the
 Battle Helmet) in hand to stand your ground and raise it: enemy magic from the
 front, and Sugata's flash from any side, is stopped with the shield's sound.
-Contact and sword damage are as before. While you hold it, your shield is held
-up before your face, so you can see you're blocking; the Battle Helmet has no
-shield to show, so you glint in the shield's colors as you raise it. The first
-time you get a shield or the Battle Helmet, the game adds a line naming your
-key, once.
+Contact and sword damage are as before. As you raise it, you glint twice in
+the shield's colors, so you can see you're blocking. The first time you get a
+shield or the Battle Helmet, the game adds a line naming your key, once.
 
 **Magic button.** C on the keyboard, or Y on a controller, casts your selected
 spell, as Up+B does, but without going through a door, talking to anyone or
@@ -208,8 +206,8 @@ repo; otherwise run the commands inside `nix develop`. Put your ROM at the
 repo root as `Faxanadu (USA).nes` (`*.nes` is gitignored).
 
 ```bash
-git clone https://github.com/cdmckay/faxanadu-remaster
-cd faxanadu-remaster
+git clone https://github.com/cdmckay/faxanadu-remastered
+cd faxanadu-remastered
 ./setup.sh
 direnv allow
 cmake -S . -B build-cycle -DCMAKE_BUILD_TYPE=Release -DNESRECOMP_ROM="$PWD/Faxanadu (USA).nes"
