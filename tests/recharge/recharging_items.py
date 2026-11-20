@@ -29,8 +29,9 @@ used with Down+B, as a player would.
    respawns with it still spent, and the menu's Player page, which showed it,
    does not. Talking to Eolis's Guru charges it, and the page shows it again.
 5. Eolis's tool shop with a spent Elixir: it is still the hero's, so Quick
-   shops lists it as owned, "Already owned", and A on it does nothing: the gold stays and it stays spent, since buying never charges it
-   (a Guru does). Charged, the same.
+   shops lists it as owned, "Already owned", and A on it does nothing: the
+   gold stays and it stays spent, since buying never charges it (a Guru
+   does). Charged, the same.
 6. Finds: a pair of Wing Boots (Trunk $2D) while they recharge, an Hour Glass
    (Trunk $13) while it recharges, and an Elixir (Trunk $3C) while it is spent:
    each is ready at once, and none is a second copy.

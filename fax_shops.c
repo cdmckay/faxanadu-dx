@@ -576,8 +576,8 @@ static void cover_prices(uint32_t *px, int w, int h) {
         int x1 = x0 + PRICE_COLS * FAX_TEXT_CELL, y1 = y0 + FAX_TEXT_CELL, x = x0, y = y0;
         to_picture(w, h, &x0, &y0);
         to_picture(w, h, &x1, &y1);
-        for (int py = y0 < 0 ? 0 : y0; py < y1 && py < h; ++py)
-            for (int pxl = x0 < 0 ? 0 : x0; pxl < x1 && pxl < w; ++pxl) px[(size_t)py * (size_t)w + (size_t)pxl] = inside;
+        for (int yy = y0 < 0 ? 0 : y0; yy < y1 && yy < h; ++yy)
+            for (int xx = x0 < 0 ? 0 : x0; xx < x1 && xx < w; ++xx) px[(size_t)yy * (size_t)w + (size_t)xx] = inside;
         if (!mine) continue;
         to_picture(w, h, &x, &y);
         fax_text_draw(px, w, h, x, y, OWNED_LABEL, 255);
@@ -696,8 +696,8 @@ static void shops_state(int id, const char *line) {
              modes[shop.shown <= NONE ? shop.shown : 2], shop.page, pages(), shop.selling, q(MENU_CURSOR_POS),
              items, prices, mine, up ? "true" : "false", hinted && up ? "\"" : "", hinted && up ? say : "null",
              hinted && up ? "\"" : "", hinted && up && paged ? "\"" : "", hinted && up && paged ? page : "null",
-             hinted && up && paged ? "\"" : "", shop.script.base, opened, bought, sold, refused, ignored, switched, turned,
-             messages, waits);
+             hinted && up && paged ? "\"" : "", shop.script.base, opened, bought, sold, refused, ignored, switched,
+             turned, messages, waits);
     cyc_tcp_ok(id, fields);
 }
 void fax_shops_tcp_setup(void) {
