@@ -3,7 +3,8 @@
     python3 tests/recharge/recharging_items.py --build build-cycle --rom "Faxanadu (USA).nes" --out /tmp/recharge
 
 The game runs uncapped and the script waits on the game's own state, never on
-the clock, and takes a free TCP port, so any number can run in parallel.
+the clock, on a reserved TCP port (tests/e2e/fax_e2e.py), so any number can
+run in parallel.
 
 Copies the build to OUT and starts a new game over TCP. The hero walks through
 the Eolis gate into the town and into a shop. Save-state RAM edits then set up
@@ -48,19 +49,13 @@ used with Down+B, as a player would.
     mantra, charges a spent Elixir.
 11. Turned off: the pair is used up after one 40 s (Novice) flight.
 """
-import argparse
-import json
-import os
 from pathlib import Path
-import shutil
-import socket
-import struct
-import subprocess
 import sys
-import time
-import zlib
 
-PORT = 0                                                            # set in main
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
+import fax_e2e  # noqa: E402
+from fax_e2e import Game, act, chunks, frame, parse_args, ram, tcp, typed, until, wait  # noqa: E402
+
 AREA, SCREEN, PLAYER_X, PLAYER_Y, PLAYER_FLAGS, PLAYER_STATUS = 0x24, 0x63, 0x9E, 0xA1, 0xA4, 0xA5
 SCREEN_READY = 0x0E
 TEXTBOX_CLOSED, MESSAGE_ID = 0x20C, 0x213
@@ -96,52 +91,6 @@ RECORD = b"faxanadu.recharge"                                       # its save-s
 #                                                                     cooldown, the Elixir spent
 
 
-def tcp(cmd, **kw):
-    with socket.create_connection(("127.0.0.1", PORT), 5) as s:
-        s.settimeout(30)
-        f = s.makefile("rwb", buffering=0)
-        f.write((json.dumps(dict(id=1, cmd=cmd, **kw)) + "\n").encode())
-        reply = json.loads(f.readline())
-    if not reply.get("ok"):
-        raise RuntimeError(f"{cmd}: {reply}")
-    return reply
-
-
-def free_port():
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
-def frame():
-    return tcp("ping")["frame"]
-
-
-def wait(frames):
-    end = frame() + frames
-    while frame() < end:
-        time.sleep(0.005)
-
-
-def ram(addr, n=1):
-    data = bytes.fromhex(tcp("read_ram", addr=addr, len=n)["hex"])
-    return data[0] if n == 1 else data
-
-
-def until(what, test, frames=1200):
-    end = frame() + frames
-    while frame() < end:
-        if test():
-            return
-        time.sleep(0.005)
-    raise AssertionError(f"timed out waiting for {what}")
-
-
-def act(name, frames=6, after=8):
-    tcp("action", name=name, frames=frames)
-    wait(frames + after)
-
-
 def state():
     return tcp("recharge_state")
 
@@ -156,13 +105,6 @@ def gold():
 
 def settled():
     return ram(SCREEN_READY) == 0
-
-
-def typed():
-    """The text box waits for a button: the message has typed out (MessageID
-    clears) or reached a pause (TextBox_MessagePaused)."""
-    message, _, paused = ram(MESSAGE_ID, 3)
-    return message == 0 or paused != 0
 
 
 def box_open():
@@ -188,102 +130,28 @@ def write_file(path, fields):
     path.write_text("".join(f"{k} = {v}\n" for k, v in fields.items()))
 
 
-def chunks(data):
-    assert data[:8] == b"CYCSTATE"
-    pos = 32
-    while pos < len(data):
-        tag, size = struct.unpack_from("<4sI", data, pos)
-        pos += 8
-        yield tag, pos, size
-        pos += size
-        if tag == b"END ":
-            return
-
-
 def fixture(source, target, writes, record=None):
-    """Copy a save state, changing RAM and, if given, bytes of this feature's record."""
-    data = bytearray(source.read_bytes())
-    pos, size = next((p, n) for t, p, n in chunks(data) if t == b"HW  ")
-    assert size == 2072, "Unqualified hardware ABI"
-    for address, value in writes.items():
-        data[pos + 23 + address] = value
-    found = False
-    for tag, p, n in chunks(data):
-        if tag == b"MOD " and data[p:p + 64].rstrip(b"\0") == RECORD:
-            found = True
-            for offset, value in (record or {}).items():
-                data[p + 64 + offset] = value
-    assert found or record is None, "the state has no recharging items record"
-    target.write_bytes(data)
+    """fax_e2e's fixture(), and if given, bytes of this feature's record,
+    which the state must have."""
+    if record is not None:
+        data = Path(source).read_bytes()
+        assert any(tag == b"MOD " and data[p:p + 64].rstrip(b"\0") == RECORD for tag, p, _ in chunks(data)), \
+            "the state has no recharging items record"
+    fax_e2e.fixture(source, target, writes, {RECORD.decode(): record} if record else None)
 
 
 def main():
-    global PORT
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    for key in ("build", "rom", "out"):
-        ap.add_argument("--" + key, type=Path, required=True)
-    ap.add_argument("--game-arg", action="append", default=[],
-                    help="extra game option, e.g. --game-arg=--world-view=seamless (repeatable)")
-    ap.add_argument("--port", type=int, default=0, help="TCP port (default: a free one)")
-    ap.add_argument("--realtime", action="store_true", help="run at normal speed instead of uncapped")
-    args = ap.parse_args()
-    PORT = args.port or free_port()
-    image = args.rom.read_bytes()
-    assert zlib.crc32(image[16:]) == 0x57DD23D1, "the original Faxanadu (USA) ROM is required"
-    out = args.out.resolve()
-    shutil.rmtree(out, ignore_errors=True)
-    (out / "game").mkdir(parents=True)
-    shutil.copy2(args.build / "FaxanaduRecomp", out / "game")
-    for folder in ("assets", "mods"):
-        shutil.copytree(args.build / folder, out / "game" / folder)
-    env = dict(os.environ, NESRECOMP_NO_LAUNCHER="1", SDL_VIDEODRIVER="dummy", SDL_AUDIODRIVER="dummy")
-    log = open(out / "game.log", "w")
-    game = None
-    shots = []
+    game = Game.from_args(parse_args(__doc__))
+    out = game.out
+    shot, poke = game.shot, game.poke
 
     def launch(on=True, gurus=None, off=()):
         """Start the game with recharging items on or off, and the (package, feature) pairs in `off` off."""
-        nonlocal game
-        lines = ["format_version = 1"]
-        for (package, feature), enabled in [(PACKAGE, on)] + [(pf, False) for pf in off]:
-            lines += ["", "[[feature]]", f'package_id = "{package}"', f'id = "{feature}"',
-                      f"enabled = {'true' if enabled else 'false'}"]
-        (out / "game" / "mods" / "state.toml").write_text("\n".join(lines) + "\n")
+        game.set_features({PACKAGE: on, **{pf: False for pf in off}})
         if gurus:
             (out / "game" / "faxanadu_gurus.txt").write_text("".join(g + "\n" for g in gurus))
-        extra = [part for arg in args.game_arg for part in arg.split("=", 1)]
-        if not args.realtime:
-            extra += ["--uncapped", "--exit-after", "100000000"]
-        game = subprocess.Popen([str(out / "game" / "FaxanaduRecomp"), str(args.rom.resolve()), "--hidden",
-                                 "--tcp", str(PORT), *extra], env=env, stdout=log, stderr=subprocess.STDOUT)
-        for _ in range(100):
-            try:
-                frame()
-                break
-            except OSError:
-                time.sleep(0.1)
-        else:
-            raise AssertionError("the game did not start")
+        game.launch()
         assert state()["enabled"] == on, state()
-
-    def close():
-        try:
-            tcp("quit")
-        except Exception:
-            game.kill()
-        game.wait(10)
-
-    def shot(name):
-        path = out / f"{len(shots):02d}-{name}.png"
-        tcp("screenshot", layer="picture", path=str(path))
-        shots.append(path.name)
-
-    def poke(writes):
-        """Edit RAM in the running game: save, edit the state, load it back."""
-        path = out / "poke.cycstate"
-        tcp("save_state", path=str(path))
-        fixture(path, path, writes)
-        tcp("load_state", path=str(path))
 
     def clear(entity=None):
         """Take every sprite of `entity` (or every sprite) off the screen."""
@@ -767,7 +635,7 @@ def main():
         assert ram(QUESTS) & QUEST_SPRING_OF_SKY, "the Spring of Sky's man woke"
         print(f"ok: the Spring of Sky: from Trunk $20's floor to the man in $25 in {landed} frames "
               f"({landed / SECOND:.1f} of the game's seconds), with {left} s of the {FLIGHT} s flight left")
-        close()
+        game.close()
 
         # 8. Guru travel: a journey keeps the flight and the cooldown counting.
         launch(gurus=("Eolis", "Apolune"))
@@ -828,7 +696,7 @@ def main():
         saved = read_file(out / "game" / FILE)
         boots_left, glass_left = int(saved["recharge.wingboots"]), int(saved["recharge.hourglass"])
         assert 40 <= boots_left <= 45 and 25 <= glass_left <= 30 and "recharge.elixir" not in saved, saved
-        close()
+        game.close()
         saved["recharge.elixir"] = "spent"                         # as a respawn with it spent writes it
         saved["special_items"] = str(int(saved["special_items"]) & ~BIT_ELIXIR)
         write_file(out / "game" / FILE, saved)
@@ -845,7 +713,7 @@ def main():
         print(f"ok: saving at a Guru wrote the cooldowns to file 1 (Wing Boots {boots_left} s, Hour Glass {glass_left} s); "
               f"continuing it after quitting put them back ({s['boots_cooldown']} s, {s['glass_cooldown']} s), "
               "and a spent Elixir in the file is still spent")
-        close()
+        game.close()
 
         # 10. Without the Gurus' mods: with Save files and Guru travel off, Apolune's Guru only gives the mantra,
         # and talking to him still charges a spent Elixir.
@@ -872,7 +740,7 @@ def main():
         assert state()["elixir_charged"], state()
         print("ok: with Save files and Guru travel off, Apolune's Guru gives the mantra, and talking to him "
               "charges the spent Elixir")
-        close()
+        game.close()
 
         # 11. Off: the original's one-use pair and its title-based flight.
         launch(on=False)
@@ -883,16 +751,13 @@ def main():
         dismiss(USED_WING_BOOTS)
         assert ram(DURATION_WING_BOOTS) in (40, 39) and items() == ([], NO_ITEM), (ram(DURATION_WING_BOOTS), items())
         print("ok: turned off, a Novice's Wing Boots fly 40 s and are used up, as in the original")
-        print("screenshots:", ", ".join(shots))
+        print("screenshots:", ", ".join(game.shots))
     except BaseException:
-        if game and game.poll() is None:
-            shot("failure")
-            print("at", place(), "x", ram(PLAYER_X), "y", ram(PLAYER_Y), "message", hex(ram(MESSAGE_ID)),
-                  "state", state(), file=sys.stderr)
+        if game.running():
+            game.shot("failure")
         raise
     finally:
-        if game:
-            close()
+        game.close()
 
 
 if __name__ == "__main__":
