@@ -579,6 +579,26 @@ def _eolis_meat_shop(g):
     g.wait(30)
 
 
+@recipe("eolis-zozuras", parent="gate")
+def _eolis_zozuras(g):
+    """Through Eolis's gate (the intro's trigger dropped, the hero at the
+    door, EOLIS_DOOR_LOCATIONS' $9C), left out of town to screen 4, as its
+    two Zozuras crawl in (slots 6 and 7, the nearer in 7)."""
+    screen, entities, zozura = 0x63, 0x2CC, 0x47                     # Area_CurrentScreen, CurrentSprites_Entities
+    assert (g.ram(0x24), g.ram(screen), g.ram(entities + 7)) == (0, 0, 0x4F), "the intro's trigger at the gate"
+    g.poke({entities + 7: 0xFF, 0x9E: 195})                           # SPRITE_TRIGGER_INTRO; Player_PosX_Block
+    g.wait(10)
+    g.tcp("action", name="up", frames=6)
+    g.until("the town", lambda: g.ram(screen) == 1, 600)
+    g.wait(30)
+    for _ in range(60):
+        if g.ram(screen) == 4:
+            break
+        g.tcp("action", name="left", frames=30)
+        g.wait(31)
+    g.until("the Zozuras", lambda: g.ram(screen) == 4 and tuple(g.ram(entities + 6, 2)) == (zozura, zozura), 300)
+
+
 def tcp(cmd, **kw):
     return _current().tcp(cmd, **kw)
 

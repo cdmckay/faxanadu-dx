@@ -28,7 +28,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import Game, fixture, frame, parse_args, ram, tcp, until, wait  # noqa: E402
+from fax_e2e import Game, fixture, parse_args, ram, tcp, until, wait  # noqa: E402
 
 AREA, SCREEN, HERO_X = 0x24, 0x63, 0x9E
 PLAYER_FLAGS, ATTACKING = 0xA4, 0x80
@@ -54,8 +54,12 @@ def bank14(image, addr, n):
     return image[start:start + n]
 
 
+PART = {LONG_SWORD: "long-sword", GIANT_BLADE: "giant-blade", DRAGON_SLAYER: "dragon-slayer"}
+PARTS = (*PART.values(), "kills", "original")                       # each its own game
+
+
 def main():
-    args = parse_args(__doc__)
+    args = parse_args(__doc__, parts=PARTS)
     game = Game.from_args(args)
     image = game.image
     strength = list(bank14(image, WEAPON_STRENGTHS, 4))
@@ -103,32 +107,23 @@ def main():
         return strength[weapon] + (strength[weapon] // 4 if bonus else 0) + (glove[weapon] if gloved else 0)
 
     try:
-        game.launch(at="gate")
-        assert tcp("pendant_state")["enabled"], "the feature is on by default"
-        assert (ram(AREA), ram(SCREEN), ram(SPRITE_ENTITY + 7)) == (EOLIS, GATE, INTRO_TRIGGER)
-        gate = out / "gate.cycstate"
-        tcp("save_state", path=str(gate))
-        door = out / "door.cycstate"
-        fixture(gate, door, {SPRITE_ENTITY + 7: 0xFF, HERO_X: GATE_DOOR_X})
-        tcp("load_state", path=str(door))
-        wait(10)
-        tcp("action", name="up", frames=6)
-        until("the town", lambda: ram(SCREEN) == TOWN, 600)
-        wait(30)
-        for _ in range(60):
-            if ram(SCREEN) == ZOZURA_SCREEN:
-                break
-            tcp("action", name="left", frames=30)
-            wait(31)
-        until("the Zozura", lambda: ram(SCREEN) == ZOZURA_SCREEN and
-              (ram(SPRITE_ENTITY + OTHER), ram(SPRITE_ENTITY + TARGET)) == (ZOZURA, ZOZURA), 300)
-        assert ram(SPRITE_X + TARGET) > ram(SPRITE_X + OTHER), "the target is the nearer Zozura"
-        assert ram(SPRITE_HP + TARGET) == zozura_hp, "a Zozura's HP from SPRITE_ENTITIES_HP"
-        zozura = out / "zozura.cycstate"
-        tcp("save_state", path=str(zozura))
+        zozura = game.state("eolis-zozuras")
+
+        def game_up():
+            """The game, with the Zozuras of Eolis's screen 4 loaded: the one running, if it is."""
+            if game.running():
+                return
+            game.launch(at="eolis-zozuras")
+            assert tcp("pendant_state")["enabled"], "the feature is on by default"
+            assert ram(SCREEN) == ZOZURA_SCREEN and ram(SPRITE_ENTITY + TARGET) == ZOZURA
+            assert ram(SPRITE_X + TARGET) > ram(SPRITE_X + OTHER), "the target is the nearer Zozura"
+            assert ram(SPRITE_HP + TARGET) == zozura_hp, "a Zozura's HP from SPRITE_ENTITIES_HP"
 
         # 1. The literal fix: base strength, a quarter more only with the Pendant, then the Glove.
         for weapon in (LONG_SWORD, GIANT_BLADE, DRAGON_SLAYER):
+            if not args.wants(PART[weapon]):
+                continue
+            game_up()
             for gloved in (False, True):
                 for pendant in (False, True):
                     before = tcp("pendant_state")["hits"]
@@ -141,28 +136,32 @@ def main():
                     assert (state["weapon"], state["pendant"]) == (weapon, pendant), state
                     assert state["damage"] == want - (glove[weapon] if gloved else 0), state
                     print(f"ok: {kit}: a hit takes {lost} HP")
-        print(f"ok: with the Pendant each weapon does the original's damage without it "
-              f"({', '.join(str(expected(w, False, False, False)) for w in NAMES)}); "
-              f"without it, its base strength ({', '.join(str(strength[w]) for w in NAMES)})")
+        if all(args.wants(PART[w]) for w in NAMES):
+            print(f"ok: with the Pendant each weapon does the original's damage without it "
+                  f"({', '.join(str(expected(w, False, False, False)) for w in NAMES)}); "
+                  f"without it, its base strength ({', '.join(str(strength[w]) for w in NAMES)})")
 
-        # 2. The same Zozura with its own HP: the Pendant's Long Sword kills it in one hit.
-        assert hit(zozura, LONG_SWORD, True, enemy_hp=zozura_hp, name="pendant-kills") is None, "one hit kills"
-        assert hit(zozura, LONG_SWORD, False, enemy_hp=zozura_hp, name="no-pendant-survives") == 8
-        print("ok: a Zozura (9 HP) dies to one Long Sword hit with the Pendant, and is left 1 HP without it")
-        game.close()
+        if args.wants("kills"):
+            game_up()
+            # 2. The same Zozura with its own HP: the Pendant's Long Sword kills it in one hit.
+            assert hit(zozura, LONG_SWORD, True, enemy_hp=zozura_hp, name="pendant-kills") is None, "one hit kills"
+            assert hit(zozura, LONG_SWORD, False, enemy_hp=zozura_hp, name="no-pendant-survives") == 8
+            print("ok: a Zozura (9 HP) dies to one Long Sword hit with the Pendant, and is left 1 HP without it")
 
-        # 3. With the remaster off, the original's reversed bonus.
-        game.set_features({(PACKAGE, FEATURE): False})
-        game.launch()
-        assert not tcp("pendant_state")["enabled"], "the remaster is off"
-        for weapon in (LONG_SWORD, DRAGON_SLAYER):
-            for pendant in (False, True):
-                lost = hit(zozura, weapon, pendant)
-                want = expected(weapon, pendant, False, fixed=False)
-                assert lost == want, f"off, {NAMES[weapon]}, pendant={pendant}: took {lost}, expected {want}"
-        assert tcp("pendant_state")["hits"] == 0, "the hook is off"
-        assert hit(zozura, LONG_SWORD, False, enemy_hp=zozura_hp, name="original-no-pendant-kills") is None
-        print("ok: with the remaster off, the original's bug: a quarter more without the Pendant, base strength with it")
+        if args.wants("original"):
+            # 3. With the remaster off, the original's reversed bonus.
+            game.close()
+            game.set_features({(PACKAGE, FEATURE): False})
+            game.launch()
+            assert not tcp("pendant_state")["enabled"], "the remaster is off"
+            for weapon in (LONG_SWORD, DRAGON_SLAYER):
+                for pendant in (False, True):
+                    lost = hit(zozura, weapon, pendant)
+                    want = expected(weapon, pendant, False, fixed=False)
+                    assert lost == want, f"off, {NAMES[weapon]}, pendant={pendant}: took {lost}, expected {want}"
+            assert tcp("pendant_state")["hits"] == 0, "the hook is off"
+            assert hit(zozura, LONG_SWORD, False, enemy_hp=zozura_hp, name="original-no-pendant-kills") is None
+            print("ok: with the remaster off, the original's bug: a quarter more without the Pendant, base strength with it")
         print("screenshots:", ", ".join(game.shots))
     except BaseException:
         if game.running():
