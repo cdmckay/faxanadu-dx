@@ -22,6 +22,12 @@ How the game works, as far as we've learned it, is in
 
 ## What's new
 
+### The title
+
+**REMASTERED on the title.** The title screen shows REMASTERED under the
+FAXANADU logo, in the game's own font and the light yellow of the logo. The
+rest of the title is the original's.
+
 ### Saving and the Gurus
 
 **Save files.** The title screen offers three files, as in Zelda: pick an
@@ -83,6 +89,12 @@ nothing, through Ointment, Block or a moment of invincibility, show nothing.
 sword hits, like the Zozura crawling outside Eolis. Now its swing reaches as
 low as the swords', so it hits them. It keeps its short reach, so the Long
 Sword is still an upgrade.
+
+**Weapons indoors.** In shops, houses and temples the Select menu equips what
+you choose, as it does outside, and you keep your weapon in hand: buy a sword
+and swing it on the spot. Swinging at townsfolk does nothing, as before. In
+the few rooms with enemies inside, in the Mist and Dartmoor, your sword now
+hurts them too; in the original only magic did.
 
 ### Getting around
 
