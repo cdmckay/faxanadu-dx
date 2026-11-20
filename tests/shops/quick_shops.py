@@ -46,7 +46,7 @@ import sys
 import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import Game, act, fixture, parse_args, ram, tcp, until, wait  # noqa: E402
+from fax_e2e import Game, act, fixture, hold, parse_args, ram, step_toward, tcp, until, wait  # noqa: E402
 
 AREA, SCREEN, PLAYER_X = 0x24, 0x63, 0x9E
 TEXTBOX_CLOSED, MESSAGE_ID = 0x20C, 0x213
@@ -196,14 +196,14 @@ def main():
             x = ram(PLAYER_X)
             if x_min <= x <= x_max:
                 return
-            act("right" if x < x_min else "left", 2, 0)
+            step_toward(x_min, x_max, lambda: ram(TEXTBOX_CLOSED) == 0)
         raise AssertionError(f"could not reach x {x_min}-{x_max}")
 
     def walk_out():
         for _ in range(300):
             if ram(AREA) != BUILDINGS:
                 return
-            act("right", 2, 0)
+            hold("right", lambda: ram(AREA) != BUILDINGS)
         raise AssertionError("could not walk out")
 
     def go_in(source, name, screen, door, writes):

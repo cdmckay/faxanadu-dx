@@ -235,7 +235,6 @@ def main():
         expect = dict(PROGRESS, title=4)                            # what Conflate's Guru saves
 
         if args.wants("new-game"):
-            launch(gamedir)
             # 1. A new game in file 2.
             launch(gamedir)
             state = files()

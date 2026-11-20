@@ -56,7 +56,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 import fax_e2e  # noqa: E402
-from fax_e2e import Game, act, chunks, frame, parse_args, ram, tcp, typed, until, wait  # noqa: E402
+from fax_e2e import Game, act, chunks, frame, hold, parse_args, ram, tcp, typed, until, wait  # noqa: E402
 
 AREA, SCREEN, PLAYER_X, PLAYER_Y, PLAYER_FLAGS, PLAYER_STATUS = 0x24, 0x63, 0x9E, 0xA1, 0xA4, 0xA5
 SCREEN_READY = 0x0E
@@ -148,7 +148,7 @@ def walk_out():
     for _ in range(200):
         if ram(AREA) != BUILDINGS:
             break
-        act("right", 2, 0)
+        hold("right", lambda: ram(AREA) != BUILDINGS)
     tcp("action", name="right", frames=1)                           # let go
     until("the screen to settle", lambda: ram(AREA) != BUILDINGS and settled(), 600)
     wait(30)

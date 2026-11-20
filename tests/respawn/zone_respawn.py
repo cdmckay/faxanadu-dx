@@ -45,7 +45,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 import fax_e2e  # noqa: E402
-from fax_e2e import Game, act, chosen, fixture, parser, ram, tcp, typed, until, wait  # noqa: E402
+from fax_e2e import Game, act, chosen, fixture, hold, parser, ram, step_toward, tcp, typed, until, wait  # noqa: E402
 
 AREA, SCREEN, PLAYER_X, PLAYER_Y, PLAYER_FLAGS = 0x24, 0x63, 0x9E, 0xA1, 0xA4
 SCREEN_READY_STATE, SCROLL_DIRECTION, INTERRUPTS_ON = 0x0E, 0x54, 0x13
@@ -176,7 +176,7 @@ def main():
             x = ram(PLAYER_X)
             if x_min <= x <= x_max:
                 return
-            act("right" if x < x_min else "left", 2, 0)
+            step_toward(x_min, x_max, box_open)
         raise AssertionError(f"could not reach x {x_min}-{x_max}, at {ram(PLAYER_X)}")
 
     def walk_out():
@@ -184,7 +184,7 @@ def main():
         for _ in range(200):
             if ram(AREA) != BUILDINGS:
                 return
-            act("right", 2, 0)
+            hold("right", lambda: ram(AREA) != BUILDINGS)
         raise AssertionError("could not walk out")
 
     def clear_screen(name):

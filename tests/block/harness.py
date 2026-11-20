@@ -120,7 +120,7 @@ class Game(fax_e2e.Game):
             x = self.ram(POS_X)
             if x_min <= x <= x_max:
                 return
-            self.act("right" if x < x_min else "left", 2, 0)
+            fax_e2e.step_toward(x_min, x_max, self.box_open, POS_X)
         raise AssertionError(f"could not reach x {x_min}-{x_max}")
 
     def walk_out(self):
@@ -129,7 +129,7 @@ class Game(fax_e2e.Game):
             if self.ram(AREA) != BUILDINGS:
                 self.until("the screen to load", self.settled, 600)
                 return
-            self.act("right", 2, 0)
+            fax_e2e.hold("right", lambda: self.ram(AREA) != BUILDINGS)
         raise AssertionError("could not walk out")
 
     def warp(self, inside, name, area, screen, palette, pos, region, writes=None):

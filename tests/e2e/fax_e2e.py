@@ -297,6 +297,8 @@ class Game:
         at once (it is made first if it is not cached), and return the frame
         it continues at."""
         global _game, _launched
+        if self.running():
+            raise RuntimeError("the game is already running: close() it first")
         start_at = self.state(at) if at else None
         _launched = True
         options = [part for arg in self.game_args for part in arg.split("=", 1)] + list(extra)
@@ -626,6 +628,38 @@ def until(what, test, frames=1200):
 def act(name, frames=6, after=8):
     tcp("action", name=name, frames=frames)
     wait(frames + after)
+
+
+def hold(button, done, frames=600, renew=8):
+    """Hold `button` (a TCP action) until done() is true, or `frames` frames
+    have run, and let go at once: an action replaces the button's hold, so a
+    1-frame one ends it. The hold is renewed before it lapses, so the button
+    stays down. Whether done() came true."""
+    end = frame() + frames
+    while True:
+        tcp("action", name=button, frames=renew + 4)
+        lapse = min(frame() + renew, end)
+        while frame() < lapse:
+            if done():
+                tcp("action", name=button, frames=1)
+                return True
+            time.sleep(0.002)
+        if frame() >= end:
+            tcp("action", name=button, frames=1)
+            return done()
+
+
+def step_toward(x_min, x_max, stop=lambda: False, x_addr=0x9E):
+    """One step of a walk to [x_min, x_max] (X in Player_PosX_Block): held,
+    accelerating to 1.5 pixels a frame, until within 8 pixels of it (or
+    stop()), when it is further; else a tap of 2 frames, as the walks always
+    made, so the last steps land in it the same way."""
+    x = ram(x_addr)
+    button = "right" if x < x_min else "left"
+    if x_min - 8 <= x <= x_max + 8:
+        act(button, 2, 0)
+    else:
+        hold(button, lambda: stop() or x_min - 8 <= ram(x_addr) <= x_max + 8)
 
 
 def typed():

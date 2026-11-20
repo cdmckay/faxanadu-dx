@@ -27,7 +27,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import Game, act, fixture, parse_args, ram, tcp, until, wait  # noqa: E402
+from fax_e2e import Game, act, fixture, hold, parse_args, ram, tcp, until, wait  # noqa: E402
 
 AREA, SCREEN, SCREEN_TO_THE_RIGHT, PLAYER_X = 0x24, 0x63, 0x67, 0x9E
 MESSAGE_ID, HP = 0x213, 0x431
@@ -85,11 +85,8 @@ def main():
         game.poke({SPRITE_ENTITIES + slot: 0xFF for slot in range(8)})
 
     def walk(direction, test, what, steps=200):
-        for _ in range(steps):
-            if test():
-                return
-            tcp("action", name=direction, frames=4)
-            wait(4)
+        if hold(direction, test, steps * 4):
+            return
         raise AssertionError(f"walking {direction} never reached {what}: at {place()}, x={ram(PLAYER_X)}")
 
     def enter(direction, area, screen):

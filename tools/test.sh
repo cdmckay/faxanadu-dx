@@ -137,33 +137,52 @@ E2E=(
   "recharge     tests/recharge/recharging_items.py --parts"
   "switch       tests/remastered/one_switch.py"
 )
+# At most E2E_JOBS runs play at once (default: one a hardware thread; 0: all
+# at once): a game is uncapped and takes a whole thread, and more of them
+# than threads make each frame dearer, so the suite ends later. The longest
+# runs start first, by how long each took last time (e2e-times.txt).
+JOBS="${E2E_JOBS:-$JOBS}"
+TIMES="$OUT/e2e-times.txt"
 ms() { echo $(( $(date +%s%N) / 1000000 )); }
-E2E_START=$(ms)
-names=(); pids=()
-run_e2e() {  # NAME SCRIPT [ARGS...]: one run in $OUT/NAME-e2e; its log, and its finish in ms, beside it
-  local name="$1" script="$2"; shift 2
-  local folder="$OUT/${name//[+.]/-}-e2e"
-  { python3 "$script" --build build-cycle --rom "$ROM" --out "$folder" "$@" > "$folder.log" 2>&1
-    local code=$?; echo "$(( $(ms) - E2E_START ))" > "$folder.ms"; exit "$code"; } &
-  names+=("$name"); pids+=($!)
-}
+names=(); cmds=()
 for entry in "${E2E[@]}"; do
   read -r -a words <<< "$entry"
   name="${words[0]}" script="${words[1]}" args=("${words[@]:2}")
-  if [ "${args[0]:-}" != --parts ]; then run_e2e "$name" "$script" "${args[@]}"; continue; fi
-  for part in $(python3 "$script" --list-parts); do run_e2e "$name.$part" "$script" --part "$part" "${args[@]:1}"; done
+  if [ "${args[0]:-}" != --parts ]; then names+=("$name"); cmds+=("$script ${args[*]}"); continue; fi
+  for part in $(python3 "$script" --list-parts); do names+=("$name.$part"); cmds+=("$script --part $part ${args[*]:1}"); done
 done
-echo "== end to end: ${#names[@]} runs at once"
+declare -A took=()
+[ -f "$TIMES" ] && while read -r t n; do took[$n]=$t; done < "$TIMES"
+order=$(for i in "${!names[@]}"; do echo "${took[${names[$i]}]:-999999} $i"; done | sort -s -rn -k1,1 | cut -d' ' -f2)
+folder() { echo "$OUT/${1//[+.]/-}-e2e"; }
+E2E_START=$(ms)
+run_e2e() {  # NAME SCRIPT [ARGS...]: one run in its folder; its log, and "code finish took" (ms) in .end
+  local name="$1" script="$2"; shift 2
+  local out; out=$(folder "$name")
+  rm -f "$out.end"
+  { local t0; t0=$(ms)
+    python3 "$script" --build build-cycle --rom "$ROM" --out "$out" "$@" > "$out.log" 2>&1
+    echo "$? $(( $(ms) - E2E_START )) $(( $(ms) - t0 ))" > "$out.end"; } &
+}
+echo "== end to end: ${#names[@]} runs, ${JOBS/#0/all} at a time"
+for i in $order; do
+  if [ "$JOBS" -gt 0 ]; then while [ "$(jobs -rp | wc -l)" -ge "$JOBS" ]; do wait -n || true; done; fi
+  # shellcheck disable=SC2086  # the command's words
+  run_e2e "${names[$i]}" ${cmds[$i]}
+done
+wait
 failed=0
-for i in "${!names[@]}"; do
-  folder="$OUT/${names[$i]//[+.]/-}-e2e"
-  wait "${pids[$i]}" || { failed=1; echo "== FAILED: ${names[$i]}"; }
-  sed "s/^/[${names[$i]}] /" "$folder.log"
+for name in "${names[@]}"; do
+  code=none finish=0 t=0
+  [ -f "$(folder "$name").end" ] && read -r code finish t < "$(folder "$name").end"
+  [ "$code" = 0 ] || { failed=1; echo "== FAILED: $name"; }
+  sed "s/^/[$name] /" "$(folder "$name").log"
 done
-echo "== end to end, slowest last (seconds after they started):"
-for i in "${!names[@]}"; do
-  folder="$OUT/${names[$i]//[+.]/-}-e2e"
-  printf '%s %s\n' "$(cat "$folder.ms")" "${names[$i]}"
-done | sort -n | awk '{ printf "  %6.1f  %s\n", $1 / 1000, $2 }'
+echo "== end to end, slowest last (seconds after they started; how long each took):"
+for name in "${names[@]}"; do
+  finish=0 t=0
+  [ -f "$(folder "$name").end" ] && read -r code finish t < "$(folder "$name").end"
+  echo "$finish $t $name"
+done | sort -n | tee >(awk '{ print $2, $3 }' > "$TIMES") | awk '{ printf "  %6.1f  %5.1f  %s\n", $1 / 1000, $2 / 1000, $3 }'
 [ "$failed" = 0 ] || { echo "end-to-end tests failed; screenshots in $OUT/*-e2e*/" >&2; exit 1; }
 echo "all checks passed"
