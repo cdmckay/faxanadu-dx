@@ -6,15 +6,20 @@
  * one that is not ready does nothing but play the game's "invalid choice"
  * sound. Dying makes both ready (a respawn clears timed items); a Guru travel
  * journey does not. Finding a pair or an Hour Glass in the world while you own
- * one makes it ready at once instead of adding a second. Shops already refuse
- * any item you hold ("You can't carry any more."), so none sells a duplicate.
+ * one makes it ready at once instead of adding a second. The game's shops
+ * would sell a second (Shop_GetPlayerHasSelectedItem refuses no Items you
+ * have); Quick shops (fax_shops.c) lists one you have as owned instead, and
+ * ignores A on it (fax_recharge_on).
  *
  * The Elixir is kept after it revives you, spent, and only talking to a Guru
  * recharges it: no timer, and a death leaves it spent. SpecialItems' Elixir
  * bit stays the game's own "a revive is in reserve", so Player_ReduceHP
- * decides as it always did, the item menu shows the Elixir exactly when it is
- * charged, and a shop sells or a pickup gives one to a spent Elixir (a
- * recharge at the shop's price). The Spring of Trunk still takes it for good.
+ * decides as it always did, and the item menu shows the Elixir exactly when it
+ * is charged. A pickup gives one to a spent Elixir, a recharge. A spent Elixir
+ * is still the hero's, as a charged one is, so buying one never recharges it:
+ * Quick shops lists it as owned and ignores A on it (fax_recharge_elixir_spent),
+ * where the game's shop would have sold one to a spent Elixir, its bit being
+ * clear. The Spring of Trunk still takes a charged one for good.
  *
  * How, on the unchanged ROM:
  * - Player_UseWingBoots / Player_UseHourGlass entry: refuse when not ready.
@@ -215,7 +220,7 @@ static int tick_hook(uint16_t addr) {
     if (cyc_mod_isolated()) return 0;
     uint8_t counter = q(INTERRUPT_COUNTER), duration[TIMED] = { q(DURATION_WING_BOOTS), q(DURATION_HOUR_GLASS) };
     tick(&charge, duration, counter, q(PLAYER_TITLE));
-    if (charge.elixir_spent && (q(SPECIAL_ITEMS) & BIT_ELIXIR)) charge.elixir_spent = 0;   /* bought or found */
+    if (charge.elixir_spent && (q(SPECIAL_ITEMS) & BIT_ELIXIR)) charge.elixir_spent = 0;   /* found */
     draw_hud(counter);
     return 0;
 }
@@ -337,6 +342,10 @@ static int guru_hook(uint16_t addr) {
     ++guru_recharges;
     return 0;
 }
+
+/* For Quick shops (fax_shops.c), which lists what the hero owns. */
+bool fax_recharge_on(void) { return enabled; }
+bool fax_recharge_elixir_spent(void) { return enabled && charge.elixir_spent; }
 
 /* ---- the file in play (Save files, fax_save.h) ---- */
 
