@@ -334,15 +334,31 @@ faxanatools' `messages.py` decodes and encodes them; `fax_travel.c`'s
   button never acts again. Shop menus (`IScripts_WaitForMenuInput`) and the
   mantra's ▲ work the same way.
 - The typing sound (sound effect 1, noise) lasts 4 ticks: 2 of a soft hiss,
-  then 2 of a sharp clack (chipx86 traces the clack to an out-of-bounds table
-  read). At the game's pace each character starts it just as the last one
-  ends. Started every frame, it never gets past the hiss.
+  then 2 of a sharp clack. At the game's pace each character starts it just
+  as the last one ends. Started every frame, it never gets past the hiss.
+- **The clack is a bug** (chipx86). `SoundEffect_Message_OnTick` (`$86A8`,
+  bank 5) writes `$1F` to `NOISE_VOL`, then `LDA SoundEffect_State_Counter`,
+  `AND #$02`, `TAX` (`$86B2`), `LDA SOUNDEFFECT_MESSAGE_NOISE_LO,X`,
+  `STA NOISE_LO`, and increments the counter (at 4, `NOISE_VOL` `$10` and
+  the effect ends). The table (`$86D1`) is two bytes, `$10` and `$01`, so
+  ticks 3 and 4 read index 2, past its end: `$A9`, the opcode of
+  `SoundEffect_HitEnemy_Setup`'s `LDA #$14`. `NOISE_LO` is the noise
+  channel's mode (bit 7) and period, so `$A9` is the short, metallic mode at
+  period 9; `$01`, the table's own, is a high hiss. An `AND #$01` that became
+  `AND #$02` to switch every other tick, with no padding byte, would explain
+  it. Measured with the remaster off: `NOISE_LO` reads `$10`, `$10`, `$A9`,
+  `$A9` for each character. Small fixes halves A at the `TAX`, so ticks 3 and
+  4 read index 1: `$10`, `$10`, `$01`, `$01` (`tests/fixes/small_fixes.py`
+  reads the APU's registers from a save state each frame: the chunk `APU ` is
+  nesrecomp's `HwApu`, whose `reg[16]`, `$4000-$400F` as last written, starts
+  at its byte 31).
 - After `Messages_Load` sets `MessageID`, the first `TextBox_ShowNextChar`
   comes about 12 frames later, while the box opens. Those are lag frames, so
   the pad isn't read either. Time typing from the first character, not from
   `MessageID`.
 - The mantra types a character a frame through its own
-  `PasswordScreen_ShowNextChar`, not `TextBox_ShowNextChar`.
+  `PasswordScreen_ShowNextChar`, not `TextBox_ShowNextChar` (see *The
+  mantra*, *How a Guru shows it*).
 
 ## Temples and spawning (bank 15)
 
@@ -668,6 +684,48 @@ sets them from the title), HP and MP (`Player_Spawn` fills them), the timed
 items, and where the hero stood. The mantra's spawn point is
 `TempleSpawnPoint`, the furthest temple in the original.
 
+**How a Guru shows it.** The only script that shows a mantra is
+`ISCRIPT_COMMON_GURU_PASSWORD` (`$A5FC`): `SHOW_MESSAGE` `$22` ("You need
+peace of mind. I will meditate with you."), then `SHOW_PASSWORD` (`$14`).
+After a new title (`ISCRIPT_COMMON_GURU_NEW_RANK`) and at Eolis's Guru the
+original shows none. `IScriptAction_ShowPassword` (`$8737`, bank 12) runs
+`Password_GenerateStateAndReset` and `TextBox_ClearPasswordSize`, then for
+each character `PasswordScreen_ShowNextChar` (`$8757`): the next 6 bits,
+`LDA PASSWORD_ENTERED_CHARS,Y` (`$8764`, "A-Za-z0-9,?") and `JSR
+TextBox_ShowMessage` (`$875F`). That writes the glyph at column
+`TextBox_CharPosForLine` (its PPU address's low byte is the column × 16, so
+column 16 is column 0 again) and falls into
+`TextBox_ShowMessage_HandleSpaceOrEndOfLine` (`$F502`): from column 16 on,
+it reads the message's next byte, `(Message_StartAddr),Message_ProcessedLength`,
+and starts a new line unless that is `$FF` (the end: `MessageID` 0) or `$FC`
+(a pause).
+
+- **The read is in the wrong bank** (chipx86). The pointer is what the
+  greeting left, in bank 13, but bank 12 is mapped, so the check reads bank
+  12 at the same address. Had it been `$FF` or `$FC`, no line would start:
+  the characters after the 16th would overwrite the first line, and the
+  second line would stay empty.
+- **In the shipped game it never shows.** A message's loop reads its `$FF`
+  and stops, and B ends the script, so the mantra always comes after the
+  whole greeting: `Message_StartAddr` `$8700`, `Message_ProcessedLength`
+  `$6B`, the next message's first byte (`$876B`, bank 13: the I of "I shall
+  give you a title"). Bank 12 holds `$48` there, the H of
+  `PASSWORD_ENTERED_CHARS`, so every mantra wraps right. Bank 12's `$8760`,
+  the `$FF` of `JSR $F4FF`, would not: a save state with
+  `Message_ProcessedLength` `$60` shows the original's second half over its
+  first (`tests/fixes/small_fixes.py`).
+- **The fix** (Small fixes, chipx86's suggestion): a hook at
+  `IScriptAction_ShowPassword`'s entry points the message at
+  `PASSWORD_ENTERED_CHARS` (`Message_StartAddr` `$8764`,
+  `Message_ProcessedLength` 0), so the check reads an A in bank 12 and always
+  starts the new line. Nothing reads the pointer again before the next
+  `Messages_Load` sets it.
+- **Where a mantra still shows with the remaster:** Save files puts the
+  Guru's choice where the mantra was, so only a game with no file in play
+  shows one: a save state from the original, or Save files turned off by a
+  failure. Importing a mantra (`faxanadu.srm`, `--password`) only decodes it,
+  in an isolated call, and shows nothing.
+
 ## Weapon damage (bank 14)
 
 The sprite loop calls `Player_HitSpriteWithWeapon` (`$8804`) for each live
@@ -906,7 +964,7 @@ against the hero:
 |---|---|---|
 | `$877C` | `Player_CheckShieldHitByMagic` | Skips `SelectedShield` 3 and up (the helmet, none) and animation frames 4-6 (a swing). Only enemy magic (`SPRITE_CATEGORIES_BY_ENTITY` 6), against the shield's box at `Player_ShieldPositionX/Y` (`$039B`, `$039C`), which `Player_DrawShield` sets each frame |
 | `$87CB` | `Player_HandleShieldHitByMagic` | `JSR Player_HandleHitByMagic`, then (`$87CE`) removes the shot and plays sound `$0C`, the shield's |
-| `$87DC` | `Player_HandleHitByMagic` | Lets `SPRITE_ENTITY_DAMAGES[entity] >> (SelectedShield + 1)` through: half with the Small Shield, a quarter with the Large, an eighth with the Magic. Non-zero: `Player_SetDamagedBySprite` (60 iframes, face the shot, knockback) and `Player_ReduceHP` |
+| `$87DC` | `Player_HandleHitByMagic` | Lets `SPRITE_ENTITY_DAMAGES[entity] >> (SelectedShield + 1)` through: half with the Small Shield, a quarter with the Large, an eighth with the Magic. Non-zero: `Player_SetDamagedBySprite` (60 iframes, face the shot, knockback) and `Player_ReduceHP`. It checks neither iframes nor Ointment |
 | `$8999` | `Player_HandleTouchEnemyMagic` | Magic that touches the hero: nothing while `Player_InvincibilityPhase` or Ointment runs, else `Player_HandleTouchEnemy` (sound 4, the full damage) and the shot is removed |
 | `$B982` | `Player_DrawShield` | Draws nothing for the helmet or none, so `Player_ShieldPositionX/Y` keep stale values then |
 
@@ -933,6 +991,18 @@ against the hero:
   one runs, bit 7 is clear (the last second is `$00`).
   `Game_DecOintmentDuration` (`$C8B4`, from `GameLoop_CountdownItems`)
   counts it down when `InterruptCounter & $3F` is 0, every 64 frames.
+- **Ointment does not cover the shield in the original.** Magic that touches
+  the hero does nothing under Ointment (`Player_HandleTouchEnemyMagic`, and
+  the shot flies on through him), but magic on the shield still goes
+  through `Player_HandleHitByMagic`, which never looks at it: the Execution
+  Hood's shot (8) takes 4 through the Small Shield, with knockback, Ointment
+  or not. The 40th Anniversary Edition's notes list the same fix ("shield
+  could no longer be hit while ointment was in use"). Small fixes skips
+  `Player_HandleHitByMagic` while Ointment runs; the shield still takes the
+  shot, with its sound. The same routine ignores iframes too (nothing on the
+  way from `Sprites_UpdateAll` checks them), so by the code a second shot on
+  the shield inside the 60 frames after a hit hurts again; that is left as it
+  is.
 - **Iframes and knockback.** A hit sets `Player_InvincibilityPhase` (`$00AD`)
   to `$3C` and `Player_StatusFlag` (`$00A5`) bit `$02`, knockback.
   `Player_HandleIFrames` (`$E0E8`) counts the phase down each frame and
@@ -2260,6 +2330,17 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
   has its last entry replaced, as the Battle Helmet's pickup and the shops
   do. It keeps no state, so it also runs in Seamless's isolated rooms (it
   counts pickups only outside them). See *Items and the inventory*.
+- **Small fixes** (`fax_fixes.c`). Three of the original's small bugs
+  (#39), each a hook that keeps no state, so each also runs in Seamless's
+  isolated rooms (counting only outside them). At `SoundEffect_Message_OnTick`'s
+  `TAX` (`$86B2`, bank 5) it halves A, so the typing sound's ticks 3 and 4
+  read the table's `$01`, not the `$A9` past its end (see *How text types*).
+  At `IScriptAction_ShowPassword`'s entry (`$8737`, bank 12) it points the
+  message at `PASSWORD_ENTERED_CHARS`, so the mantra's line-end check, which
+  reads with bank 12 mapped, always starts a new line (see *The mantra*). At
+  `Player_HandleHitByMagic` (`$87DC`, bank 14), after Block's hook, it skips
+  the routine while Ointment runs, so magic on the shield does nothing
+  under Ointment (see *Shields and enemy magic*).
 - **Magic button** (`fax_magic.c`). A bindable button (C, or Y on a
   controller) casts the selected spell. On a press, it ORs Up held and B new
   into the joypad masks at `Player_CastMagic`'s entry, when `Game_MainLoop`

@@ -97,6 +97,11 @@ damage once you have it. The Glove adds its bonus as before.
 
 ![The same Long Sword hit on a Zozura: 8 without the Pendant, leaving it alive; 10 with it, a kill](docs/screenshots/pendant.png)
 
+**Ointment and the shield, fixed.** Ointment kept enemy magic from hurting
+you, except a shot that hit your shield: the shield still let its share
+through and knocked you back. Now Ointment covers that too: the shield takes
+the shot, and you take nothing.
+
 **Damage numbers.** Every hit that takes HP shows how much, in the status
 bar's own digits, floating up from where it landed and fading: white for the
 damage you deal, with your weapon, your magic or a reflected flash, and pink
@@ -204,6 +209,16 @@ press of A, so holding it never skips a page or answers for you: let go, then
 press A to go on.
 
 ![The same 40 frames of the Guru's greeting, without A and with A held](docs/screenshots/text-speed.png)
+
+**The typing sound, fixed.** The original's typing sound reads past the end
+of its own two-sound table, so every character ends in a loud clack. Now it
+plays the softer sound the table holds.
+
+**The mantra's line break, fixed.** Where a Guru's mantra starts its second
+line was decided by a byte read from the wrong part of the ROM. In the
+original that byte happens to work, but another would have put the second
+line over the first. Now the break is certain. A Guru shows a mantra only
+when no save file is in play.
 
 **Zone names.** When you enter a different town, region, tower or castle, its
 name appears below the status bar for about two seconds in the game's own

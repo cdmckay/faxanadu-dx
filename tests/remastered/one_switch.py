@@ -51,7 +51,7 @@ STATES = {
     "title-remastered": ("title_state", "enabled"),
     "indoor-equip": ("indoor_equip_state", "enabled"),
     "damage-numbers": ("damage_state", "enabled"),
-    "inventory-fix": ("inventory_fix_state", "enabled"),
+    "inventory-fix": ("inventory_fix_state", "enabled"), "small-fixes": ("small_fixes_state", "enabled"),
     "map": ("map_state", "enabled"),
 }
 START_CHOICE = 0x687                                                # DAT_0687: 0 Start, 1 Continue
