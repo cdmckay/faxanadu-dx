@@ -59,10 +59,11 @@ import traceback
 import zlib
 
 REPO = Path(__file__).resolve().parents[1]
-for folder in ("e2e", "block", "movement"):
+for folder in ("e2e", "block", "movement", "graphics"):
     sys.path.insert(0, str(REPO / "tests" / folder))
 import fax_e2e  # noqa: E402
 from fax_e2e import fixture  # noqa: E402
+import graphics_fixes  # noqa: E402  (its fixtures: trunk-studded, door-myconid, door-fortress)
 import harness  # noqa: E402
 import play  # noqa: E402
 
@@ -1581,6 +1582,88 @@ def battle_suit(s):
         g.wait(30)
         s.shot(caption, (0, 8, 256, 232))
         g.close()
+
+
+@scene("graphics", MovementGame)
+def graphics(s):
+    """The original's graphics glitches, fixed: Studded Mail on Trunk 6's
+    ladder (the chest's stale tile), the Fire spell's second frame (its
+    bottom right), the Myconid's second frame (a foot), the Tower of
+    Fortress's floor under its left pillar, and the title's F. The original's
+    on the left, the remaster's on the right. Each but the title is played
+    headless from tests/graphics/graphics_fixes.py's fixtures, frame exact:
+    the second frames are pictured on a frame whose sprites and the one
+    before's both show them."""
+    g = s.game
+    gf = graphics_fixes
+    box_w, box_h = 112, 64
+    pictures = {True: [], False: []}
+
+    def around(x, y):
+        """A box_w x box_h box in the native picture, around (x, y), on the picture."""
+        x0, y0 = min(max(x - box_w // 2, 0), 256 - box_w), min(max(y - box_h // 2, 0), 240 - box_h)
+        return x0, y0, x0 + box_w, y0 + box_h
+
+    def both(name, state, schedule, frames, box):
+        for original in (True, False):
+            path = g.out / f"{name}-{'original' if original else 'remastered'}.png"
+            g.replay(state, schedule, frames, original, picture=path)
+            s.sources.append(path.name)
+            pictures[original].append(crop(read_png(path)[1], box))
+
+    def second_frame(rams, drawn, start):
+        """The first frame from `start` on whose sprites, and the frame before's, `drawn` finds."""
+        return next(f for f in range(start, len(rams)) if drawn(rams[f]) and drawn(rams[f - 1]))
+
+    def oam(ram):
+        """The sprites a frame drew (a hidden one keeps its old tile, at Y $EF and below the picture)."""
+        return [s for s in (tuple(ram[gf.SHADOW_OAM + i:gf.SHADOW_OAM + i + 4]) for i in range(0, 256, 4))
+                if s[0] < 0xEF]
+
+    # Studded Mail climbing, the shield's tile at its chest.
+    studded = g.out / "studded.cycstate"
+    fixture(g.state("trunk-studded"), studded, {POS_X: 224, POS_Y: 136, PLAYER_FLAGS: gf.CAN_CLIMB | gf.CLIMBING,
+                                                HP: 0x50, **{SPRITE_ENTITIES + i: 0xFF for i in range(8)}})
+    rams = g.replay(studded, [(0, "UP"), (12, "-")], 40)
+    both("studded", studded, [(0, "UP"), (12, "-")], 40, around(rams[-1][POS_X] + 8, 32 + rams[-1][POS_Y] + 16))
+    # The Fire's second frame.
+    fire = g.out / "fire.cycstate"
+    fixture(g.state("trunk-ladder"), fire, {MAGIC_SPELLS: gf.FIRE, NUMBER_OF_MAGIC_SPELLS: 1,
+                                            SELECTED_MAGIC: gf.FIRE, MP: 0x50, POS_X: 232,
+                                            **{SPRITE_ENTITIES + i: 0xFF for i in range(8)}})
+    rams = g.replay(fire, [(0, "UP+B"), (3, "-")], 70)
+    # (in front of the background: CastMagic_CalculateVisibility puts it behind the trees)
+    f = second_frame(rams, lambda r: sum(1 for _, t, a, _ in oam(r) if t in (0x7C, 0x7D) and not a & 0x23) == 4, 2)
+    x = rams[f][0x2B6]                                             # CastMagic_XPos_Full
+    both("fire", fire, [(0, "UP+B"), (3, "-")], f + 1, around(x + 8, 32 + rams[f][POS_Y] + 16))
+    # The Myconid's second frame, out of a door onto Trunk $18.
+    door = g.state("door-myconid")
+    out = [(0, "RIGHT"), (40, "-")]
+    rams = g.replay(door, out, 300)
+
+    def myconid(ram):
+        slot = next((i for i in range(8) if ram[SPRITE_ENTITIES + i] == gf.MYCONID), None)
+        if slot is None or ram[AREA] != AREA_TRUNK:
+            return False
+        mx, my = ram[SPRITE_X + slot], ram[SPRITE_Y + slot]
+        body = [t for y, t, _, x in oam(ram) if 0 <= x - mx < 16 and 0 <= y - 32 - my < 32 and y < 0xEF]
+        return len(body) == 8 and max(body) - min(body) == 0x0D - 0x04
+    f = second_frame(rams, myconid, 150)
+    slot = next(i for i in range(8) if rams[f][SPRITE_ENTITIES + i] == gf.MYCONID)
+    both("myconid", door, out, f + 1, around(rams[f][SPRITE_X + slot] + 8, 32 + rams[f][SPRITE_Y + slot] + 16))
+    # The Tower of Fortress's floor, out of a door onto $2D.
+    both("fortress", g.state("door-fortress"), out, 240, (0, 240 - box_h, box_w, 240))
+    # The title's F (the window: a title takes a boot).
+    for original in (True, False):
+        g.set_features({REMASTER: False} if original else {})
+        g.launch()
+        g.until("the title", lambda: g.frame() > 700, 1500)
+        path = g.shot("title-original" if original else "title-remastered")
+        s.sources.append(path.name)
+        pictures[original].append(crop(read_png(path)[1], (8, 16, 8 + box_w, 16 + box_h)))
+        g.close()
+    s.stack([(rows, "Original") for rows in pictures[True]])
+    s.stack([(rows, "Remastered") for rows in pictures[False]])
 
 
 def carrying(gold, weapons, inventory, weapon=HAND_DAGGER):

@@ -34,6 +34,7 @@
 #include "fax_fixes.h"
 #include "fax_map.h"
 #include "fax_quests.h"
+#include "fax_graphics.h"
 #ifdef CYC_WITH_SDL
 #include "cyc_tcp.h"
 #include <SDL.h>
@@ -323,6 +324,7 @@ static void tcp_setup(void *ctx) {
     fax_fixes_tcp_setup();
     fax_map_tcp_setup();
     fax_quests_tcp_setup();
+    fax_graphics_tcp_setup();
 }
 #endif
 static const uint32_t *present(void *ctx,int *w,int *h) {

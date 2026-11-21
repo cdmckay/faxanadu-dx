@@ -21,3 +21,9 @@ bool fax_world_room_origin(int area,int room,int *x,int *y);
  * active room, a room not on the map around it, or one not running. For the
  * quest log's marks over the people next door. */
 const uint8_t *fax_world_room_ram(int area,int room);
+/* A correction for each room Seamless decodes itself, in isolated calls where
+ * no hooks run: called with the room's area, its screen and its RAM (2 KiB,
+ * ScreenBuffer at $600) once Area_LoadBlocks or Area_LoadScrollData has
+ * filled it, before the room is drawn, collided with or adopted. NULL for
+ * none. The graphics fixes (fax_graphics.c) set it. */
+void fax_world_set_room_fixup(void (*fixup)(uint8_t area,uint8_t screen,uint8_t *ram));

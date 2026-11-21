@@ -644,6 +644,15 @@ to `StartScreen_CheckHandleInput` (`$9F44`, bank 12), then at
   pattern table holds the title's tiles, not the text box's, so a box drawn
   there takes the frame from ROM (`HUD_TILES_START`, bank 10; see The text
   box).
+- `StartScreen_Draw` (`$9E21`, bank 12) copies the logo's 224 tiles (bank 10
+  `$8E00`) to `$1000`, the letters and digits, then the attribute table
+  (`START_SCREEN_PPU_ATTRIBUTES`, bank 10 `$9B60`, 64 bytes, to `$23C0`), all
+  through `PPU_WriteTilesFromCHRRAM` (`$F89E`: X the bank, Y the tiles; its
+  loop is `LDA (IScriptOrCHRAddr),Y` at `$F8B5`, `STA PPUDATA` at `$F8B7`),
+  then writes the logo's nametable from `START_SCREEN_LOGO_TILES` directly.
+  Its byte 9 (`$0C`) puts the F's tip in palette 3, the stars' greys: a bug
+  (see *Graphics bugs*). The stars are palette 3's `$00`/`$10`, or its color
+  1 (`$0F`, black, so unseen) in squares that look empty.
 - The titles' names are 16 space-padded characters each at
   `PLAYER_TITLE_STRINGS` (`$F649`, bank 15): Novice, Aspirant, Battler,
   Fighter, Adept, Chevalier, Veteran, Warrior, Swordman, Hero, Soldier,
@@ -1001,10 +1010,27 @@ against the hero:
   or not. The 40th Anniversary Edition's notes list the same fix ("shield
   could no longer be hit while ointment was in use"). Small fixes skips
   `Player_HandleHitByMagic` while Ointment runs; the shield still takes the
-  shot, with its sound. The same routine ignores iframes too (nothing on the
-  way from `Sprites_UpdateAll` checks them), so by the code a second shot on
-  the shield inside the 60 frames after a hit hurts again; that is left as it
-  is.
+  shot, with its sound.
+- **Iframes do not cover the shield in the original either.** Nothing on the
+  way from `Sprites_UpdateAll` to `Player_HandleHitByMagic` looks at
+  `Player_InvincibilityPhase`, so a shot on the shield inside the 60 frames
+  after a hit hurts again, while one that touches the hero then does nothing.
+  On Zenis's screen 16 (below), the Hood's shot and a copy of it 16 pixels
+  behind, both at the Small Shield's height, the hero at x 120: the first
+  takes 4 and sets the phase to `$3C`; the second lands 20 frames later, with
+  the phase at 41, takes 4 more, sets it back to `$3C` and knocks him back
+  another 24 pixels. By the code, two shots in the same frame both hurt too.
+  Small fixes also skips `Player_HandleHitByMagic` while the phase is not 0,
+  checking it before Ointment as `Player_HandleTouchEnemyMagic` does: the
+  shield takes the shot, with its sound, and the phase counts on from the
+  first hit. The game sets the phase only on a hit (a sprite's touch or shot,
+  Sugata's flash, the Poison) and clears it in `Player_HandleDeath` and
+  `Player_SetInitialState`. Seamless gives the hero's copy in a neighboring
+  room 200, in isolation, so with Small fixes shots stop at his shield there
+  as they pass through his body.
+- **The shield's sound** shows in `SoundEffect_Current` (`$00FB`), which
+  `Sound_PlayEffect` sets to the sound queued that frame (`$0C`) and the
+  sound engine marks playing with bit 7 on its next tick (`$8C`).
 - **Iframes and knockback.** A hit sets `Player_InvincibilityPhase` (`$00AD`)
   to `$3C` and `Player_StatusFlag` (`$00A5`) bit `$02`, knockback.
   `Player_HandleIFrames` (`$E0E8`) counts the phase down each frame and
@@ -1064,6 +1090,16 @@ body, then the weapon: `JSR Player_DrawShield`, `Player_DrawBody` (`$EBEE`),
 `$0F`, region 5, position `$91`), an Execution Hood casts a shot (`$51`,
 8 HP) at the hero from the right. Editing the shot's Y in a save state aims
 it at the shield (150, the hero on the ledge at 144) or his head (136).
+
+- **Where a hit leaves him.** A hit's knockback is 8 pixels a frame for three
+  frames. From where he arrives (x 16), it carries him to the screen's left
+  edge, and the screen changes; the floor to his right has a gap, and knocked
+  back to x 48 he falls through it to screen 3. Moved to x 120 in the save
+  state, two knockbacks leave him on the floor at 72.
+- **A second shot** is a copy of the first in an empty slot: the same byte
+  in every per-slot sprite array (`CurrentSprites_XPos_Full` `$BA`, `_YPos`
+  `$C2`, and `$02BC`-`$036C` every 8 bytes, `_XPos_Frac` to `_Values`), with
+  its X moved back.
 
 ## Sugata's flash (bank 14)
 
@@ -2365,7 +2401,9 @@ consumable.
 - **Block `$63` is in two screens** (all 64 Trunk screens decoded): `$0C`,
   x 3, rows 10-11, the wall beside the Tower of Trunk on the way east; and
   `$2D`, x 3, row 11, a floor block beside the ladder down to `$29`, which
-  opens nothing.
+  opens nothing. That one is drawn as the brown wall in the green floor;
+  with the remaster it is the floor's `$08`, and not breakable (see
+  *Graphics bugs*).
 - **A broken wall comes back** whenever its screen loads again (checked in
   the game): breaking it only edits `ScreenBuffer`, and screens decompress
   from ROM. So in the original, every pass through it costs a Mattock.
@@ -2549,6 +2587,19 @@ rest of the way to Victim, were not checked.
   enemies (see *Eolis, for tests*).
 - **Eolis screen 4's tower** (about x 160-208) is drawn in front of sprites:
   a hero or a Zozura behind it disappears. Stage a fight there left of x 150.
+- `Area_LoadScrollData` (`$D127`) decompresses the four neighbours first,
+  keeping only their edge row or column (`LastColumnLeftScreen` and the
+  like), then the current screen last (`JSR Area_LoadBlocks` at `$D1BB`,
+  returning to `$D1BE`). Every way onto a screen in the real machine passes
+  there; Seamless decodes its rooms in isolated calls instead (`decode()`,
+  `initialize()`), where no hooks run.
+- **Out of a door onto any screen, for tests (both views):** in a building,
+  set `Area_SavedArea` (`$03D5`), `Area_SavedScreen` (`$03D6`),
+  `Screen_SavedPalette` (`$03D7`, the screen's palette index: Trunk's 6, the
+  towers' 7) and `Player_SavedPosXY` (`$03D8`, a block `YX`) and walk out:
+  `Game_ExitBuilding` sets the outside up from them. Unlike
+  `Area_ScreenToTheRight`, it also works with Seamless, whose rooms follow the
+  scroll data, not `$0066-$0069`.
 
 ## Screen events and the fountain's ladder (bank 15)
 
@@ -2599,6 +2650,103 @@ rest of the way to Victim, were not checked.
   screen `$28` before setting `Quests` `$20`; that is the only guard, and it
   does not stop the blocks.
 
+## Sprites and tile slots (banks 7 and 8)
+
+- **`Sprite_Draw`** (`$F072`, fixed bank) draws an appearance from its tile
+  info in bank 7 (callers map it: `Sprite_SetAppearanceAddrFromOffset` for
+  entities and magic, `Sprite_SetPlayerAppearanceAddr` for the hero,
+  `Sprite_DrawPortraitPartAppearance` for portraits). A header of 4 bytes:
+  rows - 1 (high nibble) and columns - 1 (low), X offset, Y offset, the flip
+  pivot; then, row by row, a cell each: a slot and an attribute (palette in
+  bits 0-1, `$40` and `$80` the flips, XORed with the sprite's), or `$FF` for
+  an empty cell, one byte. A cell's OAM tile is its slot plus
+  `Sprites_PPUOffset` (`$33`): 0 for the hero and cast magic, `$90` for a
+  portrait, an enemy's tile base for an enemy. `Sprite_TileInfo_ReadAddr`
+  (`$3A`) points past the header, and Y walks the cells, so the byte read is
+  `ReadAddr + Y` in both loops: `Sprite_Draw_Standard` (`$F0EC`) places the
+  columns left to right and `Sprite_Draw_FlippedHoriz` (`$F181`) right to
+  left, reading the same bytes in the same order. Each loads a cell's slot
+  (`LDA (Sprite_TileInfo_ReadAddr_L),Y` at `$F12F` / `$F1E3`, then `CLC` at
+  `$F131` / `$F1E5`) and its attribute (`$F139` / `$F1ED`, then `EOR
+  CurrentSprite_FlipMask` at `$F13B` / `$F1EF`).
+- **The hero's slots** are what his gear's loaders put in the sprite pattern
+  table at `$0000`, in this order, each over the last (`Player_DrawSprite`
+  from `Player_SetArmor`/`Weapon`/`Shield` and a death, through the PPU
+  buffer; `Player_DrawSpriteImmediately` from `Screen_SetupNew`):
+  - the armor, from its list in bank 8 (`TILES_PLAYER_ARMOR_ADDRS_INDEX`,
+    `$8012`), `PLAYER_ARMOR_TILE_COUNTS` + 1 tiles from slot 0: Leather Armor
+    and Studded Mail 52 (slots 0-51), Full Plate 53 (0-52), the Battle Suit
+    51; with a shield (not the Battle Helmet) its `_WSHIELD` list, 40 (Full
+    Plate 41). Tile `t` of a list is at `TILES_ARMOR_START` (`$81A4`) + 16t;
+  - the weapon, at slot `$38` (`$0380`), or the Dragon Slayer's 9 tiles at
+    `$34` (`$0340`), through `PLAYER_WEAPON_TILE_PPU_ADDRS`;
+  - the shield, 6 tiles at slots `$30-$35` (`$0300`); the Small Shield's are
+    its list's `00 01 06 07 0C 0D` (`TILES_SHIELDS_SMALL`, `$8192`) from
+    `TILES_SHIELDS_START` (`$9104`).
+  So a slot no loader of the current gear fills keeps what an earlier one
+  left there.
+- The appearances: the hero's are `TILEINFO_PLAYER_ADDRS` (`$A9F1`), 8 poses
+  a gear set (0-2 walking, 3 jumping, 7 climbing), in the order of the armor
+  lists; then the weapons' (64-98). Entities' are `TILEINFO_ENTITY_ADDRS`
+  (`$9036`); `SPRITE_APPEARANCE_PHASE_OFFSETS` (bank 14) gives an entity's
+  first (the Myconid, entity `$1B`: `$31`, so 49 and 50). Cast magic's is
+  `SPRITE_MAGIC_IMAGE_ADDRS_U[CastMagic_Type]` + the frame
+  (`CastMagic_SetAppearance`): Fire is 155 and 156.
+- **The Fire spell flickers by design**: `CastMagic_FinishHandler_Fire` draws
+  it only when `InterruptCounter` has bit 1 set, 2 frames in 4, and picks its
+  frame from bit 2, so each frame shows 2 frames in 8. Thunder draws on the
+  other two (bit 1 clear).
+
+## Graphics bugs
+
+What the original draws wrong on the USA ROM, found by chipx86's notes, the
+Faxanadu 40th Anniversary Edition's notes ("minor animation bugs with Studded
+Armor and Fire") and the Faxanadu Retranslation's patches (Japanese base,
+version 1.05+: "Armor graphic bugfix", "Fix Fire", "Fix Myconid Palette",
+"Fix Fortress tile", "Fix Jerky Vendor Portrait", "Nurse cross graphic
+bugfix", title screen colors), each checked in the game with the remaster
+off. The Retranslation's IPS patches land at the same bank addresses as the
+USA ROM in banks 1, 7 and 8, which pins down what each of its fixes changes.
+Graphics fixes (`fax_graphics.c`) fixes the five that show:
+
+| Bug | Where | Stock | Fixed | Seen |
+|---|---|---|---|---|
+| Studded Mail's climbing pose | bank 7 `$ABF9`: `SPRITE_TILEINFO_PLAYER_ARMOR_STUDDED_07`, row 1, column 0's slot | `$34` | `$30` | The chest shows whatever slot `$34` holds: Studded Mail loads 0-51. From a Small Shield worn before, its tile `$0C`; after Full Plate, its `$88`; with the Dragon Slayer, its first tile |
+| Fire's second frame | bank 7 `$A5D3`: appearance 156, row 3, column 1's slot | `$66` | `$7E` | Its first frame's top right tile at the bottom right, where its own top right's belongs, mirrored (both frames are symmetric top to bottom) |
+| The Myconid's second frame | bank 7 `$95E6`: `SPRITE_TILEINFO_ENEMY_MYCONID_01`, row 3, column 1's attribute | `$02` | `$03` | One foot in palette 2 (`$1C`, `$33`: blue and pink) instead of 3 (`$27`, `$30`) every other frame |
+| The title's F | bank 10 `$9B69`: `START_SCREEN_PPU_ATTRIBUTES[9]` | `$0C` | `$00` | The 16x16 square at x 48-63, y 32-47 is palette 3 (the stars' greys) and holds only tile `$03`, the tip of the F's swirl: 5 grey pixels, and 2 of the F's red invisible (palette 3's color 1 is black) |
+| Tower of Fortress floor | Trunk `$2D`, block row 11, column 3 (the literal at bank 1 `$9BE5`) | `$63` | `$08` | Under the left pillar, the Mattock wall's brown block in the green `1B 08 1B 08` floor; the right pillar stands on floor |
+
+- **chipx86 names the wrong tile for Studded Mail.** His note says the
+  missing tile is `LEATHER_46` (`$77`), provided by the Leather Armor's list.
+  But Studded Mail's climbing pose otherwise matches the one it has with a
+  shield and Full Plate's (`75 76 / 7D 7E / 7F 80`, palette 1 for the body),
+  and both of those put `$7D` there: slot `$30` in Studded Mail's list. The
+  Retranslation makes the same change.
+- **The Fortress block was breakable.** `$63` is Trunk's Mattock block, so in
+  the original the Mattock breaks it (and the block below) into a pit that
+  leads nowhere (see *The Mattock and breakable walls*). The fix replaces the
+  block, as the Retranslation's one-byte patch does, so it is plain floor.
+  The other `$63`s, the wall east of the Tower of Trunk (`$0C`), stay.
+- **Not on the USA ROM:**
+  - *Nurse cross.* The Retranslation flips the 4th cell of the nurse's
+    portrait's last row (bank 7 `$B2E6`, `$00` to `$40`) and gives slot `$17`
+    its cross tile (bank 8 `$92C8`, `$CD` to `$34`). On the USA ROM slot `$17`
+    is `$CD`, a solid tile (the cross censored to a T above it), so the
+    missing flip changes no pixel.
+  - *Jerky vendor portrait.* Its 5 bytes (bank 8 `$99CE`,
+    `SPRITE_TILES_PORTRAIT_MEAT_SALESMAN` tile `$66`, plane 0 rows 3-7) on the
+    USA tile would remove the outline where the shirt strap meets the
+    shoulder; the USA portrait draws that edge whole.
+  - The Retranslation's other graphics changes (its title, fonts and save
+    icon) are its own.
+- **Seen in the code, not checked in the game:** the Dragon Slayer's tiles
+  (slots `$34-$3C`) and a shield's (`$30-$35`) share `$34-$35`, and the
+  shield loads last, so the Dragon Slayer's poses that use its first two
+  tiles (appearances 90, 92 and 93) would draw shield tiles; and Full Plate's
+  climbing pose uses slot `$34` (its `$88`), which the Dragon Slayer
+  overwrites.
+
 ## Features and what they use
 
 Each feature's C is in `src/` (`src/fax_<name>.c`), and `src/cyc_extras.c`
@@ -2644,17 +2792,19 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
   has its last entry replaced, as the Battle Helmet's pickup and the shops
   do. It keeps no state, so it also runs in Seamless's isolated rooms (it
   counts pickups only outside them). See *Items and the inventory*.
-- **Small fixes** (`fax_fixes.c`). Three of the original's small bugs
-  (#39), each a hook that keeps no state, so each also runs in Seamless's
-  isolated rooms (counting only outside them). At `SoundEffect_Message_OnTick`'s
-  `TAX` (`$86B2`, bank 5) it halves A, so the typing sound's ticks 3 and 4
-  read the table's `$01`, not the `$A9` past its end (see *How text types*).
-  At `IScriptAction_ShowPassword`'s entry (`$8737`, bank 12) it points the
-  message at `PASSWORD_ENTERED_CHARS`, so the mantra's line-end check, which
-  reads with bank 12 mapped, always starts a new line (see *The mantra*). At
-  `Player_HandleHitByMagic` (`$87DC`, bank 14), after Block's hook, it skips
-  the routine while Ointment runs, so magic on the shield does nothing
-  under Ointment (see *Shields and enemy magic*).
+- **Small fixes** (`fax_fixes.c`). Four of the original's small bugs
+  (#39, #82), in three hooks that keep no state, so each also runs in
+  Seamless's isolated rooms (counting only outside them). At
+  `SoundEffect_Message_OnTick`'s `TAX` (`$86B2`, bank 5) it halves A, so the
+  typing sound's ticks 3 and 4 read the table's `$01`, not the `$A9` past its
+  end (see *How text types*). At `IScriptAction_ShowPassword`'s entry
+  (`$8737`, bank 12) it points the message at `PASSWORD_ENTERED_CHARS`, so the
+  mantra's line-end check, which reads with bank 12 mapped, always starts a
+  new line (see *The mantra*). At `Player_HandleHitByMagic` (`$87DC`, bank
+  14), after Block's hook, it skips the routine while
+  `Player_InvincibilityPhase` is not 0 or Ointment runs, so magic on the
+  shield does nothing during iframes or under Ointment, as magic on the hero
+  does (see *Shields and enemy magic*).
 - **Magic button** (`fax_magic.c`). A bindable button (C, or Y on a
   controller) casts the selected spell. On a press, it ORs Up held and B new
   into the joypad masks at `Player_CastMagic`'s entry, when `Game_MainLoop`
@@ -2980,6 +3130,27 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
   outdoors. The game then draws the weapon and swings it with its own code.
   When Zone respawn swaps `Game_SetupExitBuilding` in at `$DAAF`, `$DE0B` is
   not reached, and that loader sets the weapon itself. No ROM, no read
+  overrides, no state.
+- **Graphics fixes** (`fax_graphics.c`). The five bugs of *Graphics bugs*,
+  each fixed where the game reads the byte, so it draws them right itself:
+  - Sprites: at each of `Sprite_Draw`'s four loads (`$F131`, `$F13B`,
+    `$F1E5`, `$F1EF`: the instruction after it), with bank 7 mapped
+    (`CurrentROMBank`), when `Sprite_TileInfo_ReadAddr + Y` is `$ABF9`,
+    `$A5D3` or `$95E6` and A its stock value, A becomes the right one (N and
+    Z as the load would set them), so OAM gets the right slot or palette.
+  - The title: at `PPU_WriteTilesFromCHRRAM`'s `STA PPUDATA` (`$F8B7`), with
+    bank 10 mapped, the byte read from `$9B69` is written as `$00`.
+  - The Tower of Fortress: at `$D1BE`, after `Area_LoadScrollData`'s load of
+    the current screen and before anything draws or collides with it, Trunk
+    `$2D`'s `ScreenBuffer[$B3]` goes from `$63` to `$08`. Seamless decodes its
+    rooms in isolated calls, where hooks do not run, so it calls the fix's
+    `fax_world_set_room_fixup` callback on each room it decodes
+    (`decode()`, `initialize()`); the fix sets it while on.
+  The hooks keep no state, so they run in Seamless's isolated rooms too (a
+  neighbour's Myconid is fixed). TCP `graphics_fix_state` counts what each fix
+  changed outside them. Seamless's redraw of the hero past a room's edge runs
+  in an isolated machine without hooks, so there his climbing chest is the
+  stock slot (as Block's glint and the falling pose are). No ROM, no read
   overrides, no state.
 
 - **The map** (`fax_map.c`, laid out by `fax_map_layout.c`). A Map button (M,

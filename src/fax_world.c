@@ -133,10 +133,13 @@ static void load(unsigned id){
     Room *r=&rooms[id];for(unsigned i=0;i<2048;i++)if(local[i])p(i,r->ram[i]);
     p(0x63,id);p(0x64,id);
 }
+static void (*room_fixup)(uint8_t,uint8_t,uint8_t*);
+void fax_world_set_room_fixup(void (*fixup)(uint8_t area,uint8_t screen,uint8_t *ram)){room_fixup=fixup;}
+static void fixup_room(unsigned id){if(room_fixup)room_fixup(rooms[id].ram[0x24],(uint8_t)id,rooms[id].ram);}
 static bool decode(unsigned id){
     if(!cyc_mod_isolate_begin())return false;
     bool ok=bank(q(0x8c))&&call(0xd1f6,id,0);
-    if(ok){memcpy(rooms[id].ram,cyc_cpu_ram(),2048);rooms[id].valid=1;}
+    if(ok){memcpy(rooms[id].ram,cyc_cpu_ram(),2048);fixup_room(id);rooms[id].valid=1;}
     cyc_mod_isolate_end();if(!ok)failures++;return ok;
 }
 static void topology(unsigned current){
@@ -214,7 +217,7 @@ static bool initialize(unsigned id){
     transfer=r;speculative=true;cyc_mod_allow_isolated_hooks(true);
     if(ok)ok=call(0xc28d,0,0);
     drain();speculative=false;transfer=NULL;
-    if(ok){capture(id,false);r->ticks=0;}
+    if(ok){capture(id,false);fixup_room(id);r->ticks=0;}
     cyc_mod_isolate_end();if(!ok)failures++;return ok;
 }
 static void tick_room(unsigned id){
