@@ -645,3 +645,20 @@ id = "faxanadu.damage-numbers.hero"
 addr = 0xc091
 bank = 15
 bytes = "38 ed bc 04 8d 32 04 ad 31 04 ed bd"   # Player_ReduceHP's SEC, SBC Arg_PlayerHealthDelta_L
+
+# The map (fax_map.c): a Map button pauses the game through its own pause and
+# shows the screens seen. Both sites are BEQs in GameLoop_CheckPauseGame that
+# it steers by Z: past "Start not new" into the pause, and in the pause loop,
+# on (another frame) or past (unpause).
+
+[[mod_function_hook]]
+id = "faxanadu.map.check"
+addr = 0xe02f
+bank = 15
+bytes = "f0 f9 a9 01 8d 20 01 20 25 ca 20 a8"
+
+[[mod_function_hook]]
+id = "faxanadu.map.loop"
+addr = 0xe040
+bank = 15
+bytes = "f0 f4 a9 00 8d 20 01 60 a5 18 85 16"

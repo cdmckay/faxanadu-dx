@@ -95,6 +95,9 @@ cmake --build "$OUT/indoor" -j"$JOBS" >/dev/null
 cmake -S tests/damage -B "$OUT/damage" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/damage" -j"$JOBS" >/dev/null
 "$OUT/damage/damage_test"
+cmake -S tests/map -B "$OUT/map" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/map" -j"$JOBS" >/dev/null
+"$OUT/map/map_test" "$ROM"
 
 echo "== game build"
 [ -f build-cycle/CMakeCache.txt ] || cmake -S . -B build-cycle -DCMAKE_BUILD_TYPE=Release -DNESRECOMP_ROM="$ROM" >/dev/null
@@ -221,6 +224,13 @@ damage_e2e() {  # NAME [ARGS...]
 }
 damage_e2e damage-e2e & damage=$!
 damage_e2e damage-e2e-seamless --game-arg=--world-view=seamless & damage_seamless=$!
+echo "== end to end: the map, by default and with Seamless on, alongside them"
+map_e2e() {  # NAME [ARGS...]
+  local name="$1"; shift
+  python3 tests/map/explored_map.py --build build-cycle --rom "$ROM" --out "$OUT/$name" "$@" > "$OUT/$name.log" 2>&1
+}
+map_e2e map-e2e & map=$!
+map_e2e map-e2e-seamless --game-arg=--world-view=seamless & map_seamless=$!
 failed=0
 wait "$default" || failed=1
 sed 's/^/[default]  /' "$OUT/travel-e2e.log"
@@ -292,5 +302,9 @@ wait "$damage" || failed=1
 sed 's/^/[damage]   /' "$OUT/damage-e2e.log"
 wait "$damage_seamless" || failed=1
 sed 's/^/[dmg+sw]   /' "$OUT/damage-e2e-seamless.log"
+wait "$map" || failed=1
+sed 's/^/[map]      /' "$OUT/map-e2e.log"
+wait "$map_seamless" || failed=1
+sed 's/^/[map+sw]   /' "$OUT/map-e2e-seamless.log"
 [ "$failed" = 0 ] || { echo "end-to-end tests failed; screenshots in $OUT/*-e2e*/" >&2; exit 1; }
 echo "all checks passed"

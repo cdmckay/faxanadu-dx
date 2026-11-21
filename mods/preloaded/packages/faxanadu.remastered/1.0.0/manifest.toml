@@ -109,3 +109,7 @@ id = "faxanadu.indoor-equip"
 [[plugin]]
 feature = "remastered"
 id = "faxanadu.damage-numbers"
+
+[[plugin]]
+feature = "remastered"
+id = "faxanadu.map"
