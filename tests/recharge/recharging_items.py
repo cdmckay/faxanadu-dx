@@ -268,10 +268,11 @@ def main():
         refuses while jumping or falling, and a warp's poke can leave him a few
         frames above the floor)."""
         until("the hero to stand", lambda: not ram(PLAYER_FLAGS) & 0x05, 120)
-        tcp("action", name="down", frames=24)
+        tcp("action", name="down", frames=60)                       # down however late the script's B comes
         wait(6)
         tcp("action", name="b", frames=4)
         wait(24)
+        act("down", 1, 0)                                           # let go
 
     def warp(*a, **kw):
         warp_out(game, *a, **kw)

@@ -180,7 +180,8 @@ E2E=(
 # At most E2E_JOBS runs play at once (default: one a hardware thread; 0: all
 # at once): a game is uncapped and takes a whole thread, and more of them
 # than threads make each frame dearer, so the suite ends later. The longest
-# runs start first, by how long each took last time (e2e-times.txt).
+# runs start first, by the CPU each used last time (e2e-times.txt): unlike its
+# wall time, that does not depend on how busy the machine was when it ran.
 JOBS="${E2E_JOBS:-$JOBS}"
 TIMES="$OUT/e2e-times.txt"
 ms() { echo $(( $(date +%s%N) / 1000000 )); }
@@ -200,13 +201,16 @@ declare -A took=()
 order=$(for i in "${!names[@]}"; do echo "${took[${names[$i]}]:-999999} $i"; done | sort -s -rn -k1,1 | cut -d' ' -f2)
 folder() { echo "$OUT/${1//[+.]/-}-e2e"; }
 E2E_START=$(ms)
-run_e2e() {  # NAME SCRIPT [ARGS...]: one run in its folder; its log, and "code finish took" (ms) in .end
+run_e2e() {  # NAME SCRIPT [ARGS...]: one run in its folder; its log, and "code finish took cpu" (ms) in .end
   local name="$1" script="$2"; shift 2
   local out; out=$(folder "$name")
   rm -f "$out.end"
-  { local t0; t0=$(ms)
+  { local t0 code cpu; t0=$(ms)
     python3 "$script" --build build-cycle --rom "$ROM" --out "$out" "$@" > "$out.log" 2>&1
-    echo "$? $(( $(ms) - E2E_START )) $(( $(ms) - t0 ))" > "$out.end"; } &
+    code=$?
+    cpu=$(sed -n 's/^.*time: .*, games \([0-9.]*\) s CPU, script \([0-9.]*\) s CPU$/\1 \2/p' "$out.log" |
+          awk '{ printf "%d", ($1 + $2) * 1000 }')
+    echo "$code $(( $(ms) - E2E_START )) $(( $(ms) - t0 )) ${cpu:-0}" > "$out.end"; } &
 }
 echo "== end to end: ${#names[@]} runs, ${JOBS/#0/all} at a time"
 for i in $order; do
@@ -218,16 +222,16 @@ wait
 failed=0
 for name in "${names[@]}"; do
   code=none finish=0 t=0
-  [ -f "$(folder "$name").end" ] && read -r code finish t < "$(folder "$name").end"
+  [ -f "$(folder "$name").end" ] && read -r code finish t cpu < "$(folder "$name").end"
   [ "$code" = 0 ] || { failed=1; echo "== FAILED: $name"; }
   sed "s/^/[$name] /" "$(folder "$name").log"
 done
 echo "== end to end, slowest last (seconds after they started; how long each took):"
 for name in "${names[@]}"; do
-  finish=0 t=0
-  [ -f "$(folder "$name").end" ] && read -r code finish t < "$(folder "$name").end"
-  echo "$finish $t $name"
-done | sort -n | tee >(awk '{ print $2, $3 }' > "$TIMES") | awk '{ printf "  %6.1f  %5.1f  %s\n", $1 / 1000, $2 / 1000, $3 }'
+  finish=0 t=0 cpu=0
+  [ -f "$(folder "$name").end" ] && read -r code finish t cpu < "$(folder "$name").end"
+  echo "$finish $t $cpu $name"
+done | sort -n | tee >(awk '{ print $3, $4 }' > "$TIMES") | awk '{ printf "  %6.1f  %5.1f  %s\n", $1 / 1000, $2 / 1000, $4 }'
 checked=$(cat "$OUT/checks.code" 2>/dev/null || echo 1)
 cat "$OUT/checks.log"
 [ "$checked" = 0 ] || echo "== FAILED: the checks above (allocations, unit tests or the game's smoke run)" >&2
