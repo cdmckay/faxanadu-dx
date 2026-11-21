@@ -8,7 +8,7 @@ option(NESRECOMP_ENABLE_TRACE "Enable game diagnostics" OFF)
 set(NESRECOMP_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/nesrecomp" CACHE PATH "NESRecomp engine checkout")
 
 # nesrecomp/ and recomp-ui/ are git submodules (see .gitmodules); the pinned
-# commit is the gitlink recorded in this repo. After cloning run setup.sh/.bat
+# commit is the gitlink recorded in this repo. After cloning run setup.sh
 # (git submodule update --init) to fetch them at the recorded commits.
 
 set(NESRECOMP_BACKEND "cycle" CACHE STRING "CPU backend: cycle or legacy")
@@ -35,31 +35,45 @@ if(NESRECOMP_BACKEND STREQUAL "cycle")
         GAME_CONFIG "${CMAKE_CURRENT_SOURCE_DIR}/game.toml"
         RECOMPILER "${NESRECOMP_HOST_COMPILER}"
         SEED_FILE "${NESRECOMP_CYCLE_SEEDS}"
-        HOST_EXTRAS "${CMAKE_CURRENT_SOURCE_DIR}/cyc_extras.c" fax_world.c fax_travel.c fax_death.c
-            fax_pendant.c
-            fax_magic.c
-            fax_zone.c fax_text.c fax_banner.c
-            fax_speaker.c
-            fax_keys.c
-            fax_falling.c fax_jumps.c
-            fax_text_speed.c
-            fax_save.c fax_files.c
-            fax_dagger.c
-            fax_block.c fax_sugata.c
-            fax_shops.c
-            fax_respawn.c
-            fax_recharge.c
-            fax_entrances.c
+        HOST_EXTRAS src/cyc_extras.c src/fax_world.c src/fax_travel.c src/fax_death.c
+            src/fax_pendant.c
+            src/fax_magic.c
+            src/fax_zone.c src/fax_text.c src/fax_banner.c
+            src/fax_speaker.c
+            src/fax_keys.c
+            src/fax_falling.c src/fax_jumps.c
+            src/fax_text_speed.c
+            src/fax_save.c src/fax_files.c
+            src/fax_title.c
+            src/fax_dagger.c
+            src/fax_block.c src/fax_sugata.c
+            src/fax_shops.c
+            src/fax_respawn.c
+            src/fax_recharge.c
+            src/fax_slain.c
+            src/fax_indoor.c
+            src/fax_damage.c
+            src/fax_entrances.c
         MODS GAME_ID "faxanadu-usa"
         PLAYERS 1 REGION NTSC PASSWORD_SAVE "faxanadu.srm" PASSWORD_SAVE_LABEL "Mantra"
-        BOXART "${CMAKE_CURRENT_SOURCE_DIR}/boxart.tga")
-    target_sources(FaxanaduRecomp PRIVATE override_text.c
+        BOXART "${CMAKE_CURRENT_SOURCE_DIR}/assets/boxart.tga")
+    target_sources(FaxanaduRecomp PRIVATE src/override_text.c
         "${NESRECOMP_ROOT}/runner/src/override_chr.c"
         "${NESRECOMP_ROOT}/runner/src/chr_codec.c")
-    target_include_directories(FaxanaduRecomp PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}"
+    target_include_directories(FaxanaduRecomp PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src"
         "${NESRECOMP_ROOT}/runner/include" "${NESRECOMP_ROOT}/runner/src")
     target_compile_definitions(FaxanaduRecomp PRIVATE CYC_CONTENT_TOOLS)
+    # The remaster's features were packages of their own before they became
+    # the one Faxanadu Remastered package (#56). A build folder from then
+    # still holds them, and they would claim its plugins a second time.
+    set(FAX_OLD_PACKAGES)
+    foreach(old auto-keys block death-keeps-gold falling-pose forgiving-jumps guru-travel magic-button
+            pendant-fix quick-shops recharging-items reusable-tools save-files slain-by speaker-names
+            sugata-flash taller-dagger text-speed title-remastered zone-names zone-respawn indoor-equip)
+        list(APPEND FAX_OLD_PACKAGES "$<TARGET_FILE_DIR:FaxanaduRecomp>/mods/packages/faxanadu.enhancement.${old}")
+    endforeach()
     add_custom_command(TARGET FaxanaduRecomp POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E rm -rf ${FAX_OLD_PACKAGES}
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${CMAKE_CURRENT_SOURCE_DIR}/mods/preloaded" "$<TARGET_FILE_DIR:FaxanaduRecomp>/mods")
     return()
@@ -75,13 +89,13 @@ find_package(SDL2 REQUIRED)
 # ---- Main executable ----
 add_executable(FaxanaduRecomp
     ${NESRECOMP_RUNNER_SOURCES}
-    extras.c
-    override_text.c   # optional text override plugin — game-specific strings in extras.c
+    src/extras.c
+    src/override_text.c   # optional text override plugin — game-specific strings in extras.c
     ${NESRECOMP_RUNNER_ROOT}/src/override_chr.c   # CHR asset dump + override plugin
     ${NESRECOMP_RUNNER_ROOT}/src/chr_codec.c       # NES 2bpp CHR <-> PNG codec
-    nes_snapshot.c
-    verify_mode.c
-    watchdog.c
+    src/nes_snapshot.c
+    src/verify_mode.c
+    src/watchdog.c
     generated/faxanadu_full.c
     generated/faxanadu_dispatch.c
 )
@@ -91,7 +105,7 @@ target_compile_definitions(FaxanaduRecomp PRIVATE RECOMP_STACK_TRACKING WATCHDOG
 target_include_directories(FaxanaduRecomp PRIVATE
     ${NESRECOMP_RUNNER_INCLUDE_DIRS}
     ${NESRECOMP_RUNNER_ROOT}/src          # for chr_codec.h, stb_image.h
-    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/src
     ${SDL2_INCLUDE_DIRS}
 )
 
@@ -121,7 +135,7 @@ endif()
 # launcher.c's main(), and stages the launcher assets next to the exe.
 set(NESRECOMP_RECOMP_UI "${CMAKE_CURRENT_SOURCE_DIR}/recomp-ui" CACHE PATH "recomp-ui checkout")
 include("${NESRECOMP_RECOMP_UI}/recomp_ui.cmake")
-recomp_target_launcher_ui(FaxanaduRecomp CONSOLE nes BOXART ${CMAKE_SOURCE_DIR}/boxart.tga)
+recomp_target_launcher_ui(FaxanaduRecomp CONSOLE nes BOXART ${CMAKE_SOURCE_DIR}/assets/boxart.tga)
 
 # Faxanadu saves via a password (mantra), not battery SRAM. Drive the launcher's
 # SAVES panel to show/edit that password (the faxanadu.srm sidecar next to the exe

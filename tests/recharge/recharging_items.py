@@ -3,7 +3,8 @@
     python3 tests/recharge/recharging_items.py --build build-cycle --rom "Faxanadu (USA).nes" --out /tmp/recharge
 
 The game runs uncapped and the script waits on the game's own state, never on
-the clock, and takes a free TCP port, so any number can run in parallel.
+the clock, on a reserved TCP port (tests/e2e/fax_e2e.py), so any number can
+run in parallel.
 
 Copies the build to OUT and starts a new game over TCP. The hero walks through
 the Eolis gate into the town and into a shop. Save-state RAM edits then set up
@@ -28,9 +29,10 @@ used with Down+B, as a player would.
    hero ("I've used Elixir."). With 1 HP again, the next hit kills him; he
    respawns with it still spent, and the menu's Player page, which showed it,
    does not. Talking to Eolis's Guru charges it, and the page shows it again.
-5. Eolis's tool shop with a spent Elixir: buying one charges it, for its 320
-   gold. With it charged, the shop refuses a second ("You can't carry any
-   more.") and keeps the gold.
+5. Eolis's tool shop with a spent Elixir: it is still the hero's, so Quick
+   shops lists it as owned, "Already owned", and A on it does nothing: the
+   gold stays and it stays spent, since buying never charges it (a Guru
+   does). Charged, the same.
 6. Finds: a pair of Wing Boots (Trunk $2D) while they recharge, an Hour Glass
    (Trunk $13) while it recharges, and an Elixir (Trunk $3C) while it is spent:
    each is ready at once, and none is a second copy.
@@ -44,23 +46,19 @@ used with Down+B, as a player would.
    the file in play (file 1, which Start on the title began). A Guru's save
    writes the cooldowns; quitting and continuing the file puts them back, and
    an Elixir the file says is spent stays spent.
-10. With Save files and Guru travel off: Apolune's Guru, giving only the
-    mantra, charges a spent Elixir.
-11. Turned off: the pair is used up after one 40 s (Novice) flight.
+10. A temple Guru: Apolune's, whose conversation Save files and Guru travel
+    steer (Eolis's, in 4, takes another path), charges a spent Elixir at his
+    first action.
+11. With the remaster off, the original: the pair is used up after one 40 s
+    (Novice) flight.
 """
-import argparse
-import json
-import os
 from pathlib import Path
-import shutil
-import socket
-import struct
-import subprocess
 import sys
-import time
-import zlib
 
-PORT = 0                                                            # set in main
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
+import fax_e2e  # noqa: E402
+from fax_e2e import Game, act, chunks, frame, parse_args, ram, tcp, typed, until, wait  # noqa: E402
+
 AREA, SCREEN, PLAYER_X, PLAYER_Y, PLAYER_FLAGS, PLAYER_STATUS = 0x24, 0x63, 0x9E, 0xA1, 0xA4, 0xA5
 SCREEN_READY = 0x0E
 TEXTBOX_CLOSED, MESSAGE_ID = 0x20C, 0x213
@@ -75,10 +73,7 @@ HOUR_GLASS, WING_BOOTS, NO_ITEM, BIT_ELIXIR, RING_OF_ELF = 0x0D, 0x0F, 0xFF, 0x0
 USED_HOUR_GLASS, USED_WING_BOOTS, USED_ELIXIR = 0xAC, 0xAD, 0xAF      # message IDs
 GOT_WING_BOOTS, GOT_HOUR_GLASS, GOT_ELIXIR = 0xB3, 0xB4, 0xB0        # "I'm holding ..."
 WING_BOOTS_GONE, HOUR_GLASS_GONE, NEGATIVE_THOUGHTS, HO_HO_HO = 0xC0, 0xC1, 0x24, 0x57
-SHOP_HELLO, WHAT_WOULD_YOU_LIKE, CANT_CARRY_MORE = 0x0F, 0x14, 0x06
 FILE, GURU_SAVED = "faxanadu_file1.txt", 3                          # Start on the title: a new game in file 1
-SAVE_FILES = ("faxanadu.enhancement.save-files", "save-files")
-GURU_TRAVEL = ("faxanadu.enhancement.guru-travel", "guru-travel")
 MEDITATE_WITH_YOU = 0x22                                            # a temple Guru's greeting, then the mantra
 EOLIS, TRUNK, BUILDINGS = 0, 1, 4
 EOLIS_TEMPLE, APOLUNE_TEMPLE, TOOL_SHOP = 0x02, 0x0B, 0x04          # building numbers
@@ -88,58 +83,12 @@ QUEST_SPRING_OF_SKY = 0x02
 TRAVEL_DEPART, TRAVEL_TO_GURU = 3, 4                                # fax_travel.c's lines (TO_GURU + temple)
 FLIGHTS, COOLDOWN, FREEZE = (30, 40, 50, 60), 60, 15              # the game's seconds (64 frames)
 FLIGHT = FLIGHTS[0]                                                 # a Novice's: the lowest band
-ELIXIR_PRICE, ELIXIR_ROW = 320, 2                                   # EOLIS_TOOL_SHOP_ITEMS: dagger, potion, Elixir
+ELIXIR_ROW = 2                                                      # EOLIS_TOOL_SHOP_ITEMS: dagger, potion, Elixir
 SECOND = 64
-PACKAGE = ("faxanadu.enhancement.recharging-items", "recharging-items")
+PACKAGE = ("faxanadu.remastered", "remastered")                  # the one switch: off is the original game
 RECORD = b"faxanadu.recharge"                                       # its save-state record: version, boots
 #                                                                     running and cooldown, glass running and
 #                                                                     cooldown, the Elixir spent
-
-
-def tcp(cmd, **kw):
-    with socket.create_connection(("127.0.0.1", PORT), 5) as s:
-        s.settimeout(30)
-        f = s.makefile("rwb", buffering=0)
-        f.write((json.dumps(dict(id=1, cmd=cmd, **kw)) + "\n").encode())
-        reply = json.loads(f.readline())
-    if not reply.get("ok"):
-        raise RuntimeError(f"{cmd}: {reply}")
-    return reply
-
-
-def free_port():
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
-def frame():
-    return tcp("ping")["frame"]
-
-
-def wait(frames):
-    end = frame() + frames
-    while frame() < end:
-        time.sleep(0.005)
-
-
-def ram(addr, n=1):
-    data = bytes.fromhex(tcp("read_ram", addr=addr, len=n)["hex"])
-    return data[0] if n == 1 else data
-
-
-def until(what, test, frames=1200):
-    end = frame() + frames
-    while frame() < end:
-        if test():
-            return
-        time.sleep(0.005)
-    raise AssertionError(f"timed out waiting for {what}")
-
-
-def act(name, frames=6, after=8):
-    tcp("action", name=name, frames=frames)
-    wait(frames + after)
 
 
 def state():
@@ -156,13 +105,6 @@ def gold():
 
 def settled():
     return ram(SCREEN_READY) == 0
-
-
-def typed():
-    """The text box waits for a button: the message has typed out (MessageID
-    clears) or reached a pause (TextBox_MessagePaused)."""
-    message, _, paused = ram(MESSAGE_ID, 3)
-    return message == 0 or paused != 0
 
 
 def box_open():
@@ -188,102 +130,28 @@ def write_file(path, fields):
     path.write_text("".join(f"{k} = {v}\n" for k, v in fields.items()))
 
 
-def chunks(data):
-    assert data[:8] == b"CYCSTATE"
-    pos = 32
-    while pos < len(data):
-        tag, size = struct.unpack_from("<4sI", data, pos)
-        pos += 8
-        yield tag, pos, size
-        pos += size
-        if tag == b"END ":
-            return
-
-
 def fixture(source, target, writes, record=None):
-    """Copy a save state, changing RAM and, if given, bytes of this feature's record."""
-    data = bytearray(source.read_bytes())
-    pos, size = next((p, n) for t, p, n in chunks(data) if t == b"HW  ")
-    assert size == 2072, "Unqualified hardware ABI"
-    for address, value in writes.items():
-        data[pos + 23 + address] = value
-    found = False
-    for tag, p, n in chunks(data):
-        if tag == b"MOD " and data[p:p + 64].rstrip(b"\0") == RECORD:
-            found = True
-            for offset, value in (record or {}).items():
-                data[p + 64 + offset] = value
-    assert found or record is None, "the state has no recharging items record"
-    target.write_bytes(data)
+    """fax_e2e's fixture(), and if given, bytes of this feature's record,
+    which the state must have."""
+    if record is not None:
+        data = Path(source).read_bytes()
+        assert any(tag == b"MOD " and data[p:p + 64].rstrip(b"\0") == RECORD for tag, p, _ in chunks(data)), \
+            "the state has no recharging items record"
+    fax_e2e.fixture(source, target, writes, {RECORD.decode(): record} if record else None)
 
 
 def main():
-    global PORT
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    for key in ("build", "rom", "out"):
-        ap.add_argument("--" + key, type=Path, required=True)
-    ap.add_argument("--game-arg", action="append", default=[],
-                    help="extra game option, e.g. --game-arg=--world-view=seamless (repeatable)")
-    ap.add_argument("--port", type=int, default=0, help="TCP port (default: a free one)")
-    ap.add_argument("--realtime", action="store_true", help="run at normal speed instead of uncapped")
-    args = ap.parse_args()
-    PORT = args.port or free_port()
-    image = args.rom.read_bytes()
-    assert zlib.crc32(image[16:]) == 0x57DD23D1, "the original Faxanadu (USA) ROM is required"
-    out = args.out.resolve()
-    shutil.rmtree(out, ignore_errors=True)
-    (out / "game").mkdir(parents=True)
-    shutil.copy2(args.build / "FaxanaduRecomp", out / "game")
-    for folder in ("assets", "mods"):
-        shutil.copytree(args.build / folder, out / "game" / folder)
-    env = dict(os.environ, NESRECOMP_NO_LAUNCHER="1", SDL_VIDEODRIVER="dummy", SDL_AUDIODRIVER="dummy")
-    log = open(out / "game.log", "w")
-    game = None
-    shots = []
+    game = Game.from_args(parse_args(__doc__))
+    out = game.out
+    shot, poke = game.shot, game.poke
 
-    def launch(on=True, gurus=None, off=()):
-        """Start the game with recharging items on or off, and the (package, feature) pairs in `off` off."""
-        nonlocal game
-        lines = ["format_version = 1"]
-        for (package, feature), enabled in [(PACKAGE, on)] + [(pf, False) for pf in off]:
-            lines += ["", "[[feature]]", f'package_id = "{package}"', f'id = "{feature}"',
-                      f"enabled = {'true' if enabled else 'false'}"]
-        (out / "game" / "mods" / "state.toml").write_text("\n".join(lines) + "\n")
+    def launch(on=True, gurus=None):
+        """Start the game with the remaster, and so recharging items, on or off."""
+        game.set_features({PACKAGE: on})
         if gurus:
             (out / "game" / "faxanadu_gurus.txt").write_text("".join(g + "\n" for g in gurus))
-        extra = [part for arg in args.game_arg for part in arg.split("=", 1)]
-        if not args.realtime:
-            extra += ["--uncapped", "--exit-after", "100000000"]
-        game = subprocess.Popen([str(out / "game" / "FaxanaduRecomp"), str(args.rom.resolve()), "--hidden",
-                                 "--tcp", str(PORT), *extra], env=env, stdout=log, stderr=subprocess.STDOUT)
-        for _ in range(100):
-            try:
-                frame()
-                break
-            except OSError:
-                time.sleep(0.1)
-        else:
-            raise AssertionError("the game did not start")
+        game.launch()
         assert state()["enabled"] == on, state()
-
-    def close():
-        try:
-            tcp("quit")
-        except Exception:
-            game.kill()
-        game.wait(10)
-
-    def shot(name):
-        path = out / f"{len(shots):02d}-{name}.png"
-        tcp("screenshot", layer="picture", path=str(path))
-        shots.append(path.name)
-
-    def poke(writes):
-        """Edit RAM in the running game: save, edit the state, load it back."""
-        path = out / "poke.cycstate"
-        tcp("save_state", path=str(path))
-        fixture(path, path, writes)
-        tcp("load_state", path=str(path))
 
     def clear(entity=None):
         """Take every sprite of `entity` (or every sprite) off the screen."""
@@ -377,67 +245,28 @@ def main():
         act("b", 4, 30)
         until("the menu to close", lambda: not box_open(), 120)
 
-    def quick_shops():
-        try:
-            return tcp("shops_state")["enabled"]
-        except RuntimeError:                                        # a build without Quick shops
-            return False
-
-    def buy(row):
-        """Talk to the shopkeeper and buy the item on `row` of the list. The
-        messages shown after choosing it. With Quick shops (on by default) Up
-        opens the list at once, a message goes back to it and B leaves; without,
-        it is the game's greeting, Buy/Sell, "What would you like?" and the list."""
-        seen = []
-        if quick_shops():
-            def list_waiting():
-                s = tcp("shops_state")
-                return s["shown"] == "buy" and s["list_up"]
-            act("up", 4, 10)
-            until("the list", list_waiting, 900)
-            wait(20)
-            for _ in range(row):
-                act("down", 4, 10)
-            before = tcp("shops_state")
-            act("a", 4, 4)
-            end = frame() + 20 * SECOND
-            while frame() < end:
-                m = ram(MESSAGE_ID)
-                if m and m not in seen:
-                    seen.append(m)
-                after = tcp("shops_state")
-                done = after["bought"] > before["bought"] or after["messages"] > before["messages"]
-                if done and list_waiting():
-                    break
-                if CANT_CARRY_MORE in seen and typed() and not list_waiting():
-                    act("a", 6, 14)                                 # the message, then back to the list
-                else:
-                    wait(4)
-            wait(20)
-            act("b", 4, 10)                                         # leave
-        else:
-            act("up", 4, 10)
-            until("the greeting", lambda: ram(MESSAGE_ID) == SHOP_HELLO, 300)
-            until("the greeting to type out", typed, 900)
-            act("a", 4, 40)                                         # to Buy / Sell
-            act("a", 4, 10)                                         # Buy
-            until("What would you like?", lambda: ram(MESSAGE_ID) == WHAT_WOULD_YOU_LIKE, 300)
-            until("the question to type out", typed, 900)
-            act("a", 4, 40)                                         # the list
-            for _ in range(row):
-                act("down", 4, 10)
-            act("a", 4, 4)
-        end = frame() + 30 * SECOND                                 # A to each line until the box closes
-        while frame() < end and box_open():
-            m = ram(MESSAGE_ID)
-            if m and m not in seen:
-                seen.append(m)
-            if typed():
-                act("a", 6, 20)
-            else:
-                wait(4)
-        assert not box_open(), f"the shop did not close (saw {seen})"
-        return seen
+    def owned_in_shop(row, name):
+        """The item on `row` of the shopkeeper's list is the hero's: Quick
+        shops' list marks it owned, its hint says so, and A on it does
+        nothing, with no gold taken and no line. B leaves."""
+        def list_waiting():
+            s = tcp("shops_state")
+            return s["shown"] == "buy" and s["list_up"]
+        act("up", 4, 10)
+        until("the list", list_waiting, 900)
+        wait(20)
+        for _ in range(row):
+            act("down", 4, 10)
+        before, money = tcp("shops_state"), gold()
+        assert before["cursor"] == row and before["owned"][row] and before["hint"] == "Already owned", before
+        shot(name)
+        act("a", 4, 60)
+        after = tcp("shops_state")
+        assert after["ignored"] == before["ignored"] + 1, after
+        assert (after["bought"], after["messages"]) == (before["bought"], before["messages"]), after
+        assert list_waiting() and gold() == money, (after, gold())
+        act("b", 4, 10)
+        until("the shop to close", lambda: not box_open(), 600)
 
     def respawn(frames):
         """Page through the death message until the hero is back: at the temple, or with zone respawn (on by
@@ -646,23 +475,26 @@ def main():
         status_shot("status-elixir-recharged")
         print("ok: talking to Eolis's Guru charges the spent Elixir, and the status page shows it again")
 
-        # 5. Eolis's tool shop: a spent Elixir is charged for its price; a charged one is not sold twice.
+        # 5. Eolis's tool shop: an Elixir, spent or charged, is the hero's, and buying never charges it.
+        gold_1000 = {GOLD: 0xE8, GOLD + 1: 0x03, GOLD + 2: 0}
         warp(shop, "tool-shop", EOLIS, 3, 0x9A, PALETTE_EOLIS, 0,
-             {SPECIAL_ITEMS: 0, SELECTED_ITEM: NO_ITEM, NUMBER_OF_ITEMS: 0, GOLD: 0xE8, GOLD + 1: 0x03, GOLD + 2: 0},
-             {5: 1})
+             {SPECIAL_ITEMS: 0, SELECTED_ITEM: NO_ITEM, NUMBER_OF_ITEMS: 0, **gold_1000}, {5: 1})
         assert state()["elixir_spent"] and gold() == 1000, (state(), gold())
         enter_door(TOOL_SHOP)
         act("left", 120, 10)                                        # to the counter
-        seen = buy(ELIXIR_ROW)
+        owned_in_shop(ELIXIR_ROW, "shop-elixir-spent")
         wait(4)
         s = state()
-        assert gold() == 1000 - ELIXIR_PRICE and s["elixir_charged"] and not s["elixir_spent"], (gold(), s, seen)
-        assert CANT_CARRY_MORE not in seen, seen
-        seen = buy(ELIXIR_ROW)
-        assert CANT_CARRY_MORE in seen and gold() == 1000 - ELIXIR_PRICE, (seen, gold())
-        assert state()["elixir_charged"], state()
-        print(f"ok: the tool shop charges a spent Elixir for {ELIXIR_PRICE} gold, and refuses a second while it is "
-              "charged (\"You can't carry any more.\")")
+        assert gold() == 1000 and s["elixir_spent"] and not s["elixir_charged"], (gold(), s)
+        warp(shop, "tool-shop-charged", EOLIS, 3, 0x9A, PALETTE_EOLIS, 0,
+             {SPECIAL_ITEMS: BIT_ELIXIR, SELECTED_ITEM: NO_ITEM, NUMBER_OF_ITEMS: 0, **gold_1000})
+        enter_door(TOOL_SHOP)
+        act("left", 120, 10)
+        owned_in_shop(ELIXIR_ROW, "shop-elixir-charged")
+        s = state()
+        assert gold() == 1000 and s["elixir_charged"] and not s["elixir_spent"], (gold(), s)
+        print("ok: at the tool shop a spent Elixir is owned, A on it does nothing and it stays spent (a Guru charges "
+              "it, not a purchase); a charged one is owned the same")
 
         # 6. Finds: each recharges what it duplicates.
         warp(shop, "find-boots", TRUNK, 0x2D, 0x31, PALETTE_TOWER, 1,
@@ -767,7 +599,7 @@ def main():
         assert ram(QUESTS) & QUEST_SPRING_OF_SKY, "the Spring of Sky's man woke"
         print(f"ok: the Spring of Sky: from Trunk $20's floor to the man in $25 in {landed} frames "
               f"({landed / SECOND:.1f} of the game's seconds), with {left} s of the {FLIGHT} s flight left")
-        close()
+        game.close()
 
         # 8. Guru travel: a journey keeps the flight and the cooldown counting.
         launch(gurus=("Eolis", "Apolune"))
@@ -828,7 +660,7 @@ def main():
         saved = read_file(out / "game" / FILE)
         boots_left, glass_left = int(saved["recharge.wingboots"]), int(saved["recharge.hourglass"])
         assert 40 <= boots_left <= 45 and 25 <= glass_left <= 30 and "recharge.elixir" not in saved, saved
-        close()
+        game.close()
         saved["recharge.elixir"] = "spent"                         # as a respawn with it spent writes it
         saved["special_items"] = str(int(saved["special_items"]) & ~BIT_ELIXIR)
         write_file(out / "game" / FILE, saved)
@@ -845,12 +677,12 @@ def main():
         print(f"ok: saving at a Guru wrote the cooldowns to file 1 (Wing Boots {boots_left} s, Hour Glass {glass_left} s); "
               f"continuing it after quitting put them back ({s['boots_cooldown']} s, {s['glass_cooldown']} s), "
               "and a spent Elixir in the file is still spent")
-        close()
+        game.close()
 
-        # 10. Without the Gurus' mods: with Save files and Guru travel off, Apolune's Guru only gives the mantra,
-        # and talking to him still charges a spent Elixir.
-        launch(off=(SAVE_FILES, GURU_TRAVEL))
-        assert not tcp("files_state")["enabled"] and not tcp("travel_state")["enabled"]
+        # 10. A temple Guru: Apolune's, whose conversation Save files and Guru travel steer, charges a spent
+        # Elixir at his first action, before either has moved the script.
+        launch()
+        assert tcp("files_state")["enabled"] and tcp("travel_state")["enabled"]
         plain = out / "apolune-death.cycstate"
         fixture(temple, plain, {TEMPLE_SPAWN_POINT: 1, PLAYER_IS_DEAD: 1, SPECIAL_ITEMS: 0}, {5: 1})
         tcp("load_state", path=str(plain))
@@ -858,23 +690,30 @@ def main():
         until("Apolune's temple", lambda: place() == (BUILDINGS, APOLUNE_TEMPLE) and settled(), 1800)
         wait(30)
         assert state()["elixir_spent"], state()
+        saves = tcp("files_state")["saves"]
         talk_to_guru()
         until("the Guru to charge it", lambda: state()["guru_recharges"] == 1, 120)
+        s = state()
+        assert s["elixir_charged"] and not s["elixir_spent"], s
         seen = set()
-        end = frame() + 40 * SECOND
-        while frame() < end and box_open():
+        end = frame() + 40 * SECOND                                  # his greeting, then "Remember my journey."
+        while frame() < end and tcp("files_state")["saves"] == saves:
             seen.add(ram(MESSAGE_ID))
             if typed():
                 act("a", 6, 14)
             else:
                 wait(4)
-        assert not box_open() and MEDITATE_WITH_YOU in seen, sorted(seen)
-        assert state()["elixir_charged"], state()
-        print("ok: with Save files and Guru travel off, Apolune's Guru gives the mantra, and talking to him "
-              "charges the spent Elixir")
-        close()
+        assert tcp("files_state")["saves"] == saves + 1 and MEDITATE_WITH_YOU in seen, (tcp("files_state"), sorted(seen))
+        for _ in range(20):                                         # B closes what follows
+            if not box_open():
+                break
+            act("b", 6, 20)
+        assert not box_open() and state()["elixir_charged"], state()
+        print("ok: Apolune's Guru, whose conversation Save files and Guru travel steer, charges the spent Elixir "
+              "as he greets the hero, and remembers the journey")
+        game.close()
 
-        # 11. Off: the original's one-use pair and its title-based flight.
+        # 11. The remaster off: the original's one-use pair and its title-based flight.
         launch(on=False)
         fixture(town, boots, {HP: 0x50, SELECTED_ITEM: WING_BOOTS, NUMBER_OF_ITEMS: 0, PLAYER_TITLE: 0, **no_one})
         tcp("load_state", path=str(boots))
@@ -882,17 +721,14 @@ def main():
         use()
         dismiss(USED_WING_BOOTS)
         assert ram(DURATION_WING_BOOTS) in (40, 39) and items() == ([], NO_ITEM), (ram(DURATION_WING_BOOTS), items())
-        print("ok: turned off, a Novice's Wing Boots fly 40 s and are used up, as in the original")
-        print("screenshots:", ", ".join(shots))
+        print("ok: with the remaster off, a Novice's Wing Boots fly 40 s and are used up, as in the original")
+        print("screenshots:", ", ".join(game.shots))
     except BaseException:
-        if game and game.poll() is None:
-            shot("failure")
-            print("at", place(), "x", ram(PLAYER_X), "y", ram(PLAYER_Y), "message", hex(ram(MESSAGE_ID)),
-                  "state", state(), file=sys.stderr)
+        if game.running():
+            game.shot("failure")
         raise
     finally:
-        if game:
-            close()
+        game.close()
 
 
 if __name__ == "__main__":

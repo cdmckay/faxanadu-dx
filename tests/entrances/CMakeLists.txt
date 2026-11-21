@@ -6,7 +6,7 @@ if(NOT NESRECOMP_ROOT)
 endif()
 # fax_entrances.c is included by the test, against a model of the machine.
 add_executable(entrances_test entrances_test.c)
-target_include_directories(entrances_test PRIVATE ../.. ${NESRECOMP_ROOT}/runner/include ${NESRECOMP_ROOT}/runner/cyc)
+target_include_directories(entrances_test PRIVATE ../../src ${NESRECOMP_ROOT}/runner/include ${NESRECOMP_ROOT}/runner/cyc)
 if(NOT MSVC)
     target_compile_options(entrances_test PRIVATE -Wall -Wextra)
 endif()

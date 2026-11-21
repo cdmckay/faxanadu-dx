@@ -6,12 +6,15 @@ A hidden window over TCP gets the hero to Trunk (see play.py), uncapped, on a
 free port. The frame-exact checks run the same build headless from save
 states made there, with RAM fixtures for the hero's place and kit, and a
 button schedule, and read his position and flags every frame, with the
-feature on and off:
+remaster on and off (off is the original game):
 
-1. In the window, at normal speed: A pressed just after walking off Trunk's
-   ledge jumps (forgiving_jumps_state counts a coyote jump), and A pressed
-   just before landing a jump on the floor jumps again on landing (a buffered
-   jump). With the feature off in the mod selection, neither.
+1. In the window, at normal speed: A pressed 2 frames after walking off
+   Trunk's ledge jumps (forgiving_jumps_state counts a coyote jump), and A
+   pressed 3 frames before landing a jump on the floor jumps again on landing
+   (a buffered jump). With the remaster off in the mod selection, neither.
+   Each press goes in with the load of a state made headless the frame
+   before it (fax_e2e's batch()), so it lands on that frame however far
+   the script lags.
 2. Coyote time. A on the last frame on the ledge is the original's best jump;
    a frame later the original just falls. With the feature on, A on any of
    the first 5 frames off the ledge jumps: every frame he is where the best
@@ -24,17 +27,15 @@ feature on and off:
    it), stepping off a ladder (no coyote time), and jumping out of a door
    (a press made in the temple does not jump in the town).
 5. Screenshots: a coyote jump near its top, and the original game's fall
-   (both features off) with the same late press.
+   (the remaster off) with the same late press.
 """
 import argparse
 from pathlib import Path
 import sys
-import time
 
 from play import (CAN_CLIMB, CLIMBING, DURATION_WING_BOOTS, FALLING, FLAGS, HP, IFRAMES, JC, JUMPING, KNOCKBACK,
                   LADDER_SCREEN, LEDGE_SCREEN, RIGHT, STATUS, X, Y, AREA, Game, fixture, no_actors)
 
-FEATURE = "forgiving-jumps"
 COYOTE_FRAMES, BUFFER_FRAMES = 5, 6
 
 
@@ -63,51 +64,48 @@ def main():
         assert game.tcp("forgiving_jumps_state")["enabled"], "the feature is on by default"
         game.close()
 
-        # 1. Live, at normal speed: a late press and an early one.
+        # 1. Live, at normal speed: a late press and an early one, each on its
+        # frame: the states they start from are made headless.
+        on = game.mods("mods-on")
+        walk = [(0, "-"), (5, "RIGHT")]
+        W = next(i for i, p in enumerate(path(game.headless(ledge, walk, 60, on))) if p[1] > 80)   # off the ledge
+        walked_off = out / "walked-off.cycstate"                       # after his first frame off it
+        game.headless(ledge, walk, W + 1, on, save=(W, walked_off))
+        jump = [(0, "-"), (5, "A"), (6, "-")]
+        once = path(game.headless(floor, jump, 80, on))
+        ground = next(i for i in range(6, 80) if not once[i][2] & JUMPING) + 1   # back on the floor
+        landing = out / "landing.cycstate"                             # 4 frames before it
+        game.headless(floor, jump, ground - 3, on, save=(ground - 4, landing))
+
         def live(enabled):
-            """The coyote and buffered jumps a late and an early press gave, in up
-            to 3 tries each: the press goes in as fast as TCP allows."""
+            """The coyote and buffered jumps the late and the early press gave."""
             game.realtime = True
             game.launch()
             state = game.tcp("forgiving_jumps_state")
             assert state["enabled"] == enabled and state["coyote_frames"] == COYOTE_FRAMES, state
-            coyote = buffered = 0
-            for _ in range(3):
-                before = game.tcp("forgiving_jumps_state")
-                game.tcp("load_state", path=str(ledge))
-                game.tcp("action", name="right", frames=120)
-                game.until("walking off", lambda: game.ram(Y) > 80, 300)
-                game.tcp("action", name="a", frames=2)
-                game.until("the floor", lambda: game.ram(Y) == 160 and not game.ram(FLAGS) & (FALLING | JUMPING), 300)
-                coyote = game.tcp("forgiving_jumps_state")["coyote"] - before["coyote"]
-                if coyote or not enabled:
-                    break
-            for _ in range(3):
-                before = game.tcp("forgiving_jumps_state")
-                game.tcp("load_state", path=str(floor))
-                game.tcp("action", name="a", frames=2)
-                game.until("the jump", lambda: game.ram(FLAGS) & JUMPING, 60)
-                game.until("the jump's last frames", lambda: game.ram(JC) >= 27, 120)
-                game.tcp("action", name="a", frames=2)
-                game.wait(30)
-                buffered = game.tcp("forgiving_jumps_state")["buffered"] - before["buffered"]
-                if buffered or not enabled:
-                    break
+            game.batch(("load_state", dict(path=str(walked_off))), ("action", dict(name="right", frames=60)),
+                       ("action", dict(name="a", frames=2)))
+            game.until("the floor", lambda: game.ram(Y) == 160 and not game.ram(FLAGS) & (FALLING | JUMPING), 300)
+            coyote = game.tcp("forgiving_jumps_state")["coyote"] - state["coyote"]
+            state = game.tcp("forgiving_jumps_state")
+            game.batch(("load_state", dict(path=str(landing))), ("action", dict(name="a", frames=2)))
+            game.wait(30)
+            buffered = game.tcp("forgiving_jumps_state")["buffered"] - state["buffered"]
             game.close()
             return coyote, buffered
 
         coyote, buffered = live(True)
         assert coyote == 1 and buffered == 1, (coyote, buffered)
         print("ok: in the window, A just after walking off the ledge jumped, and A just before landing jumped on landing")
-        game.select(off=[FEATURE])
+        game.select(original=True)
         coyote, buffered = live(False)
         assert coyote == 0 and buffered == 0
-        print("ok: turned off, neither")
+        print("ok: with the remaster off, neither")
         game.select()
         game.realtime = False
 
         # 2. Coyote time, frame by frame.
-        on, off = game.mods("mods-on"), game.mods("mods-off", off=[FEATURE])
+        on, off = game.mods("mods-on"), game.mods("mods-off", original=True)
         walk = [(0, "-"), (5, "RIGHT")]
         frames = 110
 
@@ -200,8 +198,7 @@ def main():
         shots = out / "shots"
         shots.mkdir(exist_ok=True)
         game.headless(ledge, press(W + 2), W + 12, on, shots / "coyote-jump.png")
-        original = game.mods("mods-original", off=[FEATURE, "falling-pose"])
-        game.headless(ledge, press(W + 2), W + 6, original, shots / "late-press-original.png")
+        game.headless(ledge, press(W + 2), W + 6, off, shots / "late-press-original.png")
         print("screenshots:", ", ".join(str(p) for p in sorted(shots.glob("*.png"))))
     except BaseException:
         if game.proc and game.proc.poll() is None:

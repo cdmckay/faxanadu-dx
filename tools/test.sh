@@ -22,7 +22,7 @@ while [ $# -gt 0 ]; do
     *) echo "unknown arg: $1" >&2; exit 2;;
   esac
 done
-[ -f "$ROM" ] || { echo "No ROM at $ROM; see README, Building from Source" >&2; exit 2; }
+[ -f "$ROM" ] || { echo "No ROM at $ROM; see the README" >&2; exit 2; }
 cd "$REPO"
 JOBS="$(nproc 2>/dev/null || echo 4)"
 OUT="$REPO/build-tests"
@@ -62,6 +62,9 @@ cmake --build "$OUT/movement" -j"$JOBS" >/dev/null
 cmake -S tests/files -B "$OUT/files" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/files" -j"$JOBS" >/dev/null
 FAX_FILES_TEST_DIR="$OUT/files/scratch" "$OUT/files/files_test"
+cmake -S tests/title -B "$OUT/title" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/title" -j"$JOBS" >/dev/null
+"$OUT/title/title_test"
 cmake -S tests/speaker -B "$OUT/speaker" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/speaker" -j"$JOBS" >/dev/null
 "$OUT/speaker/speaker_test"
@@ -83,6 +86,15 @@ cmake --build "$OUT/respawn" -j"$JOBS" >/dev/null
 cmake -S tests/recharge -B "$OUT/recharge" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/recharge" -j"$JOBS" >/dev/null
 "$OUT/recharge/recharge_test"
+cmake -S tests/slain -B "$OUT/slain" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/slain" -j"$JOBS" >/dev/null
+"$OUT/slain/slain_test"
+cmake -S tests/indoor -B "$OUT/indoor" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/indoor" -j"$JOBS" >/dev/null
+"$OUT/indoor/indoor_test"
+cmake -S tests/damage -B "$OUT/damage" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/damage" -j"$JOBS" >/dev/null
+"$OUT/damage/damage_test"
 cmake -S tests/entrances -B "$OUT/entrances" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/entrances" -j"$JOBS" >/dev/null
 "$OUT/entrances/entrances_test"
@@ -103,6 +115,8 @@ if command -v flock >/dev/null; then
 else
   echo "(no flock: end-to-end runs may overlap another suite's)"
 fi
+echo "== end to end: the shared helper's port reservation and relaunch"
+python3 tests/e2e/fax_e2e_test.py --build build-cycle --rom "$ROM" --out "$OUT/e2e-helper"
 echo "== end to end: Guru travel, by default and with Seamless on, in parallel"
 e2e() {  # NAME [ARGS...]: one run, in its own folder, on a free port
   local name="$1"; shift
@@ -148,6 +162,13 @@ python3 tests/text_speed/text_speed.py --build build-cycle --rom "$ROM" --out "$
 echo "== end to end: Save files, alongside them"
 python3 tests/files/save_files.py --build build-cycle --rom "$ROM" --out "$OUT/files-e2e" \
   > "$OUT/files-e2e.log" 2>&1 & files=$!
+echo "== end to end: REMASTERED on the title, by default and with Seamless on, alongside them"
+title_e2e() {  # NAME [ARGS...]
+  local name="$1"; shift
+  python3 tests/title/title_remastered.py --build build-cycle --rom "$ROM" --out "$OUT/$name" "$@" > "$OUT/$name.log" 2>&1
+}
+title_e2e title-e2e & title=$!
+title_e2e title-e2e-seamless --game-arg=--world-view=seamless & title_seamless=$!
 echo "== end to end: the taller dagger, alongside them"
 python3 tests/dagger/taller_dagger.py --build build-cycle --rom "$ROM" --out "$OUT/dagger-e2e" \
   > "$OUT/dagger-e2e.log" 2>&1 & dagger=$!
@@ -186,6 +207,30 @@ entrances_e2e entrances-e2e-seamless --game-arg=--world-view=seamless & entrance
 echo "== end to end: recharging items, alongside them"
 python3 tests/recharge/recharging_items.py --build build-cycle --rom "$ROM" --out "$OUT/recharge-e2e" \
   > "$OUT/recharge-e2e.log" 2>&1 & recharge=$!
+echo "== end to end: the one Faxanadu Remastered switch, on by default and off for the original, alongside them"
+python3 tests/remastered/one_switch.py --build build-cycle --rom "$ROM" --out "$OUT/one-switch-e2e" \
+  > "$OUT/one-switch-e2e.log" 2>&1 & one_switch=$!
+echo "== end to end: Slain by, by default and with Seamless on, alongside them"
+slain_e2e() {  # NAME [ARGS...]
+  local name="$1"; shift
+  python3 tests/slain/slain_by.py --build build-cycle --rom "$ROM" --out "$OUT/$name" "$@" > "$OUT/$name.log" 2>&1
+}
+slain_e2e slain-e2e & slain=$!
+slain_e2e slain-e2e-seamless --game-arg=--world-view=seamless & slain_seamless=$!
+echo "== end to end: Equip indoors, by default and with Seamless on, alongside them"
+indoor_e2e() {  # NAME [ARGS...]
+  local name="$1"; shift
+  python3 tests/indoor/indoor_equip.py --build build-cycle --rom "$ROM" --out "$OUT/$name" "$@" > "$OUT/$name.log" 2>&1
+}
+indoor_e2e indoor-e2e & indoor=$!
+indoor_e2e indoor-e2e-seamless --game-arg=--world-view=seamless & indoor_seamless=$!
+echo "== end to end: damage numbers, by default and with Seamless on, alongside them"
+damage_e2e() {  # NAME [ARGS...]
+  local name="$1"; shift
+  python3 tests/damage/damage_numbers.py --build build-cycle --rom "$ROM" --out "$OUT/$name" "$@" > "$OUT/$name.log" 2>&1
+}
+damage_e2e damage-e2e & damage=$!
+damage_e2e damage-e2e-seamless --game-arg=--world-view=seamless & damage_seamless=$!
 failed=0
 wait "$default" || failed=1
 sed 's/^/[default]  /' "$OUT/travel-e2e.log"
@@ -215,6 +260,10 @@ wait "$text_speed" || failed=1
 sed 's/^/[text]     /' "$OUT/text-speed-e2e.log"
 wait "$files" || failed=1
 sed 's/^/[files]    /' "$OUT/files-e2e.log"
+wait "$title" || failed=1
+sed 's/^/[title]    /' "$OUT/title-e2e.log"
+wait "$title_seamless" || failed=1
+sed 's/^/[title+sw] /' "$OUT/title-e2e-seamless.log"
 wait "$dagger" || failed=1
 sed 's/^/[dagger]   /' "$OUT/dagger-e2e.log"
 wait "$block" || failed=1
@@ -239,6 +288,20 @@ wait "$respawn_seamless" || failed=1
 sed 's/^/[resp+sw]  /' "$OUT/respawn-e2e-seamless.log"
 wait "$recharge" || failed=1
 sed 's/^/[recharge] /' "$OUT/recharge-e2e.log"
+wait "$one_switch" || failed=1
+sed 's/^/[switch]   /' "$OUT/one-switch-e2e.log"
+wait "$slain" || failed=1
+sed 's/^/[slain]    /' "$OUT/slain-e2e.log"
+wait "$slain_seamless" || failed=1
+sed 's/^/[slain+sw] /' "$OUT/slain-e2e-seamless.log"
+wait "$indoor" || failed=1
+sed 's/^/[indoor]   /' "$OUT/indoor-e2e.log"
+wait "$indoor_seamless" || failed=1
+sed 's/^/[indr+sw]  /' "$OUT/indoor-e2e-seamless.log"
+wait "$damage" || failed=1
+sed 's/^/[damage]   /' "$OUT/damage-e2e.log"
+wait "$damage_seamless" || failed=1
+sed 's/^/[dmg+sw]   /' "$OUT/damage-e2e-seamless.log"
 wait "$entrances" || failed=1
 sed 's/^/[entrance] /' "$OUT/entrances-e2e.log"
 wait "$entrances_seamless" || failed=1

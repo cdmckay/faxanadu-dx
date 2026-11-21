@@ -70,13 +70,17 @@ and data tables after it shifted). Not supported: the build rejects it.
 | `$0214` | `Message_ProcessedLength` | Bytes of the message read, from an offset, not 0. Wraps with the address |
 | `$0215` | `TextBox_MessagePaused` | Nonzero while a `$FC` pause waits for A |
 | `$021D` | `TextBox_Timer` | Characters type when it is a multiple of 4. `Messages_Load` zeroes it |
+| `$02CC-$02D3` | `CurrentSprites_Entities` | Each sprite slot's entity, `$FF` empty (see *What killed the hero*) |
+| `$0378` | `CurrentSpriteIndex` | The slot whose behavior or collision is running |
 | `$0390`, `$0392-$0394` | `Experience`, `Gold` | Gold is 24-bit little-endian |
 | `$039A` | `Player_MP` | |
 | `$03C7` | `IScript_PortraitID` | The portrait showing, `$FF` for none (see *Portraits*) |
+| `$042C` | `SpecialItems` | Bit flags; `$08` the Elixir, which saves a death once |
 | `$042D` | `Quests` | Bit flags |
 | `$0431`, `$0432` | `Player_HP_U`, `Player_HP_L` | |
 | `$0438` | `PlayerIsDead` | Set it to 1 and the main loop runs the death path |
 | `$0439` | `TempleSpawnPoint` | Where death respawns and a mantra continues, 0-7. In the original, the furthest temple reached; with Save files, the temple of the Guru last saved with |
+| `$04BC`, `$04BD` | `Arg_PlayerHealthDelta_L`, `_U` | The HP `Player_ReduceHP` takes: fraction, whole |
 | `$0600-$061F` | `Password_EnteredChars` | The mantra screen's characters, as 6-bit values (shares `ScreenBuffer`) |
 | `$0666` | `Password_EnteredCharsLength` | |
 | `$0687` | `DAT_0687` | The title's choice: 0 Start, 1 Continue |
@@ -259,7 +263,10 @@ faxanatools' `messages.py` decodes and encodes them; `fax_travel.c`'s
   `$8140 + t * 16` in ROM; `fax_text_box_rom` draws the frame from there on
   screens whose pattern tables hold something else, like the title.
   `TextBox_Closed` (`$020C`) is 0 while a box or the Select menu is open, and
-  nonzero once one has closed (also before the first).
+  nonzero once one has closed (also before the first). Only `TextBox_Open`
+  and `TextBox_Close` store it by name, yet walking out of a building into the
+  towns (area 3, Forepaw's screen 2) it read 0 with no box up, so a test
+  should not take 0 alone for an open box outside Eolis.
 - **Where boxes go**, in tiles of the 256 x 240 screen (the HUD is rows 0-3),
   as `TextBox_X`, `TextBox_Y`, `TextBox_Width`, `TextBox_Height` (`$0208-$020B`)
   hold them; the frame is inside the size, and text starts 2 tiles in:
@@ -363,10 +370,13 @@ What a feature can rely on, and the traps:
   (setting it back to the stock byte keeps the slot). Guru travel takes 55
   (its 48-byte line slot and 7 step bytes), the Taller dagger 1, and Save
   files shares the slot and adds 5 (4 step bytes and the menu's operand), or
-  8 if it ever ran with Guru travel off (its own 3-byte SAY): 61 to 64 of 64
-  with all three on. Quick shops takes none. A new message for the text box
-  should share the slot, and anything more needs the table made larger or
-  Guru travel's slot cut to its longest line.
+  8 if Guru travel's steps are not served (its own 3-byte SAY): 61 to 64 of
+  64. Block borrows Guru travel's SAY step and slot, and Quick shops takes
+  none. `tools/check_allocations.py` counts every byte claimed in
+  `mods/allocations.toml` once and fails past 64, so the claims, now 64, are
+  the budget. A new message for the text box should share the slot, and
+  anything more needs the table made larger or Guru travel's slot cut to its
+  longest line.
 - An override works on an **immediate operand** in used ROM (the recompiler
   reads immediates at run time), not only on data: Save files changes the
   Buy/Sell menu's `LDA #$10` for one menu. Put such a byte back as soon as it
@@ -377,11 +387,14 @@ What a feature can rely on, and the traps:
   stack first to return somewhere else. That's how Guru travel enters the
   respawn path. When a site handles, later sites at the same address are
   skipped that time, so declare shared addresses in `mods/allocations.toml`.
-  Sites at one address run in the order their callbacks were registered
-  (`nes_mod_function_entry` walks its table in order), which is the order of
-  the features' constructors, so the link order of `HOST_EXTRAS`, not the
-  order of `game.toml`. Write sites that share an address to work in either
-  order.
+  Sites at one address run in the order `game.toml` declares them:
+  `cyc_hooks_fire` (`nesrecomp/runner/cyc/cyc_hooks.c`) walks
+  `cyc_native_hook_sites`, which the recompiler generates in `game.toml`'s
+  order, and stops at the first that handles or leaves the address. The link
+  order of `HOST_EXTRAS` plays no part. Every feature is on at once, so a
+  shared address's `[[shared_site]]` lists its hooks in that order and says
+  why that order is right; `$AB44` depends on it (Sugata's flash's site before
+  Block's). The legacy backend builds no features.
 - **A jump from any site.** Handling pulls the return address from S + 1 and
   S + 2 and goes on at it + 1. So a site anywhere can go anywhere in the same
   routine or another: push the target - 1 (high byte first, as a JSR does)
@@ -406,6 +419,10 @@ What a feature can rely on, and the traps:
   `dpleft`). `action` takes NES names (`a`, `left`, `up`). Durations are in
   frames, so a test that waits on frames and game state, never the clock,
   runs the same uncapped.
+- With `--tcp N` the window prints `[cyc tcp] listening on 127.0.0.1:N`, or
+  `[cyc tcp] cannot listen on port N` and **runs on without TCP**. A client
+  that connects to N then talks to whatever else holds it, another test's
+  game included. `tests/e2e/fax_e2e.py` waits for its own game's line.
 - TCP `action` returns at once and holds the button for its frames, so two
   `action`s sent back to back are held together: `left` then `a` jumps left
   (`tests/speaker/speaker_names.py` climbs the King's stairs that way).
@@ -418,7 +435,8 @@ What a feature can rely on, and the traps:
   about 290 fps, 5x real time. The cycle-accurate machine is the limit; even
   headless runs at about 370 fps.
 - A save state's RAM is in its `HW  ` chunk at offset 23, 2 KiB, with no
-  checksum. Edit it to set up test fixtures (`tests/travel/guru_travel.py`).
+  checksum. Edit it to set up test fixtures (`fixture()` in
+  `tests/e2e/fax_e2e.py`).
 - A site at a **branch** sees the flags the instruction before set, and can
   steer the branch by changing them (and the register they came from) with
   `cyc_mod_set_regs`, then returning 0. Forgiving jumps does this twice, so
@@ -447,8 +465,16 @@ What a feature can rely on, and the traps:
   host's frame numbers, which a loaded state continues; a run with
   `--frames 0` prints the state's frame. The frame log holds every frame's
   CPU RAM (after a `CYCFRAME` and version header, per frame: 9 words, the
-  palette, OAM, then RAM). `--screenshot` saves the last frame.
+  palette, OAM, then RAM). `--screenshot` saves the last frame, and
+  `--save-state F:PATH` saves a state after frame F.
   `tests/movement/play.py` wraps this.
+- The window's TCP server reads every line it has and serves them all before
+  the next frame (`cyc_tcp_poll`, then the held inputs tick, then the frame).
+  So a `load_state` and an `action` sent in one write hold the button from the
+  loaded state's first frame, exactly: TCP input that lands on a chosen frame,
+  in the window. `batch()` in `tests/e2e/fax_e2e.py` sends them;
+  `tests/movement/forgiving_jumps.py` presses on the 2nd frame off a ledge
+  that way.
 - Save a state after a screen has finished scrolling
   (`Screen_ScrollDirection` `$54` is `$FF`): the main loop does not update
   the hero while it scrolls, so a state saved mid-scroll ignores input for a
@@ -456,6 +482,10 @@ What a feature can rely on, and the traps:
 - With the Seamless world on, the hero's routines can run in an isolated
   scope where `cyc_mod_isolated()` is true. A hook that keeps state must leave
   it alone there.
+- With the Seamless world on, a neighboring room's actors keep moving before
+  the hero walks in, so where they are when he arrives depends on how long he
+  took. A test that walks in should put them in place in its save state, as
+  `tests/damage/damage_numbers.py` does with Eolis's Zozura.
 
 ## Far calls (`MMC1_LoadBankAndJump`)
 
@@ -537,10 +567,18 @@ to `StartScreen_CheckHandleInput` (`$9F44`, bank 12), then at
   `Password_Load` has succeeded, and leaves nothing else that
   `Player_Spawn` needs: skipping it (handling its far call) after putting the
   progress in RAM continues as a mantra would.
+- `@_afterCheckHandleInputFarJump` (`$FC7A`) runs once a frame for as long
+  as the title is up, with Save files on or off (its handled
+  `StartScreen_CheckHandleInput` returns there as the RTS would), and never
+  after Start: a hook there that only notes the frame tells a feature the
+  title is up. REMASTERED on the title does that.
 - The picture: the logo and its border fill y 16-143; START and CONTINUE are
-  on y 160-166 and the three notices on 184, 200 and 216, so y 144-239 is
-  free for a box of 12 cells. The background palettes are `$0F $05 $18 $38`
-  (the logo's border), `$0F $17 $27 $30` (the white text), `$0F $0F $16 $28`
+  on y 160-166 and the three notices on 184, 200 and 216, black between.
+  REMASTERED takes y 148-155 (its glyphs light 148-154), and the file select
+  y 160-239, a box of 10 cells over START / CONTINUE and the notices. The
+  background palettes are `$0F $05 $18 $38` (the logo's border; `$38`, light
+  yellow, is its highlights and REMASTERED's color),
+  `$0F $17 $27 $30` (the white text), `$0F $0F $16 $28`
   and `$0F $0F $00 $10`; `UI_AttributeDataIndex` is 1. The playfield's
   pattern table holds the title's tiles, not the text box's, so a box drawn
   there takes the frame from ROM (`HUD_TILES_START`, bank 10; see The text
@@ -633,7 +671,7 @@ and the Glove adds its bonus after either.
 | `$02CC` | `CurrentSprites_Entities` | `$FF` for an empty slot |
 | `$0344` | `CurrentSprites_HP` | Set from `SPRITE_ENTITIES_HP` (`$B5A9`, by entity) when the sprite loads |
 | `$034C` | `CurrentSprites_HitCounter` | 8 on a hit; no new hit until it counts down |
-| `$03BD`, `$03C8` | `SelectedWeapon`, `Player_CurWeapon` | 0 Hand Dagger to 3 Dragon Slayer. `Player_CurWeapon` is `$FF` in buildings |
+| `$03BD`, `$03C8` | `SelectedWeapon`, `Player_CurWeapon` | 0 Hand Dagger to 3 Dragon Slayer. `Player_CurWeapon` is the weapon in hand: `$FF` in buildings in the original (see *Weapons and the menu in buildings*) |
 | `$0428` | `DurationGlove` | `$FF` when not running |
 | `$042C` | `SpecialItems` | Bits: `$01` Black Onyx, `$02` Pendant, `$04` Magical Rod, `$08` Elixir, `$10` Demon's Ring, `$20` Ring of Dworf, `$40` Ring of Ruby, `$80` Ring of Elf |
 
@@ -647,8 +685,10 @@ and `Player_AddExperienceFromSprite` redraws the experience through
 `PPUBuffer_QueueCommandOrLength`, which waits for buffer space
 (`PPUBuffer_WaitForCapacity`). That wait, or a lag frame, can put a frame
 boundary between the two (a host frame ends at VBlank, wherever the CPU is),
-so a read over TCP can see the wrapped HP with the entity unchanged. A test that tells a kill from a hit should wait a frame after the
-HP changes before it reads the entity.
+so a read over TCP can see the wrapped HP with the entity unchanged. A test
+that tells a kill from a hit should read the entity and HP in one `read_ram`,
+call a wrapped HP a kill, and wait (in frames) for the entity to change
+(`tests/pendant/pendant_fix.py`).
 
 **Eolis, for tests.** A new game starts on Eolis (area 0) screen 0, outside
 the gate, with the intro's trigger (`SPRITE_TRIGGER_INTRO`, `$4F`) in sprite
@@ -732,6 +772,66 @@ the swords.
 With the **Taller dagger**, `$B898` is served as `$08` through a read
 override, so the dagger's box is as tall as the swords' and reaches their
 low enemies, from the same short distance as before.
+
+## Weapons and the menu in buildings
+
+In a building (`Area_CurrentArea` 4) the original keeps the weapon out of the
+hero's hand, and the Select menu from equipping anything, in three places.
+Nothing else is gated.
+
+| Address | Code | Does |
+|---|---|---|
+| `$DE06` | `Game_EnterBuilding`: `LDA #$FF`, `STA Player_CurWeapon` | Clears the weapon in hand on every way in: a door (`Player_EnterDoorToInside`, then `Game_SetupEnterBuilding`), `Player_Spawn` (a death, a continue, Guru travel's journey) and the ending's walk to the King (`EndGame_MoveToKingsRoom`, building `$44`). `Game_ExitBuilding` (`$DE66`) sets it from `SelectedWeapon` again |
+| `$EDED` | `Player_SetWeapon` (`$EDEC`): `LDA Area_CurrentArea`, `CMP #$04`, `BEQ @_cannotEquip` (`$EDF1`) | In a building it only stores `SelectedWeapon`: no `Player_CurWeapon`, no `Player_DrawSprite` |
+| `$8B83` | `@_hasInput` in `PlayerMenu_HandleInventoryMenuInput` (bank 12): `LDA Area_CurrentArea`, `CMP #$04`, `BEQ PlayerMenu_HandleInvalidChoice` (`$8B88`) | A on any entry of any list (weapons, armor, shields, magic, items) plays the invalid-choice sound (`$0D`) and keeps the list up |
+
+- **The menu opens indoors.** `GameLoop_CheckShowPlayerMenu` refuses only
+  Eolis's screen 0; in a building only the choice is refused. The menu boxes
+  are `PlayerMenu_Show`'s (2,6, 10 x 14) and, for a list,
+  `PlayerMenu_ShowSubmenu`'s (4,8, 20 x 18); `PlayerMenu_SelectedInventory`
+  (`$020E`) is the list, and `DataArray` its entries.
+- **The hero swings indoors, bare-handed.** `Player_CheckHandleAttack` checks
+  only climbing. `Player_DrawWeapon` and `Player_HitSpriteWithWeapon` return
+  at once without `Player_CurWeapon`, so nothing is drawn or hit. Magic
+  (`Player_CastMagic`) is not gated at all.
+- **The weapon's tiles have room.** `Player_LoadWeaponTilesToPPU` loads them
+  to PPU `$0380` (`$0340` for the Dragon Slayer, whose set has no shield), from
+  `Screen_SetupNew`'s `Player_DrawSpriteImmediately` and from
+  `Player_DrawSprite`. The common sprites load to `$0400-$08FF`
+  (`Sprites_LoadCommon`) and a screen's own from `$0900`, indoors as out. In
+  the shadow OAM the weapon is tiles `$38-$3F` in sprite palette 1.
+- **Townsfolk cannot be hit.** `Player_HitSpriteWithWeapon` and a spell's
+  `Sprite_CheckHitByCastMagic` (`$8ADC`) go on only for `SPRITE_CATEGORIES_BY_ENTITY`
+  (`$B544`, bank 14) 0, an enemy, and 7, a boss. Every NPC (entities `$34-$45`:
+  the sellers, the Gurus, the King, the townsfolk) is 2, whose collision
+  handler is the one Up talks through. They have 0 HP (`SPRITE_ENTITIES_HP`),
+  so were one an enemy, any hit would kill it. A swing at a seller across his
+  counter or at a Guru overlaps him by the game's own reach test and changes
+  nothing (`tests/indoor/indoor_equip.py`). chipx86's comments on the
+  categories table name the entity after each byte's: the byte for `$4F`, the
+  intro's trigger, says "Item: Mattock".
+- **Enemies in buildings.** Eight buildings' sprite lists (bank 11, area 4)
+  hold enemies, all behind doors off the Mist and Dartmoor. In the original
+  the sword passes through them, since no weapon is in hand, and only magic
+  hurts them; they hurt the hero as anywhere.
+
+  | Building | Door | Holds |
+  |---|---|---|
+  | `$1D` | Mist `$06`, block `$93` | Sir Gawaine (`$1F`, 35 HP) at `$87` |
+  | `$1F` | Mist `$06`, `$9B` | The Wing Boots, a Giant Strider |
+  | `$35` | Dartmoor `$02`, `$42` | Sir Gawaine |
+  | `$36` | Dartmoor `$02`, `$45` | A Grimlock |
+  | `$37` | Dartmoor `$02`, `$4B` | A Red Potion, a Grimlock |
+  | `$38` | Dartmoor `$02`, `$4E` | A Maskman |
+  | `$39` | Dartmoor `$03`, `$AC` | Sir Gawaine |
+  | `$43` | Dartmoor `$1F`, `$AD` | Ointment, a Wolfman |
+
+  The Mist's screen 6 also holds temple 3's door (`$1E`, between the two).
+- **For tests:** Forepaw's tool shop (Long Sword 1600) is building `$0F`,
+  through the towns' (area 3) screen 2, block `$9D`, palette `$1B`
+  (`PALETTE_TOWN`); its Tool Seller stands behind the counter as Eolis's does.
+  A building's way in puts the hero at `BUILDING_START_POSITIONS` by its
+  layout (x 224), facing left.
 
 ## Shields and enemy magic (bank 14)
 
@@ -872,6 +972,169 @@ only user of `$1F`:
   through `SpriteUpdateHandler_Invisible` (`$8C98`) hides it that frame. The
   presented picture lags the sprites by a frame or two.
 
+## Damage, dealt and taken (banks 14, 15)
+
+Every loss of HP, an enemy's or the hero's, is one subtraction in one of three
+places. Each has its amount in memory just before it, which is where Damage
+numbers reads it:
+
+| Address | Where | Before it |
+|---|---|---|
+| `$8891` (bank 14) | `Player_HitSpriteWithWeapon`'s `@_updateSpriteHP`: `LDA CurrentSprites_HP,X`, `SEC`, `SBC Temp_00`, `STA`, `BCS @_return` | `Temp_00` the hit's damage (*Weapon damage*), X the sprite |
+| `$81FD` (bank 14) | `Player_HitEnemyWithMagic`'s `@_reduceEnemyHP`, the same five instructions | `Temp_00` the spell's damage: `MAGIC_DAMAGE` (`$B7A0`: 6, 9, 24, 34, 38 for Deluge to Tilte), half again with the Magical Rod, then halved for a resisted spell and **0** for one resisted twice. A 0 still reaches the subtraction |
+| `$C08E` (fixed) | `Player_ReduceHP`: `LDA Player_HP_L`, `SEC` (`$C091`), `SBC Arg_PlayerHealthDelta_L`, ..., `SBC Arg_PlayerHealthDelta_U`, `BCS` alive | `Arg_PlayerHealthDelta_U`/`_L` (`$04BD`/`$04BC`), whole HP and 256ths |
+
+- **On an enemy** the subtraction is 8-bit and a borrow kills, so a kill's
+  damage is usually more than the HP that was left (a Zozura left 1 HP takes a
+  Long Sword's 8). The HP is stored wrapped.
+- **On the hero**, HP is 8.8 fixed point (`Player_HP_U` whole, `Player_HP_L`
+  the fraction). `Player_ReduceHP` is reached from four places (*What killed
+  the hero* tells them apart):
+  `Player_ApplyDamage` (`$8A79`, from `Player_HandleTouchEnemy`, an enemy's
+  or a shot's touch, after its iframe and Ointment checks),
+  `Player_HandleHitByMagic` (`$87DC`, a shot on the shield), Sugata's flash
+  (`$AB44`, which checks neither) and `Player_PickUpPoison` (`$C83C`, 16 HP,
+  after its message). A borrow sets the HP to 0 and uses the Elixir or sets
+  `PlayerIsDead`.
+- **Armor makes fractions.** `Player_ApplyDamage` takes
+  `SPRITE_ENTITY_DAMAGES[entity]` (`$B6D7`) whole HP and, with armor 1-3,
+  subtracts `ARMOR_DEFENSE_MULTIPLIERS` (`$8AD8`: 0, 1, 2, 4) eighths of it
+  (Studded Mail 7/8, Full Plate 6/8, the Battle Suit 4/8), and the Black Onyx
+  one eighth more. So a 3-damage enemy against Full Plate takes 2.25, and the
+  HUD's bar drops by 2 or 3 as the fraction carries. A shot on the shield
+  takes whole HP (`SPRITE_ENTITY_DAMAGES >> (SelectedShield + 1)`), none when
+  that is 0, and the flash and the Poison whole HP too.
+- **A weapon's hit knocks an enemy back.** It sets the enemy's facing
+  (`CurrentSprites_Flags` bit 0) to the hero's and `CurrentSprites_HitCounter`
+  (`$034C`) to 8. While the counter runs, `Sprites_UpdateAll` (`$8000`) runs
+  no behavior or hit checks for it: each frame it decrements the counter and,
+  for every enemy but Tamazutsu, Pakukame and Zorugeriru (`$2C`, `$30`,
+  `$31`), moves it 2 pixels the way it faces
+  (`Sprites_Something_SomethingAndMoveHoriz`, `MoveSpriteHorizIfPossible`):
+  16 pixels away from the hero over the 8 frames, if nothing blocks it. Its
+  place after a hit is where the hit landed plus 2 × (8 − the counter).
+- **The box an enemy is hit in** is `CurrentSprites_XPos_Full`/`_YPos`, its
+  top-left, and `MAYBE_SPRITE_EXTENTS` (`$B407`), width and height by entity
+  × 2, for entities `$00-$64`.
+- A Zozura's touch takes 7 (`SPRITE_ENTITY_DAMAGES[$47]`).
+
+**The HUD's digits** are background tiles `$30-$39` (the HUD writes numbers in
+ASCII): bank 10, `HUD_TILES_START` (`$8140`) + tile × 16. Each is a bold 7×7
+glyph in color 3 with a blank last row and column; the 5 has one color-1
+pixel.
+
+## What killed the hero (bank 14, bank 15)
+
+**Every loss of HP goes through `Player_ReduceHP` (`$C08E`, fixed bank)**,
+which subtracts `Arg_PlayerHealthDelta` (`$04BC` fraction, `$04BD` whole) from
+`Player_HP` (`$0432` fraction, `$0431` whole) as one 16-bit number. A borrow
+kills: it zeroes the HP and sets `PlayerIsDead`, unless `SpecialItems`
+(`$042C`) bit `$08`, the Elixir, is set, when it jumps to `Player_UseElixir`
+instead. HP equal to the damage leaves him alive at 0. Nothing else lowers
+HP (the other writes to `$0431` are the spawn's 80, `Game_LoadFirstLevel`,
+healing and the HUD's cap). It has exactly four callers, found by scanning the
+ROM for `JSR`/`JMP $C08E`:
+
+| Caller | Call | Damage | The hit's source |
+|---|---|---|---|
+| `Player_ApplyDamage` (`$8A79`, bank 14) | `JMP` at `$8AD4` | `SPRITE_ENTITY_DAMAGES[entity]` less armor | The sprite at `CurrentSpriteIndex` (`$0378`): an enemy's, a boss's or a shot's touch, through `Player_HandleTouchEnemy` (`$89AE`) |
+| `Player_HandleHitByMagic` (`$87DC`, bank 14) | `JMP` at `$87FD` | A shot's damage, shifted down by the shield | The shot at `CurrentSpriteIndex`, on the shield |
+| `SpriteBehavior_FlashScreenHitPlayer` (bank 14) | `JSR` at `$AB5D`, resumes at `$AB60` | 10 | Sugata's flash |
+| `Player_PickUpPoison` (`$C83C`, fixed bank) | `JSR` at `$C85D`, resumes at `$C860` | 16 | The Poison, after its "I've touched Poison." (message `$BB`, IScript `$91`) |
+
+So at `Player_ReduceHP`'s entry the word at S + 1 tells the Poison and the
+flash apart (the two `JMP` callers leave their caller's return there), and
+`CurrentSprites_Entities[CurrentSpriteIndex]` (`$02CC` + slot, 8 slots, `$FF`
+empty) is everything else. `CurrentSprite_CheckHitPlayer` sends a touch to a
+handler by `SPRITE_CATEGORIES_BY_ENTITY` (`$B544`): 0 enemy and 7 boss to
+`Player_HandleTouchEnemy`, 6 magic to `Player_HandleTouchEnemyMagic`; the
+others (bread, NPCs, effects, triggers, items) do no harm.
+
+**Shots and rocks are sprites spawned by other sprites, and every such spawn
+goes through `Sprite_Maybe_ResetState` (`$A202`, bank 14)** with X the
+spawner's slot and Y the new one, its entity already stored. All seven of its
+callers store a new entity at `CurrentSprites_Entities,Y` and `JMP` there:
+
+| Spawned | Damage | By | Code |
+|---|---|---|---|
+| `$03` (a falling rock, chipx86's "Enemy: ?") | 31 | Zorugeriru (`$31`) | `SpriteBehavior_Zorugeriru__9e13` |
+| `$09` Lilith | 6 | Pakukame (`$30`) | `SpriteBehavior_Pakukame` |
+| `$0A` (fire) | 28 | Ripasheiku (`$2D`), King Grieve (`$32`) | `Sprite_CastMagic` (`$A0F6`), from both behaviors |
+| `$51` (a shot) | 8 | Nash (`$0D`), Ishiisu (`$0F`), Execution Hood (`$10`) | `FUN_PRG14__a0a0`, which falls into `SpriteBehavior_ExecutionHood__a0ad` |
+| `$53` (fire) | 28 | Shadow Eura (`$33`) | `SpriteBehavior_ShadowEura__a12d` |
+| `$54` (a fireball) | 8 | Charron (`$15`) | `BScript_Action_CastMagic` (`$9239`), behavior-script action 7. `FUN_PRG14__a1cc` also makes one and has no caller |
+
+- **chipx86's comments in two tables are off by one.**
+  `SPRITE_CATEGORIES_BY_ENTITY`'s skip Zorugeriru, so from `$31` on each
+  comment names the entity before (its values are right: `$31`-`$33` are
+  bosses, `$46` and `$47` enemies). `SPRITE_BSCRIPTS`' put Charron's script at
+  `$14` (the lightning ball): entity `$15`, Charron, runs
+  `BSCRIPTS_ENEMY_UNUSED_21`, the script that casts. The `SPRITE_*` constants
+  in `DEFS.asm` and `SPRITE_UPDATE_HANDLERS`' comments are right.
+- **The death plays out over 256 frames.** `Player_HandleDeath` (`$D8EC`)
+  plays sound `$16` and loops once a frame until `Screen_TransitionCounter`
+  (`$03DB`) wraps, dissolving the hero (`Player_DrawDeathAnimation`), then
+  runs the Guru's words. Nothing reads the pad in between.
+- **The NES manual names no enemy.** The USA instruction booklet (27 pages,
+  archive.org's `NESManuals` scan) names places, items and titles: of what
+  hurts, only the Poison ("The hero's power will decrease by a fixed
+  amount"). The names below are chipx86's `SPRITE_*` constants, written as a
+  player would say one of them; StrategyWiki's enemy list spells them the
+  same, but for "Mask Man" and "Wolf Man".
+
+**The names Slain by uses** (`fax_slain.c`), for every entity that can hurt
+the hero. The unused enemies (`$12`, the snake boss's round body, `$16`,
+`$1D`, `$24`, `$25`, `$27`, `$29`, `$2B`, `$46`) appear on no screen and are
+spawned by nothing, so they have none.
+
+| Entity | chipx86 | Shown | Where, for a test |
+|---|---|---|---|
+| `$04` | `SPRITE_ENEMY_RAIDEN` | a Raiden | |
+| `$05` | `SPRITE_ENEMY_NECRON_AIDES` | a Necron Aide (one of them) | |
+| `$06` | `SPRITE_ENEMY_ZOMBIE` | a Zombie | Trunk `$06` |
+| `$07` | `SPRITE_ENEMY_HORNET` | a Hornet | |
+| `$08` | `SPRITE_ENEMY_BIHORUDA` | a Bihoruda | |
+| `$09` | `SPRITE_ENEMY_LILITH` | a Lilith | |
+| `$0B` | `SPRITE_ENEMY_YUINARU` | a Yuinaru | |
+| `$0C` | `SPRITE_ENEMY_SNOWMAN` | a Snowman | |
+| `$0D` | `SPRITE_ENEMY_NASH` | a Nash | Mist `$2A`, its only screen |
+| `$0E` | `SPRITE_ENEMY_FIRE_GIANT` | a Fire Giant | |
+| `$0F` | `SPRITE_ENEMY_ISHIISU` | an Ishiisu | |
+| `$10` | `SPRITE_ENEMY_EXECUTION_HOOD` | an Execution Hood | Zenis `$10`, its only screen (see *Shields and enemy magic*) |
+| `$11` | `SPRITE_BOSS_ROKUSUTAHN` | a Rokusutahn | |
+| `$15` | `SPRITE_ENEMY_CHARRON` | a Charron | |
+| `$17` | `SPRITE_ENEMY_GERIBUTA` | a Geributa | |
+| `$18` | `SPRITE_ENEMY_SUGATA` | a Sugata (its touch or its flash) | Mist `$1E` (see *Sugata's flash*) |
+| `$19` | `SPRITE_ENEMY_GRIMLOCK` | a Grimlock | |
+| `$1A` | `SPRITE_ENEMY_GIANT_BEES` | a Giant Bee (one of them) | |
+| `$1B` | `SPRITE_ENEMY_MYCONID` | a Myconid | |
+| `$1C` | `SPRITE_ENEMY_NAGA` | a Naga | |
+| `$1E` | `SPRITE_ENEMY_GIANT_STRIDER` | a Giant Strider | |
+| `$1F` | `SPRITE_ENEMY_SIR_GAWAINE` | a Sir Gawaine | |
+| `$20` | `SPRITE_ENEMY_MASKMAN` | a Maskman | |
+| `$21` | `SPRITE_ENEMY_WOLFMAN` | a Wolfman | |
+| `$22` | `SPRITE_ENEMY_YAREEKA` | a Yareeka | |
+| `$23` | `SPRITE_ENEMY_MAGMAN` | a Magman | |
+| `$26` | `SPRITE_ENEMY_IKEDA` | an Ikeda | |
+| `$28` | `SPRITE_ENEMY_LAMPREY` | a Lamprey | |
+| `$2A` | `SPRITE_ENEMY_MONODRON` | a Monodron | Trunk `$00`, where the Trunk's door from Eolis arrives |
+| `$2C` | `SPRITE_ENEMY_TAMAZUTSU` | a Tamazutsu | |
+| `$2D` | `SPRITE_BOSS_RIPASHEIKU` | a Ripasheiku | Trunk `$15`, the Tower of Trunk's top: a building's door edited to area 1, screen `$15`, palette `$07`, position `$91`, region 1 arrives in its room |
+| `$2E` | `SPRITE_BOSS_ZORADOHNA` | a Zoradohna | |
+| `$2F` | `SPRITE_BOSS_BORABOHRA` | a Borabohra | |
+| `$30` | `SPRITE_BOSS_PAKUKAME` | a Pakukame | |
+| `$31` | `SPRITE_BOSS_ZORUGERIRU` | a Zorugeriru (and its rocks) | Trunk `$3B` |
+| `$32` | `SPRITE_BOSS_KING_GRIEVE` | King Grieve (his fire too) | Dartmoor `$15`, `$16` |
+| `$33` | `SPRITE_BOSS_SHADOW_EURA` | Shadow Eura (its fire too) | Zenis `$00` |
+| `$47` | `SPRITE_ENEMY_ZOZURA` | a Zozura | Zenis `$10`, Trunk `$02` |
+| `$03`, `$0A`, `$51`, `$53`, `$54` | rocks and shots | whoever spawned it, from the table above | |
+| | `Player_PickUpPoison` | Poison | message `$BB`, "I've touched Poison." |
+
+"a" or "an" goes by the name's first sound; King Grieve and Shadow Eura, the
+two with a name of their own, take none. The longest line, "Slain by an
+Execution Hood", is 26 characters: 30 tiles with the banner's blanks and
+frame, inside the screen's 32.
+
 ## The hero's movement (bank 15)
 
 `GameLoop_UpdatePlayer` (`$E0CA`) runs once a frame, unless the screen is
@@ -1009,6 +1272,12 @@ walk's 7, which changes the sprite rotation the next frame.
     runs its script when the changed mask is exactly Up (`$08`).
   - `GameLoop_CheckShowPlayerMenu` (Select) and `GameLoop_CheckPauseGame`
     (Start).
+- **So one Up from a test can go unseen.** It counts on one pass only, and
+  `GameLoop_UpdatePlayer` skips the door check while the screen scrolls
+  (`Screen_ScrollDirection` below 4) and finds no door off its block, where an
+  enemy's knockback can leave the hero. Press until the door's line or the
+  speaker's portrait shows (`tests/zones/zone_names.py`,
+  `tests/speaker/speaker_names.py`).
 - **Casting.** `Player_CastMagic` runs the spell's handler instead while one
   is on screen (`CastMagic_Type` positive), and does nothing while climbing
   (`Player_IsClimbing`: `Player_Flags` `$08` and `$10`). Otherwise it casts
@@ -1083,7 +1352,10 @@ Other ways between screens and areas, in bank 15:
 - A screen has finished loading and is not scrolling when
   `Screen_ReadyState` (`$0E`) is 0, `Game_InterruptHandlersEnabled` (`$13`)
   is set and `Screen_ScrollDirection` (`$54`) is `$FF`. On the title screen
-  `$54` is 0. `Game_PausedState` (`$0120`) is 1 while Start pauses.
+  `$54` is 0. `Game_PausedState` (`$0120`) is nonzero while Start pauses:
+  `GameLoop_CheckPauseGame` stores 1, and the sound engine
+  (`Music_HandleOnInterrupt`, bank 5) sets bit 7 once it has muted, so it
+  reads `$81` from then on.
 
 Who and what is on each screen is in bank 11, `AREA_SPRITE_ADDRESSES`: for
 each screen, (entity, `YX`) pairs to a `$FF`, then the NPCs' interaction
@@ -1221,8 +1493,8 @@ replays any entrance. `Game_SetupExitBuilding` (`$DABE`) wraps it as the
 other `Game_Setup*` do and returns, so a prepared stack can return into it and
 then into `Game_MainLoop`.
 
-**Zone respawn** (`fax_respawn.c`) uses four sites, none shared, so the link
-order of features' hooks never matters to it:
+**Zone respawn** (`fax_respawn.c`) uses four sites, none shared, so the order
+of hooks at one address never matters to it:
 
 - `Screen_SetupNew` (`$DD13`): a load into a different zone records the way
   in as the checkpoint. A building (area 4) changes nothing: its way out
@@ -1458,14 +1730,18 @@ script), the A and Jo keys (gifts), the Poison, or the last fight's gear.
    returns C clear and B C set. Select and the rest are ignored.
 3. B ends the script at once (`$83FF`: `JMP IScriptAction_EndScript`), with
    no line.
-4. A: `Shop_GetPlayerHasSelectedItem` (`$8482`) refuses a weapon, armor,
+4. A (`$8402`, the `BCC` target after the wait at `$83FA`):
+   `Shop_GetPlayerHasSelectedItem` (`$8482`) refuses a weapon, armor,
    shield or spell the hero has (in hand or in its list), and a SpecialItems
    item (rings, Elixir, Magical Rod, Pendant, Black Onyx) he has. Other items
    can be bought again and again, until their list is full
-   (`MAX_INVENTORY_SLOTS`, `$847D`: 4, 4, 4, 4, 8). Either refusal closes the
-   list and ends with "You can't carry any more." (`$06`, at `$8469`).
-   Then `IScripts_CheckEnoughMoney`; short, "This is not enough Golds."
-   (`$03`, `IScripts_ShowNotEnoughMoney`, `$837C`).
+   (`MAX_INVENTORY_SLOTS`, `$847D`: 4, 4, 4, 4, 8): an Items ID has bit 7
+   set, the routine compares it only with the eight special IDs, and returns
+   C clear. So a hero holding Wing Boots, the Hour Glass, a key or the Mattock
+   can buy another (checked in the game: Forepaw's shop sold a second pair).
+   Either refusal closes the list and ends with "You can't carry any more."
+   (`$06`, at `$8469`). Then `IScripts_CheckEnoughMoney`; short, "This is not
+   enough Golds." (`$03`, `IScripts_ShowNotEnoughMoney`, `$837C`).
 5. Bought: `Player_AddToInventory`, then `IScripts_ProgressivelySubtractGold`
    takes 10 Golds a frame and then waits 60 frames, then (`$8463`)
    `Maybe_Shop_DrawTextBox` (`$8471`: two frames, close the list, open the
@@ -1525,6 +1801,30 @@ they are refused even if one were. The selected item and what is equipped are
 in no list either, as in the original. The rest are safe to sell: every other
 key, the Mattock, the Wing Boots and the potions can be bought again, and the
 A and Jo keys' givers hand out another to a hero without one.
+
+**What the hero owns, with Quick shops.** An item he already has for good keeps
+its row in every buy list, so the list, its cursor positions and its pages are
+the shop's own, but shows **OWNED** where its price was; the hint reads
+"Already owned" while the cursor is on it, and A on it does nothing: a hook at
+`$8402`, before `Shop_GetPlayerHasSelectedItem`, re-enters the wait at `$83FA`
+by return, so no gold is taken and no refusal shows. Owned
+(`fax_shops_owned`):
+
+| Item | Kept by | Owned when |
+|---|---|---|
+| Wing Boots, Hour Glass | Recharging items | He has it: selected, or in the Items list |
+| The A, K, Q, J and Jo keys, the Mattock | Reusable tools | He has it |
+| Elixir | Recharging items | Charged (its `SpecialItems` bit) or spent |
+
+The rule asks each keeper whether it is on (`fax_recharge_on`,
+`fax_reusable_tools_on`), so an item counts only while it is kept; in the one
+mod they always are. A charged Elixir counts either way, since the game refuses
+a second. Shops sell only the J, Q and K keys; the A and Jo keys are in the
+rule for completeness. OWNED is five letters, in the five cells `Shop_Draw`
+gives a price (column 23, an entry's second row, right-aligned), painted over
+the price as an unsellable item's is. The sell list is unchanged: an owned item
+sells, at its price. Weapons, armor, shields and spells the hero has are not
+marked: the game refuses them ("You can't carry any more."), as before.
 
 ## Doors and keys
 
@@ -1653,11 +1953,15 @@ jumping or falling, `Player_Flags & $05`):
   from `Game_Start` and `Player_Spawn`, so every death ends them, but not on a
   Guru travel journey, which enters `Player_Spawn` past it: a flight or a
   freeze carries on in the other temple.
-- **Shops never sell what you hold.** `Shop_GetPlayerHasSelectedItem` (`$8482`, bank 12) refuses
-  any item already selected or listed, and a special item whose bit is set,
-  with "You can't carry any more." (message `$06`). In the original, then, a
-  second pair of Wing Boots or a second Hour Glass came only from the world:
-  `Player_PickUpItem` adds a duplicate like anything else.
+- **Shops sell a second.** `Shop_GetPlayerHasSelectedItem` (`$8482`, bank
+  12) refuses only a weapon, armor, shield or spell already selected or
+  listed, and a special item whose bit is set ("You can't carry any more.",
+  message `$06`). The Wing Boots and the Hour Glass are Items, so a shop sells
+  a hero holding them another, until his list is full (checked in the game:
+  Forepaw sold a second pair). An earlier note here said shops never sell
+  what you hold; that holds only for the Elixir. `Player_PickUpItem` adds a
+  duplicate too. With the remaster, a find recharges instead, and Quick
+  shops lists a pair or an Hour Glass he has as owned (see *Shops*).
 
 | Item | Shops | In the world (bank 11's lists: area, screen, block `YX`) |
 |---|---|---|
@@ -1711,7 +2015,11 @@ ends within a second of walking onto it (checked too).
 clears the bit, runs script `$85` ("I've used Elixir.") and refills HP and MP;
 clear, it sets `PlayerIsDead`. The menu's Player page draws a picture for each
 `SpecialItems` bit, the Elixir's included, on its last row. A mantra keeps
-the bit.
+the bit. With recharging items a spent Elixir is still the hero's
+(`fax_recharge_elixir_spent`), so Quick shops lists it as owned, as it does a
+charged one. Its bit is clear, so the game's own shop would sell one to a spent
+Elixir; through Quick shops, buying one never charges it. A Guru, or one found
+in the world, does.
 
 **Flying.** While `Player_StatusFlag` has `$80` and A is held,
 `Player_CheckHandleVertMovement` (`$E2C8`) treats the hero as on a ladder
@@ -1776,8 +2084,16 @@ rest of the way to Victim, were not checked.
 
 ## Features and what they use
 
-`mods/allocations.toml` lists each feature's ROM, hook sites and shared
-addresses, and `tools/check_allocations.py` enforces it.
+Each feature's C is in `src/` (`src/fax_<name>.c`), and `src/cyc_extras.c`
+calls each one from the host. `mods/allocations.toml` lists each feature's ROM,
+hook sites and shared addresses, and `tools/check_allocations.py` enforces it.
+
+Every feature below is a trusted plugin of the one Faxanadu Remastered mod
+(`mods/preloaded/packages/faxanadu.remastered`, feature `remastered`), so
+they are on or off together, and may rely on each other. Each still checks
+its own `enabled` flag, which the mod runtime sets for all of them at once:
+"with X off" below means with the remaster off, or X turning itself off on an
+unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
 
 - **Guru travel** (`fax_travel.c`). After the mantra or a new title, the Guru
   says "All Gurus / meditate as one." and offers "Shall I send / you to
@@ -1820,7 +2136,23 @@ addresses, and `tools/check_allocations.py` enforces it.
   settled. A temple whose way out is not where the hero last stood means a
   respawn or a Guru travel journey, and makes the next zone's name show. The
   banner is held while a box is open or the game is paused. Its save-state
-  record keeps the banner as it was.
+  record keeps the banner as it was. Its drawing, `fax_banner_draw`, takes any
+  line, so Slain by draws in the same box.
+
+- **Slain by** (`fax_slain.c`, drawn by `fax_banner.c`). When a hit takes the
+  hero's last HP, the banner says what it came from, "Slain by a Sugata", from
+  that frame through the dissolve, fading out at frame 248 of its 256, before
+  the Guru speaks, and puts away any zone name showing. Two hooks, both only
+  observing (see *What killed the hero*): at `Player_ReduceHP` (`$C08E`) it
+  names the source of a hit that kills (HP below the damage, no Elixir), and
+  at `Sprite_Maybe_ResetState` (`$A202`) it keeps each slot's spawner, which
+  names a shot or a rock; a slot forgets it when its sprite goes. A shot whose
+  spawn it never saw (with Seamless on, a neighboring room's) is named by the
+  only kind of caster of it on screen, or not at all. A death nothing caused
+  names nothing. Both hooks keep no state in Seamless's isolated rooms. Its
+  save-state record is the line and its age, and each slot's spawn (21
+  bytes). It loads the game's font itself, so it does not rely on Zone names
+  having drawn first.
 
 - **Speaker names** (`fax_speaker.c`, with `fax_zone.c` and `fax_text.c`).
   While a portrait's frame is on screen, the speaker's name sits on a tab
@@ -1833,6 +2165,17 @@ addresses, and `tools/check_allocations.py` enforces it.
   characters loses the tab's blank cells, so no tab is wider than the dialogue
   box. No hooks, no ROM, no state: it reads RAM and the nametable when the
   picture is presented, and draws after Seamless and zone names.
+- **REMASTERED on the title** (`fax_title.c`, with `fax_text.c`). The word
+  under the logo, centered on it (x 88-167 natively), on y 148-155, in the
+  dialogue font and palette entry 3 (`$38`, the logo's light yellow), drawn
+  over the presented picture after speaker names and before Save files' file
+  select. A hook at `@_afterCheckHandleInputFarJump` (`$FC7A`) that only
+  observes notes each frame the title's loop runs; the word shows on the
+  presents after such a frame, so it goes with the frame Start leaves the
+  loop. In a wider picture (Seamless, the wide modes) it follows the native
+  picture's origin; a picture scaled smaller than the native one is left
+  alone. Its save-state record is whether the loop ran last frame, so a state
+  loaded on the title shows the word before a frame runs. No ROM.
 
 - **Auto keys** (`fax_keys.c`). Up at a locked door opens it with its key from
   anywhere in the inventory. At `Game_RunDoorRequirementHandler` it lends the
@@ -1889,8 +2232,8 @@ addresses, and `tools/check_allocations.py` enforces it.
   its stock value.
 - **Recharging items** (`fax_recharge.c`, with the use-up list in
   `fax_items.h`). The Wing Boots and the Hour Glass are kept and recharge, and
-  the Elixir is kept and a Guru charges it again. All its sites are in the
-  fixed bank:
+  the Elixir is kept and a Guru charges it again. Its sites are in the fixed
+  bank, but for `$826E` in bank 12 (below):
   - `Player_UseWingBoots` and `Player_UseHourGlass`, at entry: not ready, it
     plays the "invalid choice" sound (`$0D`, `Sound_PlayEffect` in a committed
     call) and returns to the main loop as the routine's RTS would.
@@ -1906,11 +2249,12 @@ addresses, and `tools/check_allocations.py` enforces it.
     cooldown (else the Wing Boots', else the Hour Glass's), blank 16 frames in
     64, queued through the PPU buffer as `UI_DrawTimeValue` queues it, when
     `PPUBuffer_HasCapacity` would allow it. A spent Elixir whose bit came back
-    (bought or found) is charged.
+    (found) is charged.
   - `Player_UseElixir`: the Elixir is spent. `SpecialItems`' bit stays the
-    game's own "a revive is in reserve", so `Player_ReduceHP`, the Player page,
-    the shops and the Spring of Trunk all go by whether it is charged: a shop
-    sells one only to a spent Elixir, which charges it at the shop's price.
+    game's own "a revive is in reserve", so `Player_ReduceHP`, the Player page
+    and the Spring of Trunk go by whether it is charged.
+  - No shop charges a spent Elixir: Quick shops lists it as owned
+    (`fax_recharge_elixir_spent`) and ignores A on it.
   - `Player_PickUpItem`, with A the Wing Boots or the Hour Glass and the hero
     holding one (selected or listed): ready at once, and nothing added, even
     with the list full. Found during a run, the run goes on and no cooldown
@@ -1991,14 +2335,48 @@ addresses, and `tools/check_allocations.py` enforces it.
   anything else, it leaves the site to Block; Ointment running, the flash's
   own sound, iframes and knockback without `Player_ReduceHP`; otherwise the
   game's 10 HP. Two reflections kill Sugata (more than its 22 HP). Its
-  save-state record is each slot's warning count and the band.
+  save-state record is each slot's warning count and the band. A
+  reflection's committed call runs no hooks, so it reports its 12 to Damage
+  numbers itself (`fax_damage_enemy_hit`), before the call, while the sprite
+  is still Sugata.
+- **Damage numbers** (`fax_damage.c`). Every hit that takes HP shows how much,
+  in the HUD's digits (see *Damage, dealt and taken*), rising a pixel every 3
+  frames from 8 pixels above the box it landed on, centered (the enemy's
+  extents box; the hero's 16 × 32), for 60 frames, fading over the last 16:
+  color 3 of sprite palette 1, the shield's `$00 $25 $30`, which every area
+  has: white (`$30`) for damage dealt, pink (`$25`) for damage taken, read
+  from palette RAM so they fade with the screen, outlined in `$0F`. Three
+  sites, all observing (return 0): `$8891` and `$81FD` take `Temp_00` and X,
+  and `Player_ReduceHP`'s `SEC` (`$C091`, not its entry) takes
+  `Arg_PlayerHealthDelta`, rounded to the nearest whole HP and at least 1, so
+  the same enemy always shows the same number though the bar's drop varies
+  with the fraction. An amount of 0 shows nothing, and a hit the game stops
+  (iframes, Ointment, Block, a shield that takes all of a shot) never gets
+  there. A kill shows the hit's whole damage. Inside an isolated machine
+  (Seamless's neighboring rooms, where Sugata's flash still runs) nothing
+  shows. A number belongs to the area and room it landed in: Seamless draws
+  it at that room's place (`fax_world_room_origin`), so it stays put in the
+  world as the camera moves, and the original view only on its own screen,
+  and not while the screen scrolls; another area (a door, a building) drops
+  it. A new number stays where its hit landed and moves any older one in the
+  same room that it would touch out of the way, up if that one was higher,
+  else down, with two rows between outlines; as every number rises at one
+  pace, they never meet after. At most 16 show; a new one replaces the
+  oldest. They hold while `TextBox_Closed` is 0 or `Game_PausedState` is
+  nonzero, hide while a box is open, never cover the HUD, and while
+  `Player_HP_U` is 0 (from a killing hit until the respawn) keep below the
+  zone banner's box (8 to 32 pixels under the HUD), where Slain by
+  (`fax_slain.c`) says what killed him.
+  Drawn after Sugata's band, so it does not grey them, and before the zone
+  banner, which covers them. Its save-state record holds the numbers (16 bytes
+  each), and a state loaded with the remaster off restores none.
 - **Quick shops** (`fax_shops.c`). Up on a shopkeeper opens his buy list at
   once, Select switches to the sell list and back, a purchase or a sale keeps
   the list up with the cursor where it was, and B leaves. A shop buys
   anything carried (see *Shops*), 8 to a page: Up from the top or Down from
   the bottom turns the page. No ROM and no read overrides. It steers the
   script at `IScripts_InvokeNextAction` (its first action goes to BUY; BUY + 3
-  and SELL + 3 go back to their list) and jumps by return at seven sites of
+  and SELL + 3 go back to their list) and jumps by return at eight sites of
   its own: OpenShop's entry, past "What would you like?" to `$83EA`;
   `$8463`, past the purchase's close; `$86BC`, where it replaces the sell
   scan's list with a page of everything carried and goes on at `Shop_Draw`
@@ -2011,13 +2389,17 @@ addresses, and `tools/check_allocations.py` enforces it.
   `Maybe_Shop_DrawTextBox` to `IScriptAction_EndScript`, so the list is closed
   when the script ends, as after the original's purchase, and a line Block
   adds there (its tutorial, after the first shield) shows in the dialogue box;
-  and `$838E`, where a shop's message goes back to the list. Presses while a
-  list is drawn, or the gold counts, are lost, as in the original: the game
-  reads the pad only in the list's wait. The hint line ("Select to sell", "Select to
-  buy", "Not for sale") is drawn on the list's row 26 and the page ("1 of 2")
-  on row 9, at present time, while the list's four frame corners show; an
-  unsellable item's price cells are painted the box's inside. Its save-state
-  record holds the conversation (17 bytes).
+  `$838E`, where a shop's message goes back to the list; and `$8402`, the buy
+  list's A, back to the wait (`$83FA`) for an item the hero owns (see
+  *Shops*), which it asks reusable tools and recharging items about
+  (`fax_reusable_tools_on`, `fax_recharge_on`, `fax_recharge_elixir_spent`).
+  Presses while a list is drawn, or the gold counts, are lost, as in the
+  original: the game reads the pad only in the list's wait. The hint line
+  ("Select to sell", "Select to buy", "Not for sale", "Already owned") is drawn
+  on the list's row 26 and the page ("1 of 2") on row 9, at present time,
+  while the list's four frame corners show; an unsellable item's price cells
+  are painted the box's inside, and an owned item's too, with OWNED in them.
+  Its save-state record holds the conversation (17 bytes).
 - **Zone respawn** (`fax_respawn.c`). Dying comes back at the last entrance
   into the zone (tower, castle, town or region) the hero died in, after the
   Guru's words, instead of at the temple. A hook at `Screen_SetupNew` records
@@ -2030,6 +2412,16 @@ addresses, and `tools/check_allocations.py` enforces it.
   temple is laid out as before, and the checkpoint is forgotten until the hero
   walks out. Its save-state record holds the checkpoint and where a death is
   (see "Entrances and zone respawn").
+- **Equip indoors** (`fax_indoor.c`). The Select menu equips anything in a
+  building, and the hero keeps his weapon in hand there (see *Weapons and the
+  menu in buildings*). At `$DE0B`, right after `Game_EnterBuilding` clears
+  `Player_CurWeapon`, it sets it from `SelectedWeapon`, before
+  `Screen_SetupNew` loads the hero's tiles; at `Player_SetWeapon`'s `BEQ`
+  (`$EDF1`) and the menu's (`$8B88`, bank 12) it clears Z, so both go on as
+  outdoors. The game then draws the weapon and swings it with its own code.
+  When Zone respawn swaps `Game_SetupExitBuilding` in at `$DAAF`, `$DE0B` is
+  not reached, and that loader sets the weapon itself. No ROM, no read
+  overrides, no state.
 - **Fair entrances** (`fax_entrances.c`). The enemies placed where a way onto
   their screen puts the hero, so they hit him before anyone could react, start
   on another block (table in "Enemy placement and fair entrances"). A hook at
@@ -2078,7 +2470,10 @@ kept: continuing fills HP and MP and clears the timed items, as a mantra did.
 
 **The file select.** A hook at `StartScreen_CheckHandleInput` runs it instead
 of the title's own input (see The title screen), and the file select is drawn
-over the picture below the logo. Up and Down move, A or Start take a file:
+over the picture: a box of 10 cells on y 160-239, over START / CONTINUE and
+the notices, with two rows a file (its name, then its gold and experience), a
+blank and "Erase a file". It leaves y 144-159, the black between it and the
+logo, to REMASTERED on the title. Up and Down move, A or Start take a file:
 an empty one starts a new game through the stock Start path (nothing is
 written until the first save), a saved one continues. "Erase a file" picks a
 file, then asks "Erase file N? A yes B no"; B steps back.

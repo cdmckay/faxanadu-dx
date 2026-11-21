@@ -425,8 +425,8 @@ bytes = "ad c7 03 10 fa ad c8 03 30 f5 a5 a7"
 # Quick shops (fax_shops.c): a shop's script and its two list actions,
 # IScriptAction_OpenShop and IScriptAction_ShowSellMenu, steered at their
 # steps: the first action, "What would you like?", the list kept up after a
-# purchase or a sale, the sell list's contents, its A, the menu's input each
-# frame, and the end of a shop's message.
+# purchase or a sale, the sell list's contents, each list's A, the menu's
+# input each frame, and the end of a shop's message.
 
 [[mod_function_hook]]
 id = "faxanadu.shops.next-action"
@@ -475,6 +475,12 @@ id = "faxanadu.shops.final"
 addr = 0x838e
 bank = 12
 bytes = "4c b4 82 20 a4 87 cd 39 04 90 03 8d"
+
+[[mod_function_hook]]
+id = "faxanadu.shops.buy-pick"
+addr = 0x8402
+bank = 12
+bytes = "20 82 84 b0 62 ae 1e 02 bd 20 02 c9"   # IScriptAction_OpenShop's A: JSR Shop_GetPlayerHasSelectedItem
 
 # Zone respawn (fax_respawn.c): every screen load (the way into a zone), the
 # death path after the Guru's words, Player_Spawn's JSR Game_SpawnInTemple,
@@ -568,6 +574,77 @@ id = "faxanadu.recharge.guru"
 addr = 0x826e
 bank = 12
 bytes = "20 a4 87 aa bd 93 82 48 bd 7b 82 48"   # IScripts_InvokeNextAction: a Guru's first action charges the Elixir
+
+# Slain by (fax_slain.c): every loss of HP, and every sprite another spawns
+# (a shot, a rock). Both only observe.
+
+[[mod_function_hook]]
+id = "faxanadu.slain-by.reduce-hp"
+addr = 0xc08e
+bank = 15
+bytes = "ad 32 04 38 ed bc 04 8d 32 04 ad 31"
+
+[[mod_function_hook]]
+id = "faxanadu.slain-by.spawn"
+addr = 0xa202
+bank = 14
+bytes = "8a 48 b9 cc 02 0a aa bd 2d ad 99 54"
+
+# REMASTERED on the title (fax_title.c): Game_ShowStartScreen's loop, after
+# the far call to StartScreen_CheckHandleInput (which Save files takes over),
+# notes once a frame that the title is up. It only observes.
+
+[[mod_function_hook]]
+id = "faxanadu.title-remastered.loop"
+addr = 0xfc7a
+bank = 15
+bytes = "a5 19 29 10 f0 ee a9 08 85 fa ad 87"   # @_afterCheckHandleInputFarJump: LDA Joy1_ChangedButtonMask, AND #$10
+
+# Equip indoors (fax_indoor.c): Game_EnterBuilding right after it clears the
+# weapon in hand, where the hook puts SelectedWeapon back, and the two area
+# checks that refuse a weapon (Player_SetWeapon) and any menu choice
+# (PlayerMenu_HandleInventoryMenuInput) in a building: their BEQ, whose Z the
+# hook clears.
+
+[[mod_function_hook]]
+id = "faxanadu.indoor-equip.enter"
+addr = 0xde0b
+bank = 15
+bytes = "ad d1 03 85 fa a5 24 8d d5 03 a5 63"
+
+[[mod_function_hook]]
+id = "faxanadu.indoor-equip.set-weapon"
+addr = 0xedf1
+bank = 15
+bytes = "f0 0c 68 8d bd 03 8d c8 03 20 45 ed"
+
+[[mod_function_hook]]
+id = "faxanadu.indoor-equip.menu"
+addr = 0x8b88
+bank = 12
+bytes = "f0 5b ad 0e 02 c9 03 b0 3d ad bd 03"
+
+# Damage numbers (fax_damage.c): the weapon's and magic's subtraction from an
+# enemy's HP (Temp_00 the damage, X the sprite), and Player_ReduceHP's after
+# its first load (Arg_PlayerHealthDelta still to take). All three only observe.
+
+[[mod_function_hook]]
+id = "faxanadu.damage-numbers.weapon"
+addr = 0x8891
+bank = 14
+bytes = "bd 44 03 38 e5 00 9d 44 03 b0 2a bd"   # Player_HitSpriteWithWeapon's @_updateSpriteHP
+
+[[mod_function_hook]]
+id = "faxanadu.damage-numbers.magic"
+addr = 0x81fd
+bank = 14
+bytes = "bd 44 03 38 e5 00 9d 44 03 b0 25 bd"   # Player_HitEnemyWithMagic's @_reduceEnemyHP
+
+[[mod_function_hook]]
+id = "faxanadu.damage-numbers.hero"
+addr = 0xc091
+bank = 15
+bytes = "38 ed bc 04 8d 32 04 ad 31 04 ed bd"   # Player_ReduceHP's SEC, SBC Arg_PlayerHealthDelta_L
 
 # Fair entrances (fax_entrances.c): Sprites_PopulateNextAvailableSprite, called
 # by Screen_LoadSpriteInfo for each (entity, YX) pair of the screen's bank 11

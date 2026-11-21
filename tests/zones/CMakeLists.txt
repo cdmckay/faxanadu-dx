@@ -7,7 +7,7 @@ endif()
 # fax_zone.c, fax_text.c and fax_banner.c are included by the test, against a
 # model of the machine.
 add_executable(zones_test zones_test.c)
-target_include_directories(zones_test PRIVATE ../.. ${NESRECOMP_ROOT}/runner/include ${NESRECOMP_ROOT}/runner/cyc)
+target_include_directories(zones_test PRIVATE ../../src ${NESRECOMP_ROOT}/runner/include ${NESRECOMP_ROOT}/runner/cyc)
 if(NOT MSVC)
     target_compile_options(zones_test PRIVATE -Wall -Wextra)
 endif()

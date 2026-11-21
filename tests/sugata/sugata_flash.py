@@ -21,39 +21,30 @@ Sugata's warning, edited for the hero's place and shield:
    ends the band.
 5. Holding Block without a shield: 10 HP. Under Ointment, in the band: no HP,
    but the knockback.
-6. With Sugata's flash off, the original: no warning, 10 HP, Ointment or not.
+6. With the remaster off, the original: no warning, 10 HP, Ointment or not.
 
 Pictures of the band are taken by the game itself (TCP sugata_capture) on the
 frame it shows, since a flash lasts a few frames.
 """
-import argparse
 from pathlib import Path
 import sys
-import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "block"))
-from harness import (Game, fixture, AREA, BUILDINGS, POS_X, ENTITIES, SPRITE_X, SPRITE_HP, SELECTED_SHIELD,  # noqa: E402
-                     SMALL, MAGIC, HELMET, NO_SHIELD, HP, INVINCIBILITY)
+from harness import (Game, fixture, parse_args, AREA, BUILDINGS, POS_X, ENTITIES, SPRITE_X, SPRITE_HP, SELECTED_SHIELD,  # noqa: E402
+                     SMALL, MAGIC, HELMET, INVINCIBILITY)
 
 MIST, SCREEN_30, PALETTE_MIST, REGION_MIST = 2, 30, 0x0A, 2
 SUGATA, DEATH = 0x18, 0x14
 REACH, WARNING, REFLECTED, FLASH_DAMAGE = 40, 30, 12, 10
 DURATION_OINTMENT = 0x427
-PACKAGE, FEATURE = "faxanadu.enhancement.sugata-flash", "sugata-flash"
+PACKAGE, FEATURE = "faxanadu.remastered", "remastered"          # the one switch: off is the original game
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    for key in ("build", "rom", "out"):
-        ap.add_argument("--" + key, type=Path, required=True)
-    ap.add_argument("--game-arg", action="append", default=[],
-                    help="extra game option, e.g. --game-arg=--world-view=seamless (repeatable)")
-    ap.add_argument("--port", type=int, default=0, help="TCP port (default: a free one)")
-    ap.add_argument("--realtime", action="store_true", help="run at normal speed instead of uncapped")
-    args = ap.parse_args()
+    args = parse_args(__doc__)
     rom = args.rom.read_bytes()[16:]
     contact = rom[14 * 0x4000 + 0xB6D7 - 0x8000 + SUGATA]          # SPRITE_ENTITY_DAMAGES[Sugata]
-    g = Game(args.build, args.rom, args.out, args.game_arg, args.realtime, args.port)
+    g = Game.from_args(args)
 
     def state():
         return g.tcp("sugata_state")
@@ -66,7 +57,7 @@ def main():
     def capture(name, band, at=0):
         path = g.out / f"{len(g.shots):02d}-{name}.png"
         g.tcp("sugata_capture", path=str(path), band=band, at=at)
-        g.shots.append(path)
+        g.shots.append(path.name)
         return path
 
     def captured(path, before):
@@ -208,7 +199,7 @@ def main():
               f"(x {x} to {g.ram(POS_X)})")
         g.close()
 
-        # 6. Off: the original flash, without a warning, through Ointment.
+        # 6. The remaster off: the original flash, without a warning, through Ointment.
         (g.out / "game" / "mods" / "state.toml").write_text(
             f'format_version = 1\n\n[[feature]]\npackage_id = "{PACKAGE}"\nid = "{FEATURE}"\nenabled = false\n')
         g.launch()
@@ -218,15 +209,15 @@ def main():
         hp = g.hp()
         g.until("the flash", lambda: hp - g.hp() == FLASH_DAMAGE, 400)
         assert state()["warnings"] == state()["flashes"] == 0
-        print("ok: turned off, Sugata flashes without warning and takes 10 HP, as the original")
+        print("ok: with the remaster off, Sugata flashes without warning and takes 10 HP, as the original")
         target = g.out / "off-ointment.cycstate"
         fixture(arrived, target, {DURATION_OINTMENT: 0x40})
         g.load(target)
         hp = g.hp()
         g.until("the flash", lambda: hp - g.hp() == FLASH_DAMAGE, 400)
         assert g.ram(DURATION_OINTMENT) < 0x80, "the Ointment still lasted"
-        print("ok: turned off, the flash takes 10 HP through Ointment, as the original")
-        print("screenshots:", ", ".join(p.name for p in g.shots))
+        print("ok: with the remaster off, the flash takes 10 HP through Ointment, as the original")
+        print("screenshots:", ", ".join(g.shots))
     except BaseException:
         if g.running():
             g.shot("failure")

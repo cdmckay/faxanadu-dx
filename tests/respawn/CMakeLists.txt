@@ -7,7 +7,7 @@ endif()
 # fax_zone.c and fax_respawn.c are included by the test, against a model of the
 # machine.
 add_executable(respawn_test respawn_test.c)
-target_include_directories(respawn_test PRIVATE ../.. ${NESRECOMP_ROOT}/runner/include ${NESRECOMP_ROOT}/runner/cyc)
+target_include_directories(respawn_test PRIVATE ../../src ${NESRECOMP_ROOT}/runner/include ${NESRECOMP_ROOT}/runner/cyc)
 if(NOT MSVC)
     target_compile_options(respawn_test PRIVATE -Wall -Wextra)
 endif()

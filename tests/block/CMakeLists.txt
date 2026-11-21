@@ -6,7 +6,7 @@ if(NOT NESRECOMP_ROOT)
 endif()
 # fax_block.c is included by the test, against a model of the machine (model.c).
 add_executable(block_test block_test.c model.c)
-target_include_directories(block_test PRIVATE . ../.. ${NESRECOMP_ROOT}/runner/include ${NESRECOMP_ROOT}/runner/cyc)
+target_include_directories(block_test PRIVATE . ../../src ${NESRECOMP_ROOT}/runner/include ${NESRECOMP_ROOT}/runner/cyc)
 if(NOT MSVC)
     target_compile_options(block_test PRIVATE -Wall -Wextra)
 endif()

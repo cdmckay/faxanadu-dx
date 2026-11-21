@@ -21,22 +21,15 @@ out: the stock dagger passes over an enemy this low.
    without it. The Glove adds its bonus on top, either way.
 2. The same Zozura with its own 9 HP: with the Pendant one Long Sword hit (10)
    kills it; without, the hit (8) leaves it 1 HP. Screenshots of both.
-3. With the feature off in the mod selection, the original's reversed bonus:
+3. With the remaster off in the mod selection, the original's reversed bonus:
    a quarter more without the Pendant, the base strength with it.
 """
-import argparse
-import json
-import os
 from pathlib import Path
-import shutil
-import socket
-import struct
-import subprocess
 import sys
-import time
-import zlib
 
-PORT = 0                                                            # set in main
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
+from fax_e2e import Game, fixture, frame, parse_args, ram, tcp, until, wait  # noqa: E402
+
 AREA, SCREEN, HERO_X = 0x24, 0x63, 0x9E
 PLAYER_FLAGS, ATTACKING = 0xA4, 0x80
 SPRITE_X, SPRITE_ENTITY, SPRITE_HP = 0xBA, 0x2CC, 0x344             # CurrentSprites_*, 8 slots each
@@ -53,69 +46,7 @@ SPRITE_ENTITIES_HP = 0xB5A9                                         # bank 14, b
 LONG_SWORD, GIANT_BLADE, DRAGON_SLAYER = 1, 2, 3
 NAMES = {LONG_SWORD: "Long Sword", GIANT_BLADE: "Giant Blade", DRAGON_SLAYER: "Dragon Slayer"}
 KNOWN_HP = 60
-PACKAGE, FEATURE = "faxanadu.enhancement.pendant-fix", "pendant-fix"
-
-
-def tcp(cmd, **kw):
-    with socket.create_connection(("127.0.0.1", PORT), 5) as s:
-        s.settimeout(30)
-        f = s.makefile("rwb", buffering=0)
-        f.write((json.dumps(dict(id=1, cmd=cmd, **kw)) + "\n").encode())
-        reply = json.loads(f.readline())
-    if not reply.get("ok"):
-        raise RuntimeError(f"{cmd}: {reply}")
-    return reply
-
-
-def free_port():
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
-def frame():
-    return tcp("ping")["frame"]
-
-
-def wait(frames):
-    end = frame() + frames
-    while frame() < end:
-        time.sleep(0.005)
-
-
-def ram(addr, n=1):
-    data = bytes.fromhex(tcp("read_ram", addr=addr, len=n)["hex"])
-    return data[0] if n == 1 else data
-
-
-def until(what, test, frames=1200):
-    end = frame() + frames
-    while frame() < end:
-        if test():
-            return
-        time.sleep(0.005)
-    raise AssertionError(f"timed out waiting for {what}")
-
-
-def chunks(data):
-    assert data[:8] == b"CYCSTATE"
-    pos = 32
-    while pos < len(data):
-        tag, size = struct.unpack_from("<4sI", data, pos)
-        pos += 8
-        yield tag, pos, size
-        pos += size
-        if tag == b"END ":
-            return
-
-
-def fixture(source, target, writes):
-    data = bytearray(source.read_bytes())
-    pos, size = next((p, n) for t, p, n in chunks(data) if t == b"HW  ")
-    assert size == 2072, "Unqualified hardware ABI"
-    for address, value in writes.items():
-        data[pos + 23 + address] = value
-    target.write_bytes(data)
+PACKAGE, FEATURE = "faxanadu.remastered", "remastered"          # the one switch: off is the original game
 
 
 def bank14(image, addr, n):
@@ -124,59 +55,15 @@ def bank14(image, addr, n):
 
 
 def main():
-    global PORT
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    for key in ("build", "rom", "out"):
-        ap.add_argument("--" + key, type=Path, required=True)
-    ap.add_argument("--game-arg", action="append", default=[],
-                    help="extra game option, e.g. --game-arg=--world-view=seamless (repeatable)")
-    ap.add_argument("--port", type=int, default=0, help="TCP port (default: a free one)")
-    ap.add_argument("--realtime", action="store_true", help="run at normal speed instead of uncapped")
-    args = ap.parse_args()
-    PORT = args.port or free_port()
-    image = args.rom.read_bytes()
-    assert zlib.crc32(image[16:]) == 0x57DD23D1, "the original Faxanadu (USA) ROM is required"
+    args = parse_args(__doc__)
+    game = Game.from_args(args)
+    image = game.image
     strength = list(bank14(image, WEAPON_STRENGTHS, 4))
     glove = list(bank14(image, WEAPON_TO_GLOVE_STRENGTH, 4))
     assert (strength, glove) == ([4, 8, 12, 16], [2, 4, 8, 10]), (strength, glove)
     zozura_hp = bank14(image, SPRITE_ENTITIES_HP + ZOZURA, 1)[0]
     assert zozura_hp == 9, zozura_hp
-    out = args.out.resolve()
-    shutil.rmtree(out, ignore_errors=True)
-    (out / "game").mkdir(parents=True)
-    shutil.copy2(args.build / "FaxanaduRecomp", out / "game")
-    for folder in ("assets", "mods"):
-        shutil.copytree(args.build / folder, out / "game" / folder)
-    env = dict(os.environ, NESRECOMP_NO_LAUNCHER="1", SDL_VIDEODRIVER="dummy", SDL_AUDIODRIVER="dummy")
-    log = open(out / "game.log", "w")
-    game = None
-    shots = []
-
-    def launch(*extra):
-        nonlocal game
-        extra = [part for arg in args.game_arg for part in arg.split("=", 1)] + list(extra)
-        if not args.realtime:
-            extra += ["--uncapped", "--exit-after", "100000000"]
-        game = subprocess.Popen([str(out / "game" / "FaxanaduRecomp"), str(args.rom.resolve()), "--hidden",
-                                 "--tcp", str(PORT), *extra], env=env, stdout=log, stderr=subprocess.STDOUT)
-        for _ in range(100):
-            try:
-                return frame()
-            except OSError:
-                time.sleep(0.1)
-        raise AssertionError("the game did not start")
-
-    def close():
-        try:
-            tcp("quit")
-        except Exception:
-            game.kill()
-        game.wait(10)
-
-    def shot(name):
-        path = out / f"{len(shots):02d}-{name}.png"
-        tcp("screenshot", layer="picture", path=str(path))
-        shots.append(path.name)
+    out = game.out
 
     def hit(zozura, weapon, pendant, gloved=False, enemy_hp=KNOWN_HP, name=None):
         """Load the Zozura save with this kit, swing as the nearer one crawls in,
@@ -191,25 +78,32 @@ def main():
         hero = ram(HERO_X)
         assert ram(SCREEN) == ZOZURA_SCREEN and ram(SPRITE_ENTITY + TARGET) == ZOZURA
         for _ in range(600):
-            entity, hp = ram(SPRITE_ENTITY + TARGET), ram(SPRITE_HP + TARGET)
+            target = ram(SPRITE_ENTITY + TARGET, SPRITE_HP - SPRITE_ENTITY + 1)   # one frame's entity and HP
+            entity, hp = target[0], target[-1]
             if entity != ZOZURA or hp != enemy_hp:
                 break
             if hero - ram(SPRITE_X + TARGET) <= REACH and not ram(PLAYER_FLAGS) & ATTACKING:
                 tcp("action", name="b", frames=2)
         else:
             raise AssertionError("the hero never hit the Zozura")
+        # A kill borrows: the HP wraps past enemy_hp, and the death effect
+        # replaces the Zozura a frame or two later (Player_AddExperienceFromSprite
+        # can take a frame). Wait for it.
+        died = entity != ZOZURA or hp > enemy_hp
+        if died and entity == ZOZURA:
+            until("the Zozura's death effect", lambda: ram(SPRITE_ENTITY + TARGET) != ZOZURA, 30)
         assert ram(SCREEN) == ZOZURA_SCREEN, "the Zozura reached the hero first and knocked him off the screen"
         if name:
             wait(4)
-            shot(name)
-        return None if entity != ZOZURA else enemy_hp - hp
+            game.shot(name)
+        return None if died else enemy_hp - hp
 
     def expected(weapon, pendant, gloved, fixed):
         bonus = pendant if fixed else not pendant
         return strength[weapon] + (strength[weapon] // 4 if bonus else 0) + (glove[weapon] if gloved else 0)
 
     try:
-        launch()
+        game.launch()
         until("the title", lambda: frame() > 700)
         tcp("pad", buttons="start", frames=10)
         until("the Eolis gate", lambda: frame() > 1900)
@@ -258,13 +152,12 @@ def main():
         assert hit(zozura, LONG_SWORD, True, enemy_hp=zozura_hp, name="pendant-kills") is None, "one hit kills"
         assert hit(zozura, LONG_SWORD, False, enemy_hp=zozura_hp, name="no-pendant-survives") == 8
         print("ok: a Zozura (9 HP) dies to one Long Sword hit with the Pendant, and is left 1 HP without it")
-        close()
+        game.close()
 
-        # 3. With the feature off, the original's reversed bonus.
-        (out / "game" / "mods" / "state.toml").write_text(
-            f'format_version = 1\n\n[[feature]]\npackage_id = "{PACKAGE}"\nid = "{FEATURE}"\nenabled = false\n')
-        launch()
-        assert not tcp("pendant_state")["enabled"], "the feature is off"
+        # 3. With the remaster off, the original's reversed bonus.
+        game.set_features({(PACKAGE, FEATURE): False})
+        game.launch()
+        assert not tcp("pendant_state")["enabled"], "the remaster is off"
         for weapon in (LONG_SWORD, DRAGON_SLAYER):
             for pendant in (False, True):
                 lost = hit(zozura, weapon, pendant)
@@ -272,15 +165,14 @@ def main():
                 assert lost == want, f"off, {NAMES[weapon]}, pendant={pendant}: took {lost}, expected {want}"
         assert tcp("pendant_state")["hits"] == 0, "the hook is off"
         assert hit(zozura, LONG_SWORD, False, enemy_hp=zozura_hp, name="original-no-pendant-kills") is None
-        print("ok: turned off, the original's bug: a quarter more without the Pendant, base strength with it")
-        print("screenshots:", ", ".join(shots))
+        print("ok: with the remaster off, the original's bug: a quarter more without the Pendant, base strength with it")
+        print("screenshots:", ", ".join(game.shots))
     except BaseException:
-        if game and game.poll() is None:
-            shot("failure")
+        if game.running():
+            game.shot("failure")
         raise
     finally:
-        if game:
-            close()
+        game.close()
 
 
 if __name__ == "__main__":

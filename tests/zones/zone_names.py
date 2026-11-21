@@ -8,175 +8,49 @@ each run takes a free TCP port, and any number can go in parallel.
 
 Copies the build to OUT (so the faxanadu_gurus.txt sidecar stays there) and
 starts a new game over TCP. It walks through Eolis's gate, into a shop and out,
-and through the door out of Eolis into the Trunk. Then it relaunches with the
-Gurus of Eolis, Apolune and Conflate visited (as tests/travel/guru_travel.py
-does), respawns in Conflate, travels to Apolune's Guru, and walks out of each
-temple. Last, it edits where a temple's door leads (save-state RAM, an external
-prerequisite) to walk out into the Tower of Fortress and the Castle of
-Fraternal. A screenshot of each banner is saved in OUT.
+and through the door out of Eolis into the Trunk, with the enemies on Eolis's
+screen 8 cleared before the walk to that door (save-state RAM, an external
+prerequisite). Then it relaunches with the Gurus of Eolis, Apolune and
+Conflate visited (as tests/travel/guru_travel.py does), dies outside Eolis's
+gate with Conflate's temple his spawn point (before any entrance, so zone
+respawn wakes him at that temple, as the original does), travels to
+Apolune's Guru, and walks out of each temple. Last, it edits where a temple's
+door leads (save-state RAM too) to walk out into the Tower of Fortress and
+the Castle of Fraternal. A screenshot of each banner is saved in OUT.
 """
-import argparse
-import json
-import os
 from pathlib import Path
-import shutil
-import socket
-import struct
-import subprocess
 import sys
-import time
-import zlib
 
-PORT = 0                                                            # set in main
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
+from fax_e2e import Game, act, fixture, frame, parse_args, ram, tcp, typed, until, wait  # noqa: E402
+
 AREA, SCREEN, PLAYER_X = 0x24, 0x63, 0x9E
 TEXTBOX_CLOSED, MESSAGE_ID, TEXTBOX_PAUSED = 0x20C, 0x213, 0x215
 AREA_SAVED_AREA, AREA_SAVED_SCREEN, SCREEN_SAVED_PALETTE, PLAYER_SAVED_POS = 0x3D5, 0x3D6, 0x3D7, 0x3D8
 HP, AREA_REGION, PLAYER_IS_DEAD, TEMPLE_SPAWN_POINT = 0x431, 0x435, 0x438, 0x439
 SELECTED_ITEM, KEY_J = 0x3C1, 0x07                                 # Game_OpenDoorWithJKey's check
+SPRITE_ENTITIES = 0x2CC                                             # CurrentSprites_Entities, 8 slots
 BUILDINGS, TOWNS = 4, 3
 TEMPLE_SCREEN = {1: 0x0B, 5: 0x2B}                                  # DEST_SCREEN_FOR_TEMPLE_SPAWN: Apolune, Conflate
 APOLUNE, CONFLATE = 1, 5
 MEDITATE_WITH_YOU, NEGATIVE_THOUGHTS = 0x22, 0x24                  # the Guru's greeting; the death message
 OFFER, DEPART, TO_GURU = 1, 3, 4                                   # fax_travel.c's lines (TO_GURU + temple)
 PALETTE_TOWER, PALETTE_FRATERNAL = 0x07, 0x0D
-
-
-def tcp(cmd, **kw):
-    with socket.create_connection(("127.0.0.1", PORT), 5) as s:
-        s.settimeout(30)
-        f = s.makefile("rwb", buffering=0)
-        f.write((json.dumps(dict(id=1, cmd=cmd, **kw)) + "\n").encode())
-        reply = json.loads(f.readline())
-    if not reply.get("ok"):
-        raise RuntimeError(f"{cmd}: {reply}")
-    return reply
-
-
-def free_port():
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
-def frame():
-    return tcp("ping")["frame"]
-
-
-def wait(frames):
-    end = frame() + frames
-    while frame() < end:
-        time.sleep(0.005)
-
-
-def ram(addr, n=1):
-    data = bytes.fromhex(tcp("read_ram", addr=addr, len=n)["hex"])
-    return data[0] if n == 1 else data
-
-
-def until(what, test, frames=1200):
-    end = frame() + frames
-    while frame() < end:
-        if test():
-            return
-        time.sleep(0.005)
-    raise AssertionError(f"timed out waiting for {what}")
-
-
-def act(name, frames=6, after=8):
-    tcp("action", name=name, frames=frames)
-    wait(frames + after)
+ZONE_NAMES = "faxanadu.zone-names"                                 # its save-state record
 
 
 def zone():
     return tcp("zone_state")
 
 
-def typed():
-    """The text box is waiting for a button: the message has typed out
-    (MessageID clears) or reached a pause (TextBox_MessagePaused)."""
-    message, _, paused = ram(MESSAGE_ID, 3)
-    return message == 0 or paused != 0
-
-
 def box_open():
     return ram(TEXTBOX_CLOSED) == 0
 
 
-def chunks(data):
-    assert data[:8] == b"CYCSTATE"
-    pos = 32
-    while pos < len(data):
-        tag, size = struct.unpack_from("<4sI", data, pos)
-        pos += 8
-        yield tag, pos, size
-        pos += size
-        if tag == b"END ":
-            return
-
-
-def fixture(source, target, writes, record=None):
-    """Copy a save state, changing RAM and, if given, bytes of zone names' record."""
-    data = bytearray(source.read_bytes())
-    pos, size = next((p, n) for t, p, n in chunks(data) if t == b"HW  ")
-    assert size == 2072, "Unqualified hardware ABI"
-    for address, value in writes.items():
-        data[pos + 23 + address] = value
-    for tag, p, n in chunks(data):
-        if tag == b"MOD " and data[p:p + 64].rstrip(b"\0") == b"faxanadu.zone-names":
-            for offset, value in (record or {}).items():
-                data[p + 64 + offset] = value
-    target.write_bytes(data)
-
-
 def main():
-    global PORT
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    for key in ("build", "rom", "out"):
-        ap.add_argument("--" + key, type=Path, required=True)
-    ap.add_argument("--game-arg", action="append", default=[],
-                    help="extra game option, e.g. --game-arg=--world-view=seamless (repeatable)")
-    ap.add_argument("--port", type=int, default=0, help="TCP port (default: a free one)")
-    ap.add_argument("--realtime", action="store_true", help="run at normal speed instead of uncapped")
-    args = ap.parse_args()
-    PORT = args.port or free_port()
-    image = args.rom.read_bytes()
-    assert zlib.crc32(image[16:]) == 0x57DD23D1, "the original Faxanadu (USA) ROM is required"
-    out = args.out.resolve()
-    shutil.rmtree(out, ignore_errors=True)
-    (out / "game").mkdir(parents=True)
-    shutil.copy2(args.build / "FaxanaduRecomp", out / "game")
-    for folder in ("assets", "mods"):
-        shutil.copytree(args.build / folder, out / "game" / folder)
-    env = dict(os.environ, NESRECOMP_NO_LAUNCHER="1", SDL_VIDEODRIVER="dummy", SDL_AUDIODRIVER="dummy")
-    log = open(out / "game.log", "w")
-    game = None
-    shots = []
-
-    def launch():
-        nonlocal game
-        extra = [part for arg in args.game_arg for part in arg.split("=", 1)]
-        if not args.realtime:
-            extra += ["--uncapped", "--exit-after", "100000000"]
-        game = subprocess.Popen([str(out / "game" / "FaxanaduRecomp"), str(args.rom.resolve()), "--hidden",
-                                 "--tcp", str(PORT), *extra], env=env, stdout=log, stderr=subprocess.STDOUT)
-        for _ in range(100):
-            try:
-                return frame()
-            except OSError:
-                time.sleep(0.1)
-        raise AssertionError("the game did not start")
-
-    def close():
-        try:
-            tcp("quit")
-        except Exception:
-            game.kill()
-        game.wait(10)
-
-    def shot(name):
-        path = out / f"{len(shots):02d}-{name}.png"
-        tcp("screenshot", layer="picture", path=str(path))
-        shots.append(path)
+    args = parse_args(__doc__)
+    game = Game.from_args(args)
+    out = game.out
 
     def banner(name, count):
         """Wait for the banner `name` to be the `count`th shown, fully in, and screenshot it."""
@@ -184,7 +58,7 @@ def main():
         state = zone()
         assert state["banners"] == count and state["last"] == name, state
         until(f"the {name} banner to fade in", lambda: zone()["alpha"] == 255, 60)
-        shot(name.lower().replace(" ", "-"))
+        game.shot(name.lower().replace(" ", "-"))
 
     def settled_in(area, screen):
         until(f"area {area} screen {screen:#x}", lambda: zone()["area"] == area and zone()["screen"] == screen)
@@ -237,11 +111,13 @@ def main():
         walk_out()
 
     try:
-        launch()
+        game.launch()
         until("the title", lambda: frame() > 700)
         tcp("pad", buttons="start", frames=10)
         until("the Eolis gate", lambda: zone()["area"] == 0 and frame() > 1900)
         assert zone()["banners"] == 0 and zone()["here"] is None, zone()
+        outside = out / "outside-gate.cycstate"                    # before any entrance
+        tcp("save_state", path=str(outside))
         print("ok: no banner outside Eolis's gate")
 
         # 1. Through the gate (door at block column 12): Eolis.
@@ -269,13 +145,26 @@ def main():
         #    (record bytes 5 and 6 are where zone names last saw the hero stand),
         #    with the "J" Key it takes in hand.
         warp_to = {AREA_SAVED_AREA: 0, AREA_SAVED_SCREEN: 8, PLAYER_SAVED_POS: 0x9C, HP: 0x50, SELECTED_ITEM: KEY_J}
-        fixture(shop, out / "eolis-8.cycstate", warp_to, record={5: 0, 6: 8})
+        fixture(shop, out / "eolis-8.cycstate", warp_to, records={ZONE_NAMES: {5: 0, 6: 8}})
         tcp("load_state", path=str(out / "eolis-8.cycstate"))
         walk_out()
         settled_in(0, 8)
         assert zone()["banners"] == 1, zone()
-        walk_to(186, 196)                                  # the door, column 12
-        act("up", 4, 10)
+        # The screen's enemies cleared and HP full (a prerequisite, not
+        # coverage): one hits the hero for 20 HP every few hundred frames, and a
+        # run slowed by a busy machine can lose that many before it reaches the
+        # door. Player_CheckHandleEnterDoor reads Up only on the frame it goes
+        # down, and not while the screen scrolls, so press until the key's line
+        # shows.
+        game.poke({**{SPRITE_ENTITIES + i: 0xFF for i in range(8)}, HP: 0x50})
+        for _ in range(5):
+            walk_to(186, 196)                              # the door, column 12
+            act("up", 4, 10)
+            try:
+                until("the key's line", lambda: box_open() or ram(AREA) == 1, 120)
+                break
+            except AssertionError:
+                pass
         for _ in range(40):                                # "You used the key"
             if ram(AREA) == 1:
                 break
@@ -288,17 +177,15 @@ def main():
         print("ok: the door out of Eolis names the Trunk, once")
         gate = out / "trunk.cycstate"
         tcp("save_state", path=str(gate))
-        close()
+        game.close()
 
-        # 4. Respawn in Conflate, then travel to Apolune's Guru. Zone respawn
-        #    is off: on, dying in the Trunk comes back at its door, not a temple.
+        # 4. Respawn in Conflate, then travel to Apolune's Guru. He dies outside
+        #    Eolis's gate, before any entrance, so zone respawn wakes him at his
+        #    temple; dying in the Trunk would bring him back at its door.
         (out / "game" / "faxanadu_gurus.txt").write_text("Eolis\nApolune\nConflate\n")
-        (out / "game" / "mods" / "state.toml").write_text(
-            'format_version = 1\n\n[[feature]]\npackage_id = "faxanadu.enhancement.zone-respawn"\n'
-            'id = "zone-respawn"\nenabled = false\n')
-        launch()
+        game.launch()
         dead = out / "conflate-death.cycstate"
-        fixture(gate, dead, {TEMPLE_SPAWN_POINT: CONFLATE, PLAYER_IS_DEAD: 1})
+        fixture(outside, dead, {TEMPLE_SPAWN_POINT: CONFLATE, PLAYER_IS_DEAD: 1})
         tcp("load_state", path=str(dead))
         until("the death message", lambda: ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 600)
         for _ in range(40):
@@ -338,12 +225,12 @@ def main():
         settled_in(6, 0x10)
         banner("Castle of Fraternal", before + 4)
         print("ok: a tower and a castle are named")
-        print("screenshots:", ", ".join(p.name for p in shots))
+        print("screenshots:", ", ".join(game.shots))
     except BaseException:
-        shot("failure")
+        game.shot("failure")
         raise
     finally:
-        close()
+        game.close()
 
 
 if __name__ == "__main__":
