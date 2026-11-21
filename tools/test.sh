@@ -96,6 +96,9 @@ cmake --build "$OUT/indoor" -j"$JOBS" >/dev/null
 cmake -S tests/damage -B "$OUT/damage" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/damage" -j"$JOBS" >/dev/null
 "$OUT/damage/damage_test"
+cmake -S tests/inventory -B "$OUT/inventory" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/inventory" -j"$JOBS" >/dev/null
+"$OUT/inventory/inventory_test"
 
 echo "== game build"
 [ -f build-cycle/CMakeCache.txt ] || cmake -S . -B build-cycle -DCMAKE_BUILD_TYPE=Release -DNESRECOMP_ROM="$ROM" >/dev/null
@@ -157,6 +160,8 @@ E2E=(
   "indoor+sw    tests/indoor/indoor_equip.py --parts $SW"
   "damage       tests/damage/damage_numbers.py"
   "damage+sw    tests/damage/damage_numbers.py $SW"
+  "inventory    tests/inventory/inventory_fix.py --parts"
+  "inventory+sw tests/inventory/inventory_fix.py --parts $SW"
 )
 # At most E2E_JOBS runs play at once (default: one a hardware thread; 0: all
 # at once): a game is uncapped and takes a whole thread, and more of them
