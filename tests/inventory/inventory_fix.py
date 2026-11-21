@@ -38,7 +38,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import Game, act, fixture, frame, parse_args, ram, tcp, typed, until, wait  # noqa: E402
+from fax_e2e import Game, fixture, frame, parse_args, ram, tcp, typed, until, wait  # noqa: E402
 
 AREA, SCREEN, HERO_X, HERO_Y = 0x24, 0x63, 0x9E, 0xA1
 SCREEN_SCROLL = 0x54                                                # Screen_ScrollDirection: $FF when still
@@ -108,6 +108,23 @@ def kit(category, at, count_at, selected_at, worn, entries, after):
     return writes
 
 
+def press_until(button, what, test, frames=60, tries=5):
+    """Press `button` until `test` holds. The game takes a button only on the
+    frame it goes down, and only once the message or menu reads the pad, so a
+    press can land too early when a loaded machine runs the game slowly: if
+    nothing changed in `frames`, it was lost, and is pressed again. Every
+    `test` here changes on the frame the press is taken (TextBox_Closed and
+    the box's size are stored then), so a taken press is never repeated."""
+    for _ in range(tries):
+        tcp("action", name=button, frames=4)
+        try:
+            until(what, test, frames)
+            return
+        except AssertionError:
+            pass
+    raise AssertionError(f"{what}: {tries} presses of {button} did nothing")
+
+
 def main():
     args = parse_args(__doc__)
     game = Game.from_args(args)
@@ -140,26 +157,21 @@ def main():
         until(f"{name}: the pickup's line", lambda: ram(MESSAGE_ID) == message, 300)
         assert ram(ENTITIES + SLOT) == entity, "touched before the line"
         until(f"{name}: the line to type out", typed, 600)
-        act("a", 4, 6)
-        until(f"{name}: the box to close", lambda: ram(TEXTBOX_CLOSED) != 0, 300)
+        press_until("a", f"{name}: the box to close", lambda: ram(TEXTBOX_CLOSED) != 0)
         wait(4)
         assert ram(ENTITIES + SLOT) == NONE, "Player_HandleTouchItem removes the item"
         return listed(WEAPONS, NUMBER_OF_WEAPONS), listed(ARMOR, NUMBER_OF_ARMORS)
 
     def menu_list(entry, name):
         """Select, Down to `entry`, A: that list on screen, shot, then B closes it all."""
-        act("select", 4, 6)
-        until("the menu", lambda: ram(TEXTBOX_CLOSED) == 0 and ram(TEXTBOX_X + 2) == MENU_WIDTH, 300)
+        press_until("select", "the menu", lambda: ram(TEXTBOX_CLOSED) == 0 and ram(TEXTBOX_X + 2) == MENU_WIDTH)
         wait(10)
-        for _ in range(entry):
-            act("down", 4, 6)
-        until("the cursor", lambda: ram(MENU_CURSOR) == entry, 60)
-        act("a", 4, 6)
-        until("the list", lambda: ram(TEXTBOX_X + 2) == LIST_WIDTH, 300)
+        for row in range(1, entry + 1):
+            press_until("down", f"the cursor on row {row}", lambda: ram(MENU_CURSOR) == row)
+        press_until("a", "the list", lambda: ram(TEXTBOX_X + 2) == LIST_WIDTH)
         wait(30)
         game.shot(name)
-        act("b", 4, 6)                                              # B on a list closes the menu
-        until("the menu to close", lambda: ram(TEXTBOX_CLOSED) != 0, 300)
+        press_until("b", "the menu to close", lambda: ram(TEXTBOX_CLOSED) != 0)   # B on a list closes it all
 
     def play(town, hero, fixed):
         for name, entity, weapons, armor, want_fixed, want_original in CASES:
