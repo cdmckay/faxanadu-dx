@@ -28,6 +28,7 @@
 #include "fax_slain.h"
 #include "fax_indoor.h"
 #include "fax_damage.h"
+#include "fax_inventory.h"
 #include "fax_map.h"
 #ifdef CYC_WITH_SDL
 #include "cyc_tcp.h"
@@ -311,6 +312,7 @@ static void tcp_setup(void *ctx) {
     fax_slain_tcp_setup();
     fax_indoor_tcp_setup();
     fax_damage_tcp_setup();
+    fax_inventory_tcp_setup();
     fax_map_tcp_setup();
 }
 #endif
