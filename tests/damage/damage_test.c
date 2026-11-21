@@ -9,6 +9,13 @@
 #include "fax_damage.c"
 #include "model.h"
 
+/* fax_text.c's test for a box: TextBox_Closed 0 and a box's frame on screen.
+ * A screen's tile can leave TextBox_Closed 0 with none (Forepaw's screen 2). */
+#define TEXTBOX_CLOSED 0x020Cu
+static bool frame_shown;
+bool fax_text_box_showing(void) { return ram[TEXTBOX_CLOSED] == 0 && frame_shown; }
+static void box(bool open) { ram[TEXTBOX_CLOSED] = !open; frame_shown = open; }
+
 /* RAM the model's game code uses */
 #define SPRITE_HP   0x0344u
 #define SPRITE_FLAGS 0x02DCu
@@ -112,7 +119,7 @@ static void setup(void) {
     model_activate("faxanadu.damage-numbers");
     ram[CURRENT_ROM_BANK] = 14;
     ram[AREA_CURRENT_AREA] = 0; ram[AREA_CURRENT_SCREEN] = 4;
-    ram[TEXTBOX_CLOSED] = 1; ram[SCREEN_SCROLL_DIRECTION] = 0xFF;
+    box(false); ram[SCREEN_SCROLL_DIRECTION] = 0xFF;
     ram[PLAYER_HP_U] = 80;
     ram[PLAYER_POS_X] = 192; ram[PLAYER_POS_Y] = 144;
     for (unsigned s = 0; s < SLOTS; ++s) ram[CURRENT_SPRITES_ENTITIES + s] = 0xFF;
@@ -235,22 +242,27 @@ static void the_float(void) {
     CHECK(top_of(&numbers[0]) == 152 - 19);
     frames(1);
     CHECK(count == 0);                   /* gone after FAX_DAMAGE_LIFE frames */
-    /* Held while a box or menu is open, or the game is paused. */
+    /* Held while a box or menu is open, or the game is paused; not while a
+     * screen's tile leaves TextBox_Closed 0 with no box. */
     sword(7, 8);
     frames(5);
-    ram[TEXTBOX_CLOSED] = 0;
+    box(true);
     frames(30);
     CHECK(numbers[0].age == 5);
-    ram[TEXTBOX_CLOSED] = 1; ram[GAME_PAUSED_STATE] = 0x81;   /* $81 once the sound engine has muted */
+    box(false); ram[GAME_PAUSED_STATE] = 0x81;   /* $81 once the sound engine has muted */
     frames(30);
     CHECK(numbers[0].age == 5);
     ram[GAME_PAUSED_STATE] = 0;
     frames(1);
     CHECK(numbers[0].age == 6);
+    ram[TEXTBOX_CLOSED] = 0;
+    frames(1);
+    CHECK(numbers[0].age == 7);
+    box(false);
     /* Another room of the area keeps it (Seamless shows it there); another area does not. */
     ram[AREA_CURRENT_SCREEN] = 3;
     frames(1);
-    CHECK(count == 1 && numbers[0].age == 7);
+    CHECK(count == 1 && numbers[0].age == 8);
     ram[AREA_CURRENT_AREA] = 4;          /* into a building */
     frames(1);
     CHECK(count == 0);
@@ -373,10 +385,13 @@ static void the_native_picture(void) {
     CHECK(alpha > 0 && alpha < 255);
     for (unsigned i = 0; i < 3; ++i) { d[i].y = HUD + top_of(&numbers[i]); d[i].alpha = alpha; }
     same_but(got, w, h, d, 3, HUD, 0, 256);
-    /* None while a box is open or the screen scrolls, or in another room. */
+    /* None while a box is open or the screen scrolls, or in another room;
+     * a screen's tile in TextBox_Closed is no box. */
     ram[TEXTBOX_CLOSED] = 0;
+    CHECK(fax_damage_present(NULL, &w, &h) != NULL && drawn[0].shown);
+    box(true);
     CHECK(fax_damage_present(NULL, &w, &h) == NULL && !drawn[0].shown);
-    ram[TEXTBOX_CLOSED] = 1; ram[SCREEN_SCROLL_DIRECTION] = 1;
+    box(false); ram[SCREEN_SCROLL_DIRECTION] = 1;
     CHECK(fax_damage_present(NULL, &w, &h) == NULL);
     ram[SCREEN_SCROLL_DIRECTION] = 0xFF; ram[AREA_CURRENT_SCREEN] = 3;
     CHECK(fax_damage_present(NULL, &w, &h) == NULL);

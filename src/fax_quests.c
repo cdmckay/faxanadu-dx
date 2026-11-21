@@ -140,7 +140,7 @@ static bool quiet = true;                 /* take what is complete as it is, say
 static bool seeded = true;                /* the file had quests.given; false: count done ones as given */
 static uint32_t banner_pending;           /* quests done outside a conversation, to show below the HUD */
 static int banner_quest = -1;             /* the one showing */
-static unsigned banner_age, banner_wait;
+static unsigned banner_age;
 static bool open, closing;
 static int page;
 static uint64_t frames, want;
@@ -247,8 +247,8 @@ static void with_pickup(FaxQuestGame *g) {
 /* Settled on a screen, in the main loop (bank 14), not paused, alive: no
  * script, menu or text box running. Those wait for their frames with bank 12
  * or 13 mapped (the text is read from bank 13). TextBox_Closed cannot tell:
- * it can read 0 in a town with no box up (docs/GAME_INTERNALS.md, "The text
- * box"). */
+ * a screen leaves one of its tiles there, 0 on some (docs/GAME_INTERNALS.md,
+ * "The text box"). */
 static bool in_play(void) {
     return q(SCREEN_READY_STATE) == 0 && q(INTERRUPT_HANDLERS_ON) && q(SCREEN_SCROLL_DIRECTION) == 0xFF &&
            q(CURRENT_ROM_BANK) == MAIN_LOOP_BANK && !q(GAME_PAUSED_STATE) && !q(PLAYER_IS_DEAD) &&
@@ -506,11 +506,7 @@ void fax_quests_frame_end(void) {
     banner_pending |= pending_done;               /* a completion no script's end said */
     pending_new = pending_done = 0;
     if (banner_quest < 0) {
-        if (!banner_pending) { banner_wait = 0; return; }
-        /* after a zone's name; but a name the zone banner holds (it holds while
-         * TextBox_Closed reads 0, as it can in a town with no box up) is drawn over */
-        if (fax_banner_busy() && ++banner_wait < BANNER_SHOWN) return;
-        banner_wait = 0;
+        if (!banner_pending || fax_banner_busy()) return;   /* after any zone name */
         for (unsigned quest = 0; quest < FAX_QUESTS; ++quest)
             if (banner_pending >> quest & 1) { banner_quest = (int)quest; banner_pending &= ~(1u << quest); break; }
         banner_age = 0;
@@ -541,7 +537,7 @@ static bool get_set(const char *in, uint32_t *set) {
 
 static void forget(void) {
     given = done = pending_new = pending_done = banner_pending = 0;
-    banner_quest = -1; banner_age = banner_wait = 0;
+    banner_quest = -1; banner_age = 0;
     phase = QUIET; saying = 0; pickup = 0;
 }
 

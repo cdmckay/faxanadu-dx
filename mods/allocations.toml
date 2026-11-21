@@ -100,8 +100,9 @@ plugin = "faxanadu.zone-names"
 source = "src/fax_banner.c"
 hooks = "faxanadu.zone-names."
 rom = []
-# No hooks and no ROM: it reads RAM at the end of each frame and draws over
-# the presented picture (fax_text.c), after Seamless has composed it.
+# No hooks and no ROM: it reads RAM and the nametable (fax_text.c's box test)
+# at the end of each frame and draws over the presented picture (fax_text.c),
+# after Seamless has composed it.
 
 [[feature]]
 id = "speaker-names"
