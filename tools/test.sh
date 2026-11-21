@@ -10,7 +10,9 @@
 # build-cycle is configured on first use. The end-to-end runs fill every
 # hardware thread, so only one suite on the machine runs them at a time:
 # another checkout's suite waits for the lock, then runs. E2E_JOBS=N plays at
-# most N of its runs at once (default: one a thread).
+# most N of its runs at once (default: one a thread). Without --quick, the
+# allocation checks, unit tests and the game's smoke run go on beside the
+# end-to-end runs, and print when those end.
 set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 ROM="$REPO/Faxanadu (USA).nes"
@@ -19,7 +21,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --rom) ROM="$(realpath "$2")"; shift 2;;
     --quick) QUICK=1; shift;;
-    -h|--help) sed -n '2,10p' "$0"; exit 0;;
+    -h|--help) sed -n '2,13p' "$0"; exit 0;;
     *) echo "unknown arg: $1" >&2; exit 2;;
   esac
 done
@@ -28,6 +30,12 @@ cd "$REPO"
 JOBS="$(nproc 2>/dev/null || echo 4)"
 OUT="$REPO/build-tests"
 
+# The game, built first: the end-to-end runs play it.
+echo "== game build"
+[ -f build-cycle/CMakeCache.txt ] || cmake -S . -B build-cycle -DCMAKE_BUILD_TYPE=Release -DNESRECOMP_ROM="$ROM" >/dev/null
+cmake --build build-cycle -j"$JOBS" >/dev/null
+
+checks() {  # everything but the end-to-end runs
 echo "== allocations"
 python3 tools/check_allocations.py --rom "$ROM"
 python3 tests/allocations/check_allocations_test.py --rom "$ROM"
@@ -97,12 +105,17 @@ cmake -S tests/damage -B "$OUT/damage" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/
 cmake --build "$OUT/damage" -j"$JOBS" >/dev/null
 "$OUT/damage/damage_test"
 
-echo "== game build"
-[ -f build-cycle/CMakeCache.txt ] || cmake -S . -B build-cycle -DCMAKE_BUILD_TYPE=Release -DNESRECOMP_ROM="$ROM" >/dev/null
-cmake --build build-cycle -j"$JOBS" >/dev/null
+echo "== the game, 600 frames headless"
 build-cycle/FaxanaduRecomp "$ROM" --frames 600 --no-save | grep "mode="
+}
 
-if [ "$QUICK" = 1 ]; then echo "(end-to-end runs skipped: --quick)"; exit 0; fi
+if [ "$QUICK" = 1 ]; then checks; echo "(end-to-end runs skipped: --quick)"; exit 0; fi
+# The checks need a second or two of CPU each, and the end-to-end runs a
+# minute of every thread: they go on together, the checks' output kept for
+# the end. Their unit tests build with a few jobs, not one a thread.
+mkdir -p "$OUT"
+rm -f "$OUT/checks.code"
+( JOBS=4; set +e; ( set -e; checks ) > "$OUT/checks.log" 2>&1; echo $? > "$OUT/checks.code" ) &
 # Two suites at once double every game's time and make the timing tests flaky,
 # so wait for any other checkout's end-to-end runs to finish. The lock is held
 # on fd 9 until this script exits.
@@ -117,9 +130,15 @@ echo "== end to end: the shared helper's port reservation and relaunch"
 python3 tests/e2e/fax_e2e_test.py --build build-cycle --rom "$ROM" --out "$OUT/e2e-helper"
 # Every end-to-end test at once, each in its own folder, on a free port. A
 # test that splits into parts (--parts here, first) runs each part as its own
-# game;
-# the saved games they start from are made once, from your ROM, and cached in
-# build-tests/fixtures.
+# game, every part or those listed (--parts=a,b); the saved games they start
+# from are made once, from your ROM, and cached in build-tests/fixtures.
+#
+# A test runs in Seamless too (+sw) only where the view changes what it
+# checks: a feature that draws or places something on screen, or moves the
+# hero between rooms. Block, Equip indoors and the rest are logic on the
+# game's state, the same in either view. Quick shops draws its list's hint,
+# page and OWNED over the picture, placed for Seamless's: its two parts that
+# check all three run there.
 SW=--game-arg=--world-view=seamless
 E2E=(
   "travel       tests/travel/guru_travel.py --parts"
@@ -138,13 +157,12 @@ E2E=(
   "files        tests/files/save_files.py --parts"
   "dagger       tests/dagger/taller_dagger.py"
   "block        tests/block/block.py --parts"
-  "block+sw     tests/block/block.py --parts $SW"
   "sugata       tests/sugata/sugata_flash.py"
   "sugata+sw    tests/sugata/sugata_flash.py $SW"
   "glint        tests/block/block_shield.py --parts"
   "glint+sw     tests/block/block_shield.py --parts $SW"
   "shops        tests/shops/quick_shops.py --parts"
-  "shops+sw     tests/shops/quick_shops.py --parts $SW"
+  "shops+sw     tests/shops/quick_shops.py --parts=two-pages,owned-key $SW"
   "respawn      tests/respawn/zone_respawn.py --parts"
   "respawn+sw   tests/respawn/zone_respawn.py --parts $SW"
   "recharge     tests/recharge/recharging_items.py --parts"
@@ -154,7 +172,6 @@ E2E=(
   "slain        tests/slain/slain_by.py"
   "slain+sw     tests/slain/slain_by.py $SW"
   "indoor       tests/indoor/indoor_equip.py --parts"
-  "indoor+sw    tests/indoor/indoor_equip.py --parts $SW"
   "damage       tests/damage/damage_numbers.py"
   "damage+sw    tests/damage/damage_numbers.py $SW"
 )
@@ -169,8 +186,12 @@ names=(); cmds=()
 for entry in "${E2E[@]}"; do
   read -r -a words <<< "$entry"
   name="${words[0]}" script="${words[1]}" args=("${words[@]:2}")
-  if [ "${args[0]:-}" != --parts ]; then names+=("$name"); cmds+=("$script ${args[*]}"); continue; fi
-  for part in $(python3 "$script" --list-parts); do names+=("$name.$part"); cmds+=("$script --part $part ${args[*]:1}"); done
+  case "${args[0]:-}" in
+    --parts) parts=$(python3 "$script" --list-parts);;
+    --parts=*) parts=${args[0]#--parts=}; parts=${parts//,/ };;
+    *) names+=("$name"); cmds+=("$script ${args[*]}"); continue;;
+  esac
+  for part in $parts; do names+=("$name.$part"); cmds+=("$script --part $part ${args[*]:1}"); done
 done
 declare -A took=()
 [ -f "$TIMES" ] && while read -r t n; do took[$n]=$t; done < "$TIMES"
@@ -205,5 +226,9 @@ for name in "${names[@]}"; do
   [ -f "$(folder "$name").end" ] && read -r code finish t < "$(folder "$name").end"
   echo "$finish $t $name"
 done | sort -n | tee >(awk '{ print $2, $3 }' > "$TIMES") | awk '{ printf "  %6.1f  %5.1f  %s\n", $1 / 1000, $2 / 1000, $3 }'
-[ "$failed" = 0 ] || { echo "end-to-end tests failed; screenshots in $OUT/*-e2e*/" >&2; exit 1; }
+checked=$(cat "$OUT/checks.code" 2>/dev/null || echo 1)
+cat "$OUT/checks.log"
+[ "$checked" = 0 ] || echo "== FAILED: the checks above (allocations, unit tests or the game's smoke run)" >&2
+[ "$failed" = 0 ] || echo "end-to-end tests failed; screenshots in $OUT/*-e2e*/" >&2
+[ "$checked" = 0 ] && [ "$failed" = 0 ] || exit 1
 echo "all checks passed"

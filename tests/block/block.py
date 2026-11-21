@@ -283,7 +283,7 @@ def main():
         if args.wants("config"):
             g.close()
             # 4. config.ini rebinds it.
-            if not g.config.exists():                                   # written when the window closes
+            if "BlockKey" not in g.config.read_text():                # written when the window closes
                 g.launch()
                 g.close()
             text = g.config.read_text()

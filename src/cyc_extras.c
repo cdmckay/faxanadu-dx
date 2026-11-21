@@ -235,8 +235,32 @@ static void frame_begin(void *ctx) {
     if (tiles_enabled) chr_override_reload_if_changed();
     inject_password();
 }
+#ifdef CYC_WITH_SDL
+/* The end-to-end tests' frame-exact wait (tests/e2e/fax_e2e.py's wait()):
+ * `wait` answers once `frames` more frames have run, at the end of the last
+ * one, so a test waits on the game without polling it and without a frame
+ * more than it asked for. One at a time: the tests' client is one line. */
+static int wait_id = -1;
+static long wait_left;
+static void tcp_wait(int id, const char *line) {
+    long n = 1;
+    cyc_tcp_long(line, "frames", &n);
+    if (wait_id >= 0) { cyc_tcp_err(id, "wait: another wait is running"); return; }
+    if (n < 1 || n > 36000) { cyc_tcp_err(id, "wait: frames is 1-36000"); return; }
+    wait_id = id; wait_left = n;
+}
+static void wait_frame_end(void) {
+    if (wait_id < 0 || --wait_left > 0) return;
+    int id = wait_id;
+    wait_id = -1;
+    cyc_tcp_ok(id, NULL);
+}
+#endif
 static void frame_end(void *ctx) {
     (void)ctx; ++frame;
+#ifdef CYC_WITH_SDL
+    wait_frame_end();
+#endif
     fax_world_step();
     fax_travel_step();
     fax_magic_frame_end();
@@ -287,6 +311,7 @@ static void tcp_setup(void *ctx) {
     (void)ctx;
     cyc_tcp_register("mantra_now", "Read current progress without changing the machine", mantra_now);
     cyc_tcp_register("mantra_save", "Persist the current progress mantra", mantra_save);
+    cyc_tcp_register("wait", "Answer once `frames` more frames have run (default 1): a frame-exact wait", tcp_wait);
     fax_world_tcp_setup();
     fax_travel_tcp_setup();
     fax_death_tcp_setup();

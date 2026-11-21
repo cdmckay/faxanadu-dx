@@ -120,7 +120,7 @@ def choose(file):
 def die_and_respawn(temple):
     """Page through the death message until the hero is back in `temple`."""
     until("the death message", lambda: ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 600)
-    for _ in range(40):
+    for _ in range(120):
         if in_temple(temple):
             break
         if typed():
@@ -204,10 +204,7 @@ def main():
     worth = {}
 
     def install(folder):
-        (folder).mkdir(parents=True)
-        shutil.copy2(args.build / "FaxanaduRecomp", folder)
-        for sub in ("assets", "mods"):
-            shutil.copytree(args.build / sub, folder / sub)
+        fax_e2e.install(args.build, folder)
 
     def launch(folder, *extra):
         """Start the copy of the game in `folder`, and wait for the file select."""

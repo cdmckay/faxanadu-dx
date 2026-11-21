@@ -127,7 +127,7 @@ def _respawn_temple(g):
     before any entrance: back in Eolis's temple, after the Guru's words."""
     g.poke({**HERO_KIT, PLAYER_IS_DEAD: 1})
     until("the Guru's words", lambda: ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 600)
-    for _ in range(80):
+    for _ in range(200):
         if at(BUILDINGS, EOLIS_TEMPLE):
             break
         if box_open() and typed():
@@ -203,19 +203,20 @@ def main():
             walk_to(max(0, col * 16 - 7), col * 16 + 8)
             act("up", 4, 10)
             try:
-                return page_until(what, test, 40)
+                return page_until(what, test, 80)
             except AssertionError:
                 pass
         raise AssertionError(f"could not go through the door to {what}")
 
     def standing():
         """On the ground, neither jumping nor falling (Player_Flags $01 and $04,
-        which a fall keeps through its landing frame), at the same Y two frames
-        apart. Dartmoor's arrival is a row above the floor: he drops onto it."""
+        which a fall keeps through its landing frame), at the same Y twelve
+        frames apart. Dartmoor's arrival is a row above the floor: he drops
+        onto it, and a fall's first frames do not move him."""
         y, _, _, flags = ram(PLAYER_Y, 4)                   # Player_PosY ($A1) to Player_Flags ($A4)
         if flags & 0x05:
             return False
-        wait(2)
+        wait(12)
         y2, _, _, flags = ram(PLAYER_Y, 4)
         return not flags & 0x05 and y2 == y
 

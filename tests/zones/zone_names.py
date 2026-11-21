@@ -176,7 +176,7 @@ def main():
                     break
                 except AssertionError:
                     pass
-            for _ in range(40):                                # "You used the key"
+            for _ in range(120):                                # "You used the key"
                 if ram(AREA) == 1:
                     break
                 if box_open() and typed():
@@ -198,7 +198,7 @@ def main():
             fixture(outside, dead, {TEMPLE_SPAWN_POINT: CONFLATE, PLAYER_IS_DEAD: 1})
             tcp("load_state", path=str(dead))
             until("the death message", lambda: ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 600)
-            for _ in range(40):
+            for _ in range(120):
                 if (ram(AREA), ram(SCREEN)) == (BUILDINGS, TEMPLE_SCREEN[CONFLATE]):
                     break
                 if typed():

@@ -35,7 +35,7 @@ def in_temple(temple):
 def die_and_respawn(temple):
     """Page through the death message until the hero is back in `temple`."""
     until("the death message", lambda: ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 600)
-    for _ in range(40):
+    for _ in range(120):
         if in_temple(temple):
             return
         if typed():

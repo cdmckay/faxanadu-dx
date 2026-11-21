@@ -21,7 +21,8 @@ used with Down+B, as a player would.
    then does nothing. Once it is over, the same pair flies again. Dying makes
    them ready.
 2. The Hour Glass on Eolis screen 4: the Zozuras stop, HP halves, 15 s. Then a
-   60 s cooldown; refused meanwhile; then it works again.
+   60 s cooldown; refused meanwhile; then, from its last seconds (the Wing
+   Boots' plays out all 60), it works again.
 3. The Hour Glass at Ripasheiku (Trunk $15): the boss keeps moving. Walking
    onto a boss's screen with the Hour Glass running ends it within a second
    (LimitItemDurations), and its cooldown follows.
@@ -63,6 +64,7 @@ AREA, SCREEN, PLAYER_X, PLAYER_Y, PLAYER_FLAGS, PLAYER_STATUS = 0x24, 0x63, 0x9E
 SCREEN_READY = 0x0E
 TEXTBOX_CLOSED, MESSAGE_ID = 0x20C, 0x213
 HP, HP_FRACTION, PLAYER_IS_DEAD, TEMPLE_SPAWN_POINT, PLAYER_TITLE = 0x431, 0x432, 0x438, 0x439, 0x437
+MP = 0x39A
 ITEM_INVENTORY, SELECTED_ITEM, NUMBER_OF_ITEMS, GOLD = 0x3AD, 0x3C1, 0x3C6, 0x392
 DURATION_WING_BOOTS, DURATION_HOUR_GLASS, SPECIAL_ITEMS, QUESTS = 0x429, 0x42A, 0x42C, 0x42D
 SPRITE_ENTITIES, SPRITE_X, SPRITE_Y = 0x2CC, 0xBA, 0xC2                # CurrentSprites_*, 8 slots each
@@ -82,6 +84,7 @@ ZOZURA, RIPASHEIKU = 0x47, 0x2D
 QUEST_SPRING_OF_SKY = 0x02
 TRAVEL_DEPART, TRAVEL_TO_GURU = 3, 4                                # fax_travel.c's lines (TO_GURU + temple)
 FLIGHTS, COOLDOWN, FREEZE = (30, 40, 50, 60), 60, 15              # the game's seconds (64 frames)
+LAST_SECONDS = 3                                                    # a cooldown's end, without the minute before it
 FLIGHT = FLIGHTS[0]                                                 # a Novice's: the lowest band
 ELIXIR_ROW = 2                                                      # EOLIS_TOOL_SHOP_ITEMS: dagger, potion, Elixir
 SECOND = 64
@@ -259,7 +262,10 @@ def main():
         page_through()
 
     def use():
-        """Down+B: the selected item."""
+        """Down+B: the selected item, once he stands (GameLoop_CheckUseCurrentItem
+        refuses while jumping or falling, and a warp's poke can leave him a few
+        frames above the floor)."""
+        until("the hero to stand", lambda: not ram(PLAYER_FLAGS) & 0x05, 120)
         tcp("action", name="down", frames=24)
         wait(6)
         tcp("action", name="b", frames=4)
@@ -449,18 +455,23 @@ def main():
             assert state()["refused"] == refused + 1 and ram(DURATION_HOUR_GLASS) == 0xFF and not box_open(), state()
             print(f"ok: when the freeze ends the Hour Glass recharges for {COOLDOWN} s, refusing meanwhile")
         if args.wants("glass-cooldown"):
-            # The cooldown the freeze's end leaves (glass-freeze checks it), with
-            # the HP the freeze halved and the Zozuras cleared, as it left them.
+            # The end of the cooldown the freeze's end leaves (glass-freeze
+            # checks it starts at 60 s, and boots-cooldown that one counts all
+            # 60 down: the same countdown), from its last seconds, with the HP
+            # the freeze halved and the Zozuras cleared, as it left them.
             start()
             warp(shop, "glass-cooling", EOLIS, 4, 0x9E, PALETTE_EOLIS, 0, {SELECTED_ITEM: HOUR_GLASS, NUMBER_OF_ITEMS: 0})
             clear(ZOZURA)
-            poke({HP: 0x28}, {RECORD.decode(): {4: COOLDOWN}})
-            assert state()["glass_cooldown"] == COOLDOWN, state()
-            await_ready("glass", (COOLDOWN + 2) * SECOND)
+            poke({HP: 0x28}, {RECORD.decode(): {4: LAST_SECONDS}})
+            cooling_since = frame()
+            assert state()["glass_cooldown"] == LAST_SECONDS, state()
+            await_ready("glass", (LAST_SECONDS + 2) * SECOND)
+            waited = frame() - cooling_since
+            assert (LAST_SECONDS - 1) * SECOND <= waited <= (LAST_SECONDS + 1) * SECOND, f"the cooldown took {waited} frames"
             use()
             dismiss(USED_HOUR_GLASS)
             assert ram(DURATION_HOUR_GLASS) in (FREEZE, FREEZE - 1) and ram(HP) == 0x14 and items() == ([], HOUR_GLASS)
-            print("ok: the Hour Glass recharges for 60 s, then freezes again (HP 40 to 20)")
+            print(f"ok: the Hour Glass's cooldown counts its last {LAST_SECONDS} s down, then it freezes again (HP 40 to 20)")
 
         if args.wants("boss"):
             start()
@@ -513,7 +524,8 @@ def main():
             wait(2)
             shot("elixir-used")
             page_through()
-            until("HP and MP to refill", lambda: ram(HP) == 0x50 and not box_open(), 1200)
+            until("HP and MP to refill", lambda: (ram(HP), ram(MP)) == (0x50, 0x50) and not box_open(), 1200)
+            wait(10)                                                   # the refill over: it would undo the next poke
             s = state()
             assert s["revives"] == 1 and s["elixir_spent"] and not s["elixir_charged"], s
             print("ok: at 0 HP the Elixir revives the hero, and is kept, spent")
@@ -688,10 +700,14 @@ def main():
             talk_to_guru()                                              # with the ring, he offers Apolune
             end = frame() + 40 * SECOND                                  # his line, the intro, the offer: A to each
             while frame() < end:
-                line = tcp("travel_state")["text"]
-                if line == TRAVEL_TO_GURU + 1 and typed():
-                    break
-                if typed():
+                travel_now, box = batch(("travel_state", {}), ("read_ram", dict(addr=MESSAGE_ID, len=3)))
+                message, _, paused = bytes.fromhex(box["hex"])
+                done = message == 0 or paused != 0                          # typed(), the same frame's
+                if travel_now["text"] == TRAVEL_TO_GURU + 1:
+                    if done:
+                        break                                           # the offer, typed out: A would answer it
+                    wait(4)                                             # no A while it types: a press as it ends would
+                elif done:
                     act("a", 6, 14)
                 else:
                     hurry(4)

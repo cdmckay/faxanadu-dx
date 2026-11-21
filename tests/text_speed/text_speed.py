@@ -27,7 +27,6 @@ import shutil
 import struct
 import subprocess
 import sys
-import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "travel"))
@@ -98,7 +97,6 @@ def still(what, test, frames=120):
     end = frame() + frames
     while frame() < end:
         assert test(), what
-        time.sleep(0.005)
 
 
 def main():

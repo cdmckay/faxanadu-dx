@@ -28,7 +28,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import Game, fixture, parse_args, ram, tcp, until, wait  # noqa: E402
+from fax_e2e import Game, act, fixture, frame, parse_args, ram, tcp, until, wait  # noqa: E402
 
 AREA, SCREEN, HERO_X = 0x24, 0x63, 0x9E
 PLAYER_FLAGS, ATTACKING = 0xA4, 0x80
@@ -81,13 +81,14 @@ def main():
         tcp("load_state", path=str(case))
         hero = ram(HERO_X)
         assert ram(SCREEN) == ZOZURA_SCREEN and ram(SPRITE_ENTITY + TARGET) == ZOZURA
-        for _ in range(600):
+        end = frame() + 3000                                        # reads, not frames: the game may serve several a frame
+        while frame() < end:
             target = ram(SPRITE_ENTITY + TARGET, SPRITE_HP - SPRITE_ENTITY + 1)   # one frame's entity and HP
             entity, hp = target[0], target[-1]
             if entity != ZOZURA or hp != enemy_hp:
                 break
             if hero - ram(SPRITE_X + TARGET) <= REACH and not ram(PLAYER_FLAGS) & ATTACKING:
-                tcp("action", name="b", frames=2)
+                act("b", 2, 2)                                      # let go before the next press
         else:
             raise AssertionError("the hero never hit the Zozura")
         # A kill borrows: the HP wraps past enemy_hp, and the death effect

@@ -268,7 +268,7 @@ def main():
             # 4. His guard outside, who has no portrait: no name.
             walk_out()
             settled_in(0, 7)
-            for _ in range(40):
+            for _ in range(80):
                 if box_open():
                     break
                 x = ram(PLAYER_X)

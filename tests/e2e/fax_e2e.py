@@ -179,6 +179,9 @@ REPO = Path(__file__).resolve().parents[2]
 FIXTURES = REPO / "build-tests" / "fixtures"  # the saved games tests start from, made from your ROM
 LAUNCH_TRIES = 3
 LISTEN_TIMEOUT = 60                        # seconds for the game to open its TCP port
+WAIT_CHUNK = 600                           # frames a wait command asks for at most (well inside .timeout)
+CONFIG = "[Display]\nWindowScale = 1\n"     # config.ini a test's game starts with; the game adds the rest
+QUICKACK = getattr(socket, "TCP_QUICKACK", None)   # Linux
 MESSAGE_ID = 0x213                         # MessageID, Message_ProcessedLength, TextBox_MessagePaused
 
 
@@ -320,10 +323,7 @@ class Game:
         self.build = Path(build).resolve()
         self.out = Path(out).resolve()
         shutil.rmtree(self.out, ignore_errors=True)
-        (self.out / "game").mkdir(parents=True)
-        shutil.copy2(Path(build) / "FaxanaduRecomp", self.out / "game")
-        for folder in ("assets", "mods"):
-            shutil.copytree(Path(build) / folder, self.out / "game" / folder)
+        install(build, self.out / "game", game_args)
         self.exe = self.out / "game" / "FaxanaduRecomp"
         self.env = dict(os.environ, **HIDDEN_ENV)
         self.log_path = self.out / "game.log"
@@ -332,6 +332,7 @@ class Game:
         self.port, self.fixed_port = port, bool(port)
         self.proc, self.shots = None, []
         self.timeout = 30                  # seconds to wait for a reply
+        self.line = None                   # the TCP connection to the game, kept open (_Line)
 
     @classmethod
     def from_args(cls, args):
@@ -356,6 +357,7 @@ class Game:
             start = self.log_path.stat().st_size
             self.proc = subprocess.Popen([str(self.exe), str(self.rom), "--hidden", "--tcp", str(self.port), *options],
                                          env=self.env, stdout=self.log, stderr=subprocess.STDOUT)
+            self._hang_up()
             _game = self
             problem = self._listening(start)
             if not problem:
@@ -401,6 +403,7 @@ class Game:
             time.sleep(0.02)
 
     def _stop(self):
+        self._hang_up()
         if self.proc.poll() is None:
             self.proc.kill()
         self.proc.wait(10)
@@ -412,21 +415,20 @@ class Game:
             self.tcp("quit")
         except Exception:
             self.proc.kill()
+        self._hang_up()
         self.proc.wait(10)
         self.proc = None
+
+    def _hang_up(self):
+        if self.line:
+            self.line.close()
+            self.line = None
 
     def running(self):
         return self.proc is not None and self.proc.poll() is None
 
     def tcp(self, cmd, **kw):
-        with socket.create_connection(("127.0.0.1", self.port), 5) as s:
-            s.settimeout(self.timeout)
-            f = s.makefile("rwb", buffering=0)
-            f.write((json.dumps(dict(id=1, cmd=cmd, **kw)) + "\n").encode())
-            reply = json.loads(f.readline())
-        if not reply.get("ok"):
-            raise RuntimeError(f"{cmd}: {reply}")
-        return reply
+        return self.batch((cmd, kw))[0]
 
     def batch(self, *commands):
         """Send (cmd, {args}) commands in one write and return their replies.
@@ -434,12 +436,14 @@ class Game:
         frame, so they take effect together: a load_state then an action
         holds the button from the loaded state's first frame, frame-exact,
         however far the script lags."""
-        with socket.create_connection(("127.0.0.1", self.port), 5) as s:
-            s.settimeout(self.timeout)
-            f = s.makefile("rwb", buffering=0)
-            f.write(b"".join((json.dumps(dict(id=i + 1, cmd=cmd, **kw)) + "\n").encode()
-                             for i, (cmd, kw) in enumerate(commands)))
-            replies = [json.loads(f.readline()) for _ in commands]
+        if self.line is None:
+            self.line = _Line(self.port, self.timeout)
+        self.line.timeout = self.timeout
+        try:
+            replies = self.line.send(commands)
+        except BaseException:
+            self._hang_up()                # a reply may still be coming: never read it as another's
+            raise
         for (cmd, _), reply in zip(commands, replies):
             if not reply.get("ok"):
                 raise RuntimeError(f"{cmd}: {reply}")
@@ -449,9 +453,11 @@ class Game:
         return self.tcp("ping")["frame"]
 
     def wait(self, frames):
-        end = self.frame() + frames
-        while self.frame() < end:
-            time.sleep(0.005)
+        """Until `frames` more frames have run: the game answers at the end of
+        the last one (its wait command), so not a frame more."""
+        while frames > 0:
+            self.tcp("wait", frames=min(frames, WAIT_CHUNK))
+            frames -= WAIT_CHUNK
 
     def ram(self, addr, n=1):
         data = bytes.fromhex(self.tcp("read_ram", addr=addr, len=n)["hex"])
@@ -459,11 +465,11 @@ class Game:
 
     def until(self, what, test, frames=1200):
         end = self.frame() + frames
-        while self.frame() < end:
+        while True:
             if test():
                 return
-            time.sleep(0.005)
-        raise AssertionError(f"timed out waiting for {what}")
+            if self.frame() >= end:
+                raise AssertionError(f"timed out waiting for {what}")
 
     def shot(self, name):
         path = self.out / f"{len(self.shots):02d}-{name}.png"
@@ -521,6 +527,10 @@ class Game:
         shutil.rmtree(work, ignore_errors=True)
         print(f"fixture: made {name} in {time.monotonic() - began:.1f} s", flush=True)
 
+    def act(self, name, frames=6, after=8):
+        """Hold an NES button for `frames`, and wait `frames + after`, from the frame it goes down."""
+        self.batch(("action", dict(name=name, frames=frames)), ("wait", dict(frames=frames + after)))
+
     def set_features(self, features):
         (self.out / "game" / "mods" / "state.toml").write_text(features_toml(features))
 
@@ -531,6 +541,72 @@ class Game:
         self.tcp("save_state", path=str(path))
         fixture(path, path, writes, records)
         self.tcp("load_state", path=str(path))
+
+
+def install(build, folder, game_args=()):
+    """The build's game in `folder`, for a test's own copy: FaxanaduRecomp
+    hard-linked (one copy of the program in memory however many games run,
+    which plays them about 10% faster than separate copies; a copy if the
+    link fails), assets/ and mods/ copied, and, in the default view, a
+    config.ini with the window at scale 1: the hidden window's scaling blit
+    is a tenth of a frame at 3. Not in Seamless, whose picture follows the
+    window's size (at scale 1, 142x96)."""
+    build, folder = Path(build), Path(folder)
+    folder.mkdir(parents=True, exist_ok=True)
+    try:
+        os.link(build / "FaxanaduRecomp", folder / "FaxanaduRecomp")
+    except OSError:
+        shutil.copy2(build / "FaxanaduRecomp", folder)
+    for sub in ("assets", "mods"):
+        shutil.copytree(build / sub, folder / sub)
+    if not any("world-view" in arg for arg in game_args):
+        (folder / "config.ini").write_text(CONFIG)
+
+
+class _Line:
+    """The one TCP connection to a game, kept open: the game serves every
+    line it has at its next frame boundary, so a command takes a frame
+    rather than the two a new connection costs, and commands sent together
+    are served at the same one. The game sends a reply and its newline apart,
+    and Nagle's algorithm holds the newline until the first part is
+    acknowledged, which a delayed ACK puts off by up to 40 ms: TCP_QUICKACK
+    acknowledges at once, and where there is none, an empty line (which the
+    game ignores) carries the acknowledgement. Each command has its own id,
+    so a reply to one abandoned (a timeout) is never taken for another's."""
+
+    def __init__(self, port, timeout):
+        self.sock = socket.create_connection(("127.0.0.1", port), 5)
+        self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        self.timeout, self.next_id, self.buf = timeout, 1, b""
+
+    def send(self, commands):
+        first = self.next_id
+        self.next_id += len(commands)
+        self.sock.settimeout(self.timeout)
+        self.sock.sendall(b"".join((json.dumps(dict(id=first + i, cmd=cmd, **kw)) + "\n").encode()
+                                   for i, (cmd, kw) in enumerate(commands)))
+        replies = []
+        while len(replies) < len(commands):
+            reply = json.loads(self._line())
+            if reply.get("id") == first + len(replies):
+                replies.append(reply)
+        return replies
+
+    def _line(self):
+        while b"\n" not in self.buf:
+            if QUICKACK is not None:
+                self.sock.setsockopt(socket.IPPROTO_TCP, QUICKACK, 1)
+            data = self.sock.recv(65536)
+            if not data:
+                raise ConnectionError("the game closed the connection")
+            self.buf += data
+            if QUICKACK is None and b"\n" not in self.buf:
+                self.sock.sendall(b"\n")
+        line, self.buf = self.buf.split(b"\n", 1)
+        return line
+
+    def close(self):
+        self.sock.close()
 
 
 # Fixtures: the saved games tests start from
@@ -673,8 +749,7 @@ def until(what, test, frames=1200):
 
 
 def act(name, frames=6, after=8):
-    tcp("action", name=name, frames=frames)
-    wait(frames + after)
+    _current().act(name, frames, after)
 
 
 def hurry(frames=10):
@@ -683,8 +758,7 @@ def hurry(frames=10):
     not every 4th, and holding never turns a page, which takes a new press:
     for a loop that presses A on each page once it has typed, the same
     presses, sooner. Nothing else may be waiting for A."""
-    tcp("action", name="a", frames=max(1, frames - 2))
-    wait(frames)
+    batch(("action", dict(name="a", frames=max(1, frames - 2))), ("wait", dict(frames=frames)))
 
 
 def until_typed(what="the page to type out", frames=1200):
@@ -700,19 +774,19 @@ def until_typed(what="the page to type out", frames=1200):
 def hold(button, done, frames=600, renew=8):
     """Hold `button` (a TCP action) until done() is true, or `frames` frames
     have run, and let go at once: an action replaces the button's hold, so a
-    1-frame one ends it. The hold is renewed before it lapses, so the button
-    stays down. Whether done() came true."""
+    1-frame one ends it, and it returns once that frame has run (Up at a door
+    with Right still down goes nowhere). The hold is renewed before it lapses,
+    so the button stays down. Whether done() came true."""
     end = frame() + frames
     while True:
         tcp("action", name=button, frames=renew + 4)
         lapse = min(frame() + renew, end)
         while frame() < lapse:
             if done():
-                tcp("action", name=button, frames=1)
+                act(button, 1, 0)          # let go, and wait out the frame it is still down
                 return True
-            time.sleep(0.002)
         if frame() >= end:
-            tcp("action", name=button, frames=1)
+            act(button, 1, 0)
             return done()
 
 

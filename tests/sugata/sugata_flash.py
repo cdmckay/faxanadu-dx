@@ -141,7 +141,8 @@ def main():
         hp, x = g.hp(), g.ram(POS_X)
         g.until("Sugata's touch", lambda: g.hp() != hp, 300)
         assert g.tcp("block_state")["raised"], "still blocking"
-        assert hp - g.hp() == contact and g.ram(POS_X) != x, (hp, g.hp(), contact)
+        assert hp - g.hp() == contact, (hp, g.hp(), contact)
+        g.until("the touch to knock him back", lambda: g.ram(POS_X) != x, 30)
         print(f"ok: blocking, Sugata's touch still takes the game's {contact} HP and knocks him back")
         g.tcp("key", name="V", frames=1)
         g.wait(4)
