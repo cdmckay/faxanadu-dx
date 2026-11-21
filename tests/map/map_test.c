@@ -321,7 +321,6 @@ static bool used(unsigned area, unsigned door) { return bit(v.doors[area], door)
 static const char *field_value(const char *key) { int i = field_at(key); return i >= 0 ? fields[i].value : NULL; }
 
 /* GameLoop_CheckPauseGame, as the game runs it: LDA Joy1_ChangedButtonMask, AND #$10, then the BEQ. */
-static bool start_new(void) { return ram[JOY1_CHANGED] & BUTTON_START; }
 static void and_start(void) {
     cpu.a = (uint8_t)(ram[JOY1_CHANGED] & BUTTON_START);
     cpu.p = (uint8_t)(cpu.a ? cpu.p & ~P_Z : cpu.p | P_Z);
