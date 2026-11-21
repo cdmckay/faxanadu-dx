@@ -130,6 +130,12 @@ it is charged. Finding one you already own recharges it; buying does not, since
 a shop won't sell you a second Elixir, charged or spent. Your save file keeps
 the cooldowns and whether the Elixir is spent.
 
+**The Battle Suit and the Dragon Slayer, fixed.** In the original, picking up
+the Battle Suit counted your weapons instead of your armor, and the Dragon
+Slayer your armor instead of your weapons, so either could wipe out armor or
+weapons you carried, or list ones you didn't have. Now each joins its own
+list, after what you carry.
+
 ### Shops and text
 
 **Quick shops.** Up on a shopkeeper opens his list straight away, with no
