@@ -353,7 +353,7 @@ static void test_visits(void) {
     gurus = 1;
     save_listener(FAX_SAVE_NEW_GAME);
     CHECK(decoded);
-    ram[GAME_PAUSED_STATE] = 0; ram[TEXTBOX_CLOSED] = 1;
+    ram[GAME_PAUSED_STATE] = 0; ram[PLAYER_IS_DEAD] = 0;
 
     /* A new game: the gate, then Eolis through its door. Eolis's Guru counts from the start in Guru
      * travel, but not on the map until the hero goes in. */
@@ -393,6 +393,15 @@ static void test_visits(void) {
     CHECK(used(1, 0) && used(1, 2));    /* the door in, and the one he arrives at, back */
     CHECK(!used(1, 3));
 
+    /* A death, and zone respawn brings him back to 0C's neighbour above: no ladder for that. */
+    settle_at(2, 0x0C);
+    ram[PLAYER_IS_DEAD] = 1; fax_map_frame_end();
+    ram[PLAYER_IS_DEAD] = 0;
+    memset(v.down[2], 0, sizeof v.down[2]);
+    settle_at(2, 0x00);
+    CHECK(!bit(v.up[2], 0x0C) && seen(2, 0x00));
+    settle_at(2, 0x0C);
+    CHECK(bit(v.down[2], 0x00));
     /* A respawn at Apolune's temple: its door counts, and so does its screen. */
     CHECK(!used(3, 0));
     inside(APOLUNE_TEMPLE, 3, 1);
@@ -456,7 +465,7 @@ static void test_map(void) {
     for (unsigned i = 0; i < 64; ++i) hw_palette_argb[i] = 0x010000u * i + 0x0101u;
     gurus = 1;
     save_listener(FAX_SAVE_NEW_GAME);
-    ram[GAME_PAUSED_STATE] = 0; ram[TEXTBOX_CLOSED] = 1;
+    ram[GAME_PAUSED_STATE] = 0; ram[PLAYER_IS_DEAD] = 0;
     settle_at(1, 0x00); settle_at(1, 0x01); settle_at(3, 0x00); settle_at(3, 0x01); settle_at(1, 0x08);
     settle_at(1, 0x09);
     settle_at(1, 0x16);   /* the climb */
@@ -489,14 +498,12 @@ static void test_map(void) {
     press();                                                /* and Map */
     CHECK(closing && pause_frame(0) && !open);
 
-    /* A press waits for the check a while, but not past a text box or too long. */
+    /* A press waits for the check a while (the menu, a conversation or a scroll may hold it), then goes. */
     press();
     for (unsigned i = 0; i < OPEN_WINDOW - 2; ++i) fax_map_frame_end();
     CHECK(want);
     for (unsigned i = 0; i < 4; ++i) fax_map_frame_end();
     CHECK(!want && !check());
-    press(); ram[TEXTBOX_CLOSED] = 0; fax_map_frame_end(); ram[TEXTBOX_CLOSED] = 1;
-    CHECK(!want);
     /* In the game's own pause, it opens there; closing it unpauses. */
     ram[JOY1_CHANGED] = BUTTON_START; CHECK(check() && !open);
     CHECK(!pause_frame(0));

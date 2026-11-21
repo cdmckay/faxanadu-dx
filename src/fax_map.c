@@ -63,9 +63,9 @@ extern uint32_t hw_palette_argb[512];   /* the host's NES colors, emphasis in bi
 #define SCREEN_SCROLL_DIRECTION 0x0054u   /* $FF unless scrolling to the next screen */
 #define AREA_CURRENT_SCREEN     0x0063u
 #define GAME_PAUSED_STATE       0x0120u   /* nonzero while the game is paused */
-#define TEXTBOX_CLOSED          0x020Cu   /* 0 while a text box or the menu is open */
 #define AREA_SAVED_AREA         0x03D5u   /* where a building's way out leads */
 #define AREA_SAVED_SCREEN       0x03D6u
+#define PLAYER_IS_DEAD          0x0438u   /* set from the killing hit until Player_Spawn */
 /* Fixed bank: GameLoop_CheckPauseGame ($E02B): LDA Joy1_ChangedButtonMask, AND #$10, BEQ RETURN_E02A,
  * LDA #$01, STA Game_PausedState, then @_waitForUnpause ($E036): JSR WaitForNextFrame, JSR Sprites_FlipRanges,
  * LDA Joy1_ChangedButtonMask, AND #$10, BEQ @_waitForUnpause, LDA #$00, STA Game_PausedState, RTS. Both
@@ -292,11 +292,13 @@ static int loop_hook(uint16_t addr) {
 void fax_map_frame_end(void) {
     if (!enabled) return;
     ++frames;
-    if (want && (frames >= want || q(TEXTBOX_CLOSED) == 0)) want = 0;
+    if (want && frames >= want) want = 0;
     if (!decode()) return;
     if (open) ++age;
     merge_gurus();
-    if (settled() && !q(GAME_PAUSED_STATE)) observe();
+    /* A death brings him back somewhere else (a temple, or with zone respawn the zone's way in): no move. */
+    if (q(PLAYER_IS_DEAD)) last.valid = 0;
+    else if (settled() && !q(GAME_PAUSED_STATE)) observe();
 }
 
 bool fax_map_showing(void) { return enabled && open; }

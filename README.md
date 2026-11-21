@@ -98,6 +98,16 @@ hurts them too; in the original only magic did.
 
 ### Getting around
 
+**The map.** Press M, or the left trigger on a controller, and the game
+pauses on a map of where you have been, as in Metroid: a box for every screen
+you have stood on, laid out by how the screens join, with the one you are on
+blinking. Screens you haven't seen stay blank. Each region, tower and castle
+has its page, the towns sitting between the screens they join; Left and Right
+turn the page, and B, Start or M close the map. Marks show the doors you have
+used: Gurus, shops, other buildings, and doors to towers, castles and other
+regions. Ladders you have climbed join the screens above and below. Your file
+keeps the map.
+
 **Forgiving jumps.** A pressed up to 5 frames after you walk off a ledge still
 jumps, from where you are, and A pressed in the air up to 6 frames before you
 land jumps as you land. No jump goes higher or further than a well-timed one
@@ -185,6 +195,7 @@ the connected map. It is still a preview, for local play only. See
 | Select | Backslash | Back |
 | Magic | C | Y |
 | Block (hold, with a shield) | V | B |
+| Map | M | Left trigger |
 | Menu | Escape | Right shoulder |
 | Fast-forward (hold) | Tab | Right trigger |
 | Save states | F7 | Back + left stick |
@@ -192,11 +203,11 @@ the connected map. It is still a preview, for local play only. See
 | Fullscreen | F11 | |
 | Screenshot | F12 | |
 
-The launcher's Controls page remaps them. To rebind Magic or Block, set
-`MagicKey` and `BlockKey` (a key name, like `V` or `Left Shift`) and
-`MagicButton` and `BlockButton` (a controller button, like `b` or
-`leftshoulder`, or a trigger, like `lefttrigger+`) in the `[Game]` section of
-`config.ini`, next to the game. `none` unbinds one. Pick ones nothing else
+The launcher's Controls page remaps them. To rebind Magic, Block or the Map,
+set `MagicKey`, `BlockKey` and `MapKey` (a key name, like `V` or `Left Shift`)
+and `MagicButton`, `BlockButton` and `MapButton` (a controller button, like
+`b` or `leftshoulder`, or a trigger, like `lefttrigger+`) in the `[Game]`
+section of `config.ini`, next to the game. `none` unbinds one. Pick ones nothing else
 uses.
 
 ## Save files
