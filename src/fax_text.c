@@ -7,6 +7,18 @@
  * (Screen_LoadUIPalette sets it from the screen's palette). This draws the same
  * pixels onto a presented ARGB picture, with the palette and pattern tiles the
  * frame was drawn with, blended for fading. It never touches the machine.
+ *
+ * It also says whether one of the game's boxes is open, by what the last
+ * frame showed (fax_text_box_showing). TextBox_Closed ($020C) is 0 while a box
+ * or the menu is open, but Screen_LoadBlocksHoriz buffers each column of tiles
+ * it loads at $0200-$021D, over the text box's variables, so once a screen has
+ * been drawn or scrolled sideways it holds one of the screen's tiles, which
+ * can be 0 with no box up (Forepaw's screen 2). A box counts once its frame's
+ * top-left corner, then its top edge, shows below the HUD: TextBox_Open draws
+ * the top row first, and TextBox_Close sets TextBox_Closed before it clears
+ * anything, so this agrees with the picture as a box comes and goes. Any
+ * box's corner counts, not only the one at TextBox_X and _Y: those name a
+ * menu's submenu a frame before its frame shows, over the menu.
  * See docs/GAME_INTERNALS.md, "The text box". */
 #include "fax_text.h"
 #include "cyc_mod.h"
@@ -17,6 +29,7 @@
 /* Bank 13 */
 #define TILE_GLYPHS_START 0x8000u   /* TILE_GLYPH_SPACE, then one glyph per character to $7F */
 /* RAM */
+#define TEXT_BOX_CLOSED         0x020Cu   /* TextBox_Closed: 0 while a box or the menu is open, or a tile */
 #define UI_ATTRIBUTE_DATA_INDEX 0x038Du   /* the HUD and text box palette, 0-3 */
 
 enum { GLYPH_BANK = 13, BANK_SIZE = 16384, FIRST = 0x20, GLYPHS = 0x60 };
@@ -24,6 +37,7 @@ enum { GLYPH_BANK = 13, BANK_SIZE = 16384, FIRST = 0x20, GLYPHS = 0x60 };
 enum { TILE_INSIDE = 0, TILE_TOP_LEFT = 1, TILE_TOP = 2, TILE_TOP_RIGHT = 3, TILE_SIDE = 4,
        TILE_BOTTOM_LEFT = 5, TILE_BOTTOM_RIGHT = 6 };
 #define TEXT_BOX_LINE 64   /* a playfield line, to find the background pattern table boxes are drawn from */
+enum { TEXT_COLS = 32, TEXT_ROWS = 30, TEXT_HUD_ROWS = 4 };   /* the picture in cells; the HUD's rows */
 
 static uint8_t glyphs[GLYPHS][8];
 static bool loaded;
@@ -157,4 +171,30 @@ void fax_text_draw_color(uint32_t *px, int w, int h, int x, int y, const char *s
             for (int c = 0; c < 8; ++c)
                 if (glyphs[ch - FIRST][r] >> (7 - c) & 1) put(px, w, h, x + c, y + r, color, alpha);
     }
+}
+
+/* ---- the game's own boxes, in what the last frame showed ---- */
+
+unsigned fax_text_shown_tile(int col, int row) {
+    if (col < 0 || col >= TEXT_COLS || row < 0 || row >= TEXT_ROWS) return FAX_TEXT_NO_TILE;
+    int line = row * FAX_TEXT_CELL + FAX_TEXT_CELL / 2;
+    int x = (cyc_render_line_scroll_x(line) + col * FAX_TEXT_CELL + FAX_TEXT_CELL / 2) & 511;
+    int y = cyc_render_line_scroll_y(line);
+    if (y < 0 || y >= 480) return FAX_TEXT_NO_TILE;
+    uint16_t table = (uint16_t)(0x2000u + (x >= 256 ? 0x400u : 0) + (y >= 240 ? 0x800u : 0));
+    return cyc_render_nametable((uint16_t)(table + (y % 240) / FAX_TEXT_CELL * 32 + (x & 255) / FAX_TEXT_CELL));
+}
+
+/* Below the HUD the screen shows tile 0 and the area's tiles, which
+ * Area_LoadTiles puts from $1800 (tile $80) on, so a frame's corner followed
+ * by its top edge (or, two cells wide, its other corner) is a box's. */
+bool fax_text_box_showing(void) {
+    if (cyc_mod_peek(TEXT_BOX_CLOSED)) return false;
+    for (int row = TEXT_HUD_ROWS; row < TEXT_ROWS; ++row)
+        for (int col = 0; col + 1 < TEXT_COLS; ++col) {
+            if (fax_text_shown_tile(col, row) != TILE_TOP_LEFT) continue;
+            unsigned next = fax_text_shown_tile(col + 1, row);
+            if (next == TILE_TOP || next == TILE_TOP_RIGHT) return true;
+        }
+    return false;
 }

@@ -11,9 +11,11 @@
  * which Game_EnterBuilding sets from where the hero stood); that forgets the
  * last name, so walking out shows the town's. Two zones with one name (the
  * Dartmoor region and its town) show it once. The banner holds still while a
- * text box or menu is open or the game is paused, and is hidden behind boxes.
- * Slain by (fax_slain.c) draws its line in the same box with fax_banner_draw.
- * See docs/GAME_INTERNALS.md, "Areas, screens and zones". */
+ * text box or menu is open or the game is paused, and is hidden behind boxes:
+ * a box is open by what the last frame showed (fax_text_box_showing), since
+ * TextBox_Closed alone reads 0 with no box up on some screens. Slain by
+ * (fax_slain.c) draws its line in the same box with fax_banner_draw.
+ * See docs/GAME_INTERNALS.md, "Areas, screens and zones" and "The text box". */
 #include "fax_banner.h"
 #include "fax_text.h"
 #include "fax_zone.h"
@@ -40,7 +42,6 @@
 #define SCREEN_SCROLL_DIRECTION 0x0054u   /* $FF unless scrolling to the next screen */
 #define AREA_CURRENT_SCREEN     0x0063u
 #define GAME_PAUSED_STATE       0x0120u   /* 1 while Start has the game paused */
-#define TEXTBOX_CLOSED          0x020Cu   /* 0 while a text box or the menu is open */
 #define AREA_SAVED_AREA         0x03D5u   /* where a building's way out leads */
 #define AREA_SAVED_SCREEN       0x03D6u
 
@@ -78,8 +79,7 @@ void fax_banner_reset(void) {
 static bool settled(void) {
     return q(SCREEN_READY_STATE) == 0 && q(INTERRUPT_HANDLERS_ON) && q(SCREEN_SCROLL_DIRECTION) == 0xFF;
 }
-static bool box_open(void) { return q(TEXTBOX_CLOSED) == 0; }
-static bool held(void) { return box_open() || q(GAME_PAUSED_STATE) != 0; }
+static bool held(void) { return fax_text_box_showing() || q(GAME_PAUSED_STATE) != 0; }
 
 static unsigned alpha_at(unsigned age) {
     if (age < FADE_IN) return (age + 1) * 255u / FADE_IN;
@@ -160,7 +160,7 @@ void fax_banner_hide(void) { t.showing = FAX_ZONE_NONE; }
 bool fax_banner_busy(void) { return enabled && !failed && t.showing != FAX_ZONE_NONE; }
 
 const uint32_t *fax_banner_present(const uint32_t *picture, int *w, int *h) {
-    if (!enabled || failed || t.showing == FAX_ZONE_NONE || box_open()) return picture;
+    if (!enabled || failed || t.showing == FAX_ZONE_NONE || fax_text_box_showing()) return picture;
     return fax_banner_draw(picture, w, h, fax_zone(t.showing)->name, alpha_at(t.age));
 }
 
@@ -194,17 +194,19 @@ static void zone_state(int id, const char *line) {
     const FaxZone *at = fax_zone(fax_zone_at(area, screen));
     snprintf(fields, sizeof fields,
              "\"enabled\":%s,\"font\":%s,\"area\":%u,\"screen\":%u,\"zone\":%s%s%s,\"here\":%s%s%s,"
-             "\"showing\":%s%s%s,\"alpha\":%u,\"age\":%u,\"banners\":%u,\"last\":%s%s%s",
+             "\"showing\":%s%s%s,\"alpha\":%u,\"age\":%u,\"banners\":%u,\"last\":%s%s%s,\"box\":%s",
              enabled ? "true" : "false", fax_text_loaded() ? "true" : "false", area, screen,
              at ? "\"" : "", at ? at->name : "null", at ? "\"" : "",
              here ? "\"" : "", here ? here->name : "null", here ? "\"" : "",
              showing ? "\"" : "", showing ? showing->name : "null", showing ? "\"" : "",
              showing ? alpha_at(t.age) : 0u, t.age, banners,
-             last_name ? "\"" : "", last_name ? last_name : "null", last_name ? "\"" : "");
+             last_name ? "\"" : "", last_name ? last_name : "null", last_name ? "\"" : "",
+             fax_text_box_showing() ? "true" : "false");
     cyc_tcp_ok(id, fields);
 }
 void fax_banner_tcp_setup(void) {
-    cyc_tcp_register("zone_state", "Zone names: the zone here, the banner showing, names shown so far", zone_state);
+    cyc_tcp_register("zone_state", "Zone names: the zone here, the banner showing, names shown so far, a box open",
+                     zone_state);
 }
 #else
 void fax_banner_tcp_setup(void) {}

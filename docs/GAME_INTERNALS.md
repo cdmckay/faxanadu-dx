@@ -66,11 +66,13 @@ and data tables after it shifted). Not supported: the build rejects it.
 | `$0100` | `CurrentROMBank` | 14 in the main loop. The stack shares this page |
 | `$0120` | `Game_PausedState` | Nonzero while the game is paused: Start, or the map (see *The map*) |
 | `$0127` | `SoundEffect_State_Counter` | The playing sound effect's tick; the typing sound runs 1-4 |
+| `$0200-$021D` | `Temp_0200` on | `Screen_LoadBlocksHoriz`'s column of tiles, over the text box's variables: after a screen is drawn or scrolls sideways, every one of them from `$0208` to `$021D` holds a tile of it (see *The text box*) |
 | `$0208-$020B` | `TextBox_X`, `TextBox_Y`, `TextBox_Width`, `TextBox_Height` | The box last opened or closed, in tiles (see *The text box*) |
+| `$020C` | `TextBox_Closed` | 0 while a box or the menu is open, 1 once it has closed; but a screen's tile, which can be 0, once a screen has been drawn or scrolled (see *The text box*) |
 | `$0212` | `TextBox_PlayTextSound` | The typing sound plays for a character if set |
-| `$0213` | `MessageID` | 0 once a message has typed out; otherwise stale after a conversation, and still stale (with `$0215`) as the next script's portrait opens, until its first message loads |
+| `$0213` | `MessageID` | 0 once a message has typed out; otherwise stale after a conversation (a screen's tile, once one has been drawn), and still stale (with `$0215`) as the next script's portrait opens, until its first message loads |
 | `$0214` | `Message_ProcessedLength` | Bytes of the message read, from an offset, not 0. Wraps with the address |
-| `$0215` | `TextBox_MessagePaused` | Nonzero while a `$FC` pause waits for A |
+| `$0215` | `TextBox_MessagePaused` | Nonzero while a `$FC` pause waits for A; otherwise maybe a screen's tile |
 | `$021D` | `TextBox_Timer` | Characters type when it is a multiple of 4. `Messages_Load` zeroes it |
 | `$02CC-$02D3` | `CurrentSprites_Entities` | Each sprite slot's entity, `$FF` empty (see *What killed the hero*) |
 | `$036C-$0373` | `CurrentSprites_Values` | Each slot's value from the screen's sprite list: a person's interaction script (see *Quests*), $FF none |
@@ -250,8 +252,9 @@ faxanatools' `messages.py` decodes and encodes them; `fax_travel.c`'s
   `TextBox_MessagePaused` is set. Wait on that rather than on a timer.
   Only a pause sets `TextBox_MessagePaused` ($FF), and only continuing past
   one (or the mantra box) clears it, so it can hold a stale nonzero value: $9F
-  all through a new game's intro. For a line with no pause, wait on
-  `MessageID` alone.
+  all through a new game's intro, a tile of the gate's screen (see
+  `TextBox_Closed` below). For a line with no pause, wait on `MessageID`
+  alone.
 - Between two messages the box is wiped and refilled. A screenshot taken then
   shows half of each.
 - **A message after one that scrolled shows rotated.** The box's rows show
@@ -281,11 +284,35 @@ faxanatools' `messages.py` decodes and encodes them; `fax_travel.c`'s
   `HUD_TILES_START` (`$8140`), to PPU `$1000`, so tile t is at
   `$8140 + t * 16` in ROM; `fax_text_box_rom` draws the frame from there on
   screens whose pattern tables hold something else, like the title.
-  `TextBox_Closed` (`$020C`) is 0 while a box or the Select menu is open, and
-  nonzero once one has closed (also before the first). Only `TextBox_Open`
-  and `TextBox_Close` store it by name, yet walking out of a building into the
-  towns (area 3, Forepaw's screen 2) it read 0 with no box up, so a test
-  should not take 0 alone for an open box outside Eolis.
+- **`TextBox_Closed` (`$020C`) reads 0 with no box up on some screens.** It is
+  0 while a box or the Select menu is open and 1 once one has closed, and only
+  `TextBox_Open` and `TextBox_Close` store it by name, but the screen's tiles
+  go through it. `Screen_LoadBlocksHoriz` (`$D503`) loads the next column of
+  tiles a screen scrolls in, a top and a bottom tile from each of 15 blocks,
+  into `$0200-$021D` (chipx86's `Temp_0200` on), and in the NMI
+  `Screen_WriteBlockTilesColumnToPPU` (`$D673`) writes the first 26 down the
+  nametable, rows 4-29. Every sideways scroll goes through it, and so does
+  every screen the game draws: `Screen_SetupNew`'s `Area_ScrollScreenRight`
+  (`$D0F6`) scrolls the new screen in from the right a column at a time. So
+  after a door, a building, a respawn or a scroll, `$0200-$021D` hold the last
+  column loaded (for a screen drawn whole, its right edge, column 31, from row
+  4 down), over `TextBox_X` to `TextBox_Height`, `TextBox_Closed` (row 16),
+  `MessageID`, `TextBox_MessagePaused`, `TextBox_LineScrollOffset` and
+  `TextBox_Timer`. Opening a box and loading a message set them again, so the
+  game is none the worse. `TextBox_Closed` is then row 16's tile: usually one
+  of the area's ($80 and up), but on Forepaw's screen 2 (area 3) it is tile 0,
+  so there it reads 0 with no box up (Eolis's gate leaves `$9F`, its town
+  `$94`). Measured from save states: after walking out of a building there,
+  and in the gate, town, meat shop and Zozura fixtures, `$0200-$0219` equal
+  nametable column 31, rows 4-29. **Never take 0 alone for an open box.**
+  `fax_text_box_showing` (`fax_text.c`) also wants a box's frame in the last
+  frame: a top-left corner (tile 1) followed by the top edge (2, or 3 for a
+  box two tiles wide), below the HUD. Below the HUD the screen shows tile 0
+  and the area's tiles, which `Area_LoadTiles` (`$CEB8`) puts at PPU `$1800`
+  or `$1A00` (tiles $80 and up), so those two tiles side by side are a box's.
+  It looks for any box's corner, not just the one at `TextBox_X` and
+  `TextBox_Y`: a submenu sets those a frame before its frame shows, over the
+  menu's.
 - **Where boxes go**, in tiles of the 256 x 240 screen (the HUD is rows 0-3),
   as `TextBox_X`, `TextBox_Y`, `TextBox_Width`, `TextBox_Height` (`$0208-$020B`)
   hold them; the frame is inside the size, and text starts 2 tiles in:
@@ -307,7 +334,8 @@ faxanatools' `messages.py` decodes and encodes them; `fax_travel.c`'s
   it is full), so a box appears and goes over a few frames. `TextBox_Closed`
   changes when the writes are queued, not when they show. To know a box is on
   screen, read its corner tiles from the nametable, through the line's scroll
-  (`cyc_render_nametable`, `cyc_render_line_scroll_x/y`; `fax_speaker.c`).
+  (`fax_text_shown_tile`, on `cyc_render_nametable` and
+  `cyc_render_line_scroll_x/y`; `fax_speaker.c`, `fax_text_box_showing`).
 - The HUD and every box share one palette, `UI_AttributeDataIndex` (`$038D`,
   0-3), which `Screen_LoadUIPalette` sets from the screen's palette
   (`PALETTE_INDEX_TO_UI_BG_ATTRIBUTE_INDEX`, bank 11). The frame's colors
@@ -2088,12 +2116,11 @@ the Elixir in hand) says only "Quest complete". The quests a script
 completed are those complete by then and not before; a pickup's item counts
 as added, as its message says it will be (its list full, an Item is not). A
 quest completed outside a conversation (a place reached, the rock pushed)
-says so in a box below the HUD, where zone names show, after any zone name:
-a name the zone banner holds is drawn over after a name's time. Walking out
-of a building into Forepaw (the building's way out edited to lead there, as
-the tests do), `TextBox_Closed` read 0 with no box up (as *The text box*
-notes), and the zone banner, which holds while it does, kept Forepaw's name
-up.
+says so in a box below the HUD, where zone names show, once any zone name
+has gone. (Walking out of a building into Forepaw's screen 2, the screen
+leaves `TextBox_Closed` at 0 with no box up, as *The text box* explains; the
+zone banner used to hold Forepaw's name for it, until it asked the nametable
+for a box too.)
 
 After a message of more than four lines (the King's) the box's rows are
 rotated (*The text box*); while a quest line loads, the hook at `$F439`
@@ -2614,6 +2641,10 @@ rest of the way to Victim, were not checked.
 - The screen's neighbours are in `Area_ScreenToTheLeft/Right/Above/Below`
   (`$0066-$0069`), loaded from the area's scroll data. Walking off an edge
   makes the neighbour `Area_CurrentScreen` and loads it.
+- Drawing a screen or scrolling sideways loads its tiles a column at a time
+  through `$0200-$021D`, over the text box's variables, and leaves the last
+  column there: `TextBox_Closed` can read 0 with no box up (see *The text
+  box*).
 - **For tests:** set `Area_ScreenToTheRight` in a save state and walk off the
   right edge to reach any screen of the same area the game's own way.
   `CurrentSprites_Entities` (`$02CC`, 8 slots) set to `$FF` clears a screen's
@@ -2854,14 +2885,17 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
   own). No hooks and no ROM: it reads RAM in `frame_end` once the screen has
   settled. A temple whose way out is not where the hero last stood means a
   respawn or a Guru travel journey, and makes the next zone's name show. The
-  banner is held while a box is open or the game is paused. Its save-state
-  record keeps the banner as it was. Its drawing, `fax_banner_draw`, takes any
-  line, so Slain by draws in the same box.
+  banner is held while a box is open or the game is paused, and hidden behind
+  boxes; a box is open by `TextBox_Closed` and the nametable together
+  (`fax_text_box_showing`; see *The text box*). Its save-state record keeps
+  the banner as it was. Its drawing, `fax_banner_draw`, takes any line, so
+  Slain by draws in the same box.
 
 - **Slain by** (`fax_slain.c`, drawn by `fax_banner.c`). When a hit takes the
   hero's last HP, the banner says what it came from, "Slain by a Sugata", from
   that frame through the dissolve, fading out at frame 248 of its 256, before
-  the Guru speaks, and puts away any zone name showing. Two hooks, both only
+  the Guru speaks, and puts away any zone name showing. It hides behind a
+  box, as zone names do (`fax_text_box_showing`). Two hooks, both only
   observing (see *What killed the hero*): at `Player_ReduceHP` (`$C08E`) it
   names the source of a hit that kills (HP below the damage, no Elixir), and
   at `Sprite_Maybe_ResetState` (`$A202`) it keeps each slot's spawner, which
@@ -3104,8 +3138,9 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
   same room that it would touch out of the way, up if that one was higher,
   else down, with two rows between outlines; as every number rises at one
   pace, they never meet after. At most 16 show; a new one replaces the
-  oldest. They hold while `TextBox_Closed` is 0 or `Game_PausedState` is
-  nonzero, hide while a box is open, never cover the HUD, and while
+  oldest. They hold while a box is open (`fax_text_box_showing`, not
+  `TextBox_Closed` alone) or `Game_PausedState` is nonzero, hide while a box
+  is open, never cover the HUD, and while
   `Player_HP_U` is 0 (from a killing hit until the respawn) keep below the
   zone banner's box (8 to 32 pixels under the HUD), where Slain by
   (`fax_slain.c`) says what killed him.

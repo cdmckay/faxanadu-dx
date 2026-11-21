@@ -192,7 +192,8 @@ def main():
 
     def walk_to(x_min, x_max):
         """Walk to x_min-x_max, paging through the intro's monologue outside
-        Eolis's gate. (TextBox_Closed reads 0 in the towns with no box open.)"""
+        Eolis's gate. (TextBox_Closed reads 0 with no box open on some screens,
+        Forepaw's 2 among them: docs/GAME_INTERNALS.md, "The text box".)"""
         for _ in range(600):
             if (ram(AREA), ram(SCREEN)) == (EOLIS, 0) and ram(TEXTBOX_CLOSED) == 0:
                 if typed():

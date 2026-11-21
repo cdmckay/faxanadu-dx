@@ -939,8 +939,8 @@ def _forepaw_counter(g):
         g.act("right", 2, 0)
     g.until("Forepaw", lambda: g.where() == (TOWNS, FOREPAW))
     g.wait(30)
-    # Back to the door. Not walk_to(): in the towns TextBox_Closed reads 0 with
-    # no box open, so it would page forever (tests/indoor/indoor_equip.py).
+    # Back to the door. Not walk_to(): on this screen TextBox_Closed reads 0 with
+    # no box open, so it would page forever (docs/GAME_INTERNALS.md, "The text box").
     column = (FOREPAW_TOOLS_DOOR & 15) * 16
     for _ in range(600):
         x = g.ram(POS_X)

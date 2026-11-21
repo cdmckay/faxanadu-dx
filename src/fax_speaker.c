@@ -102,22 +102,15 @@ static size_t capacity;
 
 static uint8_t q(uint16_t addr) { return cyc_mod_peek(addr); }
 
-/* The background tile the last frame showed in cell (col, row): through that
- * line's scroll, in the nametable it fetched from. */
-static unsigned shown_tile(int col, int row) {
-    int line = row * FAX_TEXT_CELL + FAX_TEXT_CELL / 2;
-    int x = (cyc_render_line_scroll_x(line) + col * FAX_TEXT_CELL + FAX_TEXT_CELL / 2) & 511;
-    int y = cyc_render_line_scroll_y(line);
-    if (y < 0 || y >= 480) return 0x100;
-    uint16_t table = (uint16_t)(0x2000u + (x >= 256 ? 0x400u : 0) + (y >= 240 ? 0x800u : 0));
-    return cyc_render_nametable((uint16_t)(table + (y % 240) / FAX_TEXT_CELL * 32 + (x & 255) / FAX_TEXT_CELL));
-}
 /* TextBox_Open draws a frame top row first and TextBox_Close clears it top
- * row first, so all four corners mean the whole frame is up. */
+ * row first, so all four corners (in the last frame: fax_text_shown_tile)
+ * mean the whole frame is up. */
 static bool portrait_box_shown(void) {
     enum { RIGHT = PORTRAIT_X + PORTRAIT_W - 1, BOTTOM = PORTRAIT_Y + PORTRAIT_H - 1 };
-    return shown_tile(PORTRAIT_X, PORTRAIT_Y) == CORNER_TOP_LEFT && shown_tile(RIGHT, PORTRAIT_Y) == CORNER_TOP_RIGHT &&
-           shown_tile(PORTRAIT_X, BOTTOM) == CORNER_BOTTOM_LEFT && shown_tile(RIGHT, BOTTOM) == CORNER_BOTTOM_RIGHT;
+    return fax_text_shown_tile(PORTRAIT_X, PORTRAIT_Y) == CORNER_TOP_LEFT &&
+           fax_text_shown_tile(RIGHT, PORTRAIT_Y) == CORNER_TOP_RIGHT &&
+           fax_text_shown_tile(PORTRAIT_X, BOTTOM) == CORNER_BOTTOM_LEFT &&
+           fax_text_shown_tile(RIGHT, BOTTOM) == CORNER_BOTTOM_RIGHT;
 }
 
 typedef struct {

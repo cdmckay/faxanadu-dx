@@ -66,6 +66,12 @@ const uint32_t *fax_banner_draw(const uint32_t *picture, int *w, int *h, const c
 }
 bool fax_text_loaded(void) { return font; }
 bool fax_text_load(void) { return font; }
+/* fax_text.c's test for a box: TextBox_Closed 0 and a box's frame on screen.
+ * A screen's tile can leave TextBox_Closed 0 with none (Forepaw's screen 2). */
+#define TEXTBOX_CLOSED 0x020Cu
+static bool frame_shown;
+bool fax_text_box_showing(void) { return ram[TEXTBOX_CLOSED] == 0 && frame_shown; }
+static void box(bool open) { ram[TEXTBOX_CLOSED] = !open; frame_shown = open; }
 
 static void push(uint8_t v) { ram[0x100 | cpu.s] = v; cpu.s = (uint8_t)(cpu.s - 1); }
 static void jsr_from(uint16_t jsr) {          /* JSR pushes the address of its own last byte */
@@ -79,7 +85,7 @@ static const uint8_t MONODRON = 0x2A, SUGATA = 0x18, EXECUTION_HOOD = 0x10, NASH
 static void fresh(void) {
     memset(ram, 0, sizeof ram);
     memset(ram + SPRITE_ENTITIES, 0xFF, SLOTS);
-    ram[TEXTBOX_CLOSED] = 1;                    /* no box open */
+    box(false);
     isolated = false;
     hidden = 0; drawn = NULL;
     deactivate(); activate();
@@ -290,11 +296,14 @@ static void the_line_plays_out(void) {
     unsigned frames = 0;
     while (showing()) {
         drawn = NULL;
-        ram[TEXTBOX_CLOSED] = 1;
+        box(false);
         const uint32_t *p = fax_slain_present(picture, &w, &h);
         if (s.age >= FADE_IN && s.age < FADE_IN + HOLD) CHECK(drawn_alpha == 255);
         CHECK(p == picture + 1 || (s.age >= SHOWN - 1 && p == picture));
-        ram[TEXTBOX_CLOSED] = 0;                /* a box open: hidden, but time goes on */
+        ram[TEXTBOX_CLOSED] = 0;                /* a screen's tile, no box: drawn */
+        drawn = NULL;
+        CHECK(fax_slain_present(picture, &w, &h) == p && (p == picture || drawn));
+        box(true);                              /* a box open: hidden, but time goes on */
         drawn = NULL;
         CHECK(fax_slain_present(picture, &w, &h) == picture && !drawn);
         fax_slain_frame_end();
@@ -302,7 +311,7 @@ static void the_line_plays_out(void) {
     }
     /* It is gone before the dissolve's 256 frames end and the Guru speaks. */
     CHECK(frames == SHOWN && SHOWN < 256);
-    ram[TEXTBOX_CLOSED] = 1;
+    box(false);
     CHECK(fax_slain_present(picture, &w, &h) == picture);
     /* With no font, nothing is drawn, and it says so once. */
     fresh();

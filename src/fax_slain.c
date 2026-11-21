@@ -20,7 +20,8 @@
  *   room's; a save state from before this feature), the shot is named by the
  *   only kind of sprite on screen that casts it, if there is one.
  * - The line takes the banner's place as the hit lands and fades out before
- *   the Guru speaks: the dissolve lasts 256 frames. Both hooks only observe.
+ *   the Guru speaks: the dissolve lasts 256 frames. It hides behind a box
+ *   (fax_text_box_showing), as zone names do. Both hooks only observe.
  *
  * The line showing and the spawners live in this feature's save-state record.
  * See docs/GAME_INTERNALS.md, "What killed the hero". */
@@ -51,7 +52,6 @@
 #define FLASH_RESUME       0xAB60u   /* SpriteBehavior_FlashScreenHitPlayer's LDX CurrentSpriteIndex, after its JSR
                                         Player_ReduceHP */
 /* RAM */
-#define TEXTBOX_CLOSED     0x020Cu   /* 0 while a text box or the menu is open */
 #define SPRITE_ENTITIES    0x02CCu   /* CurrentSprites_Entities: 8 slots, $FF empty */
 #define CURRENT_SPRITE     0x0378u   /* CurrentSpriteIndex */
 #define SPECIAL_ITEMS      0x042Cu   /* bit $08: the Elixir, which Player_ReduceHP uses instead of a death */
@@ -240,7 +240,7 @@ static unsigned alpha_at(unsigned age) {
 
 const uint32_t *fax_slain_present(const uint32_t *picture, int *w, int *h) {
     char line[40];
-    if (!enabled || s.age >= SHOWN || q(TEXTBOX_CLOSED) == 0 || !line_for(s.named, line)) return picture;
+    if (!enabled || s.age >= SHOWN || fax_text_box_showing() || !line_for(s.named, line)) return picture;
     return fax_banner_draw(picture, w, h, line, alpha_at(s.age));
 }
 

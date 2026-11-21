@@ -24,12 +24,11 @@ meteorite The house on Mist $1F, with the Black Onyx and The Meteorite given:
           a "?" over the man, the giver waiting on a finished objective. He
           gives the Ace key, then "Quest complete / The Meteorite".
 wall      The Wall given (set in the record), the hero walks out into Forepaw:
-          after its name below the HUD, "Quest complete / The Wall" in the
-          same place: reaching the next town completes it, outside any
-          conversation. (Here the zone banner holds its name, as it does while
-          TextBox_Closed reads 0 in a town; the quest's banner waits out a
-          name's time, then goes over it.) The Mattock, done too but never given,
-          is not said.
+          once its name below the HUD has faded and gone, "Quest complete /
+          The Wall" in the same place: reaching the next town completes it,
+          outside any conversation. (Forepaw's screen 2 leaves TextBox_Closed at
+          0 with no box up; the name still goes in its time.) The Mattock, done
+          too but never given, is not said.
 file      The King's Plea given (set in the record): dying writes it to the
           file (Save files saves at every respawn), quests.given. Quit,
           continue file 1: the log shows it again. Continuing from the title
@@ -415,14 +414,16 @@ def main():
             until("Forepaw's name", lambda: tcp("zone_state")["showing"] == "Forepaw", 120)
             assert state()["banner"] is None, state()               # it waits for the zone's name
             until("the quest's banner", lambda: state()["banner"] == "wall", 600)
+            name = tcp("zone_state")
+            assert name["showing"] is None and name["age"] == 160, name    # after the name, not over it
             wait(20)
             s = state()
             assert {"wall", "mattock"} <= set(s["done"]) and s["active"] == [] and s["banners"] == 1, s
             game.shot("wall-complete")
             until("the banner to go", lambda: state()["banner"] is None, 600)
             assert state()["banners"] == 1, state()
-            print(f"ok: walking into Forepaw completes The Wall, said below the HUD after Forepaw's name; the "
-                  f"Mattock, never given, is done but not said ({view})")
+            print(f"ok: walking into Forepaw completes The Wall, said below the HUD once Forepaw's name has "
+                  f"gone; the Mattock, never given, is done but not said ({view})")
             game.close()
 
         if args.wants("file"):

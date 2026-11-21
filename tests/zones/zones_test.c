@@ -3,8 +3,10 @@
  * pairs the disassembly places (door, town-edge and temple tables, and where
  * the items are). The banner runs against a model of the machine: CPU RAM as
  * the game leaves it when it walks between screens, goes through doors and
- * respawns, a cart image holding glyphs, and pattern tiles and a palette for
- * drawing. */
+ * respawns (with the column of tiles each screen leaves over the text box's
+ * variables), the nametable the last frame showed, with the boxes TextBox_Open
+ * frames there, a cart image holding glyphs, and pattern tiles and a palette
+ * for drawing. */
 #include <stdio.h>
 static char logged[128];
 #define FAX_BANNER_LOG(...) snprintf(logged, sizeof logged, __VA_ARGS__)
@@ -19,6 +21,7 @@ static unsigned checks;
 static uint8_t ram[0x800];
 static uint8_t cart[16 * 16384];
 static uint8_t chr[0x2000];
+static uint8_t ciram[0x400];        /* the nametable the last frame showed, unscrolled */
 static uint16_t bg_table = 0x1000;
 static uint32_t native[256 * 240];
 static int presents;
@@ -30,6 +33,9 @@ size_t cyc_mod_copy_cart_payload(uint8_t *out, size_t capacity) {
 }
 uint16_t cyc_render_line_bg_table(int y) { (void)y; return bg_table; }
 uint8_t cyc_render_chr(uint16_t a) { return chr[a & 0x1FFF]; }
+int cyc_render_line_scroll_x(int y) { (void)y; return 0; }
+int cyc_render_line_scroll_y(int y) { return y; }
+uint8_t cyc_render_nametable(uint16_t a) { return ciram[a & 0x3FF]; }
 /* Palette entry e as a color whose blue byte is e, so a pixel tells its entry. */
 uint32_t cyc_render_color(int e) { return 0xFF000000u | 0x00400000u | (uint32_t)(e & 31); }
 const uint32_t *cyc_render_present(int *w, int *h) { ++presents; *w = 256; *h = 240; return native; }
@@ -149,13 +155,43 @@ static void coverage(void) {
 
 /* ---- the game, as it moves the hero ---- */
 #define AT(a) ram[a]
+#define TEXTBOX_X      0x0208u   /* TextBox_X, _Y, _Width, _Height */
+#define TEXTBOX_CLOSED 0x020Cu   /* TextBox_Closed */
+enum { ROOM_TILE = 0x80, MENU_X = 2, MENU_Y = 6, MENU_W = 10, MENU_H = 14 };   /* PlayerMenu_Show's box */
 static void settle(void) { AT(SCREEN_READY_STATE) = 0; AT(INTERRUPT_HANDLERS_ON) = 1; AT(SCREEN_SCROLL_DIRECTION) = 0xFF; }
 static void frames(int n) { while (n-- > 0) fax_banner_step(); }
+/* Screen_LoadBlocksHoriz leaves the last column of tiles it loaded at
+ * $0200-$021D, over TextBox_X to TextBox_Timer: the area's tiles, from $80,
+ * and tile 0, which Forepaw's screen 2 has in the row TextBox_Closed takes. */
+static void load_column(unsigned area, unsigned screen) {
+    for (unsigned i = 0; i < 30; ++i) AT(0x0200 + i) = (uint8_t)(ROOM_TILE | (area * 16 + screen + i));
+    if (area == TOWNS && screen == 2) AT(TEXTBOX_CLOSED) = 0;
+}
 /* Walking across a screen edge, or through a door to another screen or area. */
 static void go(unsigned area, unsigned screen) {
     AT(SCREEN_READY_STATE) = 1; frames(3);   /* loading: whatever RAM says now is not settled */
     AT(AREA_CURRENT_AREA) = (uint8_t)area; AT(AREA_CURRENT_SCREEN) = (uint8_t)screen;
+    load_column(area, screen);
     settle(); frames(1);
+}
+/* TextBox_Open: where the box goes, TextBox_Closed 0, and its frame queued;
+ * the NMI writes it, top row first, so it shows from the next frame (show). */
+static void open_box(int x, int y, int w, int h) {
+    AT(TEXTBOX_X) = (uint8_t)x; AT(TEXTBOX_X + 1) = (uint8_t)y; AT(TEXTBOX_X + 2) = (uint8_t)w; AT(TEXTBOX_X + 3) = (uint8_t)h;
+    AT(TEXTBOX_CLOSED) = 0;
+}
+static void put_tile(int col, int row, uint8_t tile) { ciram[row * 32 + col] = tile; }
+static void show(int x, int y, int w, int h) {
+    for (int r = 0; r < h; ++r)
+        for (int c = 0; c < w; ++c) {
+            bool top = r == 0, bottom = r == h - 1, left = c == 0, right = c == w - 1;
+            put_tile(x + c, y + r, top ? (left ? 1 : right ? 3 : 2) : bottom ? (left ? 5 : right ? 6 : 2) : left || right ? 4 : 0);
+        }
+}
+/* TextBox_Close: TextBox_Closed 1 first, then the screen's own tiles back. */
+static void close_box(void) {
+    AT(TEXTBOX_CLOSED) = 1;
+    memset(ciram, ROOM_TILE, sizeof ciram);
 }
 /* Game_EnterBuilding: remember where the hero stood, then the building. */
 static void enter(unsigned building) {
@@ -171,7 +207,8 @@ static void spawn(unsigned area, unsigned outside, unsigned temple) {
 }
 static void begin(void) {
     memset(ram, 0, sizeof ram);
-    AT(TEXTBOX_CLOSED) = 0x9F;   /* nonzero once the first box has closed */
+    memset(ciram, ROOM_TILE, sizeof ciram);
+    load_column(EOLIS, 0);       /* the gate's column of tiles (TextBox_Closed reads $9F there) */
     deactivate(); activate();
     fax_banner_reset();
     AT(AREA_CURRENT_AREA) = EOLIS; AT(AREA_CURRENT_SCREEN) = 0;   /* the title, then the gate */
@@ -275,14 +312,18 @@ static void timing(void) {
     CHECK(alpha_at(t.age) == 255);                                   /* in, in 8 frames */
     frames(HOLD);
     CHECK(alpha_at(t.age) < 255 && alpha_at(t.age) > 200);           /* about 2 s later, fading */
-    /* A text box or the menu: hidden, and the clock stops. */
+    /* A text box or the menu: hidden, and the clock stops, once its frame
+     * shows (in the frame TextBox_Open runs, the picture has no box yet). */
+    int w = 256, h = 240;
+    open_box(MENU_X, MENU_Y, MENU_W, MENU_H);
+    frames(1);
+    CHECK(fax_banner_present(native, &w, &h) != native);
+    show(MENU_X, MENU_Y, MENU_W, MENU_H);
     uint8_t age = t.age;
-    AT(TEXTBOX_CLOSED) = 0;
     frames(50);
     CHECK(t.age == age && *showing());
-    int w = 256, h = 240;
     CHECK(fax_banner_present(native, &w, &h) == native);
-    AT(TEXTBOX_CLOSED) = 0x80;
+    close_box();
     AT(GAME_PAUSED_STATE) = 1;                                       /* paused: still there, held */
     frames(50);
     CHECK(t.age == age && fax_banner_present(native, &w, &h) != native);
@@ -296,6 +337,44 @@ static void timing(void) {
     frames(1);
     CHECK(!*showing() && banners == 1);                              /* gone after 160 frames */
     CHECK(fax_banner_present(native, &w, &h) == native);
+}
+
+/* Forepaw's screen 2 leaves TextBox_Closed at 0 with no box up (its tile
+ * there is 0): the banner shows, fades and goes as anywhere. A box there still
+ * holds it: the menu, and its submenu, queued over it a frame before its own
+ * frame shows. A frame's corner in the HUD, or one with no top edge after it,
+ * is no box. */
+static void a_tile_for_a_box(void) {
+    begin();
+    go(TRUNK, 0x1A); go(TOWNS, 0x02);
+    CHECK(!strcmp(showing(), "Forepaw") && AT(TEXTBOX_CLOSED) == 0 && !fax_text_box_showing());
+    int w = 256, h = 240;
+    frames(FADE_IN);
+    CHECK(fax_banner_present(native, &w, &h) != native && t.age == FADE_IN + 1);
+    put_tile(5, 2, 1); put_tile(6, 2, 2);                            /* the HUD's rows */
+    put_tile(5, 20, 1); put_tile(6, 20, 0x80);                       /* a corner alone */
+    frames(10);
+    CHECK(t.age == FADE_IN + 11 && fax_banner_present(native, &w, &h) != native);
+    open_box(MENU_X, MENU_Y, MENU_W, MENU_H); show(MENU_X, MENU_Y, MENU_W, MENU_H);
+    CHECK(fax_text_box_showing());
+    frames(40);
+    CHECK(t.age == FADE_IN + 11 && fax_banner_present(native, &w, &h) == native);
+    open_box(4, 8, 20, 18);                                          /* PlayerMenu_ShowSubmenu */
+    frames(1);
+    CHECK(t.age == FADE_IN + 11 && fax_banner_present(native, &w, &h) == native);
+    show(4, 8, 20, 18);
+    frames(20);
+    CHECK(t.age == FADE_IN + 11);
+    close_box();                                                     /* PlayerMenu_Close */
+    frames(SHOWN - (FADE_IN + 11) - 1);
+    CHECK(*showing());
+    frames(1);
+    CHECK(!*showing() && banners == 2);                              /* gone on time */
+    /* Two cells wide, a box's corners meet. */
+    open_box(20, 10, 2, 3); show(20, 10, 2, 3);
+    CHECK(fax_text_box_showing());
+    close_box();
+    CHECK(!fax_text_box_showing());
 }
 
 static void save_states(void) {
@@ -431,6 +510,7 @@ int main(void) {
     respawn_and_travel();
     one_name_once();
     timing();
+    a_tile_for_a_box();
     save_states();
     drawing();
     presenting();
