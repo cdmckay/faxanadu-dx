@@ -1043,6 +1043,123 @@ def map_(s):
     s.picture(path)
 
 
+# The quest log's save-state record (src/fax_quests.c, as tests/quests/quest_log.py writes it): a version,
+# then the quests given and those seen done, a bit each in fax_quest_table.h's order, 4 bytes each.
+QUEST_RECORD, QUEST_GIVEN, QUEST_DONE = "faxanadu.quests", 1, 5
+QUEST_BIT = {"elf": 0, "king": 1, "mattock": 2, "wall": 3, "trunk": 4, "sky": 6, "meteorite": 10}
+KING_BOX, MIST_MAN_BOX = (0, 96, 112, 208), (24, 112, 136, 208)   # around the King and his stairs; the man on Mist $1F
+LAST_MARK = (216, 170, 240, 186)            # the flashing mark at the dialogue box's corner, after its last line
+BLACK_ONYX = 0x01                           # a SpecialItems bit
+
+
+def quest_bits(base, names):
+    """The quest record's 4 bytes at `base` for a set of quests."""
+    bits = sum(1 << QUEST_BIT[n] for n in names)
+    return {base + i: bits >> (8 * i) & 0xFF for i in range(4)}
+
+
+def into_kings_room(g, shop):
+    """From the meat shop, out of the King's door on screen 7 (with the Ring)
+    and in."""
+    room = g.out / "kings-room.cycstate"
+    fixture(shop, room, {AREA_SAVED_AREA: AREA_EOLIS, AREA_SAVED_SCREEN: 7, PLAYER_SAVED_POS: 0x98, HP: 0x50,
+                         SPECIAL_ITEMS: RING_OF_ELF}, records={"faxanadu.zone-names": {5: AREA_EOLIS, 6: 7}})
+    g.load(room)
+    g.walk_out()
+    assert g.where() == (AREA_EOLIS, 7), g.where()
+    g.wait(30)
+    g.walk_to(122, 132)                                         # the King's door, column 8
+    g.act("up", 4, 10)
+    g.until("the King's room", lambda: g.ram(AREA) == BUILDINGS)
+    g.wait(40)
+
+
+def quest_mark(g, script):
+    """The mark quest_state says is over the person whose script is `script`."""
+    return next((m for m in g.tcp("quest_state")["marks"] if m["script"] == script), None)
+
+
+@scene("quest-marks")
+def quest_marks(s):
+    """The quest log's marks: a "!" over the King of Eolis before the hero
+    speaks to him, and none after, his quest given; and a "?" over the man in
+    the house on Mist $1F, who sent the hero for the meteorite, now that he
+    holds it (the Black Onyx)."""
+    g = s.game
+    shop = g.state("eolis-meat-shop")
+    g.launch(at="eolis-meat-shop")
+    into_kings_room(g, shop)
+    g.until("the King's \"!\"", lambda: quest_mark(g, 0x08), 120)
+    assert quest_mark(g, 0x08)["mark"] == "!"
+    s.shot("Before", KING_BOX, name="king-before")
+    for _ in range(60):                                         # up his stairs, to x 48
+        if g.ram(POS_X) <= 48 or g.box_open():
+            break
+        g.tcp("action", name="left", frames=24)
+        g.tcp("action", name="a", frames=12)
+        g.wait(30)
+    g.act("up", 4, 10)
+    g.until("the King", g.box_open, 600)
+    g.page_until("the end of his words", lambda: not g.box_open() and g.tcp("quest_state")["in_play"], 200)
+    g.walk("right", lambda: g.ram(POS_X) >= 88, "the foot of his stairs")   # out of the way
+    g.wait(30)
+    assert quest_mark(g, 0x08) is None and g.tcp("quest_state")["given"] == ["king"]
+    s.shot("After", KING_BOX, name="king-after")
+    house = g.out / "mist-house.cycstate"                       # the door on Mist $1F, block $94
+    fixture(shop, house, {AREA_SAVED_AREA: AREA_MIST, AREA_SAVED_SCREEN: 0x1F, SCREEN_SAVED_PALETTE: PALETTE_MIST,
+                          PLAYER_SAVED_POS: 0x94, AREA_REGION: AREA_MIST, HP: 0x50,
+                          SPECIAL_ITEMS: RING_OF_ELF | BLACK_ONYX},
+            records={"faxanadu.zone-names": {5: AREA_MIST, 6: 0x1F}, QUEST_RECORD: quest_bits(QUEST_GIVEN, ["meteorite"])})
+    g.load(house)
+    g.walk_out()
+    g.wait(30)
+    g.walk_to(58, 68)                                           # the house's door, column 4
+    g.act("up", 4, 10)
+    g.until("the house", lambda: g.ram(AREA) == BUILDINGS)
+    g.wait(40)
+    g.until("the man's \"?\"", lambda: quest_mark(g, 0x46), 120)
+    assert quest_mark(g, 0x46)["mark"] == "?"
+    s.shot("Waiting", MIST_MAN_BOX, name="mist-house")
+
+
+@scene("quest-log")
+def quest_log(s):
+    """The quest log: the King's line, then "New quest" and the quest's name
+    in his box; and the log itself, partway to Mascon: in Forepaw with the
+    Ring of Elf, the wall broken and the spring of Trunk revived, the King's
+    Plea and the Spring of Sky under way, four quests done."""
+    g = s.game
+    shop = g.state("eolis-meat-shop")
+    g.launch(at="eolis-meat-shop")
+    into_kings_room(g, shop)
+    for _ in range(60):                                         # up his stairs, to x 48
+        if g.ram(POS_X) <= 48 or g.box_open():
+            break
+        g.tcp("action", name="left", frames=24)
+        g.tcp("action", name="a", frames=12)
+        g.wait(30)
+    g.act("up", 4, 10)
+    g.until("the King", g.box_open, 600)
+    g.page_until("the new quest", lambda: g.tcp("quest_state")["saying"] and g.typed(), 200)
+    g.wait(10)
+    s.picture(g.shot_lit(LAST_MARK, "new-quest"), None, DIALOGUE)
+    forepaw = g.out / "forepaw.cycstate"                        # out of a door on Forepaw's first screen
+    records = {**quest_bits(QUEST_GIVEN, ["elf", "king", "mattock", "wall", "trunk", "sky"]),
+               **quest_bits(QUEST_DONE, ["elf", "mattock", "wall", "trunk"])}
+    fixture(shop, forepaw, {AREA_SAVED_AREA: TOWNS, AREA_SAVED_SCREEN: 2, SCREEN_SAVED_PALETTE: PALETTE_TOWN,
+                            PLAYER_SAVED_POS: 0x99, AREA_REGION: AREA_TRUNK, HP: 0x50, SPECIAL_ITEMS: RING_OF_ELF,
+                            0x42D: 0x01}, records={QUEST_RECORD: records})                    # Quests: the spring of Trunk
+    g.load(forepaw)
+    g.walk_out()
+    g.wait(20)
+    g.tcp("key", name="L", frames=2)
+    g.until("the log", lambda: g.tcp("quest_state")["open"], 300)
+    g.wait(4)
+    state = g.tcp("quest_state")
+    assert state["active"] == ["king", "sky"] and state["pages"] == 1, state
+    s.shot(name="log")
+
+
 # Trunk's ledge (tests/movement/play.py's to_trunk): screen 7, a clear 80-pixel drop.
 JUMP_BOX, POSE_BOX = (0, 96, 136, 232), (0, 128, 96, 224)
 WALK_OFF = [(0, "-"), (5, "RIGHT")]                             # stand, then walk right off the ledge

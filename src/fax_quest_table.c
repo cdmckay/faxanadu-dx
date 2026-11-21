@@ -21,19 +21,20 @@ enum { WEAPON_DRAGON_SLAYER = 0x03, ARMOR_BATTLE_SUIT = 0x23, SHIELD_BATTLE_HELM
        MATTOCK = 0x89, ITEM_WING_BOOTS = 0x8F };
 
 /* Who says what (bank 11's sprite lists, AREA_SPRITE_ADDRESSES, indexed by
- * area): script $03 is the woman walking on Eolis screen 2, $04 Eolis's Guru,
- * $08 the King (building $07), $12 and $13 the two men in Apolune's building
- * $0A, $21 the man walking on Forepaw's screen 3, $22 the man in Forepaw's
- * house ($12), $23 the nurse in its hospital ($11), $24 the Guri (building
- * $15, off Trunk $2D), $25-$27 the old men of the springs (Trunk $25, $3D,
- * $3F), $26 the spring of Trunk's, $33 the man in Mascon's house ($1A), $42
- * the woman in Victim's house ($25), $46 the man in the house on Mist $1F
- * ($22), $50 the man walking on Conflate's screen 9, $51 the man in
- * Conflate's house ($29), $55 Conflate's Guru ($2B), $61 the man in
- * Daybreak's house ($34), $63 the nurse in its meat shop ($31), $65 the
- * woman in its tavern ($32), $71-$72 the man and woman in Dartmoor's house
- * ($3A), $73 the man of building $3D, $74 the Guru in the Castle of Fraternal
- * ($42). */
+ * area; a building's door from bank 3's door tables): script $03 is the woman
+ * walking on Eolis screen 2, $04 Eolis's Guru, $08 the King (building $07),
+ * $12 and $13 the two men in Apolune's building $0A, $21 the man walking on
+ * Forepaw's screen 3, $22 the man in Forepaw's house ($12), $23 the nurse in
+ * its hospital ($11), $24 the Guri (building $15, off Trunk $2D), $25-$27 the
+ * old men of the springs (Trunk $25, $3D, $3F), $33 the man in Mascon's house
+ * ($1A), $36 the woman in the house on Mist $16 ($21), $42 the woman in
+ * Victim's house ($25), $46 the man in the house on Mist $1F ($22), $50 the
+ * man walking on Conflate's screen 9, $51 the man in Conflate's house ($29),
+ * $55 Conflate's Guru ($2B), $61 the man in Daybreak's house ($34), $63 the
+ * nurse in its meat shop ($31), $64 and $65 the man and the woman in its
+ * tavern ($32), $71-$72 the man and woman in the house on Dartmoor $08 ($3A),
+ * $73 the man in Dartmoor town's building $3D, $74 the Guru in the Castle of
+ * Fraternal ($42). */
 const FaxQuest fax_quests[FAX_QUESTS] = {
     [FAX_QUEST_ELF] = { "elf", "The Ring of Elf", "See the Guru of\nEolis before you\nsee the King.",
                         { 0x2A }, { 0x03 }, 0x2C, 0x04 },
@@ -54,12 +55,12 @@ const FaxQuest fax_quests[FAX_QUESTS] = {
     [FAX_QUEST_MASCON] = { "mascon", "Path to Mascon", "Push the rock\naway from the\nfountain with\nthe Ring of Ruby",
                            { 0x4F, 0x52, 0x5E }, { 0x22, 0x23, 0x27 }, 0, 0 },
     [FAX_QUEST_POISON] = { "poison", "The Poison", "Go to Mascon and\nfind the poison\nthe Dwarfs hide.",
-                           { 0x5C, 0x66 }, { 0x26, 0x33 }, 0, 0 },
+                           { 0x5C, 0x66, 0x6D }, { 0x26, 0x33, 0x36 }, 0, 0 },
     [FAX_QUEST_METEORITE] = { "meteorite", "The Meteorite",
                               "Defeat the Dwarf\nin the Tower of\nMist, then bring\nthe meteorite.",
                               { 0x7D }, { 0x46 }, 0x7E, 0x46 },
     [FAX_QUEST_GEAR] = { "gear", "Battle Gear", "Find the Battle\nSuit and Helmet\nin the World of\nBranch.",
-                         { 0x81 }, { 0x50 }, 0, 0 },
+                         { 0x81, 0x8F, 0x95 }, { 0x50, 0x61, 0x64 }, 0, 0 },
     [FAX_QUEST_DWORF] = { "dworf", "Ring of Dworf", "Bring the Battle\nSuit to the Guru\nof Conflate.",
                           { 0x83, 0x94 }, { 0x51, 0x63 }, 0x8C, 0x55 },
     [FAX_QUEST_CANE] = { "cane", "The Magic Cane", "Find the magic\ncane above the\ntower of Pillar.",
