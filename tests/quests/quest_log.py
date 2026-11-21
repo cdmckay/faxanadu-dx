@@ -7,7 +7,7 @@
 The game runs uncapped and the script waits on the game's own state, never on
 the clock, on a reserved TCP port (tests/e2e/fax_e2e.py). Every mark is
 checked in the screenshot itself: the bold "!" or "?" in gold, outlined in
-black, where quest_state says it was drawn. Five parts, each its own game:
+black, where quest_state says it was drawn. Six parts, each its own game:
 
 elf       From Eolis town (the fixture: a new game, through the gate): left to
           screen 2, where the woman walking there has a "!". Talking to her
@@ -187,10 +187,17 @@ def main():
         raise AssertionError(f"could not reach x {x_min}-{x_max}")
 
     def go_in(door):
-        """Up at the door in block column (door & 15) of this screen."""
+        """Up at the door in block column (door & 15) of this screen (again,
+        if something knocked him off it)."""
         column = (door & 15) * 16
-        walk_to(column - 6, column + 4)
-        act("up", 4, 10)
+        for _ in range(4):
+            walk_to(column - 6, column + 4)
+            act("up", 4, 10)
+            try:
+                until("the building", lambda: ram(AREA) == BUILDINGS and settled(), 120)
+                break
+            except AssertionError:
+                pass
         until("the building", lambda: ram(AREA) == BUILDINGS and settled(), 600)
         wait(30)
 
@@ -204,6 +211,7 @@ def main():
         game.load(target)
         hold("right", lambda: ram(AREA) != BUILDINGS, 600)
         until(f"area {area} screen {screen:#x}", lambda: place() == (area, screen) and settled(), 600)
+        game.poke({SPRITE_ENTITIES + i: 0xFF for i in range(8)})   # the screen's enemies away: nothing knocks him back
         wait(20)
         go_in(door)
 

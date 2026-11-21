@@ -200,7 +200,7 @@ E2E=(
   "map          tests/map/explored_map.py --parts"
   "map+sw       tests/map/explored_map.py --parts $SW"
   "quests       tests/quests/quest_log.py --parts"
-  "quests+sw    tests/quests/quest_log.py --parts $SW"
+  "quests+sw    tests/quests/quest_log.py --parts=elf,king,meteorite,wall,file $SW"
   "fixes        tests/fixes/small_fixes.py --parts"
   "graphics     tests/graphics/graphics_fixes.py --parts"
   "graphics+sw  tests/graphics/graphics_fixes.py --parts $SW"
