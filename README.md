@@ -132,6 +132,8 @@ used: Gurus, shops, other buildings, and doors to towers, castles and other
 regions. Ladders you have climbed join the screens above and below. Your file
 keeps the map.
 
+![The map on the Trunk's page: the screens seen from its first to Forepaw, with the towns between them, the doors used marked and the hero's screen lit](docs/screenshots/map.png)
+
 **Forgiving jumps.** A pressed up to 5 frames after you walk off a ledge still
 jumps, from where you are, and A pressed in the air up to 6 frames before you
 land jumps as you land. No jump goes higher or further than a well-timed one
