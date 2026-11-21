@@ -77,7 +77,7 @@ extern uint32_t hw_palette_argb[512];   /* the host's NES colors, emphasis in bi
 #define ISCRIPT_ADDR            0x00DBu   /* IScriptOrCHRAddr; the next action is at it + IScriptOffset */
 #define ISCRIPT_OFFSET          0x00DDu
 #define CURRENT_ROM_BANK        0x0100u   /* 14 in the main loop, 12 while a script or the menu runs */
-enum { SCRIPT_BANK = 12 };
+enum { MAIN_LOOP_BANK = 14 };
 #define GAME_PAUSED_STATE       0x0120u
 #define TEXTBOX_CLOSED          0x020Cu
 #define TEXTBOX_LINE_SCROLL     0x021Au   /* TextBox_LineScrollOffset */
@@ -244,14 +244,14 @@ static void with_pickup(FaxQuestGame *g) {
     }
 }
 
-/* Settled on a screen, not paused, alive, and no script, menu or text box
- * running: they run with bank 12 mapped, and wait for frames there. (Not
- * "bank 14 mapped": a lag frame can end while the main loop has another bank
- * in, and the marks would blink.) TextBox_Closed cannot tell: it can read 0
- * in a town with no box up (docs/GAME_INTERNALS.md, "The text box"). */
+/* Settled on a screen, in the main loop (bank 14), not paused, alive: no
+ * script, menu or text box running. Those wait for their frames with bank 12
+ * or 13 mapped (the text is read from bank 13). TextBox_Closed cannot tell:
+ * it can read 0 in a town with no box up (docs/GAME_INTERNALS.md, "The text
+ * box"). */
 static bool in_play(void) {
     return q(SCREEN_READY_STATE) == 0 && q(INTERRUPT_HANDLERS_ON) && q(SCREEN_SCROLL_DIRECTION) == 0xFF &&
-           q(CURRENT_ROM_BANK) != SCRIPT_BANK && !q(GAME_PAUSED_STATE) && !q(PLAYER_IS_DEAD) &&
+           q(CURRENT_ROM_BANK) == MAIN_LOOP_BANK && !q(GAME_PAUSED_STATE) && !q(PLAYER_IS_DEAD) &&
            q(AREA_CURRENT_AREA) < AREAS;
 }
 

@@ -2073,9 +2073,9 @@ neither given nor complete puts a "!" over him; a quest under way whose next
 step he is (the walk reaches its step), a "?", which comes first. The mark is
 the font's "!" or "?", made bold, in `$27` (gold) outlined in `$0F`, its
 bottom 4 pixels above his box, over the middle of his 16 pixels, and only
-in play: settled, not paused, alive, and bank 12 not mapped (a script, a
-shop or the Select menu waits for its frames with it in). Not "bank 14
-mapped": a lag frame can end while the main loop has another bank in.
+in play: settled, not paused, alive, and bank 14 mapped, the main loop's (a
+script, a shop or the Select menu waits for its frames with bank 12 in, or 13
+while a character of text is read).
 
 **The log.** The Quest log button opens it through the game's pause, at the
 map's two branches (*The map*), after the map's hooks; neither opens over the
