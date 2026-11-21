@@ -151,8 +151,8 @@ python3 tests/e2e/fax_e2e_test.py --build build-cycle --rom "$ROM" --out "$OUT/e
 #
 # A test runs in Seamless too (+sw) only where the view changes what it
 # checks: a feature that draws or places something on screen, or moves the
-# hero between rooms. Block, Equip indoors and the rest are logic on the
-# game's state, the same in either view. Quick shops draws its list's hint,
+# hero between rooms. Block, Equip indoors, the inventory fix and the rest
+# are logic on the game's state, the same in either view. Quick shops draws its list's hint,
 # page and OWNED over the picture, placed for Seamless's: its two parts that
 # check all three run there. Seamless's picture is fixed at 426x240, what it
 # fits to the window at scale 3, so the window can be at scale 1 (fax_e2e's
@@ -194,7 +194,6 @@ E2E=(
   "damage       tests/damage/damage_numbers.py"
   "damage+sw    tests/damage/damage_numbers.py $SW"
   "inventory    tests/inventory/inventory_fix.py --parts"
-  "inventory+sw tests/inventory/inventory_fix.py --parts $SW"
   "map          tests/map/explored_map.py --parts"
   "map+sw       tests/map/explored_map.py --parts $SW"
   "fixes        tests/fixes/small_fixes.py --parts"
