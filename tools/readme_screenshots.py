@@ -1080,6 +1080,51 @@ def falling_pose(s):
         s.picture(path, caption, POSE_BOX)
 
 
+# Ladders (tests/ladders/ladders.py): the fountain's screen and Trunk 6's ladder.
+QUESTS, SPRINGS_AND_PATH = 0x42D, 0x27      # the three springs done, and the path to Mascon open
+FOUNTAIN_BOX, LADDER_BOX = (0, 40, 176, 216), (136, 112, 256, 232)
+
+
+@fax_e2e.recipe("readme-trunk-27", parent="apolune-temple")
+def _readme_trunk_27(g):
+    """Out of Apolune's temple, through its door edited to lead to Trunk $27,
+    a screen right of the fountain's ($28)."""
+    g.warp(g.save("temple"), "trunk-27", AREA_TRUNK, 0x27, PALETTE_TRUNK, 0x91, AREA_TRUNK)
+    g.settle()
+
+
+@scene("ladders", MovementGame)
+def ladders(s):
+    """Ladders, fixed: with the path to Mascon open, the hero walks left into
+    the fountain's screen and straight back out to $27. The original drops the
+    fountain's ladder into $27, through its floor; the remaster leaves $27 as it
+    is. Frame exact, headless from a save state, as tests/ladders/ladders.py does."""
+    g = s.game
+    state = g.out / "trunk-27.cycstate"
+    fixture(g.state("readme-trunk-27"), state, {**play.no_actors(), QUESTS: SPRINGS_AND_PATH, HP: 0x50})
+    for caption, mods in (("Original", g.mods("mods-off", original=True)), ("Remastered", g.mods("mods-on"))):
+        path = g.out / f"{caption.lower()}.png"
+        g.headless(state, [(0, "LEFT"), (60, "RIGHT")], 300, mods, path)
+        s.picture(path, caption, FOUNTAIN_BOX)
+
+
+@scene("ladder-hold", MovementGame)
+def ladder_hold(s):
+    """Holding on to ladders: a hit on Trunk 6's ladder (the state the hit
+    leaves: invincibility, knockback, facing). The original knocks him off and
+    he falls; the remaster keeps him on it. Frame exact, headless from a save
+    state, as tests/ladders/ladders.py does."""
+    g = s.game
+    hit = g.out / "hit.cycstate"
+    fixture(g.state("trunk-ladder"), hit, {**play.no_actors(), play.X: 224, play.Y: 128, play.TICK: 0,
+                                           play.FLAGS: play.CAN_CLIMB | play.CLIMBING | play.RIGHT, HP: 0x50,
+                                           play.STATUS: play.KNOCKBACK, play.IFRAMES: 0x3C})
+    for caption, mods in (("Original", g.mods("mods-off", original=True)), ("Remastered", g.mods("mods-on"))):
+        path = g.out / f"{caption.lower()}.png"
+        g.headless(hit, [(0, "-")], 5, mods, path)               # mid-fall in the original
+        s.picture(path, caption, LADDER_BOX)
+
+
 # Keys and the Mattock, from Eolis's town (tests/keys/auto_and_reusable_keys.py).
 EOLIS_EXIT, MATTOCK_WALL = 0x08, 0x0C                           # Eolis's exit door (a J key); Trunk's Mattock wall
 WALL_BLOCKS, WALL_BLOCK, WALL_STOP = (0xA3, 0xB3), 0x63, 0x20
