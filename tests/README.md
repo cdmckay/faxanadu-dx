@@ -9,11 +9,24 @@ second checkout's suite waits for the first's games to finish.
 
 The end-to-end runs (a test, or each part of one) go through a queue: at most
 `E2E_JOBS` play at once (default: one a hardware thread; `E2E_JOBS=0` for no
-limit), the longest first by how long each took last time
-(`build-tests/e2e-times.txt`). The suite ends with each run's finish and its
-time. A game runs uncapped and takes a whole thread from launch to close, so
-the suite is bound by the frames all its games play: a run that waits, walks
-or reads more than its check needs makes the whole suite later.
+limit), the longest first by the CPU each used last time
+(`build-tests/e2e-times.txt`), which, unlike its wall time, does not depend on
+how busy the machine was. Meanwhile the allocation checks, unit tests and the
+game's smoke run go on beside them, and print at the end. The suite ends with
+each run's finish and its time. A game runs uncapped and takes a whole thread
+from launch to close, so the suite is bound by the frames all its games play:
+a run that waits, walks or reads more than its check needs makes the whole
+suite later. `FAX_E2E_PROFILE=1` prints, as a test exits, the lines of it its
+frames went to.
+
+A test runs in Seamless too (`+sw` in the table) only where the view changes
+what it checks: a feature that draws or places something on screen, or moves
+the hero between rooms. Those runs fix Seamless's picture at 426x240
+(`--game-arg=--world-size=426x240`), what it fits to a window at scale 3, so
+their window, like every test game's, can be at scale 1 (the `config.ini`
+`install()` writes): the hidden window's scaling blit is a tenth of a frame at
+3. A test's game is the build's, hard-linked: one copy of the program in
+memory for every game, which plays them about 10% faster than copies.
 
 ## End-to-end tests and `e2e/fax_e2e.py`
 
@@ -97,9 +110,17 @@ part's start.
 
 ### Waiting no longer than the check
 
-- Walk with `step_toward()` (held until a few pixels short, then taps) and
-  walk out of a building with `hold("right", ...)`: tapping a direction for 2
-  frames keeps the hero at his slowest speed.
+- Walk with `step_toward()` (held until a few pixels short, then taps), walk
+  out of a building with `hold("right", ...)`, and to a counter, a wall or a
+  person with `walk("left", stop)` (held until he stops): tapping a direction
+  for 2 frames keeps the hero at his slowest speed. `hold()` returns once the
+  frame its button is still down has run: Up at a door with Right still down
+  goes nowhere.
+- Start nearer the check: a countdown the game runs (a flight, a freeze, a
+  cooldown) can be poked down to its last seconds once its start is checked,
+  as long as one run still plays the whole of one (recharging items' Wing
+  Boots cooldown, all 60 s). An enemy can be moved in to just past where the
+  check begins (the Pendant's Zozura).
 - In a loop that presses A on every typed page, wait with `hurry()` instead
   of `wait()`: the remaster's Hold A types 4x, and the A that turns the page is
   still a new press. Not where a page must stop or B answers.
@@ -107,9 +128,25 @@ part's start.
 
 ### Frames, not seconds
 
+Each `Game` keeps one TCP connection to its game. The game serves every line
+it has at its frame boundary, so a command costs a frame (a new connection a
+command cost two), commands sent together (`batch()`) are served at the same
+one, and `wait(n)` is served by the game itself: its `wait` command answers
+at the end of the n-th frame, not a frame later. `act()` presses and waits in
+one batch. The game keeps reading while lines arrive, so it can serve several
+commands in one frame: bound a loop of reads by frames (`frame()`), never by a
+count of reads.
+
 The script can lag any number of frames behind the game when the machine is
 loaded, so a test waits on the game: `wait()` and `until()` count its frames.
-Never count on two TCP commands landing a few frames apart. When a button
+Never count on two TCP commands landing a few frames apart. To act on what a
+conversation shows, read its state and the text box in one batch:
+`conversation()` does, and `page_to(there, what)` presses A on each typed page
+until `there(state)` holds on a typed one, and never presses on that page
+(Guru travel's questions answer to A). A batch that ends with a `load_state`
+lets two frames of the state run before it returns: a button first pressed
+in a loaded state's first frame or two can go unseen (Up at a door did
+nothing). When a button
 must go down on a given frame, make a save state just before it (headless,
 `--save-state F:PATH`; `play.py`'s `headless(..., save=...)`) and send the
 load and the press together:

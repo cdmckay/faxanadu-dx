@@ -30,9 +30,7 @@ game fills each frame and the picture (or Seamless world's) is drawn from.
 
 Screenshots of each, in OUT.
 """
-import json
 from pathlib import Path
-import socket
 import struct
 import sys
 import zlib
@@ -54,34 +52,6 @@ NAMES = {SMALL: "small", LARGE: "large", MAGIC: "magic", HELMET: "helmet"}
 def glinting(shown):
     """The glint's frame `shown` (0 = its first) is in the shield's palette."""
     return 0 <= shown < GLINT and shown // GLINT_BEAT % 2 == 0
-
-
-class Line:
-    """One TCP connection kept open, so a command is served at the game's
-    next frame boundary rather than a new connection's, and commands sent
-    together at the same one. A reply still takes about 3 frames to arrive:
-    the game sends each line and its newline apart, and Nagle's algorithm
-    holds the newline until the first part is acknowledged, which the
-    client's delayed ACK puts off by up to 40 ms. The game takes no other
-    connection while this one is open."""
-
-    def __init__(self, port):
-        self.sock = socket.create_connection(("127.0.0.1", port), 5)
-        self.sock.settimeout(30)
-        self.replies = self.sock.makefile("rb")            # buffered: a byte a read is slow for 4 KB
-
-    def batch(self, *cmds):
-        """Send (cmd, args) pairs together; their replies, in order."""
-        self.sock.sendall(b"".join((json.dumps(dict(id=i, cmd=cmd, **kw)) + "\n").encode()
-                                   for i, (cmd, kw) in enumerate(cmds)))
-        replies = [json.loads(self.replies.readline()) for _ in cmds]
-        for (cmd, _), reply in zip(cmds, replies):
-            if not reply.get("ok"):
-                raise RuntimeError(f"{cmd}: {reply}")
-        return replies
-
-    def close(self):
-        self.sock.close()
 
 
 def png(path):
@@ -209,39 +179,35 @@ def main():
         frame read after V was sent. Gives up 60 frames after V if no read
         has shown the glint."""
         at = g.ram(POS_X), g.ram(POS_Y)
-        line = Line(g.port)
         seen, counts, befores, shots, first, pressed = {}, {}, {}, {}, None, None
         frame = last = None
-        try:
-            for _ in range(240):
-                shoot = pressed is None or first is not None
-                cmds = [("read_ram", dict(addr=INTERRUPT_COUNTER, len=SHADOW_OAM + 256 - INTERRUPT_COUNTER))]
-                if pressed is not None:
-                    cmds.append(("block_state", {}))
-                if shoot:
-                    path = g.out / f"{len(g.shots):02d}-{name}-{'glint' if pressed else 'before'}.png"
-                    cmds.append(("screenshot", dict(layer="picture", path=str(path))))
-                replies = line.batch(*cmds)
-                ram = bytes.fromhex(replies[0]["hex"])
-                frame = 0 if frame is None else frame + (ram[0] - last & 0xFF)
-                last = ram[0]
-                seen[frame] = parse(ram[SHADOW_OAM - INTERRUPT_COUNTER:], at)
-                if shoot:
-                    (shots if pressed else befores)[frame] = path
-                    g.shots.append(path.name)
-                if pressed is None:
-                    if len({f % 2 for f in befores}) == 2:
-                        line.batch(("key", dict(name="V", frames=120)))
-                        pressed = frame + 1
-                    continue
-                counts[frame] = replies[1]["glint"]
-                body = seen[frame][1]
-                if first is None and body and all(p == 1 for _, _, p in body):
-                    first = frame
-                if first is not None and frame - first > 2 * GLINT or first is None and frame - pressed > 60:
-                    break
-        finally:
-            line.close()
+        for _ in range(240):
+            shoot = pressed is None or first is not None
+            cmds = [("read_ram", dict(addr=INTERRUPT_COUNTER, len=SHADOW_OAM + 256 - INTERRUPT_COUNTER))]
+            if pressed is not None:
+                cmds.append(("block_state", {}))
+            if shoot:
+                path = g.out / f"{len(g.shots):02d}-{name}-{'glint' if pressed else 'before'}.png"
+                cmds.append(("screenshot", dict(layer="picture", path=str(path))))
+            replies = g.batch(*cmds)
+            ram = bytes.fromhex(replies[0]["hex"])
+            frame = 0 if frame is None else frame + (ram[0] - last & 0xFF)
+            last = ram[0]
+            seen[frame] = parse(ram[SHADOW_OAM - INTERRUPT_COUNTER:], at)
+            if shoot:
+                (shots if pressed else befores)[frame] = path
+                g.shots.append(path.name)
+            if pressed is None:
+                if len({f % 2 for f in befores}) == 2:
+                    g.batch(("key", dict(name="V", frames=120)))
+                    pressed = frame + 1
+                continue
+            counts[frame] = replies[1]["glint"]
+            body = seen[frame][1]
+            if first is None and body and all(p == 1 for _, _, p in body):
+                first = frame
+            if first is not None and frame - first > 2 * GLINT or first is None and frame - pressed > 60:
+                break
         assert pressed is not None, f"{name}: every picture before V had the same frame parity"
         return seen, counts, befores, shots, pressed
 
@@ -315,8 +281,8 @@ def main():
         for shield in shields:
             for facing in ("right", "left"):
                 name = f"{NAMES[shield]}-{facing}"
-                # A read takes about 3 frames, and on a loaded machine the
-                # script can lag past a whole beat: an attempt whose reads or
+                # A read takes a frame, and on a loaded machine the script
+                # can lag past a whole beat: an attempt whose reads or
                 # pictures miss one lets go and holds Block again from the
                 # same state. What the reads do show must be right every time.
                 for attempt in range(5):
@@ -394,6 +360,7 @@ def main():
                 g.until("the jump", lambda: g.ram(PLAYER_FLAGS) & JUMPING, 60)
                 g.until("the jump's last frames", lambda: g.ram(JUMP_CURVE) >= 26, 120)
                 g.tcp("action", name="a", frames=2)
+                g.wait(1)                                      # A goes in first: on its frame, Block would take it
                 g.tcp("key", name="V", frames=60)
                 g.until("Block to be up", lambda: block()["raised"], 30)
                 g.wait(30)

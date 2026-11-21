@@ -45,7 +45,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 import fax_e2e  # noqa: E402
-from fax_e2e import Game, act, chosen, fixture, hold, hurry, parser, ram, step_toward, tcp, typed, until, wait  # noqa: E402
+from fax_e2e import Game, act, chosen, fixture, hold, hurry, page_to, parser, ram, step_toward, tcp, typed, until, wait  # noqa: E402
 
 AREA, SCREEN, PLAYER_X, PLAYER_Y, PLAYER_FLAGS = 0x24, 0x63, 0x9E, 0xA1, 0xA4
 SCREEN_READY_STATE, SCROLL_DIRECTION, INTERRUPTS_ON = 0x0E, 0x54, 0x13
@@ -127,7 +127,7 @@ def _respawn_temple(g):
     before any entrance: back in Eolis's temple, after the Guru's words."""
     g.poke({**HERO_KIT, PLAYER_IS_DEAD: 1})
     until("the Guru's words", lambda: ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 600)
-    for _ in range(80):
+    for _ in range(200):
         if at(BUILDINGS, EOLIS_TEMPLE):
             break
         if box_open() and typed():
@@ -197,25 +197,30 @@ def main():
     def through_door(block, what, test):
         """Stand at the door at `block` (YX), as Area_SetStateFromDoorDestination
         finds it at X + 7, and press Up until `test` holds (a knock or a landing
-        can take the press)."""
+        can take the press). Its line, if it has one, is paged with A; until
+        the door answers, no A, which would jump him off his block."""
         col = block & 0x0F
         for _ in range(6):
             walk_to(max(0, col * 16 - 7), col * 16 + 8)
+            until("the hero to stand", lambda: not ram(PLAYER_FLAGS) & 0x05, 120)
+            area_before = ram(AREA), ram(SCREEN)
             act("up", 4, 10)
             try:
-                return page_until(what, test, 40)
+                until(f"the door to {what}", lambda: test() or box_open() or (ram(AREA), ram(SCREEN)) != area_before, 120)
+                return page_until(what, test, 80)
             except AssertionError:
                 pass
         raise AssertionError(f"could not go through the door to {what}")
 
     def standing():
         """On the ground, neither jumping nor falling (Player_Flags $01 and $04,
-        which a fall keeps through its landing frame), at the same Y two frames
-        apart. Dartmoor's arrival is a row above the floor: he drops onto it."""
+        which a fall keeps through its landing frame), at the same Y twenty
+        frames apart. Dartmoor's arrival is a row above the floor: he stands
+        there up to 15 frames, then drops onto it."""
         y, _, _, flags = ram(PLAYER_Y, 4)                   # Player_PosY ($A1) to Player_Flags ($A4)
         if flags & 0x05:
             return False
-        wait(2)
+        wait(20)
         y2, _, _, flags = ram(PLAYER_Y, 4)
         return not flags & 0x05 and y2 == y
 
@@ -285,10 +290,7 @@ def main():
             assert (state["zone"], state["area"], state["screen"], state["start"]) == ("Eolis", 0, 1, 0x99), state
             assert (entered["x"], entered["y"]) == (0x90, 0x90), entered
             handoffs = tcp("fax_world")["handoffs"] if seamless else 0
-            for _ in range(300):
-                if ram(SCREEN) == 2 and settled() and ram(PLAYER_X) < 200:
-                    break
-                act("left", 4, 0)
+            hold("left", lambda: ram(SCREEN) == 2 and settled() and ram(PLAYER_X) < 200, 1200)
             assert ram(SCREEN) == 2, "a screen further into Eolis"
             if seamless:
                 assert tcp("fax_world")["handoffs"] > handoffs, "Seamless handed the hero to the next room"
@@ -391,12 +393,7 @@ def main():
             act("up", 4, 10)
             until("the Guru's greeting", lambda: ram(MESSAGE_ID) == MEDITATE_WITH_YOU)
             for want, button in ((OFFER, "a"), (TO_GURU + 0, "b"), (TO_GURU + APOLUNE, "a"), (DEPART, "a")):
-                for _ in range(12):
-                    until("a page to type out", typed)
-                    if tcp("travel_state")["text"] == want:
-                        break
-                    act("a")
-                assert tcp("travel_state")["text"] == want, tcp("travel_state")
+                page_to(lambda s: s["text"] == want, f"travel line {want}")
                 act(button, 6, 30)
             until("Apolune's temple", lambda: at(BUILDINGS, TEMPLE_SCREEN[APOLUNE]), 2400)
             assert respawn()["zone"] is None, "the journey forgot Conflate"

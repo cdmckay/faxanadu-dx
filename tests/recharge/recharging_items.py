@@ -17,11 +17,14 @@ used with Down+B, as a player would.
 
 1. Wing Boots. One use at each title band gives 30, 40, 50 and 60 s of flight
    (the original: 40, 30, 20, 10). Then, as a Novice in Eolis: 30 s of flight,
-   T: counting it down. When it runs out, T: blinks a 60 s cooldown; Down+B
-   then does nothing. Once it is over, the same pair flies again. Dying makes
-   them ready.
-2. The Hour Glass on Eolis screen 4: the Zozuras stop, HP halves, 15 s. Then a
-   60 s cooldown; refused meanwhile; then it works again.
+   T: counting it down. When it runs out (from its last seconds: the game
+   counts a flight down, and the bands check each one's length), T: blinks a
+   60 s cooldown; Down+B then does nothing. Once it is over, the same pair
+   flies again. Dying makes them ready.
+2. The Hour Glass on Eolis screen 4: the Zozuras stop, HP halves, 15 s (its end
+   from its last seconds, as the flight's). Then a
+   60 s cooldown; refused meanwhile; then, from its last seconds (the Wing
+   Boots' plays out all 60), it works again.
 3. The Hour Glass at Ripasheiku (Trunk $15): the boss keeps moving. Walking
    onto a boss's screen with the Hour Glass running ends it within a second
    (LimitItemDurations), and its cooldown follows.
@@ -57,12 +60,13 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 import fax_e2e  # noqa: E402
-from fax_e2e import Game, act, batch, chunks, frame, hold, hurry, parse_args, ram, tcp, typed, until, until_typed, wait  # noqa: E402
+from fax_e2e import Game, act, batch, chunks, frame, hold, page_to, parse_args, ram, tcp, typed, until, until_typed, wait  # noqa: E402
 
 AREA, SCREEN, PLAYER_X, PLAYER_Y, PLAYER_FLAGS, PLAYER_STATUS = 0x24, 0x63, 0x9E, 0xA1, 0xA4, 0xA5
 SCREEN_READY = 0x0E
 TEXTBOX_CLOSED, MESSAGE_ID = 0x20C, 0x213
 HP, HP_FRACTION, PLAYER_IS_DEAD, TEMPLE_SPAWN_POINT, PLAYER_TITLE = 0x431, 0x432, 0x438, 0x439, 0x437
+MP = 0x39A
 ITEM_INVENTORY, SELECTED_ITEM, NUMBER_OF_ITEMS, GOLD = 0x3AD, 0x3C1, 0x3C6, 0x392
 DURATION_WING_BOOTS, DURATION_HOUR_GLASS, SPECIAL_ITEMS, QUESTS = 0x429, 0x42A, 0x42C, 0x42D
 SPRITE_ENTITIES, SPRITE_X, SPRITE_Y = 0x2CC, 0xBA, 0xC2                # CurrentSprites_*, 8 slots each
@@ -82,6 +86,7 @@ ZOZURA, RIPASHEIKU = 0x47, 0x2D
 QUEST_SPRING_OF_SKY = 0x02
 TRAVEL_DEPART, TRAVEL_TO_GURU = 3, 4                                # fax_travel.c's lines (TO_GURU + temple)
 FLIGHTS, COOLDOWN, FREEZE = (30, 40, 50, 60), 60, 15              # the game's seconds (64 frames)
+LAST_SECONDS = 3                                                    # a countdown's end, without the time before it
 FLIGHT = FLIGHTS[0]                                                 # a Novice's: the lowest band
 ELIXIR_ROW = 2                                                      # EOLIS_TOOL_SHOP_ITEMS: dagger, potion, Elixir
 SECOND = 64
@@ -239,12 +244,16 @@ def main():
         slots = ram(SPRITE_ENTITIES, 8)
         poke({SPRITE_ENTITIES + i: 0xFF for i in range(8) if entity is None or slots[i] == entity})
 
-    def page_through(frames=900):
-        """Press A on each typed-out page until the box closes."""
+    def page_through(frames=900, hurried=True):
+        """Press A on each typed-out page until the box closes; with `hurried`,
+        holding A while each types."""
         for _ in range(20):
             if not box_open():
                 return
-            until_typed("the page to type out", frames)
+            if hurried:
+                until_typed("the page to type out", frames)
+            else:
+                until("the page to type out", typed, frames)
             act("a", 6, 14)
         raise AssertionError("the box did not close")
 
@@ -259,17 +268,35 @@ def main():
         page_through()
 
     def use():
-        """Down+B: the selected item."""
-        tcp("action", name="down", frames=24)
+        """Down+B: the selected item, once he stands (GameLoop_CheckUseCurrentItem
+        refuses while jumping or falling, and a warp's poke can leave him a few
+        frames above the floor)."""
+        until("the hero to stand", lambda: not ram(PLAYER_FLAGS) & 0x05, 120)
+        tcp("action", name="down", frames=60)                       # down however late the script's B comes
         wait(6)
         tcp("action", name="b", frames=4)
         wait(24)
+        act("down", 1, 0)                                           # let go
 
     def warp(*a, **kw):
         warp_out(game, *a, **kw)
 
     def enter_door(building):
         enter(game, building)
+
+    def poke_cooldown(which, seconds, writes=None):
+        """Set the `which` ("boots" or "glass") cooldown to `seconds` in the
+        record, and check it took: `seconds`, or one less if the game's second
+        ticked in the frames the load ran (InterruptCounter, read with it).
+        The frame it was set at."""
+        before = ram(INTERRUPT_COUNTER)
+        poke(writes or {}, {RECORD.decode(): {2 if which == "boots" else 4: seconds}})
+        s, counter = batch(("recharge_state", {}), ("read_ram", dict(addr=INTERRUPT_COUNTER, len=1)))
+        now = int(counter["hex"], 16)
+        ticked = any((before + d) & 0x3F == 0 for d in range(1, (now - before & 0xFF) + 1))
+        assert s[f"{which}_cooldown"] in ((seconds, seconds - 1) if ticked else (seconds,)), (s, before, now)
+        assert not s[f"{which}_ready"], s
+        return frame() - (now - before & 0xFF)
 
     def await_ready(which, frames):
         until(f"the {which} to be ready", lambda: state()[f"{which}_ready"], frames)
@@ -375,8 +402,9 @@ def main():
             assert s["boots_running"] == 1 and s["hud"] == -1 and s["kept"] >= 1, s
             flying_shot("flying")
             print(f"ok: a Novice's Wing Boots fly {FLIGHT} s and the pair stays selected")
+            poke({DURATION_WING_BOOTS: LAST_SECONDS})                  # the game counts the flight down itself
             begun = frame()
-            dismiss(WING_BOOTS_GONE, (FLIGHT + 2) * SECOND)
+            dismiss(WING_BOOTS_GONE, (LAST_SECONDS + 2) * SECOND)
             flown = frame() - begun
             value, s, ticked = cooldown_started("boots")
             assert fresh(value, ticked) and not s["boots_ready"] and s["hud"] == value, s
@@ -391,7 +419,7 @@ def main():
             s = state()
             assert s["refused"] == 1 and ram(DURATION_WING_BOOTS) == 0xFF and not box_open(), s
             assert items() == ([], WING_BOOTS), items()
-            print(f"ok: the flight ran out after {flown} frames; T: blinks the {COOLDOWN} s cooldown, and Down+B "
+            print(f"ok: the flight's last {LAST_SECONDS} s ran out after {flown} frames; T: blinks the {COOLDOWN} s cooldown, and Down+B "
                   "meanwhile does nothing but the invalid-choice sound")
         if args.wants("boots-cooldown"):
             # The cooldown a flight's end leaves (boots-flight checks it starts
@@ -400,10 +428,7 @@ def main():
             warp(shop, "boots-cooling", EOLIS, 1, 0x99, PALETTE_EOLIS, 0,
                  {SELECTED_ITEM: WING_BOOTS, NUMBER_OF_ITEMS: 0, PLAYER_TITLE: 0})
             clear()
-            poke({}, {RECORD.decode(): {2: COOLDOWN}})
-            cooling_since = frame()
-            s = state()
-            assert s["boots_cooldown"] == COOLDOWN and not s["boots_ready"], s
+            cooling_since = poke_cooldown("boots", COOLDOWN)
             await_ready("boots", (COOLDOWN + 2) * SECOND)
             waited = frame() - cooling_since
             assert (COOLDOWN - 1) * SECOND <= waited <= (COOLDOWN + 1) * SECOND, f"the cooldown took {waited} frames"
@@ -439,7 +464,8 @@ def main():
             assert [ram(SPRITE_X + i) for i in zozuras] == before, "the Zozuras froze"
             shot("hour-glass")
             print("ok: the Hour Glass freezes the Zozuras for 15 s and halves HP (80 to 40)")
-            dismiss(HOUR_GLASS_GONE, (FREEZE + 2) * SECOND)
+            poke({DURATION_HOUR_GLASS: LAST_SECONDS})                  # the freeze's last seconds, the game's count
+            dismiss(HOUR_GLASS_GONE, (LAST_SECONDS + 2) * SECOND)
             value, s, ticked = cooldown_started("glass")
             clear(ZOZURA)
             assert fresh(value, ticked) and s["hud"] == value and items() == ([], HOUR_GLASS), s
@@ -449,25 +475,34 @@ def main():
             assert state()["refused"] == refused + 1 and ram(DURATION_HOUR_GLASS) == 0xFF and not box_open(), state()
             print(f"ok: when the freeze ends the Hour Glass recharges for {COOLDOWN} s, refusing meanwhile")
         if args.wants("glass-cooldown"):
-            # The cooldown the freeze's end leaves (glass-freeze checks it), with
-            # the HP the freeze halved and the Zozuras cleared, as it left them.
+            # The end of the cooldown the freeze's end leaves (glass-freeze
+            # checks it starts at 60 s, and boots-cooldown that one counts all
+            # 60 down: the same countdown), from its last seconds, with the HP
+            # the freeze halved and the Zozuras cleared, as it left them.
             start()
             warp(shop, "glass-cooling", EOLIS, 4, 0x9E, PALETTE_EOLIS, 0, {SELECTED_ITEM: HOUR_GLASS, NUMBER_OF_ITEMS: 0})
             clear(ZOZURA)
-            poke({HP: 0x28}, {RECORD.decode(): {4: COOLDOWN}})
-            assert state()["glass_cooldown"] == COOLDOWN, state()
-            await_ready("glass", (COOLDOWN + 2) * SECOND)
+            cooling_since = poke_cooldown("glass", LAST_SECONDS, {HP: 0x28})
+            await_ready("glass", (LAST_SECONDS + 2) * SECOND)
+            waited = frame() - cooling_since
+            assert (LAST_SECONDS - 1) * SECOND <= waited <= (LAST_SECONDS + 1) * SECOND, f"the cooldown took {waited} frames"
             use()
             dismiss(USED_HOUR_GLASS)
             assert ram(DURATION_HOUR_GLASS) in (FREEZE, FREEZE - 1) and ram(HP) == 0x14 and items() == ([], HOUR_GLASS)
-            print("ok: the Hour Glass recharges for 60 s, then freezes again (HP 40 to 20)")
+            print(f"ok: the Hour Glass's cooldown counts its last {LAST_SECONDS} s down, then it freezes again (HP 40 to 20)")
 
         if args.wants("boss"):
             start()
             # 3. Ripasheiku, at the top of the Tower of Trunk.
             warp(shop, "boss", TRUNK, 0x15, 0x95, PALETTE_TOWER, 1, {SELECTED_ITEM: HOUR_GLASS, NUMBER_OF_ITEMS: 0})
             boss = ram(SPRITE_ENTITIES, 8).index(RIPASHEIKU)
-            use()
+            for _ in range(3):                                          # a shot's knockback can take the press
+                use()
+                try:
+                    until("the Hour Glass's line", lambda: ram(MESSAGE_ID) == USED_HOUR_GLASS, 60)
+                    break
+                except AssertionError:
+                    pass
             dismiss(USED_HOUR_GLASS)
             assert ram(DURATION_HOUR_GLASS) in (FREEZE, FREEZE - 1)
             counter = ram(SPRITE_UPDATE_COUNTER)
@@ -513,7 +548,8 @@ def main():
             wait(2)
             shot("elixir-used")
             page_through()
-            until("HP and MP to refill", lambda: ram(HP) == 0x50 and not box_open(), 1200)
+            until("HP and MP to refill", lambda: (ram(HP), ram(MP)) == (0x50, 0x50) and not box_open(), 1200)
+            wait(10)                                                   # the refill over: it would undo the next poke
             s = state()
             assert s["revives"] == 1 and s["elixir_spent"] and not s["elixir_charged"], s
             print("ok: at 0 HP the Elixir revives the hero, and is kept, spent")
@@ -632,8 +668,10 @@ def main():
             def steer(x, target):
                 return {"dpright"} if x < target - 3 else {"dpleft"} if x > target + 3 else set()
             cleared = shaft_shot = None
-            for _ in range(5000):
+            end = frame() + (FLIGHT + 2) * SECOND                     # frames, not reads: several can come in a frame
+            while True:
                 now = frame()
+                assert now < end, f"no landing beside the man in the flight's {FLIGHT} s: {place()}"
                 zp = ram(SCREEN_READY, PLAYER_Y + 1 - SCREEN_READY)
                 screen, x, y = zp[SCREEN - SCREEN_READY], zp[PLAYER_X - SCREEN_READY], zp[PLAYER_Y - SCREEN_READY]
                 assert ram(DURATION_WING_BOOTS) < 0x80, f"the flight ran out at {place()}, x={x} y={y}"
@@ -649,6 +687,8 @@ def main():
                     want = {"a", "dpup"} | steer(x, 216)                # round the ledge's right end, up the right side
                 elif screen == 0x25 and x > 186:
                     want = {"a"} | ({"dpup"} if y > 16 else set()) | steer(x, 182)   # along the top, over the man
+                elif screen == 0x25 and x < 172:
+                    want = {"a"} | ({"dpup"} if y > 16 else set()) | steer(x, 180)   # past his ledge (a late read): back
                 elif screen == 0x25:
                     press(set(), now)                                   # let go: down onto his ledge
                     break
@@ -659,7 +699,7 @@ def main():
             landed = frame() - start
             left = ram(DURATION_WING_BOOTS)
             assert left < 0x80, "the flight ran out before the landing"
-            for _ in range(12):                                         # beside him, on the fountain's ledge
+            for _ in range(30):                                         # beside him, on the fountain's ledge
                 if ram(MESSAGE_ID) == HO_HO_HO:
                     break
                 x = ram(PLAYER_X)
@@ -669,7 +709,7 @@ def main():
                 act("up", 4, 20)
             until("the Spring of Sky's man", lambda: ram(MESSAGE_ID) == HO_HO_HO, 300)
             shot("spring-of-sky")
-            page_through()
+            page_through(hurried=False)                                 # his dots stall under a hurried A on a busy machine
             assert ram(QUESTS) & QUEST_SPRING_OF_SKY, "the Spring of Sky's man woke"
             print(f"ok: the Spring of Sky: from Trunk $20's floor to the man in $25 in {landed} frames "
                   f"({landed / SECOND:.1f} of the game's seconds), with {left} s of the {FLIGHT} s flight left")
@@ -686,16 +726,8 @@ def main():
             s = state()
             assert s["boots_running"] == 1 and 48 <= s["glass_cooldown"] <= 50 and ram(PLAYER_STATUS) & 0x80, s
             talk_to_guru()                                              # with the ring, he offers Apolune
-            end = frame() + 40 * SECOND                                  # his line, the intro, the offer: A to each
-            while frame() < end:
-                line = tcp("travel_state")["text"]
-                if line == TRAVEL_TO_GURU + 1 and typed():
-                    break
-                if typed():
-                    act("a", 6, 14)
-                else:
-                    hurry(4)
-            assert tcp("travel_state")["text"] == TRAVEL_TO_GURU + 1, tcp("travel_state")
+            # His line, the intro, the offer: A to each, and none on the offer (page_to()).
+            page_to(lambda s: s["text"] == TRAVEL_TO_GURU + 1, "the offer of Apolune", tries=20)
             flying, cooling = ram(DURATION_WING_BOOTS), state()["glass_cooldown"]
             act("a", 6, 14)
             until("the farewell", lambda: tcp("travel_state")["text"] == TRAVEL_DEPART, 300)
@@ -705,7 +737,8 @@ def main():
             s, after = state(), ram(DURATION_WING_BOOTS)
             assert s["boots_running"] == 1 and 0 < after < flying and ram(PLAYER_STATUS) & 0x80, (s, after)
             assert 0 < s["glass_cooldown"] < cooling, s
-            dismiss(WING_BOOTS_GONE, (FLIGHT + 2) * SECOND)
+            poke({DURATION_WING_BOOTS: LAST_SECONDS})                  # the flight's last seconds, the game's count
+            dismiss(WING_BOOTS_GONE, (LAST_SECONDS + 2) * SECOND)
             value, s2, ticked = cooldown_started("boots")
             assert fresh(value, ticked), s2
             print(f"ok: a Guru travel journey from Eolis to Apolune keeps the flight ({flying} s left before, {after} "
@@ -723,13 +756,7 @@ def main():
             wait(4)
             saves = tcp("files_state")["saves"]
             talk_to_guru()                                              # "Remember my journey." is the first choice
-            end = frame() + 40 * SECOND
-            while frame() < end and tcp("files_state")["saves"] == saves:
-                if typed():
-                    act("a", 6, 14)
-                else:
-                    hurry(4)
-            assert tcp("files_state")["saves"] == saves + 1, tcp("files_state")
+            page_to(lambda s: s["saves"] == saves + 1, "the save", "files_state", tries=20)   # A on his menu saves
             for _ in range(20):                                         # B closes what follows
                 if not box_open():
                     break
@@ -770,18 +797,12 @@ def main():
             assert state()["elixir_spent"], state()
             saves = tcp("files_state")["saves"]
             talk_to_guru()
+            until("his greeting", lambda: ram(MESSAGE_ID) == MEDITATE_WITH_YOU, 300)
             until("the Guru to charge it", lambda: state()["guru_recharges"] == 1, 120)
             s = state()
             assert s["elixir_charged"] and not s["elixir_spent"], s
-            seen = set()
-            end = frame() + 40 * SECOND                                  # his greeting, then "Remember my journey."
-            while frame() < end and tcp("files_state")["saves"] == saves:
-                seen.add(ram(MESSAGE_ID))
-                if typed():
-                    act("a", 6, 14)
-                else:
-                    hurry(4)
-            assert tcp("files_state")["saves"] == saves + 1 and MEDITATE_WITH_YOU in seen, (tcp("files_state"), sorted(seen))
+            # His greeting, then "Remember my journey." (A on his menu saves).
+            page_to(lambda s: s["saves"] == saves + 1, "the save", "files_state", tries=20)
             for _ in range(20):                                         # B closes what follows
                 if not box_open():
                     break

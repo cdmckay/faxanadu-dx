@@ -98,8 +98,8 @@ SHIELD_SOUND, IFRAMES_ON_HIT, KNOCKBACK = 0x0C, 60, 24          # Player_HandleS
 ON_THE_FLOOR, TRAILING = 120, 16                                # the hero's X on screen 16's floor (knocked back twice:
 #                                                                 72; to 48, he falls through its gap); the second
 #                                                                 shot's distance behind the first
-BETWEEN_HITS = 45                                               # frames into the two shots: after the first hit's
-#                                                                 knockback, well before the second
+AFTER_FIRST_HIT = 5                                             # frames after the first hit: its knockback over, well
+#                                                                 before the second
 MANTRA_BOX = (96, 140, 232, 168)                                # the text box's first two lines of text
 # Enough for a long mantra: three weapons, three armors, two shields, three
 # spells and six items, the Ring of Elf, the Black Onyx and the Pendant. No
@@ -316,13 +316,15 @@ def main():
                 return seen
 
             frames = {}
+            between_hits = None                                 # where the fixture's shot hits first: the original's run
             for original in (True, False):
                 tag = "original" if original else "remastered"
                 rams = g.headless(two, [], 70, original, picture=out / f"two-shots-{tag}.png",
-                                  save=None if original else (BETWEEN_HITS, between))
+                                  save=None if original else (between_hits, between))
                 g.shots.append(f"two-shots-{tag}.png")
                 (k1, lost1, iframes1, sound1, x1, after1), (k2, lost2, iframes2, sound2, x2, after2) = hits(rams)
                 frames[tag] = (k1, k2)
+                between_hits = between_hits or k1 + AFTER_FIRST_HIT
                 assert (lost1, iframes1, sound1) == (4, IFRAMES_ON_HIT, SHIELD_SOUND), (tag, rams[k1][HP], iframes1)
                 assert x1 - after1 == KNOCKBACK, (tag, x1, after1)
                 assert 0 < k2 - k1 < IFRAMES_ON_HIT and rams[k2 - 1][IFRAMES] > 0, (tag, k1, k2)
@@ -333,7 +335,7 @@ def main():
                     assert (lost2, iframes2, after2) == (0, rams[k2 - 1][IFRAMES] - 1, x2), (tag, lost2, iframes2)
             assert frames["original"] == frames["remastered"], frames
             k1, k2 = frames["original"]
-            assert k1 + 3 < BETWEEN_HITS < k2 - 10, (k1, k2)
+            assert k1 + 3 < between_hits < k2 - 10, (k1, k2)
             print(f"ok: two shots on the Small Shield {k2 - k1} frames apart: the original takes 4 and 4, the second "
                   f"starting the iframes over and knocking him back {KNOCKBACK} pixels again; the remaster takes 4 "
                   "and nothing, the iframes counting on and the hero still, the shield taking both with its sound")

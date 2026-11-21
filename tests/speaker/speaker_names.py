@@ -26,7 +26,7 @@ import sys
 import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import Game, act, fixture, frame, hold, hurry, parse_args, ram, step_toward, tcp, typed, until, wait  # noqa: E402
+from fax_e2e import Game, act, fixture, frame, hold, hurry, parse_args, ram, step_toward, tcp, typed, until, wait, walk  # noqa: E402
 
 AREA, SCREEN, PLAYER_X = 0x24, 0x63, 0x9E
 TEXTBOX_CLOSED, MESSAGE_ID, TEXTBOX_PAUSED = 0x20C, 0x213, 0x215
@@ -153,18 +153,15 @@ def main():
         """Walk left to the person behind the counter, or to x `stop`
         (jumping up steps if `climb`), and press Up. With `line`, wait for
         the first line to start typing."""
-        for _ in range(60):
-            if ram(PLAYER_X) <= stop or speaker()["portrait"] != NO_PORTRAIT:
-                break
-            if climb:
+        if climb:
+            for _ in range(60):
+                if ram(PLAYER_X) <= stop or speaker()["portrait"] != NO_PORTRAIT:
+                    break
                 tcp("action", name="left", frames=24)
                 tcp("action", name="a", frames=12)
                 wait(30)
-            else:
-                before = ram(PLAYER_X)
-                act("left", 8, 2)
-                if ram(PLAYER_X) == before:
-                    break                                   # at the counter
+        else:                                               # to the counter, or x `stop`
+            walk("left", lambda: ram(PLAYER_X) <= stop or speaker()["portrait"] != NO_PORTRAIT)
         act("up", 4, 10)
         until("a portrait", lambda: speaker()["portrait"] != NO_PORTRAIT, 600)
         if not line:
@@ -268,7 +265,7 @@ def main():
             # 4. His guard outside, who has no portrait: no name.
             walk_out()
             settled_in(0, 7)
-            for _ in range(40):
+            for _ in range(80):
                 if box_open():
                     break
                 x = ram(PLAYER_X)

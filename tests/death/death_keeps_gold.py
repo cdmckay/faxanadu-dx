@@ -68,7 +68,7 @@ def main():
     def die_and_respawn():
         """Page through the death message until the hero is back in Mascon's temple."""
         until("the death message", lambda: ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 600)
-        for _ in range(40):
+        for _ in range(120):
             if in_mascon_temple():
                 break
             if typed():

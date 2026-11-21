@@ -35,9 +35,10 @@ it starts from, in one batch(), or runs headless from that state with --input
 
 Game, one per test
     Game(build, rom, out, game_args=(), realtime=False, port=0), or Game.from_args(args)
-        Checks the ROM is the original Faxanadu (USA), empties OUT, copies the
-        build's FaxanaduRecomp, assets/ and mods/ to OUT/game (so sidecars such
-        as faxanadu_gurus.txt and config.ini stay there) and opens OUT/game.log.
+        Checks the ROM is the original Faxanadu (USA), empties OUT, installs the
+        build in OUT/game (install(): FaxanaduRecomp hard-linked, assets/ and
+        mods/ copied, a config.ini at window scale 1; sidecars such as
+        faxanadu_gurus.txt and config.ini stay there) and opens OUT/game.log.
     .launch(*extra, at=None)
                       Start the game: FaxanaduRecomp ROM --hidden --tcp PORT, the
                       --game-arg options, then `extra`, then --uncapped
@@ -66,15 +67,21 @@ Game, one per test
     .exe              What launch() runs: OUT/game/FaxanaduRecomp. Point it at
                       another copy to run that one (Save files does).
     .timeout          Seconds tcp() waits for a reply (30).
+    .line             The one TCP connection to the game, kept open (opened by the
+                      first command, closed by close()): a command a frame.
 
 Functions, on the game launched last
     tcp(cmd, **kw)                  One command; its reply. RuntimeError unless ok.
     batch((cmd, {args}), ...)       Several commands in one write; their replies.
                                     The game serves them all before its next
                                     frame, so a load_state then an action holds
-                                    the button from the state's first frame.
+                                    the button from the state's first frame. One
+                                    that ends with a load_state returns once two
+                                    frames of the state have run.
     frame()                         The frame counter (ping).
-    wait(frames)                    Until `frames` more frames have run.
+    wait(frames)                    Until `frames` more frames have run: the game's
+                                    wait command, which answers at the end of the
+                                    last, so not a frame more.
     ram(addr, n=1)                  CPU RAM: an int for one byte, else bytes.
     until(what, test, frames=1200)  Poll `test` until it is true; AssertionError
                                     "timed out waiting for {what}" after `frames`.
@@ -82,10 +89,16 @@ Functions, on the game launched last
                                     then wait `frames + after`.
     typed()                         The text box waits for a button: MessageID
                                     clears, or TextBox_MessagePaused is set.
+    conversation(cmd)               A conversation's state (cmd's reply) and typed(),
+                                    one frame's, in one batch.
+    page_to(there, what, cmd)       A on each typed page until there(state) holds
+                                    on a typed one; never A on that page.
     hold(button, done, frames=600)  Hold a button until done(), then let go at
                                     once (an action replaces the button's hold).
     step_toward(x_min, x_max, stop) One step of a walk to [x_min, x_max]: held
                                     until 8 pixels short, then taps of 2 frames.
+    walk(button, stop)              Hold a direction until stop() or the hero
+                                    stops moving (a wall, a counter, a person).
     hurry(frames=10)                Wait with A held but for the last 2 frames:
                                     the remaster's Hold A types 4x, and the A that
                                     turns the page is still a new press. Only in a
@@ -131,7 +144,8 @@ Parts
 Time
     A test that launched a game prints "time: W s, games G s CPU, script S s
     CPU" as it exits. With FAX_E2E_STAMP=1 each line it prints starts with the
-    seconds since it started.
+    seconds since it started; with FAX_E2E_PROFILE=1 it also prints the lines
+    of the test its frames went to.
 
 Ports
     reserve_port(port=0) -> int     Hold a port for this process until it exits.
@@ -179,6 +193,12 @@ REPO = Path(__file__).resolve().parents[2]
 FIXTURES = REPO / "build-tests" / "fixtures"  # the saved games tests start from, made from your ROM
 LAUNCH_TRIES = 3
 LISTEN_TIMEOUT = 60                        # seconds for the game to open its TCP port
+PAGE_FRAMES = 4                            # a typed page read again this many frames on (page_to())
+STOPPED_FRAMES = 6                         # frames without moving that walk() takes for a stop
+LOADED_FRAMES = 2                          # frames a load_state that ends a batch lets run (batch())
+WAIT_CHUNK = 600                           # frames a wait command asks for at most (well inside .timeout)
+CONFIG = "[Display]\nWindowScale = 1\n"     # config.ini a test's game starts with; the game adds the rest
+QUICKACK = getattr(socket, "TCP_QUICKACK", None)   # Linux
 MESSAGE_ID = 0x213                         # MessageID, Message_ProcessedLength, TextBox_MessagePaused
 
 
@@ -298,6 +318,49 @@ def _report_time():
           f"script {script.ru_utime + script.ru_stime:.1f} s CPU", flush=True)
 
 
+class _Profile:
+    """FAX_E2E_PROFILE=1: where a test's frames go. After each command the
+    game's frame is read, and the frames since the last read are put down to
+    the test's own line that sent it (the innermost outside this helper); the
+    lines that cost the most are printed as the test exits. A load_state's
+    frames go to the next command (a state carries its own count). The reads
+    cost a frame here and there, so the totals run a little over."""
+
+    def __init__(self):
+        self.frames, self.last, self.busy = {}, {}, False
+
+    def sample(self, game, loaded=False):
+        if self.busy:
+            return
+        if loaded:                         # a state carries its own frame count: start again from it
+            self.last.pop(id(game), None)
+        self.busy = True
+        try:
+            now = game.line.send((("ping", {}),))[0].get("frame")
+        finally:
+            self.busy = False
+        last = self.last.get(id(game))
+        if last is not None and now is not None and now >= last:
+            here = Path(__file__).resolve()
+            site = next((f"{Path(f.filename).name}:{f.lineno}" for f in inspect.stack()[2:]
+                         if Path(f.filename).resolve() != here), "?")
+            self.frames[site] = self.frames.get(site, 0) + now - last
+        self.last[id(game)] = now
+
+    def report(self):
+        total = sum(self.frames.values())
+        if not total:
+            return
+        print(f"profile: {total} frames; by line:", flush=True)
+        for site, n in sorted(self.frames.items(), key=lambda kv: -kv[1])[:25]:
+            print(f"  {n:6d}  {site}", flush=True)
+
+
+_profile = _Profile() if os.environ.get("FAX_E2E_PROFILE") else None
+if _profile is not None:
+    atexit.register(_profile.report)
+
+
 # The game
 
 _game = None                               # the game launched last: the functions' target
@@ -320,10 +383,7 @@ class Game:
         self.build = Path(build).resolve()
         self.out = Path(out).resolve()
         shutil.rmtree(self.out, ignore_errors=True)
-        (self.out / "game").mkdir(parents=True)
-        shutil.copy2(Path(build) / "FaxanaduRecomp", self.out / "game")
-        for folder in ("assets", "mods"):
-            shutil.copytree(Path(build) / folder, self.out / "game" / folder)
+        install(build, self.out / "game", game_args)
         self.exe = self.out / "game" / "FaxanaduRecomp"
         self.env = dict(os.environ, **HIDDEN_ENV)
         self.log_path = self.out / "game.log"
@@ -332,6 +392,7 @@ class Game:
         self.port, self.fixed_port = port, bool(port)
         self.proc, self.shots = None, []
         self.timeout = 30                  # seconds to wait for a reply
+        self.line = None                   # the TCP connection to the game, kept open (_Line)
 
     @classmethod
     def from_args(cls, args):
@@ -356,6 +417,9 @@ class Game:
             start = self.log_path.stat().st_size
             self.proc = subprocess.Popen([str(self.exe), str(self.rom), "--hidden", "--tcp", str(self.port), *options],
                                          env=self.env, stdout=self.log, stderr=subprocess.STDOUT)
+            self._hang_up()
+            if _profile is not None:
+                _profile.last.pop(id(self), None)
             _game = self
             problem = self._listening(start)
             if not problem:
@@ -401,6 +465,7 @@ class Game:
             time.sleep(0.02)
 
     def _stop(self):
+        self._hang_up()
         if self.proc.poll() is None:
             self.proc.kill()
         self.proc.wait(10)
@@ -412,34 +477,43 @@ class Game:
             self.tcp("quit")
         except Exception:
             self.proc.kill()
+        self._hang_up()
         self.proc.wait(10)
         self.proc = None
+
+    def _hang_up(self):
+        if self.line:
+            self.line.close()
+            self.line = None
 
     def running(self):
         return self.proc is not None and self.proc.poll() is None
 
     def tcp(self, cmd, **kw):
-        with socket.create_connection(("127.0.0.1", self.port), 5) as s:
-            s.settimeout(self.timeout)
-            f = s.makefile("rwb", buffering=0)
-            f.write((json.dumps(dict(id=1, cmd=cmd, **kw)) + "\n").encode())
-            reply = json.loads(f.readline())
-        if not reply.get("ok"):
-            raise RuntimeError(f"{cmd}: {reply}")
-        return reply
+        return self.batch((cmd, kw))[0]
 
     def batch(self, *commands):
         """Send (cmd, {args}) commands in one write and return their replies.
         The game reads every line it has and serves them all before its next
         frame, so they take effect together: a load_state then an action
         holds the button from the loaded state's first frame, frame-exact,
-        however far the script lags."""
-        with socket.create_connection(("127.0.0.1", self.port), 5) as s:
-            s.settimeout(self.timeout)
-            f = s.makefile("rwb", buffering=0)
-            f.write(b"".join((json.dumps(dict(id=i + 1, cmd=cmd, **kw)) + "\n").encode()
-                             for i, (cmd, kw) in enumerate(commands)))
-            replies = [json.loads(f.readline()) for _ in commands]
+        however far the script lags. A batch that ends with a load_state
+        returns once LOADED_FRAMES frames of the state have run: a button
+        first pressed in a loaded state's first two frames can go unseen
+        (Up at a door does nothing), and nothing reads before a frame of it
+        has run."""
+        if self.line is None:
+            self.line = _Line(self.port, self.timeout)
+        self.line.timeout = self.timeout
+        settle = commands[-1][0] == "load_state"
+        try:
+            replies = self.line.send(commands + ((("wait", dict(frames=LOADED_FRAMES)),) if settle else ()))
+        except BaseException:
+            self._hang_up()                # a reply may still be coming: never read it as another's
+            raise
+        replies = replies[:len(commands)]
+        if _profile is not None and commands[-1][0] != "quit":
+            _profile.sample(self, any(cmd == "load_state" for cmd, _ in commands))
         for (cmd, _), reply in zip(commands, replies):
             if not reply.get("ok"):
                 raise RuntimeError(f"{cmd}: {reply}")
@@ -449,9 +523,11 @@ class Game:
         return self.tcp("ping")["frame"]
 
     def wait(self, frames):
-        end = self.frame() + frames
-        while self.frame() < end:
-            time.sleep(0.005)
+        """Until `frames` more frames have run: the game answers at the end of
+        the last one (its wait command), so not a frame more."""
+        while frames > 0:
+            self.tcp("wait", frames=min(frames, WAIT_CHUNK))
+            frames -= WAIT_CHUNK
 
     def ram(self, addr, n=1):
         data = bytes.fromhex(self.tcp("read_ram", addr=addr, len=n)["hex"])
@@ -459,11 +535,11 @@ class Game:
 
     def until(self, what, test, frames=1200):
         end = self.frame() + frames
-        while self.frame() < end:
+        while True:
             if test():
                 return
-            time.sleep(0.005)
-        raise AssertionError(f"timed out waiting for {what}")
+            if self.frame() >= end:
+                raise AssertionError(f"timed out waiting for {what}")
 
     def shot(self, name):
         path = self.out / f"{len(self.shots):02d}-{name}.png"
@@ -521,6 +597,10 @@ class Game:
         shutil.rmtree(work, ignore_errors=True)
         print(f"fixture: made {name} in {time.monotonic() - began:.1f} s", flush=True)
 
+    def act(self, name, frames=6, after=8):
+        """Hold an NES button for `frames`, and wait `frames + after`, from the frame it goes down."""
+        self.batch(("action", dict(name=name, frames=frames)), ("wait", dict(frames=frames + after)))
+
     def set_features(self, features):
         (self.out / "game" / "mods" / "state.toml").write_text(features_toml(features))
 
@@ -531,6 +611,73 @@ class Game:
         self.tcp("save_state", path=str(path))
         fixture(path, path, writes, records)
         self.tcp("load_state", path=str(path))
+
+
+def install(build, folder, game_args=()):
+    """The build's game in `folder`, for a test's own copy: FaxanaduRecomp
+    hard-linked (one copy of the program in memory however many games run,
+    which plays them about 10% faster than separate copies; a copy if the
+    link fails), assets/ and mods/ copied, and a config.ini with the window at
+    scale 1: the hidden window's scaling blit is a tenth of a frame at 3. Not
+    in Seamless with its picture fitted to the window (at scale 1, 142x96);
+    the suite fixes it at 426x240 (--world-size), what scale 3 fits."""
+    build, folder = Path(build), Path(folder)
+    folder.mkdir(parents=True, exist_ok=True)
+    try:
+        os.link(build / "FaxanaduRecomp", folder / "FaxanaduRecomp")
+    except OSError:
+        shutil.copy2(build / "FaxanaduRecomp", folder)
+    for sub in ("assets", "mods"):
+        shutil.copytree(build / sub, folder / sub)
+    fitted = any("world-view" in arg for arg in game_args) and not any("world-size" in arg for arg in game_args)
+    if not fitted:
+        (folder / "config.ini").write_text(CONFIG)
+
+
+class _Line:
+    """The one TCP connection to a game, kept open: the game serves every
+    line it has at its next frame boundary, so a command takes a frame
+    rather than the two a new connection costs, and commands sent together
+    are served at the same one. The game sends a reply and its newline apart,
+    and Nagle's algorithm holds the newline until the first part is
+    acknowledged, which a delayed ACK puts off by up to 40 ms: TCP_QUICKACK
+    acknowledges at once, and where there is none, an empty line (which the
+    game ignores) carries the acknowledgement. Each command has its own id,
+    so a reply to one abandoned (a timeout) is never taken for another's."""
+
+    def __init__(self, port, timeout):
+        self.sock = socket.create_connection(("127.0.0.1", port), 5)
+        self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        self.timeout, self.next_id, self.buf = timeout, 1, b""
+
+    def send(self, commands):
+        first = self.next_id
+        self.next_id += len(commands)
+        self.sock.settimeout(self.timeout)
+        self.sock.sendall(b"".join((json.dumps(dict(id=first + i, cmd=cmd, **kw)) + "\n").encode()
+                                   for i, (cmd, kw) in enumerate(commands)))
+        replies = []
+        while len(replies) < len(commands):
+            reply = json.loads(self._line())
+            if reply.get("id") == first + len(replies):
+                replies.append(reply)
+        return replies
+
+    def _line(self):
+        while b"\n" not in self.buf:
+            if QUICKACK is not None:
+                self.sock.setsockopt(socket.IPPROTO_TCP, QUICKACK, 1)
+            data = self.sock.recv(65536)
+            if not data:
+                raise ConnectionError("the game closed the connection")
+            self.buf += data
+            if QUICKACK is None and b"\n" not in self.buf:
+                self.sock.sendall(b"\n")
+        line, self.buf = self.buf.split(b"\n", 1)
+        return line
+
+    def close(self):
+        self.sock.close()
 
 
 # Fixtures: the saved games tests start from
@@ -632,7 +779,8 @@ def _eolis_meat_shop(g):
 def _eolis_zozuras(g):
     """Through Eolis's gate (the intro's trigger dropped, the hero at the
     door, EOLIS_DOOR_LOCATIONS' $9C), left out of town to screen 4, as its
-    two Zozuras crawl in (slots 6 and 7, the nearer in 7)."""
+    two Zozuras crawl in (slots 6 and 7, the nearer in 7), once the scroll
+    onto it has ended (during it the hero's X reads 0)."""
     screen, entities, zozura = 0x63, 0x2CC, 0x47                     # Area_CurrentScreen, CurrentSprites_Entities
     assert (g.ram(0x24), g.ram(screen), g.ram(entities + 7)) == (0, 0, 0x4F), "the intro's trigger at the gate"
     g.poke({entities + 7: 0xFF, 0x9E: 195})                           # SPRITE_TRIGGER_INTRO; Player_PosX_Block
@@ -646,6 +794,7 @@ def _eolis_zozuras(g):
         g.tcp("action", name="left", frames=30)
         g.wait(31)
     g.until("the Zozuras", lambda: g.ram(screen) == 4 and tuple(g.ram(entities + 6, 2)) == (zozura, zozura), 300)
+    g.until("the scroll to end", lambda: g.ram(0x0E) == 0 and g.ram(0x54) == 0xFF and g.ram(0x13) != 0, 300)
 
 
 def tcp(cmd, **kw):
@@ -673,8 +822,7 @@ def until(what, test, frames=1200):
 
 
 def act(name, frames=6, after=8):
-    tcp("action", name=name, frames=frames)
-    wait(frames + after)
+    _current().act(name, frames, after)
 
 
 def hurry(frames=10):
@@ -683,8 +831,7 @@ def hurry(frames=10):
     not every 4th, and holding never turns a page, which takes a new press:
     for a loop that presses A on each page once it has typed, the same
     presses, sooner. Nothing else may be waiting for A."""
-    tcp("action", name="a", frames=max(1, frames - 2))
-    wait(frames)
+    batch(("action", dict(name="a", frames=max(1, frames - 2))), ("wait", dict(frames=frames)))
 
 
 def until_typed(what="the page to type out", frames=1200):
@@ -700,19 +847,19 @@ def until_typed(what="the page to type out", frames=1200):
 def hold(button, done, frames=600, renew=8):
     """Hold `button` (a TCP action) until done() is true, or `frames` frames
     have run, and let go at once: an action replaces the button's hold, so a
-    1-frame one ends it. The hold is renewed before it lapses, so the button
-    stays down. Whether done() came true."""
+    1-frame one ends it, and it returns once that frame has run (Up at a door
+    with Right still down goes nowhere). The hold is renewed before it lapses,
+    so the button stays down. Whether done() came true."""
     end = frame() + frames
     while True:
         tcp("action", name=button, frames=renew + 4)
         lapse = min(frame() + renew, end)
         while frame() < lapse:
             if done():
-                tcp("action", name=button, frames=1)
+                act(button, 1, 0)          # let go, and wait out the frame it is still down
                 return True
-            time.sleep(0.002)
         if frame() >= end:
-            tcp("action", name=button, frames=1)
+            act(button, 1, 0)
             return done()
 
 
@@ -727,6 +874,57 @@ def step_toward(x_min, x_max, stop=lambda: False, x_addr=0x9E):
         act(button, 2, 0)
     else:
         hold(button, lambda: stop() or x_min - 8 <= ram(x_addr) <= x_max + 8)
+
+
+def walk(button, stop=lambda: False, frames=600, x_addr=0x9E):
+    """Hold `button` until stop() or the hero stops: his X (Player_PosX_Block)
+    the same for STOPPED_FRAMES frames, against a wall, a counter or a
+    person. Held, he walks at his full 1.5 pixels a frame. Whether stop()
+    came true."""
+    reads = []                             # (frame, X)
+
+    def done():
+        if stop():
+            return True
+        x, at = batch(("read_ram", dict(addr=x_addr, len=1)), ("ping", {}))
+        reads.append((at["frame"], x["hex"]))
+        since = [i for i, (f, _) in enumerate(reads) if f <= at["frame"] - STOPPED_FRAMES]
+        return bool(since) and len({x for _, x in reads[since[-1]:]}) == 1
+    hold(button, done, frames)
+    return stop()
+
+
+def conversation(cmd="travel_state"):
+    """A conversation's state (the TCP command `cmd`'s reply, `id` dropped)
+    and typed(), read in one batch: the same frame's, so a press sent on what
+    they show lands on that page, never the next."""
+    reply, box = batch((cmd, {}), ("read_ram", dict(addr=MESSAGE_ID, len=3)))
+    message, _, paused = bytes.fromhex(box["hex"])
+    reply.pop("id", None)
+    return reply, message == 0 or paused != 0
+
+
+def page_to(there, what, cmd="travel_state", tries=12, frames=1200):
+    """Press A on each typed-out page until there(state) holds for a page
+    that has typed out (`cmd`'s reply, conversation()), and return that
+    state; never A on that page, which may be a question. A page counts as
+    typed once two reads PAGE_FRAMES apart agree: as a line changes, the
+    text box can still show the last page's pause for a frame or two."""
+    for _ in range(tries):
+        end = frame() + frames
+        while True:
+            state, done = conversation(cmd)
+            if done:
+                wait(PAGE_FRAMES)
+                again, still = conversation(cmd)
+                if still and again == state:
+                    break
+            elif frame() >= end:
+                raise AssertionError(f"timed out waiting for a page to type out ({what})")
+        if there(state):
+            return state
+        act("a")
+    raise AssertionError(f"never reached {what}: {state}")
 
 
 def typed():
