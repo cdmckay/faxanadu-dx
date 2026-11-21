@@ -279,6 +279,20 @@ def main():
     def enter_door(building):
         enter(game, building)
 
+    def poke_cooldown(which, seconds, writes=None):
+        """Set the `which` ("boots" or "glass") cooldown to `seconds` in the
+        record, and check it took: `seconds`, or one less if the game's second
+        ticked in the frames the load ran (InterruptCounter, read with it).
+        The frame it was set at."""
+        before = ram(INTERRUPT_COUNTER)
+        poke(writes or {}, {RECORD.decode(): {2 if which == "boots" else 4: seconds}})
+        s, counter = batch(("recharge_state", {}), ("read_ram", dict(addr=INTERRUPT_COUNTER, len=1)))
+        now = int(counter["hex"], 16)
+        ticked = any((before + d) & 0x3F == 0 for d in range(1, (now - before & 0xFF) + 1))
+        assert s[f"{which}_cooldown"] in ((seconds, seconds - 1) if ticked else (seconds,)), (s, before, now)
+        assert not s[f"{which}_ready"], s
+        return frame() - (now - before & 0xFF)
+
     def await_ready(which, frames):
         until(f"the {which} to be ready", lambda: state()[f"{which}_ready"], frames)
 
@@ -409,10 +423,7 @@ def main():
             warp(shop, "boots-cooling", EOLIS, 1, 0x99, PALETTE_EOLIS, 0,
                  {SELECTED_ITEM: WING_BOOTS, NUMBER_OF_ITEMS: 0, PLAYER_TITLE: 0})
             clear()
-            poke({}, {RECORD.decode(): {2: COOLDOWN}})
-            cooling_since = frame()
-            s = state()
-            assert s["boots_cooldown"] == COOLDOWN and not s["boots_ready"], s
+            cooling_since = poke_cooldown("boots", COOLDOWN)
             await_ready("boots", (COOLDOWN + 2) * SECOND)
             waited = frame() - cooling_since
             assert (COOLDOWN - 1) * SECOND <= waited <= (COOLDOWN + 1) * SECOND, f"the cooldown took {waited} frames"
@@ -466,9 +477,7 @@ def main():
             start()
             warp(shop, "glass-cooling", EOLIS, 4, 0x9E, PALETTE_EOLIS, 0, {SELECTED_ITEM: HOUR_GLASS, NUMBER_OF_ITEMS: 0})
             clear(ZOZURA)
-            poke({HP: 0x28}, {RECORD.decode(): {4: LAST_SECONDS}})
-            cooling_since = frame()
-            assert state()["glass_cooldown"] == LAST_SECONDS, state()
+            cooling_since = poke_cooldown("glass", LAST_SECONDS, {HP: 0x28})
             await_ready("glass", (LAST_SECONDS + 2) * SECOND)
             waited = frame() - cooling_since
             assert (LAST_SECONDS - 1) * SECOND <= waited <= (LAST_SECONDS + 1) * SECOND, f"the cooldown took {waited} frames"

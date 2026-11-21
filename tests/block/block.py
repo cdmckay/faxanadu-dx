@@ -101,6 +101,8 @@ def main():
         g.act("up", 4, 10)
         shields, said, picture = g.ram(NUMBER_OF_SHIELDS), [], None
         g.until("the shop's list", lambda: (lambda s: s["shown"] == "buy" and s["list_up"])(g.tcp("shops_state")), 600)
+        waits = g.tcp("shops_state")["waits"]
+        g.until("the list to wait for a button", lambda: g.tcp("shops_state")["waits"] > waits, 300)
         bought = g.tcp("shops_state")["bought"]
         g.act("a", 4, 6)
         g.until("the purchase", lambda: (lambda s: s["bought"] == bought + 1 and s["list_up"])(g.tcp("shops_state")),
@@ -223,8 +225,14 @@ def main():
             game_up()
             # 3. The tutorial, in Apolune's tool shop.
             g.warp(shop, "apolune", TOWNS, APOLUNE, PALETTE_TOWN, 0x94, REGION_TRUNK, {GOLD: 0x10, GOLD + 1: 0x27})
-            g.act("up", 4, 10)
-            g.until("the tool shop", lambda: g.where() == (BUILDINGS, TOOL_SHOP), 300)
+            for _ in range(3):                                     # the screen's lag frames can miss an Up
+                g.act("up", 4, 10)
+                try:
+                    g.until("the tool shop", lambda: g.where() == (BUILDINGS, TOOL_SHOP), 120)
+                    break
+                except AssertionError:
+                    pass
+            assert g.where() == (BUILDINGS, TOOL_SHOP), g.where()
             g.until("the shop to settle", g.settled, 300)
             g.wait(20)
             tool_shop = g.save("tool-shop")
