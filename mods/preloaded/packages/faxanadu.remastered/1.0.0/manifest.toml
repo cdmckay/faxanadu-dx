@@ -18,7 +18,7 @@ rom_crc32 = "57dd23d1"
 [[feature]]
 id = "remastered"
 name = "Faxanadu Remastered"
-description = "Everything the remaster adds, as one: three save files, Guru travel, respawning where you died, Block and the Magic button, the Pendant, the dagger, the Battle Suit and the Dragon Slayer fixed, weapons equipped and swung indoors, Sugata's flash with a warning, quick shops, keys found for you and kept, Wing Boots, Hour Glass and Elixir that recharge, forgiving jumps, faster text, damage numbers, the names of zones and speakers, what killed you, and REMASTERED under the title's logo. Switch it off to play the original game."
+description = "Everything the remaster adds, as one: three save files, Guru travel, respawning where you died, Block and the Magic button, the Pendant, the dagger, the Battle Suit, the Dragon Slayer and the original's graphics glitches fixed, weapons equipped and swung indoors, Sugata's flash with a warning, quick shops, keys found for you and kept, Wing Boots, Hour Glass and Elixir that recharge, forgiving jumps, faster text, damage numbers, the names of zones and speakers, what killed you, and REMASTERED under the title's logo. Switch it off to play the original game."
 group = "Game"
 default_enabled = true
 
@@ -113,3 +113,7 @@ id = "faxanadu.damage-numbers"
 [[plugin]]
 feature = "remastered"
 id = "faxanadu.inventory-fix"
+
+[[plugin]]
+feature = "remastered"
+id = "faxanadu.graphics-fix"

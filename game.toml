@@ -661,3 +661,46 @@ id = "faxanadu.inventory-fix.dragon-slayer"
 addr = 0xc73a
 bank = 15
 bytes = "e0 04 90 02 a2 03 a9 03 9d 9d 03 e8"   # Player_PickUpDragonSlayer, after LDX NumberOfArmors
+
+# The graphics fixes (fax_graphics.c). Sprite_Draw's two loops, right after
+# each reads a cell's tile slot (at its CLC) and its attribute (at its EOR)
+# from bank 7: the hook puts the right byte in A for the three wrong cells.
+# PPU_WriteTilesFromCHRRAM's STA PPUDATA: the title's attribute byte for the
+# logo's F. Area_LoadScrollData, after the current screen's Area_LoadBlocks:
+# the floor block of the Tower of Fortress's $2D.
+
+[[mod_function_hook]]
+id = "faxanadu.graphics-fix.tile"
+addr = 0xf131
+bank = 15
+bytes = "18 65 33 9d 00 07 e8 c8 b1 3a 45 29"   # Sprite_Draw_Standard: CLC, ADC Sprites_PPUOffset
+
+[[mod_function_hook]]
+id = "faxanadu.graphics-fix.attribute"
+addr = 0xf13b
+bank = 15
+bytes = "45 29 85 01 a5 42 29 01 a8 a5 26 39"   # Sprite_Draw_Standard: EOR CurrentSprite_FlipMask
+
+[[mod_function_hook]]
+id = "faxanadu.graphics-fix.flipped-tile"
+addr = 0xf1e5
+bank = 15
+bytes = "18 65 33 9d 00 07 e8 c8 b1 3a 45 29"   # Sprite_Draw_FlippedHoriz: CLC, ADC Sprites_PPUOffset
+
+[[mod_function_hook]]
+id = "faxanadu.graphics-fix.flipped-attribute"
+addr = 0xf1ef
+bank = 15
+bytes = "45 29 85 01 a5 42 29 01 a8 a5 26 39"   # Sprite_Draw_FlippedHoriz: EOR CurrentSprite_FlipMask
+
+[[mod_function_hook]]
+id = "faxanadu.graphics-fix.title"
+addr = 0xf8b7
+bank = 15
+bytes = "8d 07 20 c8 d0 02 e6 dc ca d0 f3 c6"   # PPU_WriteTilesFromCHRRAM: STA PPUDATA
+
+[[mod_function_hook]]
+id = "faxanadu.graphics-fix.screen"
+addr = 0xd1be
+bank = 15
+bytes = "20 e7 cc a5 54 c9 02 b0 0f aa a9 00"   # Area_LoadScrollData: JSR MMC1_RestorePrevROMBank
