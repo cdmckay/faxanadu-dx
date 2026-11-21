@@ -63,6 +63,7 @@ and data tables after it shifted). Not supported: the build rejects it.
 | `$009E`, `$00A1` | `Player_PosX_Block`, `Player_PosY` | |
 | `$00DB-$00DD` | `IScriptOrCHRAddr`, `IScriptOffset` | The interpreter reads the next action at addr + offset |
 | `$0100` | `CurrentROMBank` | 14 in the main loop. The stack shares this page |
+| `$0120` | `Game_PausedState` | Nonzero while the game is paused: Start, or the map (see *The map*) |
 | `$0127` | `SoundEffect_State_Counter` | The playing sound effect's tick; the typing sound runs 1-4 |
 | `$0208-$020B` | `TextBox_X`, `TextBox_Y`, `TextBox_Width`, `TextBox_Height` | The box last opened or closed, in tiles (see *The text box*) |
 | `$0212` | `TextBox_PlayTextSound` | The typing sound plays for a character if set |
@@ -266,7 +267,11 @@ faxanatools' `messages.py` decodes and encodes them; `fax_travel.c`'s
   8 bytes a character from `$20` to `$7F` (`A` is at `$8108`). The glyph data
   ends where the messages begin (`$8300`). `TextBox_WriteChar` copies a glyph
   into both bit planes of a pattern tile, so text is color 3 of the box's
-  palette.
+  palette. Not every ASCII character has a glyph: `#`, `$`, `%`, `&`, `(`,
+  `)`, `*`, `+`, `/`, `:`, `;`, `<`, `=`, `>`, `@` and `[` to `^` are blank.
+  Some are shapes instead: `~` is a triangle pointing left and `}` one
+  pointing right (the map's arrows), `` ` `` a solid block, `{` and `|` bars,
+  `_` an underline.
 - `TextBox_Open` frames a box with background tiles 1 (top left), 2 (top and
   bottom), 3 (top right), 4 (sides), 5 (bottom left) and 6 (bottom right)
   around tile 0 (black), from the playfield's background pattern table.
@@ -1585,6 +1590,138 @@ was saved with, through the temple, and any temple spawn forgets the
 checkpoint (the temple's door is the next way in), so a stored one would
 never be read.
 
+## The map
+
+`fax_map_layout.c` reads the whole map from a copy of the cart once, and
+`fax_map.c` keeps what the hero has seen and draws it.
+
+**The screen links** (bank 3). `AREAS_TABLE_PTR` (`$8000`) holds the offset
+of `AREA_TABLES` from `$8000`; that holds, per area, the offset of
+`<AREA>_AREA_DATA`, five more offsets: block attributes, block properties,
+then the three the map uses:
+
+- `<AREA>_SCROLL_DATA`: 4 bytes a screen, the screens to the left, right,
+  above and below, `$FF` for none. The door locations follow it directly, so
+  its length is the area's screen count (9, 64, 83, 14, 10, 40, 32, 20).
+  `Area_LoadScrollData` copies the current screen's four into
+  `Area_ScreenToTheLeft/Right/Above/Below` (`$0066-$0069`).
+- `<AREA>_DOOR_LOCATIONS`: 4 bytes a door to a `$FF`: screen, block (`YX`),
+  index, start (`YX`).
+- `<AREA>_DOOR_DESTINATIONS`: `Player_CheckIfDoorBlock` reads index × 4 (index
+  - `$20` in the towns): screen, palette, key, unused. Entries no door's index
+  names are other data: in Eolis, whose only door to a screen is index 0,
+  entries 2-`$1F` are not destinations. `$FE` and `$FF` are a region's doors,
+  never looked up here.
+
+**Towns and the climb** (bank 15). Walking off a region's edge into a town is
+not a scroll link: a block of property `$0C` or `$0D` sends
+`Player_CheckSwitchScreen` to `Player_CheckSwitchScreen_SwitchAreaHoriz`, which
+looks the screen up in `AREA_TOWN_TRANSITIONS_DATA` (`$EA9C`): per area, a
+pointer to 5-byte entries to a `$FF` (screen, area, screen, start `YX`,
+palette). The start says which side the town is on: X under 8 starts the hero
+at its left edge, so it lies to the screen's right. Each town has an entry
+back; the Trunk's first entry (screen 0 to Forepaw's left screen) has none,
+and nothing takes it. Conflate's right screen (`$09`) and Dartmoor town's
+(`$0D`) lead nowhere. A block of property `$09` or `$0A` looks the screen up in
+`AREA_SCREEN_COMPARATORS` (`$EA37`) instead: 4-byte entries (screen, screen,
+start `YX`, palette); only the Trunk has any, the climb between `$0C` and
+`$16` (start Y `$B`: `$16` is above `$0C`).
+
+**Not a grid.** The links are not always both ways, nor Euclidean:
+
+- One way: Trunk `$1B` (left, right and up, to `$1A`, `$3E` and `$28`), Mist
+  `$26` up to `$1F`, Zenis `$01` right, `$0C` down, `$11` up.
+- Nothing leads to Trunk `$1B`, Mist `$0A`, `$0B`, `$23` and `$24`, or
+  Dartmoor `$0F`. Eolis `$00`, outside the gate, is only where a new game
+  starts.
+- Mist `$2A` (above `$04`) has `$2B` to its right, but `$00` is above `$05`,
+  in that place. Conflate, off Branch `$0D`'s right edge, would need `$16`'s
+  cell for its second screen. The Castle of Fraternal's `$14`, `$19` and `$1A` cross, and the Fortress
+  of Zenis wraps around like a torus: `$05`'s right is `$0F`, `$02`'s left is
+  `$13`.
+
+**The layout** (`fax_map_layout.c`). A page per region, tower and castle, in
+the game's order: Eolis (with the gate), the Trunk, the Tower of Trunk, the
+Tower of Fortress, the Mist, the Tower of Suffer, the Tower of Mist, the
+Branch, Dartmoor, the Castle of Fraternal, the Fortress of Zenis. Its screens
+are its zone's in `fax_zone.c` that anything leads to, and the towns at its
+edges (all seven towns hang off one region each). A page is laid out by a
+breadth-first walk from its lowest screen: each screen one cell over from the
+one it was reached from, unless that cell is taken; scroll links (both ways)
+first, then town edges and the climb once nothing else is left. A town goes
+in whole, both screens side by side, or not at all. Whatever the walk cannot
+reach (a tower in the region's zone behind a door, like the Joker spring or
+Mist's two unnamed towers; a screen whose cell was taken) is laid out the same
+way on its own and set down near what leads to it, a cell clear of everything
+else: the nearest place, then below, then to the right. The pages, as
+`tests/map/map_test` prints them with the ROM:
+
+| Page | Screens | Cells | Page | Screens | Cells |
+|---|---|---|---|---|---|
+| Eolis | 9 | 8 x 3 | Tower of Mist | 14 | 9 x 2 |
+| Trunk | 37 | 22 x 6 | Branch | 44 | 24 x 6 |
+| Tower of Trunk | 9 | 7 x 3 | Dartmoor | 17 | 7 x 4 |
+| Tower of Fortress | 21 | 6 x 4 | Castle of Fraternal | 16 | 11 x 3 |
+| Mist | 54 | 23 x 10 | Fortress of Zenis | 20 | 5 x 7 |
+| Tower of Suffer | 15 | 6 x 4 | | | |
+
+**What the hero has seen** (`fax_map.c`, at each frame's end, once the screen
+has settled and the game is not paused, so in both world views):
+
+- A screen: any he stands on outside. In a building, the screen he went in
+  from (`Area_SavedArea`, `Area_SavedScreen`).
+- A ladder or a drop: a move to the screen a scroll link (or the climb) puts
+  above or below, kept on the screen he left (up or down). A death (`PlayerIsDead`)
+  forgets where he was, so coming back elsewhere is no move.
+- A door, by where he was and where he is: to a screen of the same area that
+  no link joins, the door on the one he left that leads there, and the one he
+  arrives at that leads back; to another region (not a town), the region doors
+  on both screens; in a building, the door on `Area_SavedScreen` that leads to
+  it. A respawn, a Guru travel journey and continuing set those to the temple's
+  town, so the temple he wakes in counts too. Guru travel's visited Gurus but
+  Eolis's (set from the start of every game) count as their temples' doors.
+
+**The pause** (bank 15, `GameLoop_CheckPauseGame`, called once a pass of
+`Game_MainLoop`): `$E02B` `LDA Joy1_ChangedButtonMask`, `AND #$10`, `$E02F`
+`BEQ` (to an RTS), `LDA #$01`, `STA Game_PausedState`; then
+`@_waitForUnpause` (`$E036`): `JSR WaitForNextFrame`, `JSR Sprites_FlipRanges`,
+`LDA Joy1_ChangedButtonMask`, `AND #$10`, `$E040` `BEQ @_waitForUnpause`,
+`LDA #$00`, `STA Game_PausedState`, `RTS`. The instruction after either BEQ
+loads A, N and Z again, so a hook there steers it with Z (and A) alone. The
+map's press waits up to 30 frames for `$E02F`: there it clears Z, so the game pauses as for Start, the music held
+(`Game_PausedState`) and every feature holding as for a pause. At `$E040`,
+once a frame, it reads the pad: Left and Right turn the page, and B, Start
+or Map close it, with Z cleared so the game unpauses; otherwise Z is set. A
+press during the game's own pause opens it there. The menu, scrolling and
+conversations never reach `$E02F`, so the map opens only in play.
+
+**Where it is drawn.** Last in the present chain (`cyc_extras.c`), after
+every feature and after Seamless composes its picture: black over the whole
+picture, the text box's frame (`fax_text_box`, the area's own colors) over the
+native 256 x 240 centered in it, the page's name on row 2 in the dialogue font
+between `~` and `}` when there is more than one page, the grid in 240 x 176
+from y 32, and a key on row 27. A screen is a box of the largest cell that
+fits the page, from 16 x 13 down to 10 x 8 (each keeps a screen's 256 x 208
+shape), a 1-pixel wall in `$22` around `$02` inside (a town's: `$28` around
+`$08`), the current one blinking `$16` every 16 frames. Seen neighbours a link
+or a town edge joins beside each other are open through both walls; above and
+below, only a ladder he has taken opens a gap. A used door's mark, 3 x 3
+pixels, sits on its screen where its block is: a cross for a Guru (`$30`), a
+block for a tool or key shop (`$2A`), a roof for any other building (`$26`),
+and a bar for a door to a tower, a castle or a region (`$38`). TCP `map_state`
+gives every box's rectangle in the last presented picture.
+
+**In the file.** One field an area that has anything seen: `map.eolis`,
+`map.trunk`, `map.mist`, `map.towns`, `map.branch`, `map.dartmoor`,
+`map.zenis`. The value is four sets, space-separated: the screens seen,
+those left upward, those left downward, and the doors used (by their place in
+the area's door locations). A set is hex digits, the first for items 0-3 with
+item 0 its lowest bit: Eolis's gate and screens 1-2, with the gate's door
+and the temple's (doors 0 and 3 of its 10), read `700 000 000 900`. Written when the file is (`FAX_SAVE_WRITING`),
+read back on `FAX_SAVE_CONTINUED`, cleared for a new game; a damaged field
+forgets that area only. Every field fits a value (the Mist's, everything set,
+is 71 characters).
+
 ## Items and the inventory
 
 Five categories, each with a count, a selected entry and a list. Entries are
@@ -2427,6 +2564,18 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
   not reached, and that loader sets the weapon itself. No ROM, no read
   overrides, no state.
 
+- **The map** (`fax_map.c`, laid out by `fax_map_layout.c`). A Map button (M,
+  or LT on a controller; `MapKey` and `MapButton` in `config.ini` [Game])
+  pauses the game on a map of the screens the hero has stood on, a page per
+  region, tower and castle; see *The map*. Two hook sites, the BEQs at
+  `$E02F` and `$E040` in `GameLoop_CheckPauseGame`, which no other feature
+  hooks: it changes only A and Z there, and the game's own code pauses and
+  unpauses. Everything else it learns from RAM at the end of each frame, and
+  it draws at present time, after every other feature. Guru travel's visited
+  Gurus (`fax_travel_visited`) count as their temples. Its save-state record is
+  what the hero has seen (312 bytes), the last place, and the map's page and
+  whether it is open. No ROM, no read overrides.
+
 - **Save files** (`fax_save.c`, `fax_files.c`). Three files instead of
   mantras; see "Save files" below.
 
@@ -2457,7 +2606,9 @@ are kept, in place, through every save.
 
 Other fields belong to features: Guru travel's `gurus` (the visited Gurus,
 town names), recharging items' `recharge.wingboots`, `recharge.hourglass` and
-`recharge.elixir` (see its entry in *Features and what they use*), and
+`recharge.elixir` (see its entry in *Features and what they use*), the map's
+`map.eolis`, `map.trunk`, `map.mist`, `map.towns`, `map.branch`,
+`map.dartmoor` and `map.zenis` (see *The map*), and
 `imported_mantra` on a file imported from a mantra. Missing
 core fields take a new game's values. HP, MP and the timed items are not
 kept: continuing fills HP and MP and clears the timed items, as a mantra did.
