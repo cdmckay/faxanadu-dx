@@ -149,6 +149,11 @@ the portrait (`IScripts_OpenForPortrait`) and opens the dialogue box.
 
 - The ID holds through every action of the script: messages, questions, the
   Buy/Sell menu, shop lists, the mantra and Guru travel's lines.
+- **A portrait moves while a line types** (`MessageID` set, `TextBox_MessagePaused`
+  0): `IScripts_UpdatePortraitAnimation` picks the eyes and mouth frame
+  `(InterruptCounter >> 3) & 3`. Typed out or paused, it shows frame 0. A
+  picture of a line mid-typing is the same every run only from a save state
+  with `InterruptCounter` set, played headless.
   `IScriptAction_EndScript` sets it back to `$FF` (`IScripts_ClearPortraitImage`)
   before it clears both boxes (`TextBox_ClearForPortraitAndText`).
   `Screen_ClearSprites` also sets it to `$FF`, so it is `$FF` whenever no
@@ -231,6 +236,13 @@ faxanatools' `messages.py` decodes and encodes them; `fax_travel.c`'s
 - Questions end with a flashing "?". A continues; B dismisses at any point,
   even mid-text. Both read `Joy1_ChangedButtonMask`, so a held button acts
   once.
+- **The ▼ and "?" flash on `InterruptCounter`:** they are drawn only while
+  `InterruptCounter & $10` (`TextBox_DrawDownArrowTerminatorSymbol`), 16
+  frames on and 16 off, so a screenshot shows them on some runs and not
+  others. In a portrait conversation they sit at about x 144-175, y 176-184
+  of the picture; a box without a portrait (Eolis's exit door) flashes a ▲ at
+  its bottom right, x 216-231, y 92-103. `tools/readme_screenshots.py`'s
+  `shot_lit` retakes a screenshot until the mark is lit.
 - The box is waiting for a button when `MessageID` is 0 (typed out) or
   `TextBox_MessagePaused` is set. Wait on that rather than on a timer.
   Only a pause sets `TextBox_MessagePaused` ($FF), and only continuing past
@@ -468,6 +480,13 @@ What a feature can rely on, and the traps:
   palette, OAM, then RAM). `--screenshot` saves the last frame, and
   `--save-state F:PATH` saves a state after frame F.
   `tests/movement/play.py` wraps this.
+- **A headless picture with the remaster's drawing.** `--screenshot` saves
+  the bare NES picture; `--present-out FILE` saves what the window would show
+  after the last frame, with the remaster's drawing on it (banners, damage
+  numbers, name tabs). `--load-state` makes a run headless, and Block and the
+  Magic button come from SDL key and controller events, which a headless run
+  has none of, so those can only be pressed over TCP.
+  `tools/readme_screenshots.py`'s `Game.replay` wraps a headless run.
 - The window's TCP server reads every line it has and serves them all before
   the next frame (`cyc_tcp_poll`, then the held inputs tick, then the frame).
   So a `load_state` and an `action` sent in one write hold the button from the
@@ -486,6 +505,9 @@ What a feature can rely on, and the traps:
   the hero walks in, so where they are when he arrives depends on how long he
   took. A test that walks in should put them in place in its save state, as
   `tests/damage/damage_numbers.py` does with Eolis's Zozura.
+- In Seamless, a neighboring room's actors live in `fax_world.c`'s copy of
+  that room, not in `CurrentSprites_Entities`: setting those slots to `$FF`
+  clears only the hero's room.
 
 ## Far calls (`MMC1_LoadBankAndJump`)
 
@@ -1552,6 +1574,7 @@ Red Potion `$10`). Shops and scripts add the category in the top 3 bits
   takes the new item out of the list and appends the old selection to it.
   So "the player has X" means X is selected or in the first `NumberOfItems`
   slots; `Player_LacksItem` (`$8CF7`) checks both. `$FF` selects nothing.
+- With no items, the Select menu's item list still opens, showing "NO ITEM".
 - `Player_RemoveItem` (`$9A6A`, bank 12) shifts the later entries down and
   decrements the count, leaving a stale byte after the end. `Player_AddToInventory`
   overwrites the last entry when the category is full; `Player_PickUpItem`
@@ -1793,6 +1816,8 @@ consumable.
   script `$81` ("I've used Mattock."), calls `Player_ClearSelectedItem` at
   `$C64C` (which uses it up), then replaces that block and the one below
   over four steps of 4 frames.
+- The message waits for A first, so in the original the Mattock leaves the
+  status bar only after A on "I've used Mattock.", as the wall crumbles.
 - Only Trunk (area 1) has a group: `$63` → `$85`, `$86`, `$42`. Every other
   group is `$00`, so elsewhere the Mattock "breaks" air (block `$00`) into air:
   the message shows and, in the original, the Mattock is gone for nothing.
@@ -1851,6 +1876,9 @@ jumping or falling, `Player_Flags & $05`):
 - **T:** is two ASCII tiles at PPU `$2058`. Only the Wing Boots draw it
   (`UI_DrawTimeValue`, queued through the PPU buffer at `$0500`: length 2,
   `$20`, `$58`, the digits); the Hour Glass never shows a time.
+- In the picture, T: is at x 176-188 and its seconds at x 192-207, y 16-23.
+  While an item recharges (`fax_recharge.c`) the seconds blink, and in the
+  off phase they are black.
 - `Game_ClearTimedItems` (`$C6AF`) sets all four durations to `$FF`. It runs
   from `Game_Start` and `Player_Spawn`, so every death ends them, but not on a
   Guru travel journey, which enters `Player_Spawn` past it: a flight or a
@@ -1983,6 +2011,8 @@ rest of the way to Victim, were not checked.
   right edge to reach any screen of the same area the game's own way.
   `CurrentSprites_Entities` (`$02CC`, 8 slots) set to `$FF` clears a screen's
   enemies (see *Eolis, for tests*).
+- **Eolis screen 4's tower** (about x 160-208) is drawn in front of sprites:
+  a hero or a Zozura behind it disappears. Stage a fight there left of x 150.
 
 ## Features and what they use
 

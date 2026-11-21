@@ -28,6 +28,8 @@ How the game works, as far as we've learned it, is in
 FAXANADU logo, in the game's own font and the light yellow of the logo. The
 rest of the title is the original's.
 
+![The original title, with START and CONTINUE, beside the remaster's: REMASTERED under the logo, above the file select](docs/screenshots/title.png)
+
 ### Saving and the Gurus
 
 **Save files.** The title screen offers three files, as in Zelda: pick an
@@ -39,19 +41,27 @@ where you wake when there's no entrance to come back to. Talking to a Guru
 without saving leaves that where it was. Your file is also saved each time
 you come back from a death or a journey.
 
+![The file select with a saved file (Adept, 123456 gold, Conflate), beside the Guru of Conflate offering to remember your journey](docs/screenshots/save-files.png)
+
 **Guru travel.** A temple's Guru can send you to any other Guru you have
 visited: choose "Send me to another Guru." when he asks, or say yes after he
 remembers your journey. A to go, B to hear the next town. HP, MP, gold and
 your spawn point are kept.
 
+![The Guru of Conflate offers to send you to another Guru, and B moves on to the next Guru you have met](docs/screenshots/guru-travel.png)
+
 **Death keeps gold.** When you die, the Guru brings you back with all your
 gold and experience, instead of your title's starting amounts. You still come
 back with full HP and MP, and the timed items are gone, as before.
+
+![The status bar after the Guru brings a Soldier back: the original resets him to 3500 experience and 1200 gold, the remaster keeps his 5000 and 12345](docs/screenshots/death-keeps-gold.png)
 
 **Zone respawn.** After the Guru's words, you come back where you last
 entered the tower, castle, town or region you died in, instead of at a
 temple. Until you have entered one, and after continuing or a Guru's journey
 until you walk out of the temple, you wake at the temple as before.
+
+![Dying inside the Tower of Trunk: the original wakes the hero at Eolis's temple, the remaster at the tower's door](docs/screenshots/zone-respawn.png)
 
 ### Combat
 
@@ -62,9 +72,13 @@ Contact and sword damage are as before. As you raise it, you glint twice in
 the shield's colors, so you can see you're blocking. The first time you get a
 shield or the Battle Helmet, the game adds a line naming your key, once.
 
+![An Execution Hood's shot coming at the hero: not blocking, he is in his own colors; blocking, he glints in his shield's](docs/screenshots/block.png)
+
 **Magic button.** C on the keyboard, or Y on a controller, casts your selected
 spell, as Up+B does, but without going through a door, talking to anyone or
 swinging your sword. Up+B still works.
+
+![Beside a Guru, Up and B starts his conversation; the Magic button casts Deluge instead](docs/screenshots/magic-button.png)
 
 **Sugata's flash.** Sugata, in the Mist, blinks for half a second before it
 flashes, and the band of the screen its flash will reach dims faintly. The
@@ -73,11 +87,15 @@ Block. With the Magic Shield, Block turns the flash back on Sugata. Ointment
 now keeps your HP, though the flash still knocks you back. In the original it
 hit you anywhere on the screen, Ointment or not.
 
+![Sugata blinks and dims the band its flash will reach; the flash greys only that band, missing the hero just outside it](docs/screenshots/sugata.png)
+
 **The Pendant, fixed.** The Pendant was meant to make your weapon hit a
 quarter harder, but a reversed check in the original gave that bonus to
 everyone without it, and finding the Pendant took it away. Now your weapon
 does its base damage until you find the Pendant, and the original's full
 damage once you have it. The Glove adds its bonus as before.
+
+![The same Long Sword hit on a Zozura: 8 without the Pendant, leaving it alive; 10 with it, a kill](docs/screenshots/pendant.png)
 
 **Damage numbers.** Every hit that takes HP shows how much, in the status
 bar's own digits, floating up from where it landed and fading: white for the
@@ -85,16 +103,22 @@ damage you deal, with your weapon, your magic or a reflected flash, and pink
 for the damage you take. A killing blow shows the whole hit. Hits that take
 nothing, through Ointment, Block or a moment of invincibility, show nothing.
 
+![A Long Sword swing hits a Zozura for a white 8 while the other bites the hero from behind for a pink 7](docs/screenshots/damage-numbers.png)
+
 **A taller dagger.** The Hand Dagger used to swing over low enemies that every
 sword hits, like the Zozura crawling outside Eolis. Now its swing reaches as
 low as the swords', so it hits them. It keeps its short reach, so the Long
 Sword is still an upgrade.
+
+![The same swing of the Hand Dagger at a crawling Zozura: the original's passes over it, the remaster's hits it for 4](docs/screenshots/taller-dagger.png)
 
 **Weapons indoors.** In shops, houses and temples the Select menu equips what
 you choose, as it does outside, and you keep your weapon in hand: buy a sword
 and swing it on the spot. Swinging at townsfolk does nothing, as before. In
 the few rooms with enemies inside, in the Mist and Dartmoor, your sword now
 hurts them too; in the original only magic did.
+
+![A swing at the counter of Forepaw's tool shop: empty-handed in the original, with the Long Sword in the remaster](docs/screenshots/equip-indoors.png)
 
 ### Getting around
 
@@ -104,9 +128,13 @@ land jumps as you land. No jump goes higher or further than a well-timed one
 in the original. The Wing Boots, ladders and knockback work as before, and
 raising Block drops a press it was keeping, so you land standing your ground.
 
+![A pressed 3 frames after walking off a ledge, with the hero's path traced: the original falls, the remaster jumps](docs/screenshots/forgiving-jumps.png)
+
 **A falling pose.** Walking off a ledge, the hero used to fall standing or
 mid-step, as if walking on air. Now he shows the jump pose until he lands, as
 in a jump.
+
+![The same frame of a fall off a ledge: a walking pose in the original, the jump pose in the remaster](docs/screenshots/falling-pose.png)
 
 ### Keys and items
 
@@ -114,9 +142,13 @@ in a jump.
 from your inventory opens it, without selecting it first; whatever item you
 had selected stays selected.
 
+![Up at Eolis's locked door with the Mattock selected: the original names the key it needs, the remaster uses the J key](docs/screenshots/keys.png)
+
 **Tools that last.** A key stays in your inventory after it opens a door, and
 the Mattock after it breaks a wall. Potions and the other consumables are
 still used up.
+
+![The item list after the J key opened a door and the Mattock broke a wall: empty in the original, both kept in the remaster](docs/screenshots/tools-that-last.png)
 
 **Items that recharge.** The Wing Boots, the Hour Glass and the Elixir are
 kept after use. The Wing Boots fly longer as your title rises (30, 40, 50 and
@@ -129,6 +161,8 @@ spent, until you talk to a Guru; the menu's Player page shows it only while
 it is charged. Finding one you already own recharges it; buying does not, since
 a shop won't sell you a second Elixir, charged or spent. Your save file keeps
 the cooldowns and whether the Elixir is spent.
+
+![The Wing Boots flying with T: counting the flight down, then recharging with T: counting the 60 seconds](docs/screenshots/recharging.png)
 
 ### Shops and text
 
@@ -144,25 +178,35 @@ What you already have for good, the Wing Boots, the Hour Glass, the Elixir
 (charged or spent), a key or the Mattock, keeps its place in a shop's list but
 says OWNED instead of a price, and A on it does nothing.
 
+![Forepaw's tool shop: its list up at once, with the Wing Boots you carry OWNED, and Select for what it buys from you](docs/screenshots/quick-shops.png)
+
 **Hold A to speed up text.** Text types at the game's own pace; hold A and it
 types 4 times as fast. A page break or a question still waits for a fresh
 press of A, so holding it never skips a page or answers for you: let go, then
 press A to go on.
+
+![The same 40 frames of the Guru's greeting, without A and with A held](docs/screenshots/text-speed.png)
 
 **Zone names.** When you enter a different town, region, tower or castle, its
 name appears below the status bar for about two seconds in the game's own
 text box, as the dialogue names it ("Tower of Suffer", "Castle of
 Fraternal"). Shops, houses and temples show nothing.
 
+![Walking into the Tower of Fortress shows its name below the status bar](docs/screenshots/zone-names.png)
+
 **Slain by.** When something takes your last HP, the same banner names it
 while you fall: "Slain by a Sugata", "Slain by an Execution Hood", "Slain
 by Poison". A shot or a falling rock is named after whoever cast it. The
 Guru's words that follow are as before.
 
+![An Execution Hood's shot takes the hero's last HP: Slain by an Execution Hood](docs/screenshots/slain-by.png)
+
 **Speaker names.** When someone with a portrait talks to you, their name sits
 on a tab above the dialogue box for the whole conversation, as the game names
 them: "Guru of Apolune", "King of Eolis", "Martial Artist", "Key Seller".
 People without a portrait show no name.
+
+![The King of Eolis, named on a tab above the dialogue box](docs/screenshots/speaker-names.png)
 
 ### A way to view it: Seamless
 
@@ -173,6 +217,8 @@ into one continuous world, keeps neighboring rooms' actors moving, and fits
 the view to your window. The mouse wheel changes the pixel zoom, and F4 shows
 the connected map. It is still a preview, for local play only. See
 [docs/SEAMLESS-WORLD.md](docs/SEAMLESS-WORLD.md).
+
+![The same spot in the stock view and in Seamless, which joins the next screen on](docs/screenshots/seamless.png)
 
 ## Controls
 
@@ -245,6 +291,8 @@ launcher first.
 
 The game's C is in `src/` (each feature is a `fax_<name>.c`), its tests in
 `tests/`, the mod in `mods/`, scripts in `tools/` and notes in `docs/`.
+`tools/readme_screenshots.py` plays each feature from your ROM to make the
+screenshots above.
 
 ## Credits
 
