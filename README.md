@@ -170,6 +170,8 @@ Slayer your armor instead of your weapons, so either could wipe out armor or
 weapons you carried, or list ones you didn't have. Now each joins its own
 list, after what you carry.
 
+![The armor list after picking up the Battle Suit with three armors listed: the original keeps only the suit, the remaster adds it after them](docs/screenshots/battle-suit.png)
+
 ### Shops and text
 
 **Quick shops.** Up on a shopkeeper opens his list straight away, with no

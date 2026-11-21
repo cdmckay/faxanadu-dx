@@ -11,13 +11,16 @@ build-cycle (see the README). --rom defaults to "Faxanadu (USA).nes" at the
 repo root.
 
 Each scene is a function below, registered with @scene: it plays the game
-from a new game to the feature's moment with the end-to-end tests' helper
-(tests/e2e/fax_e2e.py, with tests/block/harness.py's Game for getting around
-and tests/movement/play.py's for the ledge), building the save-state fixtures
-it needs from your ROM as the feature's own test does, and takes its pictures
-with shot() or picture(). Every scene runs at once, each in its own process
-with its own game on a port the helper reserves; its log, save states and raw
-pictures go to OUT/<scene>/ (build-tests/readme-shots by default).
+to the feature's moment with the end-to-end tests' helper (tests/e2e/fax_e2e.py,
+with tests/block/harness.py's Game for getting around and
+tests/movement/play.py's for the ledge), as the feature's own test does, and
+takes its pictures with shot() or picture(). It starts from saved games, as
+the tests do: the helper's fixtures ("gate", "eolis-town", "eolis-meat-shop",
+"eolis-zozuras", play.py's "trunk-ledge") and the "readme-*" recipes below,
+made from your ROM once and cached in build-tests/fixtures. Every scene runs
+at once, each in its own process, any game on a port the helper reserves;
+its log, save states and raw pictures go to OUT/<scene>/
+(build-tests/readme-shots by default).
 
 A scene's pictures are cropped to what matters, scaled 2x (nearest
 neighbour) and written as an indexed PNG: an NES picture has well under 256
@@ -29,12 +32,14 @@ Like the test suite's end-to-end runs, it takes the machine-wide end-to-end
 lock (tools/test.sh), so the two never slow each other's games down.
 
 Same every run: where a moment must be frame exact, a scene plays it
-headless from a save state (Game.replay, or play.py's headless), and a
-blinking mark is waited for until it is lit (Game.shot_lit). Most scenes
-come out byte for byte the same each run. A few start from a save made
-over TCP at whatever frame the script got there, so a sprite can sit a few
-pixels elsewhere; Seamless also shows the next room's actors, which keep
-moving. Regenerate only the scenes you changed (--only), so the others don't
+headless from a fixture (Game.replay, or play.py's headless), and a blinking
+mark is waited for until it is lit (Game.shot_lit), so with the fixtures
+cached most scenes come out byte for byte the same each run. A few play over
+TCP to a short-lived moment and can land a frame apart (Block's glint, the
+Magic button's spell, Sugata's flash), and Seamless also shows the next
+room's actors, which keep moving. A new build, or an edit to a recipe's
+file (this one), makes the fixtures again, and a new fixture can differ by a
+frame: regenerate only the scenes you changed (--only), so the others don't
 churn. Never commit a save state: states hold the cartridge's graphics.
 
 A new feature adds its scene here and its picture to the README (CLAUDE.md).
@@ -44,7 +49,6 @@ from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 from pathlib import Path
-import re
 import shutil
 import socket
 import struct
@@ -238,51 +242,11 @@ def compose(rom, panels):
 # ---- playing the game ----
 
 class Game(harness.Game):
-    """tests/block/harness.py's Game (fax_e2e.Game with ways to get around:
-    new_game_at_gate, walk_to, walk_out, warp, save, load), with what the
-    scenes share."""
+    """tests/block/harness.py's Game (fax_e2e.Game with fixtures, and ways to
+    get around: walk_to, walk_out, warp, save, load), with what the scenes
+    share. A recipe's game is one of these too."""
 
     # Getting somewhere
-    def to_gate(self):
-        """From launch, a new game to Eolis's gate, as the intro leaves him
-        there (its first line about to type): its save state."""
-        self.until("the title", lambda: self.frame() > 700, 1500)
-        self.tcp("pad", buttons="start", frames=10)
-        self.until("the Eolis gate", lambda: self.ram(AREA) == AREA_EOLIS and self.frame() > 1900, 2500)
-        return self.save("gate")
-
-    def to_eolis_shop(self):
-        """From launch, a new game through Eolis's gate into its meat shop: a
-        building whose door can be made to lead anywhere (warp)."""
-        self.new_game_at_gate()
-        self.act("up", 4, 10)
-        self.until("Eolis", lambda: self.where() == (AREA_EOLIS, 1), 300)
-        self.wait(30)
-        self.walk_to(41, 56)                # the meat shop, column 3
-        self.act("up", 4, 10)
-        self.until("the meat shop", lambda: self.ram(AREA) == BUILDINGS)
-        self.wait(30)
-        return self.save("eolis-shop")
-
-    def to_eolis_town(self):
-        """From launch, a new game through Eolis's gate into the town, as the
-        keys and recharging tests do: its save state."""
-        self.until("the title", lambda: self.frame() > 700, 1500)
-        self.tcp("pad", buttons="start", frames=10)
-        self.until("the Eolis gate", lambda: self.where() == (AREA_EOLIS, 0) and self.frame() > 1900, 3000)
-        for _ in range(200):                # the intro's lines stop him; A goes on
-            if self.ram(POS_X) >= 184:
-                break
-            x = self.ram(POS_X)
-            self.tcp("action", name="right", frames=8)
-            self.wait(8)
-            if self.ram(POS_X) == x:
-                self.act("a", 6, 20)
-        self.act("up", 4, 10)
-        self.until("Eolis town", lambda: self.where() == (AREA_EOLIS, 1), 600)
-        self.wait(60)
-        return self.save("town")
-
     def die_into(self, temple, writes=None):
         """From wherever the hero is, die and wake at `temple`'s Guru
         (TEMPLE_SPAWN_POINT), paging through his words: a way to travel."""
@@ -363,13 +327,10 @@ class Game(harness.Game):
         (frame, buttons) counted from the state ("B", "RIGHT+A", "-" for none).
         Returns each frame's CPU RAM. With `picture`, also writes what the
         window would show after the last frame (the picture with the
-        remaster's drawing on it); with `save`, a save state after it."""
+        remaster's drawing on it); with `save`, a save state after it. Needs
+        no window: a scene that only replays a fixture launches none."""
         mods = self.catalog(original)
-        probe = subprocess.run([str(self.exe), str(self.rom), "--load-state", str(state), "--frames", "0",
-                                "--mods-root", str(mods), "--no-save"], capture_output=True, text=True)
-        found = re.search(r"continuing at frame (\d+)", probe.stdout)
-        assert found, probe.stdout + probe.stderr
-        start = int(found.group(1))
+        start = continues_at(state)
         run = self.out / "replay"
         run.mkdir(exist_ok=True)
         (run / "input.txt").write_text("".join(f"{start + at} {buttons}\n" for at, buttons in sorted(schedule)))
@@ -405,6 +366,11 @@ def state_ram(path, addr):
     """A byte of CPU RAM in a save state (its HW chunk, as fixture() edits it)."""
     data = Path(path).read_bytes()
     return data[next(p for tag, p, _ in fax_e2e.chunks(data) if tag == b"HW  ") + 23 + addr]
+
+
+def continues_at(state):
+    """The frame a save state continues at: the uint32 at its offset 28."""
+    return struct.unpack_from("<I", Path(state).read_bytes(), 28)[0]
 
 
 class Line:
@@ -545,19 +511,12 @@ def save_files(s):
 DIALOGUE, END_MARK = (8, 96, 248, 200), (144, 176, 176, 185)
 
 
-def conflate_temple(g):
-    """From launch, a new game relaunched with the Gurus of Eolis, Apolune,
-    Mascon and Conflate met (tests/travel/guru_travel.py), the hero dead and
-    woken at Conflate's Guru: a save state there."""
-    gate = g.to_gate()
-    g.close()
-    (g.out / "game" / "faxanadu_gurus.txt").write_text("Eolis\nApolune\nMascon\nConflate\n")
-    g.launch()
-    g.load(gate)
+@fax_e2e.recipe("readme-conflate-temple", parent="gate")
+def _conflate_temple(g):
+    """Died outside Eolis's gate with Conflate's temple his spawn point: back
+    in Conflate's temple, after the Guru's words."""
     g.die_into(CONFLATE)
     assert g.where() == (BUILDINGS, TEMPLE_SCREEN[CONFLATE]), g.where()
-    g.wait(30)
-    return g.save("conflate-temple")
 
 
 def travel_line(g):
@@ -566,10 +525,12 @@ def travel_line(g):
 
 @scene("guru-travel")
 def guru_travel(s):
-    """Guru travel: the Guru's offer, and the first Guru he offers to send you to."""
+    """Guru travel: the Guru's offer, and the first Guru he offers to send
+    you to, with the Gurus of Eolis, Apolune, Mascon and Conflate met
+    (tests/travel/guru_travel.py)."""
     g = s.game
-    g.launch()
-    g.load(conflate_temple(g))
+    (g.out / "game" / "faxanadu_gurus.txt").write_text("Eolis\nApolune\nMascon\nConflate\n")
+    g.launch(at="readme-conflate-temple")
     g.act("left", 170, 10)                                      # to the Guru, and talk
     g.act("up", 4, 10)
     g.until("the Guru's greeting", lambda: g.ram(MESSAGE_ID) == MEDITATE_WITH_YOU)
@@ -602,10 +563,8 @@ def death_keeps_gold(s):
     3500 and 1200) and the remaster (all kept)."""
     g = s.game
     hero_exp, hero_gold = 5000, 12345
-    g.launch()
-    gate = g.to_gate()
     dying = g.out / "dying.cycstate"
-    fixture(gate, dying, {
+    fixture(g.state("gate"), dying, {
         TITLE: SOLDIER, NEXT_TITLE: SOLDIER + 1,
         EXPERIENCE: hero_exp & 0xFF, EXPERIENCE + 1: hero_exp >> 8,
         GOLD: hero_gold & 0xFF, GOLD + 1: hero_gold >> 8 & 0xFF, GOLD + 2: hero_gold >> 16,
@@ -618,6 +577,7 @@ def death_keeps_gold(s):
         g.wait(60)
         return g.shot(name)
 
+    g.launch()
     remastered = back_in_mascon("remastered")
     kept = (int.from_bytes(g.ram(EXPERIENCE, 2), "little"), int.from_bytes(g.ram(GOLD, 3), "little"))
     assert kept == (hero_exp, hero_gold), kept
@@ -632,43 +592,42 @@ def death_keeps_gold(s):
              for path, caption in ((original, "Original"), (remastered, "Remastered"))])
 
 
-@scene("zone-respawn")
-def zone_respawn(s):
-    """Dying just inside the Tower of Trunk: the original wakes him at Eolis's
-    temple; the remaster brings him back at the tower's door."""
-    g = s.game
-    tower = (AREA_TRUNK, 0x0D)
-    g.launch()
-    gate = g.to_gate()
-    # No entrance yet: dying at the gate wakes him at Eolis's temple, a building to walk out of anywhere.
-    dying = g.out / "dying-at-gate.cycstate"
-    fixture(gate, dying, {PLAYER_IS_DEAD: 1, HP: 0x50})
-    g.load(dying)
+TOWER_OF_TRUNK = (AREA_TRUNK, 0x0D)                             # its first screen inside
+
+
+@fax_e2e.recipe("readme-tower-of-trunk", parent="gate")
+def _tower_of_trunk(g):
+    """Died at Eolis's gate before any entrance: woken at Eolis's temple, out
+    of its door edited to lead to the Tower of Trunk's (Trunk screen $0B,
+    block $A9), the J key in hand, and in: standing just inside."""
+    g.poke({PLAYER_IS_DEAD: 1, HP: 0x50})
     g.until("the Guru's words", lambda: g.ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 900)
     g.page_until("Eolis's temple", lambda: g.at(BUILDINGS, TEMPLE_SCREEN[EOLIS]))
     g.wait(30)
-    temple = g.save("temple")
-    # Out of the temple's door at the Tower of Trunk's (Trunk screen $0B, block $A9), the J key in hand.
-    door = g.out / "door.cycstate"
-    fixture(temple, door, {AREA_SAVED_AREA: AREA_TRUNK, AREA_SAVED_SCREEN: 0x0B, SCREEN_SAVED_PALETTE: PALETTE_TRUNK,
-                           PLAYER_SAVED_POS: 0xA9, AREA_REGION: AREA_TRUNK, HP: 0x50, SELECTED_ITEM: KEY_J})
-    g.load(door)
-    g.walk_out()
+    g.warp(g.save("temple"), "tower-door", AREA_TRUNK, 0x0B, PALETTE_TRUNK, 0xA9, AREA_TRUNK, {SELECTED_ITEM: KEY_J})
     g.until("the Tower of Trunk's door", lambda: g.at(AREA_TRUNK, 0x0B), 600)
     g.clear_actors({HP: 0x50})
     for _ in range(6):                                          # in through the door (a knock can take the press)
         g.walk_to(0x09 * 16 - 7, 0x09 * 16 + 8)
         g.act("up", 4, 10)
         try:
-            g.page_until("the tower", lambda: g.at(*tower), 40)
+            g.page_until("the tower", lambda: g.at(*TOWER_OF_TRUNK), 40)
             break
         except AssertionError:
             pass
-    assert g.at(*tower), g.where()
+    assert g.at(*TOWER_OF_TRUNK), g.where()
     g.until("the hero to stand", g.standing, 300)
-    inside = g.save("inside")
+
+
+@scene("zone-respawn")
+def zone_respawn(s):
+    """Dying just inside the Tower of Trunk: the original wakes him at Eolis's
+    temple; the remaster brings him back at the tower's door."""
+    g = s.game
+    tower = TOWER_OF_TRUNK
     dying = g.out / "dying-inside.cycstate"
-    fixture(inside, dying, {PLAYER_IS_DEAD: 1})
+    fixture(g.state("readme-tower-of-trunk"), dying, {PLAYER_IS_DEAD: 1})
+    g.launch()
 
     def died(where, name):
         g.load(dying)
@@ -693,6 +652,18 @@ def zone_respawn(s):
 # The Fortress of Zenis's screen 16, where an Execution Hood casts at the hero.
 SCREEN_16, REGION_ZENIS, SHIELD_HEIGHT = 16, 5, 150
 HUD_HEIGHT = 32                                                 # Sprite_Draw adds it to a sprite's Y
+
+
+@fax_e2e.recipe("readme-hood-shot", parent="eolis-meat-shop")
+def _hood_shot(g):
+    """Out of the meat shop, its door edited to lead to the Fortress of
+    Zenis's screen 16 (tests/block/block.py), its other actors sent away but
+    the Execution Hood, as the Hood's shot appears."""
+    g.warp(g.save("shop"), "zenis", AREA_ZENIS, SCREEN_16, PALETTE_ZENIS, 0x91, REGION_ZENIS)
+    g.wait(20)
+    g.poke({SPRITE_ENTITIES + i: 0xFF for i, e in enumerate(g.ram(SPRITE_ENTITIES, 8)) if e != EXECUTION_HOOD})
+    assert EXECUTION_HOOD in g.ram(SPRITE_ENTITIES, 8), "the Execution Hood is on Zenis's screen 16"
+    g.until("the Hood's shot", lambda: HOOD_SHOT in g.ram(SPRITE_ENTITIES, 8), 900)
 
 
 def flight(g, slot, hx, name, block):
@@ -725,16 +696,11 @@ def block(s):
     blocking, the hero in his own colors; blocking, he glints in the
     shield's. Both on the frame the shot is the same distance from him."""
     g = s.game
-    g.launch()
-    shop = g.to_eolis_shop()
-    g.warp(shop, "zenis-16", AREA_ZENIS, SCREEN_16, PALETTE_ZENIS, 0x91, REGION_ZENIS)
-    g.until("the Hood's shot", lambda: HOOD_SHOT in list(g.ram(SPRITE_ENTITIES, 8)), 300)
-    slot = list(g.ram(SPRITE_ENTITIES, 8)).index(HOOD_SHOT)
-    cast = g.save("hood-cast")
+    cast = g.state("readme-hood-shot")
+    slot = [state_ram(cast, SPRITE_ENTITIES + i) for i in range(8)].index(HOOD_SHOT)
     target = g.out / "shield-height.cycstate"
-    alone = {SPRITE_ENTITIES + i: 0xFF for i in range(8) if i != slot}     # the Hood and the crawlers sent away
+    alone = {SPRITE_ENTITIES + i: 0xFF for i in range(8) if i != slot}     # the Hood sent away, its shot kept
     fixture(cast, target, {**alone, SPRITE_Y + slot: SHIELD_HEIGHT, SELECTED_SHIELD: SMALL_SHIELD, HP: 0x50})
-    g.close()
     # At normal speed, where a reply takes a few frames, not dozens: raise
     # Block as the shot comes, and picture every frame we can until one shows
     # the glint with the shot still in front of the shield.
@@ -781,8 +747,7 @@ def magic_button(s):
     """Next to Conflate's Guru with Deluge: Up+B starts his conversation;
     the Magic button (C) casts, and he says nothing (tests/magic/magic_button.py)."""
     g = s.game
-    g.launch()
-    g.new_game_at_gate()
+    g.launch(at="gate")
     g.die_into(CONFLATE, {SELECTED_MAGIC: DELUGE, MAGIC_SPELLS: DELUGE, NUMBER_OF_MAGIC_SPELLS: 1})
     g.until("Conflate's temple", lambda: g.where() == (BUILDINGS, TEMPLE_SCREEN[CONFLATE]), 300)
     g.wait(60)
@@ -816,8 +781,8 @@ def sugata(s):
     its flash (only that band greys), the hero standing just out of it: the
     game's own captures (TCP sugata_capture), as tests/sugata/sugata_flash.py."""
     g = s.game
-    g.launch()
-    shop = g.to_eolis_shop()
+    shop = g.state("eolis-meat-shop")
+    g.launch(at="eolis-meat-shop")
     g.warp(shop, "mist-30", AREA_MIST, SCREEN_30, PALETTE_MIST, 0x92, AREA_MIST)
     entities = list(g.ram(SPRITE_ENTITIES, 8))
     assert SUGATA in entities, entities
@@ -845,29 +810,14 @@ ZOZURA_SCREEN, NEAR, FAR, GROUND = 4, 7, 6, 144
 SWING = ((0, "B"), (2, "-"))                                    # B on the save's first frame
 
 
-def to_zozura(g):
-    """From launch, a new game walked left out of Eolis to the Zozura: the
-    save there, with no damage number left from the walk."""
-    gate = g.to_gate()
-    assert g.ram(SPRITE_ENTITIES + 7) == INTRO_TRIGGER
-    door = g.out / "door.cycstate"                              # past the intro, at the gate, Ointment for the walk
-    fixture(gate, door, {SPRITE_ENTITIES + 7: 0xFF, POS_X: EOLIS_GATE_DOOR_X, HP: 0x50, DURATION_OINTMENT: 0x40})
-    g.load(door)
-    g.wait(10)
-    g.act("up", 6, 10)
-    g.until("the town", lambda: g.ram(SCREEN) == 1, 600)
-    g.wait(30)
-    for _ in range(60):
-        if g.ram(SCREEN) == ZOZURA_SCREEN:
-            break
-        g.act("left", 30, 1)
-    g.until("the Zozura", lambda: g.ram(SCREEN) == ZOZURA_SCREEN and
-            tuple(g.ram(SPRITE_ENTITIES + FAR, 2)) == (ZOZURA, ZOZURA), 300)
+@fax_e2e.recipe("readme-zozuras", parent="eolis-zozuras")
+def _zozuras(g):
+    """The Zozuras' screen settled, the hero standing at x 240 facing left and
+    the two crawling toward him (zozura_case), with no damage number left
+    from the walk."""
     g.until("the screen to settle", g.settled, 300)
-    arrived = g.save("arrived")
-    g.load(zozura_case(g, arrived, "placed", {}))
+    g.load(zozura_case(g, g.save("arrived"), "placed", {}))
     g.until("no numbers", lambda: g.tcp("damage_state")["live"] == 0, 90)
-    return g.save("zozura")
 
 
 def facing(base, slot, right):
@@ -897,8 +847,7 @@ def pendant(s):
     """The same Long Sword swing at a Zozura (9 HP): 8 without the Pendant,
     leaving it 1 HP; 10 with it, a kill. Played headless from the Zozura's save."""
     g = s.game
-    g.launch()
-    base = to_zozura(g)
+    base = g.state("readme-zozuras")
     for caption, special in (("No Pendant", 0), ("Pendant", PENDANT)):
         name = caption.lower().replace(" ", "-")
         swing = zozura_case(g, base, name, {
@@ -919,8 +868,7 @@ def damage_numbers(s):
     """One swing hits a Zozura in front of the hero (a white 8), then the other
     bites him from behind (a pink 7). Played headless from the Zozura's save."""
     g = s.game
-    g.launch()
-    base = to_zozura(g)
+    base = g.state("readme-zozuras")
     hero = 100                                                  # left of the tower, which hides sprites
     fight = zozura_case(g, base, "fight", {
         POS_X: hero, PLAYER_FLAGS: FACING_RIGHT,
@@ -945,11 +893,8 @@ def taller_dagger(s):
     swing runs headless from one save state, so both are the same moment."""
     g = s.game
     target, tough, close = 7, 60, 23                            # the Zozura, its HP (it survives), the press
-    g.launch()
-    zozura = to_zozura(g)
-    g.close()
     case = g.out / "case.cycstate"
-    fixture(zozura, case, {PLAYER_CUR_WEAPON: HAND_DAGGER, SELECTED_WEAPON: HAND_DAGGER, HP: 0x50,
+    fixture(g.state("readme-zozuras"), case, {PLAYER_CUR_WEAPON: HAND_DAGGER, SELECTED_WEAPON: HAND_DAGGER, HP: 0x50,
                            DURATION_OINTMENT: 0xFF, SPRITE_HP + target: tough})
     # When the Zozura is close, the press; then the first frame of the low hit phase.
     rams = g.replay(case, [], 300)
@@ -978,19 +923,14 @@ def to_counter(g):
     raise AssertionError("never reached the counter")
 
 
-@scene("equip-indoors")
-def equip_indoors(s):
-    """A swing at the counter of Forepaw's tool shop with the Long Sword: the
-    original empties his hand indoors, the remaster keeps the sword in it.
-    Both swings run headless from one save state, as
-    tests/indoor/indoor_equip.py does, on the same frame of the swing."""
-    g = s.game
-    g.launch()
-    shop = g.to_eolis_shop()
+@fax_e2e.recipe("readme-forepaw-counter", parent="eolis-meat-shop")
+def _forepaw_counter(g):
+    """Out of the meat shop, its door edited to lead to Forepaw's tool shop's
+    (the towns' screen 2), the Long Sword in hand; in, and to the counter."""
     forepaw = g.out / "forepaw.cycstate"
-    fixture(shop, forepaw, {AREA_SAVED_AREA: TOWNS, AREA_SAVED_SCREEN: FOREPAW, SCREEN_SAVED_PALETTE: PALETTE_TOWN,
-                            PLAYER_SAVED_POS: FOREPAW_TOOLS_DOOR, SELECTED_WEAPON: LONG_SWORD,
-                            PLAYER_CUR_WEAPON: LONG_SWORD, HP: 0x50})
+    fixture(g.save("shop"), forepaw, {AREA_SAVED_AREA: TOWNS, AREA_SAVED_SCREEN: FOREPAW,
+                                      SCREEN_SAVED_PALETTE: PALETTE_TOWN, PLAYER_SAVED_POS: FOREPAW_TOOLS_DOOR,
+                                      SELECTED_WEAPON: LONG_SWORD, PLAYER_CUR_WEAPON: LONG_SWORD, HP: 0x50})
     g.load(forepaw)
     for _ in range(300):
         if g.ram(AREA) != BUILDINGS:
@@ -1013,8 +953,16 @@ def equip_indoors(s):
     g.wait(40)
     to_counter(g)
     assert g.ram(PLAYER_CUR_WEAPON) == LONG_SWORD, "the sword is not in hand"
-    counter = g.save("counter")
-    g.close()
+
+
+@scene("equip-indoors")
+def equip_indoors(s):
+    """A swing at the counter of Forepaw's tool shop with the Long Sword: the
+    original empties his hand indoors, the remaster keeps the sword in it.
+    Both swings run headless from one save state, as
+    tests/indoor/indoor_equip.py does, on the same frame of the swing."""
+    g = s.game
+    counter = g.state("readme-forepaw-counter")
     stock = g.out / "counter-original.cycstate"
     fixture(counter, stock, {PLAYER_CUR_WEAPON: NOTHING})      # as the original leaves it, coming in
     swing = [(2, "B"), (5, "-")]
@@ -1032,15 +980,12 @@ WALK_OFF = [(0, "-"), (5, "RIGHT")]                             # stand, then wa
 
 
 def trunk_ledge(g):
-    """From launch, a new game to Trunk's ledge (play.py's to_trunk, as the
-    movement tests do): the ledge state, with no actors, facing right at its
-    edge on the first step of his walk, and mod catalogs for headless runs
-    with the remaster on and off."""
-    g.launch()
-    states = g.to_trunk()
-    g.close()
+    """Trunk's ledge (play.py's trunk-ledge fixture, as the movement tests
+    use): with no actors, the hero facing right at its edge on the first
+    step of his walk; and mod catalogs for headless runs with the remaster
+    on and off."""
     ledge = g.out / "ledge.cycstate"
-    fixture(states[play.LEDGE_SCREEN], ledge, {**play.no_actors(), play.X: 8, play.Y: 80,
+    fixture(g.state("trunk-ledge"), ledge, {**play.no_actors(), play.X: 8, play.Y: 80,
                                                play.FLAGS: play.RIGHT, play.TICK: 0, HP: 0x50})
     return ledge, g.mods("mods-on"), g.mods("mods-off", original=True)
 
@@ -1051,10 +996,9 @@ def every_frame(g, state, schedule, frames, mods, name):
     folder = g.out / name
     folder.mkdir(exist_ok=True)
     rams = g.headless(state, schedule, frames, mods)
-    probe = subprocess.run([str(g.exe), str(g.rom), "--load-state", str(state), "--frames", "0", "--no-save"],
-                           capture_output=True, text=True)
-    start = int(re.search(r"continuing at frame (\d+)", probe.stdout).group(1))
+    start = continues_at(state)
     run = g.out / "run"
+    run.mkdir(exist_ok=True)
     (run / "input.txt").write_text("".join(f"{start + at} {buttons}\n" for at, buttons in sorted(schedule)))
     done = subprocess.run([str(g.exe), str(g.rom), "--load-state", str(state), "--input", str(run / "input.txt"),
                            "--frames", str(start + frames), "--mods-root", str(mods), "--no-save",
@@ -1229,9 +1173,9 @@ def break_wall(g):
 
 
 def with_keys(g):
-    """From launch, Eolis's town with the J key and the Mattock, nothing selected: its save state."""
+    """Eolis's town with the J key and the Mattock, nothing selected: its save state."""
     keys = g.out / "keys.cycstate"
-    fixture(g.to_eolis_town(), keys, {HP: 0x50, ITEMS: KEY_J, ITEMS + 1: MATTOCK, NUMBER_OF_ITEMS: 2,
+    fixture(g.state("eolis-town"), keys, {HP: 0x50, ITEMS: KEY_J, ITEMS + 1: MATTOCK, NUMBER_OF_ITEMS: 2,
                                       SELECTED_ITEM: NOTHING})
     return keys
 
@@ -1243,13 +1187,13 @@ def keys(s):
     mark of Jack and stays shut; the remaster opens it with the key, and the
     Mattock stays selected (the status bar's item)."""
     g = s.game
-    g.launch()
     keys = with_keys(g)
+    g.launch(at="eolis-town")
     assert at_exit(g, keys, MATTOCK) == USED_KEY
     remastered = g.shot_lit(TEXT_PROMPT, "remastered")
     g.close()
     g.set_features({REMASTER: False})
-    g.launch()
+    g.launch(at="eolis-town")
     assert at_exit(g, keys, MATTOCK) == MARK_OF_JACK
     box = (0, 8, 256, 224)
     s.picture(g.shot_lit(TEXT_PROMPT, "original"), "Original", box)
@@ -1263,8 +1207,8 @@ def tools_that_last(s):
     up ("NO ITEM", and the status bar's item empty); in the remaster the key
     is still in the list and the Mattock still selected."""
     g = s.game
-    g.launch()
     keys = with_keys(g)
+    g.launch(at="eolis-town")
     assert at_exit(g, keys, MATTOCK) == USED_KEY
     through_exit(g)
     break_wall(g)
@@ -1273,7 +1217,7 @@ def tools_that_last(s):
     remastered = g.shot("remastered")
     g.close()
     g.set_features({REMASTER: False})
-    g.launch()
+    g.launch(at="eolis-town")
     assert at_exit(g, keys, KEY_J) == USED_KEY
     through_exit(g)
     select_item(g, MATTOCK)
@@ -1314,8 +1258,8 @@ def recharging(s):
     the flight down), then recharging (T: blinks the 60 s cooldown) with the
     pair still selected. As tests/recharge/recharging_items.py's part 1 does."""
     g = s.game
-    g.launch()
-    shop = g.to_eolis_shop()
+    shop = g.state("eolis-meat-shop")
+    g.launch(at="eolis-meat-shop")
     pos = 0x99                                                  # walked out, so the HUD shows the pair
     g.warp(shop, "boots", AREA_EOLIS, 1, PALETTE_EOLIS, pos, 0,
            {SELECTED_ITEM: WING_BOOTS, NUMBER_OF_ITEMS: 0, TITLE: 0})
@@ -1336,6 +1280,76 @@ def recharging(s):
     g.until("T: showing", lambda: not g.tcp("recharge_state")["hud_drawn_blank"], 120)
     g.wait(2)
     s.picture(g.shot_lit(T_DIGITS, "recharging", 20), "Recharging", box)
+
+
+# Picking up the Battle Suit (tests/inventory/inventory_fix.py).
+ARMOR, NUMBER_OF_ARMORS, TEXTBOX_X, MENU_CURSOR = 0x3A1, 0x3C3, 0x208, 0x21E
+SPRITE_PHASES, SPRITE_BEHAVIORS, SPRITE_HITBOX, SPRITE_HIT_BY_MAGIC = 0x2E4, 0x2D4, 0x304, 0x334
+SPRITE_BEHAVIOR_L, SPRITE_BEHAVIOR_U = 0x354, 0x35C
+HITBOX_TYPES, ENTITY_HP, BSCRIPTS = 0xB4DF, 0xB5A9, 0xAD2D      # bank 14, by entity
+BATTLE_SUIT_ITEM, GOT_BATTLE_SUIT = 0x58, 0xB5                  # its sprite entity; "I've got the Battle Suit."
+LEATHER_ARMOR, STUDDED_MAIL, FULL_PLATE, BATTLE_SUIT = 0, 1, 2, 3
+MENU_WIDTH, LIST_WIDTH, MENU_ARMOR = 0x0A, 0x14, 1              # PlayerMenu_Show's box, ShowSubmenu's; its row
+
+
+def bank14(rom, addr):
+    return rom[16 + 14 * 0x4000 + addr - 0x8000]
+
+
+def press_until(g, button, what, test, frames=60, tries=5):
+    """Press `button` until `test()` holds, again if a loaded machine lost the
+    press (inventory_fix.py's press_until)."""
+    for _ in range(tries):
+        g.tcp("action", name=button, frames=4)
+        try:
+            g.until(what, test, frames)
+            return
+        except AssertionError:
+            pass
+    raise AssertionError(f"{what}: {tries} presses of {button} did nothing")
+
+
+@scene("battle-suit")
+def battle_suit(s):
+    """The Battle Suit picked up with the Leather Armor, the Studded Mail and
+    the Full Plate listed (and the Hand Dagger worn, no weapon listed): the
+    original counts the weapons, so the suit takes the first armor's place
+    and the other three are gone; the remaster adds it after them. The
+    item is put under the hero in Eolis's town, as the test does, and the
+    picture is the Select menu's armor list."""
+    g = s.game
+    town = g.state("eolis-town")
+    slot, rom = 7, g.image
+    script = BSCRIPTS + 2 * BATTLE_SUIT_ITEM
+    case = g.out / "battle-suit.cycstate"
+    fixture(town, case, {
+        **{SPRITE_ENTITIES + i: 0xFF for i in range(8)},
+        SPRITE_ENTITIES + slot: BATTLE_SUIT_ITEM, SPRITE_X + slot: state_ram(town, POS_X),
+        SPRITE_Y + slot: state_ram(town, POS_Y), SPRITE_PHASES + slot: 0, SPRITE_FLAGS + slot: 0,
+        SPRITE_HIT_BY_MAGIC + slot: 0xFF, SPRITE_HITBOX + slot: bank14(rom, HITBOX_TYPES + BATTLE_SUIT_ITEM),
+        SPRITE_HP + slot: bank14(rom, ENTITY_HP + BATTLE_SUIT_ITEM), SPRITE_BEHAVIOR_L + slot: bank14(rom, script),
+        SPRITE_BEHAVIOR_U + slot: bank14(rom, script + 1), SPRITE_BEHAVIORS + slot: 0xFF,
+        SELECTED_WEAPON: HAND_DAGGER, PLAYER_CUR_WEAPON: HAND_DAGGER, NUMBER_OF_WEAPONS: 0,
+        SELECTED_ARMOR: NOTHING, NUMBER_OF_ARMORS: 3,
+        ARMOR: LEATHER_ARMOR, ARMOR + 1: STUDDED_MAIL, ARMOR + 2: FULL_PLATE, ARMOR + 3: 0})
+    for original, caption, expect in ((True, "Original", [BATTLE_SUIT]),
+                                      (False, "Remastered", [LEATHER_ARMOR, STUDDED_MAIL, FULL_PLATE, BATTLE_SUIT])):
+        g.set_features({REMASTER: False} if original else {})
+        g.launch(at="eolis-town")
+        g.load(case)
+        g.until("the pickup's line", lambda: g.ram(MESSAGE_ID) == GOT_BATTLE_SUIT, 300)
+        g.until("the line to type out", g.typed, 600)
+        press_until(g, "a", "the box to close", lambda: g.ram(TEXTBOX_CLOSED) != 0)
+        g.wait(4)
+        armor = list(g.ram(ARMOR, 4)[:g.ram(NUMBER_OF_ARMORS)])
+        assert armor == expect, f"{caption}: armor {armor}, expected {expect}"
+        press_until(g, "select", "the menu", lambda: g.ram(TEXTBOX_CLOSED) == 0 and g.ram(TEXTBOX_X + 2) == MENU_WIDTH)
+        g.wait(10)
+        press_until(g, "down", "the cursor on the armor", lambda: g.ram(MENU_CURSOR) == MENU_ARMOR)
+        press_until(g, "a", "the armor list", lambda: g.ram(TEXTBOX_X + 2) == LIST_WIDTH)
+        g.wait(30)
+        s.shot(caption, (0, 8, 256, 232))
+        g.close()
 
 
 def carrying(gold, weapons, inventory, weapon=HAND_DAGGER):
@@ -1361,8 +1375,8 @@ def quick_shops(s):
     """Quick shops: Forepaw's tool shop, its list up at once, the Wing Boots
     you carry OWNED; Select, and what you can sell (tests/shops/quick_shops.py)."""
     g = s.game
-    g.launch()
-    shop = g.to_eolis_shop()
+    shop = g.state("eolis-meat-shop")
+    g.launch(at="eolis-meat-shop")
     target = g.out / "forepaw.cycstate"
     fixture(shop, target, {AREA_SAVED_AREA: TOWNS, AREA_SAVED_SCREEN: FOREPAW, SCREEN_SAVED_PALETTE: PALETTE_TOWN,
                            PLAYER_SAVED_POS: FOREPAW_TOOLS_DOOR, AREA_REGION: AREA_TRUNK,
@@ -1388,22 +1402,23 @@ def quick_shops(s):
     s.shot("Selling", box)
 
 
+@fax_e2e.recipe("readme-at-guru", parent="readme-conflate-temple")
+def _at_guru(g):
+    """Walked left to Conflate's Guru, standing before him."""
+    g.act("left", 170, 10)
+
+
 @scene("text-speed")
 def text_speed(s):
     """Hold A to speed up text: the Guru's greeting, 40 frames after its first
     character, without A and with A held, frame exact from one state
     (tests/text_speed/text_speed.py)."""
     g = s.game
-    g.launch()
-    g.load(conflate_temple(g))
-    g.act("left", 170, 10)                                      # to the Guru, and stand
-    at_guru = g.save("at-guru")
-    g.close()
-    # From here on headless, frame exact, so every run's pictures are the
-    # same however the TCP save above landed. While a line types, the
-    # portrait's eyes and mouth move with InterruptCounter
-    # (IScripts_UpdatePortraitAnimation), so that is set too.
-    fixture(at_guru, at_guru, {INTERRUPT_COUNTER: 0})
+    # Headless, frame exact. While a line types, the portrait's eyes and
+    # mouth move with InterruptCounter (IScripts_UpdatePortraitAnimation),
+    # so that is set too.
+    at_guru = g.out / "at-guru.cycstate"
+    fixture(g.state("readme-at-guru"), at_guru, {INTERRUPT_COUNTER: 0})
     talk = [(0, "UP"), (4, "-")]
     rams = g.replay(at_guru, talk, 90)
     greeting = [k for k, ram in enumerate(rams) if ram[MESSAGE_ID] == MEDITATE_WITH_YOU]
@@ -1422,8 +1437,8 @@ def zone_names(s):
     """Zone names: the banner, walking into the Tower of Fortress
     (tests/zones/zone_names.py)."""
     g = s.game
-    g.launch()
-    shop = g.to_eolis_shop()
+    shop = g.state("eolis-meat-shop")
+    g.launch(at="eolis-meat-shop")
     g.warp(shop, "fortress", AREA_TRUNK, 0x29, PALETTE_TOWER, 0x93, AREA_TRUNK)   # where the door on $28 arrives
     g.clear_actors()                                            # its enemies, for a picture that keeps still
     g.until("the banner", lambda: g.tcp("zone_state")["last"] == "Tower of Fortress", 600)
@@ -1443,22 +1458,11 @@ def slain_by(s):
     The moment is played headless from a save state, so it is the same frame
     every run: the hit, then a few frames, while the Hood is still there."""
     g = s.game
-    g.launch()
-    shop = g.to_eolis_shop()
-    g.warp(shop, "zenis", AREA_ZENIS, SCREEN_16, PALETTE_ZENIS, 0x91, REGION_ZENIS)
-    g.wait(20)
-    zenis = g.save("zenis")
-    quiet = g.out / "zenis-quiet.cycstate"
-    hood = [i for i, e in enumerate(g.ram(SPRITE_ENTITIES, 8)) if e == EXECUTION_HOOD]
-    assert hood, "the Execution Hood is on Zenis's screen 16"
-    fixture(zenis, quiet, {SPRITE_ENTITIES + i: 0xFF for i in range(8) if i not in hood})
-    g.load(quiet)
-    g.until("the Hood's shot", lambda: HOOD_SHOT in g.ram(SPRITE_ENTITIES, 8), 900)
-    cast = g.save("zenis-shot")
-    shot = list(g.ram(SPRITE_ENTITIES, 8)).index(HOOD_SHOT)
+    cast = g.state("readme-hood-shot")
+    shot = [state_ram(cast, SPRITE_ENTITIES + i) for i in range(8)].index(HOOD_SHOT)
     dying = g.out / "dying.cycstate"                            # his last HP, the shot at his head
-    fixture(cast, dying, {HP: 1, HP_FRACTION: 0, SPRITE_X + shot: g.ram(POS_X) + 12,
-                          SPRITE_Y + shot: g.ram(POS_Y) - 8})
+    fixture(cast, dying, {HP: 1, HP_FRACTION: 0, SPRITE_X + shot: state_ram(cast, POS_X) + 12,
+                          SPRITE_Y + shot: state_ram(cast, POS_Y) - 8})
     rams = g.replay(dying, [], 120)
     hit = next((i for i, ram in enumerate(rams) if ram[PLAYER_IS_DEAD]), None)
     assert hit is not None, "the shot did not kill him"
@@ -1474,8 +1478,8 @@ NO_PORTRAIT = 0xFF
 def speaker_names(s):
     """Speaker names: the King of Eolis, named on a tab above his words."""
     g = s.game
-    g.launch()
-    shop = g.to_eolis_shop()
+    shop = g.state("eolis-meat-shop")
+    g.launch(at="eolis-meat-shop")
     room = g.out / "kings-room.cycstate"                        # the door on Eolis's screen 7, block $98, with the Ring
     fixture(shop, room, {AREA_SAVED_AREA: AREA_EOLIS, AREA_SAVED_SCREEN: 7, PLAYER_SAVED_POS: 0x98, HP: 0x50,
                          SPECIAL_ITEMS: RING_OF_ELF}, records={"faxanadu.zone-names": {5: AREA_EOLIS, 6: 7}})
@@ -1512,9 +1516,9 @@ def seamless(s):
     this picture differs a little from run to run: where they are, or
     whether one is in view."""
     g = s.game
-    for caption, extra in (("Stock", ()), ("Seamless", ("--world-view", "seamless"))):
-        g.launch(*extra)
-        g.to_eolis_town()
+    for caption, options in (("Stock", []), ("Seamless", ["--world-view=seamless"])):
+        g.game_args = options                                   # Seamless has fixtures of its own
+        g.launch(at="eolis-town")
         g.walk("right", lambda: g.ram(POS_X) >= 196, "x 196")
         g.clear_actors()                                        # this screen's walker, so the stock picture is the same
         g.wait(30)
@@ -1610,7 +1614,8 @@ def main():
         for name, ok, seconds, log in pool.map(lambda n: spawn(n, args), names):
             lines = log.read_text(errors="replace").splitlines()
             if ok:
-                print(f"ok   {lines[-1] if lines else name} ({seconds:.0f} s)", flush=True)
+                summary = next((line for line in reversed(lines) if line.startswith(f"{name}: ")), name)
+                print(f"ok   {summary} ({seconds:.0f} s)", flush=True)
             else:
                 failed.append(name)
                 print(f"FAIL {name} ({seconds:.0f} s), {log}:", flush=True)
