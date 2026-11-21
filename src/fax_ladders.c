@@ -7,7 +7,7 @@
  *   out of it leaves no climbable block at his head (X + 7, Y) or his feet
  *   (X + 7, Y + $1F), so the next update Player_CheckIfOnLadder clears can
  *   climb and climbing, he falls 8 pixels, and the ladder catches him. With Up
- *   held he bobs for as long as it is held: about 11 updates up, one drop, the
+ *   held he bobs for as long as it is held: about 13 updates up, one drop, the
  *   pose flicking out of the climb on every drop.
  *   The hook at the BNE after the step's passable check ($E30C) takes the
  *   branch to the routine's RTS, as a solid block above does, when the step

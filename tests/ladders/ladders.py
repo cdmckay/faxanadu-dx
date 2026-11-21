@@ -134,7 +134,11 @@ def main():
             _, now = pair(ladder, jump, 240)
             assert now[200][Y] == 0x41 and now[201][FLAGS] & JUMPING, "A at the top jumps"
             print("ok: let go of Up at the top, and A jumps on the frame it is pressed")
-            pair(ladder, hold, fell[2] + 2, "top")      # a picture shows the frame before's sprites: the original's drop
+            # A picture shows the sprites of the frame before it: the original a frame before a drop (at Y=$40,
+            # climbing) and on it (Y=$48, out of the climb), and the remaster then, at the top.
+            game.headless_all([(ladder, hold, fell[2] + 1, off, shots / "top-original-peak.png"),
+                               (ladder, hold, fell[2] + 2, off, shots / "top-original-drop.png"),
+                               (ladder, hold, fell[2] + 2, on, shots / "top-remastered.png")])
             # In the window: on by default, counting the climbs it stopped; off with the remaster off.
             game.launch()
             game.load(ladder)

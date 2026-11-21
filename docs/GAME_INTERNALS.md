@@ -1247,6 +1247,26 @@ to `$39`. `Player_HandleKnockback` sets `Player_Flags` to just his facing bit,
 flipped, which drops jumping, falling and the rest, and pushes him 8 pixels a
 frame the other way.
 
+**Ladders** have a section of their own, below.
+
+**In the air** is `Player_Flags & $05` to the rest of the game too:
+`GameLoop_CheckUseCurrentItem` refuses items then.
+
+**Doors.** Up at Apolune's temple door in mid-jump does nothing; on the
+ground it goes in. Jumping out of the temple's right edge carries the jump
+into the town, where he lands on his first update.
+
+**The pose.** `Player_GetBodySpriteFrameOffset` (`$ECAC`, for the body) and
+`Maybe_Player_CalcAnimFrame` (`$B927`, bank 14, for the weapon, the shield and
+`Player_CheckShieldHitByMagic`) apply the same rule: jumping, frame 3 (or the
+swing's 4-6); climbing, 7; swinging, 4-6; the Wing Boots with A held, 3;
+moving, the walk cycle 0, 1, 2, 1 from `Player_MovementTick`; otherwise 0.
+Only a jump or Wing Boots flight shows frame 3, so a fall looked like walking
+on air, frozen mid-step, since the walk tick stops in the air. The shield sits
+in the same place in frames 0-3, and the weapon only hits while swinging, so
+the pose in the air is the picture alone. The jump pose is 8 sprites to the
+walk's 7, which changes the sprite rotation the next frame.
+
 ### Ladders
 
 A block is **climbable** when its property (`Area_GetBlockProperty`) is `$02`
@@ -1270,10 +1290,11 @@ is `Y = 16r - $1F`.
 fall. Up and Down climb, at `$A0`/256 and `$C0`/256 pixels a frame, lined up
 with the ladder (`X & 15` = 0; Player_CheckHandleJump walks him into line
 first). `Player_CheckHandleClimbUp` (`$E301`) asks only that the block over
-his head be passable (`BNE @_return` at `$E30C`), and `Player_CheckHandleClimbDown`
-(`$E349`) that the one under his feet be: neither asks whether he is still on
-the ladder. Off a ladder's foot he steps into the air and falls, which is how
-you get off one. Stepping off sideways is a fall like any other.
+his head be passable (`BNE @_return` at `$E30C`), and
+`Player_CheckHandleClimbDown` (`$E349`) that the one under his feet be:
+neither asks whether he is still on the ladder. Off a ladder's foot he steps
+into the air and falls, which is how you get off one. Stepping off sideways is
+a fall like any other.
 
 **Climbing** (`$10`) is set by Up or Down in front of a ladder and cleared
 only away from one (`Player_CheckIfOnLadder`) and by knockback.
@@ -1286,14 +1307,14 @@ only jumped onto, A jumps.
 **The top of a ladder (the original's bob).** Up at a ladder's top block lifts
 him a pixel past `16r - $1F`; the next update finds no climbable block at his
 head or feet, clears can climb and climbing, and drops him 8 pixels, and the
-ladder catches him. With Up held he bobs: about 11 updates up, one drop, for
+ladder catches him. With Up held he bobs: about 13 updates up, one drop, for
 as long as it is held, the pose switching out of the climb on each drop (to
 the walk pose, or with the falling pose to the jump pose). Checked on Trunk
 6's ladder (`tests/ladders/ladders.py`): up to `Y = $40`, dropped to `$48`,
-caught. The drop is also the only way the original clears climbing at a
-top: let go of Up right after one and A jumps, any other time it does
-nothing. The Trunk's own route up through `$0C` needs that jump (from the top
-of column 14's ladder, moving left, onto column 13's, whose top is the
+caught. Short of a hit, the drop is also the only way the original clears
+climbing at a top: let go of Up right after one and A jumps, any other time it
+does nothing. The Trunk's own route up through `$0C` takes that jump (from the
+top of column 14's ladder, moving left, onto column 13's, whose top is the
 switch block). This is the ladder jank we found on this ROM; the
 Retranslation's changelog does not say what its "Fix Ladder Jank" was.
 
@@ -1306,42 +1327,24 @@ jumps: the speedrunners' "ladder reset".
 
 **chipx86's "bad can-climb ladder check" never shows on this ROM.**
 `Player_HandleVertLadderOrJump`'s ground check (`$E3AD`) is `LDA #$03` where
-it means `LDX #$03`, so `Player_CheckIfPassable` takes the direction from X:
-0 left, 1 right, 2 up, anything else down. X holds the block index
-`Player_CheckIfOnLadder` looked at last (`Area_ConvertPixelsToBlockPos`:
-row × 16 + column). It is 0-2 only when that block is at his head in row 0,
-columns 0-2, and only when it is climbable, since the routine stops looking
-at the first climbable block; without one it ends on the block at his feet,
-row 1 or below (`Y` is at most `$C0` there, so `Y + $1F` never wraps). With
-can climb set, both answers lead to `Player_GrabClimbLadderOrJump` with the
-same flags: blocked, directly; open, through `@_setFalling`, whose
-`AND #$08` sends him to the same grab, which clears the falling bit again.
-(`Area_CheckClimbAdjacentImpassable` in between looks only below `Y = $D0`,
-far from row 0.) So the check could only change what happens when he is not
-on a ladder, and then it checks down. Ladders that reach row 0 in columns 1
-and 2 are common (Trunk `$16`, `$1E`, `$29`, Mist `$04`, `$05`, Branch
-`$04`, Dartmoor `$03`, ...), so the wrong direction is checked often, to no
-effect. Forgiving jumps reads this check's answer at `$E3B2`; there a wrong
-"blocked" can arm its coyote time from such a hang, which only lets him jump
-a few updates after stepping off, as A from the hang itself would.
-
-**In the air** is `Player_Flags & $05` to the rest of the game too:
-`GameLoop_CheckUseCurrentItem` refuses items then.
-
-**Doors.** Up at Apolune's temple door in mid-jump does nothing; on the
-ground it goes in. Jumping out of the temple's right edge carries the jump
-into the town, where he lands on his first update.
-
-**The pose.** `Player_GetBodySpriteFrameOffset` (`$ECAC`, for the body) and
-`Maybe_Player_CalcAnimFrame` (`$B927`, bank 14, for the weapon, the shield and
-`Player_CheckShieldHitByMagic`) apply the same rule: jumping, frame 3 (or the
-swing's 4-6); climbing, 7; swinging, 4-6; the Wing Boots with A held, 3;
-moving, the walk cycle 0, 1, 2, 1 from `Player_MovementTick`; otherwise 0.
-Only a jump or Wing Boots flight shows frame 3, so a fall looked like walking
-on air, frozen mid-step, since the walk tick stops in the air. The shield sits
-in the same place in frames 0-3, and the weapon only hits while swinging, so
-the pose in the air is the picture alone. The jump pose is 8 sprites to the
-walk's 7, which changes the sprite rotation the next frame.
+it means `LDX #$03`, so `Player_CheckIfPassable` takes the direction from X: 0
+left, 1 right, 2 up, anything else down. X holds the block index
+`Player_CheckIfOnLadder` looked at last (`Area_ConvertPixelsToBlockPos`: row ×
+16 + column). It is 0-2 only when that block is at his head in row 0, columns
+0-2, and only when it is climbable, since the routine stops looking at the
+first climbable block; without one it ends on the block at his feet, row 1 or
+below (`Y` is at most `$C0` there, so `Y + $1F` never wraps). With can climb
+set, both answers lead to `Player_GrabClimbLadderOrJump` with the same flags:
+blocked, directly; open, through `@_setFalling`, whose `AND #$08` sends him to
+the same grab, which clears the falling bit again.
+(`Area_CheckClimbAdjacentImpassable` in between acts only when `Y` is `$D0` or
+more, which never happens.) So the check could only change what happens when
+he is not on a ladder, and then it checks down. Ladders that reach row 0 in
+columns 1 and 2 are common (Trunk `$16`, `$1E`, `$29`, Mist `$04`, `$05`,
+Branch `$04`, Dartmoor `$03`, ...), so the wrong direction is checked often,
+to no effect. Forgiving jumps reads this check's answer at `$E3B2`; there a
+wrong "blocked" can arm its coyote time from such a hang, which only lets him
+jump a few updates after stepping off, as A from the hang itself would.
 
 ## Input and casting
 
