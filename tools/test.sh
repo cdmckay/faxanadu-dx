@@ -160,8 +160,8 @@ E2E=(
   "indoor+sw    tests/indoor/indoor_equip.py --parts $SW"
   "damage       tests/damage/damage_numbers.py"
   "damage+sw    tests/damage/damage_numbers.py $SW"
-  "map          tests/map/explored_map.py"
-  "map+sw       tests/map/explored_map.py $SW"
+  "map          tests/map/explored_map.py --parts"
+  "map+sw       tests/map/explored_map.py --parts $SW"
 )
 # At most E2E_JOBS runs play at once (default: one a hardware thread; 0: all
 # at once): a game is uncapped and takes a whole thread, and more of them
