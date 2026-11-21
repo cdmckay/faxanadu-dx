@@ -138,8 +138,10 @@ python3 tests/e2e/fax_e2e_test.py --build build-cycle --rom "$ROM" --out "$OUT/e
 # hero between rooms. Block, Equip indoors and the rest are logic on the
 # game's state, the same in either view. Quick shops draws its list's hint,
 # page and OWNED over the picture, placed for Seamless's: its two parts that
-# check all three run there.
-SW=--game-arg=--world-view=seamless
+# check all three run there. Seamless's picture is fixed at 426x240, what it
+# fits to the window at scale 3, so the window can be at scale 1 (fax_e2e's
+# install()).
+SW="--game-arg=--world-view=seamless --game-arg=--world-size=426x240"
 E2E=(
   "travel       tests/travel/guru_travel.py --parts"
   "travel+sw    tests/travel/guru_travel.py --parts $SW"

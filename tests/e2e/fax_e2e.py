@@ -86,6 +86,8 @@ Functions, on the game launched last
                                     once (an action replaces the button's hold).
     step_toward(x_min, x_max, stop) One step of a walk to [x_min, x_max]: held
                                     until 8 pixels short, then taps of 2 frames.
+    walk(button, stop)              Hold a direction until stop() or the hero
+                                    stops moving (a wall, a counter, a person).
     hurry(frames=10)                Wait with A held but for the last 2 frames:
                                     the remaster's Hold A types 4x, and the A that
                                     turns the page is still a new press. Only in a
@@ -179,6 +181,7 @@ REPO = Path(__file__).resolve().parents[2]
 FIXTURES = REPO / "build-tests" / "fixtures"  # the saved games tests start from, made from your ROM
 LAUNCH_TRIES = 3
 LISTEN_TIMEOUT = 60                        # seconds for the game to open its TCP port
+STOPPED_FRAMES = 6                         # frames without moving that walk() takes for a stop
 LOADED_FRAMES = 2                          # frames a load_state that ends a batch lets run (batch())
 WAIT_CHUNK = 600                           # frames a wait command asks for at most (well inside .timeout)
 CONFIG = "[Display]\nWindowScale = 1\n"     # config.ini a test's game starts with; the game adds the rest
@@ -496,7 +499,7 @@ class Game:
             self._hang_up()                # a reply may still be coming: never read it as another's
             raise
         replies = replies[:len(commands)]
-        if _profile is not None:
+        if _profile is not None and commands[-1][0] != "quit":
             _profile.sample(self, any(cmd == "load_state" for cmd, _ in commands))
         for (cmd, _), reply in zip(commands, replies):
             if not reply.get("ok"):
@@ -601,10 +604,10 @@ def install(build, folder, game_args=()):
     """The build's game in `folder`, for a test's own copy: FaxanaduRecomp
     hard-linked (one copy of the program in memory however many games run,
     which plays them about 10% faster than separate copies; a copy if the
-    link fails), assets/ and mods/ copied, and, in the default view, a
-    config.ini with the window at scale 1: the hidden window's scaling blit
-    is a tenth of a frame at 3. Not in Seamless, whose picture follows the
-    window's size (at scale 1, 142x96)."""
+    link fails), assets/ and mods/ copied, and a config.ini with the window at
+    scale 1: the hidden window's scaling blit is a tenth of a frame at 3. Not
+    in Seamless with its picture fitted to the window (at scale 1, 142x96);
+    the suite fixes it at 426x240 (--world-size), what scale 3 fits."""
     build, folder = Path(build), Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
     try:
@@ -613,7 +616,8 @@ def install(build, folder, game_args=()):
         shutil.copy2(build / "FaxanaduRecomp", folder)
     for sub in ("assets", "mods"):
         shutil.copytree(build / sub, folder / sub)
-    if not any("world-view" in arg for arg in game_args):
+    fitted = any("world-view" in arg for arg in game_args) and not any("world-size" in arg for arg in game_args)
+    if not fitted:
         (folder / "config.ini").write_text(CONFIG)
 
 
@@ -855,6 +859,24 @@ def step_toward(x_min, x_max, stop=lambda: False, x_addr=0x9E):
         act(button, 2, 0)
     else:
         hold(button, lambda: stop() or x_min - 8 <= ram(x_addr) <= x_max + 8)
+
+
+def walk(button, stop=lambda: False, frames=600, x_addr=0x9E):
+    """Hold `button` until stop() or the hero stops: his X (Player_PosX_Block)
+    the same for STOPPED_FRAMES frames, against a wall, a counter or a
+    person. Held, he walks at his full 1.5 pixels a frame. Whether stop()
+    came true."""
+    reads = []                             # (frame, X)
+
+    def done():
+        if stop():
+            return True
+        x, at = batch(("read_ram", dict(addr=x_addr, len=1)), ("ping", {}))
+        reads.append((at["frame"], x["hex"]))
+        since = [i for i, (f, _) in enumerate(reads) if f <= at["frame"] - STOPPED_FRAMES]
+        return bool(since) and len({x for _, x in reads[since[-1]:]}) == 1
+    hold(button, done, frames)
+    return stop()
 
 
 def typed():

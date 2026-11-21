@@ -197,12 +197,16 @@ def main():
     def through_door(block, what, test):
         """Stand at the door at `block` (YX), as Area_SetStateFromDoorDestination
         finds it at X + 7, and press Up until `test` holds (a knock or a landing
-        can take the press)."""
+        can take the press). Its line, if it has one, is paged with A; until
+        the door answers, no A, which would jump him off his block."""
         col = block & 0x0F
         for _ in range(6):
             walk_to(max(0, col * 16 - 7), col * 16 + 8)
+            until("the hero to stand", lambda: not ram(PLAYER_FLAGS) & 0x05, 120)
+            area_before = ram(AREA), ram(SCREEN)
             act("up", 4, 10)
             try:
+                until(f"the door to {what}", lambda: test() or box_open() or (ram(AREA), ram(SCREEN)) != area_before, 120)
                 return page_until(what, test, 80)
             except AssertionError:
                 pass
@@ -286,10 +290,7 @@ def main():
             assert (state["zone"], state["area"], state["screen"], state["start"]) == ("Eolis", 0, 1, 0x99), state
             assert (entered["x"], entered["y"]) == (0x90, 0x90), entered
             handoffs = tcp("fax_world")["handoffs"] if seamless else 0
-            for _ in range(300):
-                if ram(SCREEN) == 2 and settled() and ram(PLAYER_X) < 200:
-                    break
-                act("left", 4, 0)
+            hold("left", lambda: ram(SCREEN) == 2 and settled() and ram(PLAYER_X) < 200, 1200)
             assert ram(SCREEN) == 2, "a screen further into Eolis"
             if seamless:
                 assert tcp("fax_world")["handoffs"] > handoffs, "Seamless handed the hero to the next room"

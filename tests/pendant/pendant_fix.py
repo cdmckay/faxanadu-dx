@@ -28,7 +28,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import Game, act, fixture, frame, parse_args, ram, tcp, until, wait  # noqa: E402
+from fax_e2e import Game, act, chunks, fixture, frame, parse_args, ram, tcp, until, wait  # noqa: E402
 
 AREA, SCREEN, HERO_X = 0x24, 0x63, 0x9E
 PLAYER_FLAGS, ATTACKING = 0xA4, 0x80
@@ -70,14 +70,15 @@ def main():
     out = game.out
 
     def hit(zozura, weapon, pendant, gloved=False, enemy_hp=KNOWN_HP, name=None):
-        """Load the Zozura save with this kit, swing as the nearer one crawls in,
-        and return the HP the first hit took (None if it died)."""
+        """Load the Zozura save with this kit, the nearer one moved in to a
+        little past the sword's reach, swing as it crawls in, and return the
+        HP the first hit took (None if it died)."""
         case = out / "case.cycstate"
         fixture(zozura, case, {
             PLAYER_CUR_WEAPON: weapon, SELECTED_WEAPON: weapon, HP: 0x50,
             SPECIAL_ITEMS: BIT_PENDANT if pendant else 0,
             DURATION_GLOVE: GLOVE_RUNNING if gloved else NO_GLOVE,
-            SPRITE_HP + TARGET: enemy_hp})
+            SPRITE_HP + TARGET: enemy_hp, SPRITE_X + TARGET: hero_x - REACH - 12})
         tcp("load_state", path=str(case))
         hero = ram(HERO_X)
         assert ram(SCREEN) == ZOZURA_SCREEN and ram(SPRITE_ENTITY + TARGET) == ZOZURA
@@ -109,6 +110,8 @@ def main():
 
     try:
         zozura = game.state("eolis-zozuras")
+        state = zozura.read_bytes()
+        hero_x = state[next(p for tag, p, _ in chunks(state) if tag == b"HW  ") + 23 + HERO_X]
 
         def game_up():
             """The game, with the Zozuras of Eolis's screen 4 loaded: the one running, if it is."""

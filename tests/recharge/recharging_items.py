@@ -17,10 +17,12 @@ used with Down+B, as a player would.
 
 1. Wing Boots. One use at each title band gives 30, 40, 50 and 60 s of flight
    (the original: 40, 30, 20, 10). Then, as a Novice in Eolis: 30 s of flight,
-   T: counting it down. When it runs out, T: blinks a 60 s cooldown; Down+B
-   then does nothing. Once it is over, the same pair flies again. Dying makes
-   them ready.
-2. The Hour Glass on Eolis screen 4: the Zozuras stop, HP halves, 15 s. Then a
+   T: counting it down. When it runs out (from its last seconds: the game
+   counts a flight down, and the bands check each one's length), T: blinks a
+   60 s cooldown; Down+B then does nothing. Once it is over, the same pair
+   flies again. Dying makes them ready.
+2. The Hour Glass on Eolis screen 4: the Zozuras stop, HP halves, 15 s (its end
+   from its last seconds, as the flight's). Then a
    60 s cooldown; refused meanwhile; then, from its last seconds (the Wing
    Boots' plays out all 60), it works again.
 3. The Hour Glass at Ripasheiku (Trunk $15): the boss keeps moving. Walking
@@ -84,7 +86,7 @@ ZOZURA, RIPASHEIKU = 0x47, 0x2D
 QUEST_SPRING_OF_SKY = 0x02
 TRAVEL_DEPART, TRAVEL_TO_GURU = 3, 4                                # fax_travel.c's lines (TO_GURU + temple)
 FLIGHTS, COOLDOWN, FREEZE = (30, 40, 50, 60), 60, 15              # the game's seconds (64 frames)
-LAST_SECONDS = 3                                                    # a cooldown's end, without the minute before it
+LAST_SECONDS = 3                                                    # a countdown's end, without the time before it
 FLIGHT = FLIGHTS[0]                                                 # a Novice's: the lowest band
 ELIXIR_ROW = 2                                                      # EOLIS_TOOL_SHOP_ITEMS: dagger, potion, Elixir
 SECOND = 64
@@ -381,8 +383,9 @@ def main():
             assert s["boots_running"] == 1 and s["hud"] == -1 and s["kept"] >= 1, s
             flying_shot("flying")
             print(f"ok: a Novice's Wing Boots fly {FLIGHT} s and the pair stays selected")
+            poke({DURATION_WING_BOOTS: LAST_SECONDS})                  # the game counts the flight down itself
             begun = frame()
-            dismiss(WING_BOOTS_GONE, (FLIGHT + 2) * SECOND)
+            dismiss(WING_BOOTS_GONE, (LAST_SECONDS + 2) * SECOND)
             flown = frame() - begun
             value, s, ticked = cooldown_started("boots")
             assert fresh(value, ticked) and not s["boots_ready"] and s["hud"] == value, s
@@ -397,7 +400,7 @@ def main():
             s = state()
             assert s["refused"] == 1 and ram(DURATION_WING_BOOTS) == 0xFF and not box_open(), s
             assert items() == ([], WING_BOOTS), items()
-            print(f"ok: the flight ran out after {flown} frames; T: blinks the {COOLDOWN} s cooldown, and Down+B "
+            print(f"ok: the flight's last {LAST_SECONDS} s ran out after {flown} frames; T: blinks the {COOLDOWN} s cooldown, and Down+B "
                   "meanwhile does nothing but the invalid-choice sound")
         if args.wants("boots-cooldown"):
             # The cooldown a flight's end leaves (boots-flight checks it starts
@@ -445,7 +448,8 @@ def main():
             assert [ram(SPRITE_X + i) for i in zozuras] == before, "the Zozuras froze"
             shot("hour-glass")
             print("ok: the Hour Glass freezes the Zozuras for 15 s and halves HP (80 to 40)")
-            dismiss(HOUR_GLASS_GONE, (FREEZE + 2) * SECOND)
+            poke({DURATION_HOUR_GLASS: LAST_SECONDS})                  # the freeze's last seconds, the game's count
+            dismiss(HOUR_GLASS_GONE, (LAST_SECONDS + 2) * SECOND)
             value, s, ticked = cooldown_started("glass")
             clear(ZOZURA)
             assert fresh(value, ticked) and s["hud"] == value and items() == ([], HOUR_GLASS), s
@@ -721,7 +725,8 @@ def main():
             s, after = state(), ram(DURATION_WING_BOOTS)
             assert s["boots_running"] == 1 and 0 < after < flying and ram(PLAYER_STATUS) & 0x80, (s, after)
             assert 0 < s["glass_cooldown"] < cooling, s
-            dismiss(WING_BOOTS_GONE, (FLIGHT + 2) * SECOND)
+            poke({DURATION_WING_BOOTS: LAST_SECONDS})                  # the flight's last seconds, the game's count
+            dismiss(WING_BOOTS_GONE, (LAST_SECONDS + 2) * SECOND)
             value, s2, ticked = cooldown_started("boots")
             assert fresh(value, ticked), s2
             print(f"ok: a Guru travel journey from Eolis to Apolune keeps the flight ({flying} s left before, {after} "
