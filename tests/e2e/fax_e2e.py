@@ -179,6 +179,7 @@ REPO = Path(__file__).resolve().parents[2]
 FIXTURES = REPO / "build-tests" / "fixtures"  # the saved games tests start from, made from your ROM
 LAUNCH_TRIES = 3
 LISTEN_TIMEOUT = 60                        # seconds for the game to open its TCP port
+LOADED_FRAMES = 2                          # frames a load_state that ends a batch lets run (batch())
 WAIT_CHUNK = 600                           # frames a wait command asks for at most (well inside .timeout)
 CONFIG = "[Display]\nWindowScale = 1\n"     # config.ini a test's game starts with; the game adds the rest
 QUICKACK = getattr(socket, "TCP_QUICKACK", None)   # Linux
@@ -301,6 +302,49 @@ def _report_time():
           f"script {script.ru_utime + script.ru_stime:.1f} s CPU", flush=True)
 
 
+class _Profile:
+    """FAX_E2E_PROFILE=1: where a test's frames go. After each command the
+    game's frame is read, and the frames since the last read are put down to
+    the test's own line that sent it (the innermost outside this helper); the
+    lines that cost the most are printed as the test exits. A load_state's
+    frames go to the next command (a state carries its own count). The reads
+    cost a frame here and there, so the totals run a little over."""
+
+    def __init__(self):
+        self.frames, self.last, self.busy = {}, {}, False
+
+    def sample(self, game, loaded=False):
+        if self.busy:
+            return
+        if loaded:                         # a state carries its own frame count: start again from it
+            self.last.pop(id(game), None)
+        self.busy = True
+        try:
+            now = game.line.send((("ping", {}),))[0].get("frame")
+        finally:
+            self.busy = False
+        last = self.last.get(id(game))
+        if last is not None and now is not None and now >= last:
+            here = Path(__file__).resolve()
+            site = next((f"{Path(f.filename).name}:{f.lineno}" for f in inspect.stack()[2:]
+                         if Path(f.filename).resolve() != here), "?")
+            self.frames[site] = self.frames.get(site, 0) + now - last
+        self.last[id(game)] = now
+
+    def report(self):
+        total = sum(self.frames.values())
+        if not total:
+            return
+        print(f"profile: {total} frames; by line:", flush=True)
+        for site, n in sorted(self.frames.items(), key=lambda kv: -kv[1])[:25]:
+            print(f"  {n:6d}  {site}", flush=True)
+
+
+_profile = _Profile() if os.environ.get("FAX_E2E_PROFILE") else None
+if _profile is not None:
+    atexit.register(_profile.report)
+
+
 # The game
 
 _game = None                               # the game launched last: the functions' target
@@ -358,6 +402,8 @@ class Game:
             self.proc = subprocess.Popen([str(self.exe), str(self.rom), "--hidden", "--tcp", str(self.port), *options],
                                          env=self.env, stdout=self.log, stderr=subprocess.STDOUT)
             self._hang_up()
+            if _profile is not None:
+                _profile.last.pop(id(self), None)
             _game = self
             problem = self._listening(start)
             if not problem:
@@ -435,15 +481,23 @@ class Game:
         The game reads every line it has and serves them all before its next
         frame, so they take effect together: a load_state then an action
         holds the button from the loaded state's first frame, frame-exact,
-        however far the script lags."""
+        however far the script lags. A batch that ends with a load_state
+        returns once LOADED_FRAMES frames of the state have run: a button
+        first pressed in a loaded state's first two frames can go unseen
+        (Up at a door does nothing), and nothing reads before a frame of it
+        has run."""
         if self.line is None:
             self.line = _Line(self.port, self.timeout)
         self.line.timeout = self.timeout
+        settle = commands[-1][0] == "load_state"
         try:
-            replies = self.line.send(commands)
+            replies = self.line.send(commands + ((("wait", dict(frames=LOADED_FRAMES)),) if settle else ()))
         except BaseException:
             self._hang_up()                # a reply may still be coming: never read it as another's
             raise
+        replies = replies[:len(commands)]
+        if _profile is not None:
+            _profile.sample(self, any(cmd == "load_state" for cmd, _ in commands))
         for (cmd, _), reply in zip(commands, replies):
             if not reply.get("ok"):
                 raise RuntimeError(f"{cmd}: {reply}")

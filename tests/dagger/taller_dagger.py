@@ -44,7 +44,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import Game, fixture, frame, parse_args, ram, tcp, wait  # noqa: E402
+from fax_e2e import Game, fixture, frame, parse_args, ram, tcp  # noqa: E402
 
 AREA, SCREEN, HERO_X, HERO_Y = 0x24, 0x63, 0x9E, 0xA1               # Player_PosX_Block, Player_PosY
 PLAYER_FLAGS, ATTACKING, FACING_RIGHT = 0xA4, 0x80, 0x40
@@ -93,7 +93,6 @@ def main():
         fixture(zozura, case, {PLAYER_CUR_WEAPON: weapon, SELECTED_WEAPON: weapon, HP: FULL_HP,
                                SPRITE_HP + TARGET: TOUGH})
         tcp("load_state", path=str(case))
-        wait(1)                                                     # the reach is served as a frame runs
         m = ram(0, MACHINE)
         assert m[SCREEN] == ZOZURA_SCREEN and m[SPRITE_ENTITY + TARGET] == ZOZURA
         assert not m[PLAYER_FLAGS] & FACING_RIGHT, "the hero faces the Zozura"
