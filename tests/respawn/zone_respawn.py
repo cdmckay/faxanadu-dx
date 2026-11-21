@@ -214,13 +214,13 @@ def main():
 
     def standing():
         """On the ground, neither jumping nor falling (Player_Flags $01 and $04,
-        which a fall keeps through its landing frame), at the same Y twelve
-        frames apart. Dartmoor's arrival is a row above the floor: he drops
-        onto it, and a fall's first frames do not move him."""
+        which a fall keeps through its landing frame), at the same Y twenty
+        frames apart. Dartmoor's arrival is a row above the floor: he stands
+        there up to 15 frames, then drops onto it."""
         y, _, _, flags = ram(PLAYER_Y, 4)                   # Player_PosY ($A1) to Player_Flags ($A4)
         if flags & 0x05:
             return False
-        wait(12)
+        wait(20)
         y2, _, _, flags = ram(PLAYER_Y, 4)
         return not flags & 0x05 and y2 == y
 
