@@ -30,8 +30,9 @@ time.sleep(60)
 
 def other(port=0):
     """A second process that reserves `port` (any, for 0) and holds it: (process, its port or None)."""
+    env = {k: v for k, v in os.environ.items() if k != "FAX_E2E_STAMP"}    # its line is the port alone
     child = subprocess.Popen([sys.executable, "-c", HOLD.format(here=str(Path(__file__).resolve().parent), port=port)],
-                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
     line = child.stdout.readline().strip()
     if not line:
         child.wait(10)

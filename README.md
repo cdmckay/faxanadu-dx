@@ -164,6 +164,12 @@ the cooldowns and whether the Elixir is spent.
 
 ![The Wing Boots flying with T: counting the flight down, then recharging with T: counting the 60 seconds](docs/screenshots/recharging.png)
 
+**The Battle Suit and the Dragon Slayer, fixed.** In the original, picking up
+the Battle Suit counted your weapons instead of your armor, and the Dragon
+Slayer your armor instead of your weapons, so either could wipe out armor or
+weapons you carried, or list ones you didn't have. Now each joins its own
+list, after what you carry.
+
 ### Shops and text
 
 **Quick shops.** Up on a shopkeeper opens his list straight away, with no

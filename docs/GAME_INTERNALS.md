@@ -435,6 +435,9 @@ What a feature can rely on, and the traps:
   `[cyc tcp] cannot listen on port N` and **runs on without TCP**. A client
   that connects to N then talks to whatever else holds it, another test's
   game included. `tests/e2e/fax_e2e.py` waits for its own game's line.
+- A TCP `action` sets the button's hold to its frames, replacing what was
+  left of it: a 1-frame `action` lets go early, and one sent before a hold
+  lapses keeps the button down (`hold()` in `tests/e2e/fax_e2e.py`).
 - TCP `action` returns at once and holds the button for its frames, so two
   `action`s sent back to back are held together: `left` then `a` jumps left
   (`tests/speaker/speaker_names.py` climbs the King's stairs that way).
@@ -444,8 +447,21 @@ What a feature can rely on, and the traps:
   start; its `[Game]` keys go to the host extras' `load_setting`, and
   `save_settings` writes them back whenever the window saves.
 - `--uncapped` (with `--exit-after N`) runs the window as fast as it can:
-  about 290 fps, 5x real time. The cycle-accurate machine is the limit; even
-  headless runs at about 370 fps.
+  about 250 fps alone on mango (an HX 370 held to 2 GHz on battery in the
+  power-saver profile), and about 125 fps a game with 24 at once, two to a
+  core. The cycle-accurate machine is the limit: of a window's frame, about
+  61% is the PPU, dot by dot, 9% the APU, 12% the CPU, and 14% presenting the
+  picture (SDL's scaling blit, even to the dummy driver). Headless runs
+  (`--frames`) skip presenting but are no faster under load: 24 at once made
+  2,600 frames a second, 24 windows 3,000. An uncapped window takes a whole
+  thread from launch to close, whatever its script is doing.
+- The window's exit line, `window benchmark: ... frames=N`, gives the
+  machine's frame counter, which a loaded save state carries; `native_cycles`
+  is the CPU cycles this launch ran, so `native_cycles / 29780.5` is the
+  frames it played.
+- A headless run writes the mod selection back to its `--mods-root` as it
+  starts, so runs at once need a root each (else "mods: cannot publish mod
+  state").
 - A save state's RAM is in its `HW  ` chunk at offset 23, 2 KiB, with no
   checksum. Edit it to set up test fixtures (`fixture()` in
   `tests/e2e/fax_e2e.py`).
@@ -724,6 +740,21 @@ The stock Hand Dagger passes over a Zozura (see *Weapon reach*); facing it,
 the swords hit one from up to 31 pixels left of the hero (his x minus its x),
 and it hurts him from 15. A Zozura that reaches a hero at the screen's right
 edge knocks him onto the next screen.
+
+**An item under the hero, for tests.** A save-state fixture can put any item
+in a sprite slot as `Sprites_PopulateNextAvailableSprite` (`$C205`) would:
+the entity, its x and y (`CurrentSprites_XPos_Full` `$BA`, `_YPos` `$C2`;
+the hero's own `$9E` and `$A1` put it under him), `_Phases` (`$2E4`) and
+`_Flags` (`$2DC`) 0, `_HitByMagicBehavior` (`$334`) and `_Behaviors`
+(`$2D4`) `$FF`, and from bank 14 by entity `_HitBoxTypes` (`$304`, from
+`SPRITE_ENTITIES_HITBOX_TYPES` `$B4DF`), `_HP` (`$344`, `SPRITE_ENTITIES_HP`
+`$B5A9`) and `_BehaviorAddrs_L/U` (`$354`/`$35C`, `SPRITE_BSCRIPTS` `$AD2D`,
+two bytes an entity). The game touches it on the first frames after the load
+and runs the item's own pickup. Its picture is wrong (the screen's sprite
+tiles are loaded for the screen's own sprites), which the pickup does not
+mind. `tests/inventory/inventory_fix.py` drops the Battle Suit and the Dragon
+Slayer in Eolis's town this way. The Select menu does not open on screen 0;
+in the town it does, and B on one of its lists closes the whole menu.
 
 ## Weapon reach (bank 14)
 
@@ -1577,10 +1608,43 @@ Red Potion `$10`). Shops and scripts add the category in the top 3 bits
 - With no items, the Select menu's item list still opens, showing "NO ITEM".
 - `Player_RemoveItem` (`$9A6A`, bank 12) shifts the later entries down and
   decrements the count, leaving a stale byte after the end. `Player_AddToInventory`
-  overwrites the last entry when the category is full; `Player_PickUpItem`
-  (`$C8CD`) refuses when it is full.
+  (`$9AF7`, bank 12; shops and scripts) overwrites the last entry when the
+  category is full; `Player_PickUpItem` (`$C8CD`) refuses when it is full,
+  after the item's line, and the item is gone all the same.
 - The rings, the Elixir, the Magical Rod, the Pendant and the Black Onyx are
   bits in `SpecialItems` (`$042C`), not list entries.
+- **Picking an item up.** Touching an item sprite runs
+  `Player_HandleTouchItem` (`$88FB`, bank 14): `JSR Player_PickUp` (`$C764`),
+  which jumps by entity to the item's routine, then the sprite is removed.
+  Each routine runs its "I've got ..." script first (frame-frozen; A closes
+  it), plays sound 8, then adds the item. The Items go through
+  `Player_PickUpItem`. The Battle Suit (`$58`, `Player_PickUpBattleSuit`
+  `$C6EA`), Battle Helmet (`$59`, `$C70A`) and Dragon Slayer (`$5A`, `$C72A`)
+  each have their own copy of one tail: `LDX count`, `CPX #$04`, `BCC`,
+  `LDX #$03`, `LDA #$03`, `STA list,X`, `INX`, `STX count`, which appends, or
+  replaces the last entry of a full list.
+- **The Battle Suit and Dragon Slayer bug** (chipx86's *Bugs*: "Armor/Weapon
+  cap logic swapped"). The helmet's tail reads `NumberOfShields`; the suit's
+  reads `NumberOfWeapons` (`LDX` at `$C6F7`) and the slayer's
+  `NumberOfArmors` (`$C737`), and each then stores into, and sets the count
+  of, its own list. So the item lands at the other list's count: with fewer
+  weapons than armor listed, the Battle Suit overwrites an armor and the
+  count drops the ones after it (Leather and Studded listed, no weapons: only
+  the Battle Suit is left); with more, the count takes in the bytes after the
+  list: `$00` (the Leather Armor) where nothing was ever written, or entries
+  `Player_RemoveItem` left, which in the original means equipping from the
+  list with nothing worn (`Player_Equip` adds no old selection then), and with
+  Quick shops a sale too (two weapons listed, an empty armor list holding two
+  sold Studded Mails' bytes: Studded, Studded, Battle Suit). The other list
+  is untouched. The Dragon Slayer does
+  the same to the weapons. Equal counts hide it. Both are one of a kind, so
+  in play neither list holds four when its item comes: the cap only matters
+  after the bug itself. Each drop's behaviour
+  (`SpriteBehavior_BattleSuitDroppedByZoradohna` and the slayer's, bank 14)
+  clears the screen's sprites if the hero has the item: worn
+  (`SelectedArmor`; for the slayer the weapon in hand, `Player_CurWeapon`) or
+  in the first `count` entries. The Battle Suit and Dragon Slayer fix (`fax_inventory.c`)
+  sets X to the right count at each `CPX`.
 - **The HUD picture** of the selected item is four CHR RAM tiles at PPU
   `$13C0`. `Player_SetItem` (`$FC0B`) queues them through the PPU buffer;
   `UI_ClearSelectedItemPic` (`$C8DC`) queues blanks; `UI_DrawSelectedItem`
@@ -2051,6 +2115,14 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
   of the reversed branch meet, and sets `Temp_00` from
   `WEAPON_STRENGTHS[Y]` and the Pendant bit before the Glove adds its bonus.
   It keeps no state.
+- **Battle Suit and Dragon Slayer fix** (`fax_inventory.c`). Each of the
+  two pickups adds the item at its own list's count. It hooks each routine's
+  `CPX #$04` (`$C6FA`, `$C73A`), right after the `LDX` that read the other
+  list's count, puts the right count in X (and N and Z as `LDX` sets them)
+  and returns 0, so the game's own cap, store and count follow: a full list
+  has its last entry replaced, as the Battle Helmet's pickup and the shops
+  do. It keeps no state, so it also runs in Seamless's isolated rooms (it
+  counts pickups only outside them). See *Items and the inventory*.
 - **Magic button** (`fax_magic.c`). A bindable button (C, or Y on a
   controller) casts the selected spell. On a press, it ORs Up held and B new
   into the joypad masks at `Player_CastMagic`'s entry, when `Game_MainLoop`

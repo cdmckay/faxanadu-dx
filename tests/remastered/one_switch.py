@@ -51,6 +51,7 @@ STATES = {
     "title-remastered": ("title_state", "enabled"),
     "indoor-equip": ("indoor_equip_state", "enabled"),
     "damage-numbers": ("damage_state", "enabled"),
+    "inventory-fix": ("inventory_fix_state", "enabled"),
 }
 START_CHOICE = 0x687                                                # DAT_0687: 0 Start, 1 Continue
 PASSWORD_COL, PASSWORD_ROW, PASSWORD_LENGTH = 0x662, 0x663, 0x666
@@ -81,6 +82,7 @@ def main():
         replies = {}
         return {f: (replies.setdefault(cmd, g.tcp(cmd)))[field] for f, (cmd, field) in STATES.items()}
 
+    door = g.state("gate-door")                                     # made, if need be, before the game starts
     try:
         # 1. On by default.
         g.launch()
@@ -94,7 +96,9 @@ def main():
         g.until("the file select", lambda: g.tcp("files_state")["title"], 2000)
         g.wait(30)
         g.shot("file-select")
-        g.new_game_at_gate()
+        g.tcp("pad", buttons="start", frames=10)
+        g.until("a new game in file 1", lambda: (lambda f: f["file"] == 1 and not f["title"])(g.tcp("files_state")), 300)
+        g.load(door)                                                # the opening played: at Eolis's gate
         mantra = g.tcp("mantra_now")["mantra"]
         print(f"ok: the file select starts a new game; at Eolis's gate the hero's mantra is {mantra}")
         g.close()

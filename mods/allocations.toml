@@ -455,3 +455,17 @@ rom = []
 # stop shows nothing; Sugata's reflection runs $81FD in a committed call,
 # where no hook fires, and reports itself through fax_damage_enemy_hit. Writes
 # nothing to the machine and draws at present time. No ROM, no read overrides.
+
+[[feature]]
+id = "inventory-fix"
+package = "faxanadu.remastered"
+plugin = "faxanadu.inventory-fix"
+source = "src/fax_inventory.c"
+hooks = "faxanadu.inventory-fix."
+rom = []
+# Hooks the CPX #$04 of Player_PickUpBattleSuit ($C6FA) and of
+# Player_PickUpDragonSlayer ($C73A), which no other feature hooks, and sets
+# only X (and N, Z) there, from the list's own count. Block's tutorial looks
+# at the Battle Helmet's script, never these two. Recharging items' pickup
+# hook is Player_PickUpItem ($C8CD), the Items' routine, which neither
+# reaches. No ROM, no read overrides, no state.

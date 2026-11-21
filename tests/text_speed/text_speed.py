@@ -151,11 +151,8 @@ def main():
         until(f"line {expect}", lambda: line() == expect, 300)
 
     try:
-        game.launch()
+        game.launch(at="gate")
         assert tcp("text_speed_state")["enabled"], "Hold A to speed up text is on by default"
-        until("the title", lambda: frame() > 700)
-        tcp("pad", buttons="start", frames=10)
-        until("the Eolis gate", lambda: frame() > 1900)
         gate = out / "gate.cycstate"
         tcp("save_state", path=str(gate))
         dead = out / "conflate-death.cycstate"

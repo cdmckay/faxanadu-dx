@@ -13,10 +13,9 @@ A test imports it with a sys.path line, so it still runs directly
         args = parse_args(__doc__)       # --build --rom --out, --game-arg, --port, --realtime
         game = Game.from_args(args)      # checks the ROM, copies the build to OUT/game
         try:
-            game.launch()                # a hidden window, uncapped, on a reserved port
-            until("the title", lambda: frame() > 700)
-            tcp("pad", buttons="start", frames=10)
-            game.shot("title")           # OUT/00-title.png
+            game.launch(at="gate")       # a hidden window, uncapped, on a reserved port,
+            until("the town", ...)       # started from a saved game (see Fixtures)
+            game.shot("town")            # OUT/00-town.png
         except BaseException:
             if game.running():
                 game.shot("failure")
@@ -24,7 +23,8 @@ A test imports it with a sys.path line, so it still runs directly
         finally:
             game.close()
 
-Never pick a port yourself: Game.launch() reserves one (see Ports).
+Never pick a port yourself: Game.launch() reserves one (see Ports). Start
+from a fixture, not from power-on, unless the boot is what is checked.
 
 Count game frames, never seconds: wait() and until() count the game's frames,
 so a test runs the same however loaded the machine is. A command is served
@@ -38,13 +38,20 @@ Game, one per test
         Checks the ROM is the original Faxanadu (USA), empties OUT, copies the
         build's FaxanaduRecomp, assets/ and mods/ to OUT/game (so sidecars such
         as faxanadu_gurus.txt and config.ini stay there) and opens OUT/game.log.
-    .launch(*extra)   Start the game: FaxanaduRecomp ROM --hidden --tcp PORT, the
+    .launch(*extra, at=None)
+                      Start the game: FaxanaduRecomp ROM --hidden --tcp PORT, the
                       --game-arg options, then `extra`, then --uncapped
                       --exit-after 100000000 unless realtime, with the hidden-window
                       environment (.env). Waits for this game's own "listening on"
                       line, then returns its first frame. If it cannot listen or
                       exits first, it is relaunched on another port (3 tries).
-                      Relaunching keeps the port.
+                      Relaunching keeps the port. With `at`, a fixture's name, the
+                      fixture is made first if need be, then loaded at once. A
+                      game already running is an error: close() it first.
+    .state(name)      The fixture `name` for this build and these options: its
+                      cached save state's Path, made first if it is not there.
+    .load(path) .save(name)
+                      load_state; save_state to OUT/name.cycstate (its Path).
     .close()          Quit over TCP (kill if that fails) and wait for the process.
     .running()        The game process is alive.
     .shot(name)       Screenshot the game's picture to OUT/NN-name.png, NN counting
@@ -75,6 +82,15 @@ Functions, on the game launched last
                                     then wait `frames + after`.
     typed()                         The text box waits for a button: MessageID
                                     clears, or TextBox_MessagePaused is set.
+    hold(button, done, frames=600)  Hold a button until done(), then let go at
+                                    once (an action replaces the button's hold).
+    step_toward(x_min, x_max, stop) One step of a walk to [x_min, x_max]: held
+                                    until 8 pixels short, then taps of 2 frames.
+    hurry(frames=10)                Wait with A held but for the last 2 frames:
+                                    the remaster's Hold A types 4x, and the A that
+                                    turns the page is still a new press. Only in a
+                                    loop that presses A on every typed page.
+    until_typed(what, frames)       until(typed), hurrying; before an A.
 
 Save states and the mod selection
     chunks(data)                    A CYCSTATE's chunks: (tag, offset, size).
@@ -84,7 +100,38 @@ Save states and the mod selection
                                     and bytes of mods' records ({record name:
                                     {offset: byte}}, e.g. "faxanadu.zone-names").
     features_toml(features)         state.toml text for {(package_id, feature_id): enabled}.
-    parse_args(doc) / parser(doc)   The common options, with `doc` as the help.
+    parse_args(doc, parts=()) / parser(doc, parts=())
+                                    The common options, with `doc` as the help. With
+                                    a test's parts, --part (repeatable) and
+                                    --list-parts too, and args.wants(name).
+
+Fixtures: the saved games tests start from
+    @recipe(name, parent=None)      Register how a fixture is made: a game of its
+                                    own is launched (with `parent`'s state loaded),
+                                    handed to the function, which plays to the spot,
+                                    and the state there is saved. "gate" (a new
+                                    game outside Eolis's gate), "eolis-town",
+                                    "eolis-meat-shop" and "eolis-zozuras" are here;
+                                    tests add their own.
+
+    Save states hold CHR RAM copied from the ROM, so they are made from your
+    ROM and never committed. Each is cached in build-tests/fixtures as
+    NAME[-options]-KEY.cycstate, made once under a lock however many tests ask
+    at once. KEY covers the ROM, the build's game and mods, the game options and
+    the source files of the recipes from power-on to it, so any change to them
+    makes it again (and drops the stale one). A recipe uses only its game and
+    the functions above, never the test's own game.
+
+Parts
+    A long test is split into parts that start from fixtures and need nothing
+    from each other; tools/test.sh runs each as its own game, at once (its
+    table marks the test --parts). Without --part a test runs every part, in
+    order, in one process.
+
+Time
+    A test that launched a game prints "time: W s, games G s CPU, script S s
+    CPU" as it exits. With FAX_E2E_STAMP=1 each line it prints starts with the
+    seconds since it started.
 
 Ports
     reserve_port(port=0) -> int     Hold a port for this process until it exits.
@@ -104,14 +151,19 @@ import argparse
 import atexit
 import errno
 import fcntl
+import hashlib
+import inspect
 import json
 import os
 from pathlib import Path
 import random
+import re
+import resource
 import shutil
 import socket
 import struct
 import subprocess
+import sys
 import tempfile
 import time
 import zlib
@@ -123,6 +175,8 @@ PORTS = range(20000, 32768)
 _runtime = os.environ.get("XDG_RUNTIME_DIR")
 LOCKS = (Path(_runtime) / "faxanadu-e2e-ports" if _runtime and os.path.isdir(_runtime)
          else Path(tempfile.gettempdir()) / f"faxanadu-e2e-ports-{os.getuid()}")
+REPO = Path(__file__).resolve().parents[2]
+FIXTURES = REPO / "build-tests" / "fixtures"  # the saved games tests start from, made from your ROM
 LAUNCH_TRIES = 3
 LISTEN_TIMEOUT = 60                        # seconds for the game to open its TCP port
 MESSAGE_ID = 0x213                         # MessageID, Message_ProcessedLength, TextBox_MessagePaused
@@ -206,9 +260,48 @@ def _release_all():
         release_port(port)
 
 
+_started = time.monotonic()
+
+
+class _Stamped:
+    """stdout with the seconds since the test started before each line, and
+    flushed at once: FAX_E2E_STAMP=1 shows where a test's time goes."""
+
+    def __init__(self, stream):
+        self.stream, self.fresh = stream, True
+
+    def write(self, text):
+        for part in text.splitlines(keepends=True):
+            if self.fresh:
+                self.stream.write(f"[{time.monotonic() - _started:6.1f} s] ")
+            self.stream.write(part)
+            self.fresh = part.endswith("\n")
+        self.stream.flush()
+        return len(text)
+
+    def flush(self):
+        self.stream.flush()
+
+
+if os.environ.get("FAX_E2E_STAMP"):
+    sys.stdout = _Stamped(sys.stdout)
+
+
+@atexit.register
+def _report_time():
+    """What the test cost, if it launched a game: its wall time, and the CPU
+    its games (and other children) and the script itself used."""
+    if not _launched:
+        return
+    games, script = resource.getrusage(resource.RUSAGE_CHILDREN), resource.getrusage(resource.RUSAGE_SELF)
+    print(f"time: {time.monotonic() - _started:.1f} s, games {games.ru_utime + games.ru_stime:.1f} s CPU, "
+          f"script {script.ru_utime + script.ru_stime:.1f} s CPU", flush=True)
+
+
 # The game
 
 _game = None                               # the game launched last: the functions' target
+_launched = False                          # this process has launched a game
 
 
 def _current():
@@ -224,6 +317,7 @@ class Game:
         self.rom = Path(rom).resolve()
         self.image = self.rom.read_bytes()
         assert zlib.crc32(self.image[16:]) == ROM_CRC32, "the original Faxanadu (USA) ROM is required"
+        self.build = Path(build).resolve()
         self.out = Path(out).resolve()
         shutil.rmtree(self.out, ignore_errors=True)
         (self.out / "game").mkdir(parents=True)
@@ -245,8 +339,15 @@ class Game:
         return cls(args.build, args.rom, args.out, getattr(args, "game_arg", ()),
                    getattr(args, "realtime", False), getattr(args, "port", 0))
 
-    def launch(self, *extra):
-        global _game
+    def launch(self, *extra, at=None):
+        """Start the game. With `at`, a fixture's name: load that saved game
+        at once (it is made first if it is not cached), and return the frame
+        it continues at."""
+        global _game, _launched
+        if self.running():
+            raise RuntimeError("the game is already running: close() it first")
+        start_at = self.state(at) if at else None
+        _launched = True
         options = [part for arg in self.game_args for part in arg.split("=", 1)] + list(extra)
         if not self.realtime:
             options += UNCAPPED
@@ -260,10 +361,16 @@ class Game:
             if not problem:
                 for _ in range(100):
                     try:
-                        return self.frame()
+                        frame = self.frame()
+                        break
                     except OSError:
                         time.sleep(0.1)
-                raise AssertionError("the game did not start")
+                else:
+                    raise AssertionError("the game did not start")
+                if start_at:
+                    self.load(start_at)
+                    frame = self.frame()
+                return frame
             self._stop()
             if self.fixed_port:
                 raise AssertionError(f"the game {problem} (see {self.log_path})")
@@ -364,6 +471,56 @@ class Game:
         self.shots.append(path.name)
         return path
 
+    def load(self, path):
+        """Load a save state."""
+        self.tcp("load_state", path=str(path))
+
+    def save(self, name):
+        """Save a state to OUT/name.cycstate; its Path."""
+        path = self.out / f"{name}.cycstate"
+        self.tcp("save_state", path=str(path))
+        return path
+
+    def state(self, name):
+        """The fixture `name` for this build and these game options: the
+        cached save state, made first (with its parents) if it is not there.
+        Each is made once, under a lock, however many tests ask at once."""
+        tag, key = _fixture_key(self, name)
+        path = FIXTURES / f"{name}{tag}-{key}.cycstate"
+        if path.exists():
+            return path
+        FIXTURES.mkdir(parents=True, exist_ok=True)
+        with open(path.with_suffix(".lock"), "w") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            if not path.exists():
+                self._make(name, path)
+                for old in FIXTURES.glob(f"{name}{tag}-*.cycstate"):     # the same fixture, made stale
+                    if old != path and re.fullmatch(re.escape(f"{name}{tag}-") + "[0-9a-f]{16}", old.stem):
+                        old.unlink(missing_ok=True)
+                        old.with_suffix(".lock").unlink(missing_ok=True)
+        return path
+
+    def _make(self, name, path):
+        """Play the fixture `name`'s recipe in a game of its own, and save it at `path`."""
+        global _game
+        parent, how = _recipes[name]
+        start_at = self.state(parent) if parent else None
+        before, began = _game, time.monotonic()
+        work = FIXTURES / "work" / f"{path.stem}-{os.getpid()}"
+        maker = type(self)(self.build, self.rom, work, self.game_args)
+        try:
+            maker.launch()
+            if start_at:
+                maker.load(start_at)
+            how(maker)
+            maker.tcp("save_state", path=str(path.with_suffix(".tmp")))
+            os.replace(path.with_suffix(".tmp"), path)
+        finally:
+            maker.close()
+            _game = before
+        shutil.rmtree(work, ignore_errors=True)
+        print(f"fixture: made {name} in {time.monotonic() - began:.1f} s", flush=True)
+
     def set_features(self, features):
         (self.out / "game" / "mods" / "state.toml").write_text(features_toml(features))
 
@@ -374,6 +531,121 @@ class Game:
         self.tcp("save_state", path=str(path))
         fixture(path, path, writes, records)
         self.tcp("load_state", path=str(path))
+
+
+# Fixtures: the saved games tests start from
+
+_recipes = {}                              # name: (parent fixture or None, how(game) plays to it)
+
+
+def recipe(name, parent=None):
+    """Register how the fixture `name` is made: a game launched (from power-on,
+    or with `parent`'s state loaded) is handed to the decorated function, which
+    plays to the spot; the state there is saved. A test then starts there with
+    Game.launch(at=name). Save states hold CHR RAM copied from the ROM, so they
+    are made from your ROM and cached in build-tests/fixtures, never committed."""
+    def register(how):
+        _recipes[name] = (parent, how)
+        return how
+    return register
+
+
+_digests = {}
+
+
+def _digest(path):
+    """sha256 of a file, or of every file under a folder, by name and content."""
+    path = Path(path)
+    if path not in _digests:
+        h = hashlib.sha256()
+        for f in sorted(path.rglob("*")) if path.is_dir() else [path]:
+            if f.is_file():
+                h.update(str(f.relative_to(path) if path.is_dir() else f.name).encode())
+                h.update(f.read_bytes())
+        _digests[path] = h.hexdigest()
+    return _digests[path]
+
+
+def _fixture_key(game, name):
+    """(tag, key) for the fixture `name` in `game`: the tag names the game
+    options it was made with; the key changes with anything that could make
+    the state stale: the ROM, the build's game and mods, the options, and the
+    source files of the recipes from power-on to it (with the constants and
+    helpers they use)."""
+    if name not in _recipes:
+        raise KeyError(f"no recipe for the fixture {name!r}")
+    parts = [f"{zlib.crc32(game.image):08x}", _digest(game.build / "FaxanaduRecomp"), _digest(game.build / "mods"),
+             " ".join(game.game_args)]
+    chain = name
+    while chain:
+        parent, how = _recipes[chain]
+        parts.append(f"{chain}\n{_digest(inspect.getsourcefile(how))}")
+        chain = parent
+    tag = "".join("-" + "".join(c if c.isalnum() else "-" for c in arg.lstrip("-")) for arg in game.game_args)
+    return tag, hashlib.sha256("\n".join(parts).encode()).hexdigest()[:16]
+
+
+@recipe("gate")
+def _gate(g):
+    """A new game (Start on the title: file 1, with Save files), outside
+    Eolis's gate once the opening has played."""
+    g.until("the title", lambda: g.frame() > 700)
+    g.tcp("pad", buttons="start", frames=10)
+    g.until("the Eolis gate", lambda: g.ram(0x24) == 0 and g.frame() > 1900)   # Area_CurrentArea
+
+
+@recipe("eolis-town", parent="gate")
+def _eolis_town(g):
+    """Right through the hero's thoughts at the opening, through Eolis's
+    gate, into the town (screen 1)."""
+    x_pos = 0x9E                                                      # Player_PosX_Block
+    for _ in range(200):                                              # the lines stop him; A goes on
+        if g.ram(x_pos) >= 184:
+            break
+        x = g.ram(x_pos)
+        g.tcp("action", name="right", frames=8)
+        g.wait(8)
+        if g.ram(x_pos) == x:
+            g.tcp("action", name="a", frames=6)
+            g.wait(26)
+    g.tcp("action", name="up", frames=4)
+    g.wait(14)
+    g.until("Eolis town", lambda: (g.ram(0x24), g.ram(0x63)) == (0, 1), 600)   # Area_CurrentArea, _Screen
+    g.wait(60)
+
+
+@recipe("eolis-meat-shop", parent="eolis-town")
+def _eolis_meat_shop(g):
+    """Left to the meat shop's door (block column 3) and in."""
+    for _ in range(200):
+        if 41 <= g.ram(0x9E) <= 56:
+            break
+        g.tcp("action", name="left", frames=2)
+        g.wait(2)
+    g.tcp("action", name="up", frames=4)
+    g.wait(14)
+    g.until("the meat shop", lambda: g.ram(0x24) == 4)               # BUILDINGS
+    g.wait(30)
+
+
+@recipe("eolis-zozuras", parent="gate")
+def _eolis_zozuras(g):
+    """Through Eolis's gate (the intro's trigger dropped, the hero at the
+    door, EOLIS_DOOR_LOCATIONS' $9C), left out of town to screen 4, as its
+    two Zozuras crawl in (slots 6 and 7, the nearer in 7)."""
+    screen, entities, zozura = 0x63, 0x2CC, 0x47                     # Area_CurrentScreen, CurrentSprites_Entities
+    assert (g.ram(0x24), g.ram(screen), g.ram(entities + 7)) == (0, 0, 0x4F), "the intro's trigger at the gate"
+    g.poke({entities + 7: 0xFF, 0x9E: 195})                           # SPRITE_TRIGGER_INTRO; Player_PosX_Block
+    g.wait(10)
+    g.tcp("action", name="up", frames=6)
+    g.until("the town", lambda: g.ram(screen) == 1, 600)
+    g.wait(30)
+    for _ in range(60):
+        if g.ram(screen) == 4:
+            break
+        g.tcp("action", name="left", frames=30)
+        g.wait(31)
+    g.until("the Zozuras", lambda: g.ram(screen) == 4 and tuple(g.ram(entities + 6, 2)) == (zozura, zozura), 300)
 
 
 def tcp(cmd, **kw):
@@ -403,6 +675,58 @@ def until(what, test, frames=1200):
 def act(name, frames=6, after=8):
     tcp("action", name=name, frames=frames)
     wait(frames + after)
+
+
+def hurry(frames=10):
+    """Wait `frames` frames holding A for all but the last 2. Hold A to speed
+    up text (the remaster's) types a character every frame while A is held,
+    not every 4th, and holding never turns a page, which takes a new press:
+    for a loop that presses A on each page once it has typed, the same
+    presses, sooner. Nothing else may be waiting for A."""
+    tcp("action", name="a", frames=max(1, frames - 2))
+    wait(frames)
+
+
+def until_typed(what="the page to type out", frames=1200):
+    """until() the text box waits for a button, hurrying it with A; for a
+    step that presses A next."""
+    end = frame() + frames
+    while not typed():
+        if frame() >= end:
+            raise AssertionError(f"timed out waiting for {what}")
+        hurry(4)
+
+
+def hold(button, done, frames=600, renew=8):
+    """Hold `button` (a TCP action) until done() is true, or `frames` frames
+    have run, and let go at once: an action replaces the button's hold, so a
+    1-frame one ends it. The hold is renewed before it lapses, so the button
+    stays down. Whether done() came true."""
+    end = frame() + frames
+    while True:
+        tcp("action", name=button, frames=renew + 4)
+        lapse = min(frame() + renew, end)
+        while frame() < lapse:
+            if done():
+                tcp("action", name=button, frames=1)
+                return True
+            time.sleep(0.002)
+        if frame() >= end:
+            tcp("action", name=button, frames=1)
+            return done()
+
+
+def step_toward(x_min, x_max, stop=lambda: False, x_addr=0x9E):
+    """One step of a walk to [x_min, x_max] (X in Player_PosX_Block): held,
+    accelerating to 1.5 pixels a frame, until within 8 pixels of it (or
+    stop()), when it is further; else a tap of 2 frames, as the walks always
+    made, so the last steps land in it the same way."""
+    x = ram(x_addr)
+    button = "right" if x < x_min else "left"
+    if x_min - 8 <= x <= x_max + 8:
+        act(button, 2, 0)
+    else:
+        hold(button, lambda: stop() or x_min - 8 <= ram(x_addr) <= x_max + 8)
 
 
 def typed():
@@ -450,8 +774,17 @@ def features_toml(features):
         for (package, feature), on in features.items())
 
 
-def parser(doc):
+def parser(doc, parts=()):
+    """The common options; with `parts`, a test's independent parts, also
+    --part (repeatable; every part if none) and --list-parts, which prints
+    them, one a line, and exits (tools/test.sh runs each as its own game)."""
+    if parts and "--list-parts" in sys.argv[1:]:
+        sys.__stdout__.write("".join(f"{part}\n" for part in parts))
+        sys.exit(0)
     ap = argparse.ArgumentParser(description=doc, formatter_class=argparse.RawDescriptionHelpFormatter)
+    if parts:
+        ap.add_argument("--part", action="append", choices=list(parts), help="run only this part (repeatable)")
+        ap.add_argument("--list-parts", action="store_true", help="print the parts, one a line, and exit")
     for key in ("build", "rom", "out"):
         ap.add_argument("--" + key, type=Path, required=True)
     ap.add_argument("--game-arg", action="append", default=[],
@@ -461,5 +794,14 @@ def parser(doc):
     return ap
 
 
-def parse_args(doc, argv=None):
-    return parser(doc).parse_args(argv)
+def parse_args(doc, argv=None, parts=()):
+    """parser(doc, parts)'s options. With parts, args.wants(name) says
+    whether this run plays that part; --list-parts prints them and exits."""
+    return chosen(parser(doc, parts).parse_args(argv), parts)
+
+
+def chosen(args, parts):
+    """Give args from a parser with `parts` its wants(name)."""
+    picked = set(getattr(args, "part", None) or parts)
+    args.wants = lambda name: name in picked
+    return args
