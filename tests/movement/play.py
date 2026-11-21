@@ -13,12 +13,14 @@ forgiving_jumps.py).
   on or off through the mod selection (off is the original game), and
   screenshots come from them too.
 """
+from concurrent.futures import ThreadPoolExecutor
+import os
 from pathlib import Path
-import re
 import shutil
 import struct
 import subprocess
 import sys
+import tempfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 import fax_e2e  # noqa: E402
@@ -62,61 +64,11 @@ class Game(fax_e2e.Game):
         self.wait(10)
 
     def to_trunk(self):
-        """From a new game to Trunk: returns save states with the hero on screen
-        7 and screen 6, standing on the floor."""
-        self.until("the title", lambda: self.frame() > 700)
-        self.tcp("pad", buttons="start", frames=10)
-        self.until("the Eolis gate", lambda: self.frame() > 1900)
-        gate = self.out / "gate.cycstate"
-        self.tcp("save_state", path=str(gate))
-        dying = self.out / "dying.cycstate"
-        # A sword and shield, so the weapon and shield take poses too; the
-        # respawn's screen setup loads their tiles.
-        fixture(gate, dying, {SPRITE_ENTITY + 7: 0xFF, TEMPLE_SPAWN_POINT: APOLUNE, PLAYER_IS_DEAD: 1, HP: 0x50,
-                              SELECTED_WEAPON: LONG_SWORD, PLAYER_CUR_WEAPON: LONG_SWORD,
-                              SELECTED_ARMOR: LEATHER_ARMOR, SELECTED_SHIELD: SMALL_SHIELD})
-        self.tcp("load_state", path=str(dying))
-        self.until("the death message", lambda: self.ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 600)
-        for _ in range(60):
-            if self.ram(AREA) == BUILDINGS and not self.ram(PLAYER_IS_DEAD) and self.ram(MESSAGE_ID) != NEGATIVE_THOUGHTS:
-                break
-            message, _, paused = self.ram(MESSAGE_ID, 3)
-            if message == 0 or paused:
-                self.tcp("action", name="a", frames=6)
-                self.wait(14)
-            else:
-                self.wait(10)
-        self.wait(60)
-        temple = self.out / "temple.cycstate"                           # at Apolune's Guru, facing left
-        self.tcp("save_state", path=str(temple))
-        for _ in range(40):                                  # out of the temple, into Apolune
-            if self.ram(AREA) != BUILDINGS:
-                break
-            self.tcp("action", name="right", frames=30)
-            self.wait(31)
-        self.until("Apolune", lambda: self.ram(AREA) != BUILDINGS, 300)
-        self.settle()
-        states = {"temple": temple, "apolune": self.out / "apolune.cycstate"}   # in the temple; at its door
-        self.tcp("save_state", path=str(states["apolune"]))
-        for _ in range(200):                                 # left, out of town, to Trunk's screens 7 and 6
-            if (self.ram(AREA), self.ram(SCREEN)) == (TRUNK, LEDGE_SCREEN) and LEDGE_SCREEN not in states:
-                self.settle()
-                states[LEDGE_SCREEN] = self.out / "trunk7.cycstate"
-                self.tcp("save_state", path=str(states[LEDGE_SCREEN]))
-            if (self.ram(AREA), self.ram(SCREEN)) == (TRUNK, LADDER_SCREEN):
-                self.settle()
-                states[LADDER_SCREEN] = self.out / "trunk6.cycstate"
-                self.tcp("save_state", path=str(states[LADDER_SCREEN]))
-                break
-            if self.ram(HP) < 0x30:
-                topped = self.out / "topped.cycstate"
-                self.tcp("save_state", path=str(topped))
-                fixture(topped, topped, {HP: 0x50})
-                self.tcp("load_state", path=str(topped))
-            self.tcp("action", name="left", frames=30)
-            self.wait(31)
-        assert LEDGE_SCREEN in states and LADDER_SCREEN in states, f"did not reach Trunk: {self.ram(AREA)}/{self.ram(SCREEN)}"
-        return states
+        """Save states with the hero in Apolune's temple, at its door, and on
+        Trunk's screens 7 and 6, standing on the floor: fixtures, made (if not
+        cached) before the game starts."""
+        return {"temple": self.state("apolune-temple"), "apolune": self.state("apolune"),
+                LEDGE_SCREEN: self.state("trunk-ledge"), LADDER_SCREEN: self.state("trunk-ladder")}
 
     def mods(self, name, original=False):
         """A mod catalog for headless runs: the build's packages, with the
@@ -127,16 +79,18 @@ class Game(fax_e2e.Game):
             (root / "state.toml").write_text(fax_e2e.features_toml(selection(original)))
         return root
 
+    def continues_at(self, state):
+        """The frame a save state continues at: the uint32 at its offset 28."""
+        return struct.unpack_from("<I", Path(state).read_bytes(), 28)[0]
+
     def headless(self, state, schedule, frames, mods, screenshot=None, save=None):
         """Run from `state` for `frames` frames, holding buttons on a schedule
         of (frame, buttons) pairs counted from the state's frame ("RIGHT+A",
         "-" for none). Returns each frame's CPU RAM, after the frame. With
         `save`, (frame, path): also save a state after that frame."""
-        probe = subprocess.run([str(self.exe), str(self.rom), "--load-state", str(state), "--frames", "0", "--no-save"],
-                               capture_output=True, text=True)
-        start = int(re.search(r"continuing at frame (\d+)", probe.stdout).group(1))
-        run = self.out / "run"
-        run.mkdir(exist_ok=True)
+        start = self.continues_at(state)
+        run = Path(tempfile.mkdtemp(prefix="run-", dir=self.out))
+        mods = shutil.copytree(mods, run / "mods")                  # its own: a run writes its selection back
         (run / "input.txt").write_text("".join(f"{start + at} {buttons}\n" for at, buttons in sorted(schedule)))
         log = run / "frames.bin"
         args = [str(self.exe), str(self.rom), "--load-state", str(state), "--input", str(run / "input.txt"),
@@ -149,7 +103,7 @@ class Game(fax_e2e.Game):
         done = subprocess.run(args, capture_output=True, text=True)
         assert done.returncode == 0, done.stdout + done.stderr
         data = log.read_bytes()
-        log.unlink()
+        shutil.rmtree(run)
         assert data[:8] == b"CYCFRAME"
         rams, pos = [], 12
         while pos < len(data):
@@ -159,6 +113,75 @@ class Game(fax_e2e.Game):
             pos += head[3] + sum(head[4:9])
         assert len(rams) == frames, (len(rams), frames)
         return rams
+
+    def headless_all(self, runs):
+        """headless(*run) for each run at once, each its own process; their
+        results, in order."""
+        runs = list(runs)
+        with ThreadPoolExecutor(max_workers=min(len(runs), os.cpu_count() or 4)) as pool:
+            return list(pool.map(lambda run: self.headless(*run), runs))
+
+
+
+@fax_e2e.recipe("apolune-temple", parent="gate")
+def _apolune_temple(g):
+    """Died at Eolis's gate with Apolune as the temple, and a sword and
+    shield, so the weapon and shield take poses too (the respawn's screen
+    setup loads their tiles): at Apolune's Guru, facing left."""
+    dying = g.out / "dying.cycstate"
+    g.tcp("save_state", path=str(dying))
+    fixture(dying, dying, {SPRITE_ENTITY + 7: 0xFF, TEMPLE_SPAWN_POINT: APOLUNE, PLAYER_IS_DEAD: 1, HP: 0x50,
+                           SELECTED_WEAPON: LONG_SWORD, PLAYER_CUR_WEAPON: LONG_SWORD,
+                           SELECTED_ARMOR: LEATHER_ARMOR, SELECTED_SHIELD: SMALL_SHIELD})
+    g.load(dying)
+    g.until("the death message", lambda: g.ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 600)
+    for _ in range(60):
+        if g.ram(AREA) == BUILDINGS and not g.ram(PLAYER_IS_DEAD) and g.ram(MESSAGE_ID) != NEGATIVE_THOUGHTS:
+            break
+        message, _, paused = g.ram(MESSAGE_ID, 3)
+        if message == 0 or paused:
+            g.tcp("action", name="a", frames=6)
+            g.wait(14)
+        else:
+            g.wait(10)
+    g.wait(60)
+
+
+@fax_e2e.recipe("apolune", parent="apolune-temple")
+def _apolune(g):
+    """Out of the temple, at its door in Apolune."""
+    for _ in range(40):
+        if g.ram(AREA) != BUILDINGS:
+            break
+        g.tcp("action", name="right", frames=30)
+        g.wait(31)
+    g.until("Apolune", lambda: g.ram(AREA) != BUILDINGS, 300)
+    g.settle()
+
+
+def _left_to(g, screen):
+    """Walk left until Trunk's `screen`, topping HP up on the way."""
+    for _ in range(200):
+        if (g.ram(AREA), g.ram(SCREEN)) == (TRUNK, screen):
+            g.settle()
+            return
+        if g.ram(HP) < 0x30:
+            g.poke({HP: 0x50})
+        g.tcp("action", name="left", frames=30)
+        g.wait(31)
+    raise AssertionError(f"did not reach Trunk {screen}: {g.ram(AREA)}/{g.ram(SCREEN)}")
+
+
+@fax_e2e.recipe("trunk-ledge", parent="apolune")
+def _trunk_ledge(g):
+    """Left out of Apolune to Trunk's screen 7, with its ledge."""
+    _left_to(g, LEDGE_SCREEN)
+
+
+@fax_e2e.recipe("trunk-ladder", parent="trunk-ledge")
+def _trunk_ladder(g):
+    """On left to Trunk's screen 6, with its ladder."""
+    _left_to(g, LADDER_SCREEN)
 
 
 def hero_sprites(ram):

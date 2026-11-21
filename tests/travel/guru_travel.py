@@ -16,7 +16,8 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import Game, act, fixture, frame, parse_args, ram, tcp, typed, until, wait  # noqa: E402
+import fax_e2e  # noqa: E402
+from fax_e2e import Game, act, fixture, hurry, parse_args, ram, tcp, typed, until, wait  # noqa: E402
 
 TEMPLE_SPAWN_POINT, PLAYER_IS_DEAD, MESSAGE_ID, TEXTBOX_PAUSED = 0x439, 0x438, 0x213, 0x215
 AREA, SCREEN, HP, MP, GOLD = 0x24, 0x63, 0x431, 0x39A, 0x392
@@ -31,8 +32,33 @@ def in_temple(temple):
     return (ram(AREA), ram(SCREEN)) == (BUILDINGS, TEMPLE_SCREEN[temple])
 
 
+def die_and_respawn(temple):
+    """Page through the death message until the hero is back in `temple`."""
+    until("the death message", lambda: ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 600)
+    for _ in range(40):
+        if in_temple(temple):
+            return
+        if typed():
+            act("a")
+        else:
+            hurry(10)
+    until(f"temple {temple}", lambda: in_temple(temple))
+
+
+@fax_e2e.recipe("travel-conflate-temple", parent="gate")
+def _conflate_temple(g):
+    """Died outside Eolis's gate with Conflate's temple his spawn point: back
+    in Conflate's temple, after the Guru's words."""
+    g.poke({TEMPLE_SPAWN_POINT: CONFLATE, PLAYER_IS_DEAD: 1})
+    die_and_respawn(CONFLATE)
+    wait(60)
+
+
+PARTS = ("decline", "offers", "journey")                            # each its own game
+
+
 def main():
-    args = parse_args(__doc__)
+    args = parse_args(__doc__, parts=PARTS)
     game = Game.from_args(args)
     out = game.out
 
@@ -74,106 +100,96 @@ def main():
         until("the line to type out", typed)
         act(button, 6, 60)
 
-    def die_and_respawn(temple):
-        """Page through the death message until the hero is back in `temple`."""
-        until("the death message", lambda: ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 600)
-        for _ in range(40):
-            if in_temple(temple):
-                return
-            if typed():
-                act("a")
-            else:
-                wait(10)
-        until(f"temple {temple}", lambda: in_temple(temple))
-
     try:
-        # A new game meets only Eolis's Guru: make the starting state, then
-        # relaunch with the visited Gurus the scenarios need.
-        game.launch()
-        until("the title", lambda: frame() > 700)
-        tcp("pad", buttons="start", frames=10)
-        until("the Eolis gate", lambda: frame() > 1900)
-        assert tcp("travel_state")["visited"] == 1, "a new game has met only Eolis's Guru"
-        gate = out / "gate.cycstate"
-        tcp("save_state", path=str(gate))
-        game.close()
-        (out / "game" / "faxanadu_gurus.txt").write_text("Eolis\nApolune\nMascon\nConflate\n")
-        game.launch()
-        state = tcp("travel_state")
-        assert state["served"] and state["visited"] == 0b101011, state
-        dead = out / "conflate-death.cycstate"
-        fixture(gate, dead, {TEMPLE_SPAWN_POINT: CONFLATE, PLAYER_IS_DEAD: 1})
-        tcp("load_state", path=str(dead))
-        die_and_respawn(CONFLATE)
-        wait(60)
+        # The Gurus of Eolis, Apolune, Mascon and Conflate visited, Conflate
+        # the furthest temple: the hero respawned there, with 1000 gold.
+        raw = game.state("travel-conflate-temple")
         temple = out / "conflate-temple.cycstate"
-        raw = out / "conflate-temple-raw.cycstate"
-        tcp("save_state", path=str(raw))
         fixture(raw, temple, {HP: 0x2A, MP: 0x11, GOLD: 0xE8, GOLD + 1: 0x03, GOLD + 2: 0x00})   # 1000 gold
         before = None
 
-        # 1. B at the offer: the conversation ends where it is.
-        tcp("load_state", path=str(temple))
-        talk_to_guru()
-        shot_line("offer")
-        close_box("b")
-        wait(60)
-        assert tcp("travel_state")["dest"] == -1 and in_temple(CONFLATE)
-        print("ok: declining the offer stays in Conflate")
+        def with_gurus():
+            """The game with the visited Gurus the scenarios need."""
+            (out / "game" / "faxanadu_gurus.txt").write_text("Eolis\nApolune\nMascon\nConflate\n")
+            game.launch()
+            state = tcp("travel_state")
+            assert state["served"] and state["visited"] == 0b101011, state
 
-        # 2. Only visited Gurus up to the furthest temple, in order, then farewell.
-        tcp("load_state", path=str(temple))
-        before = tcp("mantra_now")["mantra"]
-        talk_to_guru()
-        advance(TO_GURU + 0)
-        shot_line("to-eolis")
-        answer("b", TO_GURU + 1)
-        answer("b", TO_GURU + MASCON)        # Forepaw was never visited
-        shot_line("to-mascon")
-        asking = out / "asking-mascon.cycstate"
-        tcp("save_state", path=str(asking))
-        answer("b", FAREWELL)                # neither was Victim; Conflate is here
-        shot_line("farewell")
-        close_box()
-        wait(60)
-        assert tcp("travel_state")["dest"] == -1 and in_temple(CONFLATE)
-        print("ok: offers Eolis, Apolune, Mascon only, then the farewell")
-        print("ok: a state saved before the conversation still loads after it")
+        if args.wants("decline"):
+            # A new game meets only Eolis's Guru.
+            game.launch(at="gate")
+            assert tcp("travel_state")["visited"] == 1, "a new game has met only Eolis's Guru"
+            game.close()
+            with_gurus()
+            # 1. B at the offer: the conversation ends where it is.
+            tcp("load_state", path=str(temple))
+            talk_to_guru()
+            shot_line("offer")
+            close_box("b")
+            wait(60)
+            assert tcp("travel_state")["dest"] == -1 and in_temple(CONFLATE)
+            print("ok: declining the offer stays in Conflate")
 
-        # 3. Travel to Mascon: everything but the place is kept.
-        tcp("load_state", path=str(temple))
-        talk_to_guru()
-        advance(TO_GURU + 0)
-        answer("b", TO_GURU + 1)
-        answer("b", TO_GURU + MASCON)
-        answer("a", DEPART)
-        assert tcp("travel_state")["dest"] == MASCON
-        shot_line("depart")
-        close_box()
-        until("Mascon's temple", lambda: in_temple(MASCON))
-        wait(90)
-        game.shot("arrived")
-        assert ram(TEMPLE_SPAWN_POINT) == CONFLATE, "the furthest temple stays the spawn point"
-        assert (ram(HP), ram(MP), ram(GOLD, 3)) == (0x2A, 0x11, bytes([0xE8, 0x03, 0x00]))
-        assert tcp("mantra_now")["mantra"] == before, "the mantra is unchanged by travel"
-        print("ok: travelled to Mascon keeping HP, MP, gold, spawn point and mantra")
+        if args.wants("offers"):
+            if not game.running():
+                with_gurus()
+            # 2. Only visited Gurus up to the furthest temple, in order, then farewell.
+            tcp("load_state", path=str(temple))
+            before = tcp("mantra_now")["mantra"]
+            talk_to_guru()
+            advance(TO_GURU + 0)
+            shot_line("to-eolis")
+            answer("b", TO_GURU + 1)
+            answer("b", TO_GURU + MASCON)        # Forepaw was never visited
+            shot_line("to-mascon")
+            asking = out / "asking-mascon.cycstate"
+            tcp("save_state", path=str(asking))
+            answer("b", FAREWELL)                # neither was Victim; Conflate is here
+            shot_line("farewell")
+            close_box()
+            wait(60)
+            assert tcp("travel_state")["dest"] == -1 and in_temple(CONFLATE)
+            print("ok: offers Eolis, Apolune, Mascon only, then the farewell")
+            print("ok: a state saved before the conversation still loads after it")
 
-        # 4. Dying after the journey respawns at the furthest temple.
-        arrived = out / "mascon-arrived.cycstate"
-        tcp("save_state", path=str(arrived))
-        fixture(arrived, out / "mascon-death.cycstate", {PLAYER_IS_DEAD: 1})
-        tcp("load_state", path=str(out / "mascon-death.cycstate"))
-        die_and_respawn(CONFLATE)
-        print("ok: death after travel respawns at Conflate")
+            # 5. A state saved mid-conversation resumes it, line and all.
+            tcp("load_state", path=str(asking))
+            assert line() == TO_GURU + MASCON
+            shot_line("resumed")
+            answer("a", DEPART)
+            close_box()
+            until("Mascon's temple", lambda: in_temple(MASCON))
+            print("ok: a state saved while asking about Mascon resumes and travels there")
 
-        # 5. A state saved mid-conversation resumes it, line and all.
-        tcp("load_state", path=str(asking))
-        assert line() == TO_GURU + MASCON
-        shot_line("resumed")
-        answer("a", DEPART)
-        close_box()
-        until("Mascon's temple", lambda: in_temple(MASCON))
-        print("ok: a state saved while asking about Mascon resumes and travels there")
+        if args.wants("journey"):
+            if not game.running():
+                with_gurus()
+            # 3. Travel to Mascon: everything but the place is kept.
+            tcp("load_state", path=str(temple))
+            before = tcp("mantra_now")["mantra"]                    # as the offers part reads it
+            talk_to_guru()
+            advance(TO_GURU + 0)
+            answer("b", TO_GURU + 1)
+            answer("b", TO_GURU + MASCON)
+            answer("a", DEPART)
+            assert tcp("travel_state")["dest"] == MASCON
+            shot_line("depart")
+            close_box()
+            until("Mascon's temple", lambda: in_temple(MASCON))
+            wait(90)
+            game.shot("arrived")
+            assert ram(TEMPLE_SPAWN_POINT) == CONFLATE, "the furthest temple stays the spawn point"
+            assert (ram(HP), ram(MP), ram(GOLD, 3)) == (0x2A, 0x11, bytes([0xE8, 0x03, 0x00]))
+            assert tcp("mantra_now")["mantra"] == before, "the mantra is unchanged by travel"
+            print("ok: travelled to Mascon keeping HP, MP, gold, spawn point and mantra")
+
+            # 4. Dying after the journey respawns at the furthest temple.
+            arrived = out / "mascon-arrived.cycstate"
+            tcp("save_state", path=str(arrived))
+            fixture(arrived, out / "mascon-death.cycstate", {PLAYER_IS_DEAD: 1})
+            tcp("load_state", path=str(out / "mascon-death.cycstate"))
+            die_and_respawn(CONFLATE)
+            print("ok: death after travel respawns at Conflate")
 
         visited = (out / "game" / "faxanadu_gurus.txt").read_text().split()
         assert visited == ["Eolis", "Apolune", "Mascon", "Conflate"], visited
