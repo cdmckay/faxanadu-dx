@@ -561,10 +561,6 @@ rom = []
 # bytes these change. No ROM, no read overrides, no state. Seamless decodes
 # its rooms through fax_world_set_room_fixup, which this feature sets.
 
-handles the call while Block is up, counting the save as its own; Small \
-fixes' then handles it under Ointment. Either way the caller, \
-Player_HandleShieldHitByMagic, removes the shot with the shield's sound."""
-
 [[feature]]
 id = "quest-log"
 package = "faxanadu.remastered"
