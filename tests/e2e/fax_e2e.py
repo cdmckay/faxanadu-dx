@@ -82,6 +82,10 @@ Functions, on the game launched last
                                     then wait `frames + after`.
     typed()                         The text box waits for a button: MessageID
                                     clears, or TextBox_MessagePaused is set.
+    conversation(cmd)               A conversation's state (cmd's reply) and typed(),
+                                    one frame's, in one batch.
+    page_to(there, what, cmd)       A on each typed page until there(state) holds
+                                    on a typed one; never A on that page.
     hold(button, done, frames=600)  Hold a button until done(), then let go at
                                     once (an action replaces the button's hold).
     step_toward(x_min, x_max, stop) One step of a walk to [x_min, x_max]: held
@@ -181,6 +185,7 @@ REPO = Path(__file__).resolve().parents[2]
 FIXTURES = REPO / "build-tests" / "fixtures"  # the saved games tests start from, made from your ROM
 LAUNCH_TRIES = 3
 LISTEN_TIMEOUT = 60                        # seconds for the game to open its TCP port
+PAGE_FRAMES = 4                            # a typed page read again this many frames on (page_to())
 STOPPED_FRAMES = 6                         # frames without moving that walk() takes for a stop
 LOADED_FRAMES = 2                          # frames a load_state that ends a batch lets run (batch())
 WAIT_CHUNK = 600                           # frames a wait command asks for at most (well inside .timeout)
@@ -879,6 +884,39 @@ def walk(button, stop=lambda: False, frames=600, x_addr=0x9E):
         return bool(since) and len({x for _, x in reads[since[-1]:]}) == 1
     hold(button, done, frames)
     return stop()
+
+
+def conversation(cmd="travel_state"):
+    """A conversation's state (the TCP command `cmd`'s reply, `id` dropped)
+    and typed(), read in one batch: the same frame's, so a press sent on what
+    they show lands on that page, never the next."""
+    reply, box = batch((cmd, {}), ("read_ram", dict(addr=MESSAGE_ID, len=3)))
+    message, _, paused = bytes.fromhex(box["hex"])
+    reply.pop("id", None)
+    return reply, message == 0 or paused != 0
+
+
+def page_to(there, what, cmd="travel_state", tries=12, frames=1200):
+    """Press A on each typed-out page until there(state) holds for a page
+    that has typed out (`cmd`'s reply, conversation()), and return that
+    state; never A on that page, which may be a question. A page counts as
+    typed once two reads PAGE_FRAMES apart agree: as a line changes, the
+    text box can still show the last page's pause for a frame or two."""
+    for _ in range(tries):
+        end = frame() + frames
+        while True:
+            state, done = conversation(cmd)
+            if done:
+                wait(PAGE_FRAMES)
+                again, still = conversation(cmd)
+                if still and again == state:
+                    break
+            elif frame() >= end:
+                raise AssertionError(f"timed out waiting for a page to type out ({what})")
+        if there(state):
+            return state
+        act("a")
+    raise AssertionError(f"never reached {what}: {state}")
 
 
 def typed():

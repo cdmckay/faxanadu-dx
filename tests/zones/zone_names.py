@@ -22,7 +22,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import Game, act, fixture, hold, hurry, parse_args, ram, step_toward, tcp, typed, until, wait  # noqa: E402
+from fax_e2e import Game, act, fixture, hold, hurry, page_to, parse_args, ram, step_toward, tcp, typed, until, wait  # noqa: E402
 
 AREA, SCREEN, PLAYER_X = 0x24, 0x63, 0x9E
 TEXTBOX_CLOSED, MESSAGE_ID, TEXTBOX_PAUSED = 0x20C, 0x213, 0x215
@@ -96,12 +96,7 @@ def main():
         act("up", 4, 10)
         until("the Guru's greeting", lambda: ram(MESSAGE_ID) == MEDITATE_WITH_YOU)
         for want, button in ((OFFER, "a"), (TO_GURU + 0, "b"), (TO_GURU + temple, "a"), (DEPART, "a")):
-            for _ in range(12):
-                until("a page to type out", typed)
-                if tcp("travel_state")["text"] == want:
-                    break
-                act("a")
-            assert tcp("travel_state")["text"] == want, tcp("travel_state")
+            page_to(lambda s: s["text"] == want, f"travel line {want}")
             act(button, 6, 30)
         until(f"temple {temple}", lambda: (ram(AREA), ram(SCREEN)) == (BUILDINGS, TEMPLE_SCREEN[temple]), 2400)
 

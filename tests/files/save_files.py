@@ -26,7 +26,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 import fax_e2e  # noqa: E402
-from fax_e2e import Game, act, fixture, frame, hurry, parser, ram, tcp, typed, wait  # noqa: E402
+from fax_e2e import Game, act, fixture, frame, hurry, page_to, parser, ram, tcp, typed, wait  # noqa: E402
 
 JOY_CHANGED, AREA, SCREEN = 0x19, 0x24, 0x63
 MESSAGE_ID, TEXTBOX_PAUSED = 0x213, 0x215
@@ -135,13 +135,8 @@ def talk_until(phase, tries=12):
     Guru's choice is at `phase`."""
     act("left", 170, 10)
     act("up", 4, 10)
-    for _ in range(tries):
-        until("a page to type out", typed)
-        if files()["guru"] == phase:
-            wait(20)
-            return
-        act("a")
-    raise AssertionError(f"the Guru's choice never reached {phase}: {files()}")
+    page_to(lambda s: s["guru"] == phase, f"the Guru's choice {phase}", "files_state", tries)   # no A on it
+    wait(20)
 
 def close_box(button="a"):
     until("the line to type out", typed)

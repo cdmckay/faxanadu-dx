@@ -17,7 +17,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 import fax_e2e  # noqa: E402
-from fax_e2e import Game, act, fixture, hurry, parse_args, ram, tcp, typed, until, wait  # noqa: E402
+from fax_e2e import Game, act, fixture, hurry, page_to, parse_args, ram, tcp, typed, until, wait  # noqa: E402
 
 TEMPLE_SPAWN_POINT, PLAYER_IS_DEAD, MESSAGE_ID, TEXTBOX_PAUSED = 0x439, 0x438, 0x213, 0x215
 AREA, SCREEN, HP, MP, GOLD = 0x24, 0x63, 0x431, 0x39A, 0x392
@@ -70,15 +70,10 @@ def main():
         game.shot(name)
 
     def advance(expect, tries=12):
-        """Press A on each typed-out page until the Guru's line `expect` is up."""
-        for _ in range(tries):
-            if line() == expect:
-                return
-            until("a page to type out", lambda: line() == expect or typed())
-            if line() == expect:
-                return
-            act("a")
-        until(f"line {expect}", lambda: line() == expect, 300)
+        """Press A on each typed-out page until the Guru's line `expect` is up
+        and has typed out (page_to(): the line and the page read at one frame,
+        so no A lands on `expect`)."""
+        page_to(lambda s: s["text"] == expect, f"line {expect}", tries=tries)
 
     def talk_to_guru():
         """Walk left to the Guru, talk, and page through his greeting to the

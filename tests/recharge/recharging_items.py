@@ -60,7 +60,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 import fax_e2e  # noqa: E402
-from fax_e2e import Game, act, batch, chunks, frame, hold, hurry, parse_args, ram, tcp, typed, until, until_typed, wait  # noqa: E402
+from fax_e2e import Game, act, batch, chunks, frame, hold, page_to, parse_args, ram, tcp, typed, until, until_typed, wait  # noqa: E402
 
 AREA, SCREEN, PLAYER_X, PLAYER_Y, PLAYER_FLAGS, PLAYER_STATUS = 0x24, 0x63, 0x9E, 0xA1, 0xA4, 0xA5
 SCREEN_READY = 0x0E
@@ -244,12 +244,16 @@ def main():
         slots = ram(SPRITE_ENTITIES, 8)
         poke({SPRITE_ENTITIES + i: 0xFF for i in range(8) if entity is None or slots[i] == entity})
 
-    def page_through(frames=900):
-        """Press A on each typed-out page until the box closes."""
+    def page_through(frames=900, hurried=True):
+        """Press A on each typed-out page until the box closes; with `hurried`,
+        holding A while each types."""
         for _ in range(20):
             if not box_open():
                 return
-            until_typed("the page to type out", frames)
+            if hurried:
+                until_typed("the page to type out", frames)
+            else:
+                until("the page to type out", typed, frames)
             act("a", 6, 14)
         raise AssertionError("the box did not close")
 
@@ -693,7 +697,7 @@ def main():
             landed = frame() - start
             left = ram(DURATION_WING_BOOTS)
             assert left < 0x80, "the flight ran out before the landing"
-            for _ in range(12):                                         # beside him, on the fountain's ledge
+            for _ in range(30):                                         # beside him, on the fountain's ledge
                 if ram(MESSAGE_ID) == HO_HO_HO:
                     break
                 x = ram(PLAYER_X)
@@ -703,7 +707,7 @@ def main():
                 act("up", 4, 20)
             until("the Spring of Sky's man", lambda: ram(MESSAGE_ID) == HO_HO_HO, 300)
             shot("spring-of-sky")
-            page_through()
+            page_through(hurried=False)                                 # his dots stall under a hurried A on a busy machine
             assert ram(QUESTS) & QUEST_SPRING_OF_SKY, "the Spring of Sky's man woke"
             print(f"ok: the Spring of Sky: from Trunk $20's floor to the man in $25 in {landed} frames "
                   f"({landed / SECOND:.1f} of the game's seconds), with {left} s of the {FLIGHT} s flight left")
@@ -720,20 +724,8 @@ def main():
             s = state()
             assert s["boots_running"] == 1 and 48 <= s["glass_cooldown"] <= 50 and ram(PLAYER_STATUS) & 0x80, s
             talk_to_guru()                                              # with the ring, he offers Apolune
-            end = frame() + 40 * SECOND                                  # his line, the intro, the offer: A to each
-            while frame() < end:
-                travel_now, box = batch(("travel_state", {}), ("read_ram", dict(addr=MESSAGE_ID, len=3)))
-                message, _, paused = bytes.fromhex(box["hex"])
-                done = message == 0 or paused != 0                          # typed(), the same frame's
-                if travel_now["text"] == TRAVEL_TO_GURU + 1:
-                    if done:
-                        break                                           # the offer, typed out: A would answer it
-                    wait(4)                                             # no A while it types: a press as it ends would
-                elif done:
-                    act("a", 6, 14)
-                else:
-                    hurry(4)
-            assert tcp("travel_state")["text"] == TRAVEL_TO_GURU + 1, tcp("travel_state")
+            # His line, the intro, the offer: A to each, and none on the offer (page_to()).
+            page_to(lambda s: s["text"] == TRAVEL_TO_GURU + 1, "the offer of Apolune", tries=20)
             flying, cooling = ram(DURATION_WING_BOOTS), state()["glass_cooldown"]
             act("a", 6, 14)
             until("the farewell", lambda: tcp("travel_state")["text"] == TRAVEL_DEPART, 300)
@@ -762,13 +754,7 @@ def main():
             wait(4)
             saves = tcp("files_state")["saves"]
             talk_to_guru()                                              # "Remember my journey." is the first choice
-            end = frame() + 40 * SECOND
-            while frame() < end and tcp("files_state")["saves"] == saves:
-                if typed():
-                    act("a", 6, 14)
-                else:
-                    hurry(4)
-            assert tcp("files_state")["saves"] == saves + 1, tcp("files_state")
+            page_to(lambda s: s["saves"] == saves + 1, "the save", "files_state", tries=20)   # A on his menu saves
             for _ in range(20):                                         # B closes what follows
                 if not box_open():
                     break
@@ -809,18 +795,12 @@ def main():
             assert state()["elixir_spent"], state()
             saves = tcp("files_state")["saves"]
             talk_to_guru()
+            until("his greeting", lambda: ram(MESSAGE_ID) == MEDITATE_WITH_YOU, 300)
             until("the Guru to charge it", lambda: state()["guru_recharges"] == 1, 120)
             s = state()
             assert s["elixir_charged"] and not s["elixir_spent"], s
-            seen = set()
-            end = frame() + 40 * SECOND                                  # his greeting, then "Remember my journey."
-            while frame() < end and tcp("files_state")["saves"] == saves:
-                seen.add(ram(MESSAGE_ID))
-                if typed():
-                    act("a", 6, 14)
-                else:
-                    hurry(4)
-            assert tcp("files_state")["saves"] == saves + 1 and MEDITATE_WITH_YOU in seen, (tcp("files_state"), sorted(seen))
+            # His greeting, then "Remember my journey." (A on his menu saves).
+            page_to(lambda s: s["saves"] == saves + 1, "the save", "files_state", tries=20)
             for _ in range(20):                                         # B closes what follows
                 if not box_open():
                     break

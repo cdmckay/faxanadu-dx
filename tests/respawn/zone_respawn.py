@@ -45,7 +45,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 import fax_e2e  # noqa: E402
-from fax_e2e import Game, act, chosen, fixture, hold, hurry, parser, ram, step_toward, tcp, typed, until, wait  # noqa: E402
+from fax_e2e import Game, act, chosen, fixture, hold, hurry, page_to, parser, ram, step_toward, tcp, typed, until, wait  # noqa: E402
 
 AREA, SCREEN, PLAYER_X, PLAYER_Y, PLAYER_FLAGS = 0x24, 0x63, 0x9E, 0xA1, 0xA4
 SCREEN_READY_STATE, SCROLL_DIRECTION, INTERRUPTS_ON = 0x0E, 0x54, 0x13
@@ -393,12 +393,7 @@ def main():
             act("up", 4, 10)
             until("the Guru's greeting", lambda: ram(MESSAGE_ID) == MEDITATE_WITH_YOU)
             for want, button in ((OFFER, "a"), (TO_GURU + 0, "b"), (TO_GURU + APOLUNE, "a"), (DEPART, "a")):
-                for _ in range(12):
-                    until("a page to type out", typed)
-                    if tcp("travel_state")["text"] == want:
-                        break
-                    act("a")
-                assert tcp("travel_state")["text"] == want, tcp("travel_state")
+                page_to(lambda s: s["text"] == want, f"travel line {want}")
                 act(button, 6, 30)
             until("Apolune's temple", lambda: at(BUILDINGS, TEMPLE_SCREEN[APOLUNE]), 2400)
             assert respawn()["zone"] is None, "the journey forgot Conflate"

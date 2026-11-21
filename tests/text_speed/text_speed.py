@@ -30,7 +30,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "travel"))
-from fax_e2e import Game, act, chunks, fixture, frame, parse_args, ram, tcp, typed, until, wait  # noqa: E402
+from fax_e2e import Game, act, chunks, conversation, fixture, frame, parse_args, ram, tcp, typed, until, wait  # noqa: E402
 import guru_travel as gt  # noqa: E402
 
 MESSAGE_ID, PROCESSED, PAUSED = 0x213, 0x214, 0x215   # MessageID, Message_ProcessedLength, TextBox_MessagePaused
@@ -140,13 +140,20 @@ def main():
         until("the message to type out", typed, 300)
 
     def advance(expect, tries=12):
-        """Press A on each typed-out page until Guru travel's line `expect` is up."""
+        """Press A on each typed-out page until Guru travel's line `expect` is
+        up, typed out or not. The line and the page are read at one frame
+        (conversation()), so no A lands on `expect`."""
         for _ in range(tries):
-            until("a page to type out", lambda: line() == expect or typed())
-            if line() == expect:
+            got = {}
+
+            def ready():
+                got["state"], got["typed"] = conversation()
+                return got["state"]["text"] == expect or got["typed"]
+            until(f"line {expect} or a page to type out", ready)
+            if got["state"]["text"] == expect:
                 return
             act("a")
-        until(f"line {expect}", lambda: line() == expect, 300)
+        raise AssertionError(f"never reached line {expect}: {got['state']}")
 
     try:
         game.launch(at="gate")
