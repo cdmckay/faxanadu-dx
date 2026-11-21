@@ -536,3 +536,21 @@ handles the call while Block is up, counting the save as its own, iframes \
 or Ointment running or not; Small fixes' then handles it during iframes or \
 under Ointment. Either way the caller, Player_HandleShieldHitByMagic, \
 removes the shot with the shield's sound."""
+
+[[feature]]
+id = "graphics-fix"
+package = "faxanadu.remastered"
+plugin = "faxanadu.graphics-fix"
+source = "src/fax_graphics.c"
+hooks = "faxanadu.graphics-fix."
+rom = []
+# Hooks, which no other feature hooks: Sprite_Draw_Standard's and
+# Sprite_Draw_FlippedHoriz's instructions after each cell's tile and attribute
+# loads ($F131, $F13B, $F1E5, $F1EF), PPU_WriteTilesFromCHRRAM's STA PPUDATA
+# ($F8B7) and Area_LoadScrollData after its current screen's Area_LoadBlocks
+# ($D1BE). Each sets only A there (for three bytes of bank 7's tile info and
+# one of the title's attributes) or ScreenBuffer's one block of Trunk's $2D.
+# Falling pose changes which pose is drawn and Block's glint rewrites OAM
+# palettes after Player_DrawBody, both before or after these reads, never the
+# bytes these change. No ROM, no read overrides, no state. Seamless decodes
+# its rooms through fax_world_set_room_fixup, which this feature sets.

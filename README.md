@@ -210,6 +210,15 @@ list, after what you carry.
 
 ![The armor list after picking up the Battle Suit with three armors listed: the original keeps only the suit, the remaster adds it after them](docs/screenshots/battle-suit.png)
 
+**The original's graphics glitches, fixed.** On a ladder in Studded Mail, the
+hero's chest showed a stray tile left by an earlier armor or shield; the Fire
+spell's second frame had a piece of its first; the Myconid's foot flickered
+into the wrong colors; the Tower of Fortress had a wall block in its floor;
+and the tip of the F in the title's logo was grey. Each is drawn as it was
+meant to be.
+
+![Five glitches, the original's on the left and the remaster's on the right: Studded Mail climbing with a stray tile at the chest, the Fire spell's second frame, the Myconid's foot, the Tower of Fortress's floor under its left pillar, and the tip of the title's F](docs/screenshots/graphics.png)
+
 ### Shops and text
 
 **Quick shops.** Up on a shopkeeper opens his list straight away, with no
