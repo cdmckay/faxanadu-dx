@@ -178,6 +178,8 @@ E2E=(
   "inventory+sw tests/inventory/inventory_fix.py --parts $SW"
   "map          tests/map/explored_map.py --parts"
   "map+sw       tests/map/explored_map.py --parts $SW"
+  "quests       tests/quests/quest_log.py --parts"
+  "quests+sw    tests/quests/quest_log.py --parts $SW"
   "fixes        tests/fixes/small_fixes.py --parts"
 )
 # At most E2E_JOBS runs play at once (default: one a hardware thread; 0: all

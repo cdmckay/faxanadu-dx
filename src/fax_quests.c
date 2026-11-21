@@ -139,7 +139,7 @@ static bool quiet = true;                 /* take what is complete as it is, say
 static bool seeded = true;                /* the file had quests.given; false: count done ones as given */
 static uint32_t banner_pending;           /* quests done outside a conversation, to show below the HUD */
 static int banner_quest = -1;             /* the one showing */
-static unsigned banner_age;
+static unsigned banner_age, banner_wait;
 static bool open, closing;
 static int page;
 static uint64_t frames, want;
@@ -501,7 +501,11 @@ void fax_quests_frame_end(void) {
     banner_pending |= pending_done;               /* a completion no script's end said */
     pending_new = pending_done = 0;
     if (banner_quest < 0) {
-        if (!banner_pending || fax_banner_busy()) return;
+        if (!banner_pending) { banner_wait = 0; return; }
+        /* after a zone's name; but a name the zone banner holds (it holds while
+         * TextBox_Closed reads 0, as it can in a town with no box up) is drawn over */
+        if (fax_banner_busy() && ++banner_wait < BANNER_SHOWN) return;
+        banner_wait = 0;
         for (unsigned quest = 0; quest < FAX_QUESTS; ++quest)
             if (banner_pending >> quest & 1) { banner_quest = (int)quest; banner_pending &= ~(1u << quest); break; }
         banner_age = 0;
@@ -532,7 +536,7 @@ static bool get_set(const char *in, uint32_t *set) {
 
 static void forget(void) {
     given = done = pending_new = pending_done = banner_pending = 0;
-    banner_quest = -1; banner_age = 0;
+    banner_quest = -1; banner_age = banner_wait = 0;
     phase = QUIET; saying = 0; pickup = 0;
 }
 
