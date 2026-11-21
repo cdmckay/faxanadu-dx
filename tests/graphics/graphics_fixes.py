@@ -59,7 +59,7 @@ SHADOW_OAM, SCREEN_BUFFER, ENTITIES, HP, MP = 0x700, 0x600, 0x2CC, 0x431, 0x39A
 TEXTBOX_X, TEXTBOX_CLOSED, MENU_CURSOR = 0x208, 0x20C, 0x21E
 ARMOR, NUMBER_OF_ARMORS, SELECTED_ARMOR, SELECTED_SHIELD = 0x3A1, 0x3C3, 0x3BE, 0x3BF
 MAGIC, NUMBER_OF_SPELLS, SELECTED_MAGIC, CAST_MAGIC_TYPE = 0x3A9, 0x3C5, 0x3C0, 0x2B3
-SAVED_AREA, SAVED_SCREEN, SAVED_PALETTE, SAVED_POS = 0x3D5, 0x3D6, 0x3D7, 0x3D8
+SAVED_AREA, SAVED_SCREEN, SAVED_PALETTE, SAVED_POS, AREA_REGION = 0x3D5, 0x3D6, 0x3D7, 0x3D8, 0x435
 CAN_CLIMB, CLIMBING = 0x08, 0x10
 BUILDINGS, TRUNK = 4, 1
 LEATHER, STUDDED, FIRE, NONE = 0, 1, 2, 0xFF
@@ -244,9 +244,10 @@ def walk_out(game, screen):
 def _door(g, screen, pos, palette_index):
     """In Eolis's meat shop, its door leading onto Trunk's `screen` at block
     `pos` (YX) in palette `palette_index`: Area_Saved*, which Game_ExitBuilding
-    sets the outside up from. The test walks out, so the screen loads in its
+    sets the outside up from, and Area_Region (Trunk's is 1, as its area). The test walks out, so the screen loads in its
     own game, with the remaster on or off."""
-    g.poke({SAVED_AREA: TRUNK, SAVED_SCREEN: screen, SAVED_PALETTE: palette_index, SAVED_POS: pos})
+    g.poke({SAVED_AREA: TRUNK, SAVED_SCREEN: screen, SAVED_PALETTE: palette_index, SAVED_POS: pos,
+            AREA_REGION: TRUNK})
     g.wait(5)
 
 
@@ -350,9 +351,12 @@ def fire(game, fixed):
         wait(attempt % 8)
         while ram(CAST_MAGIC_TYPE) == FIRE:
             look = Look(game, f"fire-{'fixed' if fixed else 'original'}")
-            flame = [s for s in look.sprites() if s[1] in (0x7C, 0x7D, FIRE_TOP, FIRE_FIRST) and not s[2] & 3]
+            flame = [s for s in look.sprites()                   # palette 0, and in front of the background
+                     if s[1] in (0x7C, 0x7D, FIRE_TOP, FIRE_FIRST) and not s[2] & 0x23]
             middle = [s for s in flame if s[1] in (0x7C, 0x7D)]
-            if len(middle) == 4 and len(flame) == 6:                 # the second frame, whole on the screen
+            # The second frame, whole, away from the room's edges (the NES hides
+            # sprites in the leftmost 8 pixels, and Seamless draws past them).
+            if len(middle) == 4 and len(flame) == 6 and all(16 <= s[3] <= 224 for s in flame):
                 break
             look.drop()
         else:

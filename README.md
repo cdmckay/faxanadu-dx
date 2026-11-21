@@ -207,6 +207,8 @@ into the wrong colors; the Tower of Fortress had a wall block in its floor;
 and the tip of the F in the title's logo was grey. Each is drawn as it was
 meant to be.
 
+![Five glitches, the original's on the left and the remaster's on the right: Studded Mail climbing with a stray tile at the chest, the Fire spell's second frame, the Myconid's foot, the Tower of Fortress's floor under its left pillar, and the tip of the title's F](docs/screenshots/graphics.png)
+
 ### Shops and text
 
 **Quick shops.** Up on a shopkeeper opens his list straight away, with no
