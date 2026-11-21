@@ -283,9 +283,16 @@ def main():
                   f"still fades and goes in its {SHOWN} frames (the last {frames} watched)")
             # The menu there holds it, hidden; B closes it, and the name goes on.
             game.load(named)
-            act("select", 4, 6)
-            until("the menu", lambda: zone()["box"], 120)
-            assert ram(TEXTBOX_WIDTH) == MENU_WIDTH and ram(TEXTBOX_CLOSED) == 0
+            # Select acts only on the frame it goes down, in the main loop: not in
+            # the frames the screen still takes to load. Press until the menu shows.
+            for _ in range(5):
+                act("select", 4, 6)
+                try:
+                    until("the menu", lambda: zone()["box"], 30)
+                    break
+                except AssertionError:
+                    pass
+            assert zone()["box"] and ram(TEXTBOX_WIDTH) == MENU_WIDTH and ram(TEXTBOX_CLOSED) == 0, zone()
             held = zone()
             wait(60)
             state = zone()
