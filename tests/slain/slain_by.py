@@ -28,7 +28,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "block"))
-from harness import (Game, fixture, parse_args, AREA, SCREEN, POS_X, POS_Y, ENTITIES, SPRITE_X, SPRITE_Y, SELECTED_SHIELD,  # noqa: E402
+from harness import (Game, fixture, parse_args, AREA, POS_X, POS_Y, ENTITIES, SPRITE_X, SPRITE_Y, SELECTED_SHIELD,  # noqa: E402
                      SMALL, MAGIC, HP, PLAYER_IS_DEAD, MESSAGE_ID, GOLD)
 
 HP_FRACTION, EXPERIENCE = 0x432, 0x390
@@ -96,9 +96,8 @@ def main():
         raise AssertionError(f"timed out paging to {what}")
 
     try:
-        g.launch()
+        g.launch(at="gate-door")
         assert slain()["enabled"], "Slain by is on by default"
-        g.new_game_at_gate()
         g.act("up", 4, 10)
         g.until("Eolis", lambda: g.where() == (0, 1), 300)
         g.wait(30)

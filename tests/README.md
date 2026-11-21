@@ -1,11 +1,19 @@
 # Tests
 
 `tools/test.sh` runs every check: allocations, the C unit tests, the game
-build, then every end-to-end test at once. `tools/test.sh --quick` skips the
+build, then every end-to-end test. `tools/test.sh --quick` skips the
 end-to-end runs. While developing, run `--quick` and your own end-to-end test
 directly; run the full suite before a PR. The end-to-end part takes a
 machine-wide `flock` (`$XDG_RUNTIME_DIR/faxanadu-remastered-e2e.lock`), so a
 second checkout's suite waits for the first's games to finish.
+
+The end-to-end runs (a test, or each part of one) go through a queue: at most
+`E2E_JOBS` play at once (default: one a hardware thread; `E2E_JOBS=0` for no
+limit), the longest first by how long each took last time
+(`build-tests/e2e-times.txt`). The suite ends with each run's finish and its
+time. A game runs uncapped and takes a whole thread from launch to close, so
+the suite is bound by the frames all its games play: a run that waits, walks
+or reads more than its check needs makes the whole suite later.
 
 ## End-to-end tests and `e2e/fax_e2e.py`
 
@@ -44,6 +52,58 @@ def main():
 
 The functions talk to the game launched last. `tests/movement/play.py` and
 `tests/block/harness.py` subclass `Game` with what their tests add.
+
+### Fixtures: start where the check is
+
+Booting to a playable hero takes about 1,900 frames (the title, Start, the
+opening), so a test starts from a saved game instead: `game.launch(at="gate")`
+loads the fixture `gate` as the window opens. A fixture is made from your ROM
+by a recipe, once, and cached in `build-tests/fixtures`:
+
+```python
+@fax_e2e.recipe("respawn-temple", parent="gate")
+def _respawn_temple(g):
+    """The hero dead outside Eolis's gate: back in Eolis's temple."""
+    g.poke({PLAYER_IS_DEAD: 1})
+    ...                                   # play to the spot with g and the module's functions
+```
+
+The state is saved when the recipe returns. It is keyed on the ROM, the
+build's game and mods, the game options (Seamless has its own) and the source
+files of its recipes, so changing any of them makes it again. Several tests
+asking at once wait for one to make it. Never commit a save state: it holds
+CHR RAM copied from the ROM. Ask for a fixture (`game.state(name)`) before the
+test's own game launches: an uncapped game burns a thread while it waits.
+
+### Parts
+
+A test that takes much longer than the others splits into parts, each
+starting from a fixture and needing nothing from the others:
+
+```python
+PARTS = ("eolis", "trunk", "tower-castle")
+args = parse_args(__doc__, parts=PARTS)
+...
+if args.wants("trunk"):
+    game.launch(at="eolis-meat-shop")
+    ...
+```
+
+`--list-parts` prints them, `--part NAME` (repeatable) runs some, and without
+it a test runs every part, in order. Mark it `--parts` in `tools/test.sh`'s
+table and the suite runs each as its own game. A check that compared with an
+earlier part's numbers (a banner count, a respawn count) counts from its own
+part's start.
+
+### Waiting no longer than the check
+
+- Walk with `step_toward()` (held until a few pixels short, then taps) and
+  walk out of a building with `hold("right", ...)`: tapping a direction for 2
+  frames keeps the hero at his slowest speed.
+- In a loop that presses A on every typed page, wait with `hurry()` instead
+  of `wait()`: the remaster's Hold A types 4x, and the A that turns the page is
+  still a new press. Not where a page must stop or B answers.
+- Run independent headless runs at once with `play.py`'s `headless_all()`.
 
 ### Frames, not seconds
 
@@ -93,7 +153,7 @@ port`. `e2e/fax_e2e_test.py` checks all of this.
 2. Add the `sys.path` line and import what it uses from `fax_e2e`.
 3. In `main`: `args = parse_args(__doc__)`, `game = Game.from_args(args)`,
    `out = game.out`; `game.image` is the ROM's bytes.
-4. Call `game.launch(*extra)`, `game.close()`, `game.shot(name)`, and
-   `game.set_features(...)` for `state.toml`; print `game.shots`; guard the
-   failure screenshot with `game.running()`.
+4. Call `game.launch(*extra)` (or `game.launch(at=fixture)`), `game.close()`,
+   `game.shot(name)`, and `game.set_features(...)` for `state.toml`; print
+   `game.shots`; guard the failure screenshot with `game.running()`.
 5. Zone names' record: `fixture(src, dst, writes, records={"faxanadu.zone-names": {5: area, 6: screen}})`.

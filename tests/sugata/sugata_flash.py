@@ -77,9 +77,8 @@ def main():
         return hp - g.hp(), {k: after[k] - before[k] for k in after if isinstance(after[k], int) and k in before}
 
     try:
-        g.launch()
+        g.launch(at="gate-door")
         assert state()["enabled"] and g.tcp("block_state")["enabled"]
-        g.new_game_at_gate()
         g.act("up", 4, 10)
         g.until("Eolis", lambda: g.where() == (0, 1), 300)
         g.wait(30)

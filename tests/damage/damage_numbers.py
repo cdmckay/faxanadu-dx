@@ -213,11 +213,8 @@ def main():
         raise AssertionError(f"the swing did not hit both Zozura: {s}")
 
     try:
-        game.launch()
+        game.launch(at="gate")
         assert state()["enabled"], "on by default"
-        until("the title", lambda: frame() > 700)
-        tcp("pad", buttons="start", frames=10)
-        until("the Eolis gate", lambda: frame() > 1900)
         assert (ram(AREA), ram(SCREEN), ram(ENTITIES + 7)) == (EOLIS, 0, INTRO_TRIGGER)
         gate, door = out / "gate.cycstate", out / "door.cycstate"
         tcp("save_state", path=str(gate))

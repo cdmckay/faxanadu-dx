@@ -6,20 +6,19 @@ The game runs uncapped and the script waits on the game's own state, never on
 the clock, on a reserved TCP port (tests/e2e/fax_e2e.py), so any number can
 run in parallel, in either view (--game-arg=--world-view=seamless).
 
-Copies the build to OUT and starts a new game over TCP. The hero walks through
-the Eolis gate into the town (the menu does not open on the gate's screen),
-and the game is saved there. Each case edits that save's RAM (an external
-prerequisite, not coverage): the weapons and armor, worn and listed, the bytes
-after each list's count (what Player_RemoveItem leaves: a Quick shops sale, or
-in the original equipping with nothing worn),
-and the item, the Battle Suit (entity $58) or the Dragon Slayer ($5A), put in
+Copies the build to OUT and starts from the fixture `eolis-town`
+(tests/e2e/fax_e2e.py): the hero in Eolis's town, where the Select menu opens
+(it does not on the gate's screen). Each case edits that save's RAM (an
+external prerequisite, not coverage): the weapons and armor, worn and listed,
+the bytes after each list's count (what Player_RemoveItem leaves: a Quick
+shops sale, or in the original equipping with nothing worn), and the item, the Battle Suit (entity $58) or the Dragon Slayer ($5A), put in
 a sprite slot under the hero as Sprites_PopulateNextAvailableSprite would,
 with the screen's other sprites cleared. The game's own code picks it up: the
 touch (Player_HandleTouchItem), "I've got ...", which A closes, then the
 routine adds it. The case checks both lists, and a screenshot shows the
-item's list in the Select menu.
+item's list in the Select menu. Two parts (--list-parts), each its own game:
 
-1. With the remaster on (the default), each pickup adds at its own list's
+1. fixed: with the remaster on (the default), each pickup adds at its own list's
    count: the Battle Suit after the armor, the Dragon Slayer after the
    weapons, whatever the other list holds, and the other list is untouched:
    - every other armor listed and no weapons, every other weapon listed and
@@ -29,19 +28,19 @@ item's list in the Select menu.
      longer: the item alone, nothing sold comes back;
    - a full list (four, a repeat the original's bug can leave): its last
      entry is replaced, as the Battle Helmet's pickup and the shops do.
-2. With the remaster off, the original's bug in each case: the item is
-   stored at the other list's count, and its own list's count set from it,
-   so armor or weapons are lost, or the bytes after the list are listed. The other list is
-   untouched either way: each routine only reads the wrong count.
+2. original: with the remaster off, the original's bug in each case: the
+   item is stored at the other list's count, and its own list's count set
+   from it, so armor or weapons are lost, or the bytes after the list are
+   listed. The other list is untouched either way: each routine only reads
+   the wrong count.
 """
 from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import Game, fixture, frame, parse_args, ram, tcp, typed, until, wait  # noqa: E402
+from fax_e2e import Game, chunks, fixture, parse_args, ram, tcp, until, until_typed, wait  # noqa: E402
 
 AREA, SCREEN, HERO_X, HERO_Y = 0x24, 0x63, 0x9E, 0xA1
-SCREEN_SCROLL = 0x54                                                # Screen_ScrollDirection: $FF when still
 TEXTBOX_X, TEXTBOX_CLOSED, MESSAGE_ID, MENU_CURSOR = 0x208, 0x20C, 0x213, 0x21E
 # CurrentSprites_*, 8 slots each
 ENTITIES, SPRITE_X, SPRITE_Y, PHASES, FLAGS = 0x2CC, 0xBA, 0xC2, 0x2E4, 0x2DC
@@ -50,8 +49,7 @@ WEAPONS, ARMOR, NUMBER_OF_WEAPONS, NUMBER_OF_ARMORS = 0x39D, 0x3A1, 0x3C2, 0x3C3
 SELECTED_WEAPON, SELECTED_ARMOR, PLAYER_CUR_WEAPON = 0x3BD, 0x3BE, 0x3C8
 # Bank 14, by entity: what Sprites_PopulateNextAvailableSprite copies
 HITBOX_TYPES, ENTITY_HP, BSCRIPTS = 0xB4DF, 0xB5A9, 0xAD2D
-EOLIS, GATE, TOWN = 0, 0, 1
-GATE_DOOR_X, INTRO_TRIGGER = 195, 0x4F                              # as tests/pendant/pendant_fix.py
+EOLIS, TOWN = 0, 1
 BATTLE_SUIT_ITEM, DRAGON_SLAYER_ITEM = 0x58, 0x5A                   # sprite entities
 GOT_BATTLE_SUIT, GOT_DRAGON_SLAYER = 0xB5, 0xB7                     # "I've got the ..."
 MENU_WIDTH, LIST_WIDTH = 0x0A, 0x14                                 # PlayerMenu_Show's box, ShowSubmenu's
@@ -86,9 +84,19 @@ CASES = [
 ]
 
 
+PARTS = ("fixed", "original")                                     # each its own game
+
+
 def bank14(image, addr, n=1):
     start = 16 + 14 * 0x4000 + addr - 0x8000
     return image[start:start + n]
+
+
+def state_ram(path, addr):
+    """A byte of a save state's CPU RAM (its HW chunk, at offset 23)."""
+    data = Path(path).read_bytes()
+    pos = next(p for tag, p, _ in chunks(data) if tag == b"HW  ")
+    return data[pos + 23 + addr]
 
 
 def listed(at, count_at):
@@ -126,7 +134,7 @@ def press_until(button, what, test, frames=60, tries=5):
 
 
 def main():
-    args = parse_args(__doc__)
+    args = parse_args(__doc__, parts=PARTS)
     game = Game.from_args(args)
     out = game.out
     image = game.image
@@ -156,7 +164,7 @@ def main():
         message = GOT_BATTLE_SUIT if entity == BATTLE_SUIT_ITEM else GOT_DRAGON_SLAYER
         until(f"{name}: the pickup's line", lambda: ram(MESSAGE_ID) == message, 300)
         assert ram(ENTITIES + SLOT) == entity, "touched before the line"
-        until(f"{name}: the line to type out", typed, 600)
+        until_typed(f"{name}: the line to type out", 600)
         press_until("a", f"{name}: the box to close", lambda: ram(TEXTBOX_CLOSED) != 0)
         wait(4)
         assert ram(ENTITIES + SLOT) == NONE, "Player_HandleTouchItem removes the item"
@@ -186,42 +194,31 @@ def main():
             print(f"ok: {'' if fixed else 'original, '}{name}: {'armor' if suit else 'weapons'} {own}")
 
     try:
-        game.launch()
-        assert tcp("inventory_fix_state")["enabled"], "the fix is on by default"
-        until("the title", lambda: frame() > 700)
-        tcp("pad", buttons="start", frames=10)
-        until("the Eolis gate", lambda: frame() > 1900)
-        assert (ram(AREA), ram(SCREEN), ram(ENTITIES + 7)) == (EOLIS, GATE, INTRO_TRIGGER)
-        gate = out / "gate.cycstate"
-        tcp("save_state", path=str(gate))
-        door = out / "door.cycstate"
-        fixture(gate, door, {ENTITIES + 7: NONE, HERO_X: GATE_DOOR_X})
-        tcp("load_state", path=str(door))
-        wait(10)
-        tcp("action", name="up", frames=6)
-        until("the town", lambda: ram(SCREEN) == TOWN and ram(SCREEN_SCROLL) == NONE, 600)
-        wait(60)
-        town = out / "town.cycstate"
-        tcp("save_state", path=str(town))
-        hero = ram(HERO_X), ram(HERO_Y)
+        town = game.state("eolis-town")
+        assert (state_ram(town, AREA), state_ram(town, SCREEN)) == (EOLIS, TOWN), "the fixture is Eolis's town"
+        hero = state_ram(town, HERO_X), state_ram(town, HERO_Y)
 
-        # 1. The fix: each pickup adds to its own list, at its own count.
-        play(town, hero, fixed=True)
-        state = tcp("inventory_fix_state")
-        suits = sum(1 for c in CASES if c[1] == BATTLE_SUIT_ITEM)
-        assert (state["battle_suits"], state["dragon_slayers"]) == (suits, len(CASES) - suits), state
-        print("ok: with the fix the Battle Suit joins the armor and the Dragon Slayer the weapons, at their own "
-              "counts; full, the last entry is replaced; the other list is untouched")
-        game.close()
+        if args.wants("fixed"):
+            # 1. The fix: each pickup adds to its own list, at its own count.
+            game.launch(at="eolis-town")
+            assert tcp("inventory_fix_state")["enabled"], "the fix is on by default"
+            play(town, hero, fixed=True)
+            state = tcp("inventory_fix_state")
+            suits = sum(1 for c in CASES if c[1] == BATTLE_SUIT_ITEM)
+            assert (state["battle_suits"], state["dragon_slayers"]) == (suits, len(CASES) - suits), state
+            print("ok: with the fix the Battle Suit joins the armor and the Dragon Slayer the weapons, at their own "
+                  "counts; full, the last entry is replaced; the other list is untouched")
+            game.close()
 
-        # 2. With the remaster off, the original's bug.
-        game.set_features({PACKAGE: False})
-        game.launch()
-        assert not tcp("inventory_fix_state")["enabled"], "the remaster is off"
-        play(town, hero, fixed=False)
-        assert tcp("inventory_fix_state")["battle_suits"] == 0, "the hooks are off"
-        print("ok: with the remaster off, the original's bug: each pickup adds at the other list's count, losing "
-              "armor or weapons, or listing the bytes after the list")
+        if args.wants("original"):
+            # 2. With the remaster off, the original's bug.
+            game.set_features({PACKAGE: False})
+            game.launch(at="eolis-town")
+            assert not tcp("inventory_fix_state")["enabled"], "the remaster is off"
+            play(town, hero, fixed=False)
+            assert tcp("inventory_fix_state")["battle_suits"] == 0, "the hooks are off"
+            print("ok: with the remaster off, the original's bug: each pickup adds at the other list's count, "
+                  "losing armor or weapons, or listing the bytes after the list")
         print("screenshots:", ", ".join(game.shots))
     except BaseException:
         if game.running():

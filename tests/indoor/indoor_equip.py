@@ -42,7 +42,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import (Game, act, features_toml, fixture, frame, parse_args, ram, tcp, typed,  # noqa: E402
+from fax_e2e import (Game, act, features_toml, fixture, hold, parse_args, ram, step_toward, tcp, typed,  # noqa: E402
                      until, wait)
 
 AREA, SCREEN, PLAYER_X, PLAYER_Y = 0x24, 0x63, 0x9E, 0xA1
@@ -121,17 +121,20 @@ def in_reach(mem, slot):
     return ((wx + rx - mem[SPRITE_X + slot]) & 0xFF) < ex + rx and ((wy + ry - mem[SPRITE_Y + slot]) & 0xFF) < ey + ry
 
 
+PARTS = ("forepaw", "guru", "mist", "death", "original")          # each its own game
+
+
 def main():
     global ROM
-    args = parse_args(__doc__)
+    args = parse_args(__doc__, parts=PARTS)
     game = Game.from_args(args)
     out, exe = game.out, game.exe
     ROM = game.image
     extra_args = [part for arg in game.game_args for part in arg.split("=", 1)]
 
-    def launch(on=True):
+    def launch(on=True, at=None):
         game.set_features({PACKAGE: on})
-        game.launch()
+        game.launch(at=at)
         assert indoor()["enabled"] == on, indoor()
 
     def mods(on):
@@ -200,19 +203,26 @@ def main():
             x = ram(PLAYER_X)
             if x_min <= x <= x_max:
                 return
-            act("right" if x < x_min else "left", 2, 0)
+            step_toward(x_min, x_max, lambda: (ram(AREA), ram(SCREEN)) == (EOLIS, 0) and ram(TEXTBOX_CLOSED) == 0)
         raise AssertionError(f"could not reach x {x_min}-{x_max}")
 
     def walk_out():
         for _ in range(300):
             if ram(AREA) != BUILDINGS:
                 return
-            act("right", 2, 0)
+            hold("right", lambda: ram(AREA) != BUILDINGS)
         raise AssertionError("could not walk out")
 
     def go_in(source, name, area, screen, palette, door, writes):
         """From inside a building, walk out onto the door `door` (block YX) on
         `screen` of `area`, save a state there, and go in."""
+        door_state = door_of(source, name, area, screen, palette, door, writes)
+        enter()
+        return door_state
+
+    def door_of(source, name, area, screen, palette, door, writes):
+        """From inside a building, walk out onto the door `door` (block YX) on
+        `screen` of `area`: a state saved there."""
         target = out / f"{name}.cycstate"
         fixture(source, target, {AREA_SAVED_AREA: area, AREA_SAVED_SCREEN: screen, SCREEN_SAVED_PALETTE: palette,
                                  PLAYER_SAVED_POS: door, **writes})
@@ -224,7 +234,6 @@ def main():
         walk_to(column - 6, column + 4)
         door_state = out / f"{name}-door.cycstate"
         tcp("save_state", path=str(door_state))
-        enter()
         return door_state
 
     def enter():
@@ -294,149 +303,155 @@ def main():
         assert weapons() == weapons_before + [LONG_SWORD], weapons()
 
     try:
-        launch()
-        until("the title", lambda: frame() > 700)
-        tcp("pad", buttons="start", frames=10)
-        until("the Eolis gate", lambda: ram(AREA) == EOLIS and frame() > 1900)
-        walk_to(186, 196)                                   # the gate, column 12
-        act("up", 4, 10)
-        until("Eolis", lambda: (ram(AREA), ram(SCREEN)) == (EOLIS, 1))
-        wait(30)
-        walk_to(41, 56)                                     # the meat shop, column 3
-        enter()
-        start = out / "eolis-meat-shop.cycstate"
-        tcp("save_state", path=str(start))
+        start = game.state("eolis-meat-shop")                       # through Eolis's gate, in the meat shop
+        forepaw = None
 
-        # 1. Forepaw's tool shop (building $0F: the towns' screen 2, block $9D).
-        entered = indoor()["entered"]
-        forepaw = go_in(start, "forepaw-tools", TOWNS, 2, PALETTE_TOWN, 0x9D, carrying(1700, HAND_DAGGER))
-        state = indoor()
-        assert state["entered"] == entered + 1 and state["weapon_in_hand"] == HAND_DAGGER, state
-        to_counter()
-        assert not ram(PLAYER_FLAGS) & FACING_RIGHT
-        print("ok: the hero comes into Forepaw's tool shop with the Hand Dagger in hand")
-        buy_long_sword()
-        assert gold() == 100, gold()
-        menu_to_weapons()
-        assert ram(DATA_ARRAY) == LONG_SWORD, ram(DATA_ARRAY, 4)          # the weapons listed
-        game.shot("weapons-indoors")
-        act("a", 4, 6)
-        until("the menu to close", lambda: ram(TEXTBOX_CLOSED) != 0, 300)
-        wait(20)
-        state = indoor()
-        assert ram(SELECTED_WEAPON) == LONG_SWORD and state["weapon_in_hand"] == LONG_SWORD, state
-        assert weapons() == [HAND_DAGGER] and state["menu_choices"] == 1 and state["weapons_set"] == 1, state
-        frame_ram = ram(0, 0x800)
-        assert weapon_drawn(frame_ram), "no weapon by the hero"
-        game.shot("long-sword-in-forepaws-shop")
-        counter = out / "counter.cycstate"
-        tcp("save_state", path=str(counter))
-        print("ok: bought the Long Sword, and the menu equips it in the shop: he holds it, the dagger is listed")
+        def game_up():
+            """The game with the remaster on: the one running, if it is."""
+            if not game.running():
+                launch()
 
-        # 2. A swing at the Tool Seller, across the counter.
-        rams, slot = swing(counter, "swing-at-the-tool-seller", TOOL_SELLER)
-        first = rams[0]
-        live = [m for m in rams if m[PLAYER_FLAGS] & ATTACKING and m[ATTACK_PHASE] in (1, 2)]
-        assert live and all(weapon_drawn(m) for m in live), "the sword is not drawn through the swing"
-        assert any(in_reach(m, slot) for m in live), "the Tool Seller is out of the sword's reach"
-        for m in rams:
-            assert m[ENTITIES + slot] == TOOL_SELLER and m[SPRITE_HP + slot] == first[SPRITE_HP + slot], "seller hurt"
-            assert m[HIT_COUNTER + slot] == 0 and m[HP] == first[HP], "a hit"
-        tcp("load_state", path=str(counter))
-        wait(5)
-        act("b", 4, 30)
-        act("up", 4, 6)
-        list_up("buy")
-        act("select", 4, 6)
-        state = list_up("sell")
-        assert state["list"] == [HAND_DAGGER] and state["prices"] == [200], state       # half of Eolis's 400
-        leave_shop()
-        print("ok: the Long Sword swings through the Tool Seller (in its reach) and does nothing; he still "
-              "trades, and buys the dagger the sword just replaced")
+        if args.wants("forepaw"):
+            game_up()
+            # 1. Forepaw's tool shop (building $0F: the towns' screen 2, block $9D).
+            entered = indoor()["entered"]
+            forepaw = go_in(start, "forepaw-tools", TOWNS, 2, PALETTE_TOWN, 0x9D, carrying(1700, HAND_DAGGER))
+            state = indoor()
+            assert state["entered"] == entered + 1 and state["weapon_in_hand"] == HAND_DAGGER, state
+            to_counter()
+            assert not ram(PLAYER_FLAGS) & FACING_RIGHT
+            print("ok: the hero comes into Forepaw's tool shop with the Hand Dagger in hand")
+            buy_long_sword()
+            assert gold() == 100, gold()
+            menu_to_weapons()
+            assert ram(DATA_ARRAY) == LONG_SWORD, ram(DATA_ARRAY, 4)          # the weapons listed
+            game.shot("weapons-indoors")
+            act("a", 4, 6)
+            until("the menu to close", lambda: ram(TEXTBOX_CLOSED) != 0, 300)
+            wait(20)
+            state = indoor()
+            assert ram(SELECTED_WEAPON) == LONG_SWORD and state["weapon_in_hand"] == LONG_SWORD, state
+            assert weapons() == [HAND_DAGGER] and state["menu_choices"] == 1 and state["weapons_set"] == 1, state
+            frame_ram = ram(0, 0x800)
+            assert weapon_drawn(frame_ram), "no weapon by the hero"
+            game.shot("long-sword-in-forepaws-shop")
+            counter = out / "counter.cycstate"
+            tcp("save_state", path=str(counter))
+            print("ok: bought the Long Sword, and the menu equips it in the shop: he holds it, the dagger is listed")
 
-        # 3. Eolis's temple (building 2: screen 2, block $95), at the Guru.
-        go_in(start, "eolis-temple", EOLIS, 2, PALETTE_EOLIS, 0x95, carrying(0, LONG_SWORD))
-        assert indoor()["weapon_in_hand"] == LONG_SWORD, indoor()
-        to_counter(stop=60)
-        guru = out / "guru.cycstate"
-        tcp("save_state", path=str(guru))
-        rams, slot = swing(guru, "swing-at-the-guru", PRIEST)
-        live = [m for m in rams if m[PLAYER_FLAGS] & ATTACKING and m[ATTACK_PHASE] in (1, 2)]
-        assert live and all(weapon_drawn(m) for m in live), "the sword is not drawn through the swing"
-        assert any(in_reach(m, slot) for m in live), "the Guru is out of the sword's reach"
-        for m in rams:
-            assert m[ENTITIES + slot] == PRIEST and m[HIT_COUNTER + slot] == 0, "the Guru hit"
-        tcp("load_state", path=str(guru))
-        wait(5)
-        act("b", 4, 30)
-        assert not ram(SPECIAL_ITEMS) & RING_OF_ELF
-        act("up", 4, 6)
-        until("the Guru's portrait", lambda: ram(PORTRAIT) == GURU, 600)
-        converse()
-        assert ram(SPECIAL_ITEMS) & RING_OF_ELF, "no Ring of Elf"
-        print("ok: a swing at Eolis's Guru does nothing, and he talks and gives the Ring of Elf as before")
+            # 2. A swing at the Tool Seller, across the counter.
+            rams, slot = swing(counter, "swing-at-the-tool-seller", TOOL_SELLER)
+            first = rams[0]
+            live = [m for m in rams if m[PLAYER_FLAGS] & ATTACKING and m[ATTACK_PHASE] in (1, 2)]
+            assert live and all(weapon_drawn(m) for m in live), "the sword is not drawn through the swing"
+            assert any(in_reach(m, slot) for m in live), "the Tool Seller is out of the sword's reach"
+            for m in rams:
+                assert m[ENTITIES + slot] == TOOL_SELLER and m[SPRITE_HP + slot] == first[SPRITE_HP + slot], "seller hurt"
+                assert m[HIT_COUNTER + slot] == 0 and m[HP] == first[HP], "a hit"
+            tcp("load_state", path=str(counter))
+            wait(5)
+            act("b", 4, 30)
+            act("up", 4, 6)
+            list_up("buy")
+            act("select", 4, 6)
+            state = list_up("sell")
+            assert state["list"] == [HAND_DAGGER] and state["prices"] == [200], state       # half of Eolis's 400
+            leave_shop()
+            print("ok: the Long Sword swings through the Tool Seller (in its reach) and does nothing; he still "
+                  "trades, and buys the dagger the sword just replaced")
 
-        # 4. The Mist's screen 6, building $1D: Sir Gawaine.
-        go_in(start, "mist-room", MIST, 6, PALETTE_MIST, 0x93, carrying(0, LONG_SWORD))
-        assert indoor()["weapon_in_hand"] == LONG_SWORD, indoor()
-        room = out / "sir-gawaine.cycstate"
-        tcp("save_state", path=str(room))
-        mem = ram(0, 0x800)
-        slot = slot_of(mem, SIR_GAWAINE)
-        hx, hy = mem[PLAYER_X], mem[PLAYER_Y]
-        # In reach in front of him (he faces left), not touching, and held by the Hour Glass.
-        near = {SPRITE_X + slot: hx - 24, SPRITE_Y + slot: hy, DURATION_HOUR_GLASS: 0x10, HIT_COUNTER + slot: 0}
-        fixture(room, out / "sir-gawaine-near.cycstate", near)
-        rams, _ = swing(out / "sir-gawaine-near.cycstate", "sword-hits-sir-gawaine", SIR_GAWAINE)
-        hp = rams[0][SPRITE_HP + slot]
-        assert min(m[SPRITE_HP + slot] for m in rams) < hp, "the sword did not hurt Sir Gawaine"
-        assert any(m[HIT_COUNTER + slot] for m in rams), "no hit"
-        fixture(room, out / "sir-gawaine-stock.cycstate", {**near, PLAYER_CUR_WEAPON: NONE})
-        rams = headless(out / "sir-gawaine-stock.cycstate", [(2, "B"), (5, "-")], 40, on=False)
-        assert any(m[PLAYER_FLAGS] & ATTACKING for m in rams), "no swing"
-        assert all(m[SPRITE_HP + slot] == hp and not m[HIT_COUNTER + slot] for m in rams), "a hit in the original"
-        assert not any(weapon_drawn(m) for m in rams), "a weapon drawn in the original"
-        print(f"ok: in the Mist's room $1D the Long Sword hurts Sir Gawaine ({hp} HP); in the original, "
-              "with no weapon in hand indoors, the same swing passes through him")
+        if args.wants("guru"):
+            game_up()
+            # 3. Eolis's temple (building 2: screen 2, block $95), at the Guru.
+            go_in(start, "eolis-temple", EOLIS, 2, PALETTE_EOLIS, 0x95, carrying(0, LONG_SWORD))
+            assert indoor()["weapon_in_hand"] == LONG_SWORD, indoor()
+            to_counter(stop=60)
+            guru = out / "guru.cycstate"
+            tcp("save_state", path=str(guru))
+            rams, slot = swing(guru, "swing-at-the-guru", PRIEST)
+            live = [m for m in rams if m[PLAYER_FLAGS] & ATTACKING and m[ATTACK_PHASE] in (1, 2)]
+            assert live and all(weapon_drawn(m) for m in live), "the sword is not drawn through the swing"
+            assert any(in_reach(m, slot) for m in live), "the Guru is out of the sword's reach"
+            for m in rams:
+                assert m[ENTITIES + slot] == PRIEST and m[HIT_COUNTER + slot] == 0, "the Guru hit"
+            tcp("load_state", path=str(guru))
+            wait(5)
+            act("b", 4, 30)
+            assert not ram(SPECIAL_ITEMS) & RING_OF_ELF
+            act("up", 4, 6)
+            until("the Guru's portrait", lambda: ram(PORTRAIT) == GURU, 600)
+            converse()
+            assert ram(SPECIAL_ITEMS) & RING_OF_ELF, "no Ring of Elf"
+            print("ok: a swing at Eolis's Guru does nothing, and he talks and gives the Ring of Elf as before")
 
-        # 5. A death in the meat shop: back at Eolis's Guru, the sword in hand.
-        dying = out / "dying.cycstate"
-        fixture(start, dying, {**carrying(0, LONG_SWORD), PLAYER_IS_DEAD: 1, TEMPLE_SPAWN_POINT: 0})
-        tcp("load_state", path=str(dying))
-        until("the death message", lambda: ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 600)
-        for _ in range(60):
-            if ram(AREA) == BUILDINGS and ram(SCREEN) == 2 and not ram(PLAYER_IS_DEAD) and ram(TEXTBOX_CLOSED):
-                break
-            if typed():
-                act("a", 6, 14)
-            else:
-                wait(10)
-        wait(30)
-        assert (ram(AREA), ram(SCREEN)) == (BUILDINGS, 2), (ram(AREA), ram(SCREEN))
-        assert indoor()["weapon_in_hand"] == LONG_SWORD and weapon_drawn(ram(0, 0x800)), indoor()
-        game.shot("respawned-with-the-sword")
-        print("ok: a death respawns at Eolis's Guru with the Long Sword in hand")
-        game.close()
+        if args.wants("mist"):
+            game_up()
+            # 4. The Mist's screen 6, building $1D: Sir Gawaine.
+            go_in(start, "mist-room", MIST, 6, PALETTE_MIST, 0x93, carrying(0, LONG_SWORD))
+            assert indoor()["weapon_in_hand"] == LONG_SWORD, indoor()
+            room = out / "sir-gawaine.cycstate"
+            tcp("save_state", path=str(room))
+            mem = ram(0, 0x800)
+            slot = slot_of(mem, SIR_GAWAINE)
+            hx, hy = mem[PLAYER_X], mem[PLAYER_Y]
+            # In reach in front of him (he faces left), not touching, and held by the Hour Glass.
+            near = {SPRITE_X + slot: hx - 24, SPRITE_Y + slot: hy, DURATION_HOUR_GLASS: 0x10, HIT_COUNTER + slot: 0}
+            fixture(room, out / "sir-gawaine-near.cycstate", near)
+            rams, _ = swing(out / "sir-gawaine-near.cycstate", "sword-hits-sir-gawaine", SIR_GAWAINE)
+            hp = rams[0][SPRITE_HP + slot]
+            assert min(m[SPRITE_HP + slot] for m in rams) < hp, "the sword did not hurt Sir Gawaine"
+            assert any(m[HIT_COUNTER + slot] for m in rams), "no hit"
+            fixture(room, out / "sir-gawaine-stock.cycstate", {**near, PLAYER_CUR_WEAPON: NONE})
+            rams = headless(out / "sir-gawaine-stock.cycstate", [(2, "B"), (5, "-")], 40, on=False)
+            assert any(m[PLAYER_FLAGS] & ATTACKING for m in rams), "no swing"
+            assert all(m[SPRITE_HP + slot] == hp and not m[HIT_COUNTER + slot] for m in rams), "a hit in the original"
+            assert not any(weapon_drawn(m) for m in rams), "a weapon drawn in the original"
+            print(f"ok: in the Mist's room $1D the Long Sword hurts Sir Gawaine ({hp} HP); in the original, "
+                  "with no weapon in hand indoors, the same swing passes through him")
 
-        # 6. The remaster off: the original. (Quick shops is off with it, so he
-        #    brings the Long Sword rather than buying it.)
-        launch(on=False)
-        carried = out / "forepaw-tools-door-off.cycstate"
-        fixture(forepaw, carried, {WEAPONS: LONG_SWORD, NUMBER_OF_WEAPONS: 1})
-        tcp("load_state", path=str(carried))
-        enter()
-        assert ram(PLAYER_CUR_WEAPON) == NONE and ram(SELECTED_WEAPON) == HAND_DAGGER
-        assert not weapon_drawn(ram(0, 0x800)), "a weapon drawn in the original"
-        menu_to_weapons("off-menu-indoors")
-        act("a", 4, 30)
-        assert ram(TEXTBOX_CLOSED) == 0 and ram(TEXTBOX_X + 2) == WEAPONS_WIDTH, "the menu closed"
-        assert ram(SELECTED_WEAPON) == HAND_DAGGER and ram(PLAYER_CUR_WEAPON) == NONE
-        game.shot("off-the-menu-refuses")
-        act("b", 4, 6)
-        until("the menu to close", lambda: ram(TEXTBOX_CLOSED) != 0, 300)
-        state = indoor()
-        assert state["entered"] == 0 and state["menu_choices"] == 0 and state["weapons_set"] == 0, state
-        print("ok: with the remaster off, the hero comes in empty-handed and the menu refuses the Long Sword")
+        if args.wants("death"):
+            game_up()
+            # 5. A death in the meat shop: back at Eolis's Guru, the sword in hand.
+            dying = out / "dying.cycstate"
+            fixture(start, dying, {**carrying(0, LONG_SWORD), PLAYER_IS_DEAD: 1, TEMPLE_SPAWN_POINT: 0})
+            tcp("load_state", path=str(dying))
+            until("the death message", lambda: ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 600)
+            for _ in range(60):
+                if ram(AREA) == BUILDINGS and ram(SCREEN) == 2 and not ram(PLAYER_IS_DEAD) and ram(TEXTBOX_CLOSED):
+                    break
+                if typed():
+                    act("a", 6, 14)
+                else:
+                    wait(10)
+            wait(30)
+            assert (ram(AREA), ram(SCREEN)) == (BUILDINGS, 2), (ram(AREA), ram(SCREEN))
+            assert indoor()["weapon_in_hand"] == LONG_SWORD and weapon_drawn(ram(0, 0x800)), indoor()
+            game.shot("respawned-with-the-sword")
+            print("ok: a death respawns at Eolis's Guru with the Long Sword in hand")
+
+        if args.wants("original"):
+            # 6. The remaster off: the original. (Quick shops is off with it, so he
+            #    brings the Long Sword rather than buying it.)
+            game.close()
+            launch(on=False)
+            if forepaw is None:                                         # as part 1 walks to the door
+                forepaw = door_of(start, "forepaw-tools", TOWNS, 2, PALETTE_TOWN, 0x9D, carrying(1700, HAND_DAGGER))
+            carried = out / "forepaw-tools-door-off.cycstate"
+            fixture(forepaw, carried, {WEAPONS: LONG_SWORD, NUMBER_OF_WEAPONS: 1})
+            tcp("load_state", path=str(carried))
+            enter()
+            assert ram(PLAYER_CUR_WEAPON) == NONE and ram(SELECTED_WEAPON) == HAND_DAGGER
+            assert not weapon_drawn(ram(0, 0x800)), "a weapon drawn in the original"
+            menu_to_weapons("off-menu-indoors")
+            act("a", 4, 30)
+            assert ram(TEXTBOX_CLOSED) == 0 and ram(TEXTBOX_X + 2) == WEAPONS_WIDTH, "the menu closed"
+            assert ram(SELECTED_WEAPON) == HAND_DAGGER and ram(PLAYER_CUR_WEAPON) == NONE
+            game.shot("off-the-menu-refuses")
+            act("b", 4, 6)
+            until("the menu to close", lambda: ram(TEXTBOX_CLOSED) != 0, 300)
+            state = indoor()
+            assert state["entered"] == 0 and state["menu_choices"] == 0 and state["weapons_set"] == 0, state
+            print("ok: with the remaster off, the hero comes in empty-handed and the menu refuses the Long Sword")
         print("screenshots:", ", ".join(game.shots))
     except BaseException:
         if game.running():

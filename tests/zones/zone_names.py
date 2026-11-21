@@ -22,7 +22,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import Game, act, fixture, frame, parse_args, ram, tcp, typed, until, wait  # noqa: E402
+from fax_e2e import Game, act, fixture, hold, hurry, parse_args, ram, step_toward, tcp, typed, until, wait  # noqa: E402
 
 AREA, SCREEN, PLAYER_X = 0x24, 0x63, 0x9E
 TEXTBOX_CLOSED, MESSAGE_ID, TEXTBOX_PAUSED = 0x20C, 0x213, 0x215
@@ -47,8 +47,11 @@ def box_open():
     return ram(TEXTBOX_CLOSED) == 0
 
 
+PARTS = ("eolis", "trunk", "conflate-apolune", "tower-castle")   # each its own game
+
+
 def main():
-    args = parse_args(__doc__)
+    args = parse_args(__doc__, parts=PARTS)
     game = Game.from_args(args)
     out = game.out
 
@@ -71,12 +74,12 @@ def main():
                 if typed():
                     act("a", 6, 14)
                 else:
-                    wait(4)
+                    hurry(4)
                 continue
             x = ram(PLAYER_X)
             if x_min <= x <= x_max:
                 return
-            act("right" if x < x_min else "left", 2, 0)
+            step_toward(x_min, x_max, box_open)
         raise AssertionError(f"could not reach x {x_min}-{x_max}")
 
     def walk_out():
@@ -84,7 +87,7 @@ def main():
         for _ in range(200):
             if ram(AREA) != BUILDINGS:
                 return
-            act("right", 2, 0)
+            hold("right", lambda: ram(AREA) != BUILDINGS)
         raise AssertionError("could not walk out")
 
     def travel(temple):
@@ -111,120 +114,132 @@ def main():
         walk_out()
 
     try:
-        game.launch()
-        until("the title", lambda: frame() > 700)
-        tcp("pad", buttons="start", frames=10)
-        until("the Eolis gate", lambda: zone()["area"] == 0 and frame() > 1900)
-        assert zone()["banners"] == 0 and zone()["here"] is None, zone()
-        outside = out / "outside-gate.cycstate"                    # before any entrance
-        tcp("save_state", path=str(outside))
-        print("ok: no banner outside Eolis's gate")
+        outside = game.state("gate")                                 # before any entrance
+        shop = game.state("eolis-meat-shop")                         # through Eolis's gate, in the meat shop
 
-        # 1. Through the gate (door at block column 12): Eolis.
-        walk_to(186, 196)
-        act("up", 4, 10)
-        settled_in(0, 1)
-        banner("Eolis", 1)
-        print("ok: walking through the gate names Eolis")
+        def game_up():
+            """The game: the one running, if it is."""
+            if not game.running():
+                game.launch()
 
-        # 2. Into the meat shop (column 3) and out: nothing more.
-        walk_to(41, 56)
-        act("up", 4, 10)
-        until("the shop", lambda: ram(AREA) == BUILDINGS)
-        wait(30)
-        assert zone()["showing"] is None, zone()
-        shop = out / "eolis-shop.cycstate"
-        tcp("save_state", path=str(shop))
-        walk_out()
-        settled_in(0, 1)
-        wait(60)
-        assert zone()["banners"] == 1, zone()
-        print("ok: stepping out of a shop shows nothing")
+        if args.wants("eolis"):
+            game.launch(at="gate")
+            assert zone()["banners"] == 0 and zone()["here"] is None, zone()
+            print("ok: no banner outside Eolis's gate")
 
-        # 3. Out of Eolis: the shop's door edited to lead to the door on screen 8
-        #    (record bytes 5 and 6 are where zone names last saw the hero stand),
-        #    with the "J" Key it takes in hand.
-        warp_to = {AREA_SAVED_AREA: 0, AREA_SAVED_SCREEN: 8, PLAYER_SAVED_POS: 0x9C, HP: 0x50, SELECTED_ITEM: KEY_J}
-        fixture(shop, out / "eolis-8.cycstate", warp_to, records={ZONE_NAMES: {5: 0, 6: 8}})
-        tcp("load_state", path=str(out / "eolis-8.cycstate"))
-        walk_out()
-        settled_in(0, 8)
-        assert zone()["banners"] == 1, zone()
-        # The screen's enemies cleared and HP full (a prerequisite, not
-        # coverage): one hits the hero for 20 HP every few hundred frames, and a
-        # run slowed by a busy machine can lose that many before it reaches the
-        # door. Player_CheckHandleEnterDoor reads Up only on the frame it goes
-        # down, and not while the screen scrolls, so press until the key's line
-        # shows.
-        game.poke({**{SPRITE_ENTITIES + i: 0xFF for i in range(8)}, HP: 0x50})
-        for _ in range(5):
-            walk_to(186, 196)                              # the door, column 12
+            # 1. Through the gate (door at block column 12): Eolis.
+            walk_to(186, 196)
             act("up", 4, 10)
-            try:
-                until("the key's line", lambda: box_open() or ram(AREA) == 1, 120)
-                break
-            except AssertionError:
-                pass
-        for _ in range(40):                                # "You used the key"
-            if ram(AREA) == 1:
-                break
-            if box_open() and typed():
-                act("a", 6, 14)
-            else:
-                wait(10)
-        settled_in(1, 0)
-        banner("Trunk", 2)
-        print("ok: the door out of Eolis names the Trunk, once")
-        gate = out / "trunk.cycstate"
-        tcp("save_state", path=str(gate))
-        game.close()
+            settled_in(0, 1)
+            banner("Eolis", 1)
+            print("ok: walking through the gate names Eolis")
 
-        # 4. Respawn in Conflate, then travel to Apolune's Guru. He dies outside
-        #    Eolis's gate, before any entrance, so zone respawn wakes him at his
-        #    temple; dying in the Trunk would bring him back at its door.
-        (out / "game" / "faxanadu_gurus.txt").write_text("Eolis\nApolune\nConflate\n")
-        game.launch()
-        dead = out / "conflate-death.cycstate"
-        fixture(outside, dead, {TEMPLE_SPAWN_POINT: CONFLATE, PLAYER_IS_DEAD: 1})
-        tcp("load_state", path=str(dead))
-        until("the death message", lambda: ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 600)
-        for _ in range(40):
-            if (ram(AREA), ram(SCREEN)) == (BUILDINGS, TEMPLE_SCREEN[CONFLATE]):
-                break
-            if typed():
-                act("a")
-            else:
-                wait(10)
-        until("Conflate's temple", lambda: (ram(AREA), ram(SCREEN)) == (BUILDINGS, TEMPLE_SCREEN[CONFLATE]))
-        wait(60)
-        before = zone()["banners"]
-        assert zone()["showing"] is None, zone()
-        walk_out()
-        settled_in(TOWNS, 8)
-        banner("Conflate", before + 1)
-        print("ok: walking out after a respawn names Conflate")
-        walk_to(137, 152)                          # the temple's door, column 9
-        act("up", 4, 10)
-        until("Conflate's temple", lambda: ram(AREA) == BUILDINGS)
-        wait(30)
-        travel(APOLUNE)
-        wait(60)
-        assert zone()["showing"] is None and zone()["banners"] == before + 1, zone()
-        temple = out / "apolune-temple.cycstate"
-        tcp("save_state", path=str(temple))
-        walk_out()
-        settled_in(TOWNS, 1)
-        banner("Apolune", before + 2)
-        print("ok: walking out after a Guru travel journey names Apolune")
+            # 2. Into the meat shop (column 3) and out: nothing more.
+            walk_to(41, 56)
+            act("up", 4, 10)
+            until("the shop", lambda: ram(AREA) == BUILDINGS)
+            wait(30)
+            assert zone()["showing"] is None, zone()
+            shop = out / "eolis-shop.cycstate"
+            tcp("save_state", path=str(shop))
+            walk_out()
+            settled_in(0, 1)
+            wait(60)
+            assert zone()["banners"] == 1, zone()
+            print("ok: stepping out of a shop shows nothing")
 
-        # 5. A tower and a castle, out of Apolune's temple.
-        warp(temple, "fortress", 1, 0x29, PALETTE_TOWER, 0x93, 1)   # where the door on screen $28 arrives
-        settled_in(1, 0x29)
-        banner("Tower of Fortress", before + 3)
-        warp(temple, "fraternal", 6, 0x10, PALETTE_FRATERNAL, 0x91, 4)   # the door on Dartmoor's $0C
-        settled_in(6, 0x10)
-        banner("Castle of Fraternal", before + 4)
-        print("ok: a tower and a castle are named")
+        if args.wants("trunk"):
+            game_up()
+            game.load(shop)
+            # 3. Out of Eolis: the shop's door edited to lead to the door on screen 8
+            #    (record bytes 5 and 6 are where zone names last saw the hero stand),
+            #    with the "J" Key it takes in hand.
+            before = zone()["banners"]
+            warp_to = {AREA_SAVED_AREA: 0, AREA_SAVED_SCREEN: 8, PLAYER_SAVED_POS: 0x9C, HP: 0x50, SELECTED_ITEM: KEY_J}
+            fixture(shop, out / "eolis-8.cycstate", warp_to, records={ZONE_NAMES: {5: 0, 6: 8}})
+            tcp("load_state", path=str(out / "eolis-8.cycstate"))
+            walk_out()
+            settled_in(0, 8)
+            assert zone()["banners"] == before, zone()
+            # The screen's enemies cleared and HP full (a prerequisite, not
+            # coverage): one hits the hero for 20 HP every few hundred frames, and a
+            # run slowed by a busy machine can lose that many before it reaches the
+            # door. Player_CheckHandleEnterDoor reads Up only on the frame it goes
+            # down, and not while the screen scrolls, so press until the key's line
+            # shows.
+            game.poke({**{SPRITE_ENTITIES + i: 0xFF for i in range(8)}, HP: 0x50})
+            for _ in range(5):
+                walk_to(186, 196)                              # the door, column 12
+                act("up", 4, 10)
+                try:
+                    until("the key's line", lambda: box_open() or ram(AREA) == 1, 120)
+                    break
+                except AssertionError:
+                    pass
+            for _ in range(40):                                # "You used the key"
+                if ram(AREA) == 1:
+                    break
+                if box_open() and typed():
+                    act("a", 6, 14)
+                else:
+                    hurry(10)
+            settled_in(1, 0)
+            banner("Trunk", before + 1)
+            print("ok: the door out of Eolis names the Trunk, once")
+            game.close()
+
+        if args.wants("conflate-apolune"):
+            # 4. Respawn in Conflate, then travel to Apolune's Guru. He dies outside
+            #    Eolis's gate, before any entrance, so zone respawn wakes him at his
+            #    temple; dying in the Trunk would bring him back at its door.
+            (out / "game" / "faxanadu_gurus.txt").write_text("Eolis\nApolune\nConflate\n")
+            game.launch()
+            dead = out / "conflate-death.cycstate"
+            fixture(outside, dead, {TEMPLE_SPAWN_POINT: CONFLATE, PLAYER_IS_DEAD: 1})
+            tcp("load_state", path=str(dead))
+            until("the death message", lambda: ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 600)
+            for _ in range(40):
+                if (ram(AREA), ram(SCREEN)) == (BUILDINGS, TEMPLE_SCREEN[CONFLATE]):
+                    break
+                if typed():
+                    act("a")
+                else:
+                    hurry(10)
+            until("Conflate's temple", lambda: (ram(AREA), ram(SCREEN)) == (BUILDINGS, TEMPLE_SCREEN[CONFLATE]))
+            wait(60)
+            before = zone()["banners"]
+            assert zone()["showing"] is None, zone()
+            walk_out()
+            settled_in(TOWNS, 8)
+            banner("Conflate", before + 1)
+            print("ok: walking out after a respawn names Conflate")
+            walk_to(137, 152)                          # the temple's door, column 9
+            act("up", 4, 10)
+            until("Conflate's temple", lambda: ram(AREA) == BUILDINGS)
+            wait(30)
+            travel(APOLUNE)
+            wait(60)
+            assert zone()["showing"] is None and zone()["banners"] == before + 1, zone()
+            temple = out / "apolune-temple.cycstate"
+            tcp("save_state", path=str(temple))
+            walk_out()
+            settled_in(TOWNS, 1)
+            banner("Apolune", before + 2)
+            print("ok: walking out after a Guru travel journey names Apolune")
+
+        if args.wants("tower-castle"):
+            game_up()
+            game.load(shop)
+            # 5. A tower and a castle, out of a building whose door is edited to
+            #    lead there (the meat shop's; the banner is for where he arrives).
+            before = zone()["banners"]
+            warp(shop, "fortress", 1, 0x29, PALETTE_TOWER, 0x93, 1)     # where the door on screen $28 arrives
+            settled_in(1, 0x29)
+            banner("Tower of Fortress", before + 1)
+            warp(shop, "fraternal", 6, 0x10, PALETTE_FRATERNAL, 0x91, 4)   # the door on Dartmoor's $0C
+            settled_in(6, 0x10)
+            banner("Castle of Fraternal", before + 2)
+            print("ok: a tower and a castle are named")
         print("screenshots:", ", ".join(game.shots))
     except BaseException:
         game.shot("failure")
