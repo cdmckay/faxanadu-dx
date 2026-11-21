@@ -293,6 +293,30 @@ addr = 0xe44b
 bank = 15
 bytes = "10 e6 20 f6 ec b0 e7 a2 02 20 c8 e6"
 
+# Ladder fixes (fax_ladders.c): the climb's passable check in
+# Player_CheckHandleClimbUp (BNE @_return), and the entry of Trunk $28's screen
+# event, ScreenEvents_HandlePathToMasconEvent.
+
+[[mod_function_hook]]
+id = "faxanadu.ladder-fixes.climb-top"
+addr = 0xe30c
+bank = 15
+bytes = "d0 35 e6 a3 a5 a5 10 0a a5 a1 38 e9"
+
+[[mod_function_hook]]
+id = "faxanadu.ladder-fixes.fountain"
+addr = 0xef69
+bank = 15
+bytes = "ad 2d 04 29 20 f0 12 a9 ff 8d 2e 04"
+
+# Holding on to ladders (fax_ladder_hold.c): Player_HandleKnockback's entry.
+
+[[mod_function_hook]]
+id = "faxanadu.ladder-hold.knockback"
+addr = 0xe153
+bank = 15
+bytes = "a5 a4 29 40 48 49 40 85 a4 20 6b e1"
+
 # Hold A to speed up text (fax_text_speed.c): TextBox_ShowNextChar_IfReady,
 # which TextBox_ShowNextChar calls once a frame in every message loop.
 

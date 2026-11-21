@@ -974,6 +974,75 @@ def equip_indoors(s):
         s.picture(path, caption, box=(0, 96, 160, 216))
 
 
+# The map's save-state record (src/fax_map.c, as tests/map/explored_map.py writes it): a version, then the
+# screens seen, those left upward and those left downward (11 bytes an area each), then the doors used (6 an area).
+MAP_RECORD, MAP_SEEN, MAP_UP, MAP_DOORS = "faxanadu.map", 1, 1 + 88, 1 + 264
+# An early game's journey: all of Eolis, then the Trunk from its first screen past Apolune (the towns' 0 and
+# 1), up the climb ($0C to $16) and on to Forepaw (the towns' 2 and 3). The rest of the Trunk is unseen.
+MAP_SEEN_SCREENS = {AREA_EOLIS: set(range(9)), AREA_TRUNK: set(range(0x0D)) | set(range(0x16, 0x1B)),
+                    TOWNS: {0, 1, 2, 3}}
+MAP_UP_SCREENS = {AREA_TRUNK: {0x03, 0x0C, 0x16, 0x17}}         # the ladders he took, kept on the screen below
+MAP_HERE = 0x19                                                 # the Trunk's screen left of Forepaw
+
+
+def map_bits(base, size, sets):
+    """The map record's bytes for {area: items}, at `base`, `size` bytes an area."""
+    out = {}
+    for area, members in sets.items():
+        for i in members:
+            out[base + area * size + i // 8] = out.get(base + area * size + i // 8, 0) | 1 << (i % 8)
+    return out
+
+
+def most_common(rows, boxes):
+    """The commonest color inside the walls of map_state's `boxes` [area, screen, x, y, w, h, seen]."""
+    counts = {}
+    for _, _, x, y, w, h, _ in boxes:
+        for row in rows[y + 1:y + h - 1]:
+            for px in row[x + 1:x + w - 1]:
+                counts[px] = counts.get(px, 0) + 1
+    return max(counts, key=counts.get)
+
+
+@scene("map")
+def map_(s):
+    """The map, on the Trunk's page: the screens of an early game's journey
+    seen (the map's record set, as tests/map/explored_map.py's file part
+    does), the climb and the ladders he took, every door on those screens
+    used, and the hero on the screen left of Forepaw, his box caught lit as
+    it blinks. Eolis is seen too, so the page has its arrows."""
+    g = s.game
+    shop = g.state("eolis-meat-shop")
+    g.launch(at="eolis-meat-shop")
+    record = {**map_bits(MAP_SEEN, 11, MAP_SEEN_SCREENS), **map_bits(MAP_UP, 11, MAP_UP_SCREENS),
+              **map_bits(MAP_DOORS, 6, {area: set(range(48)) for area in MAP_SEEN_SCREENS})}   # drawn on seen screens
+    trunk = g.out / "trunk.cycstate"                            # out of the shop, its door edited to lead there
+    fixture(shop, trunk, {AREA_SAVED_AREA: AREA_TRUNK, AREA_SAVED_SCREEN: MAP_HERE, SCREEN_SAVED_PALETTE: PALETTE_TRUNK,
+                          PLAYER_SAVED_POS: 0xA1, AREA_REGION: AREA_TRUNK, HP: 0x50}, records={MAP_RECORD: record})
+    g.load(trunk)
+    g.walk_out()
+    assert g.where() == (AREA_TRUNK, MAP_HERE), g.where()
+    g.clear_actors()
+    g.tcp("key", name="M", frames=2)
+    g.until("the map", lambda: g.tcp("map_state")["open"], 300)
+    g.wait(4)
+    state = g.tcp("map_state")
+    assert state["page_name"] == "Trunk" and state["here"] == [AREA_TRUNK, MAP_HERE] and state["pages_seen"] == 2, state
+    boxes = [b for b in state["boxes"] if b[6]]
+    assert len(boxes) == len(MAP_SEEN_SCREENS[AREA_TRUNK]) + len(MAP_SEEN_SCREENS[TOWNS]), boxes
+    here = [b for b in boxes if b[:2] == [AREA_TRUNK, MAP_HERE]]
+    rooms = [b for b in boxes if b[0] == AREA_TRUNK and b[1] != MAP_HERE]
+    for attempt in range(8):                                    # his box blinks every 16 frames: catch it lit
+        path = g.shot(f"map-{attempt}")
+        _, rows = read_png(path)
+        if most_common(rows, here) != most_common(rows, rooms):
+            break
+        g.wait(8)
+    else:
+        raise AssertionError("the hero's box never lit")
+    s.picture(path)
+
+
 # Trunk's ledge (tests/movement/play.py's to_trunk): screen 7, a clear 80-pixel drop.
 JUMP_BOX, POSE_BOX = (0, 96, 136, 232), (0, 128, 96, 224)
 WALK_OFF = [(0, "-"), (5, "RIGHT")]                             # stand, then walk right off the ledge
@@ -1078,6 +1147,51 @@ def falling_pose(s):
         path = g.out / f"{caption.lower()}.png"
         g.headless(ledge, WALK_OFF, w + 8, mods, path)          # clear of the ledge
         s.picture(path, caption, POSE_BOX)
+
+
+# Ladders (tests/ladders/ladders.py): the fountain's screen and Trunk 6's ladder.
+QUESTS, SPRINGS_AND_PATH = 0x42D, 0x27      # the three springs done, and the path to Mascon open
+FOUNTAIN_BOX, LADDER_BOX = (0, 40, 176, 216), (136, 112, 256, 232)
+
+
+@fax_e2e.recipe("readme-trunk-27", parent="apolune-temple")
+def _readme_trunk_27(g):
+    """Out of Apolune's temple, through its door edited to lead to Trunk $27,
+    a screen right of the fountain's ($28)."""
+    g.warp(g.save("temple"), "trunk-27", AREA_TRUNK, 0x27, PALETTE_TRUNK, 0x91, AREA_TRUNK)
+    g.settle()
+
+
+@scene("ladders", MovementGame)
+def ladders(s):
+    """Ladders, fixed: with the path to Mascon open, the hero walks left into
+    the fountain's screen and straight back out to $27. The original drops the
+    fountain's ladder into $27, through its floor; the remaster leaves $27 as it
+    is. Frame exact, headless from a save state, as tests/ladders/ladders.py does."""
+    g = s.game
+    state = g.out / "trunk-27.cycstate"
+    fixture(g.state("readme-trunk-27"), state, {**play.no_actors(), QUESTS: SPRINGS_AND_PATH, HP: 0x50})
+    for caption, mods in (("Original", g.mods("mods-off", original=True)), ("Remastered", g.mods("mods-on"))):
+        path = g.out / f"{caption.lower()}.png"
+        g.headless(state, [(0, "LEFT"), (60, "RIGHT")], 300, mods, path)
+        s.picture(path, caption, FOUNTAIN_BOX)
+
+
+@scene("ladder-hold", MovementGame)
+def ladder_hold(s):
+    """Holding on to ladders: a hit on Trunk 6's ladder (the state the hit
+    leaves: invincibility, knockback, facing). The original knocks him off and
+    he falls; the remaster keeps him on it. Frame exact, headless from a save
+    state, as tests/ladders/ladders.py does."""
+    g = s.game
+    hit = g.out / "hit.cycstate"
+    fixture(g.state("trunk-ladder"), hit, {**play.no_actors(), play.X: 224, play.Y: 128, play.TICK: 0,
+                                           play.FLAGS: play.CAN_CLIMB | play.CLIMBING | play.RIGHT, HP: 0x50,
+                                           play.STATUS: play.KNOCKBACK, play.IFRAMES: 0x3C})
+    for caption, mods in (("Original", g.mods("mods-off", original=True)), ("Remastered", g.mods("mods-on"))):
+        path = g.out / f"{caption.lower()}.png"
+        g.headless(hit, [(0, "-")], 5, mods, path)               # mid-fall in the original
+        s.picture(path, caption, LADDER_BOX)
 
 
 # Keys and the Mattock, from Eolis's town (tests/keys/auto_and_reusable_keys.py).

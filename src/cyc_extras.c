@@ -15,6 +15,8 @@
 #include "fax_keys.h"
 #include "fax_falling.h"
 #include "fax_jumps.h"
+#include "fax_ladders.h"
+#include "fax_ladder_hold.h"
 #include "fax_text_speed.h"
 #include "fax_save.h"
 #include "fax_files.h"
@@ -301,6 +303,8 @@ static void tcp_setup(void *ctx) {
     fax_keys_tcp_setup();
     fax_falling_tcp_setup();
     fax_jumps_tcp_setup();
+    fax_ladders_tcp_setup();
+    fax_ladder_hold_tcp_setup();
     fax_text_speed_tcp_setup();
     fax_files_tcp_setup();
     fax_title_tcp_setup();
