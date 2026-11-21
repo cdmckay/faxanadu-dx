@@ -55,6 +55,7 @@ if(NESRECOMP_BACKEND STREQUAL "cycle")
             src/fax_indoor.c
             src/fax_damage.c
             src/fax_inventory.c
+            src/fax_map_layout.c src/fax_map.c
         MODS GAME_ID "faxanadu-usa"
         PLAYERS 1 REGION NTSC PASSWORD_SAVE "faxanadu.srm" PASSWORD_SAVE_LABEL "Mantra"
         BOXART "${CMAKE_CURRENT_SOURCE_DIR}/assets/boxart.tga")

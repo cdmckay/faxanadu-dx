@@ -121,3 +121,7 @@ id = "faxanadu.damage-numbers"
 [[plugin]]
 feature = "remastered"
 id = "faxanadu.inventory-fix"
+
+[[plugin]]
+feature = "remastered"
+id = "faxanadu.map"

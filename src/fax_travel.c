@@ -348,6 +348,9 @@ static int state_set(const uint8_t *buf, int len) {
     return 1;
 }
 
+/* For the map: the Gurus visited, a bit per temple (Eolis's always). 0 with Guru travel off. */
+uint8_t fax_travel_visited(void) { return enabled ? visited : 0; }
+
 /* For Save files, which offers saving first while a file is in play. */
 bool fax_travel_can_offer(void) { return enabled && served && !failed && talk.offer; }
 uint16_t fax_travel_say_step(void) { return enabled && served && !failed ? SAY : 0; }

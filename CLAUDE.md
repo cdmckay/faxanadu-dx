@@ -34,6 +34,7 @@ cmake --build build-cycle -j"$(nproc)"
 build-cycle/FaxanaduRecomp "Faxanadu (USA).nes"     # the launcher, then the game
 tools/test.sh                                        # every check; --quick skips the game runs
 tools/disassembly.sh                                 # chipx86's disassembly, verified, with labels
+tools/readme_screenshots.py --only NAME             # the README's screenshot of a feature
 ```
 
 There is no CI: nothing builds without the ROM, which cannot be distributed.
@@ -56,9 +57,10 @@ the full suite once before the PR.
 - `mods/`: the mod packages (`preloaded/`) and `allocations.toml`.
 - `tests/<feature>/`: a feature's unit test (with its `CMakeLists.txt`) and
   end-to-end test; `tests/e2e/` is the shared helper.
-- `tools/`: `test.sh`, the allocation checker, the disassembly, ROM checks.
-- `docs/`: GAME_INTERNALS.md and the other notes. `assets/`: the launcher's
-  box art.
+- `tools/`: `test.sh`, the allocation checker, the disassembly, ROM checks,
+  and `readme_screenshots.py`.
+- `docs/`: GAME_INTERNALS.md and the other notes; `docs/screenshots/` holds
+  the README's pictures. `assets/`: the launcher's box art.
 
 ## Building features
 
@@ -81,6 +83,13 @@ recompiler produced it; features observe and steer it.
   it in a hidden window over TCP (`tests/travel/guru_travel.py`). Add both to
   `tools/test.sh`. Give each end-to-end run its own output folder: several
   sessions may run the suite at once.
+- **Show every feature in the README.** A new feature's PR adds its
+  paragraph to the README's "What's new" and a screenshot right after it,
+  made by `tools/readme_screenshots.py`: add a `@scene` that plays the
+  feature to its moment (reuse your end-to-end test's setup), run it with
+  `--only <scene>`, look at `docs/screenshots/<scene>.png`, and commit the PNG.
+  Never commit a save state. A PR that changes how a feature looks reruns its
+  scene; rerun only the scenes you changed, so the others don't churn.
 - **End-to-end tests use the shared helper,
   [tests/e2e/fax_e2e.py](tests/e2e/fax_e2e.py)**, for the port, launching the
   game, the TCP client, save-state fixtures and screenshots. Never write your
