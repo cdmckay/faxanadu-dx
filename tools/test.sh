@@ -109,6 +109,9 @@ cmake --build "$OUT/fixes" -j"$JOBS" >/dev/null
 cmake -S tests/map -B "$OUT/map" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/map" -j"$JOBS" >/dev/null
 "$OUT/map/map_test" "$ROM"
+cmake -S tests/quests -B "$OUT/quests" >/dev/null
+cmake --build "$OUT/quests" -j"$JOBS" >/dev/null
+"$OUT/quests/quests_test" "$ROM"
 
 echo "== game build"
 [ -f build-cycle/CMakeCache.txt ] || cmake -S . -B build-cycle -DCMAKE_BUILD_TYPE=Release -DNESRECOMP_ROM="$ROM" >/dev/null

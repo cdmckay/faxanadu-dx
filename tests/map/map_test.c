@@ -35,6 +35,7 @@ void fax_text_draw(uint32_t *px, int w, int h, int x, int y, const char *s, unsi
 }
 static uint8_t gurus = 1;   /* Guru travel's visited Gurus: Eolis's from the start */
 uint8_t fax_travel_visited(void) { return gurus; }
+bool fax_quests_showing(void) { return false; }   /* the quest log, closed */
 
 /* Save files: the file in play's fields, a small key-value list. */
 static FaxSaveListener save_listener;

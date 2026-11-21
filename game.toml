@@ -726,3 +726,39 @@ id = "faxanadu.small-fixes.ointment"
 addr = 0x87dc
 bank = 14
 bytes = "ae 78 03 bc cc 02 b9 d7 b6 ac bf 03"   # Player_HandleHitByMagic
+
+# The quest log (fax_quests.c): Messages_Load's entry (A is the message: a
+# line that gives a quest gives it), IScriptAction_EndScript after Block's
+# (the quests the script completed and gave, said in its box), the line scroll
+# after Save files' (kept while a quest line shows), and GameLoop_CheckPauseGame's
+# two BEQs after the map's (the log opens through the game's pause).
+
+[[mod_function_hook]]
+id = "faxanadu.quests.message"
+addr = 0xf3f5
+bank = 15
+bytes = "8d 13 02 ad 00 01 48 a2 0d 20 1a cc"   # Messages_Load: STA MessageID, LDA CurrentROMBank, PHA, LDX #$0D
+
+[[mod_function_hook]]
+id = "faxanadu.quests.end-script"
+addr = 0x82b4
+bank = 12
+bytes = "20 b0 87 ad 01 02 10 06 20 81 f2 4c"
+
+[[mod_function_hook]]
+id = "faxanadu.quests.scroll"
+addr = 0xf439
+bank = 15
+bytes = "8d 16 02 8d 17 02 8d 15 02 8d 1c 02"
+
+[[mod_function_hook]]
+id = "faxanadu.quests.check"
+addr = 0xe02f
+bank = 15
+bytes = "f0 f9 a9 01 8d 20 01 20 25 ca 20 a8"
+
+[[mod_function_hook]]
+id = "faxanadu.quests.loop"
+addr = 0xe040
+bank = 15
+bytes = "f0 f4 a9 00 8d 20 01 60 a5 18 85 16"

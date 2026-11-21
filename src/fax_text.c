@@ -143,6 +143,11 @@ void fax_text_box_rom(uint32_t *px, int w, int h, int x, int y, int cols, int ro
         }
 }
 
+const uint8_t *fax_text_glyph(char ch) {
+    unsigned c = (unsigned char)ch;
+    return loaded && c >= FIRST && c < FIRST + GLYPHS ? glyphs[c - FIRST] : NULL;
+}
+
 void fax_text_draw_color(uint32_t *px, int w, int h, int x, int y, const char *s, uint32_t color, unsigned alpha) {
     if (!loaded) return;
     for (; *s; ++s, x += FAX_TEXT_CELL) {

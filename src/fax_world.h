@@ -16,3 +16,8 @@ bool fax_world_origin(int *x,int *y);
  * where its top-left sat in that picture. False when the picture showed no
  * world, or showed another area, or the room is not on its map. */
 bool fax_world_room_origin(int area,int room,int *x,int *y);
+/* The CPU RAM of a neighbouring room of `area` whose actors Seamless keeps
+ * running (its sprite slots, as CurrentSprites_* hold them): NULL for the
+ * active room, a room not on the map around it, or one not running. For the
+ * quest log's marks over the people next door. */
+const uint8_t *fax_world_room_ram(int area,int room);

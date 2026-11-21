@@ -33,6 +33,7 @@
 #include "fax_inventory.h"
 #include "fax_fixes.h"
 #include "fax_map.h"
+#include "fax_quests.h"
 #ifdef CYC_WITH_SDL
 #include "cyc_tcp.h"
 #include <SDL.h>
@@ -254,6 +255,7 @@ static void frame_end(void *ctx) {
     fax_sugata_frame_end();
     fax_damage_frame_end();
     fax_map_frame_end();
+    fax_quests_frame_end();
     if (tiles_enabled || tile_dump) chr_override_frame_end();
     /* Save files replace the mantra; faxanadu.srm is then only for importing. */
     if (!cyc_host_saves_enabled() || frame % 900 || fax_save_enabled()) return;
@@ -320,12 +322,14 @@ static void tcp_setup(void *ctx) {
     fax_inventory_tcp_setup();
     fax_fixes_tcp_setup();
     fax_map_tcp_setup();
+    fax_quests_tcp_setup();
 }
 #endif
 static const uint32_t *present(void *ctx,int *w,int *h) {
     (void)ctx;
-    const uint32_t *picture=fax_files_present(fax_title_present(fax_speaker_present(fax_slain_present(fax_banner_present(fax_damage_present(fax_sugata_present(fax_world_present(w,h,cyc_frame_argb()),w,h),w,h),w,h),w,h),w,h),w,h),w,h);
-    return fax_map_present(fax_shops_present(picture,w,h),w,h);
+    const uint32_t *picture=fax_quests_marks_present(fax_damage_present(fax_sugata_present(fax_world_present(w,h,cyc_frame_argb()),w,h),w,h),w,h);
+    picture=fax_files_present(fax_title_present(fax_speaker_present(fax_quests_banner_present(fax_slain_present(fax_banner_present(picture,w,h),w,h),w,h),w,h),w,h),w,h);
+    return fax_quests_log_present(fax_map_present(fax_shops_present(picture,w,h),w,h),w,h);
 }
 static void event(void *ctx,const void *e,int player) {
     (void)ctx;(void)player;
@@ -333,17 +337,19 @@ static void event(void *ctx,const void *e,int player) {
     fax_magic_event(e);
     fax_block_event(e);
     fax_map_event(e);
+    fax_quests_event(e);
 }
 static void input(void *ctx, uint8_t buttons[2]) { (void)ctx; fax_block_input(buttons); }
 static void load_setting(void *ctx, const char *key, const char *value) {
     (void)ctx;
-    if (!fax_magic_load_setting(key, value) && !fax_block_load_setting(key, value)) fax_map_load_setting(key, value);
+    if (!fax_magic_load_setting(key, value) && !fax_block_load_setting(key, value) && !fax_map_load_setting(key, value))
+        fax_quests_load_setting(key, value);
 }
 static void save_settings(void *ctx, FILE *f) {
-    (void)ctx; fax_magic_save_settings(f); fax_block_save_settings(f); fax_map_save_settings(f);
+    (void)ctx; fax_magic_save_settings(f); fax_block_save_settings(f); fax_map_save_settings(f); fax_quests_save_settings(f);
 }
 #ifdef CYC_WITH_RECOMP_UI
-/* The runtime menu's Controls section: the Magic, Block and Map buttons' bindings,
+/* The runtime menu's Controls section: the Magic, Block, Map and Quest log buttons' bindings,
  * information rows like the host's own shortcuts. */
 static RecompRuntimeUiItem menu_rows[] = {
     { "faxanadu.magic", "Controls", "Magic", "Casts like Up+B. Rebind it in config.ini [Game].",
@@ -352,11 +358,13 @@ static RecompRuntimeUiItem menu_rows[] = {
       RECOMP_RUNTIME_UI_ACTION, 0, 0, 0, NULL, 0, NULL },
     { "faxanadu.map", "Controls", "Map", "Shows the screens you've been to. Rebind it in config.ini [Game].",
       RECOMP_RUNTIME_UI_ACTION, 0, 0, 0, NULL, 0, NULL },
+    { "faxanadu.quests", "Controls", "Quest log", "Lists your quests. Rebind it in config.ini [Game].",
+      RECOMP_RUNTIME_UI_ACTION, 0, 0, 0, NULL, 0, NULL },
 };
 static int menu_row_enabled(void *ctx, const RecompRuntimeUiItem *it) { (void)ctx; (void)it; return 0; }
 static const RecompRuntimeUiCallbacks menu_callbacks = { .is_enabled = menu_row_enabled };
 #endif
-static void state_loaded(void *ctx) {(void)ctx;fax_world_loaded();fax_block_loaded();fax_files_state_loaded();}
+static void state_loaded(void *ctx) {(void)ctx;fax_world_loaded();fax_block_loaded();fax_files_state_loaded();fax_quests_loaded();}
 const CycHostExtras *cyc_host_extras(void) {
     static const CycHostOption options[] = {
         { "--password", true, "Prefill a 1..24 character mantra (spaces allowed)" },
@@ -371,6 +379,7 @@ const CycHostExtras *cyc_host_extras(void) {
     menu_rows[0].label = fax_magic_controls_label();
     menu_rows[1].label = fax_block_controls_label();
     menu_rows[2].label = fax_map_controls_label();
+    menu_rows[3].label = fax_quests_controls_label();
 #endif
     static const CycHostExtras extras = {
         .present=present,.event=event,.input=input,
