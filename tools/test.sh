@@ -153,8 +153,8 @@ E2E=(
   "title+sw     tests/title/title_remastered.py $SW"
   "slain        tests/slain/slain_by.py"
   "slain+sw     tests/slain/slain_by.py $SW"
-  "indoor       tests/indoor/indoor_equip.py"
-  "indoor+sw    tests/indoor/indoor_equip.py $SW"
+  "indoor       tests/indoor/indoor_equip.py --parts"
+  "indoor+sw    tests/indoor/indoor_equip.py --parts $SW"
   "damage       tests/damage/damage_numbers.py"
   "damage+sw    tests/damage/damage_numbers.py $SW"
 )
