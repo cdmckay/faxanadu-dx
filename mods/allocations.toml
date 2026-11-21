@@ -523,17 +523,19 @@ rom = []
 # hooks, and Player_HandleHitByMagic ($87DC), shared with Block (below). At
 # the TAX it changes only A. At the mantra it writes Message_StartAddr and
 # Message_ProcessedLength ($0218, $0219, $0214), which only the mantra's
-# line-end check reads before the next Messages_Load sets them again. No ROM,
-# no read overrides, no state.
+# line-end check reads before the next Messages_Load sets them again. At
+# Player_HandleHitByMagic it only reads Player_InvincibilityPhase and
+# DurationOintment. No ROM, no read overrides, no state.
 
 [[shared_site]]
 addr = 0x87DC   # Player_HandleHitByMagic
-hooks = ["faxanadu.block.shield-hit", "faxanadu.small-fixes.ointment"]
+hooks = ["faxanadu.block.shield-hit", "faxanadu.small-fixes.shield-hit"]
 why = """Both only skip the routine, so the shield lets nothing through, or \
 decline; neither writes anything. Block's comes first in game.toml and \
-handles the call while Block is up, counting the save as its own; Small \
-fixes' then handles it under Ointment. Either way the caller, \
-Player_HandleShieldHitByMagic, removes the shot with the shield's sound."""
+handles the call while Block is up, counting the save as its own, iframes \
+or Ointment running or not; Small fixes' then handles it during iframes or \
+under Ointment. Either way the caller, Player_HandleShieldHitByMagic, \
+removes the shot with the shield's sound."""
 
 [[feature]]
 id = "graphics-fix"

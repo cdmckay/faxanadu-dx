@@ -102,6 +102,11 @@ you, except a shot that hit your shield: the shield still let its share
 through and knocked you back. Now Ointment covers that too: the shield takes
 the shot, and you take nothing.
 
+**The shield after a hit, fixed.** For a second after you are hit, an enemy
+or a shot that touches you does nothing, but in the original a shot on your
+shield still let its share through and knocked you back once more. Now the
+shield takes it, and you take nothing.
+
 **Damage numbers.** Every hit that takes HP shows how much, in the status
 bar's own digits, floating up from where it landed and fading: white for the
 damage you deal, with your weapon, your magic or a reflected flash, and pink

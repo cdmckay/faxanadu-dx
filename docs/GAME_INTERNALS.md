@@ -1008,10 +1008,27 @@ against the hero:
   or not. The 40th Anniversary Edition's notes list the same fix ("shield
   could no longer be hit while ointment was in use"). Small fixes skips
   `Player_HandleHitByMagic` while Ointment runs; the shield still takes the
-  shot, with its sound. The same routine ignores iframes too (nothing on the
-  way from `Sprites_UpdateAll` checks them), so by the code a second shot on
-  the shield inside the 60 frames after a hit hurts again; that is left as it
-  is.
+  shot, with its sound.
+- **Iframes do not cover the shield in the original either.** Nothing on the
+  way from `Sprites_UpdateAll` to `Player_HandleHitByMagic` looks at
+  `Player_InvincibilityPhase`, so a shot on the shield inside the 60 frames
+  after a hit hurts again, while one that touches the hero then does nothing.
+  On Zenis's screen 16 (below), the Hood's shot and a copy of it 16 pixels
+  behind, both at the Small Shield's height, the hero at x 120: the first
+  takes 4 and sets the phase to `$3C`; the second lands 20 frames later, with
+  the phase at 41, takes 4 more, sets it back to `$3C` and knocks him back
+  another 24 pixels. By the code, two shots in the same frame both hurt too.
+  Small fixes also skips `Player_HandleHitByMagic` while the phase is not 0,
+  checking it before Ointment as `Player_HandleTouchEnemyMagic` does: the
+  shield takes the shot, with its sound, and the phase counts on from the
+  first hit. The game sets the phase only on a hit (a sprite's touch or shot,
+  Sugata's flash, the Poison) and clears it in `Player_HandleDeath` and
+  `Player_SetInitialState`. Seamless gives the hero's copy in a neighboring
+  room 200, in isolation, so with Small fixes shots stop at his shield there
+  as they pass through his body.
+- **The shield's sound** shows in `SoundEffect_Current` (`$00FB`), which
+  `Sound_PlayEffect` sets to the sound queued that frame (`$0C`) and the
+  sound engine marks playing with bit 7 on its next tick (`$8C`).
 - **Iframes and knockback.** A hit sets `Player_InvincibilityPhase` (`$00AD`)
   to `$3C` and `Player_StatusFlag` (`$00A5`) bit `$02`, knockback.
   `Player_HandleIFrames` (`$E0E8`) counts the phase down each frame and
@@ -1071,6 +1088,16 @@ body, then the weapon: `JSR Player_DrawShield`, `Player_DrawBody` (`$EBEE`),
 `$0F`, region 5, position `$91`), an Execution Hood casts a shot (`$51`,
 8 HP) at the hero from the right. Editing the shot's Y in a save state aims
 it at the shield (150, the hero on the ledge at 144) or his head (136).
+
+- **Where a hit leaves him.** A hit's knockback is 8 pixels a frame for three
+  frames. From where he arrives (x 16), it carries him to the screen's left
+  edge, and the screen changes; the floor to his right has a gap, and knocked
+  back to x 48 he falls through it to screen 3. Moved to x 120 in the save
+  state, two knockbacks leave him on the floor at 72.
+- **A second shot** is a copy of the first in an empty slot: the same byte
+  in every per-slot sprite array (`CurrentSprites_XPos_Full` `$BA`, `_YPos`
+  `$C2`, and `$02BC`-`$036C` every 8 bytes, `_XPos_Frac` to `_Values`), with
+  its X moved back.
 
 ## Sugata's flash (bank 14)
 
@@ -2576,17 +2603,19 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
   has its last entry replaced, as the Battle Helmet's pickup and the shops
   do. It keeps no state, so it also runs in Seamless's isolated rooms (it
   counts pickups only outside them). See *Items and the inventory*.
-- **Small fixes** (`fax_fixes.c`). Three of the original's small bugs
-  (#39), each a hook that keeps no state, so each also runs in Seamless's
-  isolated rooms (counting only outside them). At `SoundEffect_Message_OnTick`'s
-  `TAX` (`$86B2`, bank 5) it halves A, so the typing sound's ticks 3 and 4
-  read the table's `$01`, not the `$A9` past its end (see *How text types*).
-  At `IScriptAction_ShowPassword`'s entry (`$8737`, bank 12) it points the
-  message at `PASSWORD_ENTERED_CHARS`, so the mantra's line-end check, which
-  reads with bank 12 mapped, always starts a new line (see *The mantra*). At
-  `Player_HandleHitByMagic` (`$87DC`, bank 14), after Block's hook, it skips
-  the routine while Ointment runs, so magic on the shield does nothing
-  under Ointment (see *Shields and enemy magic*).
+- **Small fixes** (`fax_fixes.c`). Four of the original's small bugs
+  (#39, #82), in three hooks that keep no state, so each also runs in
+  Seamless's isolated rooms (counting only outside them). At
+  `SoundEffect_Message_OnTick`'s `TAX` (`$86B2`, bank 5) it halves A, so the
+  typing sound's ticks 3 and 4 read the table's `$01`, not the `$A9` past its
+  end (see *How text types*). At `IScriptAction_ShowPassword`'s entry
+  (`$8737`, bank 12) it points the message at `PASSWORD_ENTERED_CHARS`, so the
+  mantra's line-end check, which reads with bank 12 mapped, always starts a
+  new line (see *The mantra*). At `Player_HandleHitByMagic` (`$87DC`, bank
+  14), after Block's hook, it skips the routine while
+  `Player_InvincibilityPhase` is not 0 or Ointment runs, so magic on the
+  shield does nothing during iframes or under Ointment, as magic on the hero
+  does (see *Shields and enemy magic*).
 - **Magic button** (`fax_magic.c`). A bindable button (C, or Y on a
   controller) casts the selected spell. On a press, it ORs Up held and B new
   into the joypad masks at `Player_CastMagic`'s entry, when `Game_MainLoop`

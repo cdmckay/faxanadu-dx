@@ -1,12 +1,12 @@
 """Play Small fixes end to end: the original's typing sound, the mantra's line
-ends, and Ointment against magic on the shield (#39).
+ends, and Ointment (#39) and iframes (#82) against magic on the shield.
 
     python3 tests/fixes/small_fixes.py --build build-cycle --rom "Faxanadu (USA).nes" --out /tmp/fixes
 
 Each check runs the same moment twice, headless from one save state, frame
 exact: with the remaster off (the original game, where the bug shows) and on
 (where it is gone). The save states come from fixtures (tests/e2e/fax_e2e.py)
-with RAM edited where noted (an external prerequisite, not coverage). Three
+with RAM edited where noted (an external prerequisite, not coverage). Four
 parts (--list-parts), each its own game:
 
 sound     Before Conflate's Guru (died into his temple from Eolis's gate), Up:
@@ -38,8 +38,21 @@ ointment  The Execution Hood's shot in the Fortress of Zenis (Block's fixture,
           under Ointment passes through him, doing nothing, in both:
           Player_HandleTouchEnemyMagic checks Ointment, the shield's
           Player_HandleHitByMagic does not.
+iframes   The same shot and a copy of it 16 pixels behind, both at the Small
+          Shield's height, the hero moved right along the floor (x 120) so
+          that knockback keeps him on it, no Ointment. The first takes 4 and
+          starts the 60 iframes; the second lands 20 frames later, inside
+          them. In the original it takes 4 more, starts the iframes over and
+          knocks him back again (Player_HandleHitByMagic never checks them).
+          With the fix it takes nothing, the iframes go on counting down and
+          he stays put; the shield still takes it (the shot is gone, its sound
+          $0C queued that frame). Then in a window, from just after the first
+          hit, with Block, whose hook runs first at the same site: raised
+          then, Block takes the second shot and Small fixes counts nothing;
+          not raised, Small fixes takes it, and with Ointment running too
+          counts it as iframes, which the touch handler checks first.
 
-Pictures of each mantra, and of the shot on the shield, go in OUT.
+Pictures of each mantra, and of the shots on the shield, go in OUT.
 """
 from pathlib import Path
 import shutil
@@ -58,12 +71,17 @@ import harness  # noqa: E402
 import guru_travel  # noqa: E402,F401  (registers the fixture "travel-conflate-temple")
 
 PACKAGE, FEATURE = "faxanadu.remastered", "remastered"          # the one switch: off is the original game
-PARTS = ("sound", "mantra", "ointment")
+PARTS = ("sound", "mantra", "ointment", "iframes")
 # RAM
 IFRAMES, SOUND_NOISE_TICKS, SOUND_COUNTER = 0xAD, 0x126, 0x127  # Player_InvincibilityPhase;
 #                                         SoundEffect_TicksRemaining_3_ (the noise channel's), _State_Counter
 MESSAGE_ID, PROCESSED, CHAR_POS, LINE_NUM, MESSAGE_START = 0x213, 0x214, 0x216, 0x217, 0x218
-ENTITIES, SPRITE_Y = 0x2CC, 0xC2
+ENTITIES, SPRITE_X, SPRITE_Y = 0x2CC, 0xBA, 0xC2
+# Every per-slot sprite array, CurrentSprites_XPos_Full and _YPos, then
+# _XPos_Frac to _Values: copying a slot's bytes copies the sprite.
+SPRITE_ARRAYS = (SPRITE_X, SPRITE_Y) + tuple(range(0x2BC, 0x374, 8))
+POS_X, SOUND_CURRENT = 0x9E, 0xFB                               # Player_PosX_Block; SoundEffect_Current (bit 7 once
+#                                                                 started)
 WEAPONS, ARMOR, SHIELDS, SPELLS, ITEMS = 0x39D, 0x3A1, 0x3A5, 0x3A9, 0x3AD
 SELECTED_SHIELD, COUNTS = 0x3BF, 0x3C2                          # NumberOfWeapons, ...Armors, Shields, Spells, Items
 DURATION_OINTMENT, SPECIAL_ITEMS, QUESTS, HP = 0x427, 0x42C, 0x42D, 0x431
@@ -75,6 +93,13 @@ MEDITATE_WITH_YOU = 0x22                                        # the Guru's gre
 AFTER_GREETING, BANK12_FF = 0x876B, 0x8760                      # the next message's first byte; bank 12's $FF
 HOOD_MAGIC, SMALL = 0x51, 0
 SHIELD_HEIGHT, HEAD_HEIGHT = 150, 136                           # the shot's Y, the hero on the ledge at 144
+SHIELD_SOUND, IFRAMES_ON_HIT, KNOCKBACK = 0x0C, 60, 24          # Player_HandleShieldHitByMagic's sound; a hit's iframes,
+#                                                                 and how far it knocks him back
+ON_THE_FLOOR, TRAILING = 120, 16                                # the hero's X on screen 16's floor (knocked back twice:
+#                                                                 72; to 48, he falls through its gap); the second
+#                                                                 shot's distance behind the first
+BETWEEN_HITS = 45                                               # frames into the two shots: after the first hit's
+#                                                                 knockback, well before the second
 MANTRA_BOX = (96, 140, 232, 168)                                # the text box's first two lines of text
 # Enough for a long mantra: three weapons, three armors, two shields, three
 # spells and six items, the Ring of Elf, the Black Onyx and the Pendant. No
@@ -104,12 +129,13 @@ class Game(harness.Game):
             (root / "state.toml").write_text(fax_e2e.features_toml({(PACKAGE, FEATURE): False} if original else {}))
         return root
 
-    def headless(self, state, schedule, frames, original, picture=None, states=False):
+    def headless(self, state, schedule, frames, original, picture=None, states=False, save=None):
         """Play `frames` frames from `state` with no window, frame exact, the
         remaster off (`original`) or on, buttons held on a schedule of
         (frame, buttons) from the state's frame ("UP", "-" for none). Returns
         each frame's CPU RAM, and with `states` each frame's APU chunk too.
-        With `picture`, the last frame's picture goes there."""
+        With `picture`, the last frame's picture goes there; with `save`,
+        (frame, path), the state at the start of that frame goes to path."""
         start = struct.unpack_from("<I", Path(state).read_bytes(), 28)[0]
         run = Path(tempfile.mkdtemp(prefix="run-", dir=self.out))
         (run / "input.txt").write_text("".join(f"{start + at} {buttons}\n" for at, buttons in sorted(schedule)))
@@ -123,6 +149,8 @@ class Game(harness.Game):
         if states:
             for k in range(frames):
                 args += ["--save-state", f"{start + k}:{run / f'{k:03d}.cycstate'}"]
+        if save:
+            args += ["--save-state", f"{start + save[0]}:{save[1]}"]
         done = subprocess.run(args, capture_output=True, text=True)
         assert done.returncode == 0, done.stdout + done.stderr
         data = log.read_bytes()
@@ -260,6 +288,89 @@ def main():
             print("ok: the Small Shield lets 4 of the shot's 8 through in both; under Ointment a shot at his head "
                   "does nothing in both, and one on the shield 4 and knockback in the original, nothing in the "
                   "remaster, the shield still taking it")
+
+        if args.wants("iframes"):
+            cast = g.state("block-hood-cast")
+            entities = [state_ram(cast, ENTITIES + i) for i in range(8)]
+            slot = entities.index(HOOD_MAGIC)
+            copy = next(i for i in range(8) if i != slot and entities[i] == 0xFF)
+            writes = {ENTITIES + i: 0xFF for i in range(8) if i != slot}
+            writes.update({base + copy: state_ram(cast, base + slot) for base in SPRITE_ARRAYS})
+            writes.update({SPRITE_X + copy: state_ram(cast, SPRITE_X + slot) + TRAILING, SPRITE_Y + slot: SHIELD_HEIGHT,
+                           SPRITE_Y + copy: SHIELD_HEIGHT, POS_X: ON_THE_FLOOR, SELECTED_SHIELD: SMALL, HP: 0x50,
+                           DURATION_OINTMENT: 0xFF, IFRAMES: 0})
+            two = out / "two-shots.cycstate"
+            fixture(cast, two, writes)
+            between = out / "between-hits.cycstate"
+
+            def hits(rams):
+                """Each shot's end: (its frame, HP lost then, the iframes and
+                SoundEffect_Current that frame, the hero's X before it and
+                three frames after, when knockback is over)."""
+                seen = []
+                for s in (slot, copy):
+                    k = next(k for k, r in enumerate(rams) if r[ENTITIES + s] != HOOD_MAGIC)
+                    after = rams[min(k + 3, len(rams) - 1)]
+                    seen.append((k, rams[k - 1][HP] - rams[k][HP], rams[k][IFRAMES], rams[k][SOUND_CURRENT],
+                                 rams[k - 1][POS_X], after[POS_X]))
+                return seen
+
+            frames = {}
+            for original in (True, False):
+                tag = "original" if original else "remastered"
+                rams = g.headless(two, [], 70, original, picture=out / f"two-shots-{tag}.png",
+                                  save=None if original else (BETWEEN_HITS, between))
+                g.shots.append(f"two-shots-{tag}.png")
+                (k1, lost1, iframes1, sound1, x1, after1), (k2, lost2, iframes2, sound2, x2, after2) = hits(rams)
+                frames[tag] = (k1, k2)
+                assert (lost1, iframes1, sound1) == (4, IFRAMES_ON_HIT, SHIELD_SOUND), (tag, rams[k1][HP], iframes1)
+                assert x1 - after1 == KNOCKBACK, (tag, x1, after1)
+                assert 0 < k2 - k1 < IFRAMES_ON_HIT and rams[k2 - 1][IFRAMES] > 0, (tag, k1, k2)
+                assert sound2 == SHIELD_SOUND, (tag, sound2)
+                if original:
+                    assert (lost2, iframes2, x2 - after2) == (4, IFRAMES_ON_HIT, KNOCKBACK), (tag, lost2, iframes2)
+                else:
+                    assert (lost2, iframes2, after2) == (0, rams[k2 - 1][IFRAMES] - 1, x2), (tag, lost2, iframes2)
+            assert frames["original"] == frames["remastered"], frames
+            k1, k2 = frames["original"]
+            assert k1 + 3 < BETWEEN_HITS < k2 - 10, (k1, k2)
+            print(f"ok: two shots on the Small Shield {k2 - k1} frames apart: the original takes 4 and 4, the second "
+                  f"starting the iframes over and knocking him back {KNOCKBACK} pixels again; the remaster takes 4 "
+                  "and nothing, the iframes counting on and the hero still, the shield taking both with its sound")
+
+            # Block, whose hook comes first, from just after the first hit.
+            g.set_features({})                                  # the remaster on, after the mantra part's original
+            g.launch()
+            assert g.tcp("block_state")["enabled"] and g.tcp("small_fixes_state")["enabled"]
+
+            def second_shot(state, *keys):
+                """From `state`, the second shot played out, with `keys` held
+                from its first frame: (HP lost, Block's saves, Small fixes'
+                iframe and Ointment saves)."""
+                *_, block, fixes = g.batch(("load_state", dict(path=str(state))),
+                                           *(("key", dict(name=k, frames=40)) for k in keys),
+                                           ("block_state", {}), ("small_fixes_state", {}))
+                g.until("the second shot to be gone", lambda: g.ram(ENTITIES + copy) != HOOD_MAGIC, 60)
+                g.wait(4)
+                lost = state_ram(state, HP) - g.ram(HP)
+                block2, fixes2 = g.tcp("block_state"), g.tcp("small_fixes_state")
+                if keys:
+                    g.until("Block to be let go", lambda: not g.tcp("block_state")["held"], 60)
+                return (lost, block2["shield_saved"] - block["shield_saved"],
+                        fixes2["iframes_saved"] - fixes["iframes_saved"],
+                        fixes2["ointment_saved"] - fixes["ointment_saved"])
+
+            assert state_ram(between, IFRAMES) > 0 and state_ram(between, ENTITIES + copy) == HOOD_MAGIC
+            seen = second_shot(between, "V")
+            assert seen == (0, 1, 0, 0), seen
+            seen = second_shot(between)
+            assert seen == (0, 0, 1, 0), seen
+            both = out / "between-hits-ointment.cycstate"
+            fixture(between, both, {DURATION_OINTMENT: 0x05})
+            seen = second_shot(both)
+            assert seen == (0, 0, 1, 0), seen
+            print("ok: during the iframes, with Block up, Block's hook takes the second shot and Small fixes counts "
+                  "nothing; without it, Small fixes takes it, as iframes with Ointment running too")
         print("screenshots:", ", ".join(g.shots))
     except BaseException:
         if g.running():
