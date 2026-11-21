@@ -492,7 +492,13 @@ def main():
             # 3. Ripasheiku, at the top of the Tower of Trunk.
             warp(shop, "boss", TRUNK, 0x15, 0x95, PALETTE_TOWER, 1, {SELECTED_ITEM: HOUR_GLASS, NUMBER_OF_ITEMS: 0})
             boss = ram(SPRITE_ENTITIES, 8).index(RIPASHEIKU)
-            use()
+            for _ in range(3):                                          # a shot's knockback can take the press
+                use()
+                try:
+                    until("the Hour Glass's line", lambda: ram(MESSAGE_ID) == USED_HOUR_GLASS, 60)
+                    break
+                except AssertionError:
+                    pass
             dismiss(USED_HOUR_GLASS)
             assert ram(DURATION_HOUR_GLASS) in (FREEZE, FREEZE - 1)
             counter = ram(SPRITE_UPDATE_COUNTER)
@@ -675,6 +681,8 @@ def main():
                     want = {"a", "dpup"} | steer(x, 216)                # round the ledge's right end, up the right side
                 elif screen == 0x25 and x > 186:
                     want = {"a"} | ({"dpup"} if y > 16 else set()) | steer(x, 182)   # along the top, over the man
+                elif screen == 0x25 and x < 172:
+                    want = {"a"} | ({"dpup"} if y > 16 else set()) | steer(x, 180)   # past his ledge (a late read): back
                 elif screen == 0x25:
                     press(set(), now)                                   # let go: down onto his ledge
                     break
