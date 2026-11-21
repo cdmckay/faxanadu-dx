@@ -1,0 +1,18 @@
+cmake_minimum_required(VERSION 3.20)
+project(FaxanaduLadderTests C)
+set(CMAKE_C_STANDARD 11)
+if(NOT NESRECOMP_ROOT)
+    message(FATAL_ERROR "Set NESRECOMP_ROOT to the game's cycle engine checkout")
+endif()
+# fax_ladders.c and fax_ladder_hold.c are included by their tests, against
+# tests/movement/model.h, a model of the machine and the hero's update.
+foreach(test ladders ladder_hold)
+    add_executable(${test}_test ${test}_test.c)
+    target_include_directories(${test}_test PRIVATE ../../src ${NESRECOMP_ROOT}/runner/include ${NESRECOMP_ROOT}/runner/cyc)
+    if(NOT MSVC)
+        target_compile_options(${test}_test PRIVATE -Wall -Wextra)
+    endif()
+endforeach()
+enable_testing()
+add_test(NAME ladders_unit COMMAND ladders_test)
+add_test(NAME ladder_hold_unit COMMAND ladder_hold_test)

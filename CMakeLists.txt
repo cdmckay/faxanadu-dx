@@ -42,6 +42,7 @@ if(NESRECOMP_BACKEND STREQUAL "cycle")
             src/fax_speaker.c
             src/fax_keys.c
             src/fax_falling.c src/fax_jumps.c
+            src/fax_ladders.c src/fax_ladder_hold.c
             src/fax_text_speed.c
             src/fax_save.c src/fax_files.c
             src/fax_title.c

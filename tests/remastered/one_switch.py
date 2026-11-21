@@ -46,6 +46,7 @@ STATES = {
     "auto-keys": ("keys_state", "auto"), "reusable-tools": ("keys_state", "reuse"),
     "recharging-items": ("recharge_state", "enabled"),
     "forgiving-jumps": ("forgiving_jumps_state", "enabled"), "falling-pose": ("falling_pose_state", "enabled"),
+    "ladder-fixes": ("ladders_state", "enabled"), "ladder-hold": ("ladder_hold_state", "enabled"),
     "text-speed": ("text_speed_state", "enabled"), "zone-names": ("zone_state", "enabled"),
     "speaker-names": ("speaker_state", "enabled"), "slain-by": ("slain_state", "enabled"),
     "title-remastered": ("title_state", "enabled"),

@@ -108,6 +108,18 @@ raising Block drops a press it was keeping, so you land standing your ground.
 mid-step, as if walking on air. Now he shows the jump pose until he lands, as
 in a jump.
 
+**Ladders, fixed.** Holding Up at the top of a ladder used to lift you a pixel
+past its end, drop you, and lift you again, bobbing for as long as you held
+it. Now you stop at the top, and A jumps from there as soon as you let go of
+Up; the original jumped only if you let go right after a drop. And walking
+into the fountain's screen below the Mist and straight back out dropped the
+fountain's ladder into the next screen, through its floor; now it drops only
+on its own screen.
+
+**Holding on to ladders.** A hit while you're on a ladder no longer knocks you
+off it: you take the damage and hold on. On the ground, knockback is as
+before.
+
 ### Keys and items
 
 **Keys that find themselves.** Press Up at a locked door and the right key
