@@ -74,6 +74,7 @@ TRUNK, MIST, BRANCH, DARTMOOR, ZENIS = 1, 2, 5, 6, 7
 REGION = {TRUNK: 1, MIST: 2, BRANCH: 3, DARTMOOR: 4, ZENIS: 5}
 RAIDEN, ZOMBIE, SUGATA, GIANT_STRIDER, GAWAINE = 0x04, 0x06, 0x18, 0x1E, 0x1F
 MASKMAN, WOLFMAN, IKEDA, LAMPREY = 0x20, 0x21, 0x26, 0x28
+YUINARU, ZOZURA = 0x0B, 0x47
 
 # Each spot: what it is, the screen (area, screen, palette), the way in, the
 # enemy (entity, stock block, new block; YX as bank 11 stores them), and the
@@ -101,6 +102,9 @@ SPOTS = [
     ("the Castle of Fraternal's way out", (DARTMOOR, 0x0C, 0x0C), ("door", 0x10, 0x0D, 0x90, None),
      (WOLFMAN, 0xAB, 0xAD), 16),
     # EDGES
+    ("Trunk $0D, walking left in from $0E", (TRUNK, 0x0D, 0x06), ("edge", "left", 0x0E, 0x06, 0, 4), (ZOZURA, 0x5E, 0x7E), 10),
+    ("Trunk $17, walking right in from $16", (TRUNK, 0x17, 0x06), ("edge", "right", 0x16, 0x06, 15, 4), (YUINARU, 0x5F, 0x5E), 10),
+    ("Mist $04, climbing down from $2A", (MIST, 0x04, 0x0A), ("edge", "down", 0x2A, 0x0A, 2, 9), (IKEDA, 0x22, 0x34), 12),
 ]
 
 

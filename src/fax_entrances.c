@@ -1,10 +1,11 @@
 /* Fair entrances. USA 57dd23d1, chipx86 byte-exact disassembly.
- * A few enemies are placed where the hero comes onto their screen (a door, a
- * building's way out, a temple's), so they hit him before the player can
- * react: on his first update, or within a few frames, whatever he presses.
- * This moves just those, a little way off; every other enemy stays where the
- * original puts it (#44). The spots and the measurements behind each move are
- * in docs/GAME_INTERNALS.md, "Enemy placement and fair entrances".
+ * Some enemies are placed where the hero comes onto their screen (a door, a
+ * building's or a temple's way out, a screen's edge, a ladder, the bottom of
+ * a drop), so they hit him before the player can react: on his first update,
+ * or before anything he presses once he could react saves him. This moves
+ * just those, a little way off; every other enemy stays where the original
+ * puts it (#44). The spots and the measurements behind each move are in
+ * docs/GAME_INTERNALS.md, "Enemy placement and fair entrances".
  *
  * Each screen's sprites come from bank 11's placement list, one (entity, YX)
  * pair at a time: Screen_LoadSpriteInfo reads a pair into CurrentSprite_Entity,
@@ -55,8 +56,8 @@
 typedef struct { uint8_t area, screen, entity, from, to; } FaxEntranceMove;
 
 /* Entities, from chipx86's DEFS.asm */
-enum { RAIDEN = 0x04, ZOMBIE = 0x06, SUGATA = 0x18, GIANT_STRIDER = 0x1E, SIR_GAWAINE = 0x1F,
-       MASKMAN = 0x20, WOLFMAN = 0x21, IKEDA = 0x26, LAMPREY = 0x28 };
+enum { RAIDEN = 0x04, ZOMBIE = 0x06, YUINARU = 0x0B, SUGATA = 0x18, GIANT_STRIDER = 0x1E, SIR_GAWAINE = 0x1F,
+       MASKMAN = 0x20, WOLFMAN = 0x21, IKEDA = 0x26, LAMPREY = 0x28, ZOZURA = 0x47 };
 enum { TRUNK = 1, MIST = 2, BRANCH = 5, DARTMOOR = 6 };
 
 static const FaxEntranceMove moves[] = {
@@ -72,6 +73,10 @@ static const FaxEntranceMove moves[] = {
     { DARTMOOR, 0x03, LAMPREY,       0xAA, 0xA8 },   /* building $24's way out (176,160): 3 */
     { DARTMOOR, 0x08, SIR_GAWAINE,   0x42, 0x46 },   /* building $25's way out (16,64), (32,64): 0 */
     { DARTMOOR, 0x0C, WOLFMAN,       0xAB, 0xAD },   /* the Castle of Fraternal's way out (144,64): 10 */
+    /* EDGES */
+    { TRUNK,    0x0D, ZOZURA,        0x5E, 0x7E },   /* walking left in from $0E: 0 */
+    { TRUNK,    0x17, YUINARU,       0x5F, 0x5E },   /* walking right in from $16: 0 */
+    { MIST,     0x04, IKEDA,         0x22, 0x34 },   /* climbing down from $2A: 2 */
 };
 enum { MOVES = sizeof moves / sizeof moves[0] };
 
