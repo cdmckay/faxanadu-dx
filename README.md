@@ -149,14 +149,18 @@ in a jump.
 **Ladders, fixed.** Holding Up at the top of a ladder used to lift you a pixel
 past its end, drop you, and lift you again, bobbing for as long as you held
 it. Now you stop at the top, and A jumps from there as soon as you let go of
-Up; the original jumped only if you let go right after a drop. And walking
-into the fountain's screen below the Mist and straight back out dropped the
-fountain's ladder into the next screen, through its floor; now it drops only
-on its own screen.
+Up; the original jumped only if you let go right after a drop. And stepping
+onto the dried fountain's screen, by the door to the Mist, and straight back
+off dropped the fountain's ladder into the next screen, through its floor;
+now it drops only on its own screen.
+
+![Trunk's screen beside the fountain's, after walking into the fountain's screen and straight back: the original has dropped the fountain's ladder here, through the floor; the remaster leaves the screen as it is](docs/screenshots/ladders.png)
 
 **Holding on to ladders.** A hit while you're on a ladder no longer knocks you
 off it: you take the damage and hold on. On the ground, knockback is as
 before.
+
+![The same hit on a ladder, a few frames later: the original has knocked the hero off it and he falls; the remaster keeps him on it](docs/screenshots/ladder-hold.png)
 
 ### Keys and items
 
