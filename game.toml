@@ -707,7 +707,8 @@ bytes = "f0 f4 a9 00 8d 20 01 60 a5 18 85 16"
 # (its index halved, so the table's own $01 plays, not the $A9 past its end);
 # IScriptAction_ShowPassword's entry (the message the mantra's line ends read
 # pointed at the mantra's characters, in bank 12); and Player_HandleHitByMagic,
-# skipped under Ointment. The last is Block's site too, which comes first.
+# skipped during iframes and under Ointment. The last is Block's site too,
+# which comes first.
 
 [[mod_function_hook]]
 id = "faxanadu.small-fixes.message-sound"
@@ -722,7 +723,7 @@ bank = 12
 bytes = "20 e5 96 20 34 f4 a9 00 8d 07 02 20"   # JSR Password_GenerateStateAndReset, JSR TextBox_ClearPasswordSize
 
 [[mod_function_hook]]
-id = "faxanadu.small-fixes.ointment"
+id = "faxanadu.small-fixes.shield-hit"
 addr = 0x87dc
 bank = 14
 bytes = "ae 78 03 bc cc 02 b9 d7 b6 ac bf 03"   # Player_HandleHitByMagic
