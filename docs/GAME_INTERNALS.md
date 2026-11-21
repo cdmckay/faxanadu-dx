@@ -476,6 +476,22 @@ What a feature can rely on, and the traps:
   (`--frames`) skip presenting but are no faster under load: 24 at once made
   2,600 frames a second, 24 windows 3,000. An uncapped window takes a whole
   thread from launch to close, whatever its script is doing.
+- **The window's scale costs a tenth of a frame.** `config.ini`'s
+  `[Display] WindowScale` (3 by default) sizes the hidden window, and
+  presenting scales the picture to it every uncapped frame: a frame in
+  Eolis's town is 74 million instructions at scale 3 and 67 at 1 (`perf stat`,
+  one window alone). A window starts from a `config.ini` holding only that
+  key and writes the rest. Seamless fits its picture to the window (drawable
+  size over the `pixel-zoom` option, 3), so at scale 1 its picture is 142x96;
+  `--world-size 426x240` fixes it at what scale 3 fits, 70 million
+  instructions a frame against 82 at scale 3.
+- **24 windows run faster from one program file than from 24 copies.** Each
+  copy is its own page cache, so its own copy of the code in the L3: from
+  hard links to one file, 24 windows ran 10% more instructions a cycle (2.75
+  against 2.44). Under that load a frame costs about 2.3 times the cycles it
+  does alone (IPC 2.3 against 4, at 2.5 GHz all-core), with the same
+  instructions: the suite's frames cost what bare games' do; it is SMT and the
+  clock, not the scripts (3% of the CPU).
 - The window's exit line, `window benchmark: ... frames=N`, gives the
   machine's frame counter, which a loaded save state carries; `native_cycles`
   is the CPU cycles this launch ran, so `native_cycles / 29780.5` is the
@@ -490,18 +506,35 @@ What a feature can rely on, and the traps:
   steer the branch by changing them (and the register they came from) with
   `cyc_mod_set_regs`, then returning 0. Forgiving jumps does this twice, so
   the game's own code does the rest.
-- Each TCP command is served on a frame boundary, so a polling loop sees the
-  game a few frames apart. To time something to the frame over TCP, read
-  `InterruptCounter` with the state in one `read_ram`. A save state's frame,
-  which a headless run from it continues, is the `uint32` at offset 28.
-- **A TCP reply takes about 3 frames at normal speed,** on a kept-open
-  connection too: `cyc_tcp.c`'s `send_line` sends the line and its newline
-  apart, and Nagle's algorithm holds the newline until the client's delayed
-  ACK (up to 40 ms on Linux). Commands sent together on one connection are
+- Each TCP command is served at a frame boundary: on a kept-open connection,
+  at the next; a new connection a command costs two frames, since the server
+  takes one client at a time and drops it at the poll after it closes. The
+  server keeps reading while lines arrive, so a quick client can be served
+  several commands in one frame. To time something to the frame over TCP,
+  read `InterruptCounter` with the state in one `read_ram`. A save state's
+  frame, which a headless run from it continues, is the `uint32` at offset 28.
+- **Acknowledge replies at once.** `cyc_tcp.c`'s `send_line` sends a line and
+  its newline apart, and Nagle's algorithm holds the newline until the client
+  acknowledges the line, which a delayed ACK puts off by up to 40 ms on Linux:
+  on a kept-open connection a reply took about 3 frames at normal speed.
+  `TCP_QUICKACK` on the client, set before each read, acknowledges at once
+  (where there is none, any byte the client sends does; the server ignores an
+  empty line), and the newline follows. `tests/e2e/fax_e2e.py` keeps one
+  connection a game that way, a frame a command. Commands sent together are
   served at the same frame boundary, so a `read_ram` sent with others is one
   moment with them (`tests/block/block_shield.py` reads Block's glint this
   way). Read a kept-open socket buffered: a 4 KB reply a byte at a time is
   slower still.
+- The extras' TCP `wait` (`src/cyc_extras.c`) answers once `frames` more
+  frames have run, at the end of the last one: a frame-exact wait without
+  polling. One runs at a time; the commands sent after it in the same write
+  are served at once, not after it.
+- **A press on a loaded state's first frame or two can go unseen.** From a
+  state saved over TCP outside a building, Up held from the state's first
+  frame for 4 frames did not go through the door, and from its third did
+  (from its second, with Seamless). `fax_e2e`'s `batch()` lets two frames run
+  after a load that ends a batch; `forgiving_jumps.py`'s A in the same write
+  as its load is seen.
 - **Which frame a screenshot shows.** TCP `screenshot` (layer `picture`)
   between two frames shows the sprites of the shadow OAM the frame before
   wrote, which the PPU took at the last frame's start. In Seamless world it

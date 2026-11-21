@@ -56,7 +56,7 @@ import sys
 import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import Game, act, fixture, hold, parse_args, ram, step_toward, tcp, until, wait  # noqa: E402
+from fax_e2e import Game, act, fixture, hold, parse_args, ram, step_toward, tcp, until, wait, walk  # noqa: E402
 
 AREA, SCREEN, PLAYER_X = 0x24, 0x63, 0x9E
 TEXTBOX_CLOSED, MESSAGE_ID = 0x20C, 0x213
@@ -272,14 +272,7 @@ def main():
 
     def to_counter(stop=0):
         """Walk left to the counter, or to x `stop`."""
-        for _ in range(60):
-            before = ram(PLAYER_X)
-            if before <= stop:
-                return
-            act("left", 8, 2)
-            if ram(PLAYER_X) == before:
-                return
-        raise AssertionError("no counter")
+        walk("left", lambda: ram(PLAYER_X) <= stop)
 
     def list_up(mode, what=None):
         """Wait until the `mode` list is on screen, with its hint, and has stopped redrawing."""

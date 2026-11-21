@@ -298,13 +298,14 @@ def main():
         # 3. The Zozura reaches the hero: pink, his HP's loss, over him.
         case("hurt", {POS_X: 192, SPRITE_X + NEAR: 192 - 24})
         before, hero = state()["hero"], None
-        for _ in range(600):
+        end = frame() + 600                                        # frames, not reads: several can come in a frame
+        while True:
             memory, s = watch()
             if memory[HP] != FULL:
                 break
             hero = [memory[POS_X], memory[POS_Y]]                # he stands still until it touches him
-        else:
-            raise AssertionError("the Zozura never reached the hero")
+            if frame() >= end:
+                raise AssertionError("the Zozura never reached the hero")
         taken = [n for n in s["numbers"] if n["kind"] == "taken"]
         assert s["hero"] - before == 1 and len(taken) == 1, s
         assert taken[0]["amount"] == FULL - memory[HP] == zozura_damage, (taken, memory[HP])

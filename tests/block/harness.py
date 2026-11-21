@@ -8,7 +8,6 @@ coverage) to set up fixtures: a shield, gold, or where a building's door leads
 """
 from pathlib import Path
 import sys
-import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 import fax_e2e  # noqa: E402
@@ -51,29 +50,11 @@ def _gate_door(g):
 
 
 class Game(fax_e2e.Game):
-    """fax_e2e.Game, polling a little faster, with what Block's and Sugata's
-    flash's tests add."""
+    """fax_e2e.Game, with what Block's and Sugata's flash's tests add."""
 
     def __init__(self, build, rom, out, game_args=(), realtime=False, port=0):
         super().__init__(build, rom, out, game_args, realtime, port)
         self.config = self.out / "game" / "config.ini"
-
-    def wait(self, frames):
-        end = self.frame() + frames
-        while self.frame() < end:
-            time.sleep(0.003)
-
-    def until(self, what, test, frames=1200):
-        end = self.frame() + frames
-        while self.frame() < end:
-            if test():
-                return
-            time.sleep(0.003)
-        raise AssertionError(f"timed out waiting for {what}")
-
-    def act(self, name, frames=6, after=8):
-        self.tcp("action", name=name, frames=frames)
-        self.wait(frames + after)
 
     def save(self, name):
         path = self.out / f"{name}.cycstate"

@@ -82,7 +82,9 @@ recompiler produced it; features observe and steer it.
   model of the machine (`tests/travel/travel_test.c`). An end-to-end test plays
   it in a hidden window over TCP (`tests/travel/guru_travel.py`). Add both to
   `tools/test.sh`. Give each end-to-end run its own output folder: several
-  sessions may run the suite at once.
+  sessions may run the suite at once. Run it in Seamless too (`+sw`) only if
+  the feature draws or places something on screen or moves the hero between
+  rooms.
 - **Show every feature in the README.** A new feature's PR adds its
   paragraph to the README's "What's new" and a screenshot right after it,
   made by `tools/readme_screenshots.py`: add a `@scene` that plays the
@@ -102,7 +104,8 @@ recompiler produced it; features observe and steer it.
   on a given frame goes in with the save state it starts from, in one
   `batch()` (a `load_state`, then the `action`), or runs headless from that
   state with `--input`. Never count on two TCP commands being a few frames
-  apart.
+  apart, nor on reads taking a frame each: bound a loop by frames, and read
+  what a press depends on in one batch (`page_to()` for a conversation).
 - **End-to-end tests start from saved games.** `game.launch(at=...)` loads a
   fixture, made from your ROM by a recipe and cached in `build-tests/fixtures`;
   boot from power-on only where the boot is what is checked. **Never commit a

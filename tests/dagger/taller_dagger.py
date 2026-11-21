@@ -44,7 +44,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import Game, fixture, parse_args, ram, tcp  # noqa: E402
+from fax_e2e import Game, fixture, frame, parse_args, ram, tcp  # noqa: E402
 
 AREA, SCREEN, HERO_X, HERO_Y = 0x24, 0x63, 0x9E, 0xA1               # Player_PosX_Block, Player_PosY
 PLAYER_FLAGS, ATTACKING, FACING_RIGHT = 0xA4, 0x80, 0x40
@@ -98,7 +98,8 @@ def main():
         assert not m[PLAYER_FLAGS] & FACING_RIGHT, "the hero faces the Zozura"
         got = dict(hit=False, hurt=False, swings=0, reaches=set(), phase1=[])
         jumped = pressed = attacking = False
-        for _ in range(900):                                        # one read a sample, a frame or two apart
+        end = frame() + 1600                                        # one read a sample, a frame or less apart
+        while frame() < end:
             m = ram(0, MACHINE)
             d = m[HERO_X] - m[SPRITE_X + TARGET]
             got["reaches"].add((m[REACH_X], m[REACH_Y]))
