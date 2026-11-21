@@ -730,7 +730,7 @@ def main():
                 act("up", 4, 20)
             until("the Spring of Sky's man", lambda: ram(MESSAGE_ID) == HO_HO_HO, 300)
             shot("spring-of-sky")
-            page_through(hurried=False)                                 # his dots stall under a hurried A on a busy machine
+            page_through()
             assert ram(QUESTS) & QUEST_SPRING_OF_SKY, "the Spring of Sky's man woke"
             print(f"ok: the Spring of Sky: from Trunk $20's floor to the man in $25 in {landed} frames "
                   f"({landed / SECOND:.1f} of the game's seconds), with {left} s of the {FLIGHT} s flight left")

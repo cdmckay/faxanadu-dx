@@ -56,6 +56,7 @@ import sys
 import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
+import fax_e2e  # noqa: E402
 from fax_e2e import Game, act, fixture, hold, parse_args, ram, step_toward, tcp, type_out, until, wait, walk  # noqa: E402
 
 AREA, SCREEN, PLAYER_X = 0x24, 0x63, 0x9E
@@ -108,12 +109,6 @@ def weapons():
 def typed():
     """A message has typed out (MessageID clears)."""
     return ram(MESSAGE_ID) == 0
-
-
-def waiting():
-    """The text box waits for a button: typed out, or at a pause."""
-    message, _, paused = ram(MESSAGE_ID, 3)
-    return message == 0 or paused != 0
 
 
 def carrying(gold_amount, weapon_list, item_list, weapon=HAND_DAGGER):
@@ -237,10 +232,7 @@ def main():
     def walk_to(x_min, x_max):
         for _ in range(600):
             if ram(TEXTBOX_CLOSED) == 0:
-                if waiting():
-                    act("a", 6, 14)
-                else:
-                    wait(4)
+                fax_e2e.page_through("the box to close", lambda: ram(TEXTBOX_CLOSED) != 0)
                 continue
             x = ram(PLAYER_X)
             if x_min <= x <= x_max:
@@ -569,11 +561,7 @@ def main():
                     break
                 act("left", 2, 2)
             until("the find", lambda: ram(MESSAGE_ID) == GOT_WING_BOOTS, 600)
-            for _ in range(20):
-                if ram(TEXTBOX_CLOSED) != 0:
-                    break
-                until("the line to type out", waiting, 900)
-                act("a", 6, 14)
+            fax_e2e.page_through("the box to close", lambda: ram(TEXTBOX_CLOSED) != 0)
             wait(10)
             found = items()
             assert found == [RED_POTION, WING_BOOTS], found
