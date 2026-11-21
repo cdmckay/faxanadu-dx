@@ -428,6 +428,9 @@ What a feature can rely on, and the traps:
   `[cyc tcp] cannot listen on port N` and **runs on without TCP**. A client
   that connects to N then talks to whatever else holds it, another test's
   game included. `tests/e2e/fax_e2e.py` waits for its own game's line.
+- A TCP `action` sets the button's hold to its frames, replacing what was
+  left of it: a 1-frame `action` lets go early, and one sent before a hold
+  lapses keeps the button down (`hold()` in `tests/e2e/fax_e2e.py`).
 - TCP `action` returns at once and holds the button for its frames, so two
   `action`s sent back to back are held together: `left` then `a` jumps left
   (`tests/speaker/speaker_names.py` climbs the King's stairs that way).
@@ -437,8 +440,21 @@ What a feature can rely on, and the traps:
   start; its `[Game]` keys go to the host extras' `load_setting`, and
   `save_settings` writes them back whenever the window saves.
 - `--uncapped` (with `--exit-after N`) runs the window as fast as it can:
-  about 290 fps, 5x real time. The cycle-accurate machine is the limit; even
-  headless runs at about 370 fps.
+  about 250 fps alone on mango (an HX 370 held to 2 GHz on battery in the
+  power-saver profile), and about 125 fps a game with 24 at once, two to a
+  core. The cycle-accurate machine is the limit: of a window's frame, about
+  61% is the PPU, dot by dot, 9% the APU, 12% the CPU, and 14% presenting the
+  picture (SDL's scaling blit, even to the dummy driver). Headless runs
+  (`--frames`) skip presenting but are no faster under load: 24 at once made
+  2,600 frames a second, 24 windows 3,000. An uncapped window takes a whole
+  thread from launch to close, whatever its script is doing.
+- The window's exit line, `window benchmark: ... frames=N`, gives the
+  machine's frame counter, which a loaded save state carries; `native_cycles`
+  is the CPU cycles this launch ran, so `native_cycles / 29780.5` is the
+  frames it played.
+- A headless run writes the mod selection back to its `--mods-root` as it
+  starts, so runs at once need a root each (else "mods: cannot publish mod
+  state").
 - A save state's RAM is in its `HW  ` chunk at offset 23, 2 KiB, with no
   checksum. Edit it to set up test fixtures (`fixture()` in
   `tests/e2e/fax_e2e.py`).

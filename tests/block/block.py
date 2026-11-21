@@ -36,9 +36,10 @@ import re
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from harness import (Game, fixture, parse_args, AREA, BUILDINGS, TOWNS, POS_X, POS_Y, PLAYER_FLAGS, FACING_RIGHT, MESSAGE_ID,  # noqa: E402
+from harness import (Game, fixture, parse_args, BUILDINGS, TOWNS, POS_X, POS_Y, PLAYER_FLAGS, FACING_RIGHT, MESSAGE_ID,  # noqa: E402
                      ENTITIES, SPRITE_X, SPRITE_Y, GOLD, SHIELD_INVENTORY, SELECTED_SHIELD, NUMBER_OF_SHIELDS,
                      SMALL, LARGE, HELMET, NO_SHIELD)
+import fax_e2e  # noqa: E402  (on the path through harness)
 
 ZENIS, SCREEN_16, PALETTE_FORTRESS, REGION_FORTRESS = 7, 16, 0x0F, 5
 BRANCH, SCREEN_7, PALETTE_BRANCH, REGION_BRANCH = 5, 7, 0x08, 3     # Zoradohna's room
@@ -51,8 +52,19 @@ LINE = "Hold V to raise\nyour shield\nagainst magic."
 PACKAGE, FEATURE = "faxanadu.remastered", "remastered"          # the one switch: off is the original game
 
 
+PARTS = ("stand", "hood", "tutorial", "helmet", "config", "original")   # each its own game
+
+
+@fax_e2e.recipe("block-hood-cast", parent="eolis-meat-shop")
+def _hood_cast(g):
+    """Out of the meat shop, its door edited to lead to the fortress of Zenis
+    (screen 16), as the Execution Hood's shot appears."""
+    g.warp(g.save("shop"), "zenis-16", ZENIS, SCREEN_16, PALETTE_FORTRESS, 0x91, REGION_FORTRESS)
+    g.until("the Hood's shot", lambda: HOOD_MAGIC in list(g.ram(ENTITIES, 8)), 300)
+
+
 def main():
-    args = parse_args(__doc__)
+    args = parse_args(__doc__, parts=PARTS)
     g = Game.from_args(args)
 
     def block():
@@ -130,183 +142,193 @@ def main():
         raise AssertionError("could not pick up the Battle Helmet")
 
     try:
-        g.launch()
-        state = block()
-        assert state["enabled"] and state["binding"] == "V / B" and not state["taught"], state
-        g.new_game_at_gate()
-        gate = g.save("gate")
-        g.act("up", 4, 10)
-        g.until("Eolis", lambda: g.where() == (0, 1), 300)
-        g.wait(30)
-        g.walk_to(41, 56)
-        g.act("up", 4, 10)
-        g.until("the shop", lambda: g.ram(AREA) == BUILDINGS)
-        g.wait(30)
-        shop = g.save("eolis-shop")
-
-        # 1. Standing still.
+        gate = g.state("gate-door")
+        shop = g.state("eolis-meat-shop")
+        cast = g.state("block-hood-cast")
         shielded = g.out / "gate-shield.cycstate"
         fixture(gate, shielded, {SELECTED_SHIELD: SMALL})
-        g.load(shielded)
-        g.act("left", 30, 4)
-        x, y = g.ram(POS_X), g.ram(POS_Y)
-        g.tcp("key", name="V", frames=120)
-        g.wait(4)
-        g.tcp("action", name="left", frames=40)
-        g.wait(44)
-        g.tcp("action", name="a", frames=10)
-        g.wait(14)
-        assert (g.ram(POS_X), g.ram(POS_Y)) == (x, y) and block()["raised"], (g.ram(POS_X), g.ram(POS_Y), x, y)
-        assert block()["stood"] > 0
-        g.shot("blocking-stands-still")
-        g.until("Block to be let go", lambda: not block()["held"], 120)
-        g.act("left", 20, 4)
-        assert g.ram(POS_X) < x and not block()["raised"], (g.ram(POS_X), x)
-        print(f"ok: holding Block with a shield, Left and A move the hero nowhere (x {x}); let go, he walks")
-
-        # 2. The Execution Hood's magic.
-        g.warp(shop, "zenis-16", ZENIS, SCREEN_16, PALETTE_FORTRESS, 0x91, REGION_FORTRESS)
-        g.until("the Hood's shot", lambda: HOOD_MAGIC in list(g.ram(ENTITIES, 8)), 300)
-        slot = list(g.ram(ENTITIES, 8)).index(HOOD_MAGIC)
-        cast = g.save("hood-cast")
-        assert g.ram(PLAYER_FLAGS) & FACING_RIGHT and g.ram(SPRITE_X + slot) > g.ram(POS_X)
-        small = {SELECTED_SHIELD: SMALL}
-        lost, d = shot_at(cast, slot, "shield-alone", SHIELD_HEIGHT, small)
-        assert lost == MAGIC_DAMAGE // 2 and d == {"magic_blocked": 0, "shield_saved": 0}, (lost, d)
-        lost, d = shot_at(cast, slot, "shield-block", SHIELD_HEIGHT, small, "V", picture="blocking-magic")
-        assert lost == 0 and d == {"magic_blocked": 0, "shield_saved": 1}, (lost, d)
-        print(f"ok: the Small Shield alone lets {MAGIC_DAMAGE // 2} of the shot's {MAGIC_DAMAGE} HP through; "
-              "holding Block, none")
-        lost, d = shot_at(cast, slot, "head", HEAD_HEIGHT, small)
-        assert lost == MAGIC_DAMAGE, lost
-        lost, d = shot_at(cast, slot, "head-block", HEAD_HEIGHT, small, "V")
-        assert lost == 0 and d == {"magic_blocked": 1, "shield_saved": 0}, (lost, d)
-        print(f"ok: a shot at his head misses the shield and takes {MAGIC_DAMAGE}; holding Block, it is stopped")
-        behind = {SELECTED_SHIELD: SMALL, PLAYER_FLAGS: g.ram(PLAYER_FLAGS) & ~FACING_RIGHT}
-        lost, d = shot_at(cast, slot, "behind-block", SHIELD_HEIGHT, behind, "V")
-        assert lost == MAGIC_DAMAGE and d == {"magic_blocked": 0, "shield_saved": 0}, (lost, d)
-        print("ok: from behind, Block stops nothing")
-        target = g.out / "no-shield.cycstate"
-        fixture(cast, target, {SPRITE_Y + slot: SHIELD_HEIGHT, SELECTED_SHIELD: NO_SHIELD})
-        g.load(target)
-        g.tcp("key", name="V", frames=200)
-        g.wait(6)
-        assert not block()["raised"], block()
-        hp = g.hp()
-        g.until("the shot to be gone", lambda: g.ram(ENTITIES + slot) != HOOD_MAGIC, 200)
-        g.wait(10)
-        assert hp - g.hp() == MAGIC_DAMAGE, (hp, g.hp())
-        g.tcp("key", name="V", frames=1)
-        g.wait(3)
-        print("ok: without a shield, Block does nothing and the shot takes 8")
-        helmet = {SELECTED_SHIELD: HELMET}
-        lost, d = shot_at(cast, slot, "battle-helmet", SHIELD_HEIGHT, helmet)
-        assert lost == MAGIC_DAMAGE and d == {"magic_blocked": 0, "shield_saved": 0}, (lost, d)
-        lost, d = shot_at(cast, slot, "battle-helmet-block", SHIELD_HEIGHT, helmet, "V")
-        assert lost == 0 and d == {"magic_blocked": 1, "shield_saved": 0}, (lost, d)
-        print(f"ok: the Battle Helmet alone stops nothing ({MAGIC_DAMAGE} HP, as in the original); holding Block, "
-              "it stops the shot")
-
-        # 3. The tutorial, in Apolune's tool shop.
-        g.warp(shop, "apolune", TOWNS, APOLUNE, PALETTE_TOWN, 0x94, REGION_TRUNK, {GOLD: 0x10, GOLD + 1: 0x27})
-        g.act("up", 4, 10)
-        g.until("the tool shop", lambda: g.where() == (BUILDINGS, TOOL_SHOP), 300)
-        g.until("the shop to settle", g.settled, 300)
-        g.wait(20)
-        tool_shop = g.save("tool-shop")
-        owns_large = g.out / "tool-shop-large.cycstate"
-        fixture(tool_shop, owns_large, {SHIELD_INVENTORY: LARGE, NUMBER_OF_SHIELDS: 1})
-        g.load(owns_large)
-        g.wait(4)
-        said, _ = talk_and_buy()
-        assert said == [] and block()["tutorials"] == 0 and not block()["taught"], (said, block())
-        print("ok: a second shield (the Small, owning the Large) gets no line")
-        g.load(tool_shop)
-        g.wait(4)
-        said, picture = talk_and_buy()
-        state = block()
-        assert said == [OUR_LINE] and picture, said
-        assert state["tutorials"] == 1 and state["taught"] and state["line"] == LINE, state
         sidecar = g.out / "game" / "faxanadu_block.txt"
-        assert sidecar.read_text() == "block.taught\n", sidecar.read_text()
-        print("ok: the first shield gets one more line as he leaves the shop: " + LINE.replace("\n", " / "))
-        g.load(tool_shop)
-        g.wait(4)
-        said, _ = talk_and_buy()
-        assert said == [] and block()["tutorials"] == 1, said
-        g.close()
-        g.launch()
-        assert block()["taught"]
-        g.load(tool_shop)
-        g.wait(4)
-        said, _ = talk_and_buy()
-        assert said == [] and block()["tutorials"] == 0, said
-        print("ok: it is said once: not again, nor after a restart (faxanadu_block.txt)")
-        g.close()
 
-        # 3b. The Battle Helmet, picked up as the first shield-slot item.
-        sidecar.unlink()
-        g.launch()
-        assert not block()["taught"]
-        g.warp(shop, "branch-7", BRANCH, SCREEN_7, PALETTE_BRANCH, 0x9C, REGION_BRANCH)
-        assert list(g.ram(ENTITIES + 6, 2)) == [ZORADOHNA, BATTLE_HELMET_OBJ], list(g.ram(ENTITIES, 8))
-        boss_gone = g.out / "zoradohna-gone.cycstate"
-        g.save("branch-7-in")
-        fixture(g.out / "branch-7-in.cycstate", boss_gone, {ENTITIES + 6: 0xFF})
-        g.load(boss_gone)
-        saying, picture = pick_up_helmet()
-        state = block()
-        assert saying and picture and state["tutorials"] == 1 and state["taught"], (saying, state)
-        assert g.ram(SHIELD_INVENTORY) == HELMET and g.ram(NUMBER_OF_SHIELDS) == 1
-        assert sidecar.read_text() == "block.taught\n"
-        print("ok: the Battle Helmet as the first shield-slot item: the line follows \"I've got the Battle Helmet.\"")
-        g.load(boss_gone)
-        saying, _ = pick_up_helmet()
-        assert not saying and block()["tutorials"] == 1 and g.ram(NUMBER_OF_SHIELDS) == 1
-        print("ok: picked up again once taught, only the game's line")
-        g.close()
+        def game_up():
+            """The game: the one running, if it is."""
+            if not g.running():
+                g.launch()
+                state = block()
+                assert state["enabled"] and state["binding"] == "V / B" and not state["taught"], state
 
-        # 4. config.ini rebinds it.
-        text = g.config.read_text()
-        assert re.search(r"^BlockKey = V$", text, re.M) and re.search(r"^BlockButton = b$", text, re.M), text
-        g.config.write_text(re.sub(r"^BlockButton = b$", "BlockButton = leftstick",
-                                   re.sub(r"^BlockKey = V$", "BlockKey = S", text, flags=re.M), flags=re.M))
-        g.launch()
-        state = block()
-        assert state["binding"] == "S / L3" and state["line"] == LINE.replace("V", "S"), state
-        g.load(shielded)
-        g.tcp("key", name="V", frames=20)
-        g.wait(6)
-        assert not block()["raised"]
-        g.tcp("key", name="S", frames=20)
-        g.wait(6)
-        assert block()["raised"]
-        g.wait(20)
-        g.tcp("pad", buttons="leftstick", frames=20)
-        g.wait(6)
-        state = block()
-        assert state["raised"] and state["line"] == "Hold L3 to raise\nyour shield\nagainst magic.", state
-        g.close()
-        text = g.config.read_text()
-        assert re.search(r"^BlockKey = S$", text, re.M) and re.search(r"^BlockButton = leftstick$", text, re.M), text
-        print("ok: BlockKey = S and BlockButton = leftstick move it to S and L3, stay in config.ini, "
-              "and the line names the one last used")
+        if args.wants("stand"):
+            game_up()
+            # 1. Standing still.
+            g.load(shielded)
+            g.act("left", 30, 4)
+            x, y = g.ram(POS_X), g.ram(POS_Y)
+            g.tcp("key", name="V", frames=120)
+            g.wait(4)
+            g.tcp("action", name="left", frames=40)
+            g.wait(44)
+            g.tcp("action", name="a", frames=10)
+            g.wait(14)
+            assert (g.ram(POS_X), g.ram(POS_Y)) == (x, y) and block()["raised"], (g.ram(POS_X), g.ram(POS_Y), x, y)
+            assert block()["stood"] > 0
+            g.shot("blocking-stands-still")
+            g.until("Block to be let go", lambda: not block()["held"], 120)
+            g.act("left", 20, 4)
+            assert g.ram(POS_X) < x and not block()["raised"], (g.ram(POS_X), x)
+            print(f"ok: holding Block with a shield, Left and A move the hero nowhere (x {x}); let go, he walks")
 
-        # 5. The remaster off: the original.
-        (g.out / "game" / "mods" / "state.toml").write_text(
-            f'format_version = 1\n\n[[feature]]\npackage_id = "{PACKAGE}"\nid = "{FEATURE}"\nenabled = false\n')
-        g.launch()
-        assert not block()["enabled"]
-        g.load(cast)
-        target = g.out / "off.cycstate"
-        fixture(cast, target, {SPRITE_Y + slot: HEAD_HEIGHT, SELECTED_SHIELD: SMALL})
-        g.load(target)
-        g.tcp("key", name="S", frames=200)
-        hp = g.hp()
-        g.until("the shot to be gone", lambda: g.ram(ENTITIES + slot) != HOOD_MAGIC, 200)
-        g.wait(10)
-        assert hp - g.hp() == MAGIC_DAMAGE and block()["magic_blocked"] == 0
-        print("ok: with the remaster off, holding the key stops nothing")
+        if args.wants("hood"):
+            game_up()
+            # 2. The Execution Hood's magic.
+            g.load(cast)
+            slot = list(g.ram(ENTITIES, 8)).index(HOOD_MAGIC)
+            assert g.ram(PLAYER_FLAGS) & FACING_RIGHT and g.ram(SPRITE_X + slot) > g.ram(POS_X)
+            small = {SELECTED_SHIELD: SMALL}
+            lost, d = shot_at(cast, slot, "shield-alone", SHIELD_HEIGHT, small)
+            assert lost == MAGIC_DAMAGE // 2 and d == {"magic_blocked": 0, "shield_saved": 0}, (lost, d)
+            lost, d = shot_at(cast, slot, "shield-block", SHIELD_HEIGHT, small, "V", picture="blocking-magic")
+            assert lost == 0 and d == {"magic_blocked": 0, "shield_saved": 1}, (lost, d)
+            print(f"ok: the Small Shield alone lets {MAGIC_DAMAGE // 2} of the shot's {MAGIC_DAMAGE} HP through; "
+                  "holding Block, none")
+            lost, d = shot_at(cast, slot, "head", HEAD_HEIGHT, small)
+            assert lost == MAGIC_DAMAGE, lost
+            lost, d = shot_at(cast, slot, "head-block", HEAD_HEIGHT, small, "V")
+            assert lost == 0 and d == {"magic_blocked": 1, "shield_saved": 0}, (lost, d)
+            print(f"ok: a shot at his head misses the shield and takes {MAGIC_DAMAGE}; holding Block, it is stopped")
+            behind = {SELECTED_SHIELD: SMALL, PLAYER_FLAGS: g.ram(PLAYER_FLAGS) & ~FACING_RIGHT}
+            lost, d = shot_at(cast, slot, "behind-block", SHIELD_HEIGHT, behind, "V")
+            assert lost == MAGIC_DAMAGE and d == {"magic_blocked": 0, "shield_saved": 0}, (lost, d)
+            print("ok: from behind, Block stops nothing")
+            target = g.out / "no-shield.cycstate"
+            fixture(cast, target, {SPRITE_Y + slot: SHIELD_HEIGHT, SELECTED_SHIELD: NO_SHIELD})
+            g.load(target)
+            g.tcp("key", name="V", frames=200)
+            g.wait(6)
+            assert not block()["raised"], block()
+            hp = g.hp()
+            g.until("the shot to be gone", lambda: g.ram(ENTITIES + slot) != HOOD_MAGIC, 200)
+            g.wait(10)
+            assert hp - g.hp() == MAGIC_DAMAGE, (hp, g.hp())
+            g.tcp("key", name="V", frames=1)
+            g.wait(3)
+            print("ok: without a shield, Block does nothing and the shot takes 8")
+            helmet = {SELECTED_SHIELD: HELMET}
+            lost, d = shot_at(cast, slot, "battle-helmet", SHIELD_HEIGHT, helmet)
+            assert lost == MAGIC_DAMAGE and d == {"magic_blocked": 0, "shield_saved": 0}, (lost, d)
+            lost, d = shot_at(cast, slot, "battle-helmet-block", SHIELD_HEIGHT, helmet, "V")
+            assert lost == 0 and d == {"magic_blocked": 1, "shield_saved": 0}, (lost, d)
+            print(f"ok: the Battle Helmet alone stops nothing ({MAGIC_DAMAGE} HP, as in the original); holding Block, "
+                  "it stops the shot")
+
+        if args.wants("tutorial"):
+            game_up()
+            # 3. The tutorial, in Apolune's tool shop.
+            g.warp(shop, "apolune", TOWNS, APOLUNE, PALETTE_TOWN, 0x94, REGION_TRUNK, {GOLD: 0x10, GOLD + 1: 0x27})
+            g.act("up", 4, 10)
+            g.until("the tool shop", lambda: g.where() == (BUILDINGS, TOOL_SHOP), 300)
+            g.until("the shop to settle", g.settled, 300)
+            g.wait(20)
+            tool_shop = g.save("tool-shop")
+            owns_large = g.out / "tool-shop-large.cycstate"
+            fixture(tool_shop, owns_large, {SHIELD_INVENTORY: LARGE, NUMBER_OF_SHIELDS: 1})
+            g.load(owns_large)
+            g.wait(4)
+            said, _ = talk_and_buy()
+            assert said == [] and block()["tutorials"] == 0 and not block()["taught"], (said, block())
+            print("ok: a second shield (the Small, owning the Large) gets no line")
+            g.load(tool_shop)
+            g.wait(4)
+            said, picture = talk_and_buy()
+            state = block()
+            assert said == [OUR_LINE] and picture, said
+            assert state["tutorials"] == 1 and state["taught"] and state["line"] == LINE, state
+            assert sidecar.read_text() == "block.taught\n", sidecar.read_text()
+            print("ok: the first shield gets one more line as he leaves the shop: " + LINE.replace("\n", " / "))
+            g.load(tool_shop)
+            g.wait(4)
+            said, _ = talk_and_buy()
+            assert said == [] and block()["tutorials"] == 1, said
+            g.close()
+            g.launch()
+            assert block()["taught"]
+            g.load(tool_shop)
+            g.wait(4)
+            said, _ = talk_and_buy()
+            assert said == [] and block()["tutorials"] == 0, said
+            print("ok: it is said once: not again, nor after a restart (faxanadu_block.txt)")
+            g.close()
+
+        if args.wants("helmet"):
+            # 3b. The Battle Helmet, picked up as the first shield-slot item.
+            sidecar.unlink(missing_ok=True)
+            g.launch()
+            assert not block()["taught"]
+            g.warp(shop, "branch-7", BRANCH, SCREEN_7, PALETTE_BRANCH, 0x9C, REGION_BRANCH)
+            assert list(g.ram(ENTITIES + 6, 2)) == [ZORADOHNA, BATTLE_HELMET_OBJ], list(g.ram(ENTITIES, 8))
+            boss_gone = g.out / "zoradohna-gone.cycstate"
+            g.save("branch-7-in")
+            fixture(g.out / "branch-7-in.cycstate", boss_gone, {ENTITIES + 6: 0xFF})
+            g.load(boss_gone)
+            saying, picture = pick_up_helmet()
+            state = block()
+            assert saying and picture and state["tutorials"] == 1 and state["taught"], (saying, state)
+            assert g.ram(SHIELD_INVENTORY) == HELMET and g.ram(NUMBER_OF_SHIELDS) == 1
+            assert sidecar.read_text() == "block.taught\n"
+            print("ok: the Battle Helmet as the first shield-slot item: the line follows \"I've got the Battle Helmet.\"")
+            g.load(boss_gone)
+            saying, _ = pick_up_helmet()
+            assert not saying and block()["tutorials"] == 1 and g.ram(NUMBER_OF_SHIELDS) == 1
+            print("ok: picked up again once taught, only the game's line")
+            g.close()
+
+        if args.wants("config"):
+            g.close()
+            # 4. config.ini rebinds it.
+            if not g.config.exists():                                   # written when the window closes
+                g.launch()
+                g.close()
+            text = g.config.read_text()
+            assert re.search(r"^BlockKey = V$", text, re.M) and re.search(r"^BlockButton = b$", text, re.M), text
+            g.config.write_text(re.sub(r"^BlockButton = b$", "BlockButton = leftstick",
+                                       re.sub(r"^BlockKey = V$", "BlockKey = S", text, flags=re.M), flags=re.M))
+            g.launch()
+            state = block()
+            assert state["binding"] == "S / L3" and state["line"] == LINE.replace("V", "S"), state
+            g.load(shielded)
+            g.tcp("key", name="V", frames=20)
+            g.wait(6)
+            assert not block()["raised"]
+            g.tcp("key", name="S", frames=20)
+            g.wait(6)
+            assert block()["raised"]
+            g.wait(20)
+            g.tcp("pad", buttons="leftstick", frames=20)
+            g.wait(6)
+            state = block()
+            assert state["raised"] and state["line"] == "Hold L3 to raise\nyour shield\nagainst magic.", state
+            g.close()
+            text = g.config.read_text()
+            assert re.search(r"^BlockKey = S$", text, re.M) and re.search(r"^BlockButton = leftstick$", text, re.M), text
+            print("ok: BlockKey = S and BlockButton = leftstick move it to S and L3, stay in config.ini, "
+                  "and the line names the one last used")
+
+        if args.wants("original"):
+            g.close()
+            # 5. The remaster off: the original.
+            (g.out / "game" / "mods" / "state.toml").write_text(
+                f'format_version = 1\n\n[[feature]]\npackage_id = "{PACKAGE}"\nid = "{FEATURE}"\nenabled = false\n')
+            g.launch()
+            assert not block()["enabled"]
+            g.load(cast)
+            slot = list(g.ram(ENTITIES, 8)).index(HOOD_MAGIC)
+            target = g.out / "off.cycstate"
+            fixture(cast, target, {SPRITE_Y + slot: HEAD_HEIGHT, SELECTED_SHIELD: SMALL})
+            g.load(target)
+            g.tcp("key", name="S", frames=200)
+            hp = g.hp()
+            g.until("the shot to be gone", lambda: g.ram(ENTITIES + slot) != HOOD_MAGIC, 200)
+            g.wait(10)
+            assert hp - g.hp() == MAGIC_DAMAGE and block()["magic_blocked"] == 0
+            print("ok: with the remaster off, holding the key stops nothing")
         print("screenshots:", ", ".join(g.shots))
     except BaseException:
         if g.running():

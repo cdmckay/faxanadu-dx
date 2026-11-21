@@ -26,7 +26,7 @@ import sys
 import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import Game, act, fixture, frame, parse_args, ram, tcp, typed, until, wait  # noqa: E402
+from fax_e2e import Game, act, fixture, frame, hold, hurry, parse_args, ram, step_toward, tcp, typed, until, wait  # noqa: E402
 
 AREA, SCREEN, PLAYER_X = 0x24, 0x63, 0x9E
 TEXTBOX_CLOSED, MESSAGE_ID, TEXTBOX_PAUSED = 0x20C, 0x213, 0x215
@@ -98,8 +98,11 @@ def check_tab(path, row, length, inside):
     assert len(set(lit)) == 1 and len(lit) >= 8 * length, f"{path.name}: no line of text in the tab"
 
 
+PARTS = ("meat-seller", "guru", "king", "martial-artist", "tool-seller", "fraternal")   # each its own game
+
+
 def main():
-    args = parse_args(__doc__)
+    args = parse_args(__doc__, parts=PARTS)
     game = Game.from_args(args)
     out = game.out
 
@@ -110,12 +113,12 @@ def main():
                 if typed():
                     act("a", 6, 14)
                 else:
-                    wait(4)
+                    hurry(4)
                 continue
             x = ram(PLAYER_X)
             if x_min <= x <= x_max:
                 return
-            act("right" if x < x_min else "left", 2, 0)
+            step_toward(x_min, x_max, box_open)
         raise AssertionError(f"could not reach x {x_min}-{x_max}")
 
     def walk_out():
@@ -123,7 +126,7 @@ def main():
         for _ in range(300):
             if ram(AREA) != BUILDINGS:
                 return
-            act("right", 2, 0)
+            hold("right", lambda: ram(AREA) != BUILDINGS)
         raise AssertionError("could not walk out")
 
     def settled_in(area, screen):
@@ -196,6 +199,8 @@ def main():
                 assert not state["box"], state                  # only while the boxes open or clear
             if box_open() and typed():
                 act(button, 6, 14)
+            elif button == "a":
+                hurry(6)
             else:
                 wait(6)
         else:
@@ -204,121 +209,111 @@ def main():
         assert not state["shown"] and state["name"] is None, state
 
     try:
-        # A new game: through the gate and into Eolis's meat shop.
-        game.launch()
-        until("the title", lambda: frame() > 700)
-        tcp("pad", buttons="start", frames=10)
-        until("the Eolis gate", lambda: ram(AREA) == 0 and frame() > 1900)
-        assert not speaker()["shown"] and speaker()["name"] is None, speaker()
-        walk_to(186, 196)                                   # the gate, column 12
-        act("up", 4, 10)
-        settled_in(0, 1)
-        walk_to(41, 56)                                     # the meat shop, column 3
-        act("up", 4, 10)
-        until("the meat shop", lambda: ram(AREA) == BUILDINGS)
-        wait(30)
-        shop = out / "eolis-meat-shop.cycstate"
-        tcp("save_state", path=str(shop))
-        game.close()
-
-        # Relaunch with Apolune's Guru met, so Eolis's offers Guru travel.
+        # In Eolis's meat shop, with Apolune's Guru met, so Eolis's offers Guru travel.
+        shop = game.state("eolis-meat-shop")
         (out / "game" / "faxanadu_gurus.txt").write_text("Eolis\nApolune\n")
-        game.launch()
-        tcp("load_state", path=str(shop))
+        game.launch(at="eolis-meat-shop")
         wait(10)
-        assert speaker()["enabled"] and not speaker()["shown"], speaker()
-
-        # 1. The Meat Seller's question; B declines it.
-        talk()
-        tab("Meat Seller")
-        finish("b")
-        print("ok: the Meat Seller is named through his question, and the tab goes with him")
-
-        # 2. Eolis's Guru: the Ring of Elf, then Guru travel's offer.
-        go_in(shop, "eolis-temple", 2, 0x95, {TEMPLE_SPAWN_POINT: 1})
-        talk()
-        tab("Guru of Eolis")
-        finish()
-        assert ram(SPECIAL_ITEMS) & RING_OF_ELF, "the Guru gives the Ring of Elf"
-        # Player_CheckHandlePressUpOnNPC talks only on the one frame Up goes
-        # down, so a press that lands as the conversation winds down goes
-        # unseen. Press again until he answers.
-        for _ in range(5):
-            act("up", 4, 10)
-            try:
-                until("the Guru again", lambda: speaker()["portrait"] != NO_PORTRAIT, 120)
-                break
-            except AssertionError:
-                pass
-        else:
-            raise AssertionError("timed out waiting for the Guru again")
-        for _ in range(20):
-            if tcp("travel_state")["text"] == OFFER:
-                break
-            until("a page to type out", typed)
-            if tcp("travel_state")["text"] == OFFER:
-                break
-            act("a", 6, 14)
-        assert tcp("travel_state")["text"] == OFFER, tcp("travel_state")
-        wait(20)                                            # the box is refilled with the offer
-        tab("Guru of Eolis", label="guru-travel-offer")
-        finish("b")
-        print("ok: the Guru of Eolis is named, through Guru travel's offer")
-
-        # 3. The King, at the top of his stairs, with the ring.
-        go_in(shop, "kings-room", 7, 0x98, {SPECIAL_ITEMS: RING_OF_ELF})
-        talk(climb=True, stop=48)
-        tab("King of Eolis")
-        finish()
-        assert ram(GOLD, 3) == bytes([0xDC, 0x05, 0x00]), "the King gives 1500 Golds"
-        print("ok: the King of Eolis is named, through all his pages")
-
-        # 4. His guard outside, who has no portrait: no name.
-        walk_out()
-        settled_in(0, 7)
-        for _ in range(40):
-            if box_open():
-                break
-            x = ram(PLAYER_X)
-            if x >= 146:                                    # past the King's door (column 8)
-                act("up", 4, 10)
-            if not box_open():
-                act("right", 3, 2)
-        until("the guard's line", lambda: box_open() and typed())
         state = speaker()
-        assert state["portrait"] == NO_PORTRAIT and state["name"] is None and not state["shown"], state
-        game.shot("kings-guard")
-        finish()
-        print("ok: the King's guard, with no portrait, shows no name")
+        assert state["enabled"] and not state["shown"] and state["name"] is None, state
 
-        # 5. The Martial Artist's lesson; B declines it.
-        go_in(shop, "martial-arts", 6, 0x9A, {SPECIAL_ITEMS: RING_OF_ELF})
-        talk(stop=124)                                      # he stands mid-room, at x 112
-        tab("Martial Artist")
-        finish("b")
-        print("ok: the Martial Artist is named")
+        if args.wants("meat-seller"):
+            # 1. The Meat Seller's question; B declines it.
+            talk()
+            tab("Meat Seller")
+            finish("b")
+            print("ok: the Meat Seller is named through his question, and the tab goes with him")
 
-        # 6. The Tool Seller, on his shop's list, which Quick shops (on by
-        # default) opens at once.
-        go_in(shop, "tool-shop", 3, 0x9A)
-        talk(line=False)
-        until("the shop's list", lambda: speaker()["shown"] and speaker()["row"] == 5, 600)
-        wait(20)
-        tab("Tool Seller", row=5, label="tool-seller-list", line=False)
-        act("b", 6, 14)                                     # leave the list: the end
-        finish("b")
-        print("ok: the Tool Seller is named, on his shop's list as well")
+        if args.wants("guru"):
+            # 2. Eolis's Guru: the Ring of Elf, then Guru travel's offer.
+            go_in(shop, "eolis-temple", 2, 0x95, {TEMPLE_SPAWN_POINT: 1})
+            talk()
+            tab("Guru of Eolis")
+            finish()
+            assert ram(SPECIAL_ITEMS) & RING_OF_ELF, "the Guru gives the Ring of Elf"
+            # Player_CheckHandlePressUpOnNPC talks only on the one frame Up goes
+            # down, so a press that lands as the conversation winds down goes
+            # unseen. Press again until he answers.
+            for _ in range(5):
+                act("up", 4, 10)
+                try:
+                    until("the Guru again", lambda: speaker()["portrait"] != NO_PORTRAIT, 120)
+                    break
+                except AssertionError:
+                    pass
+            else:
+                raise AssertionError("timed out waiting for the Guru again")
+            for _ in range(20):
+                if tcp("travel_state")["text"] == OFFER:
+                    break
+                until("a page to type out", typed)
+                if tcp("travel_state")["text"] == OFFER:
+                    break
+                act("a", 6, 14)
+            assert tcp("travel_state")["text"] == OFFER, tcp("travel_state")
+            wait(20)                                            # the box is refilled with the offer
+            tab("Guru of Eolis", label="guru-travel-offer")
+            finish("b")
+            print("ok: the Guru of Eolis is named, through Guru travel's offer")
 
-        # 7. The longest name: the Guru in the Castle of Fraternal (building
-        # $42, DARTMOOR_DOOR_LOCATIONS: screen $1E, block $A7). At 17
-        # characters it fills its tab without the blank cells.
-        go_in(shop, "fraternal-temple", 0x1E, 0xA7, {SCREEN_SAVED_PALETTE: PALETTE_FRATERNAL,
-                                                     AREA_REGION: REGION_DARTMOOR}, area=DARTMOOR)
-        assert ram(SCREEN) == 0x42, ram(SCREEN)
-        talk()
-        tab("Guru of Fraternal")
-        finish()
-        print("ok: the Guru of Fraternal, the longest name, fits his tab")
+        if args.wants("king"):
+            # 3. The King, at the top of his stairs, with the ring.
+            go_in(shop, "kings-room", 7, 0x98, {SPECIAL_ITEMS: RING_OF_ELF})
+            talk(climb=True, stop=48)
+            tab("King of Eolis")
+            finish()
+            assert ram(GOLD, 3) == bytes([0xDC, 0x05, 0x00]), "the King gives 1500 Golds"
+            print("ok: the King of Eolis is named, through all his pages")
+
+            # 4. His guard outside, who has no portrait: no name.
+            walk_out()
+            settled_in(0, 7)
+            for _ in range(40):
+                if box_open():
+                    break
+                x = ram(PLAYER_X)
+                if x >= 146:                                    # past the King's door (column 8)
+                    act("up", 4, 10)
+                if not box_open():
+                    act("right", 3, 2)
+            until("the guard's line", lambda: box_open() and typed())
+            state = speaker()
+            assert state["portrait"] == NO_PORTRAIT and state["name"] is None and not state["shown"], state
+            game.shot("kings-guard")
+            finish()
+            print("ok: the King's guard, with no portrait, shows no name")
+
+        if args.wants("martial-artist"):
+            # 5. The Martial Artist's lesson; B declines it.
+            go_in(shop, "martial-arts", 6, 0x9A, {SPECIAL_ITEMS: RING_OF_ELF})
+            talk(stop=124)                                      # he stands mid-room, at x 112
+            tab("Martial Artist")
+            finish("b")
+            print("ok: the Martial Artist is named")
+
+        if args.wants("tool-seller"):
+            # 6. The Tool Seller, on his shop's list, which Quick shops (on by
+            # default) opens at once.
+            go_in(shop, "tool-shop", 3, 0x9A)
+            talk(line=False)
+            until("the shop's list", lambda: speaker()["shown"] and speaker()["row"] == 5, 600)
+            wait(20)
+            tab("Tool Seller", row=5, label="tool-seller-list", line=False)
+            act("b", 6, 14)                                     # leave the list: the end
+            finish("b")
+            print("ok: the Tool Seller is named, on his shop's list as well")
+
+        if args.wants("fraternal"):
+            # 7. The longest name: the Guru in the Castle of Fraternal (building
+            # $42, DARTMOOR_DOOR_LOCATIONS: screen $1E, block $A7). At 17
+            # characters it fills its tab without the blank cells.
+            go_in(shop, "fraternal-temple", 0x1E, 0xA7, {SCREEN_SAVED_PALETTE: PALETTE_FRATERNAL,
+                                                         AREA_REGION: REGION_DARTMOOR}, area=DARTMOOR)
+            assert ram(SCREEN) == 0x42, ram(SCREEN)
+            talk()
+            tab("Guru of Fraternal")
+            finish()
+            print("ok: the Guru of Fraternal, the longest name, fits his tab")
         print("screenshots:", ", ".join(game.shots))
     except BaseException:
         game.shot("failure")

@@ -29,7 +29,7 @@ import sys
 import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import Game, act, fixture, frame, parse_args, ram, tcp, typed, until, wait  # noqa: E402
+from fax_e2e import Game, act, fixture, frame, hurry, parse_args, ram, tcp, typed, until, wait  # noqa: E402
 
 AREA, SCREEN, POS_X = 0x24, 0x63, 0x9E
 PLAYER_FLAGS, ATTACKING = 0xA4, 0x80
@@ -102,12 +102,9 @@ def main():
         until("the spell to end", lambda: spell() == NO_SPELL, 600)
 
     try:
-        game.launch()
+        game.launch(at="gate")
         state = tcp("magic_state")
         assert state["enabled"] and state["binding"] == "C / Y", state
-        until("the title", lambda: frame() > 700)
-        tcp("pad", buttons="start", frames=10)
-        until("the opening", lambda: frame() > 1900)
         # The opening: the hero walks toward Eolis and stops to think aloud.
         act("right", 60, 10)
         for _ in range(60):
@@ -116,7 +113,7 @@ def main():
             if typed():
                 act("a", 4, 8)
             else:
-                wait(10)
+                hurry(10)
             act("right", 6, 2)
         assert ram(POS_X) > 54, "the opening is over"
         for _ in range(200):
@@ -189,7 +186,7 @@ def main():
             if typed():
                 act("a")
             else:
-                wait(10)
+                hurry(10)
         until("Conflate's temple", lambda: where() == (BUILDINGS, CONFLATE_TEMPLE))
         wait(60)
         act("left", 170, 10)
