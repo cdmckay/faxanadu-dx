@@ -167,6 +167,31 @@ rom = []
 # Block's fax_block_raised(): while Block is up it keeps no press.
 
 [[feature]]
+id = "ladder-fixes"
+package = "faxanadu.remastered"
+plugin = "faxanadu.ladder-fixes"
+source = "src/fax_ladders.c"
+hooks = "faxanadu.ladder-fixes."
+rom = []
+# Hooks the BNE after the passable check in Player_CheckHandleClimbUp ($E30C)
+# and the entry of ScreenEvents_HandlePathToMasconEvent ($EF69). No other
+# feature hooks these. Writes Player_Flags (climbing cleared at a ladder's
+# top), the registers at the branch, and CurrentScreen_SpecialEventID ($FF,
+# as the event's own early return does). Its isolated call to
+# Player_CheckIfOnLadder changes nothing.
+
+[[feature]]
+id = "ladder-hold"
+package = "faxanadu.remastered"
+plugin = "faxanadu.ladder-hold"
+source = "src/fax_ladder_hold.c"
+hooks = "faxanadu.ladder-hold."
+rom = []
+# Hooks Player_HandleKnockback ($E153) at its entry, which no other feature
+# hooks, and returns from it on a ladder in the air. Writes nothing; its
+# isolated call to Player_CheckIfPassable changes nothing.
+
+[[feature]]
 id = "text-speed"
 package = "faxanadu.remastered"
 plugin = "faxanadu.text-speed"
@@ -469,6 +494,21 @@ rom = []
 # at the Battle Helmet's script, never these two. Recharging items' pickup
 # hook is Player_PickUpItem ($C8CD), the Items' routine, which neither
 # reaches. No ROM, no read overrides, no state.
+
+[[feature]]
+id = "map"
+package = "faxanadu.remastered"
+plugin = "faxanadu.map"
+source = "src/fax_map.c"
+hooks = "faxanadu.map."
+rom = []
+# Hooks GameLoop_CheckPauseGame's two BEQs, $E02F (Start not new: return) and
+# $E040 (Start not new: another frame paused), which no other feature hooks;
+# Seamless observes the routine's entry, $E02B, which runs before either. It
+# changes only A and Z at them, so the game's own code pauses and unpauses
+# (Game_PausedState). Reads bank 3's area tables and bank 15's town edges and
+# climb from a copy of the cart, writes nothing to the machine but those two
+# registers, and draws at present time. No ROM, no read overrides.
 
 [[feature]]
 id = "graphics-fix"

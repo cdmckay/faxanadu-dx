@@ -293,6 +293,30 @@ addr = 0xe44b
 bank = 15
 bytes = "10 e6 20 f6 ec b0 e7 a2 02 20 c8 e6"
 
+# Ladder fixes (fax_ladders.c): the climb's passable check in
+# Player_CheckHandleClimbUp (BNE @_return), and the entry of Trunk $28's screen
+# event, ScreenEvents_HandlePathToMasconEvent.
+
+[[mod_function_hook]]
+id = "faxanadu.ladder-fixes.climb-top"
+addr = 0xe30c
+bank = 15
+bytes = "d0 35 e6 a3 a5 a5 10 0a a5 a1 38 e9"
+
+[[mod_function_hook]]
+id = "faxanadu.ladder-fixes.fountain"
+addr = 0xef69
+bank = 15
+bytes = "ad 2d 04 29 20 f0 12 a9 ff 8d 2e 04"
+
+# Holding on to ladders (fax_ladder_hold.c): Player_HandleKnockback's entry.
+
+[[mod_function_hook]]
+id = "faxanadu.ladder-hold.knockback"
+addr = 0xe153
+bank = 15
+bytes = "a5 a4 29 40 48 49 40 85 a4 20 6b e1"
+
 # Hold A to speed up text (fax_text_speed.c): TextBox_ShowNextChar_IfReady,
 # which TextBox_ShowNextChar calls once a frame in every message loop.
 
@@ -661,6 +685,23 @@ id = "faxanadu.inventory-fix.dragon-slayer"
 addr = 0xc73a
 bank = 15
 bytes = "e0 04 90 02 a2 03 a9 03 9d 9d 03 e8"   # Player_PickUpDragonSlayer, after LDX NumberOfArmors
+
+# The map (fax_map.c): a Map button pauses the game through its own pause and
+# shows the screens seen. Both sites are BEQs in GameLoop_CheckPauseGame that
+# it steers by Z: past "Start not new" into the pause, and in the pause loop,
+# on (another frame) or past (unpause).
+
+[[mod_function_hook]]
+id = "faxanadu.map.check"
+addr = 0xe02f
+bank = 15
+bytes = "f0 f9 a9 01 8d 20 01 20 25 ca 20 a8"
+
+[[mod_function_hook]]
+id = "faxanadu.map.loop"
+addr = 0xe040
+bank = 15
+bytes = "f0 f4 a9 00 8d 20 01 60 a5 18 85 16"
 
 # The graphics fixes (fax_graphics.c). Sprite_Draw's two loops, right after
 # each reads a cell's tile slot (at its CLC) and its attribute (at its EOR)

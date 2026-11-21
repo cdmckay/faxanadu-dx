@@ -1,0 +1,15 @@
+cmake_minimum_required(VERSION 3.20)
+project(FaxanaduMapTests C)
+set(CMAKE_C_STANDARD 11)
+if(NOT NESRECOMP_ROOT)
+    message(FATAL_ERROR "Set NESRECOMP_ROOT to the game's cycle engine checkout")
+endif()
+# fax_map.c and fax_map_layout.c are included by the test, against Block's
+# model of the machine (../block/model.c) and a cart of the test's own.
+add_executable(map_test map_test.c ../block/model.c ../../src/fax_zone.c)
+target_include_directories(map_test PRIVATE ../block ../../src ${NESRECOMP_ROOT}/runner/include ${NESRECOMP_ROOT}/runner/cyc)
+if(NOT MSVC)
+    target_compile_options(map_test PRIVATE -Wall -Wextra)
+endif()
+enable_testing()
+add_test(NAME map_unit COMMAND map_test)

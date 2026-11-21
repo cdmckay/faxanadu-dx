@@ -60,6 +60,10 @@ cmake -S tests/movement -B "$OUT/movement" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/
 cmake --build "$OUT/movement" -j"$JOBS" >/dev/null
 "$OUT/movement/pose_test"
 "$OUT/movement/jumps_test"
+cmake -S tests/ladders -B "$OUT/ladders" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/ladders" -j"$JOBS" >/dev/null
+"$OUT/ladders/ladders_test"
+"$OUT/ladders/ladder_hold_test"
 cmake -S tests/files -B "$OUT/files" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/files" -j"$JOBS" >/dev/null
 FAX_FILES_TEST_DIR="$OUT/files/scratch" "$OUT/files/files_test"
@@ -99,6 +103,9 @@ cmake --build "$OUT/damage" -j"$JOBS" >/dev/null
 cmake -S tests/inventory -B "$OUT/inventory" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/inventory" -j"$JOBS" >/dev/null
 "$OUT/inventory/inventory_test"
+cmake -S tests/map -B "$OUT/map" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/map" -j"$JOBS" >/dev/null
+"$OUT/map/map_test" "$ROM"
 cmake -S tests/graphics -B "$OUT/graphics" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/graphics" -j"$JOBS" >/dev/null
 "$OUT/graphics/graphics_test"
@@ -138,6 +145,7 @@ E2E=(
   "keys         tests/keys/auto_and_reusable_keys.py --parts"
   "pose         tests/movement/falling_pose.py"
   "jumps        tests/movement/forgiving_jumps.py"
+  "ladders      tests/ladders/ladders.py --parts"
   "speaker      tests/speaker/speaker_names.py --parts"
   "speaker+sw   tests/speaker/speaker_names.py --parts $SW"
   "text         tests/text_speed/text_speed.py"
@@ -165,6 +173,8 @@ E2E=(
   "damage+sw    tests/damage/damage_numbers.py $SW"
   "inventory    tests/inventory/inventory_fix.py --parts"
   "inventory+sw tests/inventory/inventory_fix.py --parts $SW"
+  "map          tests/map/explored_map.py --parts"
+  "map+sw       tests/map/explored_map.py --parts $SW"
   "graphics     tests/graphics/graphics_fixes.py --parts"
   "graphics+sw  tests/graphics/graphics_fixes.py --parts $SW"
 )
