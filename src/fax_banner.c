@@ -157,6 +157,7 @@ const uint32_t *fax_banner_draw(const uint32_t *picture, int *w, int *h, const c
 }
 
 void fax_banner_hide(void) { t.showing = FAX_ZONE_NONE; }
+bool fax_banner_busy(void) { return enabled && !failed && t.showing != FAX_ZONE_NONE; }
 
 const uint32_t *fax_banner_present(const uint32_t *picture, int *w, int *h) {
     if (!enabled || failed || t.showing == FAX_ZONE_NONE || box_open()) return picture;

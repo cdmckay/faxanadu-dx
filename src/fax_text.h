@@ -34,3 +34,7 @@ void fax_text_box_rom(uint32_t *px, int w, int h, int x, int y, int cols, int ro
                       unsigned alpha);
 /* A line of text in a given ARGB color. */
 void fax_text_draw_color(uint32_t *px, int w, int h, int x, int y, const char *s, uint32_t color, unsigned alpha);
+/* A character's glyph: 8 rows, the left pixel the top bit; NULL if the font
+ * is not loaded or it has none ($20-$7F). For marks drawn in the font: the
+ * quest log's "!" and "?". */
+const uint8_t *fax_text_glyph(char ch);

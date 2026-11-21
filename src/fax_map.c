@@ -32,6 +32,7 @@
  * (fax_save.h), one an area. See docs/GAME_INTERNALS.md, "The map". */
 #include "fax_map.h"
 #include "fax_map_layout.h"
+#include "fax_quests.h"
 #include "fax_save.h"
 #include "fax_text.h"
 #include "fax_travel.h"
@@ -302,12 +303,15 @@ void fax_map_frame_end(void) {
 }
 
 bool fax_map_showing(void) { return enabled && open; }
+bool fax_map_seen(unsigned area, unsigned screen) {
+    return enabled && decoded && valid_place(area, screen) && bit(v.seen[area], screen);
+}
 
 static void press(void) {
     if (!enabled) return;
     ++presses;
     if (open) closing = true;
-    else want = frames + OPEN_WINDOW;
+    else if (!fax_quests_showing()) want = frames + OPEN_WINDOW;   /* not over the quest log */
 }
 
 /* ---- the save file: one field an area ---- */
