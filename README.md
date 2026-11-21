@@ -136,6 +136,13 @@ Slayer your armor instead of your weapons, so either could wipe out armor or
 weapons you carried, or list ones you didn't have. Now each joins its own
 list, after what you carry.
 
+**The original's graphics glitches, fixed.** On a ladder in Studded Mail, the
+hero's chest showed a stray tile left by an earlier armor or shield; the Fire
+spell's second frame had a piece of its first; the Myconid's foot flickered
+into the wrong colors; the Tower of Fortress had a wall block in its floor;
+and the tip of the F in the title's logo was grey. Each is drawn as it was
+meant to be.
+
 ### Shops and text
 
 **Quick shops.** Up on a shopkeeper opens his list straight away, with no
