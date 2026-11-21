@@ -21,6 +21,8 @@ explore  From Eolis town (the fixture: a new game in file 1, through the gate):
 file     The map's record set to screens of Eolis and the Trunk, a ladder and
          doors (what explore plays to, set directly): death writes the file
          (Save files saves at every respawn), the map's fields matching it.
+         The death starts as the Guru speaks, from a saved game of it after
+         its dissolve.
          Quit, continue file 1: the hero wakes in Eolis's temple, and the map
          shows what it did, the temple's door now too. Continuing from the
          title is the check, so this part boots.
@@ -33,8 +35,9 @@ import sys
 import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import (Game, act, fixture, frame, hold, parse_args, ram, step_toward, tcp, typed, until,  # noqa: E402
-                     until_typed, wait)
+import fax_e2e  # noqa: E402
+from fax_e2e import (Game, act, dissolve, fixture, hold, page_through, parse_args, ram, step_toward,  # noqa: E402
+                     tcp, until, wait)
 
 AREA, SCREEN, PLAYER_X, PLAYER_Y = 0x24, 0x63, 0x9E, 0xA1
 SCREEN_READY, SCROLL, PAUSED = 0x0E, 0x54, 0x120
@@ -120,6 +123,23 @@ def box_open():
 
 def read_file(path):
     return dict(line.split(" = ", 1) for line in path.read_text().splitlines() if " = " in line and not line.startswith("#"))
+
+
+FILE_SEEN = {EOLIS: {0, 1, 2, 3}, TRUNK: {0, 1, 2, 3, 4}}          # the map the file part dies with
+
+
+def file_record():
+    """The map's record for FILE_SEEN, a ladder each way on the Trunk, and two of Eolis's doors."""
+    return {**bits(SEEN, 11, FILE_SEEN), **bits(UP, 11, {TRUNK: {3}}), **bits(DOWN, 11, {TRUNK: {4}}),
+            **bits(DOORS, 6, {EOLIS: {GATE_DOOR, SHOP_DOOR}})}
+
+
+@fax_e2e.recipe("map-file-words", parent="eolis-town")
+def _file_words(g):
+    """In Eolis's town with file_record()'s map, dead: as the Guru speaks,
+    the dissolve over (the respawn's save is what is checked)."""
+    g.poke({PLAYER_IS_DEAD: 1}, {RECORD: file_record()})
+    dissolve(1800)
 
 
 def main():
@@ -241,20 +261,15 @@ def main():
 
         if args.wants("file"):
             game.set_features({PACKAGE: True})
-            game.launch(at="eolis-town")
-            seen = {EOLIS: {0, 1, 2, 3}, TRUNK: {0, 1, 2, 3, 4}}
-            record = {**bits(SEEN, 11, seen), **bits(UP, 11, {TRUNK: {3}}), **bits(DOWN, 11, {TRUNK: {4}}),
-                      **bits(DOORS, 6, {EOLIS: {GATE_DOOR, SHOP_DOOR}})}
+            # Dead in Eolis's town with this map, as the Guru speaks (a saved
+            # game of the death after its dissolve).
+            game.launch(at="map-file-words")
+            seen = FILE_SEEN
             saves = tcp("files_state")["saves"]
-            game.poke({PLAYER_IS_DEAD: 1}, {RECORD: record})
             before = state()
             assert members(before["seen"][TRUNK]) == seen[TRUNK] and members(before["up"][TRUNK]) == {3}, before
             until("the Guru's words", lambda: ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 1800)
-            for _ in range(20):                                     # A on each page until the box closes
-                if not box_open():
-                    break
-                until_typed()
-                act("a", 6, 14)
+            page_through("the box to close", lambda: not box_open())    # A on each page until the box closes
             until("the respawn's save", lambda: tcp("files_state")["saves"] > saves, 1800)
             saved = read_file(out / "game" / FILE)
             for area, key in ((EOLIS, "map.eolis"), (TRUNK, "map.trunk")):

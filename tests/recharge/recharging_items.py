@@ -60,7 +60,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 import fax_e2e  # noqa: E402
-from fax_e2e import Game, act, batch, chunks, frame, hold, page_to, parse_args, ram, tcp, typed, until, until_typed, wait  # noqa: E402
+from fax_e2e import Game, act, batch, chunks, dissolve, frame, hold, page_to, parse_args, ram, tcp, type_out, typed, until, wait  # noqa: E402
 
 AREA, SCREEN, PLAYER_X, PLAYER_Y, PLAYER_FLAGS, PLAYER_STATUS = 0x24, 0x63, 0x9E, 0xA1, 0xA4, 0xA5
 SCREEN_READY = 0x0E
@@ -202,6 +202,18 @@ def enter(g, building):
     wait(30)
 
 
+@fax_e2e.recipe("recharge-boots-words", parent="eolis-meat-shop")
+def _boots_words(g):
+    """Out of the meat shop onto Eolis's screen 1, a Novice with the Wing
+    Boots recharging (the record's cooldown), dead: as the Guru speaks, the
+    dissolve over (what dying does to the cooldown is checked after it)."""
+    warp_out(g, g.save("shop"), "boots-dying", EOLIS, 1, 0x99, PALETTE_EOLIS, 0,
+             {SELECTED_ITEM: WING_BOOTS, NUMBER_OF_ITEMS: 0, PLAYER_TITLE: 0}, {2: COOLDOWN})
+    until("the cooldown", lambda: state()["boots_cooldown"] > 0, 60)
+    g.poke({PLAYER_IS_DEAD: 1})
+    dissolve()
+
+
 @fax_e2e.recipe("recharge-temple", parent="eolis-meat-shop")
 def _recharge_temple(g):
     """Out of the meat shop, its door edited to lead to the temple's door on
@@ -210,6 +222,14 @@ def _recharge_temple(g):
              {SPECIAL_ITEMS: 0, SELECTED_ITEM: NO_ITEM, NUMBER_OF_ITEMS: 0}, {5: 1})
     enter(g, EOLIS_TEMPLE)
     assert state()["elixir_spent"], state()
+
+
+@fax_e2e.recipe("recharge-apolune-words", parent="recharge-temple")
+def _apolune_words(g):
+    """In Eolis's temple with the Elixir spent, dead with Apolune his temple:
+    as the Guru speaks, the dissolve over (the way to Apolune's Guru)."""
+    g.poke({TEMPLE_SPAWN_POINT: 1, PLAYER_IS_DEAD: 1, SPECIAL_ITEMS: 0}, {RECORD.decode(): {5: 1}})
+    dissolve()
 
 
 def main():
@@ -246,14 +266,14 @@ def main():
 
     def page_through(frames=900, hurried=True):
         """Press A on each typed-out page until the box closes; with `hurried`,
-        holding A while each types."""
+        holding A while each types (fax_e2e.page_through())."""
+        if hurried:
+            fax_e2e.page_through("the box to close", lambda: not box_open(), max(3000, frames))
+            return
         for _ in range(20):
             if not box_open():
                 return
-            if hurried:
-                until_typed("the page to type out", frames)
-            else:
-                until("the page to type out", typed, frames)
+            until("the page to type out", typed, frames)
             act("a", 6, 14)
         raise AssertionError("the box did not close")
 
@@ -374,6 +394,9 @@ def main():
         town = game.state("eolis-town") if wanted("bands", "original") else None
         shop = game.state("eolis-meat-shop")
         temple = game.state("recharge-temple") if wanted("travel", "save", "apolune-guru") else None
+        apolune_words = game.state("recharge-apolune-words") if wanted("apolune-guru") else None
+        if wanted("boots-death"):
+            game.state("recharge-boots-words")
         boots = out / "boots.cycstate"
         no_one = {SPRITE_ENTITIES + i: 0xFF for i in range(8)}      # Up next to the town's walker would talk
 
@@ -440,11 +463,9 @@ def main():
             flying_shot("flying-again")
             print(f"ok: after {waited} frames of cooldown the same pair flies again")
         if args.wants("boots-death"):
-            start()
-            warp(shop, "boots-dying", EOLIS, 1, 0x99, PALETTE_EOLIS, 0,
-                 {SELECTED_ITEM: WING_BOOTS, NUMBER_OF_ITEMS: 0, PLAYER_TITLE: 0}, {2: COOLDOWN})
-            until("the cooldown", lambda: state()["boots_cooldown"] > 0, 60)
-            poke({PLAYER_IS_DEAD: 1})
+            # Dead with them recharging, as the Guru speaks: a saved game of the
+            # death after its dissolve.
+            start(at="recharge-boots-words")
             respawn(600)
             s = state()
             assert s["boots_ready"] and s["boots_cooldown"] == 0 and items() == ([], WING_BOOTS), s
@@ -544,7 +565,7 @@ def main():
             status_shot("status-elixir-charged")
             poke({HP: 1, HP_FRACTION: 0})
             until("a Zozura's hit", lambda: ram(MESSAGE_ID) == USED_ELIXIR, 2400)
-            until("the line to type out", lambda: ram(MESSAGE_ID) == 0, 900)   # the pause flag may be stale
+            type_out("the line to type out", 900, pauses=False)        # the pause flag may be stale
             wait(2)
             shot("elixir-used")
             page_through()
@@ -614,7 +635,7 @@ def main():
                     break
                 act("left", 2, 2)
             until("the find", lambda: ram(MESSAGE_ID) == GOT_WING_BOOTS, 600)
-            until("the line to type out", lambda: ram(MESSAGE_ID) == 0, 900)
+            type_out("the line to type out", 900, pauses=False)
             assert not state()["boots_ready"], state()                  # Player_PickUpItem comes after the line
             shot("find-boots-message")
             page_through()
@@ -788,9 +809,7 @@ def main():
             # Elixir at his first action, before either has moved the script.
             start(gurus=GURUS)
             assert tcp("files_state")["enabled"] and tcp("travel_state")["enabled"]
-            plain = out / "apolune-death.cycstate"
-            fixture(temple, plain, {TEMPLE_SPAWN_POINT: 1, PLAYER_IS_DEAD: 1, SPECIAL_ITEMS: 0}, {5: 1})
-            tcp("load_state", path=str(plain))
+            tcp("load_state", path=str(apolune_words))                # dead, as the Guru speaks
             dismiss(NEGATIVE_THOUGHTS, 600)
             until("Apolune's temple", lambda: place() == (BUILDINGS, APOLUNE_TEMPLE) and settled(), 1800)
             wait(30)

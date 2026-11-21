@@ -121,9 +121,30 @@ part's start.
   as long as one run still plays the whole of one (recharging items' Wing
   Boots cooldown, all 60 s). An enemy can be moved in to just past where the
   check begins (the Pendant's Zozura).
-- In a loop that presses A on every typed page, wait with `hurry()` instead
-  of `wait()`: the remaster's Hold A types 4x, and the A that turns the page is
-  still a new press. Not where a page must stop or B answers.
+- Hold A while text types: the remaster's Hold A types 4x, and a held A
+  never turns a page or answers a question, which take a new press. Wait for
+  a page with `type_out()` rather than `until(typed)` before a check, a
+  screenshot or a press; reach a line with `page_to()`; and page through a
+  conversation that takes the same button on every page (the Guru's words
+  after a death, a line to close) with `page_through()`. A new press of A
+  turns a page on the frame it types out, so where a page may be a question
+  they press A only on a frame that cannot: `hurry_page()` saves a state as a
+  character types, and loads it with A down, which then goes down on the next
+  frame, one of three on which no character types. `page_to()` holds the A
+  that turns a page on through the next. Without the remaster (the original's
+  runs) a held A types at the game's pace, so the same calls do no harm.
+  Bound a loop that waits on a typing page by frames: with A held there is no
+  `wait()` in it, and the game serves several reads a frame.
+- Start a death after its dissolve, unless the death is what is checked: the
+  hero dissolves for 256 frames before the Guru speaks, and where he comes
+  back, what he keeps and what is saved are all decided after that. A recipe
+  sets PlayerIsDead (and whatever the death needs), ends with `dissolve()`,
+  and the test loads the fixture as the Guru speaks (`conflate-words` in
+  fax_e2e, `respawn-died-*` in zone respawn, which come in through the same
+  door first). Each feature that checks deaths keeps one whole: Death keeps
+  gold, zone respawn (Eolis, and after a Guru travel journey), Slain by
+  (every death: its line shows through the dissolve), recharging items'
+  Elixir, and Sugata's flash.
 - Run independent headless runs at once with `play.py`'s `headless_all()`.
 
 ### Frames, not seconds

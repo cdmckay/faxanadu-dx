@@ -135,15 +135,8 @@ def _apolune_temple(g):
                            SELECTED_ARMOR: LEATHER_ARMOR, SELECTED_SHIELD: SMALL_SHIELD})
     g.load(dying)
     g.until("the death message", lambda: g.ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 600)
-    for _ in range(60):
-        if g.ram(AREA) == BUILDINGS and not g.ram(PLAYER_IS_DEAD) and g.ram(MESSAGE_ID) != NEGATIVE_THOUGHTS:
-            break
-        message, _, paused = g.ram(MESSAGE_ID, 3)
-        if message == 0 or paused:
-            g.tcp("action", name="a", frames=6)
-            g.wait(14)
-        else:
-            g.wait(10)
+    fax_e2e.page_through("Apolune's temple", lambda: g.ram(AREA) == BUILDINGS and not g.ram(PLAYER_IS_DEAD) and
+                         g.ram(MESSAGE_ID) != NEGATIVE_THOUGHTS)
     g.wait(60)
 
 

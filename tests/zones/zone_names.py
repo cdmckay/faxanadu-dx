@@ -13,7 +13,8 @@ screen 8 cleared before the walk to that door (save-state RAM, an external
 prerequisite). Then it relaunches with the Gurus of Eolis, Apolune and
 Conflate visited (as tests/travel/guru_travel.py does), dies outside Eolis's
 gate with Conflate's temple his spawn point (before any entrance, so zone
-respawn wakes him at that temple, as the original does), travels to
+respawn wakes him at that temple, as the original does; from a saved game
+of that death as the Guru speaks), travels to
 Apolune's Guru, and walks out of each temple. Last, it edits where a temple's
 door leads (save-state RAM too) to walk out into the Tower of Fortress and
 the Castle of Fraternal. A screenshot of each banner is saved in OUT.
@@ -22,7 +23,8 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import Game, act, fixture, hold, hurry, page_to, parse_args, ram, step_toward, tcp, typed, until, wait  # noqa: E402
+from fax_e2e import (Game, act, fixture, hold, page_through, page_to, parse_args, ram, step_toward, tcp,  # noqa: E402
+                     until, wait)
 
 AREA, SCREEN, PLAYER_X = 0x24, 0x63, 0x9E
 TEXTBOX_CLOSED, MESSAGE_ID, TEXTBOX_PAUSED = 0x20C, 0x213, 0x215
@@ -71,10 +73,7 @@ def main():
         """Walk until the hero's X is in [x_min, x_max], paging through any text."""
         for _ in range(600):
             if box_open():
-                if typed():
-                    act("a", 6, 14)
-                else:
-                    hurry(4)
+                page_through("the box to close", lambda: not box_open())
                 continue
             x = ram(PLAYER_X)
             if x_min <= x <= x_max:
@@ -109,7 +108,7 @@ def main():
         walk_out()
 
     try:
-        outside = game.state("gate")                                 # before any entrance
+        words = game.state("conflate-words") if args.wants("conflate-apolune") else None   # fax_e2e's
         shop = game.state("eolis-meat-shop")                         # through Eolis's gate, in the meat shop
 
         def game_up():
@@ -171,13 +170,7 @@ def main():
                     break
                 except AssertionError:
                     pass
-            for _ in range(120):                                # "You used the key"
-                if ram(AREA) == 1:
-                    break
-                if box_open() and typed():
-                    act("a", 6, 14)
-                else:
-                    hurry(10)
+            page_through("the Trunk", lambda: ram(AREA) == 1)  # "You used the key"
             settled_in(1, 0)
             banner("Trunk", before + 1)
             print("ok: the door out of Eolis names the Trunk, once")
@@ -187,20 +180,12 @@ def main():
             # 4. Respawn in Conflate, then travel to Apolune's Guru. He dies outside
             #    Eolis's gate, before any entrance, so zone respawn wakes him at his
             #    temple; dying in the Trunk would bring him back at its door.
+            #    The death starts as the Guru speaks, its dissolve played once,
+            #    in its fixture: the death is not what is checked here.
             (out / "game" / "faxanadu_gurus.txt").write_text("Eolis\nApolune\nConflate\n")
             game.launch()
-            dead = out / "conflate-death.cycstate"
-            fixture(outside, dead, {TEMPLE_SPAWN_POINT: CONFLATE, PLAYER_IS_DEAD: 1})
-            tcp("load_state", path=str(dead))
-            until("the death message", lambda: ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 600)
-            for _ in range(120):
-                if (ram(AREA), ram(SCREEN)) == (BUILDINGS, TEMPLE_SCREEN[CONFLATE]):
-                    break
-                if typed():
-                    act("a")
-                else:
-                    hurry(10)
-            until("Conflate's temple", lambda: (ram(AREA), ram(SCREEN)) == (BUILDINGS, TEMPLE_SCREEN[CONFLATE]))
+            tcp("load_state", path=str(words))
+            page_through("Conflate's temple", lambda: (ram(AREA), ram(SCREEN)) == (BUILDINGS, TEMPLE_SCREEN[CONFLATE]))
             wait(60)
             before = zone()["banners"]
             assert zone()["showing"] is None, zone()

@@ -92,18 +92,30 @@ Functions, on the game launched last
     conversation(cmd)               A conversation's state (cmd's reply) and typed(),
                                     one frame's, in one batch.
     page_to(there, what, cmd)       A on each typed page until there(state) holds
-                                    on a typed one; never A on that page.
+                                    on a typed one; never A on that page. A is
+                                    held while each page types.
+    type_out(what, frames, pauses)  until(typed), with A held while the page types,
+                                    from a frame where a new press cannot turn it;
+                                    let go before it returns. pauses=False: only
+                                    MessageID counts (a stale pause flag).
+    page_through(what, done, frames, button)
+                                    Until done(): `button` on each page the box
+                                    waits on, and A held while each types.
+    hold_a() / let_go(button="a")   Hold A until let go (HOLD_FRAMES at most); let
+                                    go, once a frame has run with it up.
+    hurry_page(pauses)              Hold A from the next frame if a new press there
+                                    cannot turn the page (a save state of a frame
+                                    that typed a character, loaded with A down):
+                                    whether it did.
+    box_open()                      A text box (or the Select menu) is open.
+    dissolve(frames=600)            Until the Guru speaks after a death: a recipe
+                                    that dies ends with it, so a test starts there.
     hold(button, done, frames=600)  Hold a button until done(), then let go at
                                     once (an action replaces the button's hold).
     step_toward(x_min, x_max, stop) One step of a walk to [x_min, x_max]: held
                                     until 8 pixels short, then taps of 2 frames.
     walk(button, stop)              Hold a direction until stop() or the hero
                                     stops moving (a wall, a counter, a person).
-    hurry(frames=10)                Wait with A held but for the last 2 frames:
-                                    the remaster's Hold A types 4x, and the A that
-                                    turns the page is still a new press. Only in a
-                                    loop that presses A on every typed page.
-    until_typed(what, frames)       until(typed), hurrying; before an A.
 
 Save states and the mod selection
     chunks(data)                    A CYCSTATE's chunks: (tag, offset, size).
@@ -124,8 +136,10 @@ Fixtures: the saved games tests start from
                                     handed to the function, which plays to the spot,
                                     and the state there is saved. "gate" (a new
                                     game outside Eolis's gate), "eolis-town",
-                                    "eolis-meat-shop" and "eolis-zozuras" are here;
-                                    tests add their own.
+                                    "eolis-meat-shop", "eolis-zozuras" and
+                                    "conflate-words" (dead outside the gate, with
+                                    Conflate's temple his spawn point, as the Guru
+                                    speaks) are here; tests add their own.
 
     Save states hold CHR RAM copied from the ROM, so they are made from your
     ROM and never committed. Each is cached in build-tests/fixtures as
@@ -199,7 +213,13 @@ LOADED_FRAMES = 2                          # frames a load_state that ends a bat
 WAIT_CHUNK = 600                           # frames a wait command asks for at most (well inside .timeout)
 CONFIG = "[Display]\nWindowScale = 1\n"     # config.ini a test's game starts with; the game adds the rest
 QUICKACK = getattr(socket, "TCP_QUICKACK", None)   # Linux
+TEXTBOX_CLOSED = 0x20C                     # TextBox_Closed: 0 while a box is open
 MESSAGE_ID = 0x213                         # MessageID, Message_ProcessedLength, TextBox_MessagePaused
+TEXTBOX_TIMER = 0x21D                      # a character types on a frame that leaves it a multiple of 4
+PLAYER_IS_DEAD = 0x438                     # PlayerIsDead: set it, and the main loop runs the death path
+TEMPLE_SPAWN_POINT = 0x439                 # TempleSpawnPoint: the temple a death comes back at, 0-7
+NEGATIVE_THOUGHTS = 0x24                   # the Guru's words after a death (message $24)
+HOLD_FRAMES = 6000                         # frames hold_a() holds A for, unless let go first
 
 
 # Ports
@@ -775,6 +795,15 @@ def _eolis_meat_shop(g):
     g.wait(30)
 
 
+@recipe("conflate-words", parent="gate")
+def _conflate_words(g):
+    """Dead outside Eolis's gate, before any entrance, with Conflate's temple
+    (temple 5) his spawn point: as the Guru speaks, the dissolve over. For a
+    test that dies to get to Conflate's Guru, or reads the Guru's words."""
+    g.poke({TEMPLE_SPAWN_POINT: 5, PLAYER_IS_DEAD: 1})
+    dissolve()
+
+
 @recipe("eolis-zozuras", parent="gate")
 def _eolis_zozuras(g):
     """Through Eolis's gate (the intro's trigger dropped, the hero at the
@@ -825,23 +854,119 @@ def act(name, frames=6, after=8):
     _current().act(name, frames, after)
 
 
-def hurry(frames=10):
-    """Wait `frames` frames holding A for all but the last 2. Hold A to speed
-    up text (the remaster's) types a character every frame while A is held,
-    not every 4th, and holding never turns a page, which takes a new press:
-    for a loop that presses A on each page once it has typed, the same
-    presses, sooner. Nothing else may be waiting for A."""
-    batch(("action", dict(name="a", frames=max(1, frames - 2))), ("wait", dict(frames=frames)))
+def hold_a():
+    """Hold A until let_go(), or HOLD_FRAMES frames: a new press if it was up.
+    Hold A to speed up text (the remaster's) types a character every frame
+    while A is held, not every 4th, and a held A never turns a page or answers
+    a question: those take a new press."""
+    tcp("action", name="a", frames=HOLD_FRAMES)
 
 
-def until_typed(what="the page to type out", frames=1200):
-    """until() the text box waits for a button, hurrying it with A; for a
-    step that presses A next."""
+def let_go(button="a"):
+    """Let go of a held button, and return once a frame has run with it up,
+    so the next press of it is a new one."""
+    act(button, 1, 0)
+
+
+def _page(save=None, pauses=True):
+    """The text box at one frame, and that frame: (waiting for a button as
+    typed() reads it, TextBox_Timer, the frame). With `save`, a path, a save
+    state of that frame is written too. Without `pauses`, only MessageID
+    counts, for a line with no pause where TextBox_MessagePaused can be
+    stale (from the intro)."""
+    commands = ((("save_state", dict(path=str(save))),) if save else ()) + (
+        ("read_ram", dict(addr=MESSAGE_ID, len=TEXTBOX_TIMER - MESSAGE_ID + 1)), ("ping", {}))
+    *_, box, at = batch(*commands)
+    data = bytes.fromhex(box["hex"])
+    return data[0] == 0 or pauses and data[2] != 0, data[-1], at["frame"]
+
+
+def hurry_page(pauses=True):
+    """Hold A from the next frame, if a new press there cannot turn the page:
+    whether it did. A new press turns a page on the frame it types out (its
+    last character, the $FC pause or the end, on a frame that leaves
+    TextBox_Timer a multiple of 4), or any frame after. So only while the page
+    types, and only from a frame that typed a character: the next three type
+    none, at the game's pace, and from the second A is held, not new, and
+    types one a frame. The state of that frame is saved with the read, and
+    loaded again with A down, which then goes down on the very next frame
+    (batch()); on another frame, nothing is pressed: try again."""
+    g = _current()
+    path = g.out / "hurry.cycstate"
+    waiting, timer, _ = _page(save=path, pauses=pauses)
+    if waiting or timer & 3:
+        return False
+    g.batch(("load_state", dict(path=str(path))), ("action", dict(name="a", frames=HOLD_FRAMES)))
+    return True
+
+
+def type_out(what="the page to type out", frames=1200, pauses=True):
+    """until() the text box waits for a button (typed()), holding A while the
+    page types, from a frame where a new press cannot turn it (hurry_page()),
+    then let go: the page types 4x and stops at its end, as Hold A does, and
+    it may be a question. For a check, a screenshot or a press on a page.
+    Without `pauses`, as _page()."""
+    end, held = None, False
+    try:
+        while True:
+            waiting, _, at = _page(pauses=pauses)
+            end = at + frames if end is None else end
+            if waiting:
+                return
+            if at >= end:
+                raise AssertionError(f"timed out waiting for {what}")
+            if not held:
+                held = hurry_page(pauses)
+    finally:
+        if held:
+            let_go()
+
+
+def box_open():
+    """A text box (or the Select menu) is open: TextBox_Closed is 0."""
+    return ram(TEXTBOX_CLOSED) == 0
+
+
+def page_through(what, done, frames=3000, button="a"):
+    """Until done(): `button` on each page the text box waits on, and A held
+    while each types (Hold A types 4x). For a conversation that takes the same
+    button on every page: the Guru's words after a death, a line to close. With
+    A, the A that turns a page is held on through the next, and let go and
+    pressed again on the next that waits; with another button, A is held from
+    a frame where a new press cannot turn a page (hurry_page()), and never let
+    go between pages. A is let go at the end."""
     end = frame() + frames
-    while not typed():
-        if frame() >= end:
-            raise AssertionError(f"timed out waiting for {what}")
-        hurry(4)
+    held = False
+    try:
+        while not done():
+            data, at = batch(("read_ram", dict(addr=TEXTBOX_CLOSED, len=MESSAGE_ID + 3 - TEXTBOX_CLOSED)), ("ping", {}))
+            if at["frame"] >= end:
+                raise AssertionError(f"timed out paging to {what}")
+            box = bytes.fromhex(data["hex"])
+            closed, message, paused = box[0], box[MESSAGE_ID - TEXTBOX_CLOSED], box[-1]
+            if closed:
+                continue
+            if message == 0 or paused:
+                if button == "a":
+                    if held:
+                        let_go()
+                    hold_a()
+                    held = True
+                else:
+                    act(button, 2, 0)
+                wait(PAGE_FRAMES)
+            elif not held:
+                held = hurry_page() if button != "a" else (hold_a() or True)
+    finally:
+        if held:
+            let_go()
+
+
+def dissolve(frames=600):
+    """Until the Guru speaks after a death (MessageID $24), the dissolve over:
+    for a recipe that dies, where the death is not what is checked, so a test
+    starts after it. Set PlayerIsDead (and what the death needs) first."""
+    until("the Guru's words", lambda: ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, frames)
 
 
 def hold(button, done, frames=600, renew=8):
@@ -909,22 +1034,35 @@ def page_to(there, what, cmd="travel_state", tries=12, frames=1200):
     that has typed out (`cmd`'s reply, conversation()), and return that
     state; never A on that page, which may be a question. A page counts as
     typed once two reads PAGE_FRAMES apart agree: as a line changes, the
-    text box can still show the last page's pause for a frame or two."""
-    for _ in range(tries):
-        end = frame() + frames
-        while True:
-            state, done = conversation(cmd)
-            if done:
-                wait(PAGE_FRAMES)
-                again, still = conversation(cmd)
-                if still and again == state:
-                    break
-            elif frame() >= end:
-                raise AssertionError(f"timed out waiting for a page to type out ({what})")
-        if there(state):
-            return state
-        act("a")
-    raise AssertionError(f"never reached {what}: {state}")
+    text box can still show the last page's pause for a frame or two.
+    A is held while each page types (Hold A types 4x): the A that turns a
+    page is held on through the next, the first is pressed only where it
+    cannot turn a page (hurry_page()), and A is let go before returning."""
+    held = False
+    try:
+        for _ in range(tries):
+            end = frame() + frames
+            while True:
+                state, done = conversation(cmd)
+                if done:
+                    wait(PAGE_FRAMES)
+                    again, still = conversation(cmd)
+                    if still and again == state:
+                        break
+                elif frame() >= end:
+                    raise AssertionError(f"timed out waiting for a page to type out ({what})")
+                elif not held:
+                    held = hurry_page()
+            if there(state):
+                return state
+            if held:
+                let_go()
+            hold_a()                       # a new press: the page turns, and A stays down through the next
+            held = True
+        raise AssertionError(f"never reached {what}: {state}")
+    finally:
+        if held:
+            let_go()
 
 
 def typed():

@@ -114,7 +114,7 @@ def main():
         g.until("a line, or the end", lambda: g.ram(PORTRAIT) == NO_PORTRAIT or g.ram(MESSAGE_ID) == OUR_LINE, 600)
         if g.ram(MESSAGE_ID) == OUR_LINE:
             said.append(OUR_LINE)
-            g.until("the line to type out", lambda: g.ram(MESSAGE_ID) == 0, 600)
+            fax_e2e.type_out("the line to type out", 600, pauses=False)
             g.wait(6)
             if block()["saying"]:
                 picture = g.shot("tutorial-line")
@@ -134,8 +134,8 @@ def main():
                         saying = True
                         picture = picture or g.shot("battle-helmet-line")
                     g.act("a", 6, 14)
-                else:
-                    g.wait(4)
+                else:                                       # A held while it types, not turning it
+                    fax_e2e.type_out("the line to type out", 600)
                 continue
             if g.ram(ENTITIES + 7) != BATTLE_HELMET_OBJ:
                 g.wait(10)

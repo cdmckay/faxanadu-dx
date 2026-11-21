@@ -17,7 +17,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 import fax_e2e  # noqa: E402
-from fax_e2e import Game, act, fixture, hurry, page_to, parse_args, ram, tcp, typed, until, wait  # noqa: E402
+from fax_e2e import Game, act, fixture, page_through, page_to, parse_args, ram, tcp, type_out, until, wait  # noqa: E402
 
 TEMPLE_SPAWN_POINT, PLAYER_IS_DEAD, MESSAGE_ID, TEXTBOX_PAUSED = 0x439, 0x438, 0x213, 0x215
 AREA, SCREEN, HP, MP, GOLD = 0x24, 0x63, 0x431, 0x39A, 0x392
@@ -35,21 +35,13 @@ def in_temple(temple):
 def die_and_respawn(temple):
     """Page through the death message until the hero is back in `temple`."""
     until("the death message", lambda: ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 600)
-    for _ in range(120):
-        if in_temple(temple):
-            return
-        if typed():
-            act("a")
-        else:
-            hurry(10)
-    until(f"temple {temple}", lambda: in_temple(temple))
+    page_through(f"temple {temple}", lambda: in_temple(temple))
 
 
-@fax_e2e.recipe("travel-conflate-temple", parent="gate")
+@fax_e2e.recipe("travel-conflate-temple", parent="conflate-words")
 def _conflate_temple(g):
     """Died outside Eolis's gate with Conflate's temple his spawn point: back
     in Conflate's temple, after the Guru's words."""
-    g.poke({TEMPLE_SPAWN_POINT: CONFLATE, PLAYER_IS_DEAD: 1})
     die_and_respawn(CONFLATE)
     wait(60)
 
@@ -66,7 +58,7 @@ def main():
         return tcp("travel_state")["text"]
 
     def shot_line(name):
-        until("the line to type out", typed)
+        type_out("the line to type out")
         game.shot(name)
 
     def advance(expect, tries=12):
@@ -86,13 +78,13 @@ def main():
 
     def answer(button, expect):
         """Answer the question on screen once it has typed out."""
-        until("the question to type out", typed)
+        type_out("the question to type out")
         act(button)
         until(f"line {expect}", lambda: line() == expect)
 
     def close_box(button="a"):
         """Dismiss the last line once it has typed out, and let the box close."""
-        until("the line to type out", typed)
+        type_out("the line to type out")
         act(button, 6, 60)
 
     try:

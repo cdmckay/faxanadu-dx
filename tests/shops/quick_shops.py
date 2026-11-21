@@ -56,7 +56,7 @@ import sys
 import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import Game, act, fixture, hold, parse_args, ram, step_toward, tcp, until, wait, walk  # noqa: E402
+from fax_e2e import Game, act, fixture, hold, parse_args, ram, step_toward, tcp, type_out, until, wait, walk  # noqa: E402
 
 AREA, SCREEN, PLAYER_X = 0x24, 0x63, 0x9E
 TEXTBOX_CLOSED, MESSAGE_ID = 0x20C, 0x213
@@ -378,7 +378,7 @@ def main():
             assert shops()["cursor"] == 3, shops()
             act("a", 4, 6)
             until("This is not enough Golds.", lambda: ram(MESSAGE_ID) == NOT_ENOUGH_GOLDS, 600)
-            until("the line to type out", typed, 600)
+            type_out("the line to type out", 600, pauses=False)
             game.shot("not-enough-golds")
             assert gold() == 220 and not shops()["list_up"], (gold(), shops())
             act("a", 4, 6)
@@ -494,7 +494,7 @@ def main():
             act("a", 4, 6)
             until("the sale", lambda: shops()["sold"] == before + 1, 1200)
             until("You have nothing to buy.", lambda: ram(MESSAGE_ID) == NOTHING_TO_SELL, 600)
-            until("the line to type out", typed, 600)
+            type_out("the line to type out", 600, pauses=False)
             assert gold() == 50 and items() == [], (gold(), items())
             game.shot("nothing-to-sell")
             act("a", 4, 6)

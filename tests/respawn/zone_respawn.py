@@ -39,13 +39,20 @@ game's (PlayerIsDead set):
    item, still ends with a death.
 7. With the remaster off in the mod selection, the same death in the tower
    wakes at the temple, as the original does.
+
+Where it comes back is what is checked, and that is decided after the
+Guru's words, so most deaths start as the Guru speaks: from a saved game of
+the same death after its dissolve (a fixture, whose recipe plays the same
+way in and dies there). The deaths in 2 (with its pictures), after the
+journey in 5, and to Sugata's flash in 6 are played whole.
 """
 from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 import fax_e2e  # noqa: E402
-from fax_e2e import Game, act, chosen, fixture, hold, hurry, page_to, parser, ram, step_toward, tcp, typed, until, wait  # noqa: E402
+from fax_e2e import (Game, act, chosen, dissolve, fixture, hold, page_through, page_to, parser, ram,  # noqa: E402
+                     step_toward, tcp, type_out, until, wait)
 
 AREA, SCREEN, PLAYER_X, PLAYER_Y, PLAYER_FLAGS = 0x24, 0x63, 0x9E, 0xA1, 0xA4
 SCREEN_READY_STATE, SCROLL_DIRECTION, INTERRUPTS_ON = 0x0E, 0x54, 0x13
@@ -121,22 +128,187 @@ def respawn():
     return tcp("respawn_state")
 
 
-@fax_e2e.recipe("respawn-temple", parent="gate")
-def _respawn_temple(g):
-    """The hero, with his gold and experience, dead outside Eolis's gate
-    before any entrance: back in Eolis's temple, after the Guru's words."""
-    g.poke({**HERO_KIT, PLAYER_IS_DEAD: 1})
-    until("the Guru's words", lambda: ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 600)
+def page_until(what, test):
+    """Page through any text with A until `test` holds (A held while it types)."""
+    page_through(what, test)
+
+
+def walk_to(x_min, x_max):
+    """Walk until the hero's X is in [x_min, x_max], paging through any text."""
+    for _ in range(600):
+        if box_open():
+            page_through("the box to close", lambda: not box_open())
+            continue
+        x = ram(PLAYER_X)
+        if x_min <= x <= x_max:
+            return
+        step_toward(x_min, x_max, box_open)
+    raise AssertionError(f"could not reach x {x_min}-{x_max}, at {ram(PLAYER_X)}")
+
+
+def walk_out():
+    """Walk right out of a building, to where its door leads."""
     for _ in range(200):
-        if at(BUILDINGS, EOLIS_TEMPLE):
-            break
-        if box_open() and typed():
-            act("a", 6, 14)
-        else:
-            hurry(10)
-    else:
-        raise AssertionError("the hero did not wake in Eolis's temple")
+        if ram(AREA) != BUILDINGS:
+            return
+        hold("right", lambda: ram(AREA) != BUILDINGS)
+    raise AssertionError("could not walk out")
+
+
+def save(g, name):
+    path = g.out / f"{name}.cycstate"
+    g.tcp("save_state", path=str(path))
+    return path
+
+
+def clear_screen(g, name):
+    """The screen's enemies gone and HP full, for a walk (a prerequisite, not coverage)."""
+    raw = save(g, f"{name}-raw")
+    clear = g.out / f"{name}-clear.cycstate"
+    fixture(raw, clear, {**{SPRITE_ENTITIES + i: 0xFF for i in range(8)}, HP: 0x50})
+    g.tcp("load_state", path=str(clear))
+
+
+def through_door(block, what, test):
+    """Stand at the door at `block` (YX), as Area_SetStateFromDoorDestination
+    finds it at X + 7, and press Up until `test` holds (a knock or a landing
+    can take the press). Its line, if it has one, is paged with A; until
+    the door answers, no A, which would jump him off his block."""
+    col = block & 0x0F
+    for _ in range(6):
+        walk_to(max(0, col * 16 - 7), col * 16 + 8)
+        until("the hero to stand", lambda: not ram(PLAYER_FLAGS) & 0x05, 120)
+        area_before = ram(AREA), ram(SCREEN)
+        act("up", 4, 10)
+        try:
+            until(f"the door to {what}", lambda: test() or box_open() or (ram(AREA), ram(SCREEN)) != area_before, 120)
+            return page_until(what, test)
+        except AssertionError:
+            pass
+    raise AssertionError(f"could not go through the door to {what}")
+
+
+def standing():
+    """On the ground, neither jumping nor falling (Player_Flags $01 and $04,
+    which a fall keeps through its landing frame), at the same Y twenty
+    frames apart. Dartmoor's arrival is a row above the floor: he stands
+    there up to 15 frames, then drops onto it."""
+    y, _, _, flags = ram(PLAYER_Y, 4)                   # Player_PosY ($A1) to Player_Flags ($A4)
+    if flags & 0x05:
+        return False
+    wait(20)
+    y2, _, _, flags = ram(PLAYER_Y, 4)
+    return not flags & 0x05 and y2 == y
+
+
+def arrival():
+    """Where and how the hero is, as a door or a respawn left him, once he
+    stands."""
+    until("the hero to stand", standing, 300)
+    return dict(area=ram(AREA), screen=ram(SCREEN), x=ram(PLAYER_X), y=ram(PLAYER_Y),
+                palette=ram(SCREEN_PALETTE), music=ram(AREAS_DEFAULT_MUSIC),
+                facing_right=bool(ram(PLAYER_FLAGS) & 0x40))
+
+
+def door_writes(area, screen, palette, pos, region, opens):
+    """A temple's door edited to lead to the door at `pos` on `screen` of `area`, with what opens it."""
+    return {AREA_SAVED_AREA: area, AREA_SAVED_SCREEN: screen, SCREEN_SAVED_PALETTE: palette,
+            PLAYER_SAVED_POS: pos, AREA_REGION: region, HP: 0x50, **opens}
+
+
+def go_in(g, name, area, screen, palette, pos, region, opens, inside):
+    """From Eolis's temple (its door edited), walk out onto the entrance
+    `name`'s door and through it, to `inside` (area, screen): where he
+    stands there."""
+    g.poke(door_writes(area, screen, palette, pos, region, opens))
+    walk_out()
+    until(f"outside {name}", lambda: at(area, screen), 600)
+    clear_screen(g, f"outside-{name}")
+    through_door(pos, name, lambda: at(*inside))
+    return arrival()
+
+
+def slug(name):
+    return name.lower().replace(" ", "-")
+
+
+@fax_e2e.recipe("respawn-gate-words", parent="gate")
+def _gate_words(g):
+    """The hero, with his gold and experience, dead outside Eolis's gate
+    before any entrance: as the Guru speaks, the dissolve over."""
+    g.poke({**HERO_KIT, PLAYER_IS_DEAD: 1})
+    dissolve()
+
+
+@fax_e2e.recipe("respawn-temple", parent="respawn-gate-words")
+def _respawn_temple(g):
+    """Back in Eolis's temple after that death, after the Guru's words."""
+    page_until("Eolis's temple", lambda: at(BUILDINGS, EOLIS_TEMPLE))
     wait(30)
+
+
+def _entrance_recipes(name, area, screen, palette, pos, region, opens, inside):
+    @fax_e2e.recipe(f"respawn-in-{slug(name)}", parent="respawn-temple")
+    def _inside(g):
+        """Through the entrance's door from Eolis's temple (its door edited to
+        lead there), standing where it brought him."""
+        go_in(g, name, area, screen, palette, pos, region, opens, inside)
+
+    @fax_e2e.recipe(f"respawn-died-{slug(name)}", parent=f"respawn-in-{slug(name)}")
+    def _died(g):
+        """Dead where the entrance's door brought him: as the Guru speaks, the dissolve over."""
+        g.poke({PLAYER_IS_DEAD: 1})
+        dissolve()
+
+
+for _name, (_area, _screen, _palette, _pos, _region), _opens, (_in_area, _in_screen, _), _ in ENTRANCES:
+    _entrance_recipes(_name, _area, _screen, _palette, _pos, _region, _opens, (_in_area, _in_screen))
+
+
+def further_in_tower(g):
+    """From where the Tower of Trunk's door brought him, a screen further in
+    ($0E), at x 40-60: each screen's enemies cleared for the walk."""
+    g.poke({SPRITE_ENTITIES + i: 0xFF for i in range(8)})
+    for _ in range(400):
+        if ram(SCREEN) == 0x0E and settled():
+            break
+        act("right", 4, 0)
+    assert ram(SCREEN) == 0x0E, "a screen further into the tower"
+    clear_screen(g, "tower-0e")                       # this screen's enemies came with it
+    walk_to(40, 60)
+
+
+@fax_e2e.recipe("respawn-died-tower-0e", parent="respawn-in-tower-of-trunk")
+def _died_tower_0e(g):
+    """A screen further into the Tower of Trunk, dead: as the Guru speaks,
+    the dissolve over."""
+    further_in_tower(g)
+    g.poke({PLAYER_IS_DEAD: 1})
+    dissolve()
+
+
+@fax_e2e.recipe("respawn-conflate-words", parent="gate")
+def _conflate_words(g):
+    """The hero, with his gold and experience, dead outside Eolis's gate with
+    Conflate's temple his spawn point: as the Guru speaks, the dissolve over."""
+    g.poke({**HERO_KIT, TEMPLE_SPAWN_POINT: CONFLATE, PLAYER_IS_DEAD: 1})
+    dissolve()
+
+
+def into_mist_1f(g):
+    """From Eolis's temple, its door edited to lead to the Branch's door back
+    into the Mist: out, and through it onto the Mist's screen $1F, where
+    Sugata lives. Where he stands there."""
+    return go_in(g, "the Branch", 5, 0x00, 0x08, 0xA5, 3, {}, (2, 0x1F))
+
+
+@fax_e2e.recipe("respawn-ointment-words", parent="respawn-temple")
+def _ointment_words(g):
+    """On the Mist's screen $1F with Ointment running, dead: as the Guru
+    speaks, the dissolve over."""
+    into_mist_1f(g)
+    g.poke({DURATION_OINTMENT: 0x20, PLAYER_IS_DEAD: 1})
+    dissolve()
 
 
 def main():
@@ -148,105 +320,11 @@ def main():
     out = game.out
     shot = game.shot
 
-    def save(name):
-        path = out / f"{name}.cycstate"
-        tcp("save_state", path=str(path))
-        return path
-
-    def page_until(what, test, tries=80):
-        """Page through any text with A until `test` holds."""
-        for _ in range(tries):
-            if test():
-                return
-            if box_open() and typed():
-                act("a", 6, 14)
-            else:
-                hurry(10)
-        raise AssertionError(f"timed out paging to {what}")
-
-    def walk_to(x_min, x_max):
-        """Walk until the hero's X is in [x_min, x_max], paging through any text."""
-        for _ in range(600):
-            if box_open():
-                if typed():
-                    act("a", 6, 14)
-                else:
-                    hurry(4)
-                continue
-            x = ram(PLAYER_X)
-            if x_min <= x <= x_max:
-                return
-            step_toward(x_min, x_max, box_open)
-        raise AssertionError(f"could not reach x {x_min}-{x_max}, at {ram(PLAYER_X)}")
-
-    def walk_out():
-        """Walk right out of a building, to where its door leads."""
-        for _ in range(200):
-            if ram(AREA) != BUILDINGS:
-                return
-            hold("right", lambda: ram(AREA) != BUILDINGS)
-        raise AssertionError("could not walk out")
-
-    def clear_screen(name):
-        """The screen's enemies gone and HP full, for a walk (a prerequisite, not coverage)."""
-        raw = save(f"{name}-raw")
-        clear = out / f"{name}-clear.cycstate"
-        fixture(raw, clear, {**{SPRITE_ENTITIES + i: 0xFF for i in range(8)}, HP: 0x50})
-        tcp("load_state", path=str(clear))
-
-    def through_door(block, what, test):
-        """Stand at the door at `block` (YX), as Area_SetStateFromDoorDestination
-        finds it at X + 7, and press Up until `test` holds (a knock or a landing
-        can take the press). Its line, if it has one, is paged with A; until
-        the door answers, no A, which would jump him off his block."""
-        col = block & 0x0F
-        for _ in range(6):
-            walk_to(max(0, col * 16 - 7), col * 16 + 8)
-            until("the hero to stand", lambda: not ram(PLAYER_FLAGS) & 0x05, 120)
-            area_before = ram(AREA), ram(SCREEN)
-            act("up", 4, 10)
-            try:
-                until(f"the door to {what}", lambda: test() or box_open() or (ram(AREA), ram(SCREEN)) != area_before, 120)
-                return page_until(what, test, 80)
-            except AssertionError:
-                pass
-        raise AssertionError(f"could not go through the door to {what}")
-
-    def standing():
-        """On the ground, neither jumping nor falling (Player_Flags $01 and $04,
-        which a fall keeps through its landing frame), at the same Y twenty
-        frames apart. Dartmoor's arrival is a row above the floor: he stands
-        there up to 15 frames, then drops onto it."""
-        y, _, _, flags = ram(PLAYER_Y, 4)                   # Player_PosY ($A1) to Player_Flags ($A4)
-        if flags & 0x05:
-            return False
-        wait(20)
-        y2, _, _, flags = ram(PLAYER_Y, 4)
-        return not flags & 0x05 and y2 == y
-
-    def arrival():
-        """Where and how the hero is, as a door or a respawn left him, once he
-        stands."""
-        until("the hero to stand", standing, 300)
-        return dict(area=ram(AREA), screen=ram(SCREEN), x=ram(PLAYER_X), y=ram(PLAYER_Y),
-                    palette=ram(SCREEN_PALETTE), music=ram(AREAS_DEFAULT_MUSIC),
-                    facing_right=bool(ram(PLAYER_FLAGS) & 0x40))
-
-    def hero():
-        return dict(experience=number(EXPERIENCE, 2), gold=number(GOLD, 3))
-
-    def die(state, name, area, screen, pictures=False):
-        """Die from `state` and come back at (area, screen), paging through the
-        Guru's words. Returns how the hero is when the screen settles."""
-        dying = out / f"dying-{name}.cycstate"
-        fixture(state, dying, {PLAYER_IS_DEAD: 1})
-        tcp("load_state", path=str(dying))
+    def come_back(name, area, screen, pictures=False):
+        """From the Guru's words after a death, page through them and come
+        back at (area, screen). Returns how the hero is when the screen settles."""
         if pictures:
-            wait(30)
-            shot(f"{name}-dying")
-        until("the Guru's words", lambda: ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 600)
-        if pictures:
-            until("the Guru's words to type", typed, 600)
+            type_out("the Guru's words to type", 600)
             shot(f"{name}-guru")
         page_until(f"area {area} screen {screen:#x}", lambda: at(area, screen))
         came = arrival()
@@ -255,11 +333,39 @@ def main():
             shot(f"{name}-respawned")
         return came
 
+    def die(state, name, area, screen, pictures=False):
+        """Die from `state`, the dissolve and all, and come back at (area, screen)."""
+        dying = out / f"dying-{name}.cycstate"
+        fixture(state, dying, {PLAYER_IS_DEAD: 1})
+        tcp("load_state", path=str(dying))
+        if pictures:
+            wait(30)
+            shot(f"{name}-dying")
+        until("the Guru's words", lambda: ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 600)
+        return come_back(name, area, screen, pictures)
+
+    def after_words(words, name, area, screen, pictures=False):
+        """A death from its saved game as the Guru speaks (`words`, a
+        fixture), and back at (area, screen)."""
+        tcp("load_state", path=str(words))
+        return come_back(name, area, screen, pictures)
+
+    def hero():
+        return dict(experience=number(EXPERIENCE, 2), gold=number(GOLD, 3))
+
     try:
         raw = game.state("gate")
         gate = out / "gate.cycstate"
         fixture(raw, gate, HERO_KIT)
         temple = game.state("respawn-temple")
+        entrances = [e for e in ENTRANCES
+                     if not (args.only and e[0] not in args.only) and any(args.wants(part) for part in GROUPS[e[0]])]
+        # The deaths' saved games, as the Guru speaks, made before the game launches.
+        died = {name: game.state(f"respawn-died-{slug(name)}") for name, *_ in entrances}
+        gate_words = game.state("respawn-gate-words") if args.wants("eolis") else None
+        tower_0e = game.state("respawn-died-tower-0e") if "Tower of Trunk" in died and not seamless else None
+        conflate_words = game.state("respawn-conflate-words") if args.wants("travel") else None
+        ointment_words = game.state("respawn-ointment-words") if args.wants("sugata") else None
 
         def game_up():
             """The game, launched if it is not running."""
@@ -273,11 +379,11 @@ def main():
             until("the Eolis gate", lambda: ram(HP) and at(0, 0), 3000)
             # 1. No entrance yet: the temple, as before.
             assert respawn()["zone"] is None
-            die(gate, "gate", BUILDINGS, EOLIS_TEMPLE)
+            after_words(gate_words, "gate", BUILDINGS, EOLIS_TEMPLE)
             state = respawn()
             assert (state["respawns"], state["fallbacks"]) == (0, 1), state
             wait(30)
-            temple = save("temple")                            # as respawn-temple is
+            temple = save(game, "temple")                      # as respawn-temple is
             print("ok: with no entrance yet, death wakes at Eolis's temple, as before")
 
             # 2. Eolis, through its gate, and a screen further left.
@@ -296,7 +402,7 @@ def main():
                 assert tcp("fax_world")["handoffs"] > handoffs, "Seamless handed the hero to the next room"
             assert respawn()["screen"] == 1, "the walk set no checkpoint"
             wait(10)
-            further = save("eolis-2")
+            further = save(game, "eolis-2")
             files = tcp("files_state")
             assert files["file"] == 1, "Save files has file 1 in play (on by default)"
             came = die(further, "eolis", 0, 1, pictures=True)
@@ -315,21 +421,13 @@ def main():
             print("ok: dying a screen into Eolis comes back at its gate, after the Guru, with gold and experience; "
                   "Save files wrote the file at the respawn, keeping its spawn point")
 
-        # 3. Every tower, castle and region, through its own door.
-        inside = {}
-        for name, (area, screen, palette, pos, region), opens, (in_area, in_screen, start), back in ENTRANCES:
-            if args.only and name not in args.only or not any(args.wants(part) for part in GROUPS[name]):
-                continue
+        # 3. Every tower, castle and region, through its own door. Each death
+        #    starts as the Guru speaks, from its fixture, which came in the
+        #    same way.
+        for name, (area, screen, palette, pos, region), opens, (in_area, in_screen, start), back in entrances:
             game_up()
-            door = out / f"door-{name}.cycstate"
-            fixture(temple, door, {AREA_SAVED_AREA: area, AREA_SAVED_SCREEN: screen, SCREEN_SAVED_PALETTE: palette,
-                                   PLAYER_SAVED_POS: pos, AREA_REGION: region, HP: 0x50, **opens})
-            tcp("load_state", path=str(door))
-            walk_out()
-            until(f"outside {name}", lambda: at(area, screen), 600)
-            clear_screen(f"outside-{name}")
-            through_door(pos, name, lambda: at(in_area, in_screen))
-            entered = arrival()
+            tcp("load_state", path=str(temple))
+            entered = go_in(game, name, area, screen, palette, pos, region, opens, (in_area, in_screen))
             # Where the door puts him, standing; Dartmoor's start is a row above
             # the floor, and he drops onto it.
             assert entered["x"] == (start & 0x0F) << 4 and entered["y"] in (start & 0xF0, (start & 0xF0) + 16), \
@@ -337,9 +435,8 @@ def main():
             state = respawn()
             assert (state["zone"], state["area"], state["screen"], state["start"]) == \
                 (name, in_area, in_screen, start), (name, state)
-            inside[name] = save(f"in-{name}")
             before = respawn()["respawns"]
-            came = die(inside[name], f"died-{name}", in_area, in_screen)
+            came = after_words(died[name], f"died-{name}", in_area, in_screen)
             assert came == entered, (name, came, entered)
             assert (ram(HP), ram(MP)) == (0x50, 0x50), name
             assert hero() == HERO, (name, hero())
@@ -348,28 +445,18 @@ def main():
                     f"music {came['music']:#04x}"
             if back:
                 block, outside = back
-                clear_screen(f"respawned-{name}")
+                clear_screen(game, f"respawned-{name}")
                 through_door(block, f"out of {name}", lambda: at(area, outside))
                 print(f"ok: {name}: back where its door brought him ({where}), and out through that door")
             else:
                 print(f"ok: {name}: back where its door brought him ({where})")
 
-        # 4. A screen further into the Tower of Trunk. With Seamless on, the
-        #    next room's enemies cannot be cleared, so the walk is the default
-        #    view's; step 2 crossed a room with Seamless on.
-        if "Tower of Trunk" in inside and not seamless:
-            clear = out / "tower-clear.cycstate"
-            fixture(inside["Tower of Trunk"], clear, {SPRITE_ENTITIES + i: 0xFF for i in range(8)})
-            tcp("load_state", path=str(clear))
-            for _ in range(400):
-                if ram(SCREEN) == 0x0E and settled():
-                    break
-                act("right", 4, 0)
-            assert ram(SCREEN) == 0x0E, "a screen further into the tower"
-            clear_screen("tower-0e")                       # this screen's enemies came with it
-            walk_to(40, 60)
-            further = save("tower-0e")
-            came = die(further, "tower", 1, 0x0D, pictures=True)
+        # 4. A screen further into the Tower of Trunk (further_in_tower(), in
+        #    its fixture). With Seamless on, the next room's enemies cannot be
+        #    cleared, so the walk is the default view's; step 2 crossed a room
+        #    with Seamless on.
+        if tower_0e:
+            came = after_words(tower_0e, "tower", 1, 0x0D, pictures=True)
             assert (came["x"], came["y"]) == (0x10, 0x90), came
             assert hero() == HERO, hero()
             print("ok: dying a screen into the Tower of Trunk comes back at its door")
@@ -380,9 +467,7 @@ def main():
             game.close()
             (out / "game" / "faxanadu_gurus.txt").write_text("Eolis\nApolune\nConflate\n")
             game.launch()
-            die_in_conflate = out / "conflate.cycstate"
-            fixture(gate, die_in_conflate, {TEMPLE_SPAWN_POINT: CONFLATE})
-            die(die_in_conflate, "to-conflate", BUILDINGS, TEMPLE_SCREEN[CONFLATE])
+            after_words(conflate_words, "to-conflate", BUILDINGS, TEMPLE_SCREEN[CONFLATE])
             walk_out()
             until("Conflate", lambda: at(TOWNS, 0x08), 600)
             state = respawn()
@@ -402,7 +487,7 @@ def main():
             entered = arrival()
             state = respawn()
             assert (state["zone"], state["screen"]) == ("Apolune", 0x01), state
-            came = die(save("apolune"), "apolune", TOWNS, 0x01)
+            came = die(save(game, "apolune"), "apolune", TOWNS, 0x01)
             assert came == entered, (came, entered)
             assert ram(TEMPLE_SPAWN_POINT) == CONFLATE, "the furthest temple is unchanged"
             print("ok: a Guru travel journey forgets the checkpoint; walking out of Apolune's temple records the "
@@ -414,20 +499,13 @@ def main():
             #    onto screen $1F, where Sugata lives: with 10 HP left, its flash
             #    kills him, and he comes back at that door with no band or greyscale
             #    left. Ointment is a timed item, and a death still ends it.
-            door = out / "door-mist-from-branch.cycstate"
-            fixture(temple, door, {AREA_SAVED_AREA: 5, AREA_SAVED_SCREEN: 0x00, SCREEN_SAVED_PALETTE: 0x08,
-                                   PLAYER_SAVED_POS: 0xA5, AREA_REGION: 3, HP: 0x50})
-            tcp("load_state", path=str(door))
-            walk_out()
-            until("the Branch", lambda: at(5, 0x00), 600)
-            clear_screen("branch-0")
-            through_door(0xA5, "the Mist from the Branch", lambda: at(2, 0x1F))
-            entered = arrival()
+            tcp("load_state", path=str(temple))
+            entered = into_mist_1f(game)
             state = respawn()
             assert (state["zone"], state["screen"], state["start"]) == ("Mist", 0x1F, 0x9B), state
             sugata = [i for i in range(8) if ram(SPRITE_ENTITIES + i) == SUGATA]
             assert sugata, "Sugata is on the Mist's screen $1F"
-            raw = save("mist-1f")
+            raw = save(game, "mist-1f")
             weak = out / "mist-1f-weak.cycstate"
             fixture(raw, weak, {HP: 10, **{SPRITE_ENTITIES + i: 0xFF for i in range(8) if i not in sugata}})
             tcp("load_state", path=str(weak))
@@ -440,20 +518,18 @@ def main():
             assert came == entered, (came, entered)
             assert tcp("sugata_state")["band"] != "flash" and not ram(PPU_MASK) & 1, "no flash left over"
             assert (ram(HP), ram(MP)) == (0x50, 0x50)
-            anointed = out / "mist-1f-ointment.cycstate"
-            fixture(raw, anointed, {DURATION_OINTMENT: 0x20})
-            die(anointed, "ointment", 2, 0x1F)
+            after_words(ointment_words, "ointment", 2, 0x1F)       # the same place, with Ointment running
             assert ram(DURATION_OINTMENT) == 0xFF, "a death ends the Ointment, as in the original"
             print("ok: Sugata's flash takes his last HP on the Mist's screen $1F: back at the Branch's door, "
                   "no band or greyscale left; a death still ends the Ointment")
 
         # 7. The remaster off: the same death wakes at the temple, as the original.
-        if "Tower of Trunk" in inside:
+        if "Tower of Trunk" in died:
             game.close()
             game.set_features({(PACKAGE, FEATURE): False})
             game.launch()
             assert not respawn()["enabled"], "the remaster is off"
-            die(inside["Tower of Trunk"], "off", BUILDINGS, EOLIS_TEMPLE)
+            after_words(died["Tower of Trunk"], "off", BUILDINGS, EOLIS_TEMPLE)
             print("ok: with the remaster off, dying in the Tower of Trunk wakes at Eolis's temple, as the original does")
         print("screenshots:", ", ".join(game.shots))
     except BaseException:

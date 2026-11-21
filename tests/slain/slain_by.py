@@ -30,6 +30,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "block"))
 from harness import (Game, fixture, parse_args, AREA, POS_X, POS_Y, ENTITIES, SPRITE_X, SPRITE_Y, SELECTED_SHIELD,  # noqa: E402
                      SMALL, MAGIC, HP, PLAYER_IS_DEAD, MESSAGE_ID, GOLD)
+import fax_e2e  # noqa: E402  (on the path through harness)
 
 HP_FRACTION, EXPERIENCE = 0x432, 0x390
 NEGATIVE_THOUGHTS = 0x24                                     # the Guru's words after a death
@@ -85,16 +86,6 @@ def main():
         assert slain()["showing"] is None, "the line is gone before the Guru speaks"
         return hit
 
-    def page_until(what, test, tries=80):
-        for _ in range(tries):
-            if test():
-                return
-            if g.box_open() and g.typed():
-                g.act("a", 6, 14)
-            else:
-                g.wait(10)
-        raise AssertionError(f"timed out paging to {what}")
-
     try:
         g.launch(at="gate-door")
         assert slain()["enabled"], "Slain by is on by default"
@@ -129,7 +120,7 @@ def main():
         hero_x = g.ram(POS_X)
         respawns, saves = g.tcp("respawn_state")["respawns"], g.tcp("files_state")["saves"]
         die(trunk, "monodron", {HP: 1, HP_FRACTION: 0, SPRITE_X + slot: hero_x + 8}, "Slain by a Monodron", "touch")
-        page_until("the Trunk's entrance", lambda: g.where() == (TRUNK, 0) and g.settled() and not g.box_open())
+        fax_e2e.page_through("the Trunk's entrance", lambda: g.where() == (TRUNK, 0) and g.settled() and not g.box_open())
         assert g.tcp("respawn_state")["respawns"] == respawns + 1, "zone respawn: back at the Trunk's entrance"
         assert g.tcp("files_state")["saves"] == saves + 1, "Save files wrote the file at the respawn"
         kept = dict(experience=int.from_bytes(g.ram(EXPERIENCE, 2), "little"),

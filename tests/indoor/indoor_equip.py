@@ -29,7 +29,8 @@ and the weapon in hand.
    few buildings with an enemy in it (Sir Gawaine): the sword now hurts him.
    With the remaster off, and the weapon out of hand as the original leaves
    it, the same swing does nothing.
-5. A death in the meat shop respawns at Eolis's Guru with the sword in hand.
+5. A death in the meat shop respawns at Eolis's Guru with the sword in hand
+   (from a saved game of the death as the Guru speaks, its dissolve over).
 6. With the remaster off, the original: carrying the Long Sword into the shop
    with the dagger in hand, he holds nothing, and the menu refuses the sword
    (the menu stays up, the dagger still selected).
@@ -42,8 +43,9 @@ import subprocess
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import (Game, act, features_toml, fixture, hold, parse_args, ram, step_toward, tcp, typed,  # noqa: E402
-                     until, wait)
+import fax_e2e  # noqa: E402
+from fax_e2e import (Game, act, dissolve, features_toml, fixture, hold, page_through, parse_args, ram,  # noqa: E402
+                     step_toward, tcp, until, wait)
 
 AREA, SCREEN, PLAYER_X, PLAYER_Y = 0x24, 0x63, 0x9E, 0xA1
 PLAYER_FLAGS, ATTACK_PHASE = 0xA4, 0xAE                             # Player_Flags, Player_AttackPhaseAnimFrame
@@ -94,6 +96,14 @@ def carrying(gold_amount, weapon, weapon_list=()):
          SELECTED_WEAPON: weapon, PLAYER_CUR_WEAPON: weapon, NUMBER_OF_WEAPONS: len(weapon_list), HP: 0x50}
     w.update({WEAPONS + i: v for i, v in enumerate(weapon_list)})
     return w
+
+
+@fax_e2e.recipe("indoor-meat-shop-words", parent="eolis-meat-shop")
+def _meat_shop_words(g):
+    """Dead in Eolis's meat shop with the Long Sword in hand and Eolis his
+    temple: as the Guru speaks, the dissolve over."""
+    g.poke({**carrying(0, LONG_SWORD), PLAYER_IS_DEAD: 1, TEMPLE_SPAWN_POINT: 0})
+    dissolve()
 
 
 def slot_of(mem, entity):
@@ -195,10 +205,8 @@ def main():
         Eolis's gate. (TextBox_Closed reads 0 in the towns with no box open.)"""
         for _ in range(600):
             if (ram(AREA), ram(SCREEN)) == (EOLIS, 0) and ram(TEXTBOX_CLOSED) == 0:
-                if typed():
-                    act("a", 6, 14)
-                else:
-                    wait(4)
+                page_through("the monologue", lambda: not ((ram(AREA), ram(SCREEN)) == (EOLIS, 0) and
+                                                            ram(TEXTBOX_CLOSED) == 0))
                 continue
             x = ram(PLAYER_X)
             if x_min <= x <= x_max:
@@ -253,15 +261,8 @@ def main():
         raise AssertionError("no counter")
 
     def converse():
-        """A and B through a conversation to its end."""
-        for _ in range(200):
-            if ram(PORTRAIT) == NO_PORTRAIT and ram(TEXTBOX_CLOSED) != 0:
-                return
-            if typed():
-                act("a", 6, 14)
-            else:
-                wait(4)
-        raise AssertionError("the conversation did not end")
+        """A through a conversation to its end."""
+        page_through("the end of the conversation", lambda: ram(PORTRAIT) == NO_PORTRAIT and ram(TEXTBOX_CLOSED) != 0)
 
     def menu_to_weapons(name="menu-indoors"):
         """Select, then A on Weapons: the weapons list, waiting for a button."""
@@ -304,6 +305,7 @@ def main():
 
     try:
         start = game.state("eolis-meat-shop")                       # through Eolis's gate, in the meat shop
+        words = game.state("indoor-meat-shop-words") if args.wants("death") else None
         forepaw = None
 
         def game_up():
@@ -412,17 +414,11 @@ def main():
         if args.wants("death"):
             game_up()
             # 5. A death in the meat shop: back at Eolis's Guru, the sword in hand.
-            dying = out / "dying.cycstate"
-            fixture(start, dying, {**carrying(0, LONG_SWORD), PLAYER_IS_DEAD: 1, TEMPLE_SPAWN_POINT: 0})
-            tcp("load_state", path=str(dying))
-            until("the death message", lambda: ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 600)
-            for _ in range(60):
-                if ram(AREA) == BUILDINGS and ram(SCREEN) == 2 and not ram(PLAYER_IS_DEAD) and ram(TEXTBOX_CLOSED):
-                    break
-                if typed():
-                    act("a", 6, 14)
-                else:
-                    wait(10)
+            #    It starts as the Guru speaks, from a saved game of the death
+            #    after its dissolve: the respawn is what is checked.
+            tcp("load_state", path=str(words))
+            page_through("Eolis's temple", lambda: ram(AREA) == BUILDINGS and ram(SCREEN) == 2 and
+                         not ram(PLAYER_IS_DEAD) and ram(TEXTBOX_CLOSED))
             wait(30)
             assert (ram(AREA), ram(SCREEN)) == (BUILDINGS, 2), (ram(AREA), ram(SCREEN))
             assert indoor()["weapon_in_hand"] == LONG_SWORD and weapon_drawn(ram(0, 0x800)), indoor()
