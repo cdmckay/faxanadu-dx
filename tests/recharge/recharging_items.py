@@ -668,8 +668,10 @@ def main():
             def steer(x, target):
                 return {"dpright"} if x < target - 3 else {"dpleft"} if x > target + 3 else set()
             cleared = shaft_shot = None
-            for _ in range(5000):
+            end = frame() + (FLIGHT + 2) * SECOND                     # frames, not reads: several can come in a frame
+            while True:
                 now = frame()
+                assert now < end, f"no landing beside the man in the flight's {FLIGHT} s: {place()}"
                 zp = ram(SCREEN_READY, PLAYER_Y + 1 - SCREEN_READY)
                 screen, x, y = zp[SCREEN - SCREEN_READY], zp[PLAYER_X - SCREEN_READY], zp[PLAYER_Y - SCREEN_READY]
                 assert ram(DURATION_WING_BOOTS) < 0x80, f"the flight ran out at {place()}, x={x} y={y}"
