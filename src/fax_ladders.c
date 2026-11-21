@@ -15,8 +15,8 @@
  *   pixel up, in a scratch copy of the machine). It clears climbing, as the
  *   drop did: he stays at the top in the pose the original's catch leaves him
  *   in, and A jumps from there, as it did after a drop. Not while flying (the
- *   Wing Boots with A held use the same routine to rise), nor at the screen's
- *   top row, where the game's own step goes on to the screen above.
+ *   Wing Boots with A held use the same routine to rise), nor at Y = 0, where
+ *   the game's own step goes on to the screen above.
  *
  * - The fountain's ladder (the Retranslation's "fountain ladder bugfix"). Trunk
  *   $28's screen event, ScreenEvents_HandlePathToMasconEvent ($EF69), runs from
@@ -26,8 +26,8 @@
  *   and the nametable. But GameLoop_UpdatePlayer runs earlier in that pass, and
  *   if it walks him off the screen, Area_ScrollTo has already loaded the next
  *   screen ($27, the only neighbour) into ScreenBuffer: the event then puts
- *   the ladder (column 2, rows 2-8, through $27's floor) and two blocks of air
- *   (row 5 and 6 of column 7, in $27's floor) there instead.
+ *   the ladder (column 2, rows 2-8, through $27's floor) and air at column 7,
+ *   rows 5 and 6 (a hole in $27's middle floor) there instead.
  *   The hook at the handler's entry skips it, as its own "not yet" path does
  *   (CurrentScreen_SpecialEventID $FF, RTS), unless Trunk $28 is the screen
  *   loaded. The event comes back the next time the hero enters $28.
