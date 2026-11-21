@@ -68,6 +68,10 @@ cmake -S tests/movement -B "$OUT/movement" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/
 cmake --build "$OUT/movement" -j"$JOBS" >/dev/null
 "$OUT/movement/pose_test"
 "$OUT/movement/jumps_test"
+cmake -S tests/ladders -B "$OUT/ladders" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/ladders" -j"$JOBS" >/dev/null
+"$OUT/ladders/ladders_test"
+"$OUT/ladders/ladder_hold_test"
 cmake -S tests/files -B "$OUT/files" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/files" -j"$JOBS" >/dev/null
 FAX_FILES_TEST_DIR="$OUT/files/scratch" "$OUT/files/files_test"
@@ -104,6 +108,18 @@ cmake --build "$OUT/indoor" -j"$JOBS" >/dev/null
 cmake -S tests/damage -B "$OUT/damage" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/damage" -j"$JOBS" >/dev/null
 "$OUT/damage/damage_test"
+cmake -S tests/inventory -B "$OUT/inventory" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/inventory" -j"$JOBS" >/dev/null
+"$OUT/inventory/inventory_test"
+cmake -S tests/fixes -B "$OUT/fixes" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/fixes" -j"$JOBS" >/dev/null
+"$OUT/fixes/fixes_test"
+cmake -S tests/map -B "$OUT/map" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/map" -j"$JOBS" >/dev/null
+"$OUT/map/map_test" "$ROM"
+cmake -S tests/graphics -B "$OUT/graphics" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/graphics" -j"$JOBS" >/dev/null
+"$OUT/graphics/graphics_test"
 
 echo "== the game, 600 frames headless"
 build-cycle/FaxanaduRecomp "$ROM" --frames 600 --no-save | grep "mode="
@@ -153,6 +169,7 @@ E2E=(
   "keys         tests/keys/auto_and_reusable_keys.py --parts"
   "pose         tests/movement/falling_pose.py"
   "jumps        tests/movement/forgiving_jumps.py"
+  "ladders      tests/ladders/ladders.py --parts"
   "speaker      tests/speaker/speaker_names.py --parts"
   "speaker+sw   tests/speaker/speaker_names.py --parts $SW"
   "text         tests/text_speed/text_speed.py"
@@ -176,6 +193,13 @@ E2E=(
   "indoor       tests/indoor/indoor_equip.py --parts"
   "damage       tests/damage/damage_numbers.py"
   "damage+sw    tests/damage/damage_numbers.py $SW"
+  "inventory    tests/inventory/inventory_fix.py --parts"
+  "inventory+sw tests/inventory/inventory_fix.py --parts $SW"
+  "map          tests/map/explored_map.py --parts"
+  "map+sw       tests/map/explored_map.py --parts $SW"
+  "fixes        tests/fixes/small_fixes.py --parts"
+  "graphics     tests/graphics/graphics_fixes.py --parts"
+  "graphics+sw  tests/graphics/graphics_fixes.py --parts $SW"
 )
 # At most E2E_JOBS runs play at once (default: one a hardware thread; 0: all
 # at once): a game is uncapped and takes a whole thread, and more of them

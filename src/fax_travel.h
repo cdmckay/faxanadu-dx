@@ -22,3 +22,8 @@ uint16_t fax_travel_begin(bool towns);
  * only at the end of a shop's or a gift's script, never during a Guru's, and
  * Guru travel writes the slot again before each of its own lines. */
 enum { FAX_TRAVEL_SAY = 0xAE00, FAX_TRAVEL_SLOT = 0xB45B, FAX_TRAVEL_SLOT_ID = 0xC3, FAX_TRAVEL_SLOT_LEN = 48 };
+
+/* The Gurus this playthrough has visited, a bit per temple (0 Eolis ... 7
+ * Dartmoor); Eolis's is set from the start of every game. 0 with Guru travel
+ * off. The map counts them as their temples' doors. */
+uint8_t fax_travel_visited(void);

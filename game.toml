@@ -293,6 +293,30 @@ addr = 0xe44b
 bank = 15
 bytes = "10 e6 20 f6 ec b0 e7 a2 02 20 c8 e6"
 
+# Ladder fixes (fax_ladders.c): the climb's passable check in
+# Player_CheckHandleClimbUp (BNE @_return), and the entry of Trunk $28's screen
+# event, ScreenEvents_HandlePathToMasconEvent.
+
+[[mod_function_hook]]
+id = "faxanadu.ladder-fixes.climb-top"
+addr = 0xe30c
+bank = 15
+bytes = "d0 35 e6 a3 a5 a5 10 0a a5 a1 38 e9"
+
+[[mod_function_hook]]
+id = "faxanadu.ladder-fixes.fountain"
+addr = 0xef69
+bank = 15
+bytes = "ad 2d 04 29 20 f0 12 a9 ff 8d 2e 04"
+
+# Holding on to ladders (fax_ladder_hold.c): Player_HandleKnockback's entry.
+
+[[mod_function_hook]]
+id = "faxanadu.ladder-hold.knockback"
+addr = 0xe153
+bank = 15
+bytes = "a5 a4 29 40 48 49 40 85 a4 20 6b e1"
+
 # Hold A to speed up text (fax_text_speed.c): TextBox_ShowNextChar_IfReady,
 # which TextBox_ShowNextChar calls once a frame in every message loop.
 
@@ -645,3 +669,104 @@ id = "faxanadu.damage-numbers.hero"
 addr = 0xc091
 bank = 15
 bytes = "38 ed bc 04 8d 32 04 ad 31 04 ed bd"   # Player_ReduceHP's SEC, SBC Arg_PlayerHealthDelta_L
+
+# The Battle Suit and Dragon Slayer fix (fax_inventory.c): each pickup's
+# CPX #$04, right after its LDX read the other list's count. The hook puts the
+# right count in X; the routine's own cap, store and count follow.
+
+[[mod_function_hook]]
+id = "faxanadu.inventory-fix.battle-suit"
+addr = 0xc6fa
+bank = 15
+bytes = "e0 04 90 02 a2 03 a9 03 9d a1 03 e8"   # Player_PickUpBattleSuit, after LDX NumberOfWeapons
+
+[[mod_function_hook]]
+id = "faxanadu.inventory-fix.dragon-slayer"
+addr = 0xc73a
+bank = 15
+bytes = "e0 04 90 02 a2 03 a9 03 9d 9d 03 e8"   # Player_PickUpDragonSlayer, after LDX NumberOfArmors
+
+# The map (fax_map.c): a Map button pauses the game through its own pause and
+# shows the screens seen. Both sites are BEQs in GameLoop_CheckPauseGame that
+# it steers by Z: past "Start not new" into the pause, and in the pause loop,
+# on (another frame) or past (unpause).
+
+[[mod_function_hook]]
+id = "faxanadu.map.check"
+addr = 0xe02f
+bank = 15
+bytes = "f0 f9 a9 01 8d 20 01 20 25 ca 20 a8"
+
+[[mod_function_hook]]
+id = "faxanadu.map.loop"
+addr = 0xe040
+bank = 15
+bytes = "f0 f4 a9 00 8d 20 01 60 a5 18 85 16"
+
+# Small fixes (fax_fixes.c): the typing sound's TAX in SoundEffect_Message_OnTick
+# (its index halved, so the table's own $01 plays, not the $A9 past its end);
+# IScriptAction_ShowPassword's entry (the message the mantra's line ends read
+# pointed at the mantra's characters, in bank 12); and Player_HandleHitByMagic,
+# skipped during iframes and under Ointment. The last is Block's site too,
+# which comes first.
+
+[[mod_function_hook]]
+id = "faxanadu.small-fixes.message-sound"
+addr = 0x86b2
+bank = 5
+bytes = "aa bd d1 86 8d 0e 40 a9 00 8d 0f 40"   # TAX, LDA SOUNDEFFECT_MESSAGE_NOISE_LO,X, STA NOISE_LO
+
+[[mod_function_hook]]
+id = "faxanadu.small-fixes.mantra"
+addr = 0x8737
+bank = 12
+bytes = "20 e5 96 20 34 f4 a9 00 8d 07 02 20"   # JSR Password_GenerateStateAndReset, JSR TextBox_ClearPasswordSize
+
+[[mod_function_hook]]
+id = "faxanadu.small-fixes.shield-hit"
+addr = 0x87dc
+bank = 14
+bytes = "ae 78 03 bc cc 02 b9 d7 b6 ac bf 03"   # Player_HandleHitByMagic
+
+# The graphics fixes (fax_graphics.c). Sprite_Draw's two loops, right after
+# each reads a cell's tile slot (at its CLC) and its attribute (at its EOR)
+# from bank 7: the hook puts the right byte in A for the three wrong cells.
+# PPU_WriteTilesFromCHRRAM's STA PPUDATA: the title's attribute byte for the
+# logo's F. Area_LoadScrollData, after the current screen's Area_LoadBlocks:
+# the floor block of the Tower of Fortress's $2D.
+
+[[mod_function_hook]]
+id = "faxanadu.graphics-fix.tile"
+addr = 0xf131
+bank = 15
+bytes = "18 65 33 9d 00 07 e8 c8 b1 3a 45 29"   # Sprite_Draw_Standard: CLC, ADC Sprites_PPUOffset
+
+[[mod_function_hook]]
+id = "faxanadu.graphics-fix.attribute"
+addr = 0xf13b
+bank = 15
+bytes = "45 29 85 01 a5 42 29 01 a8 a5 26 39"   # Sprite_Draw_Standard: EOR CurrentSprite_FlipMask
+
+[[mod_function_hook]]
+id = "faxanadu.graphics-fix.flipped-tile"
+addr = 0xf1e5
+bank = 15
+bytes = "18 65 33 9d 00 07 e8 c8 b1 3a 45 29"   # Sprite_Draw_FlippedHoriz: CLC, ADC Sprites_PPUOffset
+
+[[mod_function_hook]]
+id = "faxanadu.graphics-fix.flipped-attribute"
+addr = 0xf1ef
+bank = 15
+bytes = "45 29 85 01 a5 42 29 01 a8 a5 26 39"   # Sprite_Draw_FlippedHoriz: EOR CurrentSprite_FlipMask
+
+[[mod_function_hook]]
+id = "faxanadu.graphics-fix.title"
+addr = 0xf8b7
+bank = 15
+bytes = "8d 07 20 c8 d0 02 e6 dc ca d0 f3 c6"   # PPU_WriteTilesFromCHRRAM: STA PPUDATA
+
+[[mod_function_hook]]
+id = "faxanadu.graphics-fix.screen"
+addr = 0xd1be
+bank = 15
+bytes = "20 e7 cc a5 54 c9 02 b0 0f aa a9 00"   # Area_LoadScrollData: JSR MMC1_RestorePrevROMBank

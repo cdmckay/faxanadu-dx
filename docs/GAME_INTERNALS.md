@@ -63,6 +63,7 @@ and data tables after it shifted). Not supported: the build rejects it.
 | `$009E`, `$00A1` | `Player_PosX_Block`, `Player_PosY` | |
 | `$00DB-$00DD` | `IScriptOrCHRAddr`, `IScriptOffset` | The interpreter reads the next action at addr + offset |
 | `$0100` | `CurrentROMBank` | 14 in the main loop. The stack shares this page |
+| `$0120` | `Game_PausedState` | Nonzero while the game is paused: Start, or the map (see *The map*) |
 | `$0127` | `SoundEffect_State_Counter` | The playing sound effect's tick; the typing sound runs 1-4 |
 | `$0208-$020B` | `TextBox_X`, `TextBox_Y`, `TextBox_Width`, `TextBox_Height` | The box last opened or closed, in tiles (see *The text box*) |
 | `$0212` | `TextBox_PlayTextSound` | The typing sound plays for a character if set |
@@ -149,6 +150,11 @@ the portrait (`IScripts_OpenForPortrait`) and opens the dialogue box.
 
 - The ID holds through every action of the script: messages, questions, the
   Buy/Sell menu, shop lists, the mantra and Guru travel's lines.
+- **A portrait moves while a line types** (`MessageID` set, `TextBox_MessagePaused`
+  0): `IScripts_UpdatePortraitAnimation` picks the eyes and mouth frame
+  `(InterruptCounter >> 3) & 3`. Typed out or paused, it shows frame 0. A
+  picture of a line mid-typing is the same every run only from a save state
+  with `InterruptCounter` set, played headless.
   `IScriptAction_EndScript` sets it back to `$FF` (`IScripts_ClearPortraitImage`)
   before it clears both boxes (`TextBox_ClearForPortraitAndText`).
   `Screen_ClearSprites` also sets it to `$FF`, so it is `$FF` whenever no
@@ -231,6 +237,13 @@ faxanatools' `messages.py` decodes and encodes them; `fax_travel.c`'s
 - Questions end with a flashing "?". A continues; B dismisses at any point,
   even mid-text. Both read `Joy1_ChangedButtonMask`, so a held button acts
   once.
+- **The ▼ and "?" flash on `InterruptCounter`:** they are drawn only while
+  `InterruptCounter & $10` (`TextBox_DrawDownArrowTerminatorSymbol`), 16
+  frames on and 16 off, so a screenshot shows them on some runs and not
+  others. In a portrait conversation they sit at about x 144-175, y 176-184
+  of the picture; a box without a portrait (Eolis's exit door) flashes a ▲ at
+  its bottom right, x 216-231, y 92-103. `tools/readme_screenshots.py`'s
+  `shot_lit` retakes a screenshot until the mark is lit.
 - The box is waiting for a button when `MessageID` is 0 (typed out) or
   `TextBox_MessagePaused` is set. Wait on that rather than on a timer.
   Only a pause sets `TextBox_MessagePaused` ($FF), and only continuing past
@@ -254,7 +267,11 @@ faxanatools' `messages.py` decodes and encodes them; `fax_travel.c`'s
   8 bytes a character from `$20` to `$7F` (`A` is at `$8108`). The glyph data
   ends where the messages begin (`$8300`). `TextBox_WriteChar` copies a glyph
   into both bit planes of a pattern tile, so text is color 3 of the box's
-  palette.
+  palette. Not every ASCII character has a glyph: `#`, `$`, `%`, `&`, `(`,
+  `)`, `*`, `+`, `/`, `:`, `;`, `<`, `=`, `>`, `@` and `[` to `^` are blank.
+  Some are shapes instead: `~` is a triangle pointing left and `}` one
+  pointing right (the map's arrows), `` ` `` a solid block, `{` and `|` bars,
+  `_` an underline.
 - `TextBox_Open` frames a box with background tiles 1 (top left), 2 (top and
   bottom), 3 (top right), 4 (sides), 5 (bottom left) and 6 (bottom right)
   around tile 0 (black), from the playfield's background pattern table.
@@ -317,15 +334,31 @@ faxanatools' `messages.py` decodes and encodes them; `fax_travel.c`'s
   button never acts again. Shop menus (`IScripts_WaitForMenuInput`) and the
   mantra's ▲ work the same way.
 - The typing sound (sound effect 1, noise) lasts 4 ticks: 2 of a soft hiss,
-  then 2 of a sharp clack (chipx86 traces the clack to an out-of-bounds table
-  read). At the game's pace each character starts it just as the last one
-  ends. Started every frame, it never gets past the hiss.
+  then 2 of a sharp clack. At the game's pace each character starts it just
+  as the last one ends. Started every frame, it never gets past the hiss.
+- **The clack is a bug** (chipx86). `SoundEffect_Message_OnTick` (`$86A8`,
+  bank 5) writes `$1F` to `NOISE_VOL`, then `LDA SoundEffect_State_Counter`,
+  `AND #$02`, `TAX` (`$86B2`), `LDA SOUNDEFFECT_MESSAGE_NOISE_LO,X`,
+  `STA NOISE_LO`, and increments the counter (at 4, `NOISE_VOL` `$10` and
+  the effect ends). The table (`$86D1`) is two bytes, `$10` and `$01`, so
+  ticks 3 and 4 read index 2, past its end: `$A9`, the opcode of
+  `SoundEffect_HitEnemy_Setup`'s `LDA #$14`. `NOISE_LO` is the noise
+  channel's mode (bit 7) and period, so `$A9` is the short, metallic mode at
+  period 9; `$01`, the table's own, is a high hiss. An `AND #$01` that became
+  `AND #$02` to switch every other tick, with no padding byte, would explain
+  it. Measured with the remaster off: `NOISE_LO` reads `$10`, `$10`, `$A9`,
+  `$A9` for each character. Small fixes halves A at the `TAX`, so ticks 3 and
+  4 read index 1: `$10`, `$10`, `$01`, `$01` (`tests/fixes/small_fixes.py`
+  reads the APU's registers from a save state each frame: the chunk `APU ` is
+  nesrecomp's `HwApu`, whose `reg[16]`, `$4000-$400F` as last written, starts
+  at its byte 31).
 - After `Messages_Load` sets `MessageID`, the first `TextBox_ShowNextChar`
   comes about 12 frames later, while the box opens. Those are lag frames, so
   the pad isn't read either. Time typing from the first character, not from
   `MessageID`.
 - The mantra types a character a frame through its own
-  `PasswordScreen_ShowNextChar`, not `TextBox_ShowNextChar`.
+  `PasswordScreen_ShowNextChar`, not `TextBox_ShowNextChar` (see *The
+  mantra*, *How a Guru shows it*).
 
 ## Temples and spawning (bank 15)
 
@@ -484,6 +517,13 @@ What a feature can rely on, and the traps:
   palette, OAM, then RAM). `--screenshot` saves the last frame, and
   `--save-state F:PATH` saves a state after frame F.
   `tests/movement/play.py` wraps this.
+- **A headless picture with the remaster's drawing.** `--screenshot` saves
+  the bare NES picture; `--present-out FILE` saves what the window would show
+  after the last frame, with the remaster's drawing on it (banners, damage
+  numbers, name tabs). `--load-state` makes a run headless, and Block and the
+  Magic button come from SDL key and controller events, which a headless run
+  has none of, so those can only be pressed over TCP.
+  `tools/readme_screenshots.py`'s `Game.replay` wraps a headless run.
 - The window's TCP server reads every line it has and serves them all before
   the next frame (`cyc_tcp_poll`, then the held inputs tick, then the frame).
   So a `load_state` and an `action` sent in one write hold the button from the
@@ -502,6 +542,9 @@ What a feature can rely on, and the traps:
   the hero walks in, so where they are when he arrives depends on how long he
   took. A test that walks in should put them in place in its save state, as
   `tests/damage/damage_numbers.py` does with Eolis's Zozura.
+- In Seamless, a neighboring room's actors live in `fax_world.c`'s copy of
+  that room, not in `CurrentSprites_Entities`: setting those slots to `$FF`
+  clears only the hero's room.
 
 ## Far calls (`MMC1_LoadBankAndJump`)
 
@@ -599,6 +642,15 @@ to `StartScreen_CheckHandleInput` (`$9F44`, bank 12), then at
   pattern table holds the title's tiles, not the text box's, so a box drawn
   there takes the frame from ROM (`HUD_TILES_START`, bank 10; see The text
   box).
+- `StartScreen_Draw` (`$9E21`, bank 12) copies the logo's 224 tiles (bank 10
+  `$8E00`) to `$1000`, the letters and digits, then the attribute table
+  (`START_SCREEN_PPU_ATTRIBUTES`, bank 10 `$9B60`, 64 bytes, to `$23C0`), all
+  through `PPU_WriteTilesFromCHRRAM` (`$F89E`: X the bank, Y the tiles; its
+  loop is `LDA (IScriptOrCHRAddr),Y` at `$F8B5`, `STA PPUDATA` at `$F8B7`),
+  then writes the logo's nametable from `START_SCREEN_LOGO_TILES` directly.
+  Its byte 9 (`$0C`) puts the F's tip in palette 3, the stars' greys: a bug
+  (see *Graphics bugs*). The stars are palette 3's `$00`/`$10`, or its color
+  1 (`$0F`, black, so unseen) in squares that look empty.
 - The titles' names are 16 space-padded characters each at
   `PLAYER_TITLE_STRINGS` (`$F649`, bank 15): Novice, Aspirant, Battler,
   Fighter, Adept, Chevalier, Veteran, Warrior, Swordman, Hero, Soldier,
@@ -640,6 +692,48 @@ the two, then `Player_SetInitialExpAndGold`.
 sets them from the title), HP and MP (`Player_Spawn` fills them), the timed
 items, and where the hero stood. The mantra's spawn point is
 `TempleSpawnPoint`, the furthest temple in the original.
+
+**How a Guru shows it.** The only script that shows a mantra is
+`ISCRIPT_COMMON_GURU_PASSWORD` (`$A5FC`): `SHOW_MESSAGE` `$22` ("You need
+peace of mind. I will meditate with you."), then `SHOW_PASSWORD` (`$14`).
+After a new title (`ISCRIPT_COMMON_GURU_NEW_RANK`) and at Eolis's Guru the
+original shows none. `IScriptAction_ShowPassword` (`$8737`, bank 12) runs
+`Password_GenerateStateAndReset` and `TextBox_ClearPasswordSize`, then for
+each character `PasswordScreen_ShowNextChar` (`$8757`): the next 6 bits,
+`LDA PASSWORD_ENTERED_CHARS,Y` (`$8764`, "A-Za-z0-9,?") and `JSR
+TextBox_ShowMessage` (`$875F`). That writes the glyph at column
+`TextBox_CharPosForLine` (its PPU address's low byte is the column × 16, so
+column 16 is column 0 again) and falls into
+`TextBox_ShowMessage_HandleSpaceOrEndOfLine` (`$F502`): from column 16 on,
+it reads the message's next byte, `(Message_StartAddr),Message_ProcessedLength`,
+and starts a new line unless that is `$FF` (the end: `MessageID` 0) or `$FC`
+(a pause).
+
+- **The read is in the wrong bank** (chipx86). The pointer is what the
+  greeting left, in bank 13, but bank 12 is mapped, so the check reads bank
+  12 at the same address. Had it been `$FF` or `$FC`, no line would start:
+  the characters after the 16th would overwrite the first line, and the
+  second line would stay empty.
+- **In the shipped game it never shows.** A message's loop reads its `$FF`
+  and stops, and B ends the script, so the mantra always comes after the
+  whole greeting: `Message_StartAddr` `$8700`, `Message_ProcessedLength`
+  `$6B`, the next message's first byte (`$876B`, bank 13: the I of "I shall
+  give you a title"). Bank 12 holds `$48` there, the H of
+  `PASSWORD_ENTERED_CHARS`, so every mantra wraps right. Bank 12's `$8760`,
+  the `$FF` of `JSR $F4FF`, would not: a save state with
+  `Message_ProcessedLength` `$60` shows the original's second half over its
+  first (`tests/fixes/small_fixes.py`).
+- **The fix** (Small fixes, chipx86's suggestion): a hook at
+  `IScriptAction_ShowPassword`'s entry points the message at
+  `PASSWORD_ENTERED_CHARS` (`Message_StartAddr` `$8764`,
+  `Message_ProcessedLength` 0), so the check reads an A in bank 12 and always
+  starts the new line. Nothing reads the pointer again before the next
+  `Messages_Load` sets it.
+- **Where a mantra still shows with the remaster:** Save files puts the
+  Guru's choice where the mantra was, so only a game with no file in play
+  shows one: a save state from the original, or Save files turned off by a
+  failure. Importing a mantra (`faxanadu.srm`, `--password`) only decodes it,
+  in an isolated call, and shows nothing.
 
 ## Weapon damage (bank 14)
 
@@ -718,6 +812,21 @@ The stock Hand Dagger passes over a Zozura (see *Weapon reach*); facing it,
 the swords hit one from up to 31 pixels left of the hero (his x minus its x),
 and it hurts him from 15. A Zozura that reaches a hero at the screen's right
 edge knocks him onto the next screen.
+
+**An item under the hero, for tests.** A save-state fixture can put any item
+in a sprite slot as `Sprites_PopulateNextAvailableSprite` (`$C205`) would:
+the entity, its x and y (`CurrentSprites_XPos_Full` `$BA`, `_YPos` `$C2`;
+the hero's own `$9E` and `$A1` put it under him), `_Phases` (`$2E4`) and
+`_Flags` (`$2DC`) 0, `_HitByMagicBehavior` (`$334`) and `_Behaviors`
+(`$2D4`) `$FF`, and from bank 14 by entity `_HitBoxTypes` (`$304`, from
+`SPRITE_ENTITIES_HITBOX_TYPES` `$B4DF`), `_HP` (`$344`, `SPRITE_ENTITIES_HP`
+`$B5A9`) and `_BehaviorAddrs_L/U` (`$354`/`$35C`, `SPRITE_BSCRIPTS` `$AD2D`,
+two bytes an entity). The game touches it on the first frames after the load
+and runs the item's own pickup. Its picture is wrong (the screen's sprite
+tiles are loaded for the screen's own sprites), which the pickup does not
+mind. `tests/inventory/inventory_fix.py` drops the Battle Suit and the Dragon
+Slayer in Eolis's town this way. The Select menu does not open on screen 0;
+in the town it does, and B on one of its lists closes the whole menu.
 
 ## Weapon reach (bank 14)
 
@@ -864,7 +973,7 @@ against the hero:
 |---|---|---|
 | `$877C` | `Player_CheckShieldHitByMagic` | Skips `SelectedShield` 3 and up (the helmet, none) and animation frames 4-6 (a swing). Only enemy magic (`SPRITE_CATEGORIES_BY_ENTITY` 6), against the shield's box at `Player_ShieldPositionX/Y` (`$039B`, `$039C`), which `Player_DrawShield` sets each frame |
 | `$87CB` | `Player_HandleShieldHitByMagic` | `JSR Player_HandleHitByMagic`, then (`$87CE`) removes the shot and plays sound `$0C`, the shield's |
-| `$87DC` | `Player_HandleHitByMagic` | Lets `SPRITE_ENTITY_DAMAGES[entity] >> (SelectedShield + 1)` through: half with the Small Shield, a quarter with the Large, an eighth with the Magic. Non-zero: `Player_SetDamagedBySprite` (60 iframes, face the shot, knockback) and `Player_ReduceHP` |
+| `$87DC` | `Player_HandleHitByMagic` | Lets `SPRITE_ENTITY_DAMAGES[entity] >> (SelectedShield + 1)` through: half with the Small Shield, a quarter with the Large, an eighth with the Magic. Non-zero: `Player_SetDamagedBySprite` (60 iframes, face the shot, knockback) and `Player_ReduceHP`. It checks neither iframes nor Ointment |
 | `$8999` | `Player_HandleTouchEnemyMagic` | Magic that touches the hero: nothing while `Player_InvincibilityPhase` or Ointment runs, else `Player_HandleTouchEnemy` (sound 4, the full damage) and the shot is removed |
 | `$B982` | `Player_DrawShield` | Draws nothing for the helmet or none, so `Player_ShieldPositionX/Y` keep stale values then |
 
@@ -891,6 +1000,35 @@ against the hero:
   one runs, bit 7 is clear (the last second is `$00`).
   `Game_DecOintmentDuration` (`$C8B4`, from `GameLoop_CountdownItems`)
   counts it down when `InterruptCounter & $3F` is 0, every 64 frames.
+- **Ointment does not cover the shield in the original.** Magic that touches
+  the hero does nothing under Ointment (`Player_HandleTouchEnemyMagic`, and
+  the shot flies on through him), but magic on the shield still goes
+  through `Player_HandleHitByMagic`, which never looks at it: the Execution
+  Hood's shot (8) takes 4 through the Small Shield, with knockback, Ointment
+  or not. The 40th Anniversary Edition's notes list the same fix ("shield
+  could no longer be hit while ointment was in use"). Small fixes skips
+  `Player_HandleHitByMagic` while Ointment runs; the shield still takes the
+  shot, with its sound.
+- **Iframes do not cover the shield in the original either.** Nothing on the
+  way from `Sprites_UpdateAll` to `Player_HandleHitByMagic` looks at
+  `Player_InvincibilityPhase`, so a shot on the shield inside the 60 frames
+  after a hit hurts again, while one that touches the hero then does nothing.
+  On Zenis's screen 16 (below), the Hood's shot and a copy of it 16 pixels
+  behind, both at the Small Shield's height, the hero at x 120: the first
+  takes 4 and sets the phase to `$3C`; the second lands 20 frames later, with
+  the phase at 41, takes 4 more, sets it back to `$3C` and knocks him back
+  another 24 pixels. By the code, two shots in the same frame both hurt too.
+  Small fixes also skips `Player_HandleHitByMagic` while the phase is not 0,
+  checking it before Ointment as `Player_HandleTouchEnemyMagic` does: the
+  shield takes the shot, with its sound, and the phase counts on from the
+  first hit. The game sets the phase only on a hit (a sprite's touch or shot,
+  Sugata's flash, the Poison) and clears it in `Player_HandleDeath` and
+  `Player_SetInitialState`. Seamless gives the hero's copy in a neighboring
+  room 200, in isolation, so with Small fixes shots stop at his shield there
+  as they pass through his body.
+- **The shield's sound** shows in `SoundEffect_Current` (`$00FB`), which
+  `Sound_PlayEffect` sets to the sound queued that frame (`$0C`) and the
+  sound engine marks playing with bit 7 on its next tick (`$8C`).
 - **Iframes and knockback.** A hit sets `Player_InvincibilityPhase` (`$00AD`)
   to `$3C` and `Player_StatusFlag` (`$00A5`) bit `$02`, knockback.
   `Player_HandleIFrames` (`$E0E8`) counts the phase down each frame and
@@ -950,6 +1088,16 @@ body, then the weapon: `JSR Player_DrawShield`, `Player_DrawBody` (`$EBEE`),
 `$0F`, region 5, position `$91`), an Execution Hood casts a shot (`$51`,
 8 HP) at the hero from the right. Editing the shot's Y in a save state aims
 it at the shield (150, the hero on the ledge at 144) or his head (136).
+
+- **Where a hit leaves him.** A hit's knockback is 8 pixels a frame for three
+  frames. From where he arrives (x 16), it carries him to the screen's left
+  edge, and the screen changes; the floor to his right has a gap, and knocked
+  back to x 48 he falls through it to screen 3. Moved to x 120 in the save
+  state, two knockbacks leave him on the floor at 72.
+- **A second shot** is a copy of the first in an empty slot: the same byte
+  in every per-slot sprite array (`CurrentSprites_XPos_Full` `$BA`, `_YPos`
+  `$C2`, and `$02BC`-`$036C` every 8 bytes, `_XPos_Frac` to `_Values`), with
+  its X moved back.
 
 ## Sugata's flash (bank 14)
 
@@ -1184,7 +1332,7 @@ which is when the weapon hits and magic meets the shield.
 | `$02` | holding to climb | Set with a jump, cleared on a frame on the ground without a new A press. Nothing we found reads it |
 | `$04` | `PLAYER_FALLING_OFF` | **In the air without jumping**: walking off a ledge, stepping off a ladder, knocked off one, or the rest of a jump that outlasts its curve. Not only ladders, as its name suggests |
 | `$08` | can climb | A climbable block at his head or feet (`Player_CheckIfOnLadder` sets it every frame) |
-| `$10` | climbing | Up or Down pressed in front of a ladder; cleared away from one |
+| `$10` | climbing | Up or Down pressed in front of a ladder; cleared away from one, and by knockback. While it is set on a ladder, A does not jump (see Ladders) |
 | `$20` | moving | Walking, or carried sideways in the air |
 | `$40` | facing right | |
 | `$80` | attacking | Through the swing's 8 + 3 + 8 frames |
@@ -1193,7 +1341,8 @@ which is when the weapon hits and magic meets the shield.
 blocked: the block under his feet, at `Y + $20`, from `X + 4`, and the next
 block too when `X & 15` is 4-11, so his feet are 8 pixels wide. (The call in
 `Player_HandleVertLadderOrJump` loads the direction into A instead of X, as
-chipx86 notes, so it checks whatever X holds; in practice that is down.)
+chipx86 notes, so it checks whatever X holds. It never changes the outcome:
+see Ladders.)
 
 **Each frame without a jump**, `Player_HandleVertLadderOrJump` (`$E399`)
 asks that at `$E3AD`. With ground below (`$E3B2` branches on the answer),
@@ -1231,11 +1380,7 @@ to `$39`. `Player_HandleKnockback` sets `Player_Flags` to just his facing bit,
 flipped, which drops jumping, falling and the rest, and pushes him 8 pixels a
 frame the other way.
 
-**Ladders.** On one he hangs: in the air, the grab path catches him, so
-there is no fall. Up and Down climb, at `$A0`/256 and `$C0`/256 pixels a
-frame. `Player_IsClimbing` (`$ECF6`) is can climb, climbing, and either lined
-up with the ladder or not falling. Stepping off one sideways is a fall like
-any other.
+**Ladders** have a section of their own, below.
 
 **In the air** is `Player_Flags & $05` to the rest of the game too:
 `GameLoop_CheckUseCurrentItem` refuses items then.
@@ -1254,6 +1399,85 @@ on air, frozen mid-step, since the walk tick stops in the air. The shield sits
 in the same place in frames 0-3, and the weapon only hits while swinging, so
 the pose in the air is the picture alone. The jump pose is 8 sprites to the
 walk's 7, which changes the sprite rotation the next frame.
+
+### Ladders
+
+A block is **climbable** when its property (`Area_GetBlockProperty`) is `$02`
+or `$0A` (`Area_IsBlockClimbable`, `$E8B2`). `$0A` is also one of the four
+switch-screen properties (`$09`, `$0A`, `$0C`, `$0D`): the Trunk's climb
+between screens `$0C` and `$16` (`AREA_SCREEN_COMPARATORS`) has a `$0A` block
+at the top of `$0C`'s ladder (block `$80`, row 0, column 13) and at the foot
+of `$16`'s (row 12, column 3), and `Player_CheckSwitchScreen` loads the other
+screen (`Game_SetupEnterScreen`: `$16` at `$B3`, `$0C` at `$2D`) once the
+block at his head is one, at both `X` and `X + 15`.
+
+**Can climb** (`Player_Flags` `$08`) is set every update by
+`Player_CheckIfOnLadder` (`$E752`) when the block at his head (`X + 7`, `Y`)
+or his feet (`X + 7`, `Y + $1F`) is climbable, or the block right of either
+when `X & 15` is 8. When neither is, it clears can climb and climbing. So he
+is on a ladder from where his feet enter its top block to where his head
+leaves its foot: on a ladder whose top block is row r, the highest he can be
+is `Y = 16r - $1F`.
+
+**On one he hangs**: in the air, the grab path catches him, so there is no
+fall. Up and Down climb, at `$A0`/256 and `$C0`/256 pixels a frame, lined up
+with the ladder (`X & 15` = 0; Player_CheckHandleJump walks him into line
+first). `Player_CheckHandleClimbUp` (`$E301`) asks only that the block over
+his head be passable (`BNE @_return` at `$E30C`), and
+`Player_CheckHandleClimbDown` (`$E349`) that the one under his feet be:
+neither asks whether he is still on the ladder. Off a ladder's foot he steps
+into the air and falls, which is how you get off one. Stepping off sideways is
+a fall like any other.
+
+**Climbing** (`$10`) is set by Up or Down in front of a ladder and cleared
+only away from one (`Player_CheckIfOnLadder`) and by knockback.
+`Player_IsClimbing` (`$ECF6`) is can climb, climbing, and either lined up with
+the ladder or not falling. While it holds, `Player_UpdateClimbOrJump` refuses
+a jump and `Player_CheckHandleAttack` a swing. So once he has climbed, A does
+nothing on the ladder until something clears climbing; hanging on one he has
+only jumped onto, A jumps.
+
+**The top of a ladder (the original's bob).** Up at a ladder's top block lifts
+him a pixel past `16r - $1F`; the next update finds no climbable block at his
+head or feet, clears can climb and climbing, and drops him 8 pixels, and the
+ladder catches him. With Up held he bobs: about 13 updates up, one drop, for
+as long as it is held, the pose switching out of the climb on each drop (to
+the walk pose, or with the falling pose to the jump pose). Checked on Trunk
+6's ladder (`tests/ladders/ladders.py`): up to `Y = $40`, dropped to `$48`,
+caught. Short of a hit, the drop is also the only way the original clears
+climbing at a top: let go of Up right after one and A jumps, any other time it
+does nothing. The Trunk's own route up through `$0C` takes that jump (from the
+top of column 14's ladder, moving left, onto column 13's, whose top is the
+switch block). This is the ladder jank we found on this ROM; the
+Retranslation's changelog does not say what its "Fix Ladder Jank" was.
+
+**A hit on a ladder.** Knockback's three updates go to
+`Player_HandleKnockback` (`$E153`), which sets `Player_Flags` to his facing
+bit, dropping can climb and climbing, and pushes him 8 pixels an update: 24
+pixels, off the ladder, and he falls. Only a wall behind him keeps him on it,
+and then knockback has cleared climbing, so he hangs on the ladder and A
+jumps: the speedrunners' "ladder reset".
+
+**chipx86's "bad can-climb ladder check" never shows on this ROM.**
+`Player_HandleVertLadderOrJump`'s ground check (`$E3AD`) is `LDA #$03` where
+it means `LDX #$03`, so `Player_CheckIfPassable` takes the direction from X: 0
+left, 1 right, 2 up, anything else down. X holds the block index
+`Player_CheckIfOnLadder` looked at last (`Area_ConvertPixelsToBlockPos`: row ×
+16 + column). It is 0-2 only when that block is at his head in row 0, columns
+0-2, and only when it is climbable, since the routine stops looking at the
+first climbable block; without one it ends on the block at his feet, row 1 or
+below (`Y` is at most `$C0` there, so `Y + $1F` never wraps). With can climb
+set, both answers lead to `Player_GrabClimbLadderOrJump` with the same flags:
+blocked, directly; open, through `@_setFalling`, whose `AND #$08` sends him to
+the same grab, which clears the falling bit again.
+(`Area_CheckClimbAdjacentImpassable` in between acts only when `Y` is `$D0` or
+more, which never happens.) So the check could only change what happens when
+he is not on a ladder, and then it checks down. Ladders that reach row 0 in
+columns 1 and 2 are common (Trunk `$16`, `$1E`, `$29`, Mist `$04`, `$05`,
+Branch `$04`, Dartmoor `$03`, ...), so the wrong direction is checked often,
+to no effect. Forgiving jumps reads this check's answer at `$E3B2`; there a
+wrong "blocked" can arm its coyote time from such a hang, which only lets him
+jump a few updates after stepping off, as A from the hang itself would.
 
 ## Input and casting
 
@@ -1548,6 +1772,138 @@ was saved with, through the temple, and any temple spawn forgets the
 checkpoint (the temple's door is the next way in), so a stored one would
 never be read.
 
+## The map
+
+`fax_map_layout.c` reads the whole map from a copy of the cart once, and
+`fax_map.c` keeps what the hero has seen and draws it.
+
+**The screen links** (bank 3). `AREAS_TABLE_PTR` (`$8000`) holds the offset
+of `AREA_TABLES` from `$8000`; that holds, per area, the offset of
+`<AREA>_AREA_DATA`, five more offsets: block attributes, block properties,
+then the three the map uses:
+
+- `<AREA>_SCROLL_DATA`: 4 bytes a screen, the screens to the left, right,
+  above and below, `$FF` for none. The door locations follow it directly, so
+  its length is the area's screen count (9, 64, 83, 14, 10, 40, 32, 20).
+  `Area_LoadScrollData` copies the current screen's four into
+  `Area_ScreenToTheLeft/Right/Above/Below` (`$0066-$0069`).
+- `<AREA>_DOOR_LOCATIONS`: 4 bytes a door to a `$FF`: screen, block (`YX`),
+  index, start (`YX`).
+- `<AREA>_DOOR_DESTINATIONS`: `Player_CheckIfDoorBlock` reads index × 4 (index
+  - `$20` in the towns): screen, palette, key, unused. Entries no door's index
+  names are other data: in Eolis, whose only door to a screen is index 0,
+  entries 2-`$1F` are not destinations. `$FE` and `$FF` are a region's doors,
+  never looked up here.
+
+**Towns and the climb** (bank 15). Walking off a region's edge into a town is
+not a scroll link: a block of property `$0C` or `$0D` sends
+`Player_CheckSwitchScreen` to `Player_CheckSwitchScreen_SwitchAreaHoriz`, which
+looks the screen up in `AREA_TOWN_TRANSITIONS_DATA` (`$EA9C`): per area, a
+pointer to 5-byte entries to a `$FF` (screen, area, screen, start `YX`,
+palette). The start says which side the town is on: X under 8 starts the hero
+at its left edge, so it lies to the screen's right. Each town has an entry
+back; the Trunk's first entry (screen 0 to Forepaw's left screen) has none,
+and nothing takes it. Conflate's right screen (`$09`) and Dartmoor town's
+(`$0D`) lead nowhere. A block of property `$09` or `$0A` looks the screen up in
+`AREA_SCREEN_COMPARATORS` (`$EA37`) instead: 4-byte entries (screen, screen,
+start `YX`, palette); only the Trunk has any, the climb between `$0C` and
+`$16` (start Y `$B`: `$16` is above `$0C`).
+
+**Not a grid.** The links are not always both ways, nor Euclidean:
+
+- One way: Trunk `$1B` (left, right and up, to `$1A`, `$3E` and `$28`), Mist
+  `$26` up to `$1F`, Zenis `$01` right, `$0C` down, `$11` up.
+- Nothing leads to Trunk `$1B`, Mist `$0A`, `$0B`, `$23` and `$24`, or
+  Dartmoor `$0F`. Eolis `$00`, outside the gate, is only where a new game
+  starts.
+- Mist `$2A` (above `$04`) has `$2B` to its right, but `$00` is above `$05`,
+  in that place. Conflate, off Branch `$0D`'s right edge, would need `$16`'s
+  cell for its second screen. The Castle of Fraternal's `$14`, `$19` and `$1A` cross, and the Fortress
+  of Zenis wraps around like a torus: `$05`'s right is `$0F`, `$02`'s left is
+  `$13`.
+
+**The layout** (`fax_map_layout.c`). A page per region, tower and castle, in
+the game's order: Eolis (with the gate), the Trunk, the Tower of Trunk, the
+Tower of Fortress, the Mist, the Tower of Suffer, the Tower of Mist, the
+Branch, Dartmoor, the Castle of Fraternal, the Fortress of Zenis. Its screens
+are its zone's in `fax_zone.c` that anything leads to, and the towns at its
+edges (all seven towns hang off one region each). A page is laid out by a
+breadth-first walk from its lowest screen: each screen one cell over from the
+one it was reached from, unless that cell is taken; scroll links (both ways)
+first, then town edges and the climb once nothing else is left. A town goes
+in whole, both screens side by side, or not at all. Whatever the walk cannot
+reach (a tower in the region's zone behind a door, like the Joker spring or
+Mist's two unnamed towers; a screen whose cell was taken) is laid out the same
+way on its own and set down near what leads to it, a cell clear of everything
+else: the nearest place, then below, then to the right. The pages, as
+`tests/map/map_test` prints them with the ROM:
+
+| Page | Screens | Cells | Page | Screens | Cells |
+|---|---|---|---|---|---|
+| Eolis | 9 | 8 x 3 | Tower of Mist | 14 | 9 x 2 |
+| Trunk | 37 | 22 x 6 | Branch | 44 | 24 x 6 |
+| Tower of Trunk | 9 | 7 x 3 | Dartmoor | 17 | 7 x 4 |
+| Tower of Fortress | 21 | 6 x 4 | Castle of Fraternal | 16 | 11 x 3 |
+| Mist | 54 | 23 x 10 | Fortress of Zenis | 20 | 5 x 7 |
+| Tower of Suffer | 15 | 6 x 4 | | | |
+
+**What the hero has seen** (`fax_map.c`, at each frame's end, once the screen
+has settled and the game is not paused, so in both world views):
+
+- A screen: any he stands on outside. In a building, the screen he went in
+  from (`Area_SavedArea`, `Area_SavedScreen`).
+- A ladder or a drop: a move to the screen a scroll link (or the climb) puts
+  above or below, kept on the screen he left (up or down). A death (`PlayerIsDead`)
+  forgets where he was, so coming back elsewhere is no move.
+- A door, by where he was and where he is: to a screen of the same area that
+  no link joins, the door on the one he left that leads there, and the one he
+  arrives at that leads back; to another region (not a town), the region doors
+  on both screens; in a building, the door on `Area_SavedScreen` that leads to
+  it. A respawn, a Guru travel journey and continuing set those to the temple's
+  town, so the temple he wakes in counts too. Guru travel's visited Gurus but
+  Eolis's (set from the start of every game) count as their temples' doors.
+
+**The pause** (bank 15, `GameLoop_CheckPauseGame`, called once a pass of
+`Game_MainLoop`): `$E02B` `LDA Joy1_ChangedButtonMask`, `AND #$10`, `$E02F`
+`BEQ` (to an RTS), `LDA #$01`, `STA Game_PausedState`; then
+`@_waitForUnpause` (`$E036`): `JSR WaitForNextFrame`, `JSR Sprites_FlipRanges`,
+`LDA Joy1_ChangedButtonMask`, `AND #$10`, `$E040` `BEQ @_waitForUnpause`,
+`LDA #$00`, `STA Game_PausedState`, `RTS`. The instruction after either BEQ
+loads A, N and Z again, so a hook there steers it with Z (and A) alone. The
+map's press waits up to 30 frames for `$E02F`: there it clears Z, so the game pauses as for Start, the music held
+(`Game_PausedState`) and every feature holding as for a pause. At `$E040`,
+once a frame, it reads the pad: Left and Right turn the page, and B, Start
+or Map close it, with Z cleared so the game unpauses; otherwise Z is set. A
+press during the game's own pause opens it there. The menu, scrolling and
+conversations never reach `$E02F`, so the map opens only in play.
+
+**Where it is drawn.** Last in the present chain (`cyc_extras.c`), after
+every feature and after Seamless composes its picture: black over the whole
+picture, the text box's frame (`fax_text_box`, the area's own colors) over the
+native 256 x 240 centered in it, the page's name on row 2 in the dialogue font
+between `~` and `}` when there is more than one page, the grid in 240 x 176
+from y 32, and a key on row 27. A screen is a box of the largest cell that
+fits the page, from 16 x 13 down to 10 x 8 (each keeps a screen's 256 x 208
+shape), a 1-pixel wall in `$22` around `$02` inside (a town's: `$28` around
+`$08`), the current one blinking `$16` every 16 frames. Seen neighbours a link
+or a town edge joins beside each other are open through both walls; above and
+below, only a ladder he has taken opens a gap. A used door's mark, 3 x 3
+pixels, sits on its screen where its block is: a cross for a Guru (`$30`), a
+block for a tool or key shop (`$2A`), a roof for any other building (`$26`),
+and a bar for a door to a tower, a castle or a region (`$38`). TCP `map_state`
+gives every box's rectangle in the last presented picture.
+
+**In the file.** One field an area that has anything seen: `map.eolis`,
+`map.trunk`, `map.mist`, `map.towns`, `map.branch`, `map.dartmoor`,
+`map.zenis`. The value is four sets, space-separated: the screens seen,
+those left upward, those left downward, and the doors used (by their place in
+the area's door locations). A set is hex digits, the first for items 0-3 with
+item 0 its lowest bit: Eolis's gate and screens 1-2, with the gate's door
+and the temple's (doors 0 and 3 of its 10), read `700 000 000 900`. Written when the file is (`FAX_SAVE_WRITING`),
+read back on `FAX_SAVE_CONTINUED`, cleared for a new game; a damaged field
+forgets that area only. Every field fits a value (the Mist's, everything set,
+is 71 characters).
+
 ## Items and the inventory
 
 Five categories, each with a count, a selected entry and a list. Entries are
@@ -1568,12 +1924,46 @@ Red Potion `$10`). Shops and scripts add the category in the top 3 bits
   takes the new item out of the list and appends the old selection to it.
   So "the player has X" means X is selected or in the first `NumberOfItems`
   slots; `Player_LacksItem` (`$8CF7`) checks both. `$FF` selects nothing.
+- With no items, the Select menu's item list still opens, showing "NO ITEM".
 - `Player_RemoveItem` (`$9A6A`, bank 12) shifts the later entries down and
   decrements the count, leaving a stale byte after the end. `Player_AddToInventory`
-  overwrites the last entry when the category is full; `Player_PickUpItem`
-  (`$C8CD`) refuses when it is full.
+  (`$9AF7`, bank 12; shops and scripts) overwrites the last entry when the
+  category is full; `Player_PickUpItem` (`$C8CD`) refuses when it is full,
+  after the item's line, and the item is gone all the same.
 - The rings, the Elixir, the Magical Rod, the Pendant and the Black Onyx are
   bits in `SpecialItems` (`$042C`), not list entries.
+- **Picking an item up.** Touching an item sprite runs
+  `Player_HandleTouchItem` (`$88FB`, bank 14): `JSR Player_PickUp` (`$C764`),
+  which jumps by entity to the item's routine, then the sprite is removed.
+  Each routine runs its "I've got ..." script first (frame-frozen; A closes
+  it), plays sound 8, then adds the item. The Items go through
+  `Player_PickUpItem`. The Battle Suit (`$58`, `Player_PickUpBattleSuit`
+  `$C6EA`), Battle Helmet (`$59`, `$C70A`) and Dragon Slayer (`$5A`, `$C72A`)
+  each have their own copy of one tail: `LDX count`, `CPX #$04`, `BCC`,
+  `LDX #$03`, `LDA #$03`, `STA list,X`, `INX`, `STX count`, which appends, or
+  replaces the last entry of a full list.
+- **The Battle Suit and Dragon Slayer bug** (chipx86's *Bugs*: "Armor/Weapon
+  cap logic swapped"). The helmet's tail reads `NumberOfShields`; the suit's
+  reads `NumberOfWeapons` (`LDX` at `$C6F7`) and the slayer's
+  `NumberOfArmors` (`$C737`), and each then stores into, and sets the count
+  of, its own list. So the item lands at the other list's count: with fewer
+  weapons than armor listed, the Battle Suit overwrites an armor and the
+  count drops the ones after it (Leather and Studded listed, no weapons: only
+  the Battle Suit is left); with more, the count takes in the bytes after the
+  list: `$00` (the Leather Armor) where nothing was ever written, or entries
+  `Player_RemoveItem` left, which in the original means equipping from the
+  list with nothing worn (`Player_Equip` adds no old selection then), and with
+  Quick shops a sale too (two weapons listed, an empty armor list holding two
+  sold Studded Mails' bytes: Studded, Studded, Battle Suit). The other list
+  is untouched. The Dragon Slayer does
+  the same to the weapons. Equal counts hide it. Both are one of a kind, so
+  in play neither list holds four when its item comes: the cap only matters
+  after the bug itself. Each drop's behaviour
+  (`SpriteBehavior_BattleSuitDroppedByZoradohna` and the slayer's, bank 14)
+  clears the screen's sprites if the hero has the item: worn
+  (`SelectedArmor`; for the slayer the weapon in hand, `Player_CurWeapon`) or
+  in the first `count` entries. The Battle Suit and Dragon Slayer fix (`fax_inventory.c`)
+  sets X to the right count at each `CPX`.
 - **The HUD picture** of the selected item is four CHR RAM tiles at PPU
   `$13C0`. `Player_SetItem` (`$FC0B`) queues them through the PPU buffer;
   `UI_ClearSelectedItemPic` (`$C8DC`) queues blanks; `UI_DrawSelectedItem`
@@ -1809,6 +2199,8 @@ consumable.
   script `$81` ("I've used Mattock."), calls `Player_ClearSelectedItem` at
   `$C64C` (which uses it up), then replaces that block and the one below
   over four steps of 4 frames.
+- The message waits for A first, so in the original the Mattock leaves the
+  status bar only after A on "I've used Mattock.", as the wall crumbles.
 - Only Trunk (area 1) has a group: `$63` → `$85`, `$86`, `$42`. Every other
   group is `$00`, so elsewhere the Mattock "breaks" air (block `$00`) into air:
   the message shows and, in the original, the Mattock is gone for nothing.
@@ -1820,7 +2212,9 @@ consumable.
 - **Block `$63` is in two screens** (all 64 Trunk screens decoded): `$0C`,
   x 3, rows 10-11, the wall beside the Tower of Trunk on the way east; and
   `$2D`, x 3, row 11, a floor block beside the ladder down to `$29`, which
-  opens nothing.
+  opens nothing. That one is drawn as the brown wall in the green floor;
+  with the remaster it is the floor's `$08`, and not breakable (see
+  *Graphics bugs*).
 - **A broken wall comes back** whenever its screen loads again (checked in
   the game): breaking it only edits `ScreenBuffer`, and screens decompress
   from ROM. So in the original, every pass through it costs a Mattock.
@@ -1867,6 +2261,9 @@ jumping or falling, `Player_Flags & $05`):
 - **T:** is two ASCII tiles at PPU `$2058`. Only the Wing Boots draw it
   (`UI_DrawTimeValue`, queued through the PPU buffer at `$0500`: length 2,
   `$20`, `$58`, the digits); the Hour Glass never shows a time.
+- In the picture, T: is at x 176-188 and its seconds at x 192-207, y 16-23.
+  While an item recharges (`fax_recharge.c`) the seconds blink, and in the
+  off phase they are black.
 - `Game_ClearTimedItems` (`$C6AF`) sets all four durations to `$FF`. It runs
   from `Game_Start` and `Player_Spawn`, so every death ends them, but not on a
   Guru travel journey, which enters `Player_Spawn` past it: a flight or a
@@ -1999,6 +2396,167 @@ rest of the way to Victim, were not checked.
   right edge to reach any screen of the same area the game's own way.
   `CurrentSprites_Entities` (`$02CC`, 8 slots) set to `$FF` clears a screen's
   enemies (see *Eolis, for tests*).
+- **Eolis screen 4's tower** (about x 160-208) is drawn in front of sprites:
+  a hero or a Zozura behind it disappears. Stage a fight there left of x 150.
+- `Area_LoadScrollData` (`$D127`) decompresses the four neighbours first,
+  keeping only their edge row or column (`LastColumnLeftScreen` and the
+  like), then the current screen last (`JSR Area_LoadBlocks` at `$D1BB`,
+  returning to `$D1BE`). Every way onto a screen in the real machine passes
+  there; Seamless decodes its rooms in isolated calls instead (`decode()`,
+  `initialize()`), where no hooks run.
+- **Out of a door onto any screen, for tests (both views):** in a building,
+  set `Area_SavedArea` (`$03D5`), `Area_SavedScreen` (`$03D6`),
+  `Screen_SavedPalette` (`$03D7`, the screen's palette index: Trunk's 6, the
+  towers' 7) and `Player_SavedPosXY` (`$03D8`, a block `YX`) and walk out:
+  `Game_ExitBuilding` sets the outside up from them. Unlike
+  `Area_ScreenToTheRight`, it also works with Seamless, whose rooms follow the
+  scroll data, not `$0066-$0069`.
+
+## Screen events and the fountain's ladder (bank 15)
+
+- A screen's sprite list in bank 11 can end with `$80` and an event ID
+  (`Screen_LoadSpecialEventID`), kept in `CurrentScreen_SpecialEventID`
+  (`$042E`, `$FF` for none) while the hero is on it. `Screen_LoadSpriteInfo`
+  loads it with the screen's sprites: for a scroll, while the scroll is set
+  up, so before the first main-loop pass on the new screen.
+- `GameLoop_RunScreenEventHandlers` (`$EF4B`), late in each pass of
+  `Game_MainLoop` (after `GameLoop_UpdatePlayer`, the sprites and the menu),
+  RTS-dispatches the ID through `SPECIAL_SCREEN_EVENT_LOOKUP_TABLE` (`$EF63`):
+  0 the path to Mascon, 1 a boss, 2 the final boss. It is not called while
+  the screen scrolls.
+- **The path to Mascon** is event 0, on Trunk `$28` only: the dried fountain
+  ("right above this town", Forepaw), with the door to the Mist (block `$10`,
+  the Q key) on a ledge at the top left. `$28`'s only neighbour is `$27`, to
+  the right. Pushing the fountain's stone (`Player_CheckPushingBlock`, with the
+  Ring of Ruby, `SpecialItems` `$40`, and the three springs, `Quests & 7`, for
+  `$60` updates) runs
+  `Game_OpenPathToMascon` (`$D6F5`): the stone (`$88`) moves aside, 30 frames
+  pass, it clears, and `Game_DropLadderToMascon` (`$D76E`) puts a ladder block
+  (`$20`) at column 2 of rows 2-8 (`$22` to `$82`), one every 4 frames, with
+  sound `$17`, and sets `Quests` `$20` (on Trunk `$28` only). Both wait on
+  `WaitForInterrupt`, so the main loop stands still meanwhile. The blocks go
+  into `ScreenBuffer` and the nametable (`Area_SetBlocks`): screens load from
+  ROM, so the ladder is not in `$28`'s data.
+- So every later visit, `ScreenEvents_HandlePathToMasconEvent` (`$EF69`)
+  runs on the first pass: with `Quests` `$20` it clears its ID, clears the
+  stone (blocks `$56`, `$66`, moved to `$57`, `$67`, then those cleared too:
+  air, `$42`) and drops the ladder again, without the 30 frames; without it,
+  it clears its ID and returns.
+- **The original's bug (the Retranslation's "fountain ladder bugfix", which
+  this ROM has too):** that first pass runs `GameLoop_UpdatePlayer` before the
+  event. If it walks him off the screen, `Area_ScrollTo` makes `$27` the
+  current screen and `Area_LoadScrollData` loads `$27`'s blocks into
+  `ScreenBuffer` at once, and the event, still `$28`'s, then writes into
+  `$27`: the ladder at column 2, rows 2-8, through `$27`'s middle floor, and
+  air at column 7 of rows 5-6, widening the gap in that floor. The scroll
+  draws `$27` from `ScreenBuffer`, so both show, and the game goes by them: he
+  can climb that ladder through the floor. They last until `$27` loads again.
+  Walking left into `$28` and holding Right as the scroll ends does it: the
+  scroll keeps the buttons it began with, and the first pass after it reads
+  the pad (`tests/ladders/ladders.py`). A door on that pass is no trouble:
+  `Screen_Load` loads the other screen's event with its sprites
+  (`Screen_SetupSprites`), so only a scroll leaves `$28`'s behind, and `$28`
+  has no screen above or below.
+- `Game_DropLadderToMascon` checks for the Trunk region (`Area_Region` 1) and
+  screen `$28` before setting `Quests` `$20`; that is the only guard, and it
+  does not stop the blocks.
+
+## Sprites and tile slots (banks 7 and 8)
+
+- **`Sprite_Draw`** (`$F072`, fixed bank) draws an appearance from its tile
+  info in bank 7 (callers map it: `Sprite_SetAppearanceAddrFromOffset` for
+  entities and magic, `Sprite_SetPlayerAppearanceAddr` for the hero,
+  `Sprite_DrawPortraitPartAppearance` for portraits). A header of 4 bytes:
+  rows - 1 (high nibble) and columns - 1 (low), X offset, Y offset, the flip
+  pivot; then, row by row, a cell each: a slot and an attribute (palette in
+  bits 0-1, `$40` and `$80` the flips, XORed with the sprite's), or `$FF` for
+  an empty cell, one byte. A cell's OAM tile is its slot plus
+  `Sprites_PPUOffset` (`$33`): 0 for the hero and cast magic, `$90` for a
+  portrait, an enemy's tile base for an enemy. `Sprite_TileInfo_ReadAddr`
+  (`$3A`) points past the header, and Y walks the cells, so the byte read is
+  `ReadAddr + Y` in both loops: `Sprite_Draw_Standard` (`$F0EC`) places the
+  columns left to right and `Sprite_Draw_FlippedHoriz` (`$F181`) right to
+  left, reading the same bytes in the same order. Each loads a cell's slot
+  (`LDA (Sprite_TileInfo_ReadAddr_L),Y` at `$F12F` / `$F1E3`, then `CLC` at
+  `$F131` / `$F1E5`) and its attribute (`$F139` / `$F1ED`, then `EOR
+  CurrentSprite_FlipMask` at `$F13B` / `$F1EF`).
+- **The hero's slots** are what his gear's loaders put in the sprite pattern
+  table at `$0000`, in this order, each over the last (`Player_DrawSprite`
+  from `Player_SetArmor`/`Weapon`/`Shield` and a death, through the PPU
+  buffer; `Player_DrawSpriteImmediately` from `Screen_SetupNew`):
+  - the armor, from its list in bank 8 (`TILES_PLAYER_ARMOR_ADDRS_INDEX`,
+    `$8012`), `PLAYER_ARMOR_TILE_COUNTS` + 1 tiles from slot 0: Leather Armor
+    and Studded Mail 52 (slots 0-51), Full Plate 53 (0-52), the Battle Suit
+    51; with a shield (not the Battle Helmet) its `_WSHIELD` list, 40 (Full
+    Plate 41). Tile `t` of a list is at `TILES_ARMOR_START` (`$81A4`) + 16t;
+  - the weapon, at slot `$38` (`$0380`), or the Dragon Slayer's 9 tiles at
+    `$34` (`$0340`), through `PLAYER_WEAPON_TILE_PPU_ADDRS`;
+  - the shield, 6 tiles at slots `$30-$35` (`$0300`); the Small Shield's are
+    its list's `00 01 06 07 0C 0D` (`TILES_SHIELDS_SMALL`, `$8192`) from
+    `TILES_SHIELDS_START` (`$9104`).
+  So a slot no loader of the current gear fills keeps what an earlier one
+  left there.
+- The appearances: the hero's are `TILEINFO_PLAYER_ADDRS` (`$A9F1`), 8 poses
+  a gear set (0-2 walking, 3 jumping, 7 climbing), in the order of the armor
+  lists; then the weapons' (64-98). Entities' are `TILEINFO_ENTITY_ADDRS`
+  (`$9036`); `SPRITE_APPEARANCE_PHASE_OFFSETS` (bank 14) gives an entity's
+  first (the Myconid, entity `$1B`: `$31`, so 49 and 50). Cast magic's is
+  `SPRITE_MAGIC_IMAGE_ADDRS_U[CastMagic_Type]` + the frame
+  (`CastMagic_SetAppearance`): Fire is 155 and 156.
+- **The Fire spell flickers by design**: `CastMagic_FinishHandler_Fire` draws
+  it only when `InterruptCounter` has bit 1 set, 2 frames in 4, and picks its
+  frame from bit 2, so each frame shows 2 frames in 8. Thunder draws on the
+  other two (bit 1 clear).
+
+## Graphics bugs
+
+What the original draws wrong on the USA ROM, found by chipx86's notes, the
+Faxanadu 40th Anniversary Edition's notes ("minor animation bugs with Studded
+Armor and Fire") and the Faxanadu Retranslation's patches (Japanese base,
+version 1.05+: "Armor graphic bugfix", "Fix Fire", "Fix Myconid Palette",
+"Fix Fortress tile", "Fix Jerky Vendor Portrait", "Nurse cross graphic
+bugfix", title screen colors), each checked in the game with the remaster
+off. The Retranslation's IPS patches land at the same bank addresses as the
+USA ROM in banks 1, 7 and 8, which pins down what each of its fixes changes.
+Graphics fixes (`fax_graphics.c`) fixes the five that show:
+
+| Bug | Where | Stock | Fixed | Seen |
+|---|---|---|---|---|
+| Studded Mail's climbing pose | bank 7 `$ABF9`: `SPRITE_TILEINFO_PLAYER_ARMOR_STUDDED_07`, row 1, column 0's slot | `$34` | `$30` | The chest shows whatever slot `$34` holds: Studded Mail loads 0-51. From a Small Shield worn before, its tile `$0C`; after Full Plate, its `$88`; with the Dragon Slayer, its first tile |
+| Fire's second frame | bank 7 `$A5D3`: appearance 156, row 3, column 1's slot | `$66` | `$7E` | Its first frame's top right tile at the bottom right, where its own top right's belongs, mirrored (both frames are symmetric top to bottom) |
+| The Myconid's second frame | bank 7 `$95E6`: `SPRITE_TILEINFO_ENEMY_MYCONID_01`, row 3, column 1's attribute | `$02` | `$03` | One foot in palette 2 (`$1C`, `$33`: blue and pink) instead of 3 (`$27`, `$30`) every other frame |
+| The title's F | bank 10 `$9B69`: `START_SCREEN_PPU_ATTRIBUTES[9]` | `$0C` | `$00` | The 16x16 square at x 48-63, y 32-47 is palette 3 (the stars' greys) and holds only tile `$03`, the tip of the F's swirl: 5 grey pixels, and 2 of the F's red invisible (palette 3's color 1 is black) |
+| Tower of Fortress floor | Trunk `$2D`, block row 11, column 3 (the literal at bank 1 `$9BE5`) | `$63` | `$08` | Under the left pillar, the Mattock wall's brown block in the green `1B 08 1B 08` floor; the right pillar stands on floor |
+
+- **chipx86 names the wrong tile for Studded Mail.** His note says the
+  missing tile is `LEATHER_46` (`$77`), provided by the Leather Armor's list.
+  But Studded Mail's climbing pose otherwise matches the one it has with a
+  shield and Full Plate's (`75 76 / 7D 7E / 7F 80`, palette 1 for the body),
+  and both of those put `$7D` there: slot `$30` in Studded Mail's list. The
+  Retranslation makes the same change.
+- **The Fortress block was breakable.** `$63` is Trunk's Mattock block, so in
+  the original the Mattock breaks it (and the block below) into a pit that
+  leads nowhere (see *The Mattock and breakable walls*). The fix replaces the
+  block, as the Retranslation's one-byte patch does, so it is plain floor.
+  The other `$63`s, the wall east of the Tower of Trunk (`$0C`), stay.
+- **Not on the USA ROM:**
+  - *Nurse cross.* The Retranslation flips the 4th cell of the nurse's
+    portrait's last row (bank 7 `$B2E6`, `$00` to `$40`) and gives slot `$17`
+    its cross tile (bank 8 `$92C8`, `$CD` to `$34`). On the USA ROM slot `$17`
+    is `$CD`, a solid tile (the cross censored to a T above it), so the
+    missing flip changes no pixel.
+  - *Jerky vendor portrait.* Its 5 bytes (bank 8 `$99CE`,
+    `SPRITE_TILES_PORTRAIT_MEAT_SALESMAN` tile `$66`, plane 0 rows 3-7) on the
+    USA tile would remove the outline where the shirt strap meets the
+    shoulder; the USA portrait draws that edge whole.
+  - The Retranslation's other graphics changes (its title, fonts and save
+    icon) are its own.
+- **Seen in the code, not checked in the game:** the Dragon Slayer's tiles
+  (slots `$34-$3C`) and a shield's (`$30-$35`) share `$34-$35`, and the
+  shield loads last, so the Dragon Slayer's poses that use its first two
+  tiles (appearances 90, 92 and 93) would draw shield tiles; and Full Plate's
+  climbing pose uses slot `$34` (its `$88`), which the Dragon Slayer
+  overwrites.
 
 ## Features and what they use
 
@@ -2037,6 +2595,27 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
   of the reversed branch meet, and sets `Temp_00` from
   `WEAPON_STRENGTHS[Y]` and the Pendant bit before the Glove adds its bonus.
   It keeps no state.
+- **Battle Suit and Dragon Slayer fix** (`fax_inventory.c`). Each of the
+  two pickups adds the item at its own list's count. It hooks each routine's
+  `CPX #$04` (`$C6FA`, `$C73A`), right after the `LDX` that read the other
+  list's count, puts the right count in X (and N and Z as `LDX` sets them)
+  and returns 0, so the game's own cap, store and count follow: a full list
+  has its last entry replaced, as the Battle Helmet's pickup and the shops
+  do. It keeps no state, so it also runs in Seamless's isolated rooms (it
+  counts pickups only outside them). See *Items and the inventory*.
+- **Small fixes** (`fax_fixes.c`). Four of the original's small bugs
+  (#39, #82), in three hooks that keep no state, so each also runs in
+  Seamless's isolated rooms (counting only outside them). At
+  `SoundEffect_Message_OnTick`'s `TAX` (`$86B2`, bank 5) it halves A, so the
+  typing sound's ticks 3 and 4 read the table's `$01`, not the `$A9` past its
+  end (see *How text types*). At `IScriptAction_ShowPassword`'s entry
+  (`$8737`, bank 12) it points the message at `PASSWORD_ENTERED_CHARS`, so the
+  mantra's line-end check, which reads with bank 12 mapped, always starts a
+  new line (see *The mantra*). At `Player_HandleHitByMagic` (`$87DC`, bank
+  14), after Block's hook, it skips the routine while
+  `Player_InvincibilityPhase` is not 0 or Ointment runs, so magic on the
+  shield does nothing during iframes or under Ointment, as magic on the hero
+  does (see *Shields and enemy magic*).
 - **Magic button** (`fax_magic.c`). A bindable button (C, or Y on a
   controller) casts the selected spell. On a press, it ORs Up held and B new
   into the joypad masks at `Player_CastMagic`'s entry, when `Game_MainLoop`
@@ -2131,6 +2710,29 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
   `forgiving_jumps_state` counts those as `blocked`). It counts updates at
   `Player_CheckHandleVertMovement`'s entry, not frames, and keeps a 7-byte
   save-state record.
+- **Ladder fixes** (`fax_ladders.c`). The top of a ladder: at the BNE after
+  `Player_CheckHandleClimbUp`'s passable check (`$E30C`), when there is nothing
+  over his head but the step would take him off the ladder (the game's own
+  `Player_CheckIfOnLadder` a pixel higher, in an isolated call), it takes the
+  branch to the routine's return, as a solid block does, and clears climbing,
+  as the original's drop did: he stays at the top (`16r - $1F`), never falls,
+  and A jumps from there once Up is let go. Not while flying (the Wing Boots
+  with A held), and not at `Y = 0`, where the step goes on to the screen
+  above; the Trunk's climb's switch blocks are climbable, so it climbs into
+  them as before. The fountain's ladder: at `ScreenEvents_HandlePathToMasconEvent`'s
+  entry (`$EF69`), unless Trunk `$28` is the screen loaded, it clears
+  `CurrentScreen_SpecialEventID` and returns, as the event's own "not yet"
+  path does; the event runs on the next visit. No ROM, no save-state record.
+- **Holding on to ladders** (`fax_ladder_hold.c`), the 40th Anniversary
+  Edition's change: a hit no longer knocks him off a ladder. At
+  `Player_HandleKnockback`'s entry (`$E153`) it returns at once when he has
+  can climb, is not jumping and has no ground under him (`Player_CheckIfPassable`
+  down, in an isolated call). He keeps his place, his flags and his hold; the
+  hit's damage, invincibility and facing stand, and the d-pad does nothing for
+  the three updates, as in any knockback. On the ground knockback is the
+  game's, and in a jump past a ladder its first update is (it ends the jump).
+  A feature of its own because it changes a rule rather than fixing one. No
+  ROM, no save-state record.
 - **Hold A to speed up text** (`fax_text_speed.c`). While A is held (and not
   on the frame it goes down), a hook at `TextBox_ShowNextChar_IfReady` rounds
   `TextBox_Timer` up to a multiple of 4, so a character types every frame,
@@ -2340,6 +2942,39 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
   When Zone respawn swaps `Game_SetupExitBuilding` in at `$DAAF`, `$DE0B` is
   not reached, and that loader sets the weapon itself. No ROM, no read
   overrides, no state.
+- **Graphics fixes** (`fax_graphics.c`). The five bugs of *Graphics bugs*,
+  each fixed where the game reads the byte, so it draws them right itself:
+  - Sprites: at each of `Sprite_Draw`'s four loads (`$F131`, `$F13B`,
+    `$F1E5`, `$F1EF`: the instruction after it), with bank 7 mapped
+    (`CurrentROMBank`), when `Sprite_TileInfo_ReadAddr + Y` is `$ABF9`,
+    `$A5D3` or `$95E6` and A its stock value, A becomes the right one (N and
+    Z as the load would set them), so OAM gets the right slot or palette.
+  - The title: at `PPU_WriteTilesFromCHRRAM`'s `STA PPUDATA` (`$F8B7`), with
+    bank 10 mapped, the byte read from `$9B69` is written as `$00`.
+  - The Tower of Fortress: at `$D1BE`, after `Area_LoadScrollData`'s load of
+    the current screen and before anything draws or collides with it, Trunk
+    `$2D`'s `ScreenBuffer[$B3]` goes from `$63` to `$08`. Seamless decodes its
+    rooms in isolated calls, where hooks do not run, so it calls the fix's
+    `fax_world_set_room_fixup` callback on each room it decodes
+    (`decode()`, `initialize()`); the fix sets it while on.
+  The hooks keep no state, so they run in Seamless's isolated rooms too (a
+  neighbour's Myconid is fixed). TCP `graphics_fix_state` counts what each fix
+  changed outside them. Seamless's redraw of the hero past a room's edge runs
+  in an isolated machine without hooks, so there his climbing chest is the
+  stock slot (as Block's glint and the falling pose are). No ROM, no read
+  overrides, no state.
+
+- **The map** (`fax_map.c`, laid out by `fax_map_layout.c`). A Map button (M,
+  or LT on a controller; `MapKey` and `MapButton` in `config.ini` [Game])
+  pauses the game on a map of the screens the hero has stood on, a page per
+  region, tower and castle; see *The map*. Two hook sites, the BEQs at
+  `$E02F` and `$E040` in `GameLoop_CheckPauseGame`, which no other feature
+  hooks: it changes only A and Z there, and the game's own code pauses and
+  unpauses. Everything else it learns from RAM at the end of each frame, and
+  it draws at present time, after every other feature. Guru travel's visited
+  Gurus (`fax_travel_visited`) count as their temples. Its save-state record is
+  what the hero has seen (312 bytes), the last place, and the map's page and
+  whether it is open. No ROM, no read overrides.
 
 - **Save files** (`fax_save.c`, `fax_files.c`). Three files instead of
   mantras; see "Save files" below.
@@ -2371,7 +3006,9 @@ are kept, in place, through every save.
 
 Other fields belong to features: Guru travel's `gurus` (the visited Gurus,
 town names), recharging items' `recharge.wingboots`, `recharge.hourglass` and
-`recharge.elixir` (see its entry in *Features and what they use*), and
+`recharge.elixir` (see its entry in *Features and what they use*), the map's
+`map.eolis`, `map.trunk`, `map.mist`, `map.towns`, `map.branch`,
+`map.dartmoor` and `map.zenis` (see *The map*), and
 `imported_mantra` on a file imported from a mantra. Missing
 core fields take a new game's values. HP, MP and the timed items are not
 kept: continuing fills HP and MP and clears the timed items, as a mantra did.

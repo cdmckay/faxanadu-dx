@@ -42,6 +42,7 @@ if(NESRECOMP_BACKEND STREQUAL "cycle")
             src/fax_speaker.c
             src/fax_keys.c
             src/fax_falling.c src/fax_jumps.c
+            src/fax_ladders.c src/fax_ladder_hold.c
             src/fax_text_speed.c
             src/fax_save.c src/fax_files.c
             src/fax_title.c
@@ -53,6 +54,10 @@ if(NESRECOMP_BACKEND STREQUAL "cycle")
             src/fax_slain.c
             src/fax_indoor.c
             src/fax_damage.c
+            src/fax_inventory.c
+            src/fax_fixes.c
+            src/fax_map_layout.c src/fax_map.c
+            src/fax_graphics.c
         MODS GAME_ID "faxanadu-usa"
         PLAYERS 1 REGION NTSC PASSWORD_SAVE "faxanadu.srm" PASSWORD_SAVE_LABEL "Mantra"
         BOXART "${CMAKE_CURRENT_SOURCE_DIR}/assets/boxart.tga")

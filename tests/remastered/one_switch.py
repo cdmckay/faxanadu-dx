@@ -46,11 +46,15 @@ STATES = {
     "auto-keys": ("keys_state", "auto"), "reusable-tools": ("keys_state", "reuse"),
     "recharging-items": ("recharge_state", "enabled"),
     "forgiving-jumps": ("forgiving_jumps_state", "enabled"), "falling-pose": ("falling_pose_state", "enabled"),
+    "ladder-fixes": ("ladders_state", "enabled"), "ladder-hold": ("ladder_hold_state", "enabled"),
     "text-speed": ("text_speed_state", "enabled"), "zone-names": ("zone_state", "enabled"),
     "speaker-names": ("speaker_state", "enabled"), "slain-by": ("slain_state", "enabled"),
     "title-remastered": ("title_state", "enabled"),
     "indoor-equip": ("indoor_equip_state", "enabled"),
     "damage-numbers": ("damage_state", "enabled"),
+    "inventory-fix": ("inventory_fix_state", "enabled"), "small-fixes": ("small_fixes_state", "enabled"),
+    "map": ("map_state", "enabled"),
+    "graphics-fix": ("graphics_fix_state", "enabled"),
 }
 START_CHOICE = 0x687                                                # DAT_0687: 0 Start, 1 Continue
 PASSWORD_COL, PASSWORD_ROW, PASSWORD_LENGTH = 0x662, 0x663, 0x666
