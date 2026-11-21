@@ -52,7 +52,7 @@ STATES = {
     "title-remastered": ("title_state", "enabled"),
     "indoor-equip": ("indoor_equip_state", "enabled"),
     "damage-numbers": ("damage_state", "enabled"),
-    "inventory-fix": ("inventory_fix_state", "enabled"),
+    "inventory-fix": ("inventory_fix_state", "enabled"), "small-fixes": ("small_fixes_state", "enabled"),
     "map": ("map_state", "enabled"),
     "graphics-fix": ("graphics_fix_state", "enabled"),
 }

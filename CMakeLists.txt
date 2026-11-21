@@ -55,6 +55,7 @@ if(NESRECOMP_BACKEND STREQUAL "cycle")
             src/fax_indoor.c
             src/fax_damage.c
             src/fax_inventory.c
+            src/fax_fixes.c
             src/fax_map_layout.c src/fax_map.c
             src/fax_graphics.c
         MODS GAME_ID "faxanadu-usa"

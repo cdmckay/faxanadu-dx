@@ -301,9 +301,10 @@ rom = [
     { bank = 12, start = 0xAE00, end = 0xAE03, use = "Guru travel's SAY step, to show its line" },
     { bank = 13, start = 0xB45B, end = 0xB48B, use = "message $C3, the line slot, for its line" },
 ]
-# Hooks GameLoop_CountdownItems ($C88F), Player_HandleHitByMagic ($87DC),
-# Player_HandleTouchEnemyMagic ($8999) and IScriptAction_EndScript ($82B4),
-# which no other feature hooks, and Sugata's flash's damage, shared (below).
+# Hooks GameLoop_CountdownItems ($C88F), Player_HandleTouchEnemyMagic ($8999)
+# and IScriptAction_EndScript ($82B4), which no other feature hooks, and
+# Sugata's flash's damage and Player_HandleHitByMagic ($87DC), shared (below
+# and under Small fixes).
 # Writes the stack (a return address, as a JSR would) and, when the tutorial
 # speaks, IScriptOrCHRAddr and IScriptOffset. It plays sound $0C with
 # Sound_PlayEffect. Its host input callback clears the d-pad, A and B while
@@ -509,6 +510,30 @@ rom = []
 # (Game_PausedState). Reads bank 3's area tables and bank 15's town edges and
 # climb from a copy of the cart, writes nothing to the machine but those two
 # registers, and draws at present time. No ROM, no read overrides.
+
+[[feature]]
+id = "small-fixes"
+package = "faxanadu.remastered"
+plugin = "faxanadu.small-fixes"
+source = "src/fax_fixes.c"
+hooks = "faxanadu.small-fixes."
+rom = []
+# Hooks SoundEffect_Message_OnTick's TAX ($86B2, bank 5) and
+# IScriptAction_ShowPassword's entry ($8737, bank 12), which no other feature
+# hooks, and Player_HandleHitByMagic ($87DC), shared with Block (below). At
+# the TAX it changes only A. At the mantra it writes Message_StartAddr and
+# Message_ProcessedLength ($0218, $0219, $0214), which only the mantra's
+# line-end check reads before the next Messages_Load sets them again. No ROM,
+# no read overrides, no state.
+
+[[shared_site]]
+addr = 0x87DC   # Player_HandleHitByMagic
+hooks = ["faxanadu.block.shield-hit", "faxanadu.small-fixes.ointment"]
+why = """Both only skip the routine, so the shield lets nothing through, or \
+decline; neither writes anything. Block's comes first in game.toml and \
+handles the call while Block is up, counting the save as its own; Small \
+fixes' then handles it under Ointment. Either way the caller, \
+Player_HandleShieldHitByMagic, removes the shot with the shield's sound."""
 
 [[feature]]
 id = "graphics-fix"
