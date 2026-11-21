@@ -61,23 +61,27 @@ and data tables after it shifted). Not supported: the build rejects it.
 | `$0024` | `Area_CurrentArea` | 4 = inside a building |
 | `$0063` | `Area_CurrentScreen` | |
 | `$009E`, `$00A1` | `Player_PosX_Block`, `Player_PosY` | |
+| `$00BA`, `$00C2` | `CurrentSprites_XPos_Full`, `CurrentSprites_YPos` | Each sprite slot's box: its left, and its top under the HUD |
 | `$00DB-$00DD` | `IScriptOrCHRAddr`, `IScriptOffset` | The interpreter reads the next action at addr + offset |
 | `$0100` | `CurrentROMBank` | 14 in the main loop. The stack shares this page |
 | `$0120` | `Game_PausedState` | Nonzero while the game is paused: Start, or the map (see *The map*) |
 | `$0127` | `SoundEffect_State_Counter` | The playing sound effect's tick; the typing sound runs 1-4 |
+| `$0200-$021D` | `Temp_0200` on | `Screen_LoadBlocksHoriz`'s column of tiles, over the text box's variables: after a screen is drawn or scrolls sideways, every one of them from `$0208` to `$021D` holds a tile of it (see *The text box*) |
 | `$0208-$020B` | `TextBox_X`, `TextBox_Y`, `TextBox_Width`, `TextBox_Height` | The box last opened or closed, in tiles (see *The text box*) |
+| `$020C` | `TextBox_Closed` | 0 while a box or the menu is open, 1 once it has closed; but a screen's tile, which can be 0, once a screen has been drawn or scrolled (see *The text box*) |
 | `$0212` | `TextBox_PlayTextSound` | The typing sound plays for a character if set |
-| `$0213` | `MessageID` | 0 once a message has typed out; otherwise stale after a conversation, and still stale (with `$0215`) as the next script's portrait opens, until its first message loads |
+| `$0213` | `MessageID` | 0 once a message has typed out; otherwise stale after a conversation (a screen's tile, once one has been drawn), and still stale (with `$0215`) as the next script's portrait opens, until its first message loads |
 | `$0214` | `Message_ProcessedLength` | Bytes of the message read, from an offset, not 0. Wraps with the address |
-| `$0215` | `TextBox_MessagePaused` | Nonzero while a `$FC` pause waits for A |
+| `$0215` | `TextBox_MessagePaused` | Nonzero while a `$FC` pause waits for A; otherwise maybe a screen's tile |
 | `$021D` | `TextBox_Timer` | Characters type when it is a multiple of 4. `Messages_Load` zeroes it |
 | `$02CC-$02D3` | `CurrentSprites_Entities` | Each sprite slot's entity, `$FF` empty (see *What killed the hero*) |
+| `$036C-$0373` | `CurrentSprites_Values` | Each slot's value from the screen's sprite list: a person's interaction script (see *Quests*), $FF none |
 | `$0378` | `CurrentSpriteIndex` | The slot whose behavior or collision is running |
 | `$0390`, `$0392-$0394` | `Experience`, `Gold` | Gold is 24-bit little-endian |
 | `$039A` | `Player_MP` | |
 | `$03C7` | `IScript_PortraitID` | The portrait showing, `$FF` for none (see *Portraits*) |
 | `$042C` | `SpecialItems` | Bit flags; `$08` the Elixir, which saves a death once |
-| `$042D` | `Quests` | Bit flags |
+| `$042D` | `Quests` | Bit flags (see *Quests*) |
 | `$0431`, `$0432` | `Player_HP_U`, `Player_HP_L` | |
 | `$0438` | `PlayerIsDead` | Set it to 1 and the main loop runs the death path |
 | `$0439` | `TempleSpawnPoint` | Where death respawns and a mantra continues, 0-7. In the original, the furthest temple reached; with Save files, the temple of the Guru last saved with |
@@ -248,8 +252,9 @@ faxanatools' `messages.py` decodes and encodes them; `fax_travel.c`'s
   `TextBox_MessagePaused` is set. Wait on that rather than on a timer.
   Only a pause sets `TextBox_MessagePaused` ($FF), and only continuing past
   one (or the mantra box) clears it, so it can hold a stale nonzero value: $9F
-  all through a new game's intro. For a line with no pause, wait on
-  `MessageID` alone.
+  all through a new game's intro, a tile of the gate's screen (see
+  `TextBox_Closed` below). For a line with no pause, wait on `MessageID`
+  alone.
 - Between two messages the box is wiped and refilled. A screenshot taken then
   shows half of each.
 - **A message after one that scrolled shows rotated.** The box's rows show
@@ -279,11 +284,35 @@ faxanatools' `messages.py` decodes and encodes them; `fax_travel.c`'s
   `HUD_TILES_START` (`$8140`), to PPU `$1000`, so tile t is at
   `$8140 + t * 16` in ROM; `fax_text_box_rom` draws the frame from there on
   screens whose pattern tables hold something else, like the title.
-  `TextBox_Closed` (`$020C`) is 0 while a box or the Select menu is open, and
-  nonzero once one has closed (also before the first). Only `TextBox_Open`
-  and `TextBox_Close` store it by name, yet walking out of a building into the
-  towns (area 3, Forepaw's screen 2) it read 0 with no box up, so a test
-  should not take 0 alone for an open box outside Eolis.
+- **`TextBox_Closed` (`$020C`) reads 0 with no box up on some screens.** It is
+  0 while a box or the Select menu is open and 1 once one has closed, and only
+  `TextBox_Open` and `TextBox_Close` store it by name, but the screen's tiles
+  go through it. `Screen_LoadBlocksHoriz` (`$D503`) loads the next column of
+  tiles a screen scrolls in, a top and a bottom tile from each of 15 blocks,
+  into `$0200-$021D` (chipx86's `Temp_0200` on), and in the NMI
+  `Screen_WriteBlockTilesColumnToPPU` (`$D673`) writes the first 26 down the
+  nametable, rows 4-29. Every sideways scroll goes through it, and so does
+  every screen the game draws: `Screen_SetupNew`'s `Area_ScrollScreenRight`
+  (`$D0F6`) scrolls the new screen in from the right a column at a time. So
+  after a door, a building, a respawn or a scroll, `$0200-$021D` hold the last
+  column loaded (for a screen drawn whole, its right edge, column 31, from row
+  4 down), over `TextBox_X` to `TextBox_Height`, `TextBox_Closed` (row 16),
+  `MessageID`, `TextBox_MessagePaused`, `TextBox_LineScrollOffset` and
+  `TextBox_Timer`. Opening a box and loading a message set them again, so the
+  game is none the worse. `TextBox_Closed` is then row 16's tile: usually one
+  of the area's ($80 and up), but on Forepaw's screen 2 (area 3) it is tile 0,
+  so there it reads 0 with no box up (Eolis's gate leaves `$9F`, its town
+  `$94`). Measured from save states: after walking out of a building there,
+  and in the gate, town, meat shop and Zozura fixtures, `$0200-$0219` equal
+  nametable column 31, rows 4-29. **Never take 0 alone for an open box.**
+  `fax_text_box_showing` (`fax_text.c`) also wants a box's frame in the last
+  frame: a top-left corner (tile 1) followed by the top edge (2, or 3 for a
+  box two tiles wide), below the HUD. Below the HUD the screen shows tile 0
+  and the area's tiles, which `Area_LoadTiles` (`$CEB8`) puts at PPU `$1800`
+  or `$1A00` (tiles $80 and up), so those two tiles side by side are a box's.
+  It looks for any box's corner, not just the one at `TextBox_X` and
+  `TextBox_Y`: a submenu sets those a frame before its frame shows, over the
+  menu's.
 - **Where boxes go**, in tiles of the 256 x 240 screen (the HUD is rows 0-3),
   as `TextBox_X`, `TextBox_Y`, `TextBox_Width`, `TextBox_Height` (`$0208-$020B`)
   hold them; the frame is inside the size, and text starts 2 tiles in:
@@ -305,7 +334,8 @@ faxanatools' `messages.py` decodes and encodes them; `fax_travel.c`'s
   it is full), so a box appears and goes over a few frames. `TextBox_Closed`
   changes when the writes are queued, not when they show. To know a box is on
   screen, read its corner tiles from the nametable, through the line's scroll
-  (`cyc_render_nametable`, `cyc_render_line_scroll_x/y`; `fax_speaker.c`).
+  (`fax_text_shown_tile`, on `cyc_render_nametable` and
+  `cyc_render_line_scroll_x/y`; `fax_speaker.c`, `fax_text_box_showing`).
 - The HUD and every box share one palette, `UI_AttributeDataIndex` (`$038D`,
   0-3), which `Screen_LoadUIPalette` sets from the screen's palette
   (`PALETTE_INDEX_TO_UI_BG_ATTRIBUTE_INDEX`, bank 11). The frame's colors
@@ -418,8 +448,8 @@ What a feature can rely on, and the traps:
   (its 48-byte line slot and 7 step bytes), the Taller dagger 1, and Save
   files shares the slot and adds 5 (4 step bytes and the menu's operand), or
   8 if Guru travel's steps are not served (its own 3-byte SAY): 61 to 64 of
-  64. Block borrows Guru travel's SAY step and slot, and Quick shops takes
-  none. `tools/check_allocations.py` counts every byte claimed in
+  64. Block and the quest log borrow Guru travel's SAY step and slot, and Quick
+  shops takes none. `tools/check_allocations.py` counts every byte claimed in
   `mods/allocations.toml` once and fails past 64, so the claims, now 64, are
   the budget. A new message for the text box should share the slot, and
   anything more needs the table made larger or Guru travel's slot cut to its
@@ -1955,6 +1985,192 @@ read back on `FAX_SAVE_CONTINUED`, cleared for a new game; a damaged field
 forgets that area only. Every field fits a value (the Mist's, everything set,
 is 71 characters).
 
+## Quests
+
+The quest log (`fax_quests.c`) works from a curated list of the game's
+requests (`fax_quest_table.c`), drafted from every interaction script and the
+messages they show (`tests/quests/quests_test` checks the list against the
+scripts with the ROM).
+
+**What the game tracks.** Little:
+
+- `Quests` (`$042D`): `$01`, `$02` and `$04`, the springs of Trunk, of Sky
+  and of the Joker door ("the first spring"), are the only bits a script can
+  test or set: `IF_QUEST` (`$0B`) and `SET_QUEST` (`$0E`) take an index, 1-3,
+  into `ISCRIPTS_QUEST_BITS` (`$01`, `$02`, `$04`). `$08` (Zorugeriru's Wing
+  Boots) and `$10` (Ripasheiku's Mattock) are set by their pickups
+  (`Player_PickUpWingBootsWithQuest`, `Player_PickUpMattockWithQuest`), before
+  the pickup's script; `Player_Spawn` clears `$10`. `$20` is set when the rock
+  is pushed (`Game_DropLadderToMascon`).
+- `SpecialItems` (`$042C`, `SPECIAL_ITEM_BITMASKS`, `$9AE5` bank 12): `$80`
+  Ring of Elf, `$40` Ruby, `$20` Dworf, `$10` the Demon's Ring, `$08` Elixir,
+  `$04` Magical Rod, `$02` Pendant, `$01` Black Onyx (the meteorite, once
+  held).
+- Nothing records a conversation or a boss. A quest is complete by what they
+  leave: an item, a flag, a place.
+
+**Who says what.** A screen's sprite list (bank 11) gives each person on it
+an interaction script: after the (entity, `YX`) pairs and their `$FF`, one
+value a sprite, in order, which `Sprites_LoadSpriteValue` puts in
+`CurrentSprites_Values` (`$036C`). For a person, a sprite whose
+`SPRITE_CATEGORIES_BY_ENTITY` (`$B544`, bank 14) is 2 (`SPRITE_NPC`: entities
+`$34-$45`), it is his script, which `Player_CheckHandlePressUpOnNPC` hands to
+`IScripts_Begin`; for others it is a coin's value or an HP. Area 4's lists are
+by building number, `$00-$45` (not by its 10 layouts). Where each quest's
+people are is in `fax_quest_table.c`'s comment; a building's door is in its
+area's door tables (*Areas, screens and zones*). Scripts on no screen: `$14`
+("You need a key."), `$1B` (an END), `$45` (the magic lore `$4B` also says)
+and `$70` (Dartmoor's "There is the Castle of Fraternal...", "You need the
+Demon's Ring..."); `$02` and `$7B-$7F` are the doors', `$80-$97` the items',
+and `$1E`, `$2D-$2F` and the others named `_INTRO` share the intro's.
+
+**`MAYBE_SPRITE_EXTENTS`** (`$B407`, bank 14) are interaction boxes, not the
+picture: the King's and the Gurus' (`$3A`, `$39`) are 48 x 32 and the
+Martial Artist's and the Magician's 32, reaching right of the 16 pixels each
+is drawn in from `CurrentSprites_XPos_Full`. Every person is drawn 16 wide.
+
+**Every line passes `Messages_Load`** (`$F3F5`, fixed bank): `STA MessageID`
+first, so A at its entry is the message, whatever shows it (a script's
+messages and questions, a shop's lines, `IScripts_ShowFinalMessage`). A
+pickup's script ("I've got the Black Onyx.", messages `$B0-$BA`) runs before
+the item is added (*Items and the inventory*).
+
+**Walking a script.** An action's parameter bytes: none for `$00`, `$14`,
+`$15`; one for `$01`-`$03`, `$06`, `$07`, `$0A`, `$0E`, `$10`, `$13`; two for
+`$04`, `$05`, `$08`, `$09`, `$0D`, `$0F`, `$11`, `$17`; three for `$0B`,
+`$0C`, `$12`, `$16`. `IF_TITLE` (`$0C`) jumps when its title is at most
+`PlayerTitle`; `IF_NEW_TITLE` (`$04`) when `NextPlayerTitle` differs from
+`PlayerTitle` (and makes them equal); `IF_ITEM` (`$12`) as `Player_LacksItem`
+asks: a special item by its bit, anything else selected or in its list's
+first count entries. A question (`$02`) goes on with A and ends with B; `$16`
+jumps with A. `fax_quest_walk` follows a script so, answering every question
+with A, and lists the messages it would show.
+
+**The quests**, in the game's order (script: message; the people are in
+`fax_quest_table.c`):
+
+| Quest | Given by | Next step | Complete when |
+|---|---|---|---|
+| The Ring of Elf | `$03`: `$2A` "Go to see the Guru before you see the king." | Eolis's Guru, `$04`: `$2C` | Ring of Elf |
+| The King's Plea | the King, `$08`: `$35` (no gold) or `$36` (gold); Forepaw, `$21`: `$4C` "Find the 3 springs" | | all three springs (`Quests & 7`); the log counts them |
+| The Mattock | Apolune, `$12`: `$40` (with the Small Shield) | | a Mattock held, `Quests & $10`, or Forepaw reached |
+| The Wall | Apolune, `$13`: `$41`, `$42` | | Forepaw reached |
+| Spring of Trunk | Forepaw's nurse, `$23`: `$50`; the old man, `$26`: `$59` | `$26`: `$5A` (with the Elixir) | `Quests & 1` |
+| The Wing Boots | the nurse, `$23`: `$51` | | `Quests & 8`, Wing Boots held, or `Quests & 2` |
+| Spring of Sky | `$22`: `$4E`; the nurse, `$23`: `$51`; the Guri, `$24`: `$54` | the old man, `$25`: `$57` | `Quests & 2` |
+| The First Spring | the Guri, `$24`: `$55`; `$25`: `$58` | the old man, `$27`: `$5D` | `Quests & 4` |
+| Path to Mascon | `$22`: `$4F`; the nurse, `$23`: `$52`; `$27`: `$5E` (the Ring of Ruby) | | `Quests & $20`, or the Mist reached |
+| The Poison | `$26`: `$5C`; Mascon, `$33`: `$66`; `$36`: `$6D` | | Black Onyx, or the Branch reached |
+| The Meteorite | Mist `$1F`'s man, `$46`: `$7D` | `$46`: `$7E` (with the Black Onyx; the Ace key) | the Ace key held, or the Branch reached |
+| Battle Gear | Conflate, `$50`: `$81`; Daybreak, `$61`: `$8F`, `$64`: `$95` | | Battle Suit and Battle Helmet held |
+| Ring of Dworf | Conflate, `$51`: `$83`; Daybreak's nurse, `$63`: `$94` | Conflate's Guru, `$55`: `$8C` (with the Battle Suit) | Ring of Dworf |
+| The Magic Cane | Victim, `$42`: `$73`; Daybreak, `$61`: `$90`, `$65`: `$98` | | Magical Rod |
+| Dragon Slayer | Dartmoor, `$71`: `$9B` | | Dragon Slayer held, the Demon's Ring, or Zenis reached |
+| The Demon's Ring | `$72`: `$9D`, `$9E`; `$73`: `$9F` | the Fraternal Guru, `$74`: `$A2` (with the Dragon Slayer) | the Demon's Ring |
+| The Evil One | `$71`: `$9C`; the Fraternal Guru, `$74`: `$A2` | | the end: building `$44`, the King's room of `ISCRIPT_KING_END_GAME` |
+
+Places reached, each implying those before it: Forepaw (its screens, `$02-$03`
+of the towns), the Mist (area 2, or Mascon and Victim, the towns' `$04-$07`),
+the Branch (area 5, or Conflate and Daybreak, `$08-$0B`), Dartmoor (area 6,
+or its town, `$0C-$0D`), Zenis (area 7), the end. They come from where the
+hero is, the map's screens seen (`fax_map_seen`), and the furthest temple
+(`TempleSpawnPoint`, or the highest Guru met, `fax_travel_visited`): Forepaw's
+is 2, Mascon's (in the Mist) 3 and Victim's 4, Conflate's 5 and Daybreak's 6
+(off the Branch), Dartmoor's 7. The towns hang off the regions so
+(`AREA_TOWN_TRANSITIONS_DATA`): Apolune and Forepaw off the Trunk, Mascon and
+Victim off the Mist, Conflate and Daybreak off the Branch, Dartmoor town off
+the Dartmoor region.
+
+**Lines left out**, each something someone says that tells the hero what to
+do, and why it gives no quest:
+
+- `$27` (Eolis, "I want you to see the king right away"), `$32`, `$33` (the
+  guard, "The King is waiting for you."): they point at the King, whose "!"
+  shows and whose own line gives his quest.
+- `$2C` (Eolis's Guru, "If you are going to see the king, take this ring"):
+  he gives the ring, unasked; it is The Ring of Elf's next step.
+- `$2D` (Eolis's Guru, "Visit all Gurus on your way."): advice on titles,
+  with nothing to finish; Guru travel already keeps the Gurus met.
+- `$28`, `$2F`, `$3C` ("Go straight ahead and you'll find the town of
+  Apolune.", "There is a fountain in the town of Forepaw.", "There is the
+  town of Forepaw ahead of you."): directions along the way.
+- `$3D` (Apolune, "There are Dwarfs all over in the Tower of Trunk. Go out of
+  town, turn right..."): directions to the tower The Mattock and The Wall
+  send the hero to.
+- `$3F` (Apolune, "You should have a shield."), `$47` (the mantra), `$49`
+  (8 items), `$39`, `$71`, `$86`, `$A0`: advice.
+- `$48` (Apolune, "There is a secret Guru in the Tower of Fortress. You'll
+  find important information and a key there."): said from the first title,
+  long before the Guri has a key to give; his own lines give the Spring of Sky
+  and The First Spring when it is time.
+- `$5B` (the spring of Trunk, "Come back with the medicine.") and `$56` (the
+  Guri, "If you don't have a Joker key, come back again."): reminders of
+  quests already given.
+- `$63` (Mascon, "Did you get the pendant?"), `$64` (Mascon's shops outside
+  town), `$6A` ("You'll get to the Tower of Suffer soon."), `$6E` (the Hour
+  Glass), `$72` (Victim, "There is a magic hall outside town."), `$85`
+  (Conflate, "There should be something you can get."), `$96` ("The castle of
+  Dartmoor is a complex maze."): hints at optional things or places, with no
+  item or place that would say they are done; `$85` hints at the magic cane,
+  which `$73`, `$90` and `$98` give.
+- `$67` (Mascon, "You need Wing Boots in order to get to the misty town of
+  Victim."): by Mascon the hero has flown to the Spring of Sky, and the
+  remaster keeps his Wing Boots (*Wing Boots, the Hour Glass and the Elixir*).
+- `$74` (Victim, "The door to the Capital town below is open. Go to it
+  now."): a drunk's rumor; he says so himself ("It was only a rumor.") and
+  gives the Full Plate.
+- `$7C` (the meteorite becomes Black Onyx), `$62`, `$68`, `$6C`, `$A1`: lore.
+- `$99`, `$9A` (Dartmoor): script `$70`, which no screen places.
+
+**Saying them.** At `Messages_Load` a line that gives a quest neither given
+nor complete gives it. At the script's end (`IScriptAction_EndScript`, after
+Block's hook), the quests it completed and then those it gave are said, a
+line each ("Quest complete" or "New quest", then the name; the font has no
+`:`): the script is pointed at Guru travel's SAY step with the line in message
+`$C3`'s slot and returns through `IScripts_InvokeNextAction`, so the step's
+END comes back to the hook, and the box closes after the last line. A quest
+given and complete in one script (the spring of Trunk's old man, asked with
+the Elixir in hand) says only "Quest complete". The quests a script
+completed are those complete by then and not before; a pickup's item counts
+as added, as its message says it will be (its list full, an Item is not). A
+quest completed outside a conversation (a place reached, the rock pushed)
+says so in a box below the HUD, where zone names show, once any zone name
+has gone. (Walking out of a building into Forepaw's screen 2, the screen
+leaves `TextBox_Closed` at 0 with no box up, as *The text box* explains; the
+zone banner used to hold Forepaw's name for it, until it asked the nametable
+for a box too.)
+
+After a message of more than four lines (the King's) the box's rows are
+rotated (*The text box*); while a quest line loads, the hook at `$F439`
+(after Save files') puts back the line scroll the box was left with.
+
+**The marks.** Each frame's picture walks the script of each person on
+screen as the game would now (and in Seamless, those in the rooms around it,
+from Seamless's copies, `fax_world_room_ram`): a line that gives a quest
+neither given nor complete puts a "!" over him; a quest under way whose next
+step he is (the walk reaches its step), a "?", which comes first. The mark is
+the font's "!" or "?", made bold, in `$27` (gold) outlined in `$0F`, its
+bottom 4 pixels above his box, over the middle of his 16 pixels, and only
+in play: settled, not paused, alive, and bank 14 mapped, the main loop's (a
+script, a shop or the Select menu waits for its frames with bank 12 in, or 13
+while a character of text is read).
+
+**The log.** The Quest log button opens it through the game's pause, at the
+map's two branches (*The map*), after the map's hooks; neither opens over the
+other. Black over the picture, the text box's frame over the native 256 x 240,
+"Quests" on row 2, and from row 4 the active quests, a block each (the name in
+`$37`, its objective, the King's Plea's springs), kept whole on a page, then
+"Completed" and the names of the quests done, in `$10`. Left and Right turn
+the pages; B, Start or the button close it.
+
+**In the file**: `quests.given` and `quests.done`, the quests given and those
+seen complete, as hex digits, the first for quests 0-3 (quest 0 its lowest
+bit), in `fax_quest_table.h`'s order. Complete is otherwise read from the game
+each time, so a quest done since stays done; continuing a file takes what is
+complete without saying it. A file without `quests.given` (from a mantra, or
+before the quest log) counts every quest complete as given, so the log shows
+what was done.
+
 ## Items and the inventory
 
 Five categories, each with a count, a selected entry and a list. Entries are
@@ -2443,6 +2659,10 @@ rest of the way to Victim, were not checked.
 - The screen's neighbours are in `Area_ScreenToTheLeft/Right/Above/Below`
   (`$0066-$0069`), loaded from the area's scroll data. Walking off an edge
   makes the neighbour `Area_CurrentScreen` and loads it.
+- Drawing a screen or scrolling sideways loads its tiles a column at a time
+  through `$0200-$021D`, over the text box's variables, and leaves the last
+  column there: `TextBox_Closed` can read 0 with no box up (see *The text
+  box*).
 - **For tests:** set `Area_ScreenToTheRight` in a save state and walk off the
   right edge to reach any screen of the same area the game's own way.
   `CurrentSprites_Entities` (`$02CC`, 8 slots) set to `$FF` clears a screen's
@@ -2683,14 +2903,17 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
   own). No hooks and no ROM: it reads RAM in `frame_end` once the screen has
   settled. A temple whose way out is not where the hero last stood means a
   respawn or a Guru travel journey, and makes the next zone's name show. The
-  banner is held while a box is open or the game is paused. Its save-state
-  record keeps the banner as it was. Its drawing, `fax_banner_draw`, takes any
-  line, so Slain by draws in the same box.
+  banner is held while a box is open or the game is paused, and hidden behind
+  boxes; a box is open by `TextBox_Closed` and the nametable together
+  (`fax_text_box_showing`; see *The text box*). Its save-state record keeps
+  the banner as it was. Its drawing, `fax_banner_draw`, takes any line, so
+  Slain by draws in the same box.
 
 - **Slain by** (`fax_slain.c`, drawn by `fax_banner.c`). When a hit takes the
   hero's last HP, the banner says what it came from, "Slain by a Sugata", from
   that frame through the dissolve, fading out at frame 248 of its 256, before
-  the Guru speaks, and puts away any zone name showing. Two hooks, both only
+  the Guru speaks, and puts away any zone name showing. It hides behind a
+  box, as zone names do (`fax_text_box_showing`). Two hooks, both only
   observing (see *What killed the hero*): at `Player_ReduceHP` (`$C08E`) it
   names the source of a hit that kills (HP below the damage, no Elixir), and
   at `Sprite_Maybe_ResetState` (`$A202`) it keeps each slot's spawner, which
@@ -2933,8 +3156,9 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
   same room that it would touch out of the way, up if that one was higher,
   else down, with two rows between outlines; as every number rises at one
   pace, they never meet after. At most 16 show; a new one replaces the
-  oldest. They hold while `TextBox_Closed` is 0 or `Game_PausedState` is
-  nonzero, hide while a box is open, never cover the HUD, and while
+  oldest. They hold while a box is open (`fax_text_box_showing`, not
+  `TextBox_Closed` alone) or `Game_PausedState` is nonzero, hide while a box
+  is open, never cover the HUD, and while
   `Player_HP_U` is 0 (from a killing hit until the respawn) keep below the
   zone banner's box (8 to 32 pixels under the HUD), where Slain by
   (`fax_slain.c`) says what killed him.
@@ -3019,13 +3243,28 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
   or LT on a controller; `MapKey` and `MapButton` in `config.ini` [Game])
   pauses the game on a map of the screens the hero has stood on, a page per
   region, tower and castle; see *The map*. Two hook sites, the BEQs at
-  `$E02F` and `$E040` in `GameLoop_CheckPauseGame`, which no other feature
-  hooks: it changes only A and Z there, and the game's own code pauses and
-  unpauses. Everything else it learns from RAM at the end of each frame, and
+  `$E02F` and `$E040` in `GameLoop_CheckPauseGame`, shared with the quest log
+  (whose hooks come after; neither opens over the other): it changes only A
+  and Z there, and the game's own code pauses and unpauses. Everything else it learns from RAM at the end of each frame, and
   it draws at present time, after every other feature. Guru travel's visited
   Gurus (`fax_travel_visited`) count as their temples. Its save-state record is
   what the hero has seen (312 bytes), the last place, and the map's page and
   whether it is open. No ROM, no read overrides.
+
+- **Quest log** (`fax_quests.c`, the quests in `fax_quest_table.c`). Lines in
+  dialogue, the log and the marks; see *Quests*. A hook at `Messages_Load`
+  (`$F3F5`), which no other feature hooks, only observes A, the message. At
+  `IScriptAction_EndScript` (`$82B4`), after Block's hook, it says its lines
+  through Guru travel's SAY step and message `$C3`'s slot, as Block's tutorial
+  does: it points the script at the step and returns through
+  `IScripts_InvokeNextAction` (`fax_block_return_via`), so the step's END
+  comes back to the hook. At `$F439`, after Save files' hook, it puts back
+  the line scroll while its line loads. At `GameLoop_CheckPauseGame`'s two
+  BEQs (`$E02F`, `$E040`), after the map's, it opens the log through the
+  game's pause, as the map does; neither opens over the other. Its save-state
+  record (31 bytes) holds the quests given and seen done, the lines still to
+  say, the banner and the log's page. No ROM of its own and no read override
+  of its own.
 
 - **Save files** (`fax_save.c`, `fax_files.c`). Three files instead of
   mantras; see "Save files" below.
@@ -3059,7 +3298,8 @@ Other fields belong to features: Guru travel's `gurus` (the visited Gurus,
 town names), recharging items' `recharge.wingboots`, `recharge.hourglass` and
 `recharge.elixir` (see its entry in *Features and what they use*), the map's
 `map.eolis`, `map.trunk`, `map.mist`, `map.towns`, `map.branch`,
-`map.dartmoor` and `map.zenis` (see *The map*), and
+`map.dartmoor` and `map.zenis` (see *The map*), the quest log's
+`quests.given` and `quests.done` (see *Quests*), and
 `imported_mantra` on a file imported from a mantra. Missing
 core fields take a new game's values. HP, MP and the timed items are not
 kept: continuing fills HP and MP and clears the timed items, as a mantra did.

@@ -117,6 +117,9 @@ cmake --build "$OUT/fixes" -j"$JOBS" >/dev/null
 cmake -S tests/map -B "$OUT/map" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/map" -j"$JOBS" >/dev/null
 "$OUT/map/map_test" "$ROM"
+cmake -S tests/quests -B "$OUT/quests" >/dev/null
+cmake --build "$OUT/quests" -j"$JOBS" >/dev/null
+"$OUT/quests/quests_test" "$ROM"
 cmake -S tests/graphics -B "$OUT/graphics" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/graphics" -j"$JOBS" >/dev/null
 "$OUT/graphics/graphics_test"
@@ -196,6 +199,8 @@ E2E=(
   "inventory    tests/inventory/inventory_fix.py --parts"
   "map          tests/map/explored_map.py --parts"
   "map+sw       tests/map/explored_map.py --parts $SW"
+  "quests       tests/quests/quest_log.py --parts"
+  "quests+sw    tests/quests/quest_log.py --parts=elf,king,meteorite,wall,file $SW"
   "fixes        tests/fixes/small_fixes.py --parts"
   "graphics     tests/graphics/graphics_fixes.py --parts"
   "graphics+sw  tests/graphics/graphics_fixes.py --parts $SW"

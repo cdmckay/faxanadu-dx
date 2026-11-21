@@ -100,8 +100,9 @@ plugin = "faxanadu.zone-names"
 source = "src/fax_banner.c"
 hooks = "faxanadu.zone-names."
 rom = []
-# No hooks and no ROM: it reads RAM at the end of each frame and draws over
-# the presented picture (fax_text.c), after Seamless has composed it.
+# No hooks and no ROM: it reads RAM and the nametable (fax_text.c's box test)
+# at the end of each frame and draws over the presented picture (fax_text.c),
+# after Seamless has composed it.
 
 [[feature]]
 id = "speaker-names"
@@ -234,10 +235,11 @@ overrides = [
     { bank = 12, start = 0x8631, stock = [0x10], use = "IScriptAction_ShowBuySellMenu's LDA #$10: the menu's message, served as $C3 for the Guru's menu only" },
 ]
 # Hooks StartScreen_CheckHandleInput ($9F44), PasswordScreen_Show ($909D),
-# the start screen's JMP Player_Spawn ($FC95), Player_Spawn after
-# Game_SpawnInTemple ($DB20) and TextBox_ClearPasswordSize after it zeroes the
-# line scroll ($F439), which no other feature hooks, and
-# IScripts_InvokeNextAction ($826E) with Guru travel.
+# the start screen's JMP Player_Spawn ($FC95) and Player_Spawn after
+# Game_SpawnInTemple ($DB20), which no other feature hooks,
+# IScripts_InvokeNextAction ($826E) with Guru travel, and
+# TextBox_ClearPasswordSize after it zeroes the line scroll ($F439) with the
+# quest log (below).
 # The operand is $C3 only from the Guru's menu step to the end of that frame
 # (the menu reads it at once), then the stock $10 again, so the shops' menu
 # never sees it. Writes TempleSpawnPoint (the saved Guru), the joypad's
@@ -249,26 +251,30 @@ overrides = [
 bank = 13
 start = 0xB45B
 end = 0xB48B
-features = ["guru-travel", "save-files", "block"]
+features = ["guru-travel", "save-files", "block", "quest-log"]
 why = """Message $C3, one line slot for the lines the remaster adds to \
 scripts. Each feature writes its line there just before the step that shows \
 it, and none shows a line while another's is up: Save files' choice comes \
 first in a Guru's conversation and starts Guru travel's part through \
 fax_travel_begin, and Block's line follows only the end of a shop's script or \
-the Battle Helmet's pickup, never a Guru's. Guru travel and Save files write \
-their own line again before each one they say. After a save state loads, Save \
-files puts its line back in state_loaded, after Guru travel's record has \
-restored its own, and Block puts back its line if it was saying it."""
+the Battle Helmet's pickup, never a Guru's. The quest log's lines follow a \
+script's end too, after Block's (its hook at IScriptAction_EndScript comes \
+second), and come only at the end of a script that gave or completed a quest, \
+which no temple Guru's does, so never with Save files' or Guru travel's. Guru \
+travel, Save files and the quest log write their own line again before each \
+one they say. After a save state loads, Save files puts its line back in \
+state_loaded, after Guru travel's record has restored its own, and Block and \
+the quest log put back theirs if they were saying them."""
 
 [[shared_rom]]
 bank = 12
 start = 0xAE00
 end = 0xAE07
-features = ["guru-travel", "block"]
+features = ["guru-travel", "block", "quest-log"]
 why = """Guru travel's SAY step, $AE00-$AE02: SHOW_MESSAGE $C3, END. Block \
-serves the same three bytes there to show its line from message $C3, so \
-whichever served them last, the step is the same. Block never touches Guru \
-travel's ASK step ($AE03-$AE06)."""
+and the quest log serve the same three bytes there to show their lines from \
+message $C3, so whichever served them last, the step is the same. Neither \
+touches Guru travel's ASK step ($AE03-$AE06)."""
 
 [[shared_site]]
 addr = 0x826E   # IScripts_InvokeNextAction
@@ -301,10 +307,10 @@ rom = [
     { bank = 12, start = 0xAE00, end = 0xAE03, use = "Guru travel's SAY step, to show its line" },
     { bank = 13, start = 0xB45B, end = 0xB48B, use = "message $C3, the line slot, for its line" },
 ]
-# Hooks GameLoop_CountdownItems ($C88F), Player_HandleTouchEnemyMagic ($8999)
-# and IScriptAction_EndScript ($82B4), which no other feature hooks, and
-# Sugata's flash's damage and Player_HandleHitByMagic ($87DC), shared (below
-# and under Small fixes).
+# Hooks GameLoop_CountdownItems ($C88F) and Player_HandleTouchEnemyMagic
+# ($8999), which no other feature hooks, and IScriptAction_EndScript ($82B4),
+# Sugata's flash's damage and Player_HandleHitByMagic ($87DC), shared (under
+# the quest log, below, and under Small fixes).
 # Writes the stack (a return address, as a JSR would) and, when the tutorial
 # speaks, IScriptOrCHRAddr and IScriptOffset. It plays sound $0C with
 # Sound_PlayEffect. Its host input callback clears the d-pad, A and B while
@@ -504,8 +510,9 @@ source = "src/fax_map.c"
 hooks = "faxanadu.map."
 rom = []
 # Hooks GameLoop_CheckPauseGame's two BEQs, $E02F (Start not new: return) and
-# $E040 (Start not new: another frame paused), which no other feature hooks;
-# Seamless observes the routine's entry, $E02B, which runs before either. It
+# $E040 (Start not new: another frame paused), with the quest log, whose
+# hooks come after (below); Seamless observes the routine's entry, $E02B,
+# which runs before either. It
 # changes only A and Z at them, so the game's own code pauses and unpauses
 # (Game_PausedState). Reads bank 3's area tables and bank 15's town edges and
 # climb from a copy of the cart, writes nothing to the machine but those two
@@ -554,3 +561,63 @@ rom = []
 # palettes after Player_DrawBody, both before or after these reads, never the
 # bytes these change. No ROM, no read overrides, no state. Seamless decodes
 # its rooms through fax_world_set_room_fixup, which this feature sets.
+
+[[feature]]
+id = "quest-log"
+package = "faxanadu.remastered"
+plugin = "faxanadu.quest-log"
+source = "src/fax_quests.c"
+hooks = "faxanadu.quests."
+# Its lines borrow Guru travel's SAY step and line slot (fax_travel.h), as
+# Block's tutorial does, through the same read overrides: no override of its
+# own, so the budget stays at 64.
+rom = [
+    { bank = 12, start = 0xAE00, end = 0xAE03, use = "Guru travel's SAY step, to show its lines" },
+    { bank = 13, start = 0xB45B, end = 0xB48B, use = "message $C3, the line slot, for its lines" },
+]
+# Hooks Messages_Load ($F3F5), which no other feature hooks, only observing
+# (A, the message); IScriptAction_EndScript ($82B4) after Block, the line
+# scroll at $F439 after Save files, and GameLoop_CheckPauseGame's two BEQs
+# ($E02F, $E040) after the map (below). When it speaks it writes
+# IScriptOrCHRAddr, IScriptOffset and the stack (a return address, through
+# fax_block_return_via), and while its line loads, TextBox_LineScrollOffset.
+# At the BEQs it changes only A and Z, as the map does. Reads bank 12's
+# scripts and bank 14's sprite categories and extents from a copy of the cart,
+# and draws at present time.
+
+[[shared_site]]
+addr = 0x82B4   # IScriptAction_EndScript
+hooks = ["faxanadu.block.end-script", "faxanadu.quests.end-script"]
+why = """Both may point the script at Guru travel's SAY step and handle the \
+call, returning through IScripts_InvokeNextAction, so their lines come one \
+after the other in the same box. Block's runs first: when it speaks, the \
+quest log's is skipped that time, and when Block's line ends (Block sets its \
+phase back and returns 0) the quest log's runs and says its lines. When the \
+quest log speaks, Block has already declined. Each knows its own line by its \
+own phase, so neither takes the other's END for its own."""
+
+[[shared_site]]
+addr = 0xF439   # TextBox_ClearPasswordSize, after STA TextBox_LineScrollOffset
+hooks = ["faxanadu.files.scroll", "faxanadu.quests.scroll"]
+why = """Both only observe and return 0, each putting back the line scroll \
+offset only while its own lines are up: Save files' in a temple Guru's \
+conversation, the quest log's at the end of a script that gave or completed \
+a quest, which no temple Guru's does. So at most one writes, and the order \
+does not matter."""
+
+[[shared_site]]
+addr = 0xE02F   # GameLoop_CheckPauseGame's BEQ: Start not new
+hooks = ["faxanadu.map.check", "faxanadu.quests.check"]
+why = """Each opens its screen when its own button was pressed, clearing Z \
+so the game pauses as for Start, and returns 0. The map's runs first; the \
+quest log's then sees the map open (fax_map_showing) and drops its press, \
+and neither button opens its screen while the other's is open, so only one \
+steers the branch."""
+
+[[shared_site]]
+addr = 0xE040   # the pause loop's BEQ: Start not new
+hooks = ["faxanadu.map.loop", "faxanadu.quests.loop"]
+why = """Only the one whose screen is open steers the branch (it reads the \
+pad, then sets or clears Z); the other returns 0 at once, having nothing \
+open, and opens its own only when its button was pressed during the game's \
+own pause with the other's screen closed. The map's runs first."""

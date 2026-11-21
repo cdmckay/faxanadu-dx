@@ -26,7 +26,8 @@ walk-in leaves them anywhere. A swing or a cast goes in with its case's load
    hit counter runs, is where it is now plus the knockback so far (2 pixels a
    frame). White, the light color.
 2. A number rises a pixel every 3 frames in the same column, holds while the
-   game is paused, and is gone after 60 frames.
+   game is paused, and while the Select menu is open, hidden behind it, and is
+   gone after 60 frames.
 3. The Zozura reaches the hero: his HP drops by its 7 and a pink 7 rises over
    him, from where he stood when it touched him.
 4. Deluge through the Magic button (C), 64 pixels from the Zozura: it loses 6
@@ -55,6 +56,7 @@ SPRITE_X, SPRITE_Y, ENTITIES, SPRITE_FLAGS, SPRITE_HP, HIT_COUNTER = 0xBA, 0xC2,
 PAUSED, MP, SELECTED_WEAPON, SELECTED_ARMOR, SELECTED_MAGIC = 0x120, 0x39A, 0x3BD, 0x3BE, 0x3C0
 PLAYER_CUR_WEAPON, DURATION_OINTMENT, DURATION_GLOVE, SPECIAL_ITEMS, HP = 0x3C8, 0x427, 0x428, 0x42C, 0x431
 PLAYER_IS_DEAD = 0x438
+TEXTBOX_WIDTH, TEXTBOX_CLOSED, MENU_WIDTH = 0x20A, 0x20C, 10    # PlayerMenu_Show's box: 2, 6, 10 x 14
 EOLIS, TOWN, ZOZURA_SCREEN, GATE_DOOR_X = 0, 1, 4, 195
 INTRO_TRIGGER, ZOZURA = 0x4F, 0x47
 NEAR, FAR = 7, 6                                    # the Zozura's slots: the nearer, the one behind it
@@ -277,7 +279,8 @@ def main():
         print(f"ok: a kill of a Zozura left 1 HP shows the hit's whole {sword}, the other's hit {sword} too; each "
               f"centered over its box (the survivor's {where}), both shown at once and apart, in the HUD's digits")
 
-        # 2. The float: a pixel every 3 frames, in the same column; held while paused; gone after 60.
+        # 2. The float: a pixel every 3 frames, in the same column; held while paused
+        #    and behind the menu; gone after 60.
         first = s["numbers"][-1]
         wait(12)
         later = look("rising")
@@ -291,9 +294,22 @@ def main():
         assert [n["age"] for n in state()["numbers"]] == held and ram(PAUSED) != 0, "held while paused"
         act("start", 6, 4)
         until("the game to go on", lambda: ram(PAUSED) == 0, 60)
+        act("select", 4, 6)
+        until("the menu", lambda: ram(TEXTBOX_CLOSED) == 0 and ram(TEXTBOX_WIDTH) == MENU_WIDTH, 60)
+        wait(10)                                           # its frame on screen
+        held = [n["age"] for n in state()["numbers"]]
+        wait(30)
+        path = out / f"{len(game.shots):02d}-menu.png"
+        _, s = batch(("screenshot", dict(layer="picture", path=str(path))), ("damage_state", {}))
+        game.shots.append(path.name)
+        assert held and [n["age"] for n in s["numbers"]] == held, ("held behind the menu", held, s)
+        assert not any(n["drawn"] for n in s["numbers"]), ("hidden behind the menu", s)
+        act("b", 4, 6)
+        until("the menu to close", lambda: ram(TEXTBOX_CLOSED) != 0, 60)
         until("the numbers to go", lambda: state()["live"] == 0, LIFE + 10)
         print(f"ok: a number rises 1 pixel every {STEP} frames ({first['y']} to {moved['y']} from age "
-              f"{first['age']} to {moved['age']}), holds while paused, and is gone after {LIFE} frames")
+              f"{first['age']} to {moved['age']}), holds while paused and behind the Select menu (hidden), "
+              f"and is gone after {LIFE} frames")
 
         # 3. The Zozura reaches the hero: pink, his HP's loss, over him.
         case("hurt", {POS_X: 192, SPRITE_X + NEAR: 192 - 24})

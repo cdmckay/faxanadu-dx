@@ -15,3 +15,6 @@ void fax_map_save_settings(FILE *f);
 const char *fax_map_controls_label(void);   /* "Map: M / LT", for the runtime menu */
 void fax_map_tcp_setup(void);
 bool fax_map_showing(void);                 /* the map is open */
+/* The hero has stood on `area`'s `screen` (outside), as the map has it: for
+ * the quest log, which counts the places he has reached. */
+bool fax_map_seen(unsigned area, unsigned screen);

@@ -144,6 +144,21 @@ keeps the map.
 
 ![The map on the Trunk's page: the screens seen from its first to Forepaw, with the towns between them, the doors used marked and the hero's screen lit](docs/screenshots/map.png)
 
+**A quest log.** Faxanadu's people tell you where to go and what to find, but
+nothing says which lines matter, and they are easy to forget. Now when someone
+asks something of you, the text box adds "New quest" and its name after their
+line, and "Quest complete" when it is done: the King's plea for the fountain's
+water, the Ring of Elf, the Mattock and the wall, the three springs, the path
+to Mascon, the meteorite, the Battle Suit, the rings of Dworf and the Demon,
+and the Evil One, 17 in all. Chatter stays chatter. A gold "!" floats over
+anyone with a quest for you, and a "?" over the one you should see next. Press
+L, or the right stick on a controller, and the game pauses on your quests: the
+ones under way with what to do, then the ones done. Your file keeps them.
+
+![Before you speak to the King, a "!" over him; after, none. The man on Mist who sent you for the meteorite, with a "?" now you have it](docs/screenshots/quest-marks.png)
+
+![The King's plea ends with New quest, The King's Plea, in his box; the quest log, partway to Mascon](docs/screenshots/quest-log.png)
+
 **Forgiving jumps.** A pressed up to 5 frames after you walk off a ledge still
 jumps, from where you are, and A pressed in the air up to 6 frames before you
 land jumps as you land. No jump goes higher or further than a well-timed one
@@ -297,6 +312,7 @@ the connected map. It is still a preview, for local play only. See
 | Magic | C | Y |
 | Block (hold, with a shield) | V | B |
 | Map | M | Left trigger |
+| Quest log | L | Right stick (press) |
 | Menu | Escape | Right shoulder |
 | Fast-forward (hold) | Tab | Right trigger |
 | Save states | F7 | Back + left stick |
@@ -304,11 +320,12 @@ the connected map. It is still a preview, for local play only. See
 | Fullscreen | F11 | |
 | Screenshot | F12 | |
 
-The launcher's Controls page remaps them. To rebind Magic, Block or the Map,
-set `MagicKey`, `BlockKey` and `MapKey` (a key name, like `V` or `Left Shift`)
-and `MagicButton`, `BlockButton` and `MapButton` (a controller button, like
-`b` or `leftshoulder`, or a trigger, like `lefttrigger+`) in the `[Game]`
-section of `config.ini`, next to the game. `none` unbinds one. Pick ones nothing else
+The launcher's Controls page remaps them. To rebind Magic, Block, the Map or
+the Quest log, set `MagicKey`, `BlockKey`, `MapKey` and `QuestLogKey` (a key
+name, like `V` or `Left Shift`) and `MagicButton`, `BlockButton`, `MapButton`
+and `QuestLogButton` (a controller button, like `b` or `leftshoulder`, or a
+trigger, like `lefttrigger+`) in the `[Game]` section of `config.ini`, next
+to the game. `none` unbinds one. Pick ones nothing else
 uses.
 
 ## Save files

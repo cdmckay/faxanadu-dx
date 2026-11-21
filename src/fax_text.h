@@ -34,3 +34,21 @@ void fax_text_box_rom(uint32_t *px, int w, int h, int x, int y, int cols, int ro
                       unsigned alpha);
 /* A line of text in a given ARGB color. */
 void fax_text_draw_color(uint32_t *px, int w, int h, int x, int y, const char *s, uint32_t color, unsigned alpha);
+/* A character's glyph: 8 rows, the left pixel the top bit; NULL if the font
+ * is not loaded or it has none ($20-$7F). For marks drawn in the font: the
+ * quest log's "!" and "?". */
+const uint8_t *fax_text_glyph(char ch);
+
+/* ---- the game's own boxes, in what the last frame showed ---- */
+enum { FAX_TEXT_NO_TILE = 0x100 };
+/* The background tile the last frame showed in cell (col, row) of the
+ * 256 x 240 picture, through that line's scroll, in the nametable it fetched
+ * from; FAX_TEXT_NO_TILE off the picture or the nametables. */
+unsigned fax_text_shown_tile(int col, int row);
+/* A text box or menu of the game's is open: TextBox_Closed reads 0 and a
+ * box's frame shows below the HUD. TextBox_Closed alone is not enough: every
+ * screen the game draws or scrolls to leaves one of its tiles there, and on
+ * some screens that tile is 0 (docs/GAME_INTERNALS.md, "The text box"). For
+ * the features that hold or hide behind boxes: zone names, Slain by, damage
+ * numbers. */
+bool fax_text_box_showing(void);
