@@ -35,9 +35,10 @@ it starts from, in one batch(), or runs headless from that state with --input
 
 Game, one per test
     Game(build, rom, out, game_args=(), realtime=False, port=0), or Game.from_args(args)
-        Checks the ROM is the original Faxanadu (USA), empties OUT, copies the
-        build's FaxanaduRecomp, assets/ and mods/ to OUT/game (so sidecars such
-        as faxanadu_gurus.txt and config.ini stay there) and opens OUT/game.log.
+        Checks the ROM is the original Faxanadu (USA), empties OUT, installs the
+        build in OUT/game (install(): FaxanaduRecomp hard-linked, assets/ and
+        mods/ copied, a config.ini at window scale 1; sidecars such as
+        faxanadu_gurus.txt and config.ini stay there) and opens OUT/game.log.
     .launch(*extra, at=None)
                       Start the game: FaxanaduRecomp ROM --hidden --tcp PORT, the
                       --game-arg options, then `extra`, then --uncapped
@@ -66,15 +67,21 @@ Game, one per test
     .exe              What launch() runs: OUT/game/FaxanaduRecomp. Point it at
                       another copy to run that one (Save files does).
     .timeout          Seconds tcp() waits for a reply (30).
+    .line             The one TCP connection to the game, kept open (opened by the
+                      first command, closed by close()): a command a frame.
 
 Functions, on the game launched last
     tcp(cmd, **kw)                  One command; its reply. RuntimeError unless ok.
     batch((cmd, {args}), ...)       Several commands in one write; their replies.
                                     The game serves them all before its next
                                     frame, so a load_state then an action holds
-                                    the button from the state's first frame.
+                                    the button from the state's first frame. One
+                                    that ends with a load_state returns once two
+                                    frames of the state have run.
     frame()                         The frame counter (ping).
-    wait(frames)                    Until `frames` more frames have run.
+    wait(frames)                    Until `frames` more frames have run: the game's
+                                    wait command, which answers at the end of the
+                                    last, so not a frame more.
     ram(addr, n=1)                  CPU RAM: an int for one byte, else bytes.
     until(what, test, frames=1200)  Poll `test` until it is true; AssertionError
                                     "timed out waiting for {what}" after `frames`.
@@ -137,7 +144,8 @@ Parts
 Time
     A test that launched a game prints "time: W s, games G s CPU, script S s
     CPU" as it exits. With FAX_E2E_STAMP=1 each line it prints starts with the
-    seconds since it started.
+    seconds since it started; with FAX_E2E_PROFILE=1 it also prints the lines
+    of the test its frames went to.
 
 Ports
     reserve_port(port=0) -> int     Hold a port for this process until it exits.
