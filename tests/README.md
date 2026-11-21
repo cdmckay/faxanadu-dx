@@ -157,3 +157,13 @@ port`. `e2e/fax_e2e_test.py` checks all of this.
    `game.shot(name)`, and `game.set_features(...)` for `state.toml`; print
    `game.shots`; guard the failure screenshot with `game.running()`.
 5. Zone names' record: `fixture(src, dst, writes, records={"faxanadu.zone-names": {5: area, 6: screen}})`.
+
+## The README's screenshots
+
+A feature's picture in the README is a scene in
+[../tools/readme_screenshots.py](../tools/readme_screenshots.py), played on this
+helper: usually its end-to-end test's setup, cut down to the moment worth
+showing. `python3 tools/readme_screenshots.py --only <scene>` writes
+`docs/screenshots/<scene>.png`. Its `Game.replay` plays a moment headless from
+a save state, frame exact, with the remaster's drawing in the picture
+(`--present-out`), and `Game.shot_lit` waits out a text box's blinking marks.
