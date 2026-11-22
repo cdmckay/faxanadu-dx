@@ -503,7 +503,7 @@ static void on_save(FaxSaveEvent event) {
 /* NES colors */
 enum {
     BLACK = 0x0F, ROOM = 0x02, ROOM_WALL = 0x22, TOWN = 0x08, TOWN_WALL = 0x28, HERE = 0x16,
-    GURU = 0x30, DOOR = 0x38, ITEM = 0x2A,
+    GURU = 0x30, DOOR = 0x27, ITEM = 0x2A,
 };
 enum { MARK_GURU, MARK_DOOR, MARK_ITEM, MARKS };
 static const uint8_t mark_color[MARKS] = { GURU, DOOR, ITEM };
@@ -614,19 +614,20 @@ static void draw_page(uint32_t *px, int w, int h, int ox, int oy) {
             fill(px, w, h, x, b->y, gap, 1, nes(blink_b ? HERE : ROOM));
         }
     }
-    /* The doors used, at their place on their screen. */
-    for (unsigned i = 0; i < drawn_count; ++i) {
-        const Drawn *c = &drawn[i];
-        if (!c->seen || c->w < 6 || c->h < 5) continue;
-        const FaxMapArea *a = &atlas.area[c->area];
-        for (unsigned j = 0; j < a->door_count; ++j) {
-            const FaxMapDoor *d = &a->door[j];
-            if (d->screen != c->screen || !bit(v.doors[c->area], j)) continue;
-            int x, y;
-            spot(c, d->block, &x, &y);
-            mark(px, w, h, x, y, mark_of(d));
+    /* The doors used, at their place on their screen: a town's crowd them, so its Guru goes over the rest. */
+    for (unsigned pass = MARK_DOOR + 1; pass-- > MARK_GURU;)
+        for (unsigned i = 0; i < drawn_count; ++i) {
+            const Drawn *c = &drawn[i];
+            if (!c->seen || c->w < 6 || c->h < 5) continue;
+            const FaxMapArea *a = &atlas.area[c->area];
+            for (unsigned j = 0; j < a->door_count; ++j) {
+                const FaxMapDoor *d = &a->door[j];
+                if (d->screen != c->screen || !bit(v.doors[c->area], j) || mark_of(d) != pass) continue;
+                int x, y;
+                spot(c, d->block, &x, &y);
+                mark(px, w, h, x, y, pass);
+            }
         }
-    }
     /* The items still there, over the doors: a building's lies at its door. */
     dot_count = 0;
     for (unsigned i = 0; i < atlas.item_count; ++i) {

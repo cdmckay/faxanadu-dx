@@ -132,17 +132,19 @@ hurts them too; in the original only magic did.
 
 ### Getting around
 
-**The map.** Press M, or the left trigger on a controller, and the game
-pauses on a map of where you have been, as in Metroid: a box for every screen
-you have stood on, laid out by how the screens join, with the one you are on
+**The map.** Press M, or the left trigger on a controller, and the game pauses
+on a map of where you have been, as in Metroid: a box for every screen you
+have stood on, laid out by how the screens join, with the one you are on
 blinking. Screens you haven't seen stay blank. Each region, tower and castle
 has its page, the towns sitting between the screens they join; Left and Right
-turn the page, and B, Start or M close the map. Marks show the doors you have
-used: Gurus, shops, other buildings, and doors to towers, castles and other
-regions. Ladders you have climbed join the screens above and below. Your file
-keeps the map.
+turn the page, and B, Start or M close the map. It marks only what matters: a
+cross for each Guru you have visited, a block for every other door you have
+gone through, and a dot wherever an item still lies on a screen you have seen,
+gone once you pick it up (one that turns up only now and then shows only while
+it is there). Ladders you have climbed join the screens above and below. Your
+file keeps the map, and the items you have taken.
 
-![The map on the Trunk's page: the screens seen from its first to Forepaw, with the towns between them, the doors used marked and the hero's screen lit](docs/screenshots/map.png)
+![The map on the Trunk's page: the screens seen from its first past Forepaw, with the towns between them, the crosses of two Gurus, four doors used, the dots of two items still lying there, and the hero's screen lit](docs/screenshots/map.png)
 
 **A quest log.** Faxanadu's people tell you where to go and what to find, but
 nothing says which lines matter, and they are easy to forget. Now when someone

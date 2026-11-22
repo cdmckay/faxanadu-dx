@@ -979,10 +979,16 @@ def equip_indoors(s):
 # screens seen, those left upward and those left downward (11 bytes an area each), then the doors used (6 an area).
 MAP_RECORD, MAP_SEEN, MAP_UP, MAP_DOORS = "faxanadu.map", 1, 1 + 88, 1 + 264
 # An early game's journey: all of Eolis, then the Trunk from its first screen past Apolune (the towns' 0 and
-# 1), up the climb ($0C to $16) and on to Forepaw (the towns' 2 and 3). The rest of the Trunk is unseen.
-MAP_SEEN_SCREENS = {AREA_EOLIS: set(range(9)), AREA_TRUNK: set(range(0x0D)) | set(range(0x16, 0x1B)),
-                    TOWNS: {0, 1, 2, 3}}
-MAP_UP_SCREENS = {AREA_TRUNK: {0x03, 0x0C, 0x16, 0x17}}         # the ladders he took, kept on the screen below
+# 1), up the climb ($0C to $16), through Forepaw (the towns' 2 and 3) and on east to $22. The rest of the Trunk
+# is unseen.
+MAP_SEEN_SCREENS = {AREA_EOLIS: set(range(9)), AREA_TRUNK: set(range(0x0D)) | set(range(0x16, 0x1B)) |
+                    set(range(0x1D, 0x23)), TOWNS: {0, 1, 2, 3}}
+MAP_UP_SCREENS = {AREA_TRUNK: {0x03, 0x0C, 0x16, 0x17, 0x1E, 0x21}}   # the ladders he took, kept on the screen below
+# The doors he used (by their place in the area's door locations): Eolis's all; on the Trunk the tool shop on
+# $06 and the Tower of Trunk's door on $0B; the key shop and temple of Apolune, the tool shop and temple of
+# Forepaw.
+MAP_DOOR_SETS = {AREA_EOLIS: set(range(48)), AREA_TRUNK: {1, 7}, TOWNS: {1, 3, 7, 8}}
+MAP_ITEMS_LEFT = {(AREA_TRUNK, 0x18, 0x48), (AREA_TRUNK, 0x22, 0x4B)}   # the Glove on $18, the Red Potion on $22
 MAP_HERE = 0x19                                                 # the Trunk's screen left of Forepaw
 
 
@@ -1009,14 +1015,15 @@ def most_common(rows, boxes):
 def map_(s):
     """The map, on the Trunk's page: the screens of an early game's journey
     seen (the map's record set, as tests/map/explored_map.py's file part
-    does), the climb and the ladders he took, every door on those screens
-    used, and the hero on the screen left of Forepaw, his box caught lit as
-    it blinks. Eolis is seen too, so the page has its arrows."""
+    does), the climb and the ladders he took, the doors he used (two Gurus'
+    crosses, four doors), the dots of the two items still lying on screens
+    he has seen, and the hero on the screen left of Forepaw, his box caught
+    lit as it blinks. Eolis is seen too, so the page has its arrows."""
     g = s.game
     shop = g.state("eolis-meat-shop")
     g.launch(at="eolis-meat-shop")
     record = {**map_bits(MAP_SEEN, 11, MAP_SEEN_SCREENS), **map_bits(MAP_UP, 11, MAP_UP_SCREENS),
-              **map_bits(MAP_DOORS, 6, {area: set(range(48)) for area in MAP_SEEN_SCREENS})}   # drawn on seen screens
+              **map_bits(MAP_DOORS, 6, MAP_DOOR_SETS)}
     trunk = g.out / "trunk.cycstate"                            # out of the shop, its door edited to lead there
     fixture(shop, trunk, {AREA_SAVED_AREA: AREA_TRUNK, AREA_SAVED_SCREEN: MAP_HERE, SCREEN_SAVED_PALETTE: PALETTE_TRUNK,
                           PLAYER_SAVED_POS: 0xA1, AREA_REGION: AREA_TRUNK, HP: 0x50}, records={MAP_RECORD: record})
@@ -1031,6 +1038,8 @@ def map_(s):
     assert state["page_name"] == "Trunk" and state["here"] == [AREA_TRUNK, MAP_HERE] and state["pages_seen"] == 2, state
     boxes = [b for b in state["boxes"] if b[6]]
     assert len(boxes) == len(MAP_SEEN_SCREENS[AREA_TRUNK]) + len(MAP_SEEN_SCREENS[TOWNS]), boxes
+    dots = {tuple(state["items"][d[0]][1:4]) for d in state["dots"]}
+    assert dots == MAP_ITEMS_LEFT, (dots, state["dots"])
     here = [b for b in boxes if b[:2] == [AREA_TRUNK, MAP_HERE]]
     rooms = [b for b in boxes if b[0] == AREA_TRUNK and b[1] != MAP_HERE]
     for attempt in range(8):                                    # his box blinks every 16 frames: catch it lit
