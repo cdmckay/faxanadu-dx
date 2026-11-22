@@ -225,6 +225,11 @@ list, after what you carry.
 
 ![The armor list after picking up the Battle Suit with three armors listed: the original keeps only the suit, the remaster adds it after them](docs/screenshots/battle-suit.png)
 
+**Finds with a full pack, fixed.** In the original, finding a Mattock, Wing
+Boots, an Hour Glass or a Red Potion with eight items listed said you got
+it, then lost it; Ripasheiku's Mattock stayed gone until you died. Now the
+find stays where it lies, with a buzz, until you have room.
+
 **The original's graphics glitches, fixed.** On a ladder in Studded Mail, the
 hero's chest showed a stray tile left by an earlier armor or shield; the Fire
 spell's second frame had a piece of its first; the Myconid's foot flickered

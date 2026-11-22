@@ -806,3 +806,12 @@ id = "faxanadu.quests.loop"
 addr = 0xe040
 bank = 15
 bytes = "f0 f4 a9 00 8d 20 01 60 a5 18 85 16"
+
+# Kept finds (fax_finds.c): Player_HandleTouchItem's entry. With the Items
+# list full, a Mattock, Wing Boots, Hour Glass or Red Potion found lying skips
+# the routine (no line, no Quests bit, the sprite kept), with one sound.
+[[mod_function_hook]]
+id = "faxanadu.kept-finds.touch"
+addr = 0x88fb
+bank = 14
+bytes = "bd cc 02 20 64 c7 ae 78 03 a9 ff 9d"   # LDA CurrentSprites_Entities,X, JSR Player_PickUp, LDX CurrentSpriteIndex, LDA #$FF, STA
