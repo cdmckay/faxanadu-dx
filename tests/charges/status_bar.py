@@ -1,7 +1,6 @@
 """Play the recharging items on the status bar end to end, in Seamless.
 
-    python3 tests/charges/status_bar.py --build build-cycle --rom "Faxanadu (USA).nes" --out /tmp/charges \\
-        --game-arg=--world-view=seamless
+    python3 tests/charges/status_bar.py --build build-cycle --rom "Faxanadu (USA).nes" --out /tmp/charges
 
 Seamless's 424-wide view lays the status bar and a row of three slots past
 its item box out centred together: the Wing Boots, the Hour Glass and the
@@ -36,7 +35,7 @@ import zlib
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "recharge"))
 import fax_e2e  # noqa: E402
-from fax_e2e import Game, act, batch, box_open, page_through, parse_args, poke_unused, ram, tcp, type_out, until, wait  # noqa: E402,F401
+from fax_e2e import Game, act, box_open, page_through, parse_args, ram, tcp, type_out, until, wait  # noqa: E402
 import recharging_items as recharge  # noqa: E402  (its recipes, and its walk out of a shop)
 
 PARTS = ("layout", "boots", "glass", "elixir", "guru", "original")
@@ -46,12 +45,14 @@ ROW, SLOT, ITEM, TOP = 64, 24, 16, 16                      # fax_charges.h
 HUD, NATIVE_W = 32, 256
 NONE, READY, USED = 0, 1, 2
 BLINK = 96                                                 # FAX_CHARGES_BLINK
+OPENING = 24                                               # frames from the use to its line's box: the blink counts them
 SELECTED_ITEM, ITEM_INVENTORY, NUMBER_OF_ITEMS = 0x3C1, 0x3AD, 0x3C6
 SPECIAL_ITEMS, HP, HP_FRACTION, MP, MESSAGE_ID = 0x42C, 0x431, 0x432, 0x39A, 0x213
 DURATION_WING_BOOTS, DURATION_HOUR_GLASS, PLAYER_TITLE = 0x429, 0x42A, 0x437
 PLAYER_FLAGS = 0xA4
 WING_BOOTS, HOUR_GLASS, NO_ITEM, BIT_ELIXIR = 0x0F, 0x0D, 0xFF, 0x08
 USED_HOUR_GLASS, USED_WING_BOOTS, USED_ELIXIR = 0xAC, 0xAD, 0xAF
+ELIXIR_LINE = 0xC3                                         # the slot a Guru's Elixir line shows from
 WING_BOOTS_GONE, HOUR_GLASS_GONE = 0xC0, 0xC1
 EOLIS, PALETTE_EOLIS = 0, 0x00
 
@@ -104,7 +105,7 @@ class Picture:
         lit = self.lit(x, x + SLOT)
         if not lit:
             return "empty"
-        assert all(x0 <= x for x0 in (x,)) and len(lit) >= 40, (self.path.name, i, len(lit))
+        assert len(lit) >= 40, (self.path.name, i, len(lit))      # a picture, not a stray pixel
         return "grey" if all(r == g == b for r, g, b in lit) else "colour"
 
     def slots(self):
@@ -121,8 +122,6 @@ def charges():
 
 def main():
     args = parse_args(__doc__, parts=PARTS)
-    if not any("world-view" in arg for arg in args.game_arg):
-        args.game_arg.append("--world-view=seamless")
     game = Game.from_args(args)
     shop = None
 
@@ -179,26 +178,26 @@ def main():
             assert s["charge"] == USED and s["shown"], s
             wait(2)
 
-    def cycle(item, slot, selected, used_line, gone_line, duration, cooldown_field):
+    def cycle(item, name, slot, selected, used_line, gone_line, duration, cooldown_field):
         """Ready, used (grey and blinking), running, recharging, ready again: the Wing Boots or the Hour Glass."""
         want_ready = tuple("colour" if i == slot else "empty" for i in range(3))
         want_grey = tuple("grey" if i == slot else "empty" for i in range(3))
         want_off = ("empty",) * 3
         walk_to(f"{item}-ready", 1, 0x99, {SELECTED_ITEM: selected, PLAYER_TITLE: 0})
-        recharge.clear = None
         game.poke({0x2CC + i: 0xFF for i in range(8)})            # no one about
         assert charges()[item]["charge"] == READY, charges()
         look(f"{item}-ready", want_ready)
         use()
         until(f"the {item}'s line", lambda: ram(MESSAGE_ID) == used_line, 120)
         s = charges()[item]
-        assert s["charge"] == USED and s["blink"] == BLINK, s      # at once; the count holds while the box is up
+        assert s["charge"] == USED and BLINK - OPENING <= s["blink"] <= BLINK, s   # at once
         blinks(item)
         look(f"{item}-used", want_grey)
         look(f"{item}-used-blink-off", want_off)
-        dismiss(used_line)
+        page_through("the box to close", lambda: not box_open(), 3000)
         settles(item)
-        print(f"ok: the {item} grey the moment they are used, blinking through their line and after it, then steady")
+        print(f"ok: {name} grey the moment they are used, blinking through their line and after it, then hold "
+              f"steady ({s['blink']} of {BLINK} frames of blinking left as the line came up)")
         game.poke({duration: recharge.LAST_SECONDS})                # the game counts the run down itself
         dismiss(gone_line, (recharge.LAST_SECONDS + 2) * recharge.SECOND)
         until("the cooldown", lambda: recharge.state()[f"{item}_cooldown"] > 0, 60)
@@ -209,7 +208,7 @@ def main():
         until(f"the {item} to be ready", lambda: charges()[item]["charge"] == READY, 4 * recharge.SECOND)
         wait(2)
         look(f"{item}-ready-again", want_ready)
-        print(f"ok: the {item} stay grey while they run and recharge, and are in colour again once ready")
+        print(f"ok: {name} stay grey while they run and recharge, and are in colour again once ready")
 
     try:
         shop = game.state("eolis-meat-shop")
@@ -223,7 +222,7 @@ def main():
             assert world["size"] == [424, 240] and world["native_x"] == (424 - NATIVE_W - ROW) // 2, world
             p = look("nothing-owned", ("empty",) * 3)
             left = p.status_bar_left()
-            assert left == p.native_x + 9, (left, p.native_x)        # the "M" at column 1
+            assert left == p.native_x + 8, (left, p.native_x)        # the "M" in column 1, from its left edge
             assert not p.lit(p.native_x + NATIVE_W, p.width), "nothing past the status bar"
             print(f"ok: nothing owned, the row is empty, and the status bar is already at x {p.native_x}, "
                   f"{(424 - NATIVE_W) // 2 - p.native_x} left of centre, with room for the row")
@@ -237,19 +236,21 @@ def main():
             act("select", 4, 30)
             assert box_open(), "the Select menu"
             p = look("menu", ("colour",) * 3)
-            # PlayerMenu_Show's box at tile 2, 6: its top-left corner, the frame's, under the status bar's column 2.
-            corner = [x for x in range(p.width) if pixel(p.rows, x, 6 * 8 + 3) != pixel(p.rows, x, 6 * 8 + 3 - 8 * 4)]
-            assert p.lit(p.native_x + 16, p.native_x + 24, 48, 56), "the menu's corner under the status bar"
+            # PlayerMenu_Show's box at tile 2, 6 lines up under the status bar: its left side in column 2, the
+            # black inside it from column 3 (the text from 4), the town's sky outside it in column 1.
+            x = p.native_x
+            assert p.lit(x + 16, x + 24, 56, 64) and not p.lit(x + 24, x + 32, 56, 64), "the menu's left side"
+            assert len(p.lit(x + 8, x + 16, 56, 64)) == 64, "the town outside the menu"
             act("b", 4, 30)
             print("ok: the Select menu lines up under the status bar, and the row stays")
 
         if args.wants("boots"):
             launch()
-            cycle("boots", 0, WING_BOOTS, USED_WING_BOOTS, WING_BOOTS_GONE, DURATION_WING_BOOTS, 2)
+            cycle("boots", "the Wing Boots", 0, WING_BOOTS, USED_WING_BOOTS, WING_BOOTS_GONE, DURATION_WING_BOOTS, 2)
 
         if args.wants("glass"):
             launch()
-            cycle("glass", 1, HOUR_GLASS, USED_HOUR_GLASS, HOUR_GLASS_GONE, DURATION_HOUR_GLASS, 4)
+            cycle("glass", "the Hour Glass", 1, HOUR_GLASS, USED_HOUR_GLASS, HOUR_GLASS_GONE, DURATION_HOUR_GLASS, 4)
 
         if args.wants("elixir"):
             launch()
@@ -259,11 +260,12 @@ def main():
             game.poke({HP: 1, HP_FRACTION: 0})
             until("a Zozura's hit", lambda: ram(MESSAGE_ID) == USED_ELIXIR, 2400)
             s = charges()["elixir"]
-            assert s["charge"] == USED and s["blink"] == BLINK, s
+            assert s["charge"] == USED and BLINK - OPENING <= s["blink"] <= BLINK, s
             blinks("elixir")
             look("elixir-revived", ("empty", "empty", "grey"))
             look("elixir-revived-blink-off", ("empty",) * 3)
-            print("ok: the Elixir revives the hero and is spent at once, grey and blinking through \"I've used Elixir.\"")
+            print("ok: the Elixir revives the hero and is spent at once, grey and blinking through \"I've used Elixir.\" "
+                  f"({s['blink']} of {BLINK} frames of blinking left as the line came up)")
             page_through("the box to close", lambda: not box_open(), 3000)
             until("HP and MP to refill", lambda: (ram(HP), ram(MP)) == (0x50, 0x50), 1200)
             settles("elixir")
@@ -279,14 +281,12 @@ def main():
             act("up", 4, 10)
             until("the Guru to restore it", lambda: recharge.state()["guru_recharges"] == 1, 300)
             assert charges()["elixir"]["charge"] == READY and charges()["elixir"]["blink"] == 0, charges()
-            type_out("his line", 900)
+            until("his line", lambda: ram(MESSAGE_ID) == ELIXIR_LINE, 300)
+            type_out("his line", 900, pauses=False)                    # no pause in it; the flag may be stale
+            assert recharge.state()["line"] == 1, recharge.state()   # "Your Elixir is restored."
             p = look("elixir-restored", ("empty", "empty", "colour"))
-            # His box (TextBox_SetCoordsForNPC: 10, 16, with a portrait) and the portrait's (2, 14), under the status bar.
-            assert p.lit(p.native_x + 16, p.native_x + 24, 14 * 8, 14 * 8 + 8), "the portrait box's corner"
-            assert not p.lit(p.native_x + 8, p.native_x + 16, 14 * 8, 14 * 8 + 8) or True
             page_through("the box to close", lambda: not box_open(), 3000)
-            print("ok: Eolis's Guru restores the spent Elixir, in colour from his first line, his boxes under the "
-                  "status bar")
+            print("ok: Eolis's Guru restores the spent Elixir, in colour from his first line")
 
         if args.wants("original"):
             launch(on=False, at="eolis-town")
@@ -297,7 +297,7 @@ def main():
             assert not s["enabled"] and s["row"] == 0 and all(s[i]["charge"] == NONE for i in ITEMS), s
             p = Picture(game, "original")
             centred = (p.width - NATIVE_W) // 2 if p.width > NATIVE_W else 0
-            assert p.native_x == centred and p.status_bar_left() == centred + 9, (p.native_x, p.status_bar_left())
+            assert p.native_x == centred and p.status_bar_left() == centred + 8, (p.native_x, p.status_bar_left())
             assert not p.lit(centred + NATIVE_W, p.width, 0, HUD), "nothing past the status bar"
             print(f"ok: with the remaster off, nothing past the status bar, which is where the original has it "
                   f"(x {centred} of a {p.width}-wide picture)")

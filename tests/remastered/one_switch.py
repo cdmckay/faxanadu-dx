@@ -9,18 +9,22 @@ runs can go in parallel. It uses Block's test harness (tests/block/harness.py).
 Copies the build to OUT and starts it with no mod selection, as a fresh
 install does:
 
-1. The mod runtime writes the selection (mods/state.toml) with two switches,
-   Faxanadu Remastered on and Seamless off, and every feature of the remaster
-   (each in mods/allocations.toml) reports itself on over TCP. The title shows
-   NEW GAME and CONTINUE, and NEW GAME in file 1 starts a new game.
+1. The mod runtime writes the selection (mods/state.toml) with one switch,
+   Faxanadu Remastered, on, and every feature of the remaster (each in
+   mods/allocations.toml), Seamless's view among them, reports itself on over
+   TCP. The title shows NEW GAME and CONTINUE, and NEW GAME in file 1 starts
+   a new game.
 2. In that selection, the launcher's own file, Faxanadu Remastered is switched
-   off, as the launcher's Mods screen does, and the game starts again. Every
-   feature reports itself off, and the game is the original: the title's
+   off, as the launcher's Mods screen does, and the separate Seamless package
+   of earlier versions (#110) is switched on, as an older install left it.
+   The game starts again, and that stale line changes nothing: every
+   feature reports itself off, Seamless too, and the game is the original: the title's
    Start and Continue, Continue's mantra screen, where a new game's mantra
    (MANTRA, what the game's encoder gives at Eolis's gate) is typed with the
    d-pad and A, its END into the game, and Eolis's tool shop, whose seller
    greets the hero and asks Buy or Sell with the shop's own lines. The
-   runtime writes the selection back with the remaster still off.
+   runtime writes the selection back with the remaster still off, and keeps
+   the stale line, which it ignores while no package of that name is installed.
 
 Screenshots of the remaster's title, the original title, the mantra screen and
 the shop's two lines go in OUT.
@@ -36,7 +40,7 @@ from harness import AREA, BUILDINGS, MESSAGE_ID, POS_X, Game, fixture, parse_arg
 from fax_e2e import choose_file, title_menu  # noqa: E402
 
 PACKAGE, FEATURE = "faxanadu.remastered", "remastered"
-SEAMLESS = ("faxanadu.enhancement.seamless-world", "seamless-world")
+OLD_SEAMLESS = ("faxanadu.enhancement.seamless-world", "seamless-world")   # its own package before #110
 # Each feature's TCP state, and the field that says it is on.
 STATES = {
     "save-files": ("files_state", "enabled"), "guru-travel": ("travel_state", "enabled"),
@@ -61,6 +65,7 @@ STATES = {
     "graphics-fix": ("graphics_fix_state", "enabled"),
     "quest-log": ("quest_state", "enabled"),
     "fair-entrances": ("entrances_state", "enabled"),
+    "seamless-world": ("fax_world", "enabled"),
 }
 START_CHOICE = 0x687                                                # DAT_0687: 0 Start, 1 Continue
 PASSWORD_COL, PASSWORD_ROW, PASSWORD_MAX, PASSWORD_LENGTH = 0x662, 0x663, 0x665, 0x666
@@ -111,12 +116,11 @@ def main():
         # 1. On by default.
         g.launch()
         chosen = selection(state_toml.read_text())
-        assert chosen == {(PACKAGE, FEATURE): True, SEAMLESS: False}, f"two switches, the remaster on: {chosen}"
+        assert chosen == {(PACKAGE, FEATURE): True}, f"one switch, the remaster on: {chosen}"
         on = features()
         assert all(on.values()), f"every feature is on: {on}"
-        assert not g.tcp("fax_world")["enabled"], "Seamless is off"
-        print(f"ok: a fresh install selects Faxanadu Remastered (on) and Seamless (off), and all {len(on)} "
-              "features of the remaster are on")
+        print(f"ok: a fresh install selects Faxanadu Remastered (on), its one switch, and all {len(on)} "
+              "features of the remaster are on, Seamless among them")
         menu = title_menu()
         assert (menu["mode"], menu["cursor"], menu["can_continue"]) == (0, 0, False), menu
         g.wait(30)
@@ -131,11 +135,14 @@ def main():
         switched = re.sub(r'(package_id = "faxanadu\.remastered"\nid = "remastered"\nenabled = )true', r"\1false",
                           text)
         assert switched != text, text
+        switched += (f'\n[[package]]\nid = "{OLD_SEAMLESS[0]}"\nversion = "0.1.0"\n'
+                     f'\n[[feature]]\npackage_id = "{OLD_SEAMLESS[0]}"\nid = "{OLD_SEAMLESS[1]}"\nenabled = true\n')
         state_toml.write_text(switched)
         g.launch()
         off = features()
         assert not any(off.values()), f"every feature is off: {off}"
-        print(f"ok: switched off in the launcher's file, all {len(off)} features of the remaster are off")
+        print(f"ok: switched off in the launcher's file, all {len(off)} features of the remaster are off, Seamless "
+              "too, though the file still switches on the separate Seamless package of earlier versions")
         g.until("the title", lambda: g.frame() > 700)
         assert not g.tcp("files_state")["title"], "no Save files menu"
         g.shot("original-title")
@@ -192,8 +199,8 @@ def main():
         g.act("b", 4, 6)
         g.close()
         chosen = selection(state_toml.read_text())
-        assert chosen == {(PACKAGE, FEATURE): False, SEAMLESS: False}, f"still off: {chosen}"
-        print("ok: the runtime keeps the selection with the remaster off")
+        assert chosen == {(PACKAGE, FEATURE): False, OLD_SEAMLESS: True}, f"still off: {chosen}"
+        print("ok: the runtime keeps the selection with the remaster off, and the stale line as it was")
         print("screenshots:", ", ".join(g.shots))
     except BaseException:
         if g.running():

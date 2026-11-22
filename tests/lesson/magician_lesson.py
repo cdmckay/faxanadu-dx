@@ -125,8 +125,9 @@ def go_in(g):
         if g.ram(POS_X) <= MAGICIANS_STEP:
             break
         g.tcp("action", name="left", frames=24)
+        g.wait(2)                                                   # A two frames into the walk, never the same one
         g.tcp("action", name="a", frames=12)
-        g.wait(30)
+        g.wait(28)
     assert g.ram(POS_X) <= MAGICIANS_STEP, g.ram(POS_X)
     g.settle()
 

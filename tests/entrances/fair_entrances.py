@@ -2,16 +2,16 @@
 made its placement unfair, in the original game and in the remaster.
 
     python3 tests/entrances/fair_entrances.py --build build-cycle --rom "Faxanadu (USA).nes" --out /tmp/entrances
-    python3 tests/entrances/fair_entrances.py ... --part edges --game-arg=--world-view=seamless
+    python3 tests/entrances/fair_entrances.py ... --part edges-mist
     python3 tests/entrances/fair_entrances.py ... --only 'Mist $08'     # the spots whose name has this
 
 Its parts: doors (doors, buildings and temples), edges (screen edges, ladders
-and drops) and seamless-room (Seamless only). Every way in starts from the
-fixture entrances-mascon-temple: (an external prerequisite, not coverage) the
-hero, killed at Eolis's gate with Mascon as his furthest temple and a Long
-Sword, Leather Armor and a Small Shield, wakes at Mascon's Guru. That saved
-game, edited into a fixture, plays headless, frame by frame, with the same
---game-arg options (so the same world view):
+and drops) and seamless-room. Every way in starts from the fixture
+entrances-mascon-temple: (an external prerequisite, not coverage) the hero,
+killed at Eolis's gate with Mascon as his furthest temple and a Long Sword,
+Leather Armor and a Small Shield, wakes at Mascon's Guru. That saved game,
+edited into a fixture, plays headless, frame by frame (the remaster in
+Seamless, the original in the stock view):
 
 - Mascon's temple: walking out of it, as after every death there. It opens on
   the Mist's screen 6.
@@ -29,7 +29,8 @@ game, edited into a fixture, plays headless, frame by frame, with the same
   in (nothing, for a drop) across it.
 
 Nothing else is pressed from the arrival on. Each is played with the remaster
-off (the original game, the whole mod switched off), then on:
+off (the original game, the whole mod switched off), then on (but an edge,
+below):
 
 1. Off, the enemy is at its stock block on the frame before his first update,
    and hits him (Player_InvincibilityPhase $3C, HP down) within the spot's
@@ -37,13 +38,14 @@ off (the original game, the whole mod switched off), then on:
    frames in) escapes it: docs/GAME_INTERNALS.md has each measurement.
 2. On, the enemy starts at its new block, and nothing hits him for SAFE
    frames.
-3. With Seamless on, an edge is no blind way in: the room beyond is on screen,
-   its actors running, before he crosses. Instead (edges), walking to the
-   edge in the window has the enemy start at its new block in the room
-   Seamless loads (the move's use count). And (seamless-room) walking from the
-   Mist's screen 5 toward screen 6 has Seamless load screen 6 on an isolated
-   machine, where hooks do not run: its Sir Gawaine starts at the new block
-   there too, read from Seamless's own room record.
+3. The remaster plays in Seamless, where an edge is no blind way in: the room
+   beyond is on screen, its actors running, before he crosses. So (edges),
+   with the remaster on, walking to the edge in the window has the enemy
+   start at its new block in the room Seamless loads (the move's use
+   count). And (seamless-room) walking from the Mist's screen 5 toward
+   screen 6 has Seamless load screen 6 on an isolated machine, where hooks
+   do not run: its Sir Gawaine starts at the new block there too, read from
+   Seamless's own room record.
 """
 from concurrent.futures import ThreadPoolExecutor
 import itertools
@@ -300,8 +302,9 @@ class Spots:
                                  FLAGS: 0x00 if kind == "left" else 0x40})
         return ready
 
-    def check(self, spot):
-        """Play the spot with the remaster off, then on. Returns its report line."""
+    def check(self, spot, ons=(False, True)):
+        """Play the spot with the remaster off, then on (each of `ons`).
+        Returns its report line."""
         name, (area, screen, palette), way, (entity, stock, moved), latest = spot
         tag = slug(name)
         if way[0] == "edge":
@@ -326,7 +329,7 @@ class Spots:
         # same way in (the moves change no timing before the first update),
         # then SAFE frames.
         seen, first = {}, None
-        for on in (False, True):
+        for on in ons:
             sched, frames = plans[on]
             if on:
                 frames = first + SAFE + 2 + (lefts[True] - lefts[False] if way[0] == "door" else 0)
@@ -355,8 +358,11 @@ class Spots:
                 assert hit is not None and hit <= latest and hp[1] < hp[0], \
                     f"{name}: stock hit {hit} frames after arriving (HP {hp}), expected by {latest}"
         hero = (rams[first][X], rams[first][Y])
-        return (f"ok: {name} (hero at {hero}): in the original, {entity:#04x} at {stock:#04x} hits him "
-                f"{seen[False]} frames after his first update; moved to {moved:#04x}, "
+        line = (f"ok: {name} (hero at {hero}): in the original, {entity:#04x} at {stock:#04x} hits him "
+                f"{seen[False]} frames after his first update")
+        if True not in ons:
+            return line
+        return (f"{line}; moved to {moved:#04x}, "
                 + ("nothing hits him" if seen[True] is None else f"the first hit is {seen[True]} frames in")
                 + f" (watched {SAFE})")
 
@@ -411,7 +417,6 @@ def main():
     ap.add_argument("--only", action="append", default=[], help="only the spots whose name contains this")
     ap.add_argument("--jobs", type=int, default=3, help="spots played at once (headless runs)")
     args = chosen(ap.parse_args(), PARTS)
-    seamless = any("seamless" in a for a in args.game_arg)
     game = Game.from_args(args)
     runs = Runs(game, args.game_arg)
     try:
@@ -420,7 +425,7 @@ def main():
         state = game.tcp("entrances_state")
         assert state["enabled"], "Fair entrances is on in the remaster"
         table = [tuple(m) for m in state["table"]]
-        if not (seamless and any(args.wants(p) for p in PARTS if p != "doors")):
+        if not any(args.wants(p) for p in PARTS if p != "doors"):
             game.close()                                   # the rest is headless
         ram0 = state_ram(temple)
         assert (ram0[AREA], ram0[SAVED_AREA], ram0[SAVED_SCREEN], ram0[SAVED_POS]) == \
@@ -435,14 +440,15 @@ def main():
         for name, (area, screen, _), _, (entity, stock, moved), _ in chosen_spots:
             assert (area, screen, entity, stock, moved) in table, f"{name}: not in the feature's table"
 
-        # With Seamless, an edge's room is on screen before he crosses: those
-        # are checked in the window, below.
-        played = [s for s in chosen_spots if args.wants(part(s)) and not (seamless and s[2][0] == "edge")]
+        # In Seamless an edge's room is on screen before he crosses: the
+        # remaster's half of those is checked in the window, below; the
+        # original's half plays headless with the rest.
+        played = [s for s in chosen_spots if args.wants(part(s))]
         with ThreadPoolExecutor(max(1, args.jobs)) as pool:
-            for line in pool.map(spots.check, played):
+            for line in pool.map(lambda s: spots.check(s, (False,) if s[2][0] == "edge" else (False, True)), played):
                 print(line, flush=True)
 
-        walked = [s for s in chosen_spots if seamless and s[2][0] == "edge" and args.wants(part(s))]
+        walked = [s for s in chosen_spots if s[2][0] == "edge" and args.wants(part(s))]
         if walked:
             # The enemy starts at its new block whichever machine loads the
             # room: Seamless's isolated one, or the game's own scroll where a
@@ -456,7 +462,7 @@ def main():
                 print(f"ok: {name}: with Seamless, the room beyond is loaded with {entity:#04x} at {moved:#04x}",
                       flush=True)
 
-        if seamless and args.wants("seamless-room"):
+        if args.wants("seamless-room"):
             # Seamless's neighbouring room, loaded on an isolated machine.
             mist5 = spots.leading_to("mist5", MIST, 0x05, 0x0A, 0x9C)
             before = game.tcp("entrances_state")

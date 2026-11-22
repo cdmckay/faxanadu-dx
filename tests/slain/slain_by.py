@@ -1,7 +1,6 @@
 """Play Slain by end to end in a hidden window: what killed the hero, named as he dies.
 
     python3 tests/slain/slain_by.py --build build-cycle --rom "Faxanadu (USA).nes" --out /tmp/slain
-    python3 tests/slain/slain_by.py ... --game-arg=--world-view=seamless
 
 Copies the build to OUT and starts a new game over TCP, walks through Eolis's
 gate into a shop, and walks out of it onto each screen below: the shop's door

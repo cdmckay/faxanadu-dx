@@ -97,9 +97,7 @@ recompiler produced it; features observe and steer it.
   model of the machine (`tests/travel/travel_test.c`). An end-to-end test plays
   it in a hidden window over TCP (`tests/travel/guru_travel.py`). Add both to
   `tools/test.sh`. Give each end-to-end run its own output folder: several
-  sessions may run the suite at once. Run it in Seamless too (`+sw`) only if
-  the feature draws or places something on screen or moves the hero between
-  rooms.
+  sessions may run the suite at once.
 - **Put every feature in the README, with a screenshot only when there is
   something new to see.** A plain quality-of-life feature gets a bullet, a
   line or two, under "Also new"; a fix for one of the original's bugs gets a
@@ -141,16 +139,24 @@ recompiler produced it; features observe and steer it.
 - **Everything the remaster adds goes into the one Faxanadu Remastered mod**
   (`mods/preloaded/packages/faxanadu.remastered`), never a new package: add a
   `[[plugin]]` under its `remastered` feature. The launcher has one switch for
-  it: on is the remaster, off is the original game. Seamless, the view
-  inherited from upstream, is the only other package.
+  it: on is the remaster, off is the original game. Seamless, the continuous
+  world inherited from upstream (`src/fax_world.c`), is one of its plugins
+  (#110): the remaster always plays in it.
+- **Design for Seamless's 424x240 view: it is the remaster's only view.**
+  Anything the remaster draws, places or moves on screen must fit and read
+  there, and is tested there. The 256-wide stock view is only the original's
+  (the remaster off), so nothing new needs to fit or be tested in it.
 - **Features inside the mod may rely on each other.** They are always on
   together, so one may call another's functions or build on its behavior.
   Each still keeps its own C file and hook-site prefix, and
   `tools/check_allocations.py` treats every two as enabled together: an
   address two features hook needs a `[[shared_site]]` saying why they work in
   the order they run (game.toml's).
-- **Tests play the remaster with it on.** "The original" checks run with the
-  whole mod off, never one feature. A hidden test-only switch for one feature
-  is a last resort, for a check that is otherwise impossible.
+- **Tests play the remaster with it on, so in Seamless.** "The original"
+  checks run with the whole mod off, in the stock view, never one feature
+  off. A hidden test-only switch for one feature is a last resort, for a
+  check that is otherwise impossible. Seamless runs a room's actors before
+  the hero walks into it, so a fixture that needs a room's enemies as they
+  load comes in by a door, the game's own load (`eolis-zozuras` does).
 - Match the game's voice and limits for any new dialogue: 16 columns, 4 lines,
   plain words.

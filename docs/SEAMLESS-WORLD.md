@@ -1,15 +1,18 @@
-# Seamless world preview
+# Seamless world
 
 Owner request: 2026-10-27. Tracking: `beads-2dw.17.2`; shared CIRAM upload:
 `beads-2dw.1.108`. Isolated branch: `feat/seamless-world-20261027`, based on
-released Faxanadu `6a297c2`. This is an experimental local-play preview,
-not a fully qualified replacement or release.
+released Faxanadu `6a297c2`. It began as an experimental local-play preview,
+a package of its own. **Since #110 (2026-11-22) it is part of the remaster:**
+a `[[plugin]]` (`faxanadu.seamless-world`) of the one Faxanadu Remastered
+feature, so the remaster always plays in it, and with the remaster off the
+game is the original in its stock 256x240 view. Every remaster end-to-end
+test plays in it. What only a full playthrough would show is under "Still
+open", below.
 
 ## Playable behavior
 
-Enable **Seamless**, the first entry in Mods and marked **Experimental**.
-It is disabled by default. Ordinary reciprocal screen
-connections form a continuous world: the camera follows the player, adjacent
+Ordinary reciprocal screen connections form a continuous world: the camera follows the player, adjacent
 terrain is visible, and neighboring native actors advance before entry.
 Room handoffs keep those actor instances rather than respawning them.
 Horizontal movement and climbing continue through supported seams without
@@ -33,7 +36,22 @@ presentation limit. Empty space outside the connected geometry remains
 empty; terrain is not stretched or repeated to fill it.
 
 Doors, region changes and connections that cannot be embedded consistently
-retain native portal transitions. Original key checks, scripts and progress
+retain native portal transitions.
+
+**Boss screens are arenas** (#110). A boss's screen (`SCREEN_EVENT_BOSS` in
+its sprite list: Trunk `$15` and `$3B`, Mist `$34` and `$4C`, Branch `$07`
+and `$1D`, Dartmoor `$15`) and the final boss's (Zenis `$00`) join no
+neighbour while the boss lives: the hero comes in through the original's own
+screen change (a scroll, or a door) and fights on that one screen, centred in
+the view, as in the original, and none of its actors runs before he enters.
+Once the game's own handler (`ScreenEvents_HandleBoss`) finds no boss in the
+room's slots and clears its event, Seamless lays the map out again from that
+room and it joins the world; walking out is then a handoff. A boss's room not
+entered since its area loaded has its boss, as the original reloads it, but
+one killed stays dead while the hero stays in the area, as every room's
+actors do in Seamless. `fax_world_room` reports each room's `event` and
+whether it is on the map (`owned`), and `fax_world` whether the active room
+is an `arena`. `tests/world/boss_arenas.py` walks into every one. Original key checks, scripts and progress
 remain in charge. Start pause freezes the expanded world without changing its
 aspect ratio. The native inventory appears over the frozen expanded world;
 only its text boxes cover the scene, so actors remain visible both inside and
@@ -101,6 +119,7 @@ All automated launches were hidden and muted with native saves disabled.
 | Sprite palette | Actual death/retry A/B preserves actor OAM, CHR and complete guest core state. All 357 changed sprite pixels in two affected NPC rooms map from stale building colors to the native outdoor palette; poisoning neighboring sprite palettes no longer changes NPC or enemy colors |
 | Current-build restore | Supported right seam: complete final state and rendered picture reproduce exactly after save/load; native/interpreter state and rolling trace match |
 | Fixed view (#107) | `tests/world/fixed_view.py`, in the suite: the canvas and picture are 424x240 at 424x240, 1920x1080 and 300x600 windows; at 1920x1080 the window shows them at 4x (1696x960) with black around; F4's overview grows to the region and F4 again restores 424x240. The adaptive Fit it replaced was checked at 1536x720, 600x1200 and 3840x720 |
+| Boss arenas (#110) | `tests/world/boss_arenas.py`, in the suite, a part per boss's screen: beside it, it is on no map; in by the original's scroll (or a door, for walled King Grieve and the final boss), the room alone with the boss handler running; the boss's slot emptied, the handler ends and the room joins its neighbour; out again by a handoff. The final boss's kill begins the ending, which reaches the King's room |
 | Shared CIRAM API | Invalid bounds/NULL and isolated upload refused; upload/restore succeeds; serialized complete machine unchanged after the probe |
 | Catalog / prepared helper | Feature activation without CLI override; hidden helper loads and pauses all prepared states; owner configuration restored to normal audio |
 
@@ -117,12 +136,26 @@ are simulation/render/upload costs, not total host frame-time measurements.
 Normal views run a bounded halo; wide/map views activate more rooms and cost
 more. Initial region decoding and native portal delays remain separate costs.
 
-Still open: enemy/projectile migration and combat while participants belong to
-different rooms; broader boss, secret, breakable terrain, death/retry and ending
-coverage; complete progression/mantra gameplay audit; full-map costs and
-other hosts. Actors chase a projected local player in neighboring
-rooms. This can change encounter timing compared with stock and needs human
-playtesting. No full playthrough, netplay, legacy-host or non-USA claim is made.
+Still open (#110 made Seamless the remaster's only view, so these are the
+risks a playtest must cover):
+
+- **Combat across rooms.** Enemies and shots do not migrate between rooms.
+  A neighbouring room's actors run on an isolated machine against a
+  projected hero, clamped to that room's edge, so they gather at the seam he
+  is nearest, and his swing there can hit them in that room's copy (the
+  Pendant fix counts only the live game's hits). This changes encounter timing compared with stock.
+- **Secrets and breakable terrain** (the Mattock's walls, the path to
+  Mascon's fountain): the suite covers the fountain's ladder (the ladder
+  fixes' test), breaking Trunk `$0C`'s Mattock wall in its own room (the keys
+  test) and the wall's block drawn in a neighbour
+  (`tests/graphics/graphics_fixes.py`); not a wall at a seam, nor whether a
+  broken one stays broken after walking away and back.
+- **Death and retry**: zone respawn's test dies and comes back in rooms Seamless
+  joined (Eolis, a screen into the Tower of Trunk); not every region.
+- **The ending**: `tests/world/boss_arenas.py` kills the final boss and checks
+  the ending reaches the King's room; not the credits.
+- Complete progression and mantra audit; full-map costs and other hosts. No
+  full playthrough, netplay, legacy-host or non-USA claim is made.
 
 ## Reproduction and prepared playtest
 
@@ -155,8 +188,9 @@ the preceding and current builds with the x=3 NPC fixture; it is retained in
 the raw logs and is not evidence of a new regression or a fully audited edge
 renderer. The normal seam regression reports no failures.
 
-Developer CLI: `--world-view off|seamless|atlas`. There is no size option:
-tests play the 424x240 view a player sees. TCP: `fax_world` (its `size` is the
+Developer CLI: `--world-view off|seamless|atlas` overrides the remaster's
+choice for a run (the suite never uses it: it plays the remaster as players
+get it). There is no size option: tests play the 424x240 view a player sees. TCP: `fax_world` (its `size` is the
 canvas's),
 `fax_world_room` and `fax_world_probe`. `NESRECOMP_WORLD_TRACE=<path>` explicitly
 enables the per-frame CSV; ordinary launches create no world journal.

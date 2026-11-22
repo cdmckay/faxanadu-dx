@@ -10,9 +10,10 @@ and fixes what has aged.
   steers the game from outside; it doesn't rewrite it.
 - **A Metroidvania at heart.** Faxanadu is one connected world that opens up
   as you find keys, tools and the way through, and it keeps sending you back
-  to places you have been. The remaster leans into that: a map of where you
-  have been and what still lies there, Guru travel to get back quickly, and
-  upgrades that reward a return trip.
+  to places you have been. The remaster leans into that: one continuous
+  world with no stop to scroll between rooms, a map of where you have been
+  and what still lies there, Guru travel to get back quickly, and upgrades
+  that reward a return trip.
 - **Quality of life.** Conveniences the 1987 game lacks, like saving without
   writing down mantras and travelling between Gurus. Where the game can offer
   them itself, it does, in its own text box and voice.
@@ -26,6 +27,21 @@ How the game works, as far as we've learned it, is in
 [docs/GAME_INTERNALS.md](docs/GAME_INTERNALS.md).
 
 ## What's new
+
+### Seamless: one continuous world
+
+The remaster plays in Seamless. Faxanadu's rooms join into one continuous
+world: no more stopping to scroll at each screen's edge, the next room is
+already in view, and its people and monsters keep moving. The view is always
+424x240, the original's full height and 53 tiles wide, scaled to your window.
+F4 shows the region you're in. Doors and region changes keep the original's
+own transitions, and so does each boss's room: while its boss lives, the
+room stays apart and you fight on that one screen, as in the original; once
+the boss is dead, the room joins the world again. Switch the remaster off and
+the original's own 256-wide view comes back with the rest of the game. See
+[docs/SEAMLESS-WORLD.md](docs/SEAMLESS-WORLD.md).
+
+![The same spot in the original and in the remaster, which joins the next screen on](docs/screenshots/seamless.png)
 
 ### A quest log
 
@@ -62,18 +78,6 @@ there). Ladders you have climbed join the screens above and below. Your file
 keeps the map, and the items you have taken.
 
 ![The map on the Trunk's page: the screens seen from its first past Forepaw, with the towns between them, the crosses of two Gurus, four doors used, the dots of two items still lying there, and the hero's screen lit](docs/screenshots/map.png)
-
-### Seamless
-
-Seamless is a separate option in the launcher's Mods screen, marked
-Experimental and off by default. It is a way to view the game rather than
-part of the remaster, so it has a switch of its own. It joins connected rooms
-into one continuous world and keeps neighboring rooms' actors moving. Its
-view is always 424x240: the original's full height, 53 tiles wide, scaled
-to your window. F4 shows the connected map. It is still a preview, for local
-play only. See [docs/SEAMLESS-WORLD.md](docs/SEAMLESS-WORLD.md).
-
-![The same spot in the stock view and in Seamless, which joins the next screen on](docs/screenshots/seamless.png)
 
 ## Also new
 

@@ -663,13 +663,18 @@ What a feature can rely on, and the traps:
   (`Screen_ScrollDirection` `$54` is `$FF`): the main loop does not update
   the hero while it scrolls, so a state saved mid-scroll ignores input for a
   second after loading.
-- With the Seamless world on, the hero's routines can run in an isolated
-  scope where `cyc_mod_isolated()` is true. A hook that keeps state must leave
-  it alone there.
-- With the Seamless world on, a neighboring room's actors keep moving before
-  the hero walks in, so where they are when he arrives depends on how long he
-  took. A test that walks in should put them in place in its save state, as
-  `tests/damage/damage_numbers.py` does with Eolis's Zozura.
+- The remaster plays in Seamless, so the hero's routines can run in an
+  isolated scope where `cyc_mod_isolated()` is true. A hook that keeps state
+  must leave it alone there.
+- In Seamless a neighboring room's actors keep moving before the hero walks
+  in, chasing a copy of him held at that room's edge, so where they are when
+  he arrives depends on how long he took (Eolis $04's Zozuras gather at its
+  right edge and knock him about as he crosses). A test that walks in should
+  put them in place in its save state, as `tests/damage/damage_numbers.py`
+  does, or come in by a door, whose load spawns them fresh, as the
+  `eolis-zozuras` fixture does. In Seamless the walk itself has no scroll: a
+  headless schedule that holds a direction through the original's scroll
+  carries the hero rooms further.
 - In Seamless, a neighboring room's actors live in `fax_world.c`'s copy of
   that room, not in `CurrentSprites_Entities`: setting those slots to `$FF`
   clears only the hero's room.
@@ -3358,6 +3363,48 @@ rest of the way to Victim, were not checked.
   RTS-dispatches the ID through `SPECIAL_SCREEN_EVENT_LOOKUP_TABLE` (`$EF63`):
   0 the path to Mascon, 1 a boss, 2 the final boss. It is not called while
   the screen scrolls.
+- **Bosses depend on their screen.** A boss is its screen's event as much as
+  its sprite, and nothing records one killed: loading the screen again
+  brings it back. `ScreenEvents_HandleBoss` (`$EF9E`, event 1), on its first
+  pass on the screen, sets the event's bit 7 (`$81`), calls
+  `LimitItemDurations` (a running Ointment or Hour Glass ends) and sets
+  `Music_Current` (`$FA`) to `$0A`, the boss music (the sound engine sets its
+  bit 7 once it starts it, so it reads `$8A`). Every pass after,
+  `Sprites_HasBoss` (`$EFF8`) looks for a category-7 entity
+  (`SPRITE_CATEGORIES_BY_ENTITY`, `$B544`) in `CurrentSprites_Entities`;
+  once none is left it puts `Areas_DefaultMusic` back and sets the event to
+  `$FF`, so it never runs again on that load. Emptying the boss's slot
+  (`$FF`) is a kill as far as the handler is concerned. The final boss's
+  `ScreenEvents_HandleFinalBossKilled` (`$EFD4`, event 2) waits for every
+  slot to be empty (`Sprites_HasCurrentSprites`, `$F00B`), then sets music `$07`,
+  plays sound `$04` and jumps to `EndGame_Begin` (`$D9AC`): 120 frames of
+  the frozen screen, a fade to black, 120 more, then the King's room
+  (`EndGame_BeginKingsRoomSequence`). Checked in the game
+  (`tests/world/boss_arenas.py`).
+- **The boss screens and what is beside them** (bank 11's lists, bank 3's
+  scroll tables): every `SCREEN_EVENT_BOSS` screen is joined both ways to a
+  neighbour: Trunk `$15` to `$14` (left); `$3B` to `$3A`, `$3C` and `$36`
+  (below); Mist `$34` to `$33` and `$39` (below); `$4C` to `$4B` and `$43`
+  (above); Branch `$07` to `$08` (right); `$1D` to `$1C`; Dartmoor `$15` to
+  `$16` (right). Dartmoor `$15`, King Grieve's room, is walled on all four
+  sides (columns 0 and 15 and rows 0, 11 and 12 solid): the hero comes in
+  by the door on `$14` (block `$9E`, palette `$0E`, `DARTMOOR_DOOR_LOCATIONS`
+  entry 2) at block `$91`, and its own door there leads back to `$14`; `$16`
+  beyond its right wall holds a second King Grieve
+  (`$32` at `$41`) with no screen event. Zenis `$00`, the final boss's, is
+  joined to nothing. Boss-category entities stand on other screens with no
+  event, so with no boss music and no handler: Borabohra (`$2F`) on Trunk
+  `$3A`, Ripasheiku (`$2D`) on Mist `$33` and `$48`, Zoradohna (`$2E`) on
+  Zenis `$01`, King Grieve on Dartmoor `$16`, Rokusutahn (`$11`) on Mist
+  `$39` and the Castle of Fraternal's `$10`.
+- `LastColumnLeftScreen` (`$03E6`) and `FirstColumnInRightScreen`
+  (`$03F6`), 16 bytes each, hold the screen to the left's last column of
+  blocks and the screen to the right's first, one a row: `Area_LoadScrollData`
+  copies them as a screen loads, so the edge the hero would walk across can be
+  read before he does. `BlockProperties` (`$043C`, 128 bytes) holds the area's
+  block properties two a byte (the even block's in the low nibble), and
+  `BLOCK_PROPERTY_IMPASSABLE_MAP` says which stop him (1 solid, 5 breakable
+  floor, 6 pushable, 7, 8, `$0B` the Mattock's walls).
 - **The path to Mascon** is event 0, on Trunk `$28` only: the dried fountain
   ("right above this town", Forepaw), with the door to the Mist (block `$10`,
   the Q key) on a ledge at the top left. `$28`'s only neighbour is `$27`, to
@@ -3613,7 +3660,29 @@ Every feature below is a trusted plugin of the one Faxanadu Remastered mod
 they are on or off together, and may rely on each other. Each still checks
 its own `enabled` flag, which the mod runtime sets for all of them at once:
 "with X off" below means with the remaster off, or X turning itself off on an
-unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
+unexpected ROM layout. Seamless (`fax_world.c`), the continuous world, is
+one of them since #110, so the remaster always plays in its 424x240 view.
+
+- **Seamless** (`fax_world.c`, docs/SEAMLESS-WORLD.md). Joins rooms the
+  scroll table links both ways into one world, running each neighbour's
+  actors on an isolated machine. Its save-state records (`faxanadu.world`,
+  `faxanadu.world.hud`) are checked whether it is on or not and set aside
+  when it is off, so a state saved with the remaster on loads with it off,
+  as the other features' do; one saved with it off has none, and Seamless
+  lays the map out again from the room the state is in. **Boss screens are
+  arenas:** when it lays a map out (`topology()`), it first reads every
+  screen's event for the area once, with the game's own
+  `Screen_LoadAllScreenInfo` (`$C154`, bank 11) on an isolated machine
+  (`CurrentScreen_SpecialEventID` preset to `$FF`, which the routine leaves
+  alone for an area with no sprite lists). A room with event 1 or 2 whose
+  boss lives (not entered since the area loaded, or its copy's event not yet
+  `$FF`) joins nothing, so the scroll into it, and out while the boss lives,
+  is the original's. When the active room is such an arena and its event
+  turns `$FF` (`ScreenEvents_HandleBoss` found no boss), Seamless lays the
+  map out again from it, and so it does when the original's own load (a
+  door in the same area) brings a boss back into a room whose copy had none:
+  it captures the live room before it decides. The flag is kept in its record
+  (byte 28).
 
 - **Guru travel** (`fax_travel.c`). After the mantra or a new title, the Guru
   says "All Gurus / meditate as one." and offers "Shall I send / you to
@@ -3646,7 +3715,9 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
   the Pendant. It hooks `@_checkGlove` (`$8884`, bank 14), where both sides
   of the reversed branch meet, and sets `Temp_00` from
   `WEAPON_STRENGTHS[Y]` and the Pendant bit before the Glove adds its bonus.
-  It keeps no state.
+  It keeps no state, so it also runs in Seamless's isolated rooms, where the
+  hero's swing at a room's edge can hit a neighbouring room's actor in that
+  room's copy (its `hits` count only the live game's).
 - **Battle Suit and Dragon Slayer fix** (`fax_inventory.c`). Each of the
   two pickups adds the item at its own list's count. It hooks each routine's
   `CPX #$04` (`$C6FA`, `$C73A`), right after the `LDX` that read the other

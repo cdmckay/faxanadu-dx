@@ -1,7 +1,6 @@
 """Play zone respawn end to end in a hidden window.
 
     python3 tests/respawn/zone_respawn.py --build build-cycle --rom "Faxanadu (USA).nes" --out /tmp/respawn
-    python3 tests/respawn/zone_respawn.py ... --game-arg=--world-view=seamless
 
 The game runs uncapped and the script waits on the game's own state, never on
 the clock, on a reserved TCP port (tests/e2e/fax_e2e.py), so any number can
@@ -17,8 +16,8 @@ game's (PlayerIsDead set):
 
 1. Dying outside Eolis's gate, before any entrance, wakes at Eolis's temple,
    as before.
-2. Through the gate into Eolis, then a screen further left (a scroll, or with
-   Seamless on a room handoff): dying there comes back at the gate's side of
+2. Through the gate into Eolis, then a screen further left (Seamless hands
+   him to the next room, with no scroll): dying there comes back at the gate's side of
    Eolis, after the Guru's words, with the gold and experience kept. Save
    files (on by default, file 1 in play) writes the file at that respawn too,
    with the gold and experience, keeping its spawn point.
@@ -315,7 +314,6 @@ def main():
     ap = parser(__doc__, PARTS)
     ap.add_argument("--only", action="append", default=[], help="run only these entrances (repeatable)")
     args = chosen(ap.parse_args(), PARTS)
-    seamless = any("seamless" in arg for arg in args.game_arg)
     game = Game.from_args(args)
     out = game.out
     shot = game.shot
@@ -363,7 +361,7 @@ def main():
         # The deaths' saved games, as the Guru speaks, made before the game launches.
         died = {name: game.state(f"respawn-died-{slug(name)}") for name, *_ in entrances}
         gate_words = game.state("respawn-gate-words") if args.wants("eolis") else None
-        tower_0e = game.state("respawn-died-tower-0e") if "Tower of Trunk" in died and not seamless else None
+        tower_0e = game.state("respawn-died-tower-0e") if "Tower of Trunk" in died else None
         conflate_words = game.state("respawn-conflate-words") if args.wants("travel") else None
         ointment_words = game.state("respawn-ointment-words") if args.wants("sugata") else None
 
@@ -395,11 +393,10 @@ def main():
             state = respawn()
             assert (state["zone"], state["area"], state["screen"], state["start"]) == ("Eolis", 0, 1, 0x99), state
             assert (entered["x"], entered["y"]) == (0x90, 0x90), entered
-            handoffs = tcp("fax_world")["handoffs"] if seamless else 0
+            handoffs = tcp("fax_world")["handoffs"]
             hold("left", lambda: ram(SCREEN) == 2 and settled() and ram(PLAYER_X) < 200, 1200)
             assert ram(SCREEN) == 2, "a screen further into Eolis"
-            if seamless:
-                assert tcp("fax_world")["handoffs"] > handoffs, "Seamless handed the hero to the next room"
+            assert tcp("fax_world")["handoffs"] > handoffs, "Seamless handed the hero to the next room"
             assert respawn()["screen"] == 1, "the walk set no checkpoint"
             wait(10)
             further = save(game, "eolis-2")
@@ -452,9 +449,7 @@ def main():
                 print(f"ok: {name}: back where its door brought him ({where})")
 
         # 4. A screen further into the Tower of Trunk (further_in_tower(), in
-        #    its fixture). With Seamless on, the next room's enemies cannot be
-        #    cleared, so the walk is the default view's; step 2 crossed a room
-        #    with Seamless on.
+        #    its fixture).
         if tower_0e:
             came = after_words(tower_0e, "tower", 1, 0x0D, pictures=True)
             assert (came["x"], came["y"]) == (0x10, 0x90), came

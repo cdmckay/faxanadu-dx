@@ -116,7 +116,12 @@ def compare(remaster, original, state, mask):
     logo, and between it and what is below, only the word, where it should be."""
     w, h, on = png(remaster)
     w2, h2, off = png(original)
-    assert (w, h) == (w2, h2) and w == state["width"], ((w, h), (w2, h2), state)
+    # The remaster plays in Seamless, whose picture is 424x240 with the title,
+    # as every scene it does not lay out, at the native picture's place:
+    # centred. The original's is the NES's 256x240: centred the same here.
+    pad = (w - w2) // 2
+    off = [[(0, 0, 0)] * pad + row + [(0, 0, 0)] * (w - w2 - pad) for row in off]
+    assert (w, h) == (424, h2) and w2 == 256 and w == state["width"], ((w, h), (w2, h2), state)
     color = rgb(state["argb"])
     x0, y0 = state["x"], state["y"]
     # The logo, and everything above the band, untouched but for the F's tip.

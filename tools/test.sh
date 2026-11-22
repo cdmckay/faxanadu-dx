@@ -170,66 +170,50 @@ python3 tests/e2e/fax_e2e_test.py --build build-cycle --rom "$ROM" --out "$OUT/e
 # game, every part or those listed (--parts=a,b); the saved games they start
 # from are made once, from your ROM, and cached in build-tests/fixtures.
 #
-# A test runs in Seamless too (+sw) only where the view changes what it
-# checks: a feature that draws or places something on screen, or moves the
-# hero between rooms. Block, Equip indoors, the inventory fix and the rest
-# are logic on the game's state, the same in either view. Quick shops draws its list's hint,
-# page and OWNED over the picture, placed for Seamless's: its two parts that
-# check all three run there. Seamless's view is 424x240 whatever the window,
-# what a player sees, so its window is at scale 1 too (fax_e2e's install()).
-SW="--game-arg=--world-view=seamless"
+# Every run plays the remaster in Seamless, its view, as players get it, so
+# each part runs once (#110). "The original" parts switch the remaster off,
+# and play in the stock view. Seamless's view is 424x240 whatever the
+# window, what a player sees, so its window is at scale 1 (fax_e2e's install()).
 E2E=(
   "travel       tests/travel/guru_travel.py --parts"
-  "travel+sw    tests/travel/guru_travel.py --parts $SW"
   "death        tests/death/death_keeps_gold.py"
   "pendant      tests/pendant/pendant_fix.py --parts"
   "magic        tests/magic/magic_button.py"
   "zones        tests/zones/zone_names.py --parts"
-  "zones+sw     tests/zones/zone_names.py --parts $SW"
   "keys         tests/keys/auto_and_reusable_keys.py --parts"
   "pose         tests/movement/falling_pose.py"
   "jumps        tests/movement/forgiving_jumps.py"
   "ladders      tests/ladders/ladders.py --parts"
   "speaker      tests/speaker/speaker_names.py --parts"
-  "speaker+sw   tests/speaker/speaker_names.py --parts $SW"
   "text         tests/text_speed/text_speed.py"
   "files        tests/files/save_files.py --parts"
   "dagger       tests/dagger/taller_dagger.py"
   "block        tests/block/block.py --parts"
   "sugata       tests/sugata/sugata_flash.py"
-  "sugata+sw    tests/sugata/sugata_flash.py $SW"
   "glint        tests/block/block_shield.py --parts"
-  "glint+sw     tests/block/block_shield.py --parts $SW"
   "shops        tests/shops/quick_shops.py --parts"
-  "shops+sw     tests/shops/quick_shops.py --parts=two-pages,owned-key $SW"
   "respawn      tests/respawn/zone_respawn.py --parts"
-  "respawn+sw   tests/respawn/zone_respawn.py --parts $SW"
   "recharge     tests/recharge/recharging_items.py --parts"
   "elixir-lines tests/recharge/guru_lines.py --parts"
+  "charges      tests/charges/status_bar.py --parts"
   "mana         tests/mana/mana_refill.py"
   "lesson       tests/lesson/magician_lesson.py --parts"
   "gold         tests/gold/double_gold.py --parts"
   "switch       tests/remastered/one_switch.py"
   "title        tests/title/title_remastered.py"
-  "title+sw     tests/title/title_remastered.py $SW"
   "slain        tests/slain/slain_by.py"
-  "slain+sw     tests/slain/slain_by.py $SW"
   "indoor       tests/indoor/indoor_equip.py --parts"
   "damage       tests/damage/damage_numbers.py"
-  "damage+sw    tests/damage/damage_numbers.py $SW"
   "inventory    tests/inventory/inventory_fix.py --parts"
   "map          tests/map/explored_map.py --parts"
-  "map+sw       tests/map/explored_map.py --parts $SW"
   "quests       tests/quests/quest_log.py --parts"
-  "quests+sw    tests/quests/quest_log.py --parts=elf,king,meteorite,wall,file $SW"
   "fixes        tests/fixes/small_fixes.py --parts"
   "graphics     tests/graphics/graphics_fixes.py --parts"
-  "graphics+sw  tests/graphics/graphics_fixes.py --parts $SW"
   "finds        tests/finds/kept_finds.py --parts"
   "softlocks    tests/softlocks/eolis_shaft.py --parts"
-  "entrances    tests/entrances/fair_entrances.py --parts=doors,edges-trunk,edges-mist,edges-south"
-  "entrances+sw tests/entrances/fair_entrances.py --parts $SW"
-  "view+sw      tests/world/fixed_view.py $SW"
+  "entrances    tests/entrances/fair_entrances.py --parts"
+  "view         tests/world/fixed_view.py"
+  "arenas       tests/world/boss_arenas.py --parts"
 )
 # At most E2E_JOBS runs play at once (default: one a hardware thread; 0: all
 # at once): a game is uncapped and takes a whole thread, and more of them
