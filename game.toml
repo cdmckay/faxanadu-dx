@@ -831,3 +831,28 @@ id = "faxanadu.fair-entrances.populate"
 addr = 0xc205
 bank = 15
 bytes = "a2 07 8e 78 03 bd cc 02 c9 ff d0 41"   # LDX #$07, STX CurrentSpriteIndex, LDA CurrentSprites_Entities,X
+
+# Double gold (fax_gold.c): IScriptAction_AddGold's JSR
+# IScripts_ProgressivelyAddGold, where the King's step (the game's only
+# ADD_GOLD) pays 3000 for 1500; the text box's reader after LDA
+# (Temp_Int24),Y, where his plea's "1500" types as "3000"; and
+# Player_HandleTouchCoin before its add, which then lands on twice the coin's
+# value, held at the cap. All three return 0.
+
+[[mod_function_hook]]
+id = "faxanadu.double-gold.king"
+addr = 0x8531
+bank = 12
+bytes = "20 37 85 4c 6e 82 20 b0 87 ad 03 02"   # JSR IScripts_ProgressivelyAddGold, JMP IScripts_InvokeNextAction
+
+[[mod_function_hook]]
+id = "faxanadu.double-gold.king-line"
+addr = 0xf4df
+bank = 15
+bytes = "c9 ff f0 75 c9 fe f0 3c c9 fd f0 17"   # CMP #$FF, BEQ, CMP #$FE, BEQ, CMP #$FD, BEQ
+
+[[mod_function_hook]]
+id = "faxanadu.double-gold.coin"
+addr = 0x8b9f
+bank = 14
+bytes = "ad 92 03 18 7d 6c 03 8d 92 03 ad 93"   # LDA Gold, CLC, ADC CurrentSprites_Values,X, STA Gold

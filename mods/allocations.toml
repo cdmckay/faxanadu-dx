@@ -449,6 +449,25 @@ rom = []
 # overrides. Not in save files: continuing fills MP.
 
 [[feature]]
+id = "double-gold"
+package = "faxanadu.remastered"
+plugin = "faxanadu.double-gold"
+source = "src/fax_gold.c"
+hooks = "faxanadu.double-gold."
+rom = []
+# Three sites no other feature hooks, each returning 0: IScriptAction_AddGold's
+# JSR IScripts_ProgressivelyAddGold ($8531, bank 12), where on the King's step
+# it writes Temp_0202/3 (the amount still to pay, 1500 made 3000); the text
+# box's reader after LDA (Temp_Int24),Y ($F4DF, fixed bank), where it changes
+# A for two digits of message $35 (the King's plea names the amount); and
+# Player_HandleTouchCoin before its add ($8B9F, bank 14), where it writes
+# Gold, Gold_M and Gold_U. The amount is the game's own temporary, read by
+# the next instruction; the digits are A, compared next. No read overrides
+# (the budget is full) and no ROM. Selling pays through the same
+# IScripts_ProgressivelyAddGold from IScriptAction_ShowSellMenu, which never
+# passes $8531. Nothing is saved: each decision is made from RAM.
+
+[[feature]]
 id = "fair-entrances"
 package = "faxanadu.remastered"
 plugin = "faxanadu.fair-entrances"
