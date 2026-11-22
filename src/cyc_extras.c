@@ -41,6 +41,7 @@
 #include "fax_quests.h"
 #include "fax_graphics.h"
 #include "fax_entrances.h"
+#include "fax_spell_cost.h"
 #ifdef CYC_WITH_SDL
 #include "cyc_tcp.h"
 #include <SDL.h>
@@ -213,11 +214,12 @@ static void tcp_setup(void *ctx) {
     fax_graphics_tcp_setup();
     fax_finds_tcp_setup();
     fax_entrances_tcp_setup();
+    fax_spell_cost_tcp_setup();
 }
 #endif
 static const uint32_t *present(void *ctx,int *w,int *h) {
     (void)ctx;
-    const uint32_t *picture=fax_quests_marks_present(fax_damage_present(fax_sugata_present(fax_charges_present(fax_world_present(w,h,cyc_frame_argb()),w,h),w,h),w,h),w,h);
+    const uint32_t *picture=fax_quests_marks_present(fax_damage_present(fax_sugata_present(fax_spell_cost_present(fax_charges_present(fax_world_present(w,h,cyc_frame_argb()),w,h),w,h),w,h),w,h),w,h);
     picture=fax_files_present(fax_title_present(fax_speaker_present(fax_quests_banner_present(fax_slain_present(fax_banner_present(picture,w,h),w,h),w,h),w,h),w,h),w,h);
     return fax_quests_log_present(fax_map_present(fax_shops_present(picture,w,h),w,h),w,h);
 }

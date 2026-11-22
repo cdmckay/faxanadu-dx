@@ -141,6 +141,9 @@ cmake --build "$OUT/graphics" -j"$JOBS" >/dev/null
 cmake -S tests/entrances -B "$OUT/entrances" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/entrances" -j"$JOBS" >/dev/null
 "$OUT/entrances/entrances_test"
+cmake -S tests/spell_cost -B "$OUT/spell_cost" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/spell_cost" -j"$JOBS" >/dev/null
+"$OUT/spell_cost/spell_cost_test"
 
 echo "== the game, 600 frames headless"
 build-cycle/FaxanaduRecomp "$ROM" --frames 600 --no-save | grep "mode="
@@ -215,6 +218,7 @@ E2E=(
   "entrances    tests/entrances/fair_entrances.py --parts"
   "view         tests/world/fixed_view.py"
   "arenas       tests/world/boss_arenas.py --parts"
+  "spell-cost   tests/spell_cost/spell_cost.py --parts"
 )
 # At most E2E_JOBS runs play at once (default: one a hardware thread; 0: all
 # at once): a game is uncapped and takes a whole thread, and more of them

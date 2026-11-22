@@ -786,3 +786,17 @@ rom = []
 # takes (Wing Boots or an Hour Glass already held) is let through to it. Plays
 # sound $0D through Sound_PlayEffect in a committed call, as Recharging items
 # does. No ROM, no read overrides, no save-state record.
+
+[[feature]]
+id = "spell-cost"
+package = "faxanadu.dx"
+plugin = "faxanadu.spell-cost"
+source = "src/fax_spell_cost.c"
+hooks = "faxanadu.spell-cost."
+rom = []
+# No hooks and no ROM: at present time it reads Player_MP, SelectedMagic,
+# UI_MPAndHPBarWidth and the status bar's palette, and recolors the M: bar's
+# fill in the presented picture, after Charges draws the Elixir, where
+# Seamless put the status bar band (fax_world_hud_x). MAGIC_COSTS is bank
+# 14's, read from the cart image. Writes nothing, no read overrides, no
+# save-state record.
