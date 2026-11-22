@@ -121,8 +121,14 @@ def main():
         assert g.where() == (EOLIS, screen), g.where()
         g.poke({ENTITIES + i: 0xFF for i in range(8)})              # nothing on the street knocks him back
         column = (door & 15) * 16
-        g.walk_to(column - 6, column + 4)
-        g.act("up", 4, 10)
+        for _ in range(4):                                          # Up counts only on the frame it goes down, and
+            g.walk_to(column - 6, column + 4)                       # not with the walk's button still down: again
+            g.act("up", 4, 10)                                      # if the game did not take it
+            try:
+                g.until("the door", lambda: g.ram(AREA) == BUILDINGS, 120)
+                break
+            except AssertionError:
+                pass
         g.until("the building", lambda: g.ram(AREA) == BUILDINGS and g.settled(), 600)
         g.wait(30)
 
