@@ -541,6 +541,23 @@ addr = 0xdaaf
 bank = 15
 bytes = "20 f7 ca 20 06 de 20 17 cb 20 25 ca"
 
+# The Magician's lesson (fax_lesson.c): Eolis's Magician's script, steered at
+# each interaction-script action (before Recharging items' site there, which
+# stays last), and his price, at IScriptAction_SpendGold once it has read the
+# amount, before it checks the hero's gold.
+
+[[mod_function_hook]]
+id = "faxanadu.lesson.next-action"
+addr = 0x826e
+bank = 12
+bytes = "20 a4 87 aa bd 93 82 48 bd 7b 82 48"   # IScripts_InvokeNextAction: his offer, his pay step, his lines
+
+[[mod_function_hook]]
+id = "faxanadu.lesson.price"
+addr = 0x8367
+bank = 12
+bytes = "ad 02 02 85 ec ad 03 02 85 ed 20 dc"   # LDA Temp_0202, STA Temp_Int24, LDA Temp_0203, STA Temp_Int24_M, JSR IScripts_CheckEnoughMoney
+
 # Recharging items (fax_recharge.c): the Wing Boots and the Hour Glass are kept
 # and recharge, and the Elixir is kept and a Guru charges it again, and says
 # so. The sites are each routine's entry unless noted.

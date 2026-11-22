@@ -28,6 +28,7 @@
 #include "fax_respawn.h"
 #include "fax_recharge.h"
 #include "fax_mana.h"
+#include "fax_lesson.h"
 #include "fax_gold.h"
 #include "fax_slain.h"
 #include "fax_indoor.h"
@@ -197,6 +198,7 @@ static void tcp_setup(void *ctx) {
     fax_respawn_tcp_setup();
     fax_recharge_tcp_setup();
     fax_mana_tcp_setup();
+    fax_lesson_tcp_setup();
     fax_gold_tcp_setup();
     fax_slain_tcp_setup();
     fax_indoor_tcp_setup();
@@ -249,7 +251,7 @@ static RecompRuntimeUiItem menu_rows[] = {
 static int menu_row_enabled(void *ctx, const RecompRuntimeUiItem *it) { (void)ctx; (void)it; return 0; }
 static const RecompRuntimeUiCallbacks menu_callbacks = { .is_enabled = menu_row_enabled };
 #endif
-static void state_loaded(void *ctx) {(void)ctx;fax_world_loaded();fax_block_loaded();fax_files_state_loaded();fax_quests_loaded();fax_recharge_loaded();}
+static void state_loaded(void *ctx) {(void)ctx;fax_world_loaded();fax_block_loaded();fax_files_state_loaded();fax_quests_loaded();fax_recharge_loaded();fax_lesson_loaded();}
 const CycHostExtras *cyc_host_extras(void) {
     static const CycHostOption options[] = {
         { "--text-overrides", true, "Text replacement JSON, with hot reload" },

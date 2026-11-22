@@ -16,12 +16,15 @@ bool fax_travel_can_offer(void);
 uint16_t fax_travel_say_step(void);
 uint16_t fax_travel_begin(bool towns);
 
-/* Guru travel's SAY step in bank 12 (03 C3 00: show message $C3, then END)
- * and message $C3's slot in bank 13, both supplied through read overrides.
- * The Block tutorial (fax_block.c) borrows them for its one line. It speaks
- * only at the end of a shop's or a gift's script, never during a Guru's, and
- * Guru travel writes the slot again before each of its own lines. */
-enum { FAX_TRAVEL_SAY = 0xAE00, FAX_TRAVEL_SLOT = 0xB45B, FAX_TRAVEL_SLOT_ID = 0xC3, FAX_TRAVEL_SLOT_LEN = 48 };
+/* Guru travel's SAY step in bank 12 (03 C3 00: show message $C3, then END),
+ * its ASK step after it (16 C3 00 AE: ask message $C3; A jumps to SAY, B goes
+ * on to ASK + 4) and message $C3's slot in bank 13, all supplied through read
+ * overrides. The Block tutorial (fax_block.c) borrows SAY and the slot for its
+ * one line. It speaks only at the end of a shop's or a gift's script, never
+ * during a Guru's, and Guru travel writes the slot again before each of its
+ * own lines. Eolis's Magician (fax_lesson.c) asks his offer at the ASK step. */
+enum { FAX_TRAVEL_SAY = 0xAE00, FAX_TRAVEL_ASK = 0xAE03, FAX_TRAVEL_SLOT = 0xB45B, FAX_TRAVEL_SLOT_ID = 0xC3,
+       FAX_TRAVEL_SLOT_LEN = 48 };
 
 /* The Gurus this playthrough has visited, a bit per temple (0 Eolis ... 7
  * Dartmoor); Eolis's is set from the start of every game. 0 with Guru travel
