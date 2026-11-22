@@ -26,9 +26,10 @@ is no zoom and no option. The camera follows the hero and clamps to the
 connected region's edges, centring a region narrower than the view. The
 inventory, text boxes and the original's own pictures (death, scripts, region
 loads) sit where the native picture would, centred. The status bar band, its
-top 32 lines, is the one exception (#113): it and the row of recharging items
-past its item box (`fax_charges.c`) are centred together, so the band's
-columns start at x 52, 32 pixels left of the room's (`fax_world_hud_x`).
+top 32 lines, is the one exception (#113, #117): it and the Elixir left of its
+`M:` and `P:` bars (`fax_charges.c`) are centred together, so the band's
+columns start at x 92, 8 pixels right of the room's, and the Elixir is at x
+76-91 (`fax_world_hud_x`).
 The host scales the view to the window, keeping its shape, as its Display
 settings say: with IntegerScale (the default), the largest whole multiple
 that fits, so 3x, 6x and 9x fill 720p, 1440p and 4K, and 1080p shows 4x,

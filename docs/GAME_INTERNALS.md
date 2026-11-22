@@ -1871,16 +1871,19 @@ jump a few updates after stepping off, as A from the hang itself would.
   (`SPECIAL_ITEM_TILE_START_IDS`, `$8E63`, bank 12): the Elixir's `$92` is
   `$80` | `ITEMINVENTORY_ELIXIR` (`$12`), so the page shows the same picture.
 - **In Seamless** (`fax_world_hud_x`), the status bar band (lines 0-31) is
-  copied from the native picture into the 424-wide view, with the recharging
-  items' row (`fax_charges.c`) 64 pixels past its right edge, and the two are
-  centred as one group: the band's column 0 at x 52, not 84. Only the band
-  moves. Everything below it stays centred in the view as before: a room
-  narrower than the view (a building, an arena), the native picture's lines
-  32-239 (a region load, a script), its text boxes and menus, the speaker
-  tabs, Quick shops' list, and the zone and quest banners. So in a building
-  the band sits 32 pixels left of the room under it. The title and other
-  screens without the status bar are centred whole. With the remaster off
-  there is no row and no Seamless.
+  copied from the native picture into the 424-wide view, with the Elixir's
+  place (`fax_charges.c`, 16 pixels) against its left edge, and the two are
+  centred as one group, whether the hero has an Elixir or not: the Elixir at
+  x 76-91, the band's column 0 at x 92, not 84 (#117; #113 had a row of
+  three items past the item box, and the band at x 52). The band's column 0
+  is blank, so the Elixir stands 8 pixels from the `M` and the `P`, level
+  with the two bars. Only the band moves. Everything below it stays centred
+  in the view as before: a room narrower than the view (a building, an
+  arena), the native picture's lines 32-239 (a region load, a script), its
+  text boxes and menus, the speaker tabs, Quick shops' list, and the zone
+  and quest banners. So in a building the band sits 8 pixels right of the
+  room under it. The title and other screens without the status bar are
+  centred whole. With the remaster off there is no Elixir and no Seamless.
 
 ## MP and its bar (bank 15)
 
@@ -3249,8 +3252,8 @@ jumping or falling, `Player_Flags & $05`):
   (`UI_DrawTimeValue`, queued through the PPU buffer at `$0500`: length 2,
   `$20`, `$58`, the digits); the Hour Glass never shows a time.
 - In the picture, T: is at x 176-188 and its seconds at x 192-207, y 16-23.
-  While an item recharges (`fax_recharge.c`) the seconds blink, and in the
-  off phase they are black.
+  While the selected item recharges (`fax_recharge.c`) the seconds blink,
+  and in the off phase they are black.
 - `Game_ClearTimedItems` (`$C6AF`) sets all four durations to `$FF`. It runs
   from `Game_Start` and `Player_Spawn`, so every death ends them, but not on a
   Guru travel journey, which enters `Player_Spawn` past it: a flight or a
@@ -4093,10 +4096,15 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   - `GameLoop_CountdownItems`, before the game's own countdowns: a run that
     has ended (its duration back at `$FF`) starts a 60 s cooldown; cooldowns
     count down on the game's second; and T: shows the selected item's
-    cooldown (else the Wing Boots', else the Hour Glass's), blank 16 frames in
-    64, queued through the PPU buffer as `UI_DrawTimeValue` queues it, when
-    `PPUBuffer_HasCapacity` would allow it. A spent Elixir whose bit came back
-    (found) is charged.
+    cooldown, blank 16 frames in 64, queued through the PPU buffer as
+    `UI_DrawTimeValue` queues it, when `PPUBuffer_HasCapacity` would allow
+    it. With anything else selected, or nothing, T: is the original's: the
+    flight's own count while the Wing Boots fly (they stay selected), else
+    `00`, what the end of a flight and `UI_DrawHUD` leave there. It never
+    shows the other item's cooldown: nothing on the status bar would say
+    whose it is (#117; before, it showed the Wing Boots', else the Hour
+    Glass's, when the selected item was not recharging). A spent Elixir whose
+    bit came back (found) is charged.
   - `Player_UseElixir`: the Elixir is spent. `SpecialItems`' bit stays the
     game's own "a revive is in reserve", so `Player_ReduceHP`, the Player page
     and the Spring of Trunk go by whether it is charged.
@@ -4172,32 +4180,38 @@ one of them since #110, so the remaster always plays in its 424x240 view.
     shows gets it back in the slot after the load (`fax_recharge_loaded`,
     after Guru travel's record has put its own last line there). Version 1
     records (9 bytes) load with nothing told.
-  - `fax_recharge_charge` tells the status bar's row (Charges, below) where
-    each item stands: not the hero's, ready, or used (the Wing Boots or the
-    Hour Glass running or recharging, the Elixir spent). The Elixir's bit
+  - `fax_recharge_charge` tells where each item stands: not the hero's,
+    ready, or used (the Wing Boots or the Hour Glass running or recharging,
+    the Elixir spent). The status bar (Charges, below) shows the Elixir's.
+    The Elixir's bit
     decides first, so one found while spent is ready the moment it is picked
     up, a frame before `GameLoop_CountdownItems` forgets it was spent.
-- **Charges** (`fax_charges.c`, #113). The status bar shows the three
-  recharging items in a row past the item box, as Super Metroid shows its
-  reserve tanks: a slot each, 24 pixels apart, the Wing Boots, the Hour
-  Glass, the Elixir, from 8 pixels past the item box's `]` (x 256 of the
-  native columns, rows 16-31, beside the item box's picture). Each is drawn
-  with the item box's own picture (*The status bar*) in the status bar's
-  palette when ready, in greys when used (each color's NES grey by its
-  brightness, a step darker, never black, so the shape stays:
-  `fax_charges_grey`), and not at all when the hero does not have it; an
-  empty slot keeps its place. The moment an item is used it greys and blinks,
-  8 frames on and 8 off (`InterruptCounter & $08`), for 96 frames not
-  counting those a text box shows, so through its "I've used ..." line and
-  1.5 s after. Drawn at present time, after Seamless composes its picture and
-  before every other feature's drawing, only while the frame shows the status
-  bar (`fax_text_hud_showing`), and only where there is room: Seamless lays
-  the status bar band out with the row (`fax_charges_row`, `fax_world_hud_x`),
-  and the stock 256-wide view, the remaster off, has none. No hooks, no ROM,
-  and nothing written to the machine. Its 7-byte save-state record (a
-  version, each item's state at the last frame's end, each one's blink left)
-  keeps a blink going across a load; a state without it starts with no blink,
-  and an item used in it does not start one.
+- **Charges** (`fax_charges.c`, #113, #117). The status bar shows the
+  Elixir left of its `M:` and `P:` bars, level with them (rows 16-31, its
+  picture 16 x 15), since it refills both when it revives the hero
+  (`Player_FillHPAndMP`), as Super Metroid shows a reserve tank beside
+  Energy. It is drawn against the band's left edge, so 8 pixels from the `M`
+  and the `P` (the band's column 0 is blank), with the item box's own picture
+  (*The status bar*) in the status bar's palette when charged, in greys when
+  spent (each color's NES grey by its brightness, a step darker, never
+  black, so the shape stays: `fax_charges_grey`), and not at all when the
+  hero does not have it; its place stays. The moment it revives him it greys
+  and blinks, 8 frames on and 8 off (`InterruptCounter & $08`), for 96
+  frames not counting those a text box shows, so through "I've used Elixir."
+  and 1.5 s after. The Wing Boots and the Hour Glass are not drawn (#113 had
+  them in a row past the item box, with the Elixir): T: counts the selected
+  one's recharge (Recharging items, above). Drawn at present time, after
+  Seamless composes its picture and before every other feature's drawing,
+  only while the frame shows the status bar (`fax_text_hud_showing`), and
+  only where there is room: Seamless lays the status bar band out with the
+  Elixir's place (`fax_charges_width`, `fax_world_hud_x`), and the stock
+  256-wide view, the remaster off, has none. No hooks, no ROM, and nothing
+  written to the machine. Its 3-byte save-state record, version 2 (a
+  version, the Elixir's state at the last frame's end, its blink left)
+  keeps a blink going across a load; a version 1 record (#113's 7 bytes,
+  the three items' states, then their blinks) loads with the Elixir's, and
+  a state without one starts with no blink, and an Elixir spent in it does
+  not start one.
 - **Block** (`fax_block.c`). A bindable button (V, or B on a controller)
   raises whatever the shield slot holds, the Battle Helmet included. The host
   input callback clears the d-pad, A and B while it is up and a pass of

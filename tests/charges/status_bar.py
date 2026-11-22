@@ -1,33 +1,34 @@
-"""Play the recharging items on the status bar end to end, in Seamless.
+"""Play the Elixir on the status bar end to end, in Seamless.
 
     python3 tests/charges/status_bar.py --build build-cycle --rom "Faxanadu (USA).nes" --out /tmp/charges
 
-Seamless's 424-wide view lays the status bar band out with a row of three
-slots past its item box, the two centred together: the Wing Boots, the Hour
-Glass and the Elixir. Only the band moves: the rooms, and the boxes and
-banners over them, stay centred in the view. Each shows in the status bar's colours when ready, grey when used,
-and not at all when the hero does not have it. The checks are on the
-screenshots' pixels in each slot (colour, grey, or the band's black) and on
-the feature's TCP state; the setup reuses Recharging items' end-to-end test
-(tests/recharge/recharging_items.py): walking out of a shop whose door was
-edited to lead where each check is, with RAM edits for what the hero holds.
+Seamless's 424-wide view lays the status bar band out with the Elixir's
+place left of it, against its M: and P: bars, the two centred together. Only
+the band moves: the rooms, and the boxes and banners over them, stay centred
+in the view. The Elixir shows in the status bar's colours when charged, grey
+when spent, and not at all when the hero does not have it; the Wing Boots
+and the Hour Glass are not drawn. The checks are on the screenshots' pixels
+(the Elixir's place in colour, grey, or the band's black, and black either
+side of the band) and on the feature's TCP state; the setup reuses
+Recharging items' end-to-end test (tests/recharge/recharging_items.py):
+walking out of a shop whose door was edited to lead where each check is,
+with RAM edits for what the hero holds.
 
-1. layout: nothing owned, the row's three slots are empty, but the status
-   bar is already where the row puts it, 32 pixels left of centre, so it does
-   not move when the first item comes. All three ready: three in colour. The
-   Select menu stays on the room, centred in the view as before.
-2. boots: the Wing Boots ready; used, they grey at once and blink through
-   "I've used Wing Boots." and after it, then stay grey while they fly and
-   while they recharge; ready again, in colour.
-3. glass: the Hour Glass the same: grey while it freezes and recharges.
-4. elixir: the Elixir charged; a Zozura's hit at 1 HP revives the hero, and
+1. layout: nothing owned, the Elixir's place is empty, but the status bar is
+   already where the Elixir puts it, 8 pixels right of centre, so it does not
+   move when he finds one. The Wing Boots, the Hour Glass and the Elixir
+   ready: the Elixir in colour, left of the M: and P: bars and level with
+   them, and nothing else. The Select menu stays on the room, centred in the
+   view as before. The Wing Boots used, and both recharging: still only the
+   Elixir.
+2. elixir: the Elixir charged; a Zozura's hit at 1 HP revives the hero, and
    it is spent at once, grey and blinking through "I've used Elixir.", then
    grey.
-5. guru: spent in Eolis's temple, grey; talking to the Guru restores it, in
+3. guru: spent in Eolis's temple, grey; talking to the Guru restores it, in
    colour from his first line. The temple, one screen, is centred in the
    view, and his boxes are on it.
-6. original: the remaster off, nothing past the status bar, which is where
-   the original has it.
+4. original: the remaster off, nothing either side of the status bar, which
+   is where the original has it.
 """
 from pathlib import Path
 import struct
@@ -39,22 +40,20 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "recharge"))
 from fax_e2e import Game, act, box_open, page_through, parse_args, ram, tcp, type_out, until, wait  # noqa: E402
 import recharging_items as recharge  # noqa: E402  (its recipes, and its walk out of a shop)
 
-PARTS = ("layout", "boots", "glass", "elixir", "guru", "original")
+PARTS = ("layout", "elixir", "guru", "original")
 PACKAGE = ("faxanadu.dx", "dx")
-ITEMS = ("boots", "glass", "elixir")                       # the slots, left to right
-ROW, SLOT, ITEM, TOP = 64, 24, 16, 16                      # fax_charges.h
-HUD, NATIVE_W = 32, 256
+ITEM, TOP = 16, 16                                         # fax_charges.h: the Elixir's width, and its top row
+HUD, NATIVE_W, VIEW_W = 32, 256, 424
+HUD_X = (VIEW_W - NATIVE_W - ITEM) // 2 + ITEM             # the band's column 0: the Elixir and it centred together
 NONE, READY, USED = 0, 1, 2
 BLINK = 96                                                 # FAX_CHARGES_BLINK
 OPENING = 24                                               # frames from the use to its line's box: the blink counts them
 SELECTED_ITEM, ITEM_INVENTORY, NUMBER_OF_ITEMS = 0x3C1, 0x3AD, 0x3C6
 SPECIAL_ITEMS, HP, HP_FRACTION, MP, MESSAGE_ID = 0x42C, 0x431, 0x432, 0x39A, 0x213
-DURATION_WING_BOOTS, DURATION_HOUR_GLASS, PLAYER_TITLE = 0x429, 0x42A, 0x437
 PLAYER_FLAGS = 0xA4
 WING_BOOTS, HOUR_GLASS, NO_ITEM, BIT_ELIXIR = 0x0F, 0x0D, 0xFF, 0x08
-USED_HOUR_GLASS, USED_WING_BOOTS, USED_ELIXIR = 0xAC, 0xAD, 0xAF
+USED_WING_BOOTS, USED_ELIXIR = 0xAD, 0xAF
 ELIXIR_LINE = 0xC3                                         # the slot a Guru's Elixir line shows from
-WING_BOOTS_GONE, HOUR_GLASS_GONE = 0xC0, 0xC1
 EOLIS, PALETTE_EOLIS = 0, 0x00
 
 
@@ -85,7 +84,7 @@ def pixel(rows, x, y):
 class Picture:
     """A screenshot: where the status bar band is (hud_x, as Seamless says it
     laid it out), where the scene's native columns are (scene_x: centred),
-    and what each of the row's slots holds."""
+    and what the Elixir's place holds."""
 
     def __init__(self, game, name):
         self.game, self.path = game, game.shot(name)
@@ -101,22 +100,28 @@ class Picture:
         return [pixel(self.rows, x, y) for y in range(y0, y1) for x in range(max(x0, 0), min(x1, self.width))
                 if pixel(self.rows, x, y) != (0, 0, 0)]
 
-    def slot(self, i):
-        """What slot `i` shows: "empty" (the band's black), "grey" (every lit
-        pixel grey), or "colour"."""
-        x = self.hud_x + NATIVE_W + i * SLOT
-        lit = self.lit(x, x + SLOT)
+    def elixir(self):
+        """What the Elixir's place, against the band's left edge, shows:
+        "empty" (black), "grey" (every lit pixel grey), or "colour"."""
+        x = self.hud_x - ITEM
+        lit = self.lit(x, self.hud_x)
         if not lit:
             return "empty"
-        assert len(lit) >= 40, (self.path.name, i, len(lit))      # a picture, not a stray pixel
+        assert len(lit) >= 40, (self.path.name, len(lit))         # a picture, not a stray pixel
         return "grey" if all(r == g == b for r, g, b in lit) else "colour"
 
-    def slots(self):
-        return tuple(self.slot(i) for i in range(3))
+    def rows_lit(self):
+        """The rows the Elixir's place has anything in."""
+        x = self.hud_x - ITEM
+        return sorted({y for y in range(HUD) for c in range(x, self.hud_x) if pixel(self.rows, c, y) != (0, 0, 0)})
+
+    def nothing_else(self):
+        """Black either side of the band and the Elixir's place, all 32 lines: no Wing Boots, no Hour Glass."""
+        return not self.lit(0, self.hud_x - ITEM, 0, HUD) and not self.lit(self.hud_x + NATIVE_W, self.width, 0, HUD)
 
     def status_bar_left(self):
-        """The leftmost lit pixel of the status bar's text rows: its "M"."""
-        return min(x for x in range(self.width) for y in range(16, 24) if pixel(self.rows, x, y) != (0, 0, 0))
+        """The leftmost lit pixel of the status bar's text rows, right of the Elixir's place: its "M"."""
+        return min(x for x in range(self.hud_x, self.width) for y in range(16, 24) if pixel(self.rows, x, y) != (0, 0, 0))
 
 
 def charges():
@@ -135,15 +140,17 @@ def main():
         assert charges()["enabled"] == on, charges()
 
     def look(name, want=None, frames=40):
-        """Screenshot `name` and what its slots show; with `want`, retaken
-        until they show that (a blink's on or off phase)."""
+        """Screenshot `name` and what the Elixir's place shows; with `want`,
+        retaken until it shows that (a blink's on or off phase). Either way,
+        nothing else is drawn beside the status bar."""
         for _ in range(frames // 2):
             p = Picture(game, name)
-            if want is None or p.slots() == want:
+            assert p.nothing_else(), f"{name}: something beside the status bar but the Elixir"
+            if want is None or p.elixir() == want:
                 return p
             p.drop()
             wait(2)
-        raise AssertionError(f"{name}: the slots never showed {want}")
+        raise AssertionError(f"{name}: the Elixir's place never showed {want}")
 
     def walk_to(name, screen, pos, writes=None, record=None):
         """Out of the meat shop onto Eolis's `screen`, holding what `writes` gives him."""
@@ -159,59 +166,23 @@ def main():
         wait(24)
         act("down", 1, 0)
 
-    def dismiss(expect, frames=900):
-        until(f"message ${expect:02X}", lambda: ram(MESSAGE_ID) == expect, frames)
-        page_through("the box to close", lambda: not box_open(), 3000)
-
-    def blinks(item, frames=48):
-        """Over `frames` frames the item is used and blinking: drawn on some, not on others."""
+    def blinks(frames=48):
+        """Over `frames` frames the Elixir is spent and blinking: drawn on some, not on others."""
         seen = set()
         for _ in range(frames // 2):
-            s = charges()[item]
+            s = charges()["elixir"]
             assert s["charge"] == USED and s["blink"] > 0, s
             seen.add(s["shown"])
             wait(2)
-        assert seen == {True, False}, f"{item} should blink: {seen}"
+        assert seen == {True, False}, f"the Elixir should blink: {seen}"
 
-    def settles(item):
-        """The blink ends, at most BLINK frames after any box has closed, and the item stays grey."""
-        until(f"the {item}'s blink to end", lambda: charges()[item]["blink"] == 0, BLINK + 60)
+    def settles():
+        """The blink ends, at most BLINK frames after any box has closed, and the Elixir stays grey."""
+        until("the Elixir's blink to end", lambda: charges()["elixir"]["blink"] == 0, BLINK + 60)
         for _ in range(8):
-            s = charges()[item]
+            s = charges()["elixir"]
             assert s["charge"] == USED and s["shown"], s
             wait(2)
-
-    def cycle(item, name, slot, selected, used_line, gone_line, duration, cooldown_field):
-        """Ready, used (grey and blinking), running, recharging, ready again: the Wing Boots or the Hour Glass."""
-        want_ready = tuple("colour" if i == slot else "empty" for i in range(3))
-        want_grey = tuple("grey" if i == slot else "empty" for i in range(3))
-        want_off = ("empty",) * 3
-        walk_to(f"{item}-ready", 1, 0x99, {SELECTED_ITEM: selected, PLAYER_TITLE: 0})
-        game.poke({0x2CC + i: 0xFF for i in range(8)})            # no one about
-        assert charges()[item]["charge"] == READY, charges()
-        look(f"{item}-ready", want_ready)
-        use()
-        until(f"the {item}'s line", lambda: ram(MESSAGE_ID) == used_line, 120)
-        s = charges()[item]
-        assert s["charge"] == USED and BLINK - OPENING <= s["blink"] <= BLINK, s   # at once
-        blinks(item)
-        look(f"{item}-used", want_grey)
-        look(f"{item}-used-blink-off", want_off)
-        page_through("the box to close", lambda: not box_open(), 3000)
-        settles(item)
-        print(f"ok: {name}: grey the moment used, blinking through the line and after it, then steady "
-              f"({s['blink']} of {BLINK} frames of blinking left as the line came up)")
-        game.poke({duration: recharge.LAST_SECONDS})                # the game counts the run down itself
-        dismiss(gone_line, (recharge.LAST_SECONDS + 2) * recharge.SECOND)
-        until("the cooldown", lambda: recharge.state()[f"{item}_cooldown"] > 0, 60)
-        s = charges()[item]
-        assert s["charge"] == USED and s["blink"] == 0, s
-        look(f"{item}-recharging", want_grey)
-        game.poke({}, {recharge.RECORD.decode(): {cooldown_field: 2}})
-        until(f"the {item} to be ready", lambda: charges()[item]["charge"] == READY, 4 * recharge.SECOND)
-        wait(2)
-        look(f"{item}-ready-again", want_ready)
-        print(f"ok: {name}: grey while running and recharging, in colour again once ready")
 
     try:
         shop = game.state("eolis-meat-shop")
@@ -221,65 +192,79 @@ def main():
             launch(at="eolis-town")
             wait(4)
             s, world = charges(), tcp("fax_world")
-            assert s["hud"] and s["row"] == ROW and all(s[i]["charge"] == NONE for i in ITEMS), s
-            assert world["size"] == [424, 240] and world["hud_x"] == (424 - NATIVE_W - ROW) // 2, world
-            p = look("nothing-owned", ("empty",) * 3)
+            assert s["hud"] and s["width"] == ITEM and s["elixir"]["charge"] == NONE, s
+            assert world["size"] == [VIEW_W, 240] and world["hud_x"] == HUD_X, world
+            p = look("nothing-owned", "empty")
             left = p.status_bar_left()
             assert left == p.hud_x + 8, (left, p.hud_x)              # the "M" in column 1, from its left edge
-            assert not p.lit(p.hud_x + NATIVE_W, p.width), "nothing past the status bar"
-            print(f"ok: nothing owned, the row is empty, and the status bar is already at x {p.hud_x}, "
-                  f"{p.scene_x - p.hud_x} left of centre, with room for the row")
+            assert s["x"] == p.hud_x - ITEM and s["y"] == TOP, s
+            print(f"ok: no Elixir, its place is empty, and the status bar is already at x {p.hud_x}, "
+                  f"{p.hud_x - p.scene_x} right of the rooms' x {p.scene_x}, with room for it")
             walk_to("all-ready", 1, 0x99, {SELECTED_ITEM: WING_BOOTS, ITEM_INVENTORY: HOUR_GLASS, NUMBER_OF_ITEMS: 1,
                                             SPECIAL_ITEMS: BIT_ELIXIR})
+            r = recharge.state()
+            assert r["boots_ready"] and r["glass_ready"], r
             s = charges()
-            assert all(s[i]["charge"] == READY and s[i]["shown"] for i in ITEMS), s
-            p = look("all-ready", ("colour",) * 3)
+            assert s["elixir"]["charge"] == READY and s["elixir"]["shown"], s
+            p = look("all-ready", "colour")
             assert p.status_bar_left() == left and p.hud_x == world["hud_x"], "the status bar moved"
-            print("ok: all three ready, each in colour in its own slot; the status bar did not move")
+            rows = p.rows_lit()
+            assert rows[0] >= 16 and rows[-1] <= 31 and rows[-1] - rows[0] >= 12, rows   # level with the M: and P: rows
+            assert not p.lit(p.hud_x, p.hud_x + 8), "the band's blank column 0, between the Elixir and the M and P"
+            print(f"ok: the Wing Boots, the Hour Glass and the Elixir his: only the Elixir, in colour at x "
+                  f"{p.hud_x - ITEM}-{p.hud_x - 1}, lines {rows[0]}-{rows[-1]}, 8 pixels left of the M and P; "
+                  "the status bar did not move")
             act("select", 4, 30)
             assert box_open(), "the Select menu"
-            p = look("menu", ("colour",) * 3)
+            p = look("menu", "colour")
             # PlayerMenu_Show's box at tile 2, 6 of the scene's native columns, centred as before: its left
             # side in column 2, the black inside it from column 3 (the text from 4), the town's sky in column 1.
             x = p.scene_x
             assert p.lit(x + 16, x + 24, 56, 64) and not p.lit(x + 24, x + 32, 56, 64), "the menu's left side"
             assert len(p.lit(x + 8, x + 16, 56, 64)) == 64, "the town outside the menu"
             act("b", 4, 30)
-            print(f"ok: the Select menu stays on the room at x {x}, centred as before, and the row stays")
-
-        if args.wants("boots"):
-            launch()
-            cycle("boots", "the Wing Boots", 0, WING_BOOTS, USED_WING_BOOTS, WING_BOOTS_GONE, DURATION_WING_BOOTS, 2)
-
-        if args.wants("glass"):
-            launch()
-            cycle("glass", "the Hour Glass", 1, HOUR_GLASS, USED_HOUR_GLASS, HOUR_GLASS_GONE, DURATION_HOUR_GLASS, 4)
+            print(f"ok: the Select menu stays on the room at x {x}, centred as before, and the Elixir stays")
+            use()
+            until("the Wing Boots' line", lambda: ram(MESSAGE_ID) == USED_WING_BOOTS, 120)
+            for _ in range(24):
+                s = charges()["elixir"]
+                assert s["charge"] == READY and s["shown"] and s["blink"] == 0, s
+                wait(2)
+            assert recharge.state()["boots_running"] == 1, recharge.state()
+            look("boots-used", "colour")
+            page_through("the box to close", lambda: not box_open(), 3000)
+            walk_to("recharging", 1, 0x99, {SELECTED_ITEM: WING_BOOTS, ITEM_INVENTORY: HOUR_GLASS, NUMBER_OF_ITEMS: 1,
+                                             SPECIAL_ITEMS: BIT_ELIXIR}, {2: recharge.COOLDOWN, 4: recharge.COOLDOWN})
+            r = recharge.state()
+            assert r["boots_cooldown"] > 0 and r["glass_cooldown"] > 0, r
+            look("both-recharging", "colour")
+            print("ok: the Wing Boots used, then both recharging: nothing drawn for them, and the Elixir steady")
 
         if args.wants("elixir"):
             launch()
             walk_to("elixir", 4, 0x9C, {SPECIAL_ITEMS: BIT_ELIXIR})
             assert charges()["elixir"]["charge"] == READY, charges()
-            look("elixir-charged", ("empty", "empty", "colour"))
+            look("elixir-charged", "colour")
             game.poke({HP: 1, HP_FRACTION: 0})
             until("a Zozura's hit", lambda: ram(MESSAGE_ID) == USED_ELIXIR, 2400)
             s = charges()["elixir"]
             assert s["charge"] == USED and BLINK - OPENING <= s["blink"] <= BLINK, s
-            blinks("elixir")
-            look("elixir-revived", ("empty", "empty", "grey"))
-            look("elixir-revived-blink-off", ("empty",) * 3)
+            blinks()
+            look("elixir-revived", "grey")
+            look("elixir-revived-blink-off", "empty")
             print("ok: the Elixir revives the hero and is spent at once, grey and blinking through \"I've used Elixir.\" "
                   f"({s['blink']} of {BLINK} frames of blinking left as the line came up)")
             page_through("the box to close", lambda: not box_open(), 3000)
             until("HP and MP to refill", lambda: (ram(HP), ram(MP)) == (0x50, 0x50), 1200)
-            settles("elixir")
-            look("elixir-spent", ("empty", "empty", "grey"))
+            settles()
+            look("elixir-spent", "grey")
             print("ok: after the line it blinks a moment more, then stays grey: he owns it, but it will not catch him")
 
         if args.wants("guru"):
             launch(at="recharge-temple")
             wait(4)
             assert charges()["elixir"]["charge"] == USED, charges()
-            p = look("temple-spent", ("empty", "empty", "grey"))
+            p = look("temple-spent", "grey")
             # The temple is one screen wide: centred in the view, black either side below the band, its walls
             # at both of its edges.
             x = p.scene_x
@@ -293,7 +278,7 @@ def main():
             until("his line", lambda: ram(MESSAGE_ID) == ELIXIR_LINE, 300)
             type_out("his line", 900, pauses=False)                    # no pause in it; the flag may be stale
             assert recharge.state()["line"] == 1, recharge.state()   # "Your Elixir is restored."
-            p = look("elixir-restored", ("empty", "empty", "colour"))
+            p = look("elixir-restored", "colour")
             # His dialogue box (TextBox_SetCoordsForNPC with a portrait: tile 10, 16, 20 x 8) is on the
             # temple: its left side in the scene's column 10, the black inside from column 11.
             x = p.scene_x
@@ -307,13 +292,14 @@ def main():
                        SPECIAL_ITEMS: BIT_ELIXIR})
             wait(4)
             s = charges()
-            assert not s["enabled"] and s["row"] == 0 and all(s[i]["charge"] == NONE for i in ITEMS), s
+            assert not s["enabled"] and s["width"] == 0 and s["elixir"]["charge"] == NONE and s["x"] == -1, s
             p = Picture(game, "original")
             centred = (p.width - NATIVE_W) // 2 if p.width > NATIVE_W else 0
             assert p.hud_x == centred and p.status_bar_left() == centred + 8, (p.hud_x, p.status_bar_left())
-            assert not p.lit(centred + NATIVE_W, p.width, 0, HUD), "nothing past the status bar"
-            print(f"ok: with the remaster off, nothing past the status bar, which is where the original has it "
-                  f"(x {centred} of a {p.width}-wide picture)")
+            assert not p.lit(0, centred, 0, HUD) and not p.lit(centred + NATIVE_W, p.width, 0, HUD), \
+                "nothing either side of the status bar"
+            print(f"ok: with the remaster off, nothing either side of the status bar, which is where the original "
+                  f"has it (x {centred} of a {p.width}-wide picture)")
         print("screenshots:", ", ".join(game.shots))
     except BaseException:
         if game.running():

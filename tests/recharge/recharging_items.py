@@ -19,8 +19,9 @@ used with Down+B, as a player would.
    (the original: 40, 30, 20, 10). Then, as a Novice in Eolis: 30 s of flight,
    T: counting it down. When it runs out (from its last seconds: the game
    counts a flight down, and the bands check each one's length), T: blinks a
-   60 s cooldown; Down+B then does nothing. Once it is over, the same pair
-   flies again. Dying makes them ready.
+   60 s cooldown; Down+B then does nothing. With another item selected, or
+   none, T: is the original's 00. Once it is over, the same pair flies again.
+   Dying makes them ready.
 2. The Hour Glass on Eolis screen 4: the Zozuras stop, HP halves, 15 s (its end
    from its last seconds, as the flight's). Then a
    60 s cooldown; refused meanwhile; then, from its last seconds (the Wing
@@ -447,6 +448,19 @@ def main():
             assert items() == ([], WING_BOOTS), items()
             print(f"ok: the flight's last {LAST_SECONDS} s ran out after {flown} frames; T: blinks the {COOLDOWN} s cooldown, and Down+B "
                   "meanwhile does nothing but the invalid-choice sound")
+            # T: is the selected item's only (#117): the boots in the list and nothing selected, the original's
+            # idle 00, steady, though they still recharge; selected again, their seconds blink again.
+            poke({SELECTED_ITEM: NO_ITEM, ITEM_INVENTORY: WING_BOOTS, NUMBER_OF_ITEMS: 1})
+            until("T: to show 00", lambda: (lambda s: s["hud"] == 0 and s["hud_drawn"] == 0)(state()), 60)
+            for _ in range(36):
+                s = state()
+                assert s["hud_drawn"] == 0 and not s["hud_drawn_blank"] and s["boots_cooldown"] > 0, s
+                wait(2)
+            shot("boots-recharging-not-selected")
+            poke({SELECTED_ITEM: WING_BOOTS, NUMBER_OF_ITEMS: 0})
+            hud_shot("boots-recharging-selected-again", range(1, COOLDOWN + 1))
+            print("ok: with the recharging Wing Boots not selected T: shows the original's 00, steady; selected "
+                  "again, their seconds blink")
         if args.wants("boots-cooldown"):
             # The cooldown a flight's end leaves (boots-flight checks it starts
             # at 60 s): the record's, set as the screen settles, then its 60 s.

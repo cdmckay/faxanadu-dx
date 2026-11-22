@@ -457,10 +457,10 @@ hooks = "faxanadu.charges."
 rom = []
 # No hooks and no ROM: it reads RAM, Recharging items' state
 # (fax_recharge_charge) and the last frame's nametable at the end of each
-# frame, and draws the recharging items' row over the presented picture, past
-# the status bar, after Seamless has composed it (Seamless lays the status bar
-# out with the row: fax_world_native_x). Its pictures are bank 10's, read from
-# the cart image. Writes nothing.
+# frame, and draws the Elixir over the presented picture, left of the status
+# bar, after Seamless has composed it (Seamless lays the status bar out with
+# it: fax_world_hud_x). Its picture is bank 10's, read from the cart image.
+# Writes nothing.
 
 [[feature]]
 id = "mana-refill"
