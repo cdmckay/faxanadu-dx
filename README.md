@@ -95,7 +95,9 @@ the connected map. It is still a preview, for local play only. See
   Up+B does, but without going through a door, talking to anyone or swinging
   your sword.
 - **MP that refills.** Four seconds after your last spell, your MP starts to
-  climb back toward full, a point every half second.
+  climb back toward full, a point every half second. Eolis's Magician no
+  longer sells MP: for 2000 Golds he teaches you, once, to recover it twice
+  as fast.
 - **Damage numbers.** Every hit that takes HP shows how much, floating up from
   where it landed: white for the damage you deal, pink for the damage you take.
 - **A taller dagger.** The Hand Dagger's swing reaches as low as the swords',
