@@ -227,8 +227,9 @@ from the Magician ($15, $17), "Our doctor can help." ($45), "I sell keys." and
 
 The King's guard (`ISCRIPT_EOLIS_KINGS_GUARD`, no portrait) stands at `$9A` on
 screen 7, two blocks right of the King's door. The Eolis Guru gives the Ring
-of Elf (`SpecialItems` `$80`) the first time; the King gives 1500 gold (3000
-with the remaster) only to a hero with none (see *Gold*).
+of Elf (`SpecialItems` `$80`) the first time; the King gives 1500 gold only to
+a hero with none, as often as he comes with none (3000 with the remaster,
+once; see *Gold*).
 
 ## Messages (bank 13)
 
@@ -734,21 +735,40 @@ in `IScripts_UpdatePortraitAnimation`), with the gold sound every fourth
 frame, then waits 60 frames: once the amount is 0 it sets bit 15 (`DEC
 Temp_0203` to `$FF`) and counts `Temp_0202` down from 60. So an amount must
 be below `$8000` and a multiple of 10 (*Shops* says what one that is not
-does). Two callers: `IScriptAction_AddGold` (`$8525`, action `$09`), which
-reads the amount from the script and calls it at `$8531`, and the sell list
+does). A paying turn takes 10 from `Temp_0202/3` (`SEC`, `SBC #$0A`, `SBC
+#$00`), then puts the add in `Temp_Int24` (`LDA #$0A`, `STA Temp_Int24`,
+`LDA #$00`, `STA Temp_Int24_M`) and calls `Player_AddGold` at `$8560`, which
+adds `Temp_Int24`/`_M` and draws the gold; then `JMP` back to the top. So
+1500 takes 150 frames (2.5 s) of counting. Two callers:
+`IScriptAction_AddGold` (`$8525`, action `$09`), which reads the amount from
+the script and calls it at `$8531`, and the sell list
 (`IScriptAction_ShowSellMenu`, half the shop's price).
+
+**`CHECK_GOLD`** (`IScriptAction_IfPlayerHasGold`, `$861F`, action `$0D`) is
+`LDA Gold`, `ORA Gold_M`, `ORA Gold_U`, `BNE @_hasGold`; with no gold,
+`JMP IScripts_SkipAddrAndInvoke` at `$862A` (two `IScripts_LoadByte`, then
+`IScripts_InvokeNextAction`), and with any, `JMP IScripts_JumpToNextAddr` at
+`$862D`. At either, `IScriptOrCHRAddr` + `IScriptOffset` is the address
+word: `IScripts_InvokeNextAction` has read the action byte.
 
 **The King** is the only `ADD_GOLD` in the game. `ISCRIPT_EOLIS_KING`
 (`$A350`, bank 12, script `$08`) is `80`, `0D A35A` (`CHECK_GOLD`: any gold
 jumps), `01 35` (his plea, which B cannot skip), `09 DC 05` (1500), `00`; at
 `$A35A`, `03 36, 00` ("There is nothingmore I can do tohelp you.", then
-"Looking forward/to good news."). So he gives only to a hero with no gold: once, unless the gold
-is spent to 0 first. At the action's `JSR`, `IScriptOrCHRAddr` +
-`IScriptOffset` is `$A359`, his `END`. The plea (message `$35`, `$8BB6` in
-bank 13) names the amount: "You are our lasthope./I shall give you1500
-Golds.", its digits at `$8C81-$8C84`. The quest log's line for The King's
-Plea ("Bring the water back to the Elf fountain, our life source.") names
-none.
+"Looking forward/to good news."). So he gives to any hero with exactly 0
+gold: again each time the gold is spent to 0. At his `CHECK_GOLD`, the
+script stands at `$A352`; at the action's `JSR`, `IScriptOrCHRAddr` +
+`IScriptOffset` is `$A359`, his `END`. The plea's message action
+(`IScriptAction_ShowUnskippableMessage`) ends only on a new press of A once
+the message has typed out (`TextBox_CheckShouldContinue`: `MessageID` 0 and
+A in `Joy1_ChangedButtonMask`), and the count pays its first 10 the frame
+after. The plea (message `$35`, `$8BB6` in bank 13) names the amount: "You
+are our lasthope./I shall give you1500 Golds.", its digits at
+`$8C81-$8C84`. The quest log's line for The King's Plea ("Bring the water
+back to the Elf fountain, our life source.") names none. The log gives that
+quest at either of his lines, `$35` or `$36`, and at `$4C` (the man walking
+on Forepaw's screen 3), so The King's Plea given means he has spoken, not
+that he has paid: a hero who comes with gold hears `$36` first.
 
 **Coins come only from monsters.** No screen's sprite list (bank 11) places a
 coin (`$02`) or bread (`$01`). A monster that dies by weapon or magic becomes
@@ -786,8 +806,10 @@ HP for bread; a boss up to four):
 So Eolis's Zozuras leave bread; the Trunk's first coin is a Monodron's.
 
 **With the remaster** (Double gold, `fax_gold.c`) the King pays 3000 and his
-plea says so, and every coin pays twice its value, held at the cap; see
-*Features and what they use*. Selling, the title's gold and spending are the
+plea says so, counted 20 a frame in the original's 150 frames, and only once
+a game: after it, he says "nothing more" whatever the hero's gold. Every coin
+pays twice its value, held at the cap; see *Features and what they use*.
+Selling, the title's gold and spending are the
 original's.
 
 ## The title screen (bank 15, bank 12)
@@ -3606,15 +3628,42 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
   buffer has less than 50 bytes of room (not empty), the MP waits for the
   next frame that has it. A new game's MP climbs from 0 like any other. The
   wait and the MP last seen are its save-state record; MP is in no save file.
-- **Double gold** (`fax_gold.c`, #102). The King gives 3000 instead of 1500,
-  and every coin a monster leaves pays twice its value. Three hooks, each
-  returning 0, with no ROM and no read overrides (the budget is full), and no
-  state: each decision is made from RAM and the registers (see *Gold*).
+- **Double gold** (`fax_gold.c`, #102, #104). The King gives 3000 instead of
+  1500, counted in the original's 150 frames, and once a game; every coin a
+  monster leaves pays twice its value. Five hooks, each returning 0, with no
+  ROM and no read overrides (the budget is full). Its one piece of state is
+  whether the King has given; everything else is decided from RAM and the
+  registers (see *Gold*).
   - At `IScriptAction_AddGold`'s `JSR IScripts_ProgressivelyAddGold`
     (`$8531`, bank 12), when the script stands at the King's `END` (`$A359`)
-    and `Temp_0202/3` holds 1500, it writes 3000 there. The game pays it, 10
-    a frame: 300 frames of counting where the original takes 150. Selling
-    reaches the same routine from the sell list, never through `$8531`.
+    and `Temp_0202/3` holds 1500, it writes 3000 there. From here he has
+    given (outside Seamless's isolated rooms).
+  - At `IScripts_ProgressivelyAddGold`'s `JSR Player_AddGold` (`$8560`, bank
+    12), the routine's 10 already taken from `Temp_0202/3` and put in
+    `Temp_Int24`, when the script still stands at the King's `END`, it takes
+    10 more (if that much is left) and makes `Temp_Int24` 20: the game's own
+    add pays 20 a frame, so his 3000 counts up in 150 frames, as the
+    original's 1500 did, and the cap still holds. Selling reaches the routine
+    from the sell list with the script in a shop's, so it keeps 10 a frame.
+  - At `IScriptAction_IfPlayerHasGold`'s no-gold `JMP
+    IScripts_SkipAddrAndInvoke` (`$862A`, bank 12), when the King has given
+    and the script stands at his `CHECK_GOLD`'s word (`$A352`), it sets
+    `IScriptOrCHRAddr` to `$A358` and `IScriptOffset` to 0: the skip's two
+    loads (`$A358-$A359`, his `ADD_GOLD`'s high byte and `END`) leave the
+    script at `$A35A`, where a hero with gold goes. So after his gift he says
+    "There is nothingmore I can do tohelp you." to anyone. The quest log's
+    marks walk his script by the gold, but both his lines give The King's
+    Plea, so they are the same either way.
+  - Whether he has given is the field `gold.king_given` (`yes` or `no`) of
+    the file in play, written at every save, and its save-state record
+    (version 1: the version, then 0 or 1). A new game has not given. A file
+    from before the field, or with it damaged, has given if The King's Plea
+    is in its `quests.given` (`fax_quests_given_in_file`): he has spoken,
+    which in nearly every game is the plea his gift follows (see *Gold* for
+    the rest). A file without `quests.given` either has not given. A save
+    state from before the record takes it from the quest log's own record,
+    once every record is in (`fax_gold_loaded`, from the host's
+    `state_loaded`).
   - At the text box's reader, after `LDA (Temp_Int24),Y` (`$F4DF`, `CMP
     #$FF`, fixed bank), while `MessageID` is `$35` with bank 13 mapped, the
     byte read from `$8C81` or `$8C82` (`Temp_Int24` + Y, so past a page
@@ -3632,9 +3681,11 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
 
   Every coin in the game is a monster's, so nothing else is doubled: no
   gold lies in the world, and selling, the title's gold and spending are
-  untouched. `gold_state` over TCP gives the gold, the gifts doubled, the
-  plea's digits served and typed (`plea_digits`, on or off, for a test's
-  picture), and the coins, what they paid and how many reached the cap.
+  untouched. `gold_state` over TCP gives the gold, whether the King has
+  given, the gifts doubled, his count's pays of 20 (`king_pays`) and the
+  times he was sent on to "nothing more" (`nothing_more`), the plea's digits
+  served and typed (`plea_digits`, on or off, for a test's picture), and the
+  coins, what they paid and how many reached the cap.
 
 - **Zone names** (`fax_banner.c`, with `fax_zone.c` and `fax_text.c`).
   Entering a zone with a different name shows it below the HUD for 2 s, in a
@@ -4095,7 +4146,8 @@ town names), recharging items' `recharge.wingboots`, `recharge.hourglass`,
 what they use*), the map's
 `map.eolis`, `map.trunk`, `map.mist`, `map.towns`, `map.branch`,
 `map.dartmoor`, `map.zenis` and `map.items` (see *The map*), the quest log's
-`quests.given` and `quests.done` (see *Quests*). (`imported_mantra`, on a
+`quests.given` and `quests.done` (see *Quests*), and Double gold's
+`gold.king_given` (see its entry). (`imported_mantra`, on a
 file imported from a mantra before mantras went from the remaster, is kept
 like any field no feature knows.) Missing core fields take a new game's
 values. HP, MP and the timed items are not

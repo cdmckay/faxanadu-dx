@@ -851,16 +851,30 @@ bytes = "a2 07 8e 78 03 bd cc 02 c9 ff d0 41"   # LDX #$07, STX CurrentSpriteInd
 
 # Double gold (fax_gold.c): IScriptAction_AddGold's JSR
 # IScripts_ProgressivelyAddGold, where the King's step (the game's only
-# ADD_GOLD) pays 3000 for 1500; the text box's reader after LDA
-# (Temp_Int24),Y, where his plea's "1500" types as "3000"; and
-# Player_HandleTouchCoin before its add, which then lands on twice the coin's
-# value, held at the cap. All three return 0.
+# ADD_GOLD) pays 3000 for 1500; that routine's JSR Player_AddGold, where the
+# King's count pays 20 a frame for 10; IScriptAction_IfPlayerHasGold's
+# no-gold JMP, where the King, once he has given, goes on as with gold; the
+# text box's reader after LDA (Temp_Int24),Y, where his plea's "1500" types
+# as "3000"; and Player_HandleTouchCoin before its add, which then lands on
+# twice the coin's value, held at the cap. All five return 0.
 
 [[mod_function_hook]]
 id = "faxanadu.double-gold.king"
 addr = 0x8531
 bank = 12
 bytes = "20 37 85 4c 6e 82 20 b0 87 ad 03 02"   # JSR IScripts_ProgressivelyAddGold, JMP IScripts_InvokeNextAction
+
+[[mod_function_hook]]
+id = "faxanadu.double-gold.king-count"
+addr = 0x8560
+bank = 12
+bytes = "20 c1 f9 4c 37 85 ce 03 02 a9 3c 8d"   # JSR Player_AddGold, JMP IScripts_ProgressivelyAddGold
+
+[[mod_function_hook]]
+id = "faxanadu.double-gold.king-once"
+addr = 0x862a
+bank = 12
+bytes = "4c 16 86 4c 03 86 a9 10 20 e9 f3 a9"   # JMP IScripts_SkipAddrAndInvoke, JMP IScripts_JumpToNextAddr
 
 [[mod_function_hook]]
 id = "faxanadu.double-gold.king-line"
