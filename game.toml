@@ -327,7 +327,8 @@ bank = 15
 bytes = "ad 13 02 f0 cf ad 15 02 d0 ca ad 1d"
 
 # Save files (fax_files.c): the title's input routine (its menu runs there)
-# and the LDY #$7E after it loads the arrow's X (moved before NEW GAME), the
+# and the LDA #$AD after it loads the arrow's X and Y (moved beside the chosen
+# line of NEW GAME and CONTINUE), the
 # mantra screen and the start screen's JMP Player_Spawn (continuing a file), Player_Spawn after Game_SpawnInTemple (save on respawn), each
 # interaction-script action (a Guru's choice), and Messages_Load's reset of
 # the text box's line scroll (keep it for lines that follow a scrolled one).
@@ -340,9 +341,9 @@ bytes = "a5 19 29 20 f0 0d ad 87 06 49 01 8d"
 
 [[mod_function_hook]]
 id = "faxanadu.files.arrow"
-addr = 0x9f62
+addr = 0x9f64
 bank = 12
-bytes = "a0 7e a9 ad 4c a7 fc 34 74 9f a3 ad"   # LDY #$7E, LDA #$AD, JMP UI_DrawPromptInputSymbol, its X table
+bytes = "a9 ad 4c a7 fc 34 74 9f a3 ad b1 bc"   # LDA #$AD, JMP UI_DrawPromptInputSymbol, its X table
 
 [[mod_function_hook]]
 id = "faxanadu.files.mantra-screen"

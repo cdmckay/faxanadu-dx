@@ -1,13 +1,14 @@
 /* DX on the title. USA 57dd23d1, chipx86 byte-exact disassembly.
  *
- * The word sits under the FAXANADU logo, centered on it, in the title's own
- * letters and the color the logo's palette draws its highlights in. The
- * letters come from the game's dialogue font (fax_text.c): its A to Z are the
- * title's letter tiles (CHR_LETTERS, bank 10 $8240, one color), pixel for
- * pixel. The title's picture is left as the game drew it: the word
- * goes over the presented picture, in rows the title leaves black (y 148-154,
- * between the logo's last row, 143, and the title's choices, from 160: START
- * and CONTINUE, NEW GAME and CONTINUE with the remaster, or a file pick).
+ * The word sits on the logo, just under the FAXANADU letters, centred on the
+ * tree's trunk, in the title's own letters and the color the logo's palette
+ * draws its highlights in, with a black outline a pixel wide all round (its
+ * 8 neighbours) so it reads on the art. Only the word and its outline are
+ * drawn: the logo shows everywhere else. The letters come from the game's
+ * dialogue font (fax_text.c): its A to Z are the title's letter tiles
+ * (CHR_LETTERS, bank 10 $8240, one color), pixel for pixel. The title's
+ * picture is left as the game drew it: the word goes over the presented
+ * picture.
  *
  * The title is up while Game_ShowStartScreen's loop runs: once a frame it
  * far-calls StartScreen_CheckHandleInput (which Save files steers), then
@@ -42,8 +43,10 @@ static const char WORD[] = "DX";
 enum {
     NATIVE_W = 256, NATIVE_H = 240,
     LOGO_LEFT = 16, LOGO_W = 224,   /* the logo and its border: tiles 2-29 of rows 2-17 (StartScreen_Draw, $2042) */
-    WORD_Y = 148,                   /* the logo's last row is 143; the title's choices start at 160 */
+    WORD_Y = 116,                   /* on the trunk, just under FAXANADU's letters: lit on 116-122 */
+    WORD_W = 16, WORD_H = 8,        /* two cells of the font */
     WORD_COLOR = 3,                 /* palette RAM: the logo's palette ($0F $05 $18 $38), its light yellow */
+    OUTLINE_COLOR = 0,              /* the backdrop, $0F: the title's black */
 };
 
 static bool enabled, failed;
@@ -53,13 +56,48 @@ static int drawn_x = -1, drawn_y = -1, drawn_w;   /* where the last present put 
 static uint32_t *canvas;
 static size_t capacity;
 
-/* The word's top-left in a presented picture `width` wide: centered under the
+/* The word's top-left in a presented picture `width` wide: centred on the
  * logo, wherever the native picture sits in it. */
 static void word_at(int width, int *x, int *y) {
     *x = cyc_render_native_origin(width) + LOGO_LEFT + (LOGO_W - fax_text_width(WORD)) / 2;
     *y = WORD_Y;
 }
 static bool title_up(void) { return enabled && !failed && seen <= 1; }
+
+/* The word's pixels, in a box a pixel wider all round than its cells:
+ * 2 where a letter lights it, 1 on its outline (a pixel next to one, the
+ * diagonals too), else 0. */
+enum { BOX_W = WORD_W + 2, BOX_H = WORD_H + 2 };
+static void word_pixels(uint8_t px[BOX_H][BOX_W]) {
+    memset(px, 0, BOX_H * BOX_W);
+    for (int i = 0; WORD[i]; ++i) {
+        const uint8_t *glyph = fax_text_glyph(WORD[i]);
+        for (int r = 0; glyph && r < 8; ++r)
+            for (int c = 0; c < 8; ++c)
+                if (glyph[r] >> (7 - c) & 1) px[r + 1][i * 8 + c + 1] = 2;
+    }
+    for (int r = 0; r < BOX_H; ++r)
+        for (int c = 0; c < BOX_W; ++c)
+            for (int dr = -1; dr <= 1 && px[r][c] == 0; ++dr)
+                for (int dc = -1; dc <= 1; ++dc)
+                    if (r + dr >= 0 && r + dr < BOX_H && c + dc >= 0 && c + dc < BOX_W && px[r + dr][c + dc] == 2) {
+                        px[r][c] = 1;
+                        break;
+                    }
+}
+
+/* The word with its top-left at (x, y) of a picture w x h, and its outline. */
+static void draw_word(uint32_t *out, int w, int h, int x, int y) {
+    uint8_t px[BOX_H][BOX_W];
+    word_pixels(px);
+    uint32_t color = cyc_render_color(WORD_COLOR), outline = cyc_render_color(OUTLINE_COLOR);
+    for (int r = 0; r < BOX_H; ++r)
+        for (int c = 0; c < BOX_W; ++c) {
+            int px_x = x - 1 + c, px_y = y - 1 + r;
+            if (px[r][c] && px_x >= 0 && px_y >= 0 && px_x < w && px_y < h)
+                out[(size_t)px_y * (size_t)w + (size_t)px_x] = px[r][c] == 2 ? color : outline;
+        }
+}
 
 /* Game_ShowStartScreen's loop, once a frame while the title is up. */
 static int loop_hook(uint16_t addr) {
@@ -95,7 +133,7 @@ const uint32_t *fax_title_present(const uint32_t *picture, int *w, int *h) {
     memcpy(canvas, from, n * sizeof *canvas);
     int x, y;
     word_at(width, &x, &y);
-    fax_text_draw_color(canvas, width, height, x, y, WORD, cyc_render_color(WORD_COLOR), 255);
+    draw_word(canvas, width, height, x, y);
     ++shown_frames;
     drawn_x = x; drawn_y = y; drawn_w = width;
     *w = width; *h = height;
@@ -126,9 +164,10 @@ static void title_state(int id, const char *line) {
     char fields[256];
     snprintf(fields, sizeof fields,
              "\"enabled\":%s,\"font\":%s,\"shown\":%s,\"seen\":%u,\"word\":\"%s\",\"x\":%d,\"y\":%d,"
-             "\"width\":%d,\"color\":%d,\"argb\":%lu,\"presents\":%u",
+             "\"width\":%d,\"color\":%d,\"argb\":%lu,\"outline_argb\":%lu,\"presents\":%u",
              enabled ? "true" : "false", fax_text_loaded() ? "true" : "false", title_up() ? "true" : "false", seen,
-             WORD, drawn_x, drawn_y, drawn_w, WORD_COLOR, (unsigned long)cyc_render_color(WORD_COLOR), shown_frames);
+             WORD, drawn_x, drawn_y, drawn_w, WORD_COLOR, (unsigned long)cyc_render_color(WORD_COLOR),
+             (unsigned long)cyc_render_color(OUTLINE_COLOR), shown_frames);
     cyc_tcp_ok(id, fields);
 }
 void fax_title_tcp_setup(void) {
