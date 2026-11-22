@@ -9,8 +9,8 @@ each run takes a free TCP port, and any number can go in parallel.
 Copies the build to OUT (so the faxanadu_gurus.txt sidecar stays there), starts
 a new game over TCP, walks through Eolis's gate into the meat shop and saves a
 state there. It relaunches with the Gurus of Eolis and Apolune visited (as
-tests/travel/guru_travel.py does), then talks to the Meat Seller. For each other
-Eolis building it edits where the shop's door leads (save-state RAM, an
+tests/travel/guru_travel.py does), then talks to the Potion Seller. For each
+other Eolis building it edits where the shop's door leads (save-state RAM, an
 external prerequisite, as tests/zones/zone_names.py does), walks out onto that
 building's door and goes in: the Guru (twice: the Ring of Elf, then Guru
 travel's offer), the King, the King's guard outside (no portrait, no name), the
@@ -99,7 +99,7 @@ def check_tab(path, row, length, inside):
     assert len(set(lit)) == 1 and len(lit) >= 8 * length, f"{path.name}: no line of text in the tab"
 
 
-PARTS = ("meat-seller", "guru", "king", "martial-artist", "tool-seller", "fraternal")   # each its own game
+PARTS = ("potion-seller", "guru", "king", "martial-artist", "tool-seller", "fraternal")   # each its own game
 
 
 def main():
@@ -226,12 +226,12 @@ def main():
         state = speaker()
         assert state["enabled"] and not state["shown"] and state["name"] is None, state
 
-        if args.wants("meat-seller"):
-            # 1. The Meat Seller's question; B declines it.
+        if args.wants("potion-seller"):
+            # 1. The Potion Seller's question; B declines it.
             talk()
-            tab("Meat Seller")
+            tab("Potion Seller")
             finish("b")
-            print("ok: the Meat Seller is named through his question, and the tab goes with him")
+            print("ok: the Potion Seller is named through his question, and the tab goes with him")
 
         if args.wants("guru"):
             # 2. Eolis's Guru: the Ring of Elf, then Guru travel's offer.

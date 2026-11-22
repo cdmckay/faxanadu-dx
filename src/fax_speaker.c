@@ -13,12 +13,13 @@
  * tab above the dialogue box, at its left edge, in the game's own font and
  * frame (fax_text.c). A shop's list (Shop_Draw: 10,8, 20 x 20) covers the
  * dialogue box and rises above it, so the tab moves up onto the list while it
- * is open. The names are the dialogue's where it names someone, and the King
- * and the Gurus are "of" their town: the zone table (fax_zone.c) at the
- * building's door, or for a temple its town by temple number. No hooks, no
- * ROM, nothing written to the machine: it reads RAM and the nametable when the
- * picture is presented, so it keeps no state, and a save state shows what it
- * did when saved. See docs/GAME_INTERNALS.md, "Portraits" and "The text box". */
+ * is open. The names are the dialogue's where it names someone (no one names
+ * the Meat Salesman, who sells Red Potions with the remaster, fax_potions.c:
+ * he is the Potion Seller), and the King and the Gurus are "of" their town:
+ * the zone table (fax_zone.c) at the building's door, or for a temple its
+ * town by temple number. No hooks, no ROM, nothing written to the machine: it
+ * reads RAM and the nametable when the picture is presented, so it keeps no
+ * state, and a save state shows what it did when saved. See docs/GAME_INTERNALS.md, "Portraits" and "The text box". */
 #include "fax_speaker.h"
 #include "fax_text.h"
 #include "fax_zone.h"
@@ -61,7 +62,8 @@ static const char *const titles[FAX_PORTRAITS] = {
     [FAX_PORTRAIT_MAGICIAN] = "Magician",               /* $15 "I shall give magic", $17 "I'll teach you" */
     [FAX_PORTRAIT_DOCTOR] = "Doctor",                   /* $45 "Our doctor can help." */
     [FAX_PORTRAIT_NURSE] = "Nurse",                     /* in the hospitals, beside the Doctor */
-    [FAX_PORTRAIT_MEAT_SALESMAN] = "Meat Seller",       /* $07-$0D "Dried meat to bring energy" */
+    [FAX_PORTRAIT_MEAT_SALESMAN] = "Potion Seller",     /* he sells Red Potions (fax_potions.c); in the
+                                                           original, dried meat ($07-$0D), and no one names him */
     [FAX_PORTRAIT_TOOLS_SALESMAN] = "Tool Seller",      /* $0F "I sell tools." */
     [FAX_PORTRAIT_KEY_SALESMAN] = "Key Seller",         /* $0E "I sell keys." */
 };
