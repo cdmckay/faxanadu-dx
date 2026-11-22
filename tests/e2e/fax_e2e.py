@@ -145,8 +145,9 @@ Fixtures: the saved games tests start from
     ROM and never committed. Each is cached in build-tests/fixtures as
     NAME[-options]-KEY.cycstate, made once under a lock however many tests ask
     at once. KEY covers the ROM, the build's game and mods, the game options and
-    the source files of the recipes from power-on to it, so any change to them
-    makes it again (and drops the stale one). A recipe uses only its game and
+    the source files of the recipes from power-on to it, with those of the
+    test modules they use (a Game subclass's settle(), a shared walk), so any
+    change to them makes it again (and drops the stale one). A recipe uses only its game and
     the functions above, never the test's own game.
 
 Parts
@@ -733,12 +734,31 @@ def _digest(path):
     return _digests[path]
 
 
+def _sources(how):
+    """The source files a recipe's state depends on: its own, with the
+    constants and helpers defined there, and those of every test module,
+    class or function its module uses (a Game subclass's settle(), a
+    shared walk), wherever they are defined."""
+    tests = REPO / "tests"
+    files = {Path(inspect.getsourcefile(how)).resolve()}
+    for value in list(how.__globals__.values()):
+        if not (inspect.ismodule(value) or inspect.isclass(value) or inspect.isfunction(value)):
+            continue
+        try:
+            source = inspect.getsourcefile(value)
+        except TypeError:                                   # built in
+            continue
+        if source and Path(source).resolve().is_relative_to(tests):
+            files.add(Path(source).resolve())
+    return sorted(files)
+
+
 def _fixture_key(game, name):
     """(tag, key) for the fixture `name` in `game`: the tag names the game
     options it was made with; the key changes with anything that could make
     the state stale: the ROM, the build's game and mods, the options, and the
-    source files of the recipes from power-on to it (with the constants and
-    helpers they use)."""
+    source files of the recipes from power-on to it, with those of the test
+    modules they use (_sources())."""
     if name not in _recipes:
         raise KeyError(f"no recipe for the fixture {name!r}")
     parts = [f"{zlib.crc32(game.image):08x}", _digest(game.build / "FaxanaduRecomp"), _digest(game.build / "mods"),
@@ -746,7 +766,7 @@ def _fixture_key(game, name):
     chain = name
     while chain:
         parent, how = _recipes[chain]
-        parts.append(f"{chain}\n{_digest(inspect.getsourcefile(how))}")
+        parts.append(chain + "".join(f"\n{source.name} {_digest(source)}" for source in _sources(how)))
         chain = parent
     tag = "".join("-" + "".join(c if c.isalnum() else "-" for c in arg.lstrip("-")) for arg in game.game_args)
     return tag, hashlib.sha256("\n".join(parts).encode()).hexdigest()[:16]

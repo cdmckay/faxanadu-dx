@@ -83,7 +83,9 @@ def _respawn_temple(g):
 
 The state is saved when the recipe returns. It is keyed on the ROM, the
 build's game and mods, the game options (Seamless has its own) and the source
-files of its recipes, so changing any of them makes it again. Several tests
+files of its recipes, with those of the test modules each uses (a `Game`
+subclass's `settle()`, a shared walk), so changing any of them makes it
+again. Several tests
 asking at once wait for one to make it. Never commit a save state: it holds
 CHR RAM copied from the ROM. Ask for a fixture (`game.state(name)`) before the
 test's own game launches: an uncapped game burns a thread while it waits.
