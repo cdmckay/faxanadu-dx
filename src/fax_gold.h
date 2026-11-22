@@ -10,4 +10,9 @@
  * value added, held at FAX_GOLD_MAX. */
 uint32_t fax_gold_after_coin(uint32_t gold, uint8_t value);
 
+/* How many of the four digits of the King's plea ("1500", or "3000" with
+ * the remaster) have typed, as the text box stands, on or off: 0 when the
+ * plea is not loaded. */
+unsigned fax_gold_plea_digits(void);
+
 void fax_gold_tcp_setup(void);

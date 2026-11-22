@@ -264,7 +264,7 @@ def main():
             talk(climb=True, stop=48)
             tab("King of Eolis")
             finish()
-            assert ram(GOLD, 3) == bytes([0xDC, 0x05, 0x00]), "the King gives 1500 Golds"
+            assert ram(GOLD, 3) == bytes([0xB8, 0x0B, 0x00]), "the King gives 3000 Golds (Double gold)"
             print("ok: the King of Eolis is named, through all his pages")
 
             # 4. His guard outside, who has no portrait: no name.

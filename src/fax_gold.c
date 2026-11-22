@@ -170,22 +170,21 @@ static void activate(void) {
     nes_mod_set_local_only("Double gold", 1);
 }
 
-#ifdef CYC_WITH_SDL
-/* How many of the plea's four digits have typed, as the text box stands
- * (with the remaster on or off): for a test's picture of them. */
-static unsigned plea_digits(void) {
+unsigned fax_gold_plea_digits(void) {
     if (peek(MESSAGE_ID) != MESSAGE_KING_EXPOSITION) return 0;
     unsigned next = (uint16_t)(word(MESSAGE_START_ADDR) + peek(MESSAGE_PROCESSED_LENGTH));
     unsigned typed = next > KING_DIGITS ? next - KING_DIGITS : 0;
     return typed < sizeof stock_digits - 1 ? typed : (unsigned)(sizeof stock_digits - 1);
 }
+
+#ifdef CYC_WITH_SDL
 static void gold_state(int id, const char *line) {
     (void)line;
     char fields[256];
     snprintf(fields, sizeof fields,
              "\"enabled\":%s,\"gold\":%lu,\"kings\":%u,\"line\":%u,\"plea_digits\":%u,\"coins\":%u,"
              "\"coin_gold\":%lu,\"last_coin\":%u,\"capped\":%u",
-             enabled ? "true" : "false", (unsigned long)gold(), seen.kings, seen.line, plea_digits(), seen.coins,
+             enabled ? "true" : "false", (unsigned long)gold(), seen.kings, seen.line, fax_gold_plea_digits(), seen.coins,
              seen.coin_gold, seen.last_coin, seen.capped);
     cyc_tcp_ok(id, fields);
 }
