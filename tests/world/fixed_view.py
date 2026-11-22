@@ -2,7 +2,7 @@
 
     python3 tests/world/fixed_view.py --build build-cycle --rom "Faxanadu (USA).nes" --out /tmp/view
 
-Plays Seamless (it adds --world-view=seamless if the suite has not) in
+Plays Seamless, the remaster's view, in
 Eolis's town, from a saved game:
 
 1. At the test window's size (424x240, config.ini's scale 1 of the view),
@@ -54,8 +54,6 @@ def png(path):
 
 def main():
     args = parse_args(__doc__)
-    if not any("world-view" in arg for arg in args.game_arg):
-        args.game_arg.append("--world-view=seamless")
     g = Game.from_args(args)
 
     def size():

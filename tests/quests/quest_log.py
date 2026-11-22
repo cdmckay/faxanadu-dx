@@ -160,7 +160,7 @@ def main():
     args = parse_args(__doc__, parts=PARTS)
     game = Game.from_args(args)
     out = game.out
-    seamless = any("seamless" in a for a in args.game_arg)
+    seamless = True  # SEAMLESS-ALWAYS
     view = "Seamless" if seamless else "the original view"
 
     def shot_marks(name, script):
@@ -484,7 +484,7 @@ def main():
             print("ok: continuing file 1 puts The King's Plea back in the log")
             game.close()
 
-        if args.wants("original") and not seamless:
+        if args.wants("original"):
             game.set_features({PACKAGE: False})
             shop = game.state("eolis-meat-shop")
             game.launch(at="eolis-meat-shop")

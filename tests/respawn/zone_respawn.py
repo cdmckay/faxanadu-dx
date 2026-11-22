@@ -315,7 +315,7 @@ def main():
     ap = parser(__doc__, PARTS)
     ap.add_argument("--only", action="append", default=[], help="run only these entrances (repeatable)")
     args = chosen(ap.parse_args(), PARTS)
-    seamless = any("seamless" in arg for arg in args.game_arg)
+    seamless = True  # SEAMLESS-ALWAYS
     game = Game.from_args(args)
     out = game.out
     shot = game.shot

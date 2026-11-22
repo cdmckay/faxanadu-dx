@@ -158,7 +158,7 @@ def main():
     args = parse_args(__doc__, parts=PARTS)
     game = Game.from_args(args)
     out = game.out
-    seamless = any("seamless" in a for a in args.game_arg)
+    seamless = True  # SEAMLESS-ALWAYS
 
     def walk(direction, target, frames=1800):
         """Hold `direction` until the hero stands on `target` (area, screen), settled."""
@@ -405,7 +405,7 @@ def main():
                   f"stays taken: no dot")
             game.close()
 
-        if args.wants("original") and not seamless:
+        if args.wants("original"):
             game.set_features({PACKAGE: False})
             game.launch(at="gate")
             assert not state()["enabled"] and place() == (EOLIS, 0), state()

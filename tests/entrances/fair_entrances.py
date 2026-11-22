@@ -411,7 +411,7 @@ def main():
     ap.add_argument("--only", action="append", default=[], help="only the spots whose name contains this")
     ap.add_argument("--jobs", type=int, default=3, help="spots played at once (headless runs)")
     args = chosen(ap.parse_args(), PARTS)
-    seamless = any("seamless" in a for a in args.game_arg)
+    seamless = True  # SEAMLESS-ALWAYS
     game = Game.from_args(args)
     runs = Runs(game, args.game_arg)
     try:

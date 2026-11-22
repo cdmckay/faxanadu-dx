@@ -484,7 +484,7 @@ def title(game, fixed):
 def main():
     args = parse_args(__doc__, parts=PARTS)
     game = Game.from_args(args)
-    seamless = any("seamless" in a for a in getattr(args, "game_arg", ()))
+    seamless = True  # SEAMLESS-ALWAYS
     fixtures = {"studded": ["trunk-studded"], "fire": ["trunk-ladder"], "myconid": ["door-myconid"],
                 "fortress": ["door-fortress"] + (["door-fortress-east"] if seamless else []), "title": []}
     counters = {"studded": "studded_climb", "fire": "fire", "myconid": "myconid", "fortress": "fortress",

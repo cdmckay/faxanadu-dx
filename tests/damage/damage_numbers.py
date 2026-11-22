@@ -96,7 +96,7 @@ def png(path):
 
 def main():
     args = parse_args(__doc__)
-    seamless = any("seamless" in a for a in args.game_arg)
+    seamless = True  # SEAMLESS-ALWAYS
     game = Game.from_args(args)
     out, rom = game.out, game.image[16:]
 
