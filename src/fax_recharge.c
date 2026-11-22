@@ -123,7 +123,7 @@
 #define TEMPLES                 8
 enum { SLOT_LEN = FAX_TRAVEL_SLOT_LEN, SLOT_ID = FAX_TRAVEL_SLOT_ID };
 
-enum { BOOTS, GLASS, TIMED };   /* the two timed items */
+enum { BOOTS = FAX_RECHARGE_BOOTS, GLASS = FAX_RECHARGE_GLASS, TIMED };   /* the two timed items */
 enum { BANDS = 4 };             /* title bands: PlayerTitle / 4 */
 
 /* Flight time and cooldowns, in the game's seconds (64 frames, what T:
@@ -481,6 +481,19 @@ static int guru_hook(uint16_t addr) {
 /* For Quick shops (fax_shops.c), which lists what the hero owns. */
 bool fax_recharge_on(void) { return enabled; }
 bool fax_recharge_elixir_spent(void) { return enabled && charge.elixir_spent; }
+
+/* For the status bar (fax_charges.c). A spent Elixir found again has its bit
+ * set before tick_hook forgets that it was spent, so the bit decides first. */
+static FaxCharge charge_of(const Charge *c, int item, bool owned, bool elixir_bit) {
+    if (item == FAX_RECHARGE_ELIXIR) return elixir_bit ? FAX_CHARGE_READY : c->elixir_spent ? FAX_CHARGE_USED : FAX_CHARGE_NONE;
+    if (!owned) return FAX_CHARGE_NONE;
+    return ready(c, item) ? FAX_CHARGE_READY : FAX_CHARGE_USED;
+}
+FaxCharge fax_recharge_charge(int item) {
+    if (!enabled || item < 0 || item >= FAX_RECHARGE_ITEMS) return FAX_CHARGE_NONE;
+    bool owned = item < TIMED && owns(ITEM_ID[item]);
+    return charge_of(&charge, item, owned, q(SPECIAL_ITEMS) & BIT_ELIXIR);
+}
 
 /* ---- the file in play (Save files, fax_save.h) ---- */
 

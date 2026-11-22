@@ -108,6 +108,9 @@ Functions, on the game launched last
                                     that typed a character, loaded with A down):
                                     whether it did.
     box_open()                      A text box (or the Select menu) is open.
+    native_x(width)                 Where a picture `width` wide put native column 0:
+                                    Seamless's layout (the status bar and the
+                                    recharging items' row centred together), 0 at 256.
     dissolve(frames=600)            Until the Guru speaks after a death: a recipe
                                     that dies ends with it, so a test starts there.
     hold(button, done, frames=600)  Hold a button until done(), then let go at
@@ -988,6 +991,14 @@ def type_out(what="the page to type out", frames=1200, pauses=True):
 def box_open():
     """A text box (or the Select menu) is open: TextBox_Closed is 0."""
     return ram(TEXTBOX_CLOSED) == 0
+
+
+def native_x(width):
+    """Where the last picture, `width` wide, put native column 0: 0 in the
+    256-wide view; in Seamless's, where it laid out the status bar, with the
+    native picture, its text boxes and menus lined up under it
+    (fax_world_native_x)."""
+    return tcp("fax_world")["native_x"] if width > 256 else 0
 
 
 def page_through(what, done, frames=3000, button="a"):

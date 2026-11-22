@@ -672,7 +672,7 @@ const uint32_t *fax_quests_marks_present(const uint32_t *picture, int *w, int *h
             if (!fax_world_room_origin(m->area, m->room, &rx, &ry)) { mark_px[i][0] = mark_px[i][1] = -1; continue; }
             x = rx + m->x; y = ry + m->y;
         } else if (width >= NATIVE_W) {   /* the original view, or Seamless showing the native picture */
-            x += cyc_render_native_origin(width);
+            x += fax_world_native_x(width);
         } else {
             to_picture(width, height, &x, &y);
         }
@@ -699,7 +699,8 @@ const uint32_t *fax_quests_banner_present(const uint32_t *picture, int *w, int *
     const char *line[2] = { "Quest complete", fax_quests[banner_quest].name };
     int cols = FAX_QUEST_COLS + 2, box_w = (cols + 2) * FAX_TEXT_CELL;
     int hud = width < NATIVE_W ? HUD * width / NATIVE_W : HUD;
-    int x = (width - box_w) / 2, y = hud + FAX_TEXT_CELL;
+    int x = width < NATIVE_W ? (width - box_w) / 2 : fax_world_native_x(width) + (NATIVE_W - box_w) / 2;
+    int y = hud + FAX_TEXT_CELL;
     fax_text_box(canvas, width, height, x, y, cols, 2, alpha);
     for (int r = 0; r < 2; ++r)
         fax_text_draw(canvas, width, height, x + (box_w - fax_text_width(line[r])) / 2,
