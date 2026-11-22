@@ -4550,7 +4550,8 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   `Player_CastMagic` will not cast): the game's bar. The span is worked out
   at every present from `Player_MP`, capped to the bar's 80 pixels, and
   `SelectedMagic`, so it follows MP however it changes (a cast, MP refill,
-  a shop, the Elixir's fill) and the spell as the menu changes it. Only the
+  the Wing Boots' and the Hour Glass's drain, a shop, the Elixir's fill) and
+  the spell as the menu changes it. Only the
   bar's own fill is recolored: in the span, on its fill lines 18-21, the
   pixels showing the fill's color (*MP and its bar*), so in the frame or two
   before the game redraws the bar after MP changes, nothing is drawn where

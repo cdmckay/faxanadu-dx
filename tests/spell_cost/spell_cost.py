@@ -18,7 +18,10 @@ bar's black, and nothing else in the status bar band changed.
    6 pixels are the lighter ones, so the span tracks MP.
 2. short: at 8 MP, Tilte (16) and Death (10) will not go off, and the whole
    fill is a step darker; Fire (6) can, and its last 6 pixels are lighter.
-3. original: the remaster off, Fire cast at 42: the bar is the game's, 36
+3. drain: at 40 MP with Fire selected, the Hour Glass (Down+B) takes an MP
+   every 24 frames (#124): at each MP the game has drawn the bar for, Fire's
+   6 pixels are the fill's last, lower and lower as it drains.
+4. original: the remaster off, Fire cast at 42: the bar is the game's, 36
    pixels of the plain green and nothing lighter or darker.
 """
 from pathlib import Path
@@ -27,12 +30,14 @@ import sys
 import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import Game, batch, fixture, parse_args, ram, tcp, until, wait  # noqa: E402
+from fax_e2e import Game, batch, box_open, fixture, page_through, parse_args, ram, tcp, until, wait  # noqa: E402
 
-PARTS = ("cost", "short", "original")
+PARTS = ("cost", "short", "drain", "original")
 PACKAGE = ("faxanadu.dx", "dx")
 MP, SELECTED_MAGIC, CAST_MAGIC_TYPE = 0x39A, 0x3C0, 0x2B3
 DELUGE, THUNDER, FIRE, DEATH, TILTE, NO_SPELL = 0, 1, 2, 3, 4, 0xFF
+SELECTED_ITEM, HOUR_GLASS, PLAYER_FLAGS, MESSAGE_ID, USED_HOUR_GLASS = 0x3C1, 0x0D, 0xA4, 0x213, 0xAC
+GLASS_STEP = 24                                            # fax_recharge.c: GLASS_FRAMES_PER_MP
 NAMES = ("deluge", "thunder", "fire", "death", "tilte")
 COSTS = (2, 4, 6, 10, 16)                                  # MAGIC_COSTS ($B7A9, bank 14)
 BAR_X, FILL_TOP, FILL_LINES, BAR_MAX = 24, 18, 4, 80       # fax_spell_cost.h; UI_MPAndHPBarWidth 10 tiles
@@ -69,8 +74,8 @@ class Bar:
     """A screenshot's M: bar: each pixel of its fill, what the four fill
     lines show there, against the band's left edge as Seamless laid it out."""
 
-    def __init__(self, game, name):
-        self.path = game.shot(name)
+    def __init__(self, game, name, path=None):
+        self.path = path or game.shot(name)
         self.width, self.height, self.rows = png(self.path)
         self.x = tcp("fax_world")["hud_x"] + BAR_X
 
@@ -85,6 +90,10 @@ class Bar:
             assert len(seen) == 1, (self.path.name, i, seen)
             out.append(seen.pop())
         return out
+
+    def lit(self):
+        """How many of the bar's pixels are filled: the MP the game last drew it for."""
+        return sum(c != BLACK for c in self.fill())
 
     def border(self):
         return {self.at(self.x + i, y) for i in range(BAR_MAX) for y in BORDER}
@@ -227,6 +236,43 @@ def main():
             assert s["kind"] == "cast" and (s["from"], s["to"]) == (2, 8), s
             assert bar.fill() == expect(green, rgb(s["shade_rgb"]), 8, (2, 8)), runs(bar.fill())
             print("ok: at 8 MP Fire (6) can: its pixels 2-7 lighter, 0-1 the plain green")
+
+        if args.wants("drain"):
+            launch()
+            mp40 = cast_to(40, DELUGE, "mp40")
+            path = out / "glass.cycstate"
+            fixture(mp40, path, {SELECTED_MAGIC: FIRE, SELECTED_ITEM: HOUR_GLASS})
+            load(path)
+            until("the hero to stand", lambda: not ram(PLAYER_FLAGS) & 0x05, 120)
+            tcp("action", name="down", frames=60)                    # Down+B, the selected item
+            wait(6)
+            tcp("action", name="b", frames=4)
+            until("I've used Hour Glass.", lambda: ram(MESSAGE_ID) == USED_HOUR_GLASS, 120)
+            page_through("the box to close", lambda: not box_open(), 3000)
+            assert tcp("recharge_state")["glass_running"], tcp("recharge_state")
+            light = seen = None
+            for _ in range(3):
+                start = ram(MP)
+                until("an MP to drain", lambda: ram(MP) < start, GLASS_STEP + 4)
+                for _ in range(4):
+                    wait(2)                                        # the game draws the bar the frame after
+                    # The picture and what the feature drew in it, from the same frame: one the bar
+                    # shows its MP in (a frame the MP went, its bar still to come, is taken again).
+                    path = out / f"{len(game.shots):02d}-hour-glass-{ram(MP)}.png"
+                    _, s = batch(("screenshot", dict(layer="picture", path=str(path))), ("spell_cost_state", {}))
+                    bar = Bar(game, None, path)
+                    if bar.lit() == s["mp"]:
+                        break
+                    path.unlink()
+                game.shots.append(path.name)
+                mp, light = s["mp"], rgb(s["shade_rgb"])
+                green = rgb(s["fill_rgb"])
+                assert s["kind"] == "cast" and (s["from"], s["to"]) == (mp - 6, mp) and bar.lit() == mp, (s, bar.lit())
+                assert bar.fill() == expect(green, light, mp, (mp - 6, mp)), runs(bar.fill())
+                assert seen is None or mp < seen, (mp, seen)
+                seen = mp
+            print(f"ok: the Hour Glass drains MP, and Fire's 6 pixels stay the fill's last, down to {seen} MP "
+                  f"(pixels {seen - 6}-{seen - 1})")
 
         if args.wants("original"):
             launch(on=False)
