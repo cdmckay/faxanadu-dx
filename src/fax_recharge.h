@@ -8,8 +8,8 @@
 
 void fax_recharge_tcp_setup(void);
 /* Recharging items is on: the Wing Boots and the Hour Glass the hero has are
- * his for good, so Quick shops shows them in its buy list as owned
- * (fax_shops.c). */
+ * his for good, so Quick shops shows them in its buy list as owned, and
+ * won't buy them (fax_shops.c). */
 bool fax_recharge_on(void);
 /* The Elixir revived the hero and waits, spent, for a Guru to charge it: it
  * is still his, as a charged one is (SpecialItems' bit). False when off. */

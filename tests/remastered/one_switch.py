@@ -57,6 +57,7 @@ STATES = {
     "map": ("map_state", "enabled"),
     "graphics-fix": ("graphics_fix_state", "enabled"),
     "quest-log": ("quest_state", "enabled"),
+    "fair-entrances": ("entrances_state", "enabled"),
 }
 START_CHOICE = 0x687                                                # DAT_0687: 0 Start, 1 Continue
 PASSWORD_COL, PASSWORD_ROW, PASSWORD_LENGTH = 0x662, 0x663, 0x666
