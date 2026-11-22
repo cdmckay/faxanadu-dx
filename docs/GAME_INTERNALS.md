@@ -1790,7 +1790,7 @@ jump a few updates after stepping off, as A from the hang itself would.
 | `$0018` | `Joy1_PrevButtonMask` | The held mask at the read before. While the screen scrolls, `Game_UpdatePlayerOnScroll` copies it back into `Joy1_ButtonMask` |
 | `$00A4` | `Player_Flags` | `$80` attacking, `$40` facing right, `$20` moving, `$10` climbing, `$08` a ladder to climb, `$04` falling (in the air without jumping; see The hero's movement), `$02` holding to climb, `$01` jumping |
 | `$02B3` | `CastMagic_Type` | The spell on screen, `$FF` for none. Each spell's handler takes it back to `$FF` when it hits or leaves |
-| `$039A` | `Player_MP` | At most 80. A cast is the only thing that lowers it (see *MP and its bar*) |
+| `$039A` | `Player_MP` | At most 80. In the original a cast is the only thing that lowers it; with the remaster the Wing Boots and the Hour Glass do too (see *MP and its bar*) |
 | `$03A9-$03AC` | `MagicInventory` | Spells owned. `NumberOfMagicSpells` (`$03C5`) counts them |
 | `$03C0` | `SelectedMagic` | 0 Deluge, 1 Thunder, 2 Fire, 3 Death, 4 Tilte; `$FF` none |
 
@@ -1917,7 +1917,9 @@ jump a few updates after stepping off, as A from the hang itself would.
   only one that lowers it), `Player_AddMP` (`$C0D9`: `CLC`, `ADC Player_MP`,
   capped at `$50`, then `JMP Player_SetMP`) and `Player_SetMP` (`$FA85`,
   capped at 80). So MP lower than a frame before means a spell was cast (or a
-  new game began).
+  new game began). With the remaster the Wing Boots and the Hour Glass take
+  MP too (Recharging items stores it and draws the bar with `Player_SetMP`),
+  and MP refill counts those as spends as well.
 - **The bar is drawn only when MP changes through those routines.**
   `Player_SetMP` stores MP and falls into `UI_SetHUDBarValue` with Y = 1, the
   Magic bar, which queues two PPU buffer commands: the bar at `$2043`,
@@ -3278,6 +3280,18 @@ Mattock breaks nothing a fetched one could not.
 **Using them** (Down+B, `GameLoop_CheckUseCurrentItem`, which refuses while
 jumping or falling, `Player_Flags & $05`):
 
+- **Down+B works in flight with A held.** While the Wing Boots fly and A is
+  held, `Player_CheckHandleVertMovement` takes Down as a climb down
+  (`Player_CheckHandleClimbDown`, `AND #$DA`), which clears the jumping and
+  falling bits every frame it is held, before `Game_MainLoop` reaches
+  `GameLoop_CheckUseCurrentItem` (the pass's order: `GameLoop_UpdatePlayer`,
+  the draws, `Player_CastMagic`, `GameLoop_CheckUseCurrentItem`,
+  `Sprites_UpdateAll`, `GameLoop_CountdownItems`, ...). So A+Down+B in the
+  air reaches the selected item's routine; without A the hero falls, and it
+  does not (checked in the game: `Player_Flags` `$42` with A and Down held).
+  An item used there runs before that pass's countdowns. Over TCP, B is the
+  NES button (`action b`): a controller's B is Block (`pad b`).
+
 - `Player_UseWingBoots` (`$C579`): script `$83` ("I've used Wing Boots."),
   `JSR Player_ClearSelectedItem` at `$C581`, sound `$1A`, then
   `DurationWingBoots` = `TITLE_TO_WINGBOOTS_DURATION[PlayerTitle / 4]` (`$C599`:
@@ -3291,12 +3305,29 @@ jumping or falling, `Player_Flags & $05`):
   and the Ointment's. Each takes a second off on the game's second, so a
   duration of N lasts between N and N+1 seconds; wrapping to `$FF` runs "The
   power of the Wing Boots (Hour Glass) is gone." (messages `$C0`, `$C1`).
+- The two countdowns at the game's second, byte for byte:
+  `Game_DecWingBootsDuration` (`$C59D`) is `LDA DurationWingBoots`, `BMI
+  @_return`, `LDA Player_StatusFlag`, `ORA #$80`, `STA`, then at `$C5A8` `LDA
+  InterruptCounter`, `AND #$3F`, `BNE @_return`, `DEC DurationWingBoots`
+  (`$C5AE`), `LDA`, `BMI @_wingBootsDone` (`$C5B9`: clear `$80`, script
+  `$96`), else `JMP UI_DrawTimeValue`. `Game_DecHourGlassDuration` (`$C5EB`)
+  is `LDA DurationHourGlass`, `BMI`, then at `$C5F0` `LDA InterruptCounter`,
+  `AND #$3F`, `BNE @_return`, `DEC DurationHourGlass` (`$C5F6`), `BPL
+  @_return`, else script `$97` and `Music_Current` = `Areas_DefaultMusic`.
+  So a site at either `LDA InterruptCounter` runs once a main-loop frame
+  while that item runs and decides its second: an RTS skips it, and a jump
+  to the `DEC` with the duration at 0 ends the item with the game's own line
+  (Recharging items does both).
+- `Player_UseHourGlass`'s cost is `LSR Player_HP_U`, `ROR Player_HP_L` at
+  `$C5D8`, then `JSR UI_DrawPlayerHP` (`$C0BD`) at `$C5DE`, `LDA #$0F`, `STA
+  DurationHourGlass`, `LDA #$0B`, `STA Music_Current`.
 - **T:** is two ASCII tiles at PPU `$2058`. Only the Wing Boots draw it
   (`UI_DrawTimeValue`, queued through the PPU buffer at `$0500`: length 2,
   `$20`, `$58`, the digits); the Hour Glass never shows a time.
+  `UI_DrawHUD` draws `00` there whenever it draws the whole HUD.
 - In the picture, T: is at x 176-188 and its seconds at x 192-207, y 16-23.
-  While the selected item recharges (`fax_recharge.c`) the seconds blink,
-  and in the off phase they are black.
+  With the remaster it shows the selected item's seconds left while it runs
+  (`fax_recharge.c`).
 - `Game_ClearTimedItems` (`$C6AF`) sets all four durations to `$FF`. It runs
   from `Game_Start` and `Player_Spawn`, so every death ends them, but not on a
   Guru travel journey, which enters `Player_Spawn` past it: a flight or a
@@ -3308,7 +3339,7 @@ jumping or falling, `Player_Flags & $05`):
   a hero holding them another, until his list is full (checked in the game:
   Forepaw sold a second pair). An earlier note here said shops never sell
   what you hold; that holds only for the Elixir. `Player_PickUpItem` adds a
-  duplicate too. With the remaster, a find recharges instead, and Quick
+  duplicate too. With the remaster, a find he holds adds nothing, and Quick
   shops lists a pair or an Hour Glass he has as owned, and won't buy it (see
   *Shops*).
 
@@ -3387,8 +3418,10 @@ end of the ledge across `$24` (row 5, open at columns 13-14), up the right side
 of `$25` and left along its top to the man. Flown in the end-to-end test with
 the enemies of `$20`, `$23` and `$24` cleared, it takes about 1,035 frames
 (16 of the game's seconds) from leaving the message box to landing by him, so
-the lowest band's 30 s is enough, with 15 s to spare. The original gave a
-Novice 40 s.
+#27's lowest band (30 s) was enough, with 15 s to spare. The original gave a
+Novice 40 s. Flying on MP (#124), a Novice's full bar flies 40 s, and the
+climb takes about 30 of its 80 MP (an MP every 32 frames: 979 frames and 30
+MP in the end-to-end test), so he needs well under half a bar.
 
 The dialogue also says the Wing Boots are needed "to get to the misty town of
 Victim" (Mist `$22` and `$25` lead into it). One candidate: the ladder at the
@@ -3397,7 +3430,8 @@ starts high above the floor, and a probe flew from the floor into `$2A` in
 about 180 frames (3 s). Whether that is the climb the dialogue means, and the
 rest of the way to Victim, were not checked.
 
-**Recharging breaks no sequence** (the check from #6):
+**Recharging breaks no sequence** (the check from #6, again for #124's
+flights on MP):
 
 - It gives no item, so the first moment you can own Wing Boots is unchanged.
   The earliest sources (table above) are around Forepaw: its shop, and the
@@ -3405,11 +3439,12 @@ rest of the way to Victim, were not checked.
   above this town".
 - Flying again is not new reach. The original sells pairs in two shops and
   lets found pairs stack, so it gave any number of flights for gold. A kept
-  pair flies again a minute after its flight runs out.
+  pair flies again as soon as there is MP, which MP refill brings back.
 - Flights longer than the original's longest (40 s, a Novice's) come only from
-  Swordman (50 s) and Champion (60 s). Not checked: whether any place needs one
-  flight of more than 40 s. Nothing in the dialogue points at one, and the late
-  regions are gated by keys and rings.
+  Adept on (50 s on a full bar), Swordman (60 s) and Champion (80 s), and
+  only on a full bar. Not checked: whether any place needs one flight of more
+  than 40 s. Nothing in the dialogue points at one, and the late regions are
+  gated by keys and rings.
 - The Hour Glass reaches nothing, and a kept Elixir is a revive, not a way in.
 
 ## Screens and blocks
@@ -3692,7 +3727,7 @@ played in the game. Two engine rules it has to follow:
 
 | | Trigger | The original | With the remaster |
 |---|---|---|---|
-| Eolis's edge shafts | Wing Boots in Eolis, over the right wall of `$00` or `$08` | Stuck below the floor (reproduced) | Avoided: the Wing Boots recharge |
+| Eolis's edge shafts | Wing Boots in Eolis, over the right wall of `$00` or `$08` | Stuck below the floor (reproduced) | Avoided: the Wing Boots are kept |
 | A find with a full Items list | A Mattock, Wing Boots, Hour Glass or Red Potion touched with 8 listed | Said and lost (reproduced) | Fixed: Kept finds |
 | The fountain's ladder in `$27` | Leaving Trunk `$28` on its first pass | No trap | Fixed already: Ladder fixes |
 | The Tower of Fortress's floor | The Mattock on Trunk `$2D`'s block `$63` | No trap | The block is floor: Graphics fixes |
@@ -3709,7 +3744,7 @@ played in the game. Two engine rules it has to follow:
   To have the Wing Boots in Eolis, the hero must die before any temple Guru
   has set his spawn point (it starts at 0, Eolis), after buying them in
   Forepaw or finding them: obscure. With the remaster the pair is kept, and
-  once it recharges Down+B flies him up the shaft and out
+  once MP refill has brought MP back Down+B flies him up the shaft and out
   (`tests/softlocks/eolis_shaft.py`). Eolis is the one place found where a
   flight ends in a trap: Branch's open row under `$10`'s floor, reached by
   flying left out of `$11`'s floorless bottom, holds him at Y `$C0` too, but
@@ -3859,7 +3894,10 @@ one of them since #110, so the remaster always plays in its 424x240 view.
 - **MP refill** (`fax_mana.c`). Once no MP has been spent for 240 frames (4
   s), MP climbs back toward 80, 1 every 30 frames. No hooks and no ROM: at
   each frame's end it takes MP lower than at the last as a spend, which
-  starts the wait again (the frame of the spend does not count), and counts
+  starts the wait again (the frame of the spend does not count), as does
+  each frame the Wing Boots or the Hour Glass runs on MP
+  (`fax_recharge_draining`: they take an MP only every 24 to 64 frames, and
+  the lesson's step is 15, so without it MP could come back mid-run), and counts
   the wait down only on frames the game played, those that end with
   `Game_MainLoop` waiting at its top (S `$FD`, `$DB4F` on the stack, bank 14,
   not paused or dead; see *MP and its bar*). A pause, the map, the quest log,
@@ -3875,7 +3913,9 @@ one of them since #110, so the remaster always plays in its 424x240 view.
 - **The Magician's lesson** (`fax_lesson.c`, #105). Eolis's Magician no
   longer sells 40 MP for 200: he teaches the hero, once, for 30000 Golds, to
   recover MP twice as fast (MP refill's 120 and 15), and only a hero who has
-  studied at the magic hall in the Mist (bought Fire from its Magician). His
+  studied at the magic hall in the Mist (bought Fire from its Magician).
+  Since the Wing Boots and the Hour Glass run on MP (#124), it also means
+  flying and freezing again sooner. His
   script (*The two Magicians*) is steered at `IScripts_InvokeNextAction`,
   through Guru travel's steps and message `$C3`'s slot, served with the same
   bytes:
@@ -4129,44 +4169,76 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   as an `overrides` entry, which `tools/check_allocations.py` checks against
   its stock value.
 - **Recharging items** (`fax_recharge.c`, with the use-up list in
-  `fax_items.h`). The Wing Boots and the Hour Glass are kept and recharge, and
-  the Elixir is kept and a Guru charges it again. Its sites are in the fixed
-  bank, but for `$826E` in bank 12 (below):
-  - `Player_UseWingBoots` and `Player_UseHourGlass`, at entry: not ready, it
-    plays the "invalid choice" sound (`$0D`, `Sound_PlayEffect` in a committed
-    call) and returns to the main loop as the routine's RTS would.
+  `fax_items.h`). The Wing Boots and the Hour Glass are kept, and both run on
+  MP with no cooldown (#124, after #27's 60 s cooldowns), and the Elixir is
+  kept and a Guru charges it again. Its sites are in the fixed bank, but for
+  `$826E` in bank 12 (below). The costs are one table and two constants at
+  the top of `fax_recharge.c`, in played frames (a pass of the main loop) a
+  MP, so every cost is exact: the Wing Boots take an MP every 32, 40, 48 or
+  64 frames by title band (2, 1.6, 1.33 and 1 MP a second of the game's 64
+  frames: a full bar flies 40, 50, 60 and 80 s), and the Hour Glass one
+  every 24 at any title (40 MP for its whole 15 s). Each takes its first MP
+  a whole step after it starts, and its last on the frame MP reaches 0.
+  - `Player_UseWingBoots` and `Player_UseHourGlass`, at entry: one that is
+    running is ended, at this pass's countdown (`GameLoop_CheckUseCurrentItem`
+    comes before `GameLoop_CountdownItems`), so Down+B again lands a flight
+    (in the air with A held, or standing: *Using them*) or ends a freeze,
+    with the game's own line. With 0 MP either plays the "invalid choice"
+    sound (`$0D`, `Sound_PlayEffect` in a committed call), as a spell he
+    can't afford does nothing. Both return to the main loop as the routine's
+    RTS would.
   - `Player_ClearSelectedItem` (`$C4BF`), shared with reusable tools: skipped
     when the JSR came from `$C581` or `$C5D0`, so the item stays selected and
     drawn. `fax_items.h` lists every caller and who keeps its item.
-  - The `STA DurationWingBoots` at `$C592`: A becomes the flight for the title
-    band, from the one table in `fax_recharge.c`, and `UI_DrawTimeValue` draws
-    it.
-  - `GameLoop_CountdownItems`, before the game's own countdowns: a run that
-    has ended (its duration back at `$FF`) starts a 60 s cooldown; cooldowns
-    count down on the game's second; and T: shows the selected item's
-    cooldown, blank 16 frames in 64, queued through the PPU buffer as
-    `UI_DrawTimeValue` queues it, when `PPUBuffer_HasCapacity` would allow
-    it. With anything else selected, or nothing, T: is the original's: the
-    flight's own count while the Wing Boots fly (they stay selected), else
-    `00`, what the end of a flight and `UI_DrawHUD` leave there. It never
-    shows the other item's cooldown: nothing on the status bar would say
-    whose it is (#117; before, it showed the Wing Boots', else the Hour
-    Glass's, when the selected item was not recharging). A spent Elixir whose
-    bit came back (found) is charged.
+  - The `STA DurationWingBoots` at `$C592`: the flight begins, after its
+    line, and A becomes its seconds on the MP there is, which
+    `UI_DrawTimeValue` draws.
+  - The `LSR Player_HP_U` at `$C5D8`: the freeze begins, and the site jumps
+    to the `JSR UI_DrawPlayerHP` at `$C5DE` (push `$C5DD`, return 1), past the
+    original's halving: the freeze costs no HP.
+  - The `LDA InterruptCounter` at `$C5F0` (`Game_DecHourGlassDuration`) and
+    at `$C5A8` (`Game_DecWingBootsDuration`), each reached once a main-loop
+    frame while its item runs: that frame of the run. MP goes on schedule
+    (stored at once; its bar drawn with `Player_SetMP` in a committed call
+    when the PPU buffer has room for both of its commands, else at the next
+    frame that has, as MP refill gives its MP), the duration is set to the
+    seconds left, rounded up, and the site returns 1, an RTS, so the game's
+    own second never ticks. At the run's end (0 MP, the freeze's 15 s, or
+    Down+B) it sets the duration to 0 and jumps to the `DEC` (`$C5F6`,
+    `$C5AE`), which wraps it to `$FF`: the game's own end, "The power of the
+    ... is gone." and, for the Hour Glass, the area's music. A
+    `DurationHourGlass` it did not set is `LimitItemDurations`' 0 on a boss's
+    screen: the freeze stops taking MP, and the site returns 0, so the
+    game's own second ends it within a second, as in the original. Both
+    running at once drain together, and each ends on the frame it finds MP at
+    0 (the Hour Glass's site runs first in a pass).
+  - `GameLoop_CountdownItems`, before the game's own countdowns: T: shows the
+    selected item's seconds left while it runs, the flight's or the freeze's
+    at the MP there is and all that drains it, rounded up (a full bar's 40 s
+    shows 40). With anything else selected, or nothing, T: is the original's:
+    the flight's while the Wing Boots fly, whatever is selected, else `00`
+    (#119; the Hour Glass never showed a time). It is queued through the PPU
+    buffer as `UI_DrawTimeValue` queues it, when `PPUBuffer_HasCapacity`
+    would allow it, when it changes, and every 16 frames while not 0, since
+    `UI_DrawHUD` draws `00` there. A bar still to draw is drawn. A spent
+    Elixir whose bit came back (found) is charged.
+  - MP refill (below) holds while either runs (`fax_recharge_draining`): no
+    MP comes back during a flight or a freeze, and its wait starts from the
+    run's end.
   - `Player_UseElixir`: the Elixir is spent. `SpecialItems`' bit stays the
     game's own "a revive is in reserve", so `Player_ReduceHP`, the Player page
     and the Spring of Trunk go by whether it is charged.
   - No shop charges a spent Elixir: Quick shops lists it as owned
     (`fax_recharge_elixir_spent`) and ignores A on it.
   - `Player_PickUpItem`, with A the Wing Boots or the Hour Glass and the hero
-    holding one (selected or listed): ready at once, and nothing added, even
-    with the list full. Found during a run, the run goes on and no cooldown
-    follows it.
-  - `Game_ClearTimedItems`: both ready (a death, a new game, a mantra; not a
-    Guru travel journey), or a continued file's cooldowns (below). Zone
-    respawn brings the hero back through `Player_Spawn` too (it skips only the
-    `JSR Game_SpawnInTemple` after this call), so a death readies both
-    wherever he comes back.
+    holding one (selected or listed): nothing added, even with the list
+    full; one is all he needs. Found during a run, the run goes on.
+  - `Game_ClearTimedItems`: both runs end (a death, a new game, a mantra, a
+    continued file; not a Guru travel journey, so a flight or a freeze
+    carries on, taking MP, in the other temple). Zone respawn brings the hero
+    back through `Player_Spawn` too (it skips only the `JSR
+    Game_SpawnInTemple` after this call), so a death ends both wherever he
+    comes back.
     `Game_ShowStartScreen`: everything forgotten. A mantra keeps a charged
     Elixir (the bit) and loses a spent one.
   - `IScripts_InvokeNextAction` (`$826E`, bank 12): at a Guru's first
@@ -4207,30 +4279,34 @@ one of them since #110, so the remaster always plays in its 424x240 view.
     script's, and the line is forgotten. A Guru greets a hero with no
     Elixir as before. If the overrides cannot be set, the Gurus charge it
     silently for the session.
-  - Save files: the file in play keeps `recharge.wingboots` and
-    `recharge.hourglass` (the game's seconds until ready, 0 when ready; a run
-    not yet over counts as its whole cooldown), `recharge.elixir` (`spent`,
-    or no field: the core `special_items` says whether it is charged) and
+  - Save files: the file in play keeps `recharge.elixir` (`spent`, or no
+    field: the core `special_items` says whether it is charged) and
     `recharge.elixir_told` (`yes`, or no field: a Guru has said either line,
     so a continued file never hears "If your Elixir is used" again). They
     are written whenever the file is (`FAX_SAVE_WRITING`: a Guru's save, and
-    every spawn's, so a death writes them ready), read back on
-    `FAX_SAVE_CONTINUED`, and reset by `FAX_SAVE_NEW_GAME`. Continuing spawns
-    the hero through `Player_Spawn`, whose `Game_ClearTimedItems` would make
-    both ready, so the continued cooldowns wait for that call and are put
-    back there, before the spawn's save writes the file again.
-  - Its hooks do nothing inside Seamless's isolated simulations. Its 17-byte
-    save-state record, version 2 (a version, each timed item's running flag
-    and cooldown, the Elixir spent, a continued file's cooldowns waiting for
-    the spawn, whether a Guru has told the hero, and the Guru's line: waiting
-    or showing, which, the action it goes before, and where the script goes
-    back to) is its whole state while playing. A state saved while the line
-    shows gets it back in the slot after the load (`fax_recharge_loaded`,
-    after Guru travel's record has put its own last line there). Version 1
-    records (9 bytes) load with nothing told.
+    every spawn's), read back on `FAX_SAVE_CONTINUED`, and reset by
+    `FAX_SAVE_NEW_GAME`. Nothing of the Wing Boots or the Hour Glass is kept:
+    continuing spawns the hero with no timed item running, and neither has a
+    cooldown. #27's `recharge.wingboots` and `recharge.hourglass` (seconds
+    until ready) are read no more, and its next write drops them from a file.
+  - Its hooks do nothing inside Seamless's isolated simulations. Its 20-byte
+    save-state record, version 3 (a version; the flight running, its frames
+    to the next MP, and whether it is ending; the freeze running, ending, its
+    frames so far, to its next MP, and the `DurationHourGlass` it set; the MP
+    bar still to draw; the Elixir spent, whether a Guru has told the hero,
+    and the Guru's line: waiting or showing, which, the action it goes
+    before, and where the script goes back to) is its whole state while
+    playing. A state saved while the line shows gets it back in the slot
+    after the load (`fax_recharge_loaded`, after Guru travel's record has put
+    its own last line there). Version 2 (17 bytes, with the cooldowns and a
+    continued file's cooldowns) and version 1 (9 bytes, before the lines,
+    nothing told) still load: the cooldowns are dropped, and a run going on
+    the game's timer goes on as a run on MP, once RAM is in
+    (`fax_recharge_loaded`): a flight from the MP there is, a freeze for the
+    seconds its `DurationHourGlass` has left.
   - `fax_recharge_charge` tells where each item stands: not the hero's,
-    ready, or used (the Wing Boots or the Hour Glass running or recharging,
-    the Elixir spent). The status bar (Charges, below) shows the Elixir's.
+    ready, or used (the Wing Boots or the Hour Glass running, the Elixir
+    spent). The status bar (Charges, below) shows the Elixir's.
     The Elixir's bit
     decides first, so one found while spent is ready the moment it is picked
     up, a frame before `GameLoop_CountdownItems` forgets it was spent.
@@ -4247,8 +4323,8 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   and blinks, 8 frames on and 8 off (`InterruptCounter & $08`), for 96
   frames not counting those a text box shows, so through "I've used Elixir."
   and 1.5 s after. The Wing Boots and the Hour Glass are not drawn (#113 had
-  them in a row past the item box, with the Elixir): T: counts the selected
-  one's recharge (Recharging items, above). Drawn at present time, after
+  them in a row past the item box, with the Elixir): they run on MP, and T:
+  counts the selected one's run (Recharging items, above). Drawn at present time, after
   Seamless composes its picture and before every other feature's drawing,
   only while the frame shows the status bar (`fax_text_hud_showing`), and
   only where there is room: Seamless lays the status bar band out with the
@@ -4517,9 +4593,10 @@ are kept, in place, through every save.
 | `selected_weapon` ... `selected_item` | `SelectedWeapon` ... `SelectedItem` | A number, or `none` |
 
 Other fields belong to features: Guru travel's `gurus` (the visited Gurus,
-town names), recharging items' `recharge.wingboots`, `recharge.hourglass`,
-`recharge.elixir` and `recharge.elixir_told` (see its entry in *Features and
-what they use*), the map's
+town names), recharging items' `recharge.elixir` and `recharge.elixir_told`
+(its `recharge.wingboots` and `recharge.hourglass`, #27's cooldowns, are
+dropped at a file's next write; see its entry in *Features and what they
+use*), the map's
 `map.eolis`, `map.trunk`, `map.mist`, `map.towns`, `map.branch`,
 `map.dartmoor`, `map.zenis` and `map.items` (see *The map*), the quest log's
 `quests.given` and `quests.done` (see *Quests*), and Double gold's

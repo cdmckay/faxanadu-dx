@@ -19,8 +19,8 @@ with RAM edits for what the hero holds.
    move when he finds one. The Wing Boots, the Hour Glass and the Elixir
    ready: the Elixir in colour, left of the M: and P: bars and level with
    them, and nothing else. The Select menu stays on the room, centred in the
-   view as before. The Wing Boots used, and both recharging: still only the
-   Elixir.
+   view as before. The Wing Boots used, then the Hour Glass too, both
+   running on MP: still only the Elixir.
 2. elixir: the Elixir charged; a Zozura's hit at 1 HP revives the hero, and
    it is spent at once, grey and blinking through "I've used Elixir.", then
    grey.
@@ -52,7 +52,7 @@ SELECTED_ITEM, ITEM_INVENTORY, NUMBER_OF_ITEMS = 0x3C1, 0x3AD, 0x3C6
 SPECIAL_ITEMS, HP, HP_FRACTION, MP, MESSAGE_ID = 0x42C, 0x431, 0x432, 0x39A, 0x213
 PLAYER_FLAGS = 0xA4
 WING_BOOTS, HOUR_GLASS, NO_ITEM, BIT_ELIXIR = 0x0F, 0x0D, 0xFF, 0x08
-USED_WING_BOOTS, USED_ELIXIR = 0xAD, 0xAF
+USED_HOUR_GLASS, USED_WING_BOOTS, USED_ELIXIR = 0xAC, 0xAD, 0xAF
 ELIXIR_LINE = 0xC3                                         # the slot a Guru's Elixir line shows from
 EOLIS, PALETTE_EOLIS = 0, 0x00
 
@@ -201,7 +201,7 @@ def main():
             print(f"ok: no Elixir, its place is empty, and the status bar is already at x {p.hud_x}, "
                   f"{p.hud_x - p.scene_x} right of the rooms' x {p.scene_x}, with room for it")
             walk_to("all-ready", 1, 0x99, {SELECTED_ITEM: WING_BOOTS, ITEM_INVENTORY: HOUR_GLASS, NUMBER_OF_ITEMS: 1,
-                                            SPECIAL_ITEMS: BIT_ELIXIR})
+                                            SPECIAL_ITEMS: BIT_ELIXIR, MP: 0x50})   # both run on MP
             r = recharge.state()
             assert r["boots_ready"] and r["glass_ready"], r
             s = charges()
@@ -230,15 +230,18 @@ def main():
                 s = charges()["elixir"]
                 assert s["charge"] == READY and s["shown"] and s["blink"] == 0, s
                 wait(2)
-            assert recharge.state()["boots_running"] == 1, recharge.state()
             look("boots-used", "colour")
             page_through("the box to close", lambda: not box_open(), 3000)
-            walk_to("recharging", 1, 0x99, {SELECTED_ITEM: WING_BOOTS, ITEM_INVENTORY: HOUR_GLASS, NUMBER_OF_ITEMS: 1,
-                                             SPECIAL_ITEMS: BIT_ELIXIR}, {2: recharge.COOLDOWN, 4: recharge.COOLDOWN})
+            assert recharge.state()["boots_running"] == 1, recharge.state()   # the flight begins after the line
+            game.poke({SELECTED_ITEM: HOUR_GLASS, ITEM_INVENTORY: WING_BOOTS})   # the Select menu's swap
+            use()
+            until("the Hour Glass's line", lambda: ram(MESSAGE_ID) == USED_HOUR_GLASS, 120)
+            page_through("the box to close", lambda: not box_open(), 3000)
             r = recharge.state()
-            assert r["boots_cooldown"] > 0 and r["glass_cooldown"] > 0, r
-            look("both-recharging", "colour")
-            print("ok: the Wing Boots used, then both recharging: nothing drawn for them, and the Elixir steady")
+            assert r["boots_running"] == 1 and r["glass_running"] == 1, r
+            look("both-running", "colour")
+            print("ok: the Wing Boots used, then the Hour Glass, both running on MP: nothing drawn for them, and "
+                  "the Elixir steady")
 
         if args.wants("elixir"):
             launch()

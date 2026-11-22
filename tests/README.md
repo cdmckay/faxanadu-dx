@@ -118,11 +118,12 @@ part's start.
   for 2 frames keeps the hero at his slowest speed. `hold()` returns once the
   frame its button is still down has run: Up at a door with Right still down
   goes nowhere.
-- Start nearer the check: a countdown the game runs (a flight, a freeze, a
-  cooldown) can be poked down to its last seconds once its start is checked,
-  as long as one run still plays the whole of one (recharging items' Wing
-  Boots cooldown, all 60 s). An enemy can be moved in to just past where the
-  check begins (the Pendant's Zozura).
+- Start nearer the check: a countdown the game runs (a flight, a freeze) can
+  be poked down to its last seconds, or a run on MP started on less MP, once
+  its start is checked, as long as one run still plays the whole of one
+  (recharging items' Wing Boots, a Novice's full bar, all 2,560 frames). An
+  enemy can be moved in to just past where the check begins (the Pendant's
+  Zozura).
 - Hold A while text types: the remaster's Hold A types 4x, and a held A
   never turns a page or answers a question, which take a new press. Wait for
   a page with `type_out()` rather than `until(typed)` before a check, a

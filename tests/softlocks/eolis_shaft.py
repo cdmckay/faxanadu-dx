@@ -21,10 +21,12 @@ over the wall (Up, then Right with A held) and lets go: he falls down column
    open row under the floor, into the town's screen ($01), whose edge stops
    him, still at Y $C0, where A does nothing either. No enemy can reach him
    there: a softlock, which only a reset ends.
-2. dx: the same flight, and when it ends Recharging items keeps the
-   pair and starts its cooldown (its record's seconds poked to the last one,
-   as recharging_items.py plays a whole cooldown). Then Down+B flies again,
-   up the shaft and left over the wall, and he lands on Eolis's floor.
+2. dx: the same flight, which runs on MP, ends when it runs out (MP poked to
+   0, as recharging_items.py plays a whole flight), and Recharging items
+   keeps the pair, with no cooldown. Down+B at 0 MP does nothing; once MP has
+   come back (poked to 80: MP refill brings it back, mana_refill.py's), Down+B
+   flies again, up the shaft and left over the wall, and he lands on Eolis's
+   floor.
 """
 from pathlib import Path
 import sys
@@ -36,7 +38,7 @@ from fax_e2e import Game, parse_args, ram, tcp, type_out, until, wait  # noqa: E
 PARTS = ("original", "dx")
 PACKAGE = ("faxanadu.dx", "dx")                               # the one switch: off is the original game
 AREA, SCREEN, HERO_X, HERO_Y, FLAGS, STATUS = 0x24, 0x63, 0x9E, 0xA1, 0xA4, 0xA5
-TEXTBOX_CLOSED, ENTITIES, HP = 0x20C, 0x2CC, 0x431
+TEXTBOX_CLOSED, ENTITIES, HP, MP = 0x20C, 0x2CC, 0x431, 0x39A
 SELECTED_ITEM, DURATION_WING_BOOTS = 0x3C1, 0x429
 SAVED_AREA, SAVED_SCREEN, SAVED_PALETTE, SAVED_POS, AREA_REGION = 0x3D5, 0x3D6, 0x3D7, 0x3D8, 0x435
 EOLIS, BUILDINGS, TOWN_SCREEN, GATE_SCREEN = 0, 4, 0x01, 0x08
@@ -148,9 +150,10 @@ def under_the_floor():
     raise AssertionError(f"still walking under the floor: {track}")
 
 
-def end_flight():
-    """The flight's last second, then "The power of the Wing Boots is gone.", closed with A."""
-    fax_e2e._current().poke({DURATION_WING_BOOTS: 0})
+def end_flight(dx):
+    """The flight's end, then "The power of the Wing Boots is gone.", closed with A: its last second in the
+    original, the last of the MP it runs on with the remaster."""
+    fax_e2e._current().poke({MP: 0} if dx else {DURATION_WING_BOOTS: 0})
     until("the power gone", lambda: ram(TEXTBOX_CLOSED) == 0, 200)
     type_out("the line to type out", 600)
     press_until("a", "the box to close", lambda: ram(TEXTBOX_CLOSED) != 0)
@@ -167,12 +170,12 @@ def main():
             original = part == "original"
             game.set_features({PACKAGE: not original})
             game.launch(at="eolis-8")
-            game.poke({SELECTED_ITEM: WING_BOOTS, HP: 0x50, **{ENTITIES + i: 0xFF for i in range(8)}})
+            game.poke({SELECTED_ITEM: WING_BOOTS, HP: 0x50, MP: 0x50, **{ENTITIES + i: 0xFF for i in range(8)}})
             wait(5)
             use_wing_boots()
             into_the_shaft()
             game.shot(f"{part}-in-the-shaft")
-            end_flight()
+            end_flight(not original)
             assert hero() == (GATE_SCREEN, SHAFT_X, BOTTOM_Y), hero()
             if original:
                 stuck = game.save("stuck")
@@ -196,21 +199,24 @@ def main():
                       f"do nothing, Left walks him under the floor to the town's edge ({track}) and no further, "
                       f"never above Y $C0; the Wing Boots are gone and no enemy comes")
             else:
-                # The cooldown starts on the main loop's next pass of GameLoop_CountdownItems after the box.
-                until("the cooldown to start", lambda: not tcp("recharge_state")["boots_running"], 120)
                 state = tcp("recharge_state")
-                assert ram(SELECTED_ITEM) == WING_BOOTS and not state["boots_ready"], state
-                assert state["boots_cooldown"] > 1, state
-                game.poke({}, records={"faxanadu.recharge": {2: 1}})       # the cooldown's last second
-                until("the pair ready", lambda: tcp("recharge_state")["boots_ready"], 200)
+                assert ram(SELECTED_ITEM) == WING_BOOTS and state["boots_ready"] and ram(MP) == 0, state
+                refused = state["refused"]
+                tcp("action", name="down", frames=20)                     # no MP: nothing but the refusal
+                wait(4)
+                tcp("action", name="b", frames=4)
+                until("the refusal", lambda: tcp("recharge_state")["refused"] == refused + 1, 120)
+                wait(20)
+                assert ram(TEXTBOX_CLOSED) != 0 and not ram(STATUS) & FLYING, "Down+B at 0 MP flew"
+                game.poke({MP: 80})                                        # MP refill brought it back
                 use_wing_boots()
                 fly([({"a", "dpup"}, "the sky", lambda: ram(HERO_Y) <= 8),
                      ({"a", "dpup", "dpleft"}, "over the wall", lambda: ram(HERO_X) <= WALL_X - 40)])
                 until("on Eolis's floor", lambda: ram(HERO_Y) == FLOOR_Y and not ram(FLAGS) & 0x05, 300)
                 assert ram(SCREEN) == GATE_SCREEN and ram(HERO_X) < WALL_X, hero()
                 game.shot("dx-out")
-                print("ok: with the remaster the Wing Boots are kept and recharge: Down+B flies him up the shaft "
-                      "and over the wall, back onto Eolis's floor")
+                print("ok: with the remaster the Wing Boots are kept and run on MP: at 0 MP Down+B does nothing, "
+                      "and once MP is back it flies him up the shaft and over the wall, back onto Eolis's floor")
             game.close()
         print("screenshots:", ", ".join(game.shots))
     except BaseException:

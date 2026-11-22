@@ -438,15 +438,20 @@ rom = [
     { bank = 12, start = 0xAE00, end = 0xAE03, use = "Guru travel's SAY step, to show a Guru's Elixir line" },
     { bank = 13, start = 0xB45B, end = 0xB48B, use = "message $C3, the line slot, for a Guru's Elixir line" },
 ]
-# Writes DurationWingBoots (through A at its STA),
+# Writes DurationWingBoots (through A at its STA, then each frame of a
+# flight) and DurationHourGlass (each frame of a freeze), Player_MP (both
+# items run on it), drawing its bar with Player_SetMP in a committed call,
 # SpecialItems' Elixir bit (when a Guru recharges it) and T:'s two tiles
-# through the PPU buffer, as UI_DrawTimeValue queues them. Its site at
-# IScripts_InvokeNextAction ($826E) hears a Guru's first action, which Save
-# files and Guru travel leave where it is, and to show his Elixir line writes
-# IScriptOrCHRAddr and IScriptOffset (to the SAY step, then back). Keeps the
-# fields recharge.wingboots, recharge.hourglass, recharge.elixir and
-# recharge.elixir_told in the file in play (fax_save.h), when Save files has
-# one.
+# through the PPU buffer, as UI_DrawTimeValue queues them; and the stack, a
+# return address as a JSR would push it, to jump past Player_UseHourGlass's
+# halving and into the two countdowns' DEC. MP refill (mana-refill) sees the
+# drain as spends and holds while either runs (fax_recharge_draining). Its
+# site at IScripts_InvokeNextAction ($826E) hears a Guru's first action,
+# which Save files and Guru travel leave where it is, and to show his Elixir
+# line writes IScriptOrCHRAddr and IScriptOffset (to the SAY step, then
+# back). Keeps the fields recharge.elixir and recharge.elixir_told in the
+# file in play (fax_save.h), when Save files has one, and drops #27's
+# recharge.wingboots and recharge.hourglass from it.
 
 [[feature]]
 id = "charges"
@@ -562,8 +567,8 @@ addr = 0xC88F   # GameLoop_CountdownItems
 hooks = ["faxanadu.block.main-loop", "faxanadu.recharge.tick"]
 why = """Both observe and return 0, so both always run, in either order. Block \
 only notes that Game_MainLoop got this far this frame; recharging items \
-counts its cooldowns and queues T: before the game's own countdowns, which \
-neither changes."""
+queues T: and any bar still to draw before the game's own countdowns, which \
+neither changes (its flight and freeze run at sites inside them)."""
 
 [[feature]]
 id = "slain-by"

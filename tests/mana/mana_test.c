@@ -7,7 +7,8 @@
  * (the call fails, nothing committed) when the buffer has no room. So the
  * tests check what the hero's MP and its bar do, frame by frame. The
  * Magician's lesson (fax_lesson.c) is one flag here, whether he has taught
- * the hero. */
+ * the hero, and whether the Wing Boots or the Hour Glass take MP
+ * (fax_recharge.c) another. */
 #include "fax_mana.c"
 
 static unsigned checks;
@@ -38,6 +39,8 @@ void cyc_mod_set_regs(const CycModRegs *in) { uint16_t pc = cpu.pc; cpu = *in; c
 bool cyc_mod_isolated(void) { return isolated; }
 static bool taught;                          /* the Magician's lesson, learned */
 bool fax_lesson_learned(void) { return taught; }
+static bool flying;                          /* the Wing Boots fly (or the Hour Glass freezes), on MP */
+bool fax_recharge_draining(void) { return flying; }
 
 /* PPUBuffer_HasCapacity: ReadOffset - WriteOffset is 0 (empty) or at least $24. */
 static bool has_capacity(uint8_t write) { uint8_t room = (uint8_t)(READ - write); return room == 0 || room >= 0x24; }
@@ -133,7 +136,7 @@ static void fresh_as(uint8_t mp, bool learned) {
     MP = mp;
     calls = drawn = 0;
     bar_mp = -1;
-    isolated = refuse = false;
+    isolated = refuse = flying = false;
     taught = learned;
     cpu = (CycModRegs){ .a = 0x00, .x = 0x22, .y = 0x33, .s = 0xFD, .p = 0x02 };
     frames(PLAYING, 1);                      /* the MP it starts from */
@@ -257,6 +260,40 @@ static void a_spend_starts_the_wait_again(void) {
     CHECK(frames_until_more(PLAYING) == STEP - 10 && MP == 71);
 }
 
+/* While the Wing Boots fly (or the Hour Glass freezes) no MP comes back,
+ * though they take one only every 24 to 64 frames, and the lesson's step is
+ * 15: each frame of the run starts the wait again, so it runs from the end,
+ * whole. */
+static void nothing_back_while_flying(void) {
+    static const bool learned[] = { false, true };
+    for (unsigned i = 0; i < 2; ++i) {
+        fresh_as(50, learned[i]);
+        unsigned wait = learned[i] ? TAUGHT_WAIT : WAIT;
+        frames(PLAYING, wait - 10);          /* the wait nearly over: a flight begins */
+        flying = true;
+        for (unsigned n = 0; n < 1000; ++n) {
+            nmi();
+            if (n % 32 == 31) MP = (uint8_t)(MP - 1);   /* the flight's drain, a Novice's */
+            frame_ends(PLAYING);
+            CHECK(r.left == wait && calls == 0);
+        }
+        CHECK(MP == 50 - 1000 / 32);
+        flying = false;                      /* landed */
+        CHECK(frames_until_more(PLAYING) == wait);
+        CHECK(frames_until_more(PLAYING) == (learned[i] ? TAUGHT_STEP : STEP));
+    }
+    /* Flying on a full bar's first frames: nothing to refill anyway, and the
+     * MP the flight leaves waits the whole wait from the landing. */
+    fresh(80);
+    flying = true;
+    frames(PLAYING, 31);
+    nmi(); MP = 79; frame_ends(PLAYING);
+    frames(PLAYING, 500);
+    CHECK(MP == 79 && calls == 0);
+    flying = false;
+    CHECK(frames_until_more(PLAYING) == WAIT && MP == 80);
+}
+
 static void only_played_frames_count(void) {
     static const Where held[] = { PAUSE, TEXT, LAG, TOP_LEVEL, ENDING, SCROLL, OTHER_BANK };
     for (unsigned i = 0; i < sizeof held / sizeof held[0]; ++i) {
@@ -362,6 +399,7 @@ int main(void) {
     learned_during_the_wait();
     the_cpu_gets_its_registers_back();
     a_spend_starts_the_wait_again();
+    nothing_back_while_flying();
     only_played_frames_count();
     a_full_ppu_buffer_waits();
     save_states();

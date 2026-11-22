@@ -18,8 +18,8 @@
  * sprite is one of those finds and Player_PickUpItem would refuse it: no
  * line, no bit, and the sprite stays, to be picked up once there is room. The
  * one exception is a find Recharging items takes instead (Wing Boots or an
- * Hour Glass the hero already holds: it readies his, adding nothing), which
- * goes through. On the first refused touch the game's "invalid choice" sound
+ * Hour Glass the hero already holds: it adds nothing, one being all he
+ * needs), which goes through. On the first refused touch the game's "invalid choice" sound
  * plays (Sound_PlayEffect, in a committed call), once a touch: the routine
  * runs on every frame the hero overlaps the sprite.
  *
