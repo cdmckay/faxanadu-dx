@@ -230,6 +230,7 @@ E2E=(
   "arenas       tests/world/boss_arenas.py --parts"
   "live-hud     tests/world/live_status_bar.py --parts"
   "spell-cost   tests/spell_cost/spell_cost.py --parts"
+  "found        tests/found/found_items.py --parts"
 )
 # At most E2E_JOBS runs play at once (default: one a hardware thread; 0: all
 # at once): a game is uncapped and takes a whole thread, and more of them
