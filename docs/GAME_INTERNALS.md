@@ -1985,9 +1985,11 @@ the game would have it there:
   CurrentSprites_Entities,X`, `JSR Player_PickUp`, then the slot emptied),
   which only observes X, the slot. The game keeps nothing for the items that
   lie there at every visit (each comes back whenever its screen loads), so
-  the map keeps them taken itself, in the file. A full item list refuses the
-  item after its line but takes it off the screen all the same, so a touch is
-  a take.
+  the map keeps them taken itself, in the file. In the original a full item
+  list refuses the item after its line but takes it off the screen all the
+  same. With Kept finds the find stays lying instead: Kept finds' site at
+  `$88FB` comes first in `game.toml` and handles the touch, so the map's is
+  skipped, and a touch that reaches the map's site is a take.
 
 **In the file.** One field an area that has anything seen: `map.eolis`,
 `map.trunk`, `map.mist`, `map.towns`, `map.branch`, `map.dartmoor`,
@@ -2467,7 +2469,8 @@ Red Potion `$10`). Shops and scripts add the category in the top 3 bits
   decrements the count, leaving a stale byte after the end. `Player_AddToInventory`
   (`$9AF7`, bank 12; shops and scripts) overwrites the last entry when the
   category is full; `Player_PickUpItem` (`$C8CD`) refuses when it is full,
-  after the item's line, and the item is gone all the same.
+  after the item's line, and the item is gone all the same (with the
+  remaster, Kept finds leaves it lying: see *Softlocks*).
 - The rings, the Elixir, the Magical Rod, the Pendant and the Black Onyx are
   bits in `SpecialItems` (`$042C`), not list entries.
 - **Picking an item up.** Touching an item sprite runs
@@ -3197,6 +3200,116 @@ Graphics fixes (`fax_graphics.c`) fixes the five that show:
   climbing pose uses slot `$34` (its `$88`), which the Dragon Slayer
   overwrites.
 
+## Softlocks
+
+What was looked for (#38): places and states the hero gets into and cannot
+get out of, short of a reset, on the USA ROM with the remaster off.
+
+**Sources.**
+
+- The Faxanadu 40th Anniversary Edition (fax40.pages.dev) lists "two known
+  (though obscure) softlocks in the original game" among its changes but
+  never names them; its v0.13's "one softlock in Branch" is in its own new
+  screens. Its romhacking.net page (hack 9683) refuses automated fetches
+  (403) and its Discord is not public, so the two stay unnamed.
+- SDA's *Game Mechanics and Glitches* page: speedrun tricks (timers paused,
+  the King's gold, double hits), no softlock.
+- The Retranslation's changelog (github.com/UnsavoryMaggot/Faxanadu-Retranslation):
+  its "fountain ladder bugfix" is its only fix for getting stuck.
+- TASVideos' four Faxanadu runs: wall clips ("useless"), ladder tricks,
+  death as a shortcut; no softlock.
+- minirevver.weebly.com's Faxanadu page: "if your inventory is full when
+  picking up the mattock then it disappears ... and you can't get it again",
+  and "one dead end dungeon in the tower of mist area".
+- tcrf.net served the fetcher no article; TV Tropes and AtariAge refused it
+  (403). chipx86's disassembly marks no softlock among its BUG notes.
+- The game itself: every interaction script (152, from `ISCRIPT_ADDRS_L/U`)
+  walked for a loop with no question or menu in it (none), and a search of
+  every outside area's screens, below.
+
+**The search.** Each area's screens are decoded from ROM (*Screens and
+blocks*: the bank's word table, the 2-bit stream), its block properties
+are bank 3's table at the area's metadata + 2, one byte a block, low nibble
+(`Area_LoadBlockProperties`), impassable by `BLOCK_PROPERTY_IMPASSABLE_MAP`
+(1, 5, 6, 7, 8, 11), climbable 2 and 10, and its links and doors are what
+*The map* reads. A model of the hero, a block wide and two tall, walks,
+falls (ladders catch him), jumps (32 pixels up, measured: two blocks; about
+three blocks across at speed), climbs and takes doors; then flies, for the
+Wing Boots. A place he can reach from which no door or edge into a town can
+be reached is a trap. Block-level, the model misses pixel-exact routes (it
+first flagged the Mist's corridor, below), so every place it found was then
+played in the game. Two engine rules it has to follow:
+
+- **The row below the playfield is the next screen's.** Rows 0-12 show. The
+  ground check (`Player_CheckIfPassable` down, `Y + $20 >= $D0`) reads
+  `FirstRowBelowScreen`, the screen below's row 0, or block 0
+  (`ScreenBuffer_Clear`) where there is none; the check up (`Y - 1 >= $F0`)
+  reads `LastRowAboveScreen`. Sideways moves and `Player_CheckIfOnLadder`
+  read `ScreenBuffer`'s own rows 13 and 14, which hold whatever the screen's
+  stream decodes there, often the next screen's first rows (screens share
+  data). So a solid block in row 13 is not ground: Zenis `$08`'s pit at
+  column 14 drops him into `$0D` (checked in the game).
+- **With no screen below**, `Player_MoveDownScreen` holds him at Y `$C0`
+  (`Player_SetPosAtBottomEdge`), his feet below the picture.
+
+| | Trigger | The original | With the remaster |
+|---|---|---|---|
+| Eolis's edge shafts | Wing Boots in Eolis, over the right wall of `$00` or `$08` | Stuck below the floor (reproduced) | Avoided: the Wing Boots recharge |
+| A find with a full Items list | A Mattock, Wing Boots, Hour Glass or Red Potion touched with 8 listed | Said and lost (reproduced) | Fixed: Kept finds |
+| The fountain's ladder in `$27` | Leaving Trunk `$28` on its first pass | No trap | Fixed already: Ladder fixes |
+| The Tower of Fortress's floor | The Mattock on Trunk `$2D`'s block `$63` | No trap | The block is floor: Graphics fixes |
+| The Mist's corridor `$2D-$2F` | Down the ladders from `$25` or `$26` | No trap | |
+| The Evil One's room | Zenis `$01`'s door into `$00` | By design | |
+
+- **Eolis's edge shafts.** Eolis `$00` and `$08` have no screen to their
+  right, and their right wall (column 14, rows 3-11) stops a block short of
+  the edge: column 15 is open from the sky through the floor (row 11) to the
+  bottom. Flying up over the wall and letting go drops the hero down it to Y
+  `$C0`. There A, Up and Right do nothing, and Left walks him along the open
+  row under the floor into the town's screen (`$01`), whose edge stops him,
+  still at `$C0`; no enemy is on either screen. A reset is the only way out.
+  To have the Wing Boots in Eolis, the hero must die before any temple Guru
+  has set his spawn point (it starts at 0, Eolis), after buying them in
+  Forepaw or finding them: obscure. With the remaster the pair is kept, and
+  once it recharges Down+B flies him up the shaft and out
+  (`tests/softlocks/eolis_shaft.py`). Eolis is the one place found where a
+  flight ends in a trap: Branch's open row under `$10`'s floor, reached by
+  flying left out of `$11`'s floorless bottom, holds him at Y `$C0` too, but
+  walking right takes him back into `$11`, which drops him into `$16`
+  (checked in the game).
+- **A find with a full Items list** (minirevver's Mattock). See *Items and
+  the inventory*. Ripasheiku's Mattock (`$5B`) and Zorugeriru's Wing Boots
+  (`$5C`) set their `Quests` bit before the line, and their sprites remove
+  themselves while it is set: the Mattock is gone until a death clears `$10`
+  (`Player_Spawn`), the boots for good. Not a strict softlock: the Trunk's
+  wall can still be broken with the Tower of Trunk's other Mattock (one visit
+  in four) or Ripasheiku's after a death, and Wing Boots are sold. Kept finds
+  leaves the find lying (*Features and what they use*).
+- **The fountain's ladder** (*Screen events and the fountain's ladder*). In
+  `$27`, the misplaced ladder (column 2, rows 2-8) is reached by a jump from
+  the floor and climbs to the middle floor's upper side (row 1 at its top);
+  walking off its top to the left goes into `$28` at Y 48, on the ledge right
+  of the fountain, from which walking left drops him to `$28`'s floor.
+  Checked in the game: no trap.
+- **The Tower of Fortress's floor** (*Graphics bugs*). The Mattock, used from
+  the ladder at column 2 (`Y` in row 11, facing right), breaks rows 11 and 12
+  of column 3 into a pit one block wide. He drops in and stands on row 13
+  (`$29`'s first row: solid), steps left into the ladder's column and climbs
+  out. Checked in the game: no trap.
+- **The Mist's corridor**, `$2D`, `$2E` and `$2F` under `$25` and `$26`: the
+  ladders down from both end in the corridor's top rows, high over its
+  floor, with no door. It is the way back that is exact: from the floor onto
+  the low ledge at `$2D`'s left (row 10, columns 1-3), at `X` 32 a jump with
+  Up held catches the ladder at column 2 (rows 4-6; the climb check looks at
+  `X + 7`), whose top is beside the block at column 3, row 5; from that block
+  a jump right with Up held, taking off at `X` 58, catches column 4's ladder,
+  which climbs into `$25`. Checked in the game. Its two enemies (entity
+  `$22`) can kill him besides.
+- **The Evil One's room** (Zenis `$00`): the door from `$01` leads in and no
+  door leads out; the doors drawn at its right edge are in no door table. The
+  fight ends in a win (`ScreenEvents_HandleFinalBossKilled`, when every
+  sprite slot is empty) or a death, by design.
+
 ## Features and what they use
 
 Each feature's C is in `src/` (`src/fax_<name>.c`), and `src/cyc_extras.c`
@@ -3255,6 +3368,18 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
   `Player_InvincibilityPhase` is not 0 or Ointment runs, so magic on the
   shield does nothing during iframes or under Ointment, as magic on the hero
   does (see *Shields and enemy magic*).
+- **Kept finds** (`fax_finds.c`). With the Items list full (8 listed), a
+  Mattock, Wing Boots, Hour Glass or Red Potion found lying stays there: a
+  hook at `Player_HandleTouchItem`'s entry (`$88FB`, bank 14) skips the whole
+  routine (no line, no `Quests` bit, the sprite kept) when the touched
+  sprite's routine would end in `Player_PickUpItem` and be refused, and plays
+  the "invalid choice" sound (`$0D`) once a touch (a latch on the slot and
+  `InterruptCounter`, 8 frames). Wing Boots or an Hour Glass the hero already
+  holds go through, for Recharging items to take at `Player_PickUpItem`. The
+  rings, the Magical Rod and the Elixir are bits, the battle gear has its own
+  lists, the Poison only hurts, and the Glove and Ointment are timed: none is
+  touched. Nothing in Seamless's isolated rooms. No ROM, no save-state record
+  (a stale latch costs one sound at most). See *Softlocks*.
 - **Magic button** (`fax_magic.c`). A bindable button (C, or Y on a
   controller) casts the selected spell. On a press, it ORs Up held and B new
   into the joypad masks at `Player_CastMagic`'s entry, when `Game_MainLoop`
@@ -3617,7 +3742,7 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
   `$E02F` and `$E040` in `GameLoop_CheckPauseGame`, shared with the quest log
   (whose hooks come after; neither opens over the other), where it changes
   only A and Z, and the game's own code pauses and unpauses; and
-  `Player_HandleTouchItem` (`$88FB`, bank 14), which no other feature hooks,
+  `Player_HandleTouchItem` (`$88FB`, bank 14), after Kept finds' site there,
   where it only observes the slot touched (recharging items' pickup hook,
   `Player_PickUpItem`, runs later, inside `Player_PickUp`). Everything else
   it learns from RAM at the end of each frame and as it draws, at present

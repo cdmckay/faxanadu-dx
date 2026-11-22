@@ -159,6 +159,10 @@ The remaster also fixes these bugs in the original game:
   the Dragon Slayer your armor instead of your weapons, so either could wipe
   out what you carried or list what you didn't have. Now each joins its own
   list.
+- Finding a Mattock, Wing Boots, an Hour Glass or a Red Potion with eight
+  items listed said you got it, then lost it, and Ripasheiku's Mattock stayed
+  gone until you died. Now the find stays where it lies, with a buzz, until
+  you have room.
 - Holding Up at the top of a ladder bobbed you a pixel past its end and back
   for as long as you held it. Now you stop at the top, and A jumps from there.
 - Stepping onto the dried fountain's screen and straight back off dropped the

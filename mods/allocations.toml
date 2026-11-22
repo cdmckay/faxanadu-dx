@@ -528,8 +528,8 @@ rom = []
 # hooks come after (below); Seamless observes the routine's entry, $E02B,
 # which runs before either. It
 # changes only A and Z at them, so the game's own code pauses and unpauses
-# (Game_PausedState). And Player_HandleTouchItem ($88FB, bank 14), which no
-# other feature hooks, where it only observes X, the slot of the item touched
+# (Game_PausedState). And Player_HandleTouchItem ($88FB, bank 14), after Kept
+# finds' site there, where it only observes X, the slot of the item touched
 # (recharging items' pickup hook is Player_PickUpItem, $C8CD, further in).
 # Reads bank 3's area tables, bank 15's town edges and climb and bank 11's
 # sprite lists from a copy of the cart, writes nothing to the machine but A and
@@ -638,3 +638,26 @@ why = """Only the one whose screen is open steers the branch (it reads the \
 pad, then sets or clears Z); the other returns 0 at once, having nothing \
 open, and opens its own only when its button was pressed during the game's \
 own pause with the other's screen closed. The map's runs first."""
+
+[[shared_site]]
+addr = 0x88FB   # Player_HandleTouchItem
+hooks = ["faxanadu.kept-finds.touch", "faxanadu.map.touch"]
+why = """Kept finds handles the touch only when the find would be lost to a \
+full Items list, and then the sprite stays lying, so the map's site, which \
+counts an item taken, is rightly skipped. Otherwise Kept finds returns 0 and \
+the map observes X as the game picks the item up."""
+
+[[feature]]
+id = "kept-finds"
+package = "faxanadu.remastered"
+plugin = "faxanadu.kept-finds"
+source = "src/fax_finds.c"
+hooks = "faxanadu.kept-finds."
+rom = []
+# Hooks Player_HandleTouchItem's entry ($88FB, bank 14), before the map's
+# site there, and skips the routine (nothing written) when a find would be
+# lost to a full Items list. Recharging items' pickup hook is
+# Player_PickUpItem ($C8CD), which a skipped touch never reaches; a find it
+# takes (Wing Boots or an Hour Glass already held) is let through to it. Plays
+# sound $0D through Sound_PlayEffect in a committed call, as Recharging items
+# does. No ROM, no read overrides, no save-state record.

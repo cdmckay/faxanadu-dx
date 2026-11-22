@@ -59,6 +59,7 @@ if(NESRECOMP_BACKEND STREQUAL "cycle")
             src/fax_map_layout.c src/fax_map.c
             src/fax_quest_table.c src/fax_quests.c
             src/fax_graphics.c
+            src/fax_finds.c
             src/fax_entrances.c
         MODS GAME_ID "faxanadu-usa"
         PLAYERS 1 REGION NTSC PASSWORD_SAVE "faxanadu.srm" PASSWORD_SAVE_LABEL "Mantra"
