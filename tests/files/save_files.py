@@ -7,18 +7,23 @@ speed) and the script waits on the game's own state, never on the clock, so
 each run takes a free TCP port and any number can go in parallel.
 
 Copies the build to OUT/game (the save files are written beside it), then:
-  1. starts a new game in file 2 from the file select;
+  1. on a fresh install's title, NEW GAME and CONTINUE, CONTINUE grey with
+     nothing to continue and the cursor kept off it; NEW GAME's pick shows
+     three empty files, and file 2 starts a new game at once;
   2. edits save-state RAM to give the hero progress worth keeping (an external
      prerequisite, not coverage) and dies, to come back in a temple (from a
      saved game of that death as the Guru speaks: the dissolve is not what
      is checked): Eolis's Guru, with nowhere to send the hero, asks "Shall I
      remember your journey?"; Conflate's, after granting a title, offers the
      menu, and saving there makes Conflate the spawn point;
-  3. quits, relaunches and continues file 2, and compares the game with the
-     file and with what was saved;
+  3. quits and relaunches: the title opens on CONTINUE, whose pick greys the
+     empty files and skips them; continuing file 2 restores the game, which
+     is compared with the file and with what was saved;
   4. talks to a Guru without saving and checks the spawn point stays;
-  5. imports a mantra from faxanadu.srm (the first run) and from --password,
-     continues the imported file, and erases a file from the file select.
+  5. NEW GAME over a used file: its pick starts on the empty one, and file 2
+     asks "Erase file 2? A yes B no"; B keeps it, A erases it and starts a
+     new game in it. With the remaster on nothing shows a mantra or the mantra
+     screen: Continue skips it, and a Guru offers the choice instead.
 --shots DIR also copies the screenshots worth showing there.
 """
 from pathlib import Path
@@ -27,9 +32,10 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 import fax_e2e  # noqa: E402
-from fax_e2e import Game, act, dissolve, fixture, frame, page_through, page_to, parser, ram, tcp, type_out, wait  # noqa: E402
+from fax_e2e import (FILES_CONFIRM, FILES_CONTINUE, FILES_NEW, FILES_TOP, Game, act, choose_file,  # noqa: E402
+                     dissolve, fixture, frame, page_through, page_to, parser, ram, tcp, title_menu, type_out, wait)
 
-JOY_CHANGED, AREA, SCREEN = 0x19, 0x24, 0x63
+JOY_CHANGED, AREA, SCREEN, START_SCREEN_CHOICE = 0x19, 0x24, 0x63, 0x687
 MESSAGE_ID, TEXTBOX_PAUSED = 0x213, 0x215
 EXPERIENCE, GOLD, SPECIAL_ITEMS, QUESTS, TITLE, PLAYER_IS_DEAD, TEMPLE_SPAWN_POINT, NEXT_TITLE = (
     0x390, 0x392, 0x42C, 0x42D, 0x437, 0x438, 0x439, 0x4ED)
@@ -111,12 +117,16 @@ def file_progress(f):
             "lists": lists, "selected": selected}
 
 
-def choose(file):
-    """Move the file select's cursor to `file` (1-3) and take it."""
-    while files()["cursor"] != file - 1:
-        act("down")
-    tcp("pad", buttons="start", frames=10)
-    until(f"file {file} in play", lambda: files()["file"] == file, 300)
+def write_file(path, p, spawn):
+    """A save file with progress `p`, saved with the Guru of temple `spawn`."""
+    lists = ("weapons", "armor", "shields", "spells", "items")
+    sel = ("selected_weapon", "selected_armor", "selected_shield", "selected_spell", "selected_item")
+    fields = {"version": 1, "title": p["title"], "next_title": p["next_title"], "experience": p["experience"],
+              "gold": p["gold"], "spawn": spawn, "furthest": spawn, "special_items": p["special_items"],
+              "quests": p["quests"], **{k: " ".join(map(str, v)) for k, v in zip(lists, p["lists"])},
+              **{k: "none" if v == 255 else v for k, v in zip(sel, p["selected"])}}
+    path.write_text("".join(f"{k} = {v}\n" for k, v in fields.items()))
+
 
 def die_and_respawn(temple):
     """Page through the death message until the hero is back in `temple`."""
@@ -145,12 +155,12 @@ def answer_travel(button, expect):
 
 @fax_e2e.recipe("files-gate-2")
 def _gate_in_file_2(g):
-    """A new game in file 2, from the file select, outside Eolis's gate once
+    """A new game in file 2 (NEW GAME, then file 2), outside Eolis's gate once
     the opening has played."""
     g.timeout = 60
-    until("the file select", lambda: files()["shown"], 2000)
+    title_menu()
     wait(10)
-    choose(2)
+    choose_file(True, 2)
     until("the Eolis gate", lambda: frame() > 1900, 3000)
 
 
@@ -170,32 +180,7 @@ def _conflate_words(g):
     dissolve()
 
 
-@fax_e2e.recipe("files-continued", parent="files-conflate-words")
-def _continued(g):
-    """Back in Conflate's temple after that death; saved at its Guru's
-    menu; the window quit, and file 2 continued in Conflate's temple."""
-    g.timeout = 60
-    die_and_respawn(CONFLATE)
-    talk_until(GURU_MENU)
-    act("a")
-    until("the saved line", lambda: files()["guru"] == GURU_SAVED, 300)
-    type_out("the saved line to type out")
-    act("a")
-    until("Guru travel's intro", lambda: travel()["text"] == INTRO and travel()["phase"] in (1, 2), 600)
-    type_out("the intro to type out")
-    act("a")
-    until("Guru travel's offer", lambda: travel()["text"] == OFFER, 600)
-    close_box("b")
-    g.close()
-    g.launch()
-    until("the file select", lambda: files()["shown"], 2000)
-    wait(10)
-    choose(2)
-    until("Conflate's temple", lambda: in_temple(CONFLATE), 1200)
-    wait(60)
-
-
-PARTS = ("new-game", "eolis-guru", "conflate", "imports")           # each its own game
+PARTS = ("new-game", "eolis-guru", "conflate", "overwrite")         # each its own game
 
 
 def main():
@@ -211,10 +196,10 @@ def main():
         fax_e2e.install(args.build, folder)
 
     def launch(folder, *extra):
-        """Start the copy of the game in `folder`, and wait for the file select."""
+        """Start the copy of the game in `folder`, and wait for the title's menu."""
         game.exe = folder / "FaxanaduRecomp"
         game.launch(*extra)
-        until("the file select", lambda: files()["shown"], 2000)
+        title_menu()
         wait(10)
 
     def shot(name, keep=None):
@@ -234,21 +219,36 @@ def main():
         game.state("files-gate-2")                                  # a new game in file 2, at Eolis's gate
         words = {temple: game.state(f"files-{temple}-words")        # dead there, as the Guru speaks
                  for temple, part in (("eolis", "eolis-guru"), ("conflate", "conflate")) if args.wants(part)}
-        continued = None
         expect = dict(PROGRESS, title=4)                            # what Conflate's Guru saves
 
         if args.wants("new-game"):
-            # 1. A new game in file 2.
+            # 1. A fresh install: NEW GAME, and CONTINUE grey with nothing to continue.
             launch(gamedir)
             state = files()
             assert [s["status"] for s in state["slots"]] == [MISSING] * 3, state
-            assert state["rows"][0].endswith("1 New game") and state["rows"][7].endswith("Erase a file"), state
-            shot("select-empty", "select-empty")
-            choose(2)
+            assert (state["mode"], state["cursor"], state["can_continue"]) == (FILES_TOP, 0, False), state
+            assert ram(START_SCREEN_CHOICE) == 0, "the game's arrow on NEW GAME"
+            shot("title-new-game", "title-new-game")
+            for button in ("select", "right", "down"):
+                act(button)
+                assert files()["cursor"] == 0, f"{button} leaves the cursor off the grey CONTINUE"
+            act("b")
+            assert files()["mode"] == FILES_TOP
+            act("start")
+            state = files()
+            assert (state["mode"], state["cursor"]) == (FILES_NEW, 0), state
+            assert state["rows"][0] == "} 1 Empty" and state["rows"][2].endswith("2 Empty"), state["rows"]
+            assert state["rows"][7].endswith("New game in which file?") and not any(state["dim"]), state
+            shot("new-game-pick", "new-game-pick")
+            act("b")
+            assert (files()["mode"], files()["cursor"]) == (FILES_TOP, 0), "B goes back"
+            choose_file(True, 2)
+            assert files()["continuing"] == 0 and ram(START_SCREEN_CHOICE) == 0, "an empty file: no question"
             until("the Eolis gate", lambda: frame() > 1900, 3000)
             assert files()["file"] == 2 and travel()["visited"] == 1
             assert not (gamedir / "faxanadu_file2.txt").exists(), "a new game writes nothing until it saves"
-            print("ok: a new game in file 2")
+            print("ok: a fresh install's title: NEW GAME, CONTINUE grey and skipped; B goes back from the pick")
+            print("ok: NEW GAME in empty file 2 starts at once")
 
         if args.wants("eolis-guru"):
             at("files-gate-2")
@@ -310,10 +310,22 @@ def main():
             launch(gamedir)
             state = files()
             assert [s["status"] for s in state["slots"]] == [MISSING, OK, MISSING], state
+            assert (state["mode"], state["cursor"], state["can_continue"]) == (FILES_TOP, 1, True), state
+            assert ram(START_SCREEN_CHOICE) == 1, "the game's arrow on CONTINUE"
+            shot("title-continue")
+            act("start")
+            state = files()
+            assert (state["mode"], state["cursor"]) == (FILES_CONTINUE, 1), state
             assert "Adept" in state["rows"][2] and "Conflate" in state["rows"][2], state["rows"]
             assert "Gold 123456" in state["rows"][3] and "Exp 4900" in state["rows"][3], state["rows"]
-            shot("select-saved", "select-saved")
-            choose(2)
+            assert state["rows"][7].endswith("Continue which file?"), state["rows"]
+            assert state["dim"] == [1, 1, 0, 0, 1, 1, 0, 0], "the empty files are grey"
+            for button in ("down", "up"):
+                act(button)
+                assert files()["cursor"] == 1, f"{button} skips the empty files"
+            shot("continue-pick", "continue-pick")
+            act("a")
+            until("file 2 in play", lambda: files()["file"] == 2, 300)
             until("Conflate's temple", lambda: in_temple(CONFLATE), 1200)
             wait(60)
             shot("continued", "continued")
@@ -353,69 +365,38 @@ def main():
             print("ok: the menu's second choice asks about the towns; B leaves; neither moves the spawn point")
             print("ok: death returns to the Guru last saved with")
 
-        if args.wants("imports"):
-            if continued is None:                                   # as the conflate part continues file 2
-                continued = game.state("files-continued")
-                at("files-continued")
-            # The mantras the original would have shown, for the import.
-            tcp("load_state", path=str(continued))
-            mantra = tcp("mantra_now")["mantra"]
-            fixture(continued, out / "other.cycstate", progress_writes(dict(
-                PROGRESS, title=1, next_title=1, lists=[[0], [], [], [], [16]], selected=[0, 255, 255, 255, 255])))
-            tcp("load_state", path=str(out / "other.cycstate"))
-            other = tcp("mantra_now")["mantra"]
-            assert mantra != other
+        if args.wants("overwrite"):
+            # 5. NEW GAME over a used file: asked first; B keeps it, A erases it.
             game.close()
-
-            # 5. Importing mantras.
-            imports = out / "imports"
-            install(imports)
-            (imports / "faxanadu.srm").write_text(mantra + "\n")
-            (imports / "faxanadu_gurus.txt").write_text("Eolis\nApolune\nConflate\n")
-            launch(imports)
-            state = files()
-            assert state["imports"] == 1 and [s["status"] for s in state["slots"]] == [OK, MISSING, MISSING], state
-            f1 = read_file(imports / "faxanadu_file1.txt")
-            assert f1["gurus"] == "Eolis Apolune Conflate" and f1["spawn"] == str(CONFLATE), f1
-            # A mantra holds the title but not gold or experience: those are the
-            # title's, as continuing from it gave. Items above $0F survive it.
-            assert file_progress(f1) == dict(expect, next_title=4, experience=4800, gold=1600), file_progress(f1)
-            assert mantra in (imports / "faxanadu_imported.txt").read_text()
-            print("ok: the first run imports faxanadu.srm's mantra and faxanadu_gurus.txt into file 1")
-            game.close()
-            launch(imports, "--password", other)
-            state = files()
-            assert state["imports"] == 1 and [s["status"] for s in state["slots"]] == [OK, OK, MISSING], state
-            assert read_file(imports / "faxanadu_file2.txt")["items"] == "16"
-            game.close()
-            launch(imports, "--password", other)
-            assert files()["imports"] == 0, "a mantra is imported once"
-            print("ok: --password imports into the first empty file, once")
-            choose(1)
-            until("Conflate's temple", lambda: in_temple(CONFLATE), 1200)
-            wait(60)
-            progress, spawn = progress_in_ram()
-            assert progress == file_progress(f1) and spawn == CONFLATE, progress
-            assert travel()["visited"] == 0b100011
-            print("ok: continuing the imported file gives the mantra's progress and the visited Gurus")
-            game.close()
-
-            # 6. Erasing a file.
-            launch(imports)
-            while files()["cursor"] != 3:
-                act("down")
+            write_file(gamedir / "faxanadu_file2.txt", PROGRESS, CONFLATE)
+            launch(gamedir)
+            act("select")
+            assert (files()["mode"], files()["cursor"]) == (FILES_TOP, 0), files()
             act("a")
-            assert files()["mode"] == 1 and files()["cursor"] == 0
+            state = files()
+            assert (state["mode"], state["cursor"]) == (FILES_NEW, 0), "on the first empty file"
+            assert "Fighter" in state["rows"][2] and not any(state["dim"]), state["rows"]
             act("down")
             act("a")
-            assert files()["mode"] == 2 and files()["target"] == 1
-            assert files()["rows"][7].endswith("Erase file 2? A yes B no"), files()["rows"]
-            shot("erase-confirm")
-            act("a")
             state = files()
-            assert not (imports / "faxanadu_file2.txt").exists() and state["rows"][2].endswith("2 New game"), state
-            assert (imports / "faxanadu_file1.txt").exists()
-            print("ok: erasing file 2 from the file select")
+            assert (state["mode"], state["target"]) == (FILES_CONFIRM, 1), state
+            assert state["rows"][7].endswith("Erase file 2? A yes B no") and state["rows"][2].startswith("}"), state
+            assert state["file"] == 0 and state["title"], "nothing chosen yet"
+            shot("erase-confirm", "erase-confirm")
+            act("b")
+            state = files()
+            assert (state["mode"], state["cursor"]) == (FILES_NEW, 1) and state["title"], state
+            assert (gamedir / "faxanadu_file2.txt").exists(), "B keeps the file"
+            act("a")
+            assert files()["mode"] == FILES_CONFIRM
+            act("a")
+            until("file 2 in play", lambda: files()["file"] == 2, 300)
+            state = files()
+            assert state["continuing"] == 0 and not state["title"] and ram(START_SCREEN_CHOICE) == 0, state
+            assert not (gamedir / "faxanadu_file2.txt").exists(), "A erased it"
+            assert state["slots"][1]["status"] == MISSING
+            until("the title to go", lambda: not tcp("title_state")["shown"], 120)
+            print("ok: NEW GAME over file 2 asks first; B keeps the file, A erases it and starts a new game in it")
         print("screenshots:", ", ".join(game.shots))
         if args.shots:
             args.shots.mkdir(parents=True, exist_ok=True)

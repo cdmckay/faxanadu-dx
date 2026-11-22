@@ -222,7 +222,8 @@ port`. `e2e/fax_e2e_test.py` checks all of this.
 
 ## The README's screenshots
 
-A feature's picture in the README is a scene in
+A README picture, for a feature with something new to see (CLAUDE.md says
+which), is a scene in
 [../tools/readme_screenshots.py](../tools/readme_screenshots.py), played on this
 helper: usually its end-to-end test's setup, cut down to the moment worth
 showing. `python3 tools/readme_screenshots.py --only <scene>` writes

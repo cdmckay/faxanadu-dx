@@ -14,11 +14,12 @@ temple. Then he dies:
 1. With the feature on, he comes back at Mascon's Guru with the same gold,
    experience and earned title. The rest of death is the game's: full HP and
    MP, the Mattock bit and the Wing Boots gone.
-2. His mantra, the remaster's way: --password imports it into the first
-   empty save file, with his title's gold and experience, and continuing that
-   file from the file select starts him with them, as continuing a mantra
-   always has. Continuing goes through Player_SetInitialExpAndGold as the
-   mantra screen's END does, and this feature lets that call through.
+2. His save file: coming back saved file 1 (the gate's new game), and
+   continuing it from the title's CONTINUE starts him with exactly that gold,
+   experience and earned title. Continuing goes through
+   Player_SetInitialExpAndGold as the original's mantra screen's END does;
+   this feature lets that call through, and Save files puts the file's own
+   values back after it.
 3. With the remaster off in the mod selection, the same death resets them to
    his title's, as the original does. That death starts as the Guru speaks,
    from a saved game of the first after its dissolve: the reset comes after
@@ -29,7 +30,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 import fax_e2e  # noqa: E402
-from fax_e2e import Game, act, dissolve, fixture, page_through, parse_args, ram, tcp, until, wait  # noqa: E402
+from fax_e2e import Game, choose_file, dissolve, fixture, page_through, parse_args, ram, tcp, title_menu, until, wait  # noqa: E402
 
 EXPERIENCE, GOLD, PLAYER_TITLE, NEXT_PLAYER_TITLE = 0x390, 0x392, 0x437, 0x4ED
 HP, MP, QUESTS, DURATION_WING_BOOTS = 0x431, 0x39A, 0x42D, 0x429
@@ -120,30 +121,23 @@ def main():
         print(f"ok: died with {HERO['gold']} gold and {HERO['experience']} experience, "
               "came back at Mascon's Guru with both and the earned title")
         print("ok: full HP and MP, the Mattock bit and Wing Boots cleared, as before")
-        mantra = tcp("mantra_now")["mantra"]
+        assert tcp("files_state")["file"] == 1 and (out / "game" / "faxanadu_file1.txt").exists()
         game.close()
 
-        # 2. His mantra, imported into a save file and continued, still starts
-        # him with his title's gold and experience.
-        game.launch("--password", mantra)
-        until("the file select", lambda: tcp("files_state")["title"], 2000)
-        files = tcp("files_state")
-        imported = [i + 1 for i, s in enumerate(files["slots"]) if s["status"] == 0 and
-                    (s["title"], s["gold"], s["experience"]) == (SOLDIER, stock_gold, stock_exp)]
-        assert files["imports"] == 1 and len(imported) == 1, f"one file holds the mantra's hero: {files}"
-        while tcp("files_state")["cursor"] != imported[0] - 1:
-            act("down")
-        game.shot("imported-file")
-        tcp("pad", buttons="start", frames=10)
-        until(f"file {imported[0]} in play", lambda: tcp("files_state")["file"] == imported[0], 300)
+        # 2. His save file, continued, starts him with what he came back with.
+        game.launch()
+        files = title_menu()
+        assert files["slots"][0]["status"] == 0 and (files["slots"][0]["gold"], files["slots"][0]["experience"]) == \
+            (HERO["gold"], HERO["experience"]), files["slots"]
+        choose_file(False, 1)
         until("Mascon's temple", in_mascon_temple)
         wait(60)
         game.shot("continued")
-        assert hero() == dict(experience=stock_exp, gold=stock_gold, title=SOLDIER, next_title=SOLDIER), hero()
+        assert hero() == dict(HERO, title=SOLDIER, next_title=SOLDIER + 1), hero()
         state = tcp("death_state")
         assert state["enabled"] and (state["kept"], state["passed"]) == (0, 1), state
-        print(f"ok: his mantra, imported into file {imported[0]} and continued, still starts a Soldier with "
-              f"{stock_gold} gold and {stock_exp} experience")
+        print(f"ok: file 1, continued, starts him with {HERO['gold']} gold, {HERO['experience']} experience and the "
+              "earned title: Player_SetInitialExpAndGold let through, then the file's own")
         game.close()
 
         # 3. With the remaster off, the same death resets them, as the original does.

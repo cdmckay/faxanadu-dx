@@ -15,7 +15,14 @@
  * and AREA_SCREEN_COMPARATORS ($EA37), per area a pointer to 4-byte entries
  * (screen, screen, start YX, palette) it takes on a climb block: only the
  * Trunk's $0C and $16 have one. See fax_map_layout.h for how a page is laid
- * out, and docs/GAME_INTERNALS.md, "The map". */
+ * out, and docs/GAME_INTERNALS.md, "The map".
+ *
+ * Bank 11's AREA_SPRITE_ADDRESSES ($8210) holds a pointer per area to its
+ * screens' pointers, a word a screen (a building's by its number), each to
+ * the screen's sprite list as Screen_LoadSpriteInfo reads it: an entity and a
+ * block YX a sprite, to a $FF (then each sprite's value, to a $FF, and maybe
+ * $80 and the screen's event). Screen_LoadAllScreenInfo loads nothing for an
+ * area whose first screen's pointer has $FF for its high byte. */
 #include "fax_map_layout.h"
 #include "fax_zone.h"
 #include <stdlib.h>
@@ -27,6 +34,9 @@ enum { BANK = 0x4000, PRG_BANKS = 16 };
 /* Bank 15 */
 #define AREA_TOWN_TRANSITIONS_DATA 0xEA9Cu
 #define AREA_SCREEN_COMPARATORS    0xEA37u
+/* Bank 11 */
+#define AREA_SPRITE_ADDRESSES      0x8210u
+enum { LIST_MAX = 16 };   /* sprites a list may hold here: the original's longest has 5 (8 slots fill) */
 
 /* Screens per area (the scroll data's length / 4), as the doc's table has them. */
 static const uint8_t screens[FAX_MAP_AREAS] = { 9, 64, 83, 14, 10, 40, 32, 20 };
@@ -98,6 +108,79 @@ static void decode_climbs(const Rom *r, FaxMapAtlas *atlas) {
         if (from >= screens[FAX_MAP_TRUNK] || to >= screens[FAX_MAP_TRUNK]) continue;
         atlas->climb[from][start >> 4 >= 8 ? 0 : 1] = (uint8_t)to;
     }
+}
+
+/* ---- items ---- */
+
+/* By entity, its behavior's verdict (SPRITE_BSCRIPTS, bank 14). */
+int fax_map_item_kind(unsigned entity) {
+    switch (entity) {
+    case 0x4B: case 0x4D:     /* Red Potion, Elixir: BSCRIPTS_OBJ_POTIONLIKE, SpriteBehavior_Fall */
+    case 0x48: case 0x4E:     /* Glove, Ointment: SpriteBehavior_Glove/_Ointment, gone while one runs */
+        return FAX_MAP_ITEM_ALWAYS;
+    case 0x50: case 0x55: case 0x56: case 0x5D: case 0x5F: case 0x60:
+        /* Mattock, Wing Boots, Hour Glass, Red Potion, Glove, Ointment: SpriteBehavior_RandomlyShowItem_* */
+        return FAX_MAP_ITEM_SOMETIMES;
+    case 0x49: case 0x4A:     /* Black Onyx, Pendant: SpecialItems $01, $02 */
+    case 0x57:                /* Magical Rod: SpecialItems $04 */
+    case 0x58: case 0x59: case 0x5A:   /* Battle Suit, Battle Helmet, Dragon Slayer: held (item 3 of its list) */
+    case 0x5B: case 0x5C:     /* Ripasheiku's Mattock, Zorugeriru's Wing Boots: Quests $10, $08 */
+        return FAX_MAP_ITEM_ONCE;
+    default:                  /* not an item, or Poison ($4C, $5E) */
+        return -1;
+    }
+}
+
+/* The door to building `b`, or NULL: the first in the areas' order. */
+static const FaxMapDoor *door_to(const FaxMapAtlas *atlas, unsigned b, unsigned *area) {
+    for (unsigned a = 0; a < FAX_MAP_AREAS; ++a)
+        for (unsigned i = 0; i < atlas->area[a].door_count; ++i) {
+            const FaxMapDoor *d = &atlas->area[a].door[i];
+            if (d->kind == FAX_MAP_DOOR_BUILDING && d->to == b) { *area = a; return d; }
+        }
+    return NULL;
+}
+
+/* One screen's list: its items. False if it runs off the bank or past the slots. */
+static bool decode_list(const Rom *r, FaxMapAtlas *atlas, unsigned area, unsigned screen, unsigned list) {
+    if (list < 0x8000u || list >= 0xC000u) return false;
+    const FaxMapDoor *door = NULL;
+    unsigned door_area = 0;
+    for (unsigned n = 0; rd(r, 11, list + 2 * n) != 0xFF; ++n) {
+        if (n == LIST_MAX || list + 2 * n + 1 >= 0xC000u) return false;
+        unsigned entity = rd(r, 11, list + 2 * n), block = rd(r, 11, list + 2 * n + 1);
+        int kind = fax_map_item_kind(entity);
+        if (kind < 0) continue;
+        FaxMapItem it = { (uint8_t)area, (uint8_t)screen, (uint8_t)entity, (uint8_t)block, (uint8_t)kind,
+                          (uint8_t)area, (uint8_t)screen, (uint8_t)block };
+        if (area == FAX_MAP_BUILDINGS) {   /* marked at the door that leads in */
+            if (!door && !(door = door_to(atlas, screen, &door_area))) continue;
+            it.map_area = (uint8_t)door_area; it.map_screen = door->screen; it.map_block = door->block;
+        }
+        if (atlas->item_count == FAX_MAP_ITEMS) return false;
+        atlas->item[atlas->item_count++] = it;
+    }
+    return true;
+}
+
+static bool decode_items(const Rom *r, FaxMapAtlas *atlas) {
+    atlas->item_count = 0;
+    for (unsigned a = 0; a < FAX_MAP_AREAS; ++a) {
+        unsigned base = word(r, 11, AREA_SPRITE_ADDRESSES + 2 * a);
+        if (base < 0x8000u || base >= 0xC000u) return false;
+        if (rd(r, 11, base + 1) == 0xFF) continue;   /* Screen_LoadAllScreenInfo: nothing to load */
+        if (a != FAX_MAP_BUILDINGS) {
+            for (unsigned s = 0; s < atlas->area[a].count; ++s)
+                if (!decode_list(r, atlas, a, s, word(r, 11, base + 2 * s))) return false;
+            continue;
+        }
+        /* The buildings any door leads to: their numbers run past the area's scroll data. */
+        for (unsigned b = 0; b < 0x100; ++b) {
+            unsigned area;
+            if (door_to(atlas, b, &area) && !decode_list(r, atlas, a, b, word(r, 11, base + 2 * b))) return false;
+        }
+    }
+    return true;
 }
 
 /* ---- pages ---- */
@@ -340,6 +423,7 @@ bool fax_map_decode(FaxMapAtlas *atlas, const uint8_t *prg, size_t size) {
     for (unsigned a = 0; a < FAX_MAP_AREAS; ++a) if (!decode_area(&r, a, &atlas->area[a])) return false;
     decode_edges(&r, atlas);
     decode_climbs(&r, atlas);
+    if (!decode_items(&r, atlas)) return false;
     bool (*led)[FAX_MAP_SCREENS] = calloc(FAX_MAP_AREAS, sizeof *led);
     if (!led) return false;
     leads(atlas, led);

@@ -7,8 +7,8 @@ speed) and the script waits on the game's own frames, never on the clock, on a
 reserved TCP port (tests/e2e/fax_e2e.py), so any number can go in parallel.
 
 Copies the build to OUT/game, then:
-  1. Screenshots the title with the remaster on (REMASTERED over Save files'
-     file select) and, on the same frame, with the whole remaster off (the
+  1. Screenshots the title with the remaster on (REMASTERED over NEW GAME
+     and CONTINUE) and, on the same frame, with the whole remaster off (the
      original title, START / CONTINUE and the notices), and compares them. The
      logo is the same to the pixel, but for the tile with the tip of its F
      (x 48-55, y 40-47), which the graphics fixes draw in the logo's palette
@@ -17,9 +17,10 @@ Copies the build to OUT/game, then:
      the original is black and the remaster differs only by the word: pixel
      for pixel the glyphs of the game's font (read from the ROM), in the light
      yellow of the logo's palette, centered under the logo, with at least 4
-     black rows above it and below it, down to the file select in the one
-     picture and to START / CONTINUE in the other.
-  2. Moves the file select's cursor: the word stays as it was.
+     black rows above it and below it, down to NEW GAME and CONTINUE in the
+     one picture and to START / CONTINUE in the other, both from y 160.
+  2. Opens NEW GAME's file pick, and moves its cursor: the word stays as it
+     was.
   3. Starts a new game in file 1: the word goes at once and stays gone.
 With the remaster on, Save files is always on, so the word never shows over
 START / CONTINUE. To show where it would sit, the run also writes the original
@@ -35,13 +36,13 @@ import sys
 import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import Game, frame, parser, tcp, until, wait  # noqa: E402
+from fax_e2e import FILES_NEW, Game, act, choose_file, frame, parser, tcp, until, wait  # noqa: E402
 
 WORD = "REMASTERED"
 GLYPHS = 16 + 13 * 16384                                            # TILE_GLYPHS_START: bank 13, $8000, from $20
 LOGO_ROWS, LOGO_LEFT, LOGO_RIGHT = (16, 144), 16, 240               # the logo and its border, natively
 F_TIP = (48, 40)                                                    # the tile with the F's tip (graphics fixes)
-BAND = (144, 160)                                                   # black between the logo and START / CONTINUE
+BAND = (144, 160)                                                   # black between the logo and the title's choices
 CLEAR = 4                                                           # rows of black the word keeps from the art
 REMASTER = ("faxanadu.remastered", "remastered")
 
@@ -135,18 +136,16 @@ def compare(remaster, original, state, mask):
     # Where the logo ends, and what is below it in each picture.
     logo_bottom = max(y for y in range(BAND[0]) for x in range(origin + LOGO_LEFT, origin + LOGO_RIGHT)
                       if off[y][x] != (0, 0, 0))
-    files_top, start_top = first_below(on, origin, bottom + 1), first_below(off, origin, BAND[0])
-    assert logo_bottom == 143 and start_top == 160, (logo_bottom, start_top)
-    assert files_top == 161, files_top                              # the file select's frame tiles' first row is blank
-    assert top - logo_bottom > CLEAR and files_top - bottom > CLEAR and start_top - bottom > CLEAR, \
-        (logo_bottom, top, bottom, files_top, start_top)
+    menu_top, start_top = first_below(on, origin, bottom + 1), first_below(off, origin, BAND[0])
+    assert logo_bottom == 143 and start_top == 160 and menu_top == 160, (logo_bottom, start_top, menu_top)
+    assert top - logo_bottom > CLEAR and menu_top - bottom > CLEAR, (logo_bottom, top, bottom, menu_top)
     # Centered under the logo, to a pixel, in the logo's own color.
     centre = (left + right) / 2 - origin
     assert abs(centre - (LOGO_LEFT + LOGO_RIGHT - 1) / 2) <= 1, (left, right, origin)
     assert any(off[y][x] == color for y in range(*LOGO_ROWS) for x in range(w)), f"{color} is not in the logo"
     print(f"ok: {remaster.name}: REMASTERED at ({x0}, {y0}) in {color}, rows {top}-{bottom}; the logo is the "
-          f"original's but for its F's tip; {top - logo_bottom - 1} black rows under the logo, {files_top - bottom - 1} above the "
-          f"file select, and {start_top - bottom - 1} above the original's START / CONTINUE")
+          f"original's but for its F's tip; {top - logo_bottom - 1} black rows under the logo, {menu_top - bottom - 1} above "
+          f"NEW GAME and CONTINUE, as above the original's START / CONTINUE")
     return [[on[y][x] if (x, y) in diff else off[y][x] for x in range(w)] for y in range(h)]
 
 
@@ -185,7 +184,7 @@ def main():
         """With the remaster on: wait for the title, then a little; the frame."""
         until("the title", lambda: title()["shown"], 2000)
         wait(10)
-        assert title()["shown"] and tcp("files_state")["shown"], "the file select is not up"
+        assert title()["shown"] and tcp("files_state")["shown"], "the title's menu is not up"
         return frame()
 
     try:
@@ -195,18 +194,20 @@ def main():
         launch(True)
         at = title_at()
         state = title()
-        remaster = shot("file-select", "file-select")
-        # 2. The file select's cursor moves; the word stays as it was.
-        tcp("pad", buttons="dpdown", frames=6)   # SDL names the d-pad dp*
-        until("the cursor on file 2", lambda: tcp("files_state")["cursor"] == 1, 120)
-        wait(10)
-        assert title()["shown"]
-        moved = shot("cursor-moved")
+        remaster = shot("new-game-continue", "new-game-continue")
+        # 2. NEW GAME's pick, and its cursor moving; the word stays as it was.
         _, _, a = png(remaster)
-        _, _, b = png(moved)
-        assert a != b, "the cursor did not move"
-        assert all(a[y][x] == b[y][x] for y in range(*BAND) for x in range(len(a[0]))), "the word changed"
-        print("ok: moving the file select's cursor leaves the word as it was")
+        for button, want in (("start", 0), ("down", 1)):
+            act(button)
+            until(f"the pick's cursor on file {want + 1}",
+                  lambda: (lambda s: s["mode"] == FILES_NEW and s["cursor"] == want)(tcp("files_state")), 120)
+            wait(10)
+            assert title()["shown"]
+            _, _, b = png(shot(f"pick-{button}"))
+            assert a != b, f"{button} changed nothing"
+            assert all(a[y][x] == b[y][x] for y in range(*BAND) for x in range(len(a[0]))), "the word changed"
+            a = b
+        print("ok: opening NEW GAME's pick and moving its cursor leave the word as it was")
         g.close()
         launch(False)
         until(f"frame {at}", lambda: frame() >= at, at + 600)
@@ -221,8 +222,7 @@ def main():
         launch(True)
         title_at()
         assert tcp("files_state")["cursor"] == 0
-        tcp("pad", buttons="start", frames=10)
-        until("file 1 in play", lambda: tcp("files_state")["file"] == 1, 300)
+        choose_file(True, 1)
         until("the title to go", lambda: not title()["shown"], 10)
         wait(20)
         assert not title()["shown"]

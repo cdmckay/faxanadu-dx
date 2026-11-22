@@ -1,8 +1,9 @@
 /* Unit tests for the map (fax_map_layout.c, fax_map.c), without the emulator.
  *
- * The layout is decoded from a cart of our own: bank 3's area tables and bank
- * 15's town edges and climb, laid out as the original has them, holding a
- * small world that has each case the layout handles. The feature runs against
+ * The layout is decoded from a cart of our own: bank 3's area tables, bank
+ * 15's town edges and climb and bank 11's sprite lists, laid out as the
+ * original has them, holding a small world that has each case the layout and
+ * the items handle. The feature runs against
  * Block's model of the machine (../block/model.c): RAM as the game leaves it
  * at the end of a frame, GameLoop_CheckPauseGame's two branches, the frames'
  * ends, Save files' fields and the presented picture.
@@ -81,6 +82,12 @@ static unsigned edge_counts[8];
 typedef struct { uint8_t from, to, start; } Climb;
 static Climb climbs[4];
 static unsigned climb_count;
+typedef struct { uint8_t area, screen, entity, block; } Sprite;
+static Sprite sprites[32];
+static unsigned sprite_count;
+static void sprite(unsigned a, unsigned screen, unsigned entity, unsigned block) {
+    sprites[sprite_count++] = (Sprite){ (uint8_t)a, (uint8_t)screen, (uint8_t)entity, (uint8_t)block };
+}
 
 static void link1(unsigned a, unsigned s, unsigned d, unsigned t) { links[a][s][d] = (uint8_t)t; }
 static void link2(unsigned a, unsigned s, unsigned d, unsigned t) {
@@ -100,6 +107,7 @@ static void edge(unsigned a, unsigned from, unsigned area, unsigned to, unsigned
 }
 static uint8_t *b3(unsigned addr) { return payload + 3 * 0x4000 + (addr - 0x8000); }
 static uint8_t *b15(unsigned addr) { return payload + 15 * 0x4000 + (addr - 0xC000); }
+static uint8_t *b11(unsigned addr) { return payload + 11 * 0x4000 + (addr - 0x8000); }
 static void put16(uint8_t *p, unsigned v) { p[0] = (uint8_t)v; p[1] = (uint8_t)(v >> 8); }
 
 /* Bank 3 as the original lays it out: AREAS_TABLE_PTR, AREA_TABLES, then per
@@ -149,6 +157,24 @@ static void build(void) {
         p[0] = climbs[i].from; p[1] = climbs[i].to; p[2] = climbs[i].start; p[3] = 0x06;
     }
     *b15(0xF410 + 4 * climb_count) = 0xFF;
+    /* Bank 11: AREA_SPRITE_ADDRESSES, a word a screen (a building's by its number), and each screen's list:
+     * entity and block a sprite, a $FF, then the values' $FF. The Fortress of Zenis loads nothing: its first
+     * screen's pointer has $FF for its high byte. */
+    unsigned at11 = 0x8220;
+    for (unsigned a = 0; a < 8; ++a) {
+        unsigned n = a == FAX_MAP_BUILDINGS ? 0x40 : counts[a], table = at11;
+        put16(b11(0x8210 + 2 * a), table);
+        at11 += 2 * n;
+        if (a == FAX_MAP_ZENIS) { put16(b11(table), 0xFF00); continue; }
+        for (unsigned screen = 0; screen < n; ++screen) {
+            put16(b11(table + 2 * screen), at11);
+            for (unsigned i = 0; i < sprite_count; ++i)
+                if (sprites[i].area == a && sprites[i].screen == screen) {
+                    *b11(at11++) = sprites[i].entity; *b11(at11++) = sprites[i].block;
+                }
+            *b11(at11++) = 0xFF; *b11(at11++) = 0xFF;
+        }
+    }
 }
 
 /* The world. Each case has its own screens, with the zones fax_zone.c gives them. */
@@ -196,6 +222,18 @@ static void world(void) {
     edge(FAX_MAP_MIST, 0x0B, FAX_MAP_TOWNS, 0x05, 0x9E);
     edge(FAX_MAP_TOWNS, 0x04, FAX_MAP_MIST, 0x02, 0x7E);
     edge(FAX_MAP_TOWNS, 0x05, FAX_MAP_MIST, 0x0B, 0x71);
+    /* The items: one of each kind, a building's, and sprites that are none (a Zozura, Poison). */
+    sprite_count = 0;
+    sprite(FAX_MAP_TRUNK, 0x00, 0x47, 0xA9);           /* a Zozura */
+    sprite(FAX_MAP_TRUNK, 0x00, 0x4D, 0x3B);           /* item 0: an Elixir, at every visit */
+    sprite(FAX_MAP_TRUNK, 0x01, 0x55, 0x41);           /* item 1: Wing Boots, one visit in four */
+    sprite(FAX_MAP_TRUNK, 0x08, 0x4C, 0x31);           /* Poison */
+    sprite(FAX_MAP_TRUNK, 0x08, 0x4A, 0x9E);           /* item 2: the Pendant, until SpecialItems has it */
+    sprite(FAX_MAP_TRUNK, 0x09, 0x48, 0x52);           /* item 3: a Glove, unless one is running */
+    sprite(FAX_MAP_MIST, 0x00, 0x58, 0xBD);            /* item 4: the Battle Suit, until he holds it */
+    sprite(FAX_MAP_BUILDINGS, TOOL_SHOP_05, 0x5D, 0x98);   /* item 5: a Red Potion in the shop on Trunk 00 */
+    sprite(FAX_MAP_BUILDINGS, 0x30, 0x4D, 0x98);       /* in a building no door leads to: none */
+    sprite(FAX_MAP_ZENIS, 0x00, 0x4D, 0x98);           /* in an area that loads nothing: none */
     build();
 }
 
@@ -296,7 +334,33 @@ static void test_layout(void) {
     CHECK(trunk->door[4].kind == FAX_MAP_DOOR_REGION);
     CHECK(got.area[FAX_MAP_TOWNS].door[0].to == APOLUNE_TEMPLE && got.area[FAX_MAP_TOWNS].door[0].palette == FAX_MAP_TEMPLE);
 
-    /* Tables that are not the original's are refused: door locations not right after the scroll data. */
+    /* The items: in the lists' order, a building's marked at its door. */
+    CHECK(got.item_count == 6);
+    static const uint8_t want[6][8] = {
+        { 1, 0x00, 0x4D, 0x3B, FAX_MAP_ITEM_ALWAYS, 1, 0x00, 0x3B },
+        { 1, 0x01, 0x55, 0x41, FAX_MAP_ITEM_SOMETIMES, 1, 0x01, 0x41 },
+        { 1, 0x08, 0x4A, 0x9E, FAX_MAP_ITEM_ONCE, 1, 0x08, 0x9E },
+        { 1, 0x09, 0x48, 0x52, FAX_MAP_ITEM_ALWAYS, 1, 0x09, 0x52 },
+        { 2, 0x00, 0x58, 0xBD, FAX_MAP_ITEM_ONCE, 2, 0x00, 0xBD },
+        { 4, TOOL_SHOP_05, 0x5D, 0x98, FAX_MAP_ITEM_SOMETIMES, 1, 0x00, 0x95 },
+    };
+    for (unsigned i = 0; i < 6; ++i) {
+        const FaxMapItem *it = &got.item[i];
+        CHECK(it->area == want[i][0] && it->screen == want[i][1] && it->entity == want[i][2] && it->block == want[i][3]);
+        CHECK(it->kind == want[i][4] && it->map_area == want[i][5] && it->map_screen == want[i][6] &&
+              it->map_block == want[i][7]);
+    }
+    CHECK(fax_map_item_kind(0x4C) < 0 && fax_map_item_kind(0x5E) < 0 && fax_map_item_kind(0x47) < 0);
+
+    /* Tables that are not the original's are refused: a sprite list off the bank, one too long. */
+    put16(b11(0x8210 + 2 * FAX_MAP_EOLIS), 0xC100);
+    CHECK(!fax_map_decode(&got, payload, sizeof payload));
+    world();
+    memset(b11(0xA000), 0x47, 40);
+    put16(b11(0x8220), 0xA000);   /* Eolis's first screen: 20 Zozuras and on */
+    CHECK(!fax_map_decode(&got, payload, sizeof payload));
+    world();
+    /* Door locations not right after the scroll data. */
     put16(b3(0x8010 + 16 + 6), 0x1234);
     CHECK(!fax_map_decode(&got, payload, sizeof payload));
     CHECK(!fax_map_decode(&got, payload, 15 * 0x4000));
@@ -454,6 +518,131 @@ static void test_visits(void) {
     CHECK(model_state_set("faxanadu.map", rec, 0) && !seen(0, 1));   /* saved without the map */
 }
 
+/* The items: where each shows, the pickups, the file. */
+static void no_sprites(void) { memset(&ram[SPRITE_ENTITIES], 0xFF, SLOTS); }
+/* Player_HandleTouchItem as the game runs it: the item in slot `slot`, then the slot emptied. */
+static void touch(unsigned slot, unsigned entity) {
+    ram[SPRITE_ENTITIES + slot] = (uint8_t)entity; cpu.x = (uint8_t)slot;
+    CHECK(SITES(PLAYER_HANDLE_TOUCH_ITEM, "faxanadu.map.touch"));   /* it only observes */
+    ram[SPRITE_ENTITIES + slot] = 0xFF;
+}
+enum { ELIXIR, BOOTS, PENDANT, GLOVE, SUIT, SHOP_POTION };
+
+static void test_items(void) {
+    world();
+    model_reset();
+    model_activate("faxanadu.map");
+    CHECK(hook_enabled("faxanadu.map.touch"));
+    gurus = 1;
+    save_listener(FAX_SAVE_NEW_GAME);
+    ram[GAME_PAUSED_STATE] = 0; ram[PLAYER_IS_DEAD] = 0;
+    ram[DURATION_GLOVE] = ram[DURATION_OINTMENT] = 0xFF;
+    ram[SPECIAL_ITEMS] = ram[QUESTS] = 0;
+    ram[SELECTED_ARMOR] = 0; ram[NUMBER_OF_ARMORS] = 0; memset(&ram[ARMOR_INVENTORY], 0, 4);
+    no_sprites();
+    for (unsigned i = 0; i < atlas.item_count; ++i) CHECK(!item_shown(i));   /* nothing seen */
+
+    /* On its screen an item is there if its sprite is; elsewhere, by its kind. */
+    settle_at(1, 0x00);
+    CHECK(!item_shown(ELIXIR));
+    ram[SPRITE_ENTITIES + 2] = 0x4D;
+    CHECK(item_shown(ELIXIR) && !item_shown(SHOP_POTION));   /* the shop's: one visit in four, and he is not in */
+    no_sprites();
+    settle_at(1, 0x01);
+    CHECK(item_shown(ELIXIR));                               /* at every visit */
+    CHECK(!item_shown(BOOTS));
+    ram[SPRITE_ENTITIES + 5] = 0x55;
+    CHECK(item_shown(BOOTS));                                /* this visit's */
+    settle_at(1, 0x00);
+    CHECK(!item_shown(BOOTS) && seen(1, 0x01));              /* another's: not counted on */
+
+    /* Touched, the Elixir is taken and stays gone; the Wing Boots come back when they do. */
+    touch(3, 0x4D);
+    CHECK(pickups == 1 && bit(picked, ELIXIR) && !item_shown(ELIXIR));
+    settle_at(1, 0x01);
+    CHECK(!item_shown(ELIXIR));
+    touch(5, 0x55);
+    CHECK(pickups == 2 && !bit(picked, BOOTS) && !item_shown(BOOTS));
+    ram[SPRITE_ENTITIES + 5] = 0x55;
+    CHECK(item_shown(BOOTS));
+    no_sprites();
+    touch(1, 0x02);                                          /* a coin: no item of the list */
+    touch(1, 0x4D);                                          /* an Elixir, but not this screen's */
+    CHECK(pickups == 2);
+    isolated_scope = true; settle_at(1, 0x00); touch(3, 0x4D); isolated_scope = false;
+    CHECK(pickups == 2);                                     /* in an isolated machine: nothing */
+
+    /* The Pendant: until SpecialItems has it. On its screen, its sprite (hidden till the boss is gone). */
+    settle_at(1, 0x08);
+    ram[SPRITE_ENTITIES + 0] = 0x4A;
+    CHECK(item_shown(PENDANT));
+    no_sprites();
+    settle_at(1, 0x09);
+    CHECK(item_shown(PENDANT) && !item_shown(GLOVE));        /* the Glove: here, and no sprite */
+    ram[SPECIAL_ITEMS] = 0x02;
+    CHECK(!item_shown(PENDANT));
+    ram[SPECIAL_ITEMS] = 0;
+    settle_at(1, 0x08);
+    CHECK(item_shown(GLOVE));
+    ram[DURATION_GLOVE] = 10;                                /* a Glove running: it is not there */
+    CHECK(!item_shown(GLOVE));
+    ram[DURATION_GLOVE] = 0xFF;
+    CHECK(item_shown(GLOVE));
+
+    /* The Battle Suit: until he wears it, or it is in his list's first entries. */
+    settle_at(2, 0x00); settle_at(2, 0x01);
+    CHECK(item_shown(SUIT));
+    ram[SELECTED_ARMOR] = 3;
+    CHECK(!item_shown(SUIT));
+    ram[SELECTED_ARMOR] = 0; ram[ARMOR_INVENTORY + 1] = 3; ram[NUMBER_OF_ARMORS] = 1;
+    CHECK(item_shown(SUIT));                                 /* past the count: a stale byte */
+    ram[NUMBER_OF_ARMORS] = 2;
+    CHECK(!item_shown(SUIT));
+    ram[NUMBER_OF_ARMORS] = 0;
+
+    /* In the shop on Trunk 00: the Red Potion while its sprite is there, at the door. */
+    inside(TOOL_SHOP_05, 1, 0x00);
+    CHECK(!item_shown(SHOP_POTION));
+    ram[SPRITE_ENTITIES + 1] = 0x5D;
+    CHECK(item_shown(SHOP_POTION));
+    no_sprites();
+    settle_at(1, 0x00);
+    CHECK(!item_shown(SHOP_POTION));
+
+    /* The file: the items picked, by their place in the list, a field of their own. */
+    field_count = 0;
+    save_listener(FAX_SAVE_WRITING);
+    CHECK(field_value("map.items") && !strcmp(field_value("map.items"), "10"));
+    save_listener(FAX_SAVE_NEW_GAME);
+    CHECK(!bit(picked, ELIXIR));
+    save_listener(FAX_SAVE_CONTINUED);
+    CHECK(bit(picked, ELIXIR) && picked[0] == 1);
+    snprintf(fields[field_at("map.items")].value, 96, "fff");   /* past the items: dropped */
+    save_listener(FAX_SAVE_CONTINUED);
+    CHECK(picked[0] == 0x3F && picked[1] == 0);
+    snprintf(fields[field_at("map.items")].value, 96, "1z");    /* damaged: every item shows again */
+    save_listener(FAX_SAVE_CONTINUED);
+    CHECK(!bit(picked, ELIXIR) && seen(1, 0x01));
+    save_listener(FAX_SAVE_WRITING);
+    CHECK(!field_value("map.items"));                        /* none taken: no field */
+    set_bit(picked, ELIXIR);
+    save_listener(FAX_SAVE_CONTINUED);
+    CHECK(!bit(picked, ELIXIR));                              /* a file from before the items: none picked */
+
+    /* Save states keep what is taken; a record from before the items loads with none. */
+    set_bit(picked, ELIXIR);
+    uint8_t rec[512];
+    int n = model_state_get("faxanadu.map", rec, sizeof rec);
+    CHECK(n == (int)RECORD && n == (int)RECORD_1 + ITEM_SET);
+    save_listener(FAX_SAVE_NEW_GAME);
+    CHECK(model_state_set("faxanadu.map", rec, n) && bit(picked, ELIXIR));
+    rec[0] = 1;
+    CHECK(!model_state_set("faxanadu.map", rec, n));
+    CHECK(model_state_set("faxanadu.map", rec, (int)RECORD_1) && !bit(picked, ELIXIR) && seen(1, 0x01));
+    rec[0] = 2;
+    CHECK(!model_state_set("faxanadu.map", rec, (int)RECORD_1));
+}
+
 /* The map open, its buttons, and the picture. */
 static uint32_t px_at(const uint32_t *p, int x, int y) { return p[y * 256 + x]; }
 static const Drawn *box(unsigned area, unsigned screen) { return drawn_at(area, screen); }
@@ -466,6 +655,8 @@ static void test_map(void) {
     gurus = 1;
     save_listener(FAX_SAVE_NEW_GAME);
     ram[GAME_PAUSED_STATE] = 0; ram[PLAYER_IS_DEAD] = 0;
+    ram[DURATION_GLOVE] = ram[DURATION_OINTMENT] = 0xFF; ram[SPECIAL_ITEMS] = ram[QUESTS] = 0;
+    no_sprites();
     settle_at(1, 0x00); settle_at(1, 0x01); settle_at(3, 0x00); settle_at(3, 0x01); settle_at(1, 0x08);
     settle_at(1, 0x09);
     settle_at(1, 0x16);   /* the climb */
@@ -529,7 +720,7 @@ static void test_map(void) {
     age = 0;
     int w = 256, h = 240;
     const uint32_t *pic = fax_map_present(native, &w, &h);
-    CHECK(pic != native && w == 256 && h == 240 && boxes_drawn > 0 && !strcmp(last_line, "Door"));
+    CHECK(pic != native && w == 256 && h == 240 && boxes_drawn > 0 && !strcmp(last_line, "Item"));
     CHECK(drawn_page == FAX_MAP_PAGE_TRUNK && drawn_cw == 16 && drawn_ch == 13);
     const Drawn *b0 = box(1, 0), *b1 = box(1, 1), *b8 = box(1, 8), *b9 = box(1, 9), *b16 = box(1, 0x16),
                 *b3e = box(1, 0x3E), *t0 = box(3, 0);
@@ -550,9 +741,26 @@ static void test_map(void) {
     int mid = b9->x + b9->w / 2;
     CHECK(px_at(pic, mid, b16->y + b16->h) == nes(ROOM) && px_at(pic, mid, b9->y) == nes(ROOM));
     CHECK(px_at(pic, b9->x + 1, b9->y) == nes(ROOM_WALL));
-    /* The shop's mark, at its block on 00 ($95: x 5 of 16, y 9 of 13). */
+    /* The shop's door, at its block on 00 ($95: x 5 of 16, y 9 of 13): a door like any other. */
     int mx = b0->x + 1 + 5 * (b0->w - 5) / 15, my = b0->y + 1 + 9 * (b0->h - 5) / 12;
-    CHECK(px_at(pic, mx, my) == nes(SHOP) && px_at(pic, mx + 2, my + 2) == nes(SHOP));
+    CHECK(px_at(pic, mx, my) == nes(DOOR) && px_at(pic, mx + 2, my + 2) == nes(DOOR));
+    /* The items: the Pendant's dot on 08 ($9E) and the Glove's on 09 ($52), 2 x 2; none for the Elixir on
+     * 00, where he is and its sprite is not; none for the Glove while one runs. */
+    int px8 = b8->x + 1 + 14 * (b8->w - 5) / 15, py8 = b8->y + 1 + 9 * (b8->h - 5) / 12;
+    CHECK(px_at(pic, px8, py8) == nes(ITEM) && px_at(pic, px8 + 1, py8 + 1) == nes(ITEM));
+    CHECK(px_at(pic, px8 + 2, py8) == nes(ROOM) && px_at(pic, px8, py8 + 2) == nes(ROOM));
+    int px9 = b9->x + 1 + 2 * (b9->w - 5) / 15, py9 = b9->y + 1 + 5 * (b9->h - 5) / 12;
+    CHECK(px_at(pic, px9, py9) == nes(ITEM));
+    int ex = b0->x + 1 + 11 * (b0->w - 5) / 15, ey = b0->y + 1 + 3 * (b0->h - 5) / 12;
+    CHECK(px_at(pic, ex, ey) != nes(ITEM) && dot_count == 2 && dots[0].item == PENDANT && dots[1].item == GLOVE);
+    CHECK(dots[0].x == px8 && dots[0].y == py8);
+    ram[SPRITE_ENTITIES + 4] = 0x4D;                         /* there after all */
+    pic = fax_map_present(native, &w, &h);
+    CHECK(px_at(pic, ex, ey) == nes(ITEM) && dot_count == 3);
+    ram[SPRITE_ENTITIES + 4] = 0xFF; ram[DURATION_GLOVE] = 3;
+    pic = fax_map_present(native, &w, &h);
+    CHECK(px_at(pic, px9, py9) == nes(ROOM) && dot_count == 1);
+    ram[DURATION_GLOVE] = 0xFF;
     /* It blinks: off every other BLINK frames. */
     age = BLINK;
     pic = fax_map_present(native, &w, &h);
@@ -614,6 +822,21 @@ static void test_rom(const char *path) {
             for (unsigned t = 0; t < 8; ++t) temples += d->to == temple_interior[t];
         }
     CHECK(temples == 8);
+    /* The items, as the doc's table has them: 44 (no Poison), each on a page. */
+    unsigned kinds[3] = { 0 };
+    for (unsigned i = 0; i < got.item_count; ++i) {
+        const FaxMapItem *it = &got.item[i];
+        ++kinds[it->kind];
+        CHECK(cell(it->map_area, it->map_screen));
+    }
+    CHECK(got.item_count == 44 && kinds[FAX_MAP_ITEM_ALWAYS] == 10 && kinds[FAX_MAP_ITEM_SOMETIMES] == 26 &&
+          kinds[FAX_MAP_ITEM_ONCE] == 8);
+    printf("  %u items: %u at every visit, %u at one in four, %u once\n", got.item_count, kinds[0], kinds[1], kinds[2]);
+    const FaxMapItem *elixir = &got.item[11], *boots = &got.item[22], *slayer = &got.item[39];
+    CHECK(elixir->area == 1 && elixir->screen == 0x3C && elixir->entity == 0x4D && elixir->block == 0x32);
+    CHECK(boots->area == 4 && boots->screen == 0x1F && boots->entity == 0x55 && boots->map_area == 2 &&
+          boots->map_screen == 0x06 && boots->map_block == 0x9B);   /* the Wing Boots in a house off Mist $06 */
+    CHECK(slayer->area == 6 && slayer->screen == 0x15 && slayer->entity == 0x5A && slayer->kind == FAX_MAP_ITEM_ONCE);
     /* Every area's field fits a save file's value with everything seen and used. */
     memset(&v, 0xFF, sizeof v);
     for (unsigned a = 0; a < FAX_MAP_AREAS; ++a) {
@@ -622,11 +845,17 @@ static void test_rom(const char *path) {
         if (field[a]) CHECK(format_area(a, text) && strlen(text) <= 95);
     }
     memset(&v, 0, sizeof v);
+    char text[FAX_SAVE_VALUE];
+    memset(picked, 0xFF, sizeof picked);
+    put_set(text, picked, got.item_count);
+    CHECK(strlen(text) == 11);   /* map.items, every item taken */
+    memset(picked, 0, sizeof picked);
 }
 
 int main(int argc, char **argv) {
     test_layout();
     test_visits();
+    test_items();
     test_map();
     if (argc > 1) test_rom(argv[1]);
     printf("map: %u checks passed%s\n", checks, argc > 1 ? " (with the ROM's map)" : "");

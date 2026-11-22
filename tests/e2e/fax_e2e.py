@@ -116,6 +116,14 @@ Functions, on the game launched last
                                     until 8 pixels short, then taps of 2 frames.
     walk(button, stop)              Hold a direction until stop() or the hero
                                     stops moving (a wall, a counter, a person).
+    title_menu(frames=2000)         Wait for Save files' menu on the title (NEW GAME
+                                    and CONTINUE); its files_state.
+    choose_file(new, file)          From the title's menu: NEW GAME (new) or
+                                    CONTINUE, then file 1-3, saying yes to NEW
+                                    GAME's "Erase file N?" if it asks. Returns
+                                    once the file is in play. FILES_TOP,
+                                    FILES_NEW, FILES_CONTINUE and FILES_CONFIRM
+                                    are files_state's modes.
 
 Save states and the mod selection
     chunks(data)                    A CYCSTATE's chunks: (tag, offset, size).
@@ -774,10 +782,12 @@ def _fixture_key(game, name):
 
 @recipe("gate")
 def _gate(g):
-    """A new game (Start on the title: file 1, with Save files), outside
-    Eolis's gate once the opening has played."""
+    """A new game (NEW GAME on the title, then file 1, with Save files),
+    outside Eolis's gate once the opening has played."""
     g.until("the title", lambda: g.frame() > 700)
-    g.tcp("pad", buttons="start", frames=10)
+    g.act("start")                                                    # NEW GAME: nothing to continue
+    g.until("NEW GAME's pick", lambda: g.tcp("files_state")["mode"] == FILES_NEW, 120)
+    g.act("start")                                                    # file 1, empty: a new game at once
     g.until("the Eolis gate", lambda: g.ram(0x24) == 0 and g.frame() > 1900)   # Area_CurrentArea
 
 
@@ -872,6 +882,42 @@ def until(what, test, frames=1200):
 
 def act(name, frames=6, after=8):
     _current().act(name, frames, after)
+
+
+FILES_TOP, FILES_NEW, FILES_CONTINUE, FILES_CONFIRM = 0, 1, 2, 3   # fax_files.c's Mode
+
+
+def title_menu(frames=2000):
+    """Wait for Save files' menu on the title; its state (files_state)."""
+    until("the title's menu", lambda: tcp("files_state")["shown"], frames)
+    return tcp("files_state")
+
+
+def choose_file(new, file):
+    """From the title's menu (or one of its picks): NEW GAME (`new`) or
+    CONTINUE, then file `file` (1-3), and A on NEW GAME's "Erase file N?" if
+    the file is used. Returns once the file is in play."""
+    for _ in range(3):                                                # B: back to the two choices
+        if tcp("files_state")["mode"] == FILES_TOP:
+            break
+        act("b")
+    for _ in range(2):
+        if tcp("files_state")["cursor"] == (0 if new else 1):
+            break
+        act("select")
+    assert tcp("files_state")["cursor"] == (0 if new else 1), "CONTINUE is grey: no file to continue"
+    act("a")
+    pick = FILES_NEW if new else FILES_CONTINUE
+    until("the pick", lambda: tcp("files_state")["mode"] == pick, 60)
+    for _ in range(3):
+        if tcp("files_state")["cursor"] == file - 1:
+            break
+        act("down")
+    assert tcp("files_state")["cursor"] == file - 1, f"file {file} cannot be chosen"
+    act("a")
+    if new and tcp("files_state")["mode"] == FILES_CONFIRM:
+        act("a")
+    until(f"file {file} in play", lambda: tcp("files_state")["file"] == file, 300)
 
 
 def hold_a():

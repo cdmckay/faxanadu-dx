@@ -6,8 +6,7 @@ The game runs uncapped (about 5x real time; --realtime to watch it at normal
 speed) and the script waits on the game's own state, never on the clock, so
 each run takes a free TCP port, so any number can go in parallel.
 
-Copies the build to OUT (so the mantra and faxanadu_gurus.txt sidecars stay
-there), starts a new game over TCP, then edits save-state RAM to place the hero
+Copies the build to OUT (so the faxanadu_gurus.txt sidecar stays there), starts a new game over TCP, then edits save-state RAM to place the hero
 (an external prerequisite, not coverage): Conflate is the furthest temple, and
 the Gurus of Eolis, Apolune, Mascon and Conflate have been visited. Each
 scenario starts from the same state and saves a screenshot per step in OUT.
@@ -26,6 +25,14 @@ TEMPLE_SCREEN = [0x02, 0x0B, 0x10, 0x1E, 0x23, 0x2B, 0x33, 0x3C]   # DEST_SCREEN
 CONFLATE, MASCON = 5, 3
 MEDITATE_WITH_YOU, NEGATIVE_THOUGHTS = 0x22, 0x24                  # the Guru's greeting; the death message
 OFFER, FAREWELL, DEPART, TO_GURU = 1, 2, 3, 4                      # fax_travel.c's lines (TO_GURU + temple)
+# What the original's mantra holds (Password_EncodeGameState): the spawn point, the title, the special
+# items, the quests, the five inventories, their selections and their counts.
+PROGRESS = ((0x439, 1), (0x437, 1), (0x42C, 2), (0x39D, 24), (0x3BD, 10))
+
+
+def progress():
+    """The bytes of PROGRESS, in one batch (one frame's)."""
+    return [r["hex"] for r in fax_e2e.batch(*(("read_ram", dict(addr=a, len=n)) for a, n in PROGRESS))]
 
 
 def in_temple(temple):
@@ -122,7 +129,6 @@ def main():
                 with_gurus()
             # 2. Only visited Gurus up to the furthest temple, in order, then farewell.
             tcp("load_state", path=str(temple))
-            before = tcp("mantra_now")["mantra"]
             talk_to_guru()
             advance(TO_GURU + 0)
             shot_line("to-eolis")
@@ -153,7 +159,7 @@ def main():
                 with_gurus()
             # 3. Travel to Mascon: everything but the place is kept.
             tcp("load_state", path=str(temple))
-            before = tcp("mantra_now")["mantra"]                    # as the offers part reads it
+            before = progress()
             talk_to_guru()
             advance(TO_GURU + 0)
             answer("b", TO_GURU + 1)
@@ -167,8 +173,8 @@ def main():
             game.shot("arrived")
             assert ram(TEMPLE_SPAWN_POINT) == CONFLATE, "the furthest temple stays the spawn point"
             assert (ram(HP), ram(MP), ram(GOLD, 3)) == (0x2A, 0x11, bytes([0xE8, 0x03, 0x00]))
-            assert tcp("mantra_now")["mantra"] == before, "the mantra is unchanged by travel"
-            print("ok: travelled to Mascon keeping HP, MP, gold, spawn point and mantra")
+            assert progress() == before, "what a mantra would hold is unchanged by travel"
+            print("ok: travelled to Mascon keeping HP, MP, gold, spawn point, title, items and quests")
 
             # 4. Dying after the journey respawns at the furthest temple.
             arrived = out / "mascon-arrived.cycstate"

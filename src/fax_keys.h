@@ -6,5 +6,6 @@
 
 void fax_keys_tcp_setup(void);
 /* Reusable tools is on: a key or the Mattock the hero has is his for good,
- * so Quick shops shows one in its buy list as owned (fax_shops.c). */
+ * so Quick shops shows one in its buy list as owned, and won't buy it
+ * (fax_shops.c). */
 bool fax_reusable_tools_on(void);

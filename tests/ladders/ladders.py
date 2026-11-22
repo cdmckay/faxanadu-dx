@@ -51,6 +51,7 @@ from play import (AREA, CAN_CLIMB, CLIMBING, FALLING, FLAGS, HP, IFRAMES, JUMPIN
 
 AREA_SAVED_AREA, AREA_SAVED_SCREEN, SCREEN_SAVED_PALETTE, PLAYER_SAVED_POS = 0x3D5, 0x3D6, 0x3D7, 0x3D8
 AREA_REGION, QUESTS, SPECIAL_EVENT, SCREEN_BUFFER = 0x435, 0x42D, 0x42E, 0x600
+PPU_BUFFER_READ, PPU_BUFFER_WRITE = 0x1F, 0x20                    # PPUBuffer_ReadOffset, PPUBuffer_WriteOffset
 TRUNK, TRUNK_PALETTE, TRUNK_REGION, BUILDINGS = 1, 0x06, 1, 4
 SPRINGS_AND_PATH = 0x27                     # the three springs done, and the path to Mascon open (Quests $20)
 LADDER_BLOCK, AIR = 0x20, 0x42
@@ -61,7 +62,10 @@ PARTS = ("top", "climb", "knockback", "fountain")
 
 def _out_to(g, screen, pos):
     """Out of the temple, through its door edited to lead to Trunk `screen`,
-    standing at block `pos` (YX)."""
+    standing at block `pos` (YX), once the screen's tiles are written: until
+    the PPU buffer is empty (PPUBuffer_ReadOffset at PPUBuffer_WriteOffset)
+    the game reads no input, so a fixture saved a frame earlier would miss a
+    press its tests make a few frames in."""
     g.poke({AREA_SAVED_AREA: TRUNK, AREA_SAVED_SCREEN: screen, SCREEN_SAVED_PALETTE: TRUNK_PALETTE,
             PLAYER_SAVED_POS: pos, AREA_REGION: TRUNK_REGION, HP: 0x50})
     for _ in range(40):
@@ -71,6 +75,8 @@ def _out_to(g, screen, pos):
         g.wait(31)
     g.until(f"Trunk {screen:#x}", lambda: (g.ram(AREA), g.ram(SCREEN)) == (TRUNK, screen), 600)
     g.settle()
+    g.until("the screen's tiles to be written", lambda: g.ram(PPU_BUFFER_READ) == g.ram(PPU_BUFFER_WRITE), 120)
+    g.wait(2)
 
 
 @fax_e2e.recipe("ladders-trunk-27", parent="apolune-temple")

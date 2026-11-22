@@ -80,11 +80,13 @@ and data tables after it shifted). Not supported: the build rejects it.
 | `$0390`, `$0392-$0394` | `Experience`, `Gold` | Gold is 24-bit little-endian |
 | `$039A` | `Player_MP` | |
 | `$03C7` | `IScript_PortraitID` | The portrait showing, `$FF` for none (see *Portraits*) |
+| `$0427`, `$0428` | `DurationOintment`, `DurationGlove` | Seconds left, `$FF` when not running; an Ointment or Glove lying in the world is not there while its kind runs (see *Items in the world*) |
 | `$042C` | `SpecialItems` | Bit flags; `$08` the Elixir, which saves a death once |
 | `$042D` | `Quests` | Bit flags (see *Quests*) |
 | `$0431`, `$0432` | `Player_HP_U`, `Player_HP_L` | |
 | `$0438` | `PlayerIsDead` | Set it to 1 and the main loop runs the death path |
 | `$0439` | `TempleSpawnPoint` | Where death respawns and a mantra continues, 0-7. In the original, the furthest temple reached; with Save files, the temple of the Guru last saved with |
+| `$043A` | `Screen_TrackedVisitCount` | The one-visit-in-four items' counter (see *Items in the world*) |
 | `$04BC`, `$04BD` | `Arg_PlayerHealthDelta_L`, `_U` | The HP `Player_ReduceHP` takes: fraction, whole |
 | `$0600-$061F` | `Password_EnteredChars` | The mantra screen's characters, as 6-bit values (shares `ScreenBuffer`) |
 | `$0666` | `Password_EnteredCharsLength` | |
@@ -675,9 +677,15 @@ and Y, and RTSes into the routine. So at the entry of a far-called routine:
 **The start screen and the mantra screen.** Select toggles `$0687`
 (0 Start, 1 Continue); Start takes it. On the mantra screen the cursor is
 `Password_CursorRow` (`$0663`) and `Password_CursorCol` (`$0662`), and
-`Password_EnteredCharsLength` (`$0666`) counts the characters typed. The last
-row (5) holds →, ←, DEL and END at columns 0-3, and Up from row 0 wraps to it.
-A on END (row 5, column 3) checks the mantra and continues.
+`Password_EnteredCharsLength` (`$0666`) counts the characters typed
+(`Password_EnteredChars`, `$0600`, holds their 6-bit values), and
+`Password_MaxChars` (`$0665`) is set once the screen is up. Rows 0-4 hold the
+64 characters in order, 13 to a row (`PASSWORD_VALUES_FOR_CURSOR_POS`: row ×
+13 + column; the 65th spot is empty), and A types the one under the cursor,
+which stays put. The last row (5) holds →, ←, DEL and END at columns 0-3, and
+Up from row 0 wraps to it. A on END (row 5, column 3) checks the mantra and
+continues. A new game's mantra at Eolis's gate is `rFAAAAQAAA`
+(`tests/remastered/one_switch.py` types it with the remaster off).
 
 ## The title screen (bank 15, bank 12)
 
@@ -690,10 +698,16 @@ to `StartScreen_CheckHandleInput` (`$9F44`, bank 12), then at
 `Joy1_ChangedButtonMask` for Start.
 
 - `StartScreen_CheckHandleInput` toggles `$0687` on Select (with sound `$0B`)
-  and draws the arrow, sprite `$AD`, at x `$34` or `$74`, y `$7E`. Nothing
-  else calls it, so a hook that handles it owns the title's input: the arrow
-  is not drawn (the loop resets sprites each frame), and clearing Start in
-  `Joy1_ChangedButtonMask` there keeps the loop from seeing it.
+  and draws the arrow, sprite appearance `$AD`, at x `$34` or `$74`
+  (`BYTE_ARRAY_PRG12__9f69`, loaded by `LDX` at `$9F5F`), y `$7E`, through
+  `UI_DrawPromptInputSymbol` (`$FCA7`), which ends in
+  `Sprite_SetAppearanceAddrFromOffset` and its bank switch. Nothing else calls
+  it, so a hook there owns the title's input: one that handles it draws no
+  arrow (the loop resets sprites each frame), one that clears Select and
+  returns 0 keeps the arrow and stops the toggle, and clearing Start in
+  `Joy1_ChangedButtonMask` there keeps the loop from seeing it. At `$9F62`
+  (`LDY #$7E`) X holds the arrow's X: Save files moves it there for NEW
+  GAME.
 - Start with `$0687` = 0: music 8, then `@_startGame` (`$FC98`):
   `SplashAnimation_RunIntro`, `Player_SetStartGameState` (`$9570`: everything
   zero or none, but `SelectedArmor` 0) and `JMP Game_Start`.
@@ -708,10 +722,13 @@ to `StartScreen_CheckHandleInput` (`$9F44`, bank 12), then at
   `StartScreen_CheckHandleInput` returns there as the RTS would), and never
   after Start: a hook there that only notes the frame tells a feature the
   title is up. REMASTERED on the title does that.
-- The picture: the logo and its border fill y 16-143; START and CONTINUE are
-  on y 160-166 and the three notices on 184, 200 and 216, black between.
-  REMASTERED takes y 148-155 (its glyphs light 148-154), and the file select
-  y 160-239, a box of 10 cells over START / CONTINUE and the notices. The
+- The picture: the logo and its border fill y 16-143; START (tile columns
+  8-12) and CONTINUE (16-23) are on tile row 20, lit on y 160-166, and the
+  three notices on 184, 200 and 216, black between. The letters are tiles
+  `$E0`-`$F9`, A to Z, of the row's pattern table. REMASTERED takes y 148-155
+  (its glyphs light 148-154). With the remaster NEW GAME takes columns 5-12
+  of row 20, and a file pick y 160-239, a box of 10 cells over the choices
+  and the notices. The
   background palettes are `$0F $05 $18 $38` (the logo's border; `$38`, light
   yellow, is its highlights and REMASTERED's color),
   `$0F $17 $27 $30` (the white text), `$0F $0F $16 $28`
@@ -800,17 +817,17 @@ and starts a new line unless that is `$FF` (the end: `MessageID` 0) or `$FC`
   the `$FF` of `JSR $F4FF`, would not: a save state with
   `Message_ProcessedLength` `$60` shows the original's second half over its
   first (`tests/fixes/small_fixes.py`).
-- **The fix** (Small fixes, chipx86's suggestion): a hook at
+- **A fix, should it be needed** (chipx86's suggestion; Small fixes had it
+  until the remaster stopped showing mantras): a hook at
   `IScriptAction_ShowPassword`'s entry points the message at
   `PASSWORD_ENTERED_CHARS` (`Message_StartAddr` `$8764`,
   `Message_ProcessedLength` 0), so the check reads an A in bank 12 and always
   starts the new line. Nothing reads the pointer again before the next
   `Messages_Load` sets it.
-- **Where a mantra still shows with the remaster:** Save files puts the
-  Guru's choice where the mantra was, so only a game with no file in play
-  shows one: a save state from the original, or Save files turned off by a
-  failure. Importing a mantra (`faxanadu.srm`, `--password`) only decodes it,
-  in an isolated call, and shows nothing.
+- **The remaster shows no mantra.** Save files puts the Guru's choice where
+  the mantra was, and with no file in play (a save state from the original)
+  or if the choice fails, it skips the mantra (see *Save files*). With the
+  remaster off, the Gurus show it as the original does.
 
 ## Weapon damage (bank 14)
 
@@ -1593,6 +1610,14 @@ jump a few updates after stepping off, as A from the hang itself would.
   masks keep their values, and a button pressed and let go within lag frames
   is never seen. A cycle-host frame ends at the start of VBlank (scanline
   241, dot 1), so each frame begins with that read, when there is one.
+- **After a screen loads, the first frames are lag frames.** Entering a
+  screen (through a door, say) queues its sprites' tiles in the PPU buffer,
+  and for about six frames the loop waits on the buffer while the NMI flushes
+  it, so the pad is not read until `PPUBuffer_ReadOffset` (`$1F`) reaches
+  `PPUBuffer_WriteOffset` (`$20`); the first frame after, it is. The scroll
+  has ended by then (`Screen_ScrollDirection` `$FF`), so a save state taken
+  ten frames after the scroll can still be a frame or two short of reading a
+  press: `tests/ladders/ladders.py`'s recipes wait for the buffer to empty.
 - **Who reads the masks, in `Game_MainLoop`'s order:**
   - `GameLoop_UpdatePlayer` (`$E0CA`): `Player_CheckHandleAttack` swings the
     sword on a new B, unless climbing. `Player_CheckHandleEnterDoor` goes
@@ -1979,11 +2004,44 @@ fits the page, from 16 x 13 down to 10 x 8 (each keeps a screen's 256 x 208
 shape), a 1-pixel wall in `$22` around `$02` inside (a town's: `$28` around
 `$08`), the current one blinking `$16` every 16 frames. Seen neighbours a link
 or a town edge joins beside each other are open through both walls; above and
-below, only a ladder he has taken opens a gap. A used door's mark, 3 x 3
-pixels, sits on its screen where its block is: a cross for a Guru (`$30`), a
-block for a tool or key shop (`$2A`), a roof for any other building (`$26`),
-and a bar for a door to a tower, a castle or a region (`$38`). TCP `map_state`
-gives every box's rectangle in the last presented picture.
+below, only a ladder he has taken opens a gap. On the boxes, as Metroid's map
+has it, only what matters, each where its block is on its screen: a cross
+(3 x 3, `$30`) for a Guru's door used, a block (3 x 3, `$27`) for any other
+door used (a shop, a house, the hospital, a tower, a castle, another region),
+and a dot (2 x 2, `$2A`) for an item still there (below). A town's doors are
+3 to 5 blocks apart, so on the smaller boxes their marks run together: the
+Gurus' crosses are drawn over the other doors, and the dots over both. The
+key under the grid reads "Guru", "Door", "Item", each beside its mark at
+twice the size, the dot rounded. TCP `map_state` gives every box's rectangle
+in the last presented picture, each item with whether it shows and whether it
+is taken, and every dot drawn.
+
+**Items on the map.** The items are the world pickups in the screens' sprite
+lists (*Items in the world*): 44, read from bank 11 with the rest of the map,
+Poison left out (it hurts; a dot would send the hero to it). A building's
+item is marked at the door that leads in. One shows on a screen seen while
+the game would have it there:
+
+- On the screen the hero is on (in a building, that building), while its
+  sprite is in a slot (`CurrentSprites_Entities`), hidden or not: what is
+  there, is.
+- Elsewhere, by its kind. One that lies there at every visit (the Elixirs,
+  `$4B` Red Potions, `$48` Gloves, `$4E` Ointments), until the hero has
+  touched it; a Glove or an Ointment not while one of its kind runs (its
+  behavior removes it then). One the game keeps state for, until that state
+  says he has it (`SpecialItems`, `Quests`, the Battle Suit's armor list and
+  the like, as its behavior checks); Ripasheiku's Mattock comes back after a
+  death, as the game brings it back. One shown on one counted visit in four
+  (`Screen_Is3Of4Visits`), never: it is there only while it is.
+- The touch: a hook at `Player_HandleTouchItem` (`$88FB`, bank 14: `LDA
+  CurrentSprites_Entities,X`, `JSR Player_PickUp`, then the slot emptied),
+  which only observes X, the slot. The game keeps nothing for the items that
+  lie there at every visit (each comes back whenever its screen loads), so
+  the map keeps them taken itself, in the file. In the original a full item
+  list refuses the item after its line but takes it off the screen all the
+  same. With Kept finds the find stays lying instead: Kept finds' site at
+  `$88FB` comes first in `game.toml` and handles the touch, so the map's is
+  skipped, and a touch that reaches the map's site is a take.
 
 **In the file.** One field an area that has anything seen: `map.eolis`,
 `map.trunk`, `map.mist`, `map.towns`, `map.branch`, `map.dartmoor`,
@@ -1994,7 +2052,11 @@ item 0 its lowest bit: Eolis's gate and screens 1-2, with the gate's door
 and the temple's (doors 0 and 3 of its 10), read `700 000 000 900`. Written when the file is (`FAX_SAVE_WRITING`),
 read back on `FAX_SAVE_CONTINUED`, cleared for a new game; a damaged field
 forgets that area only. Every field fits a value (the Mist's, everything set,
-is 71 characters).
+is 71 characters). And `map.items`, when any is taken: the items taken, as a
+set by their place in *Items in the world*'s order (by area, a building's in
+area 4 by its number, then screen, then place in the list); the Elixir on
+Trunk `$3C`, the twelfth, alone reads `00800000000`. A damaged one shows
+every item again.
 
 ## Quests
 
@@ -2182,6 +2244,258 @@ complete without saying it. A file without `quests.given` (from a mantra, or
 before the quest log) counts every quest complete as given, so the log shows
 what was done.
 
+## Enemy placement and fair entrances (`fax_entrances.c`)
+
+**Where enemies start.** Bank 11's list for the screen (see "Areas, screens
+and zones") is read by `Screen_LoadSpriteInfo` (`$C1B4`) one (entity, `YX`)
+pair at a time into `CurrentSprite_Entity` (`$038B`), `CurrentSprite_YPos`
+(`$038A`, `YX & $F0`) and `CurrentSprite_XPos` (`$0389`, `YX << 4`), and
+`Sprites_PopulateNextAvailableSprite` (`$C205`, its only caller) copies them
+into the highest free of the 8 slots (`CurrentSprites_Entities`, `$02CC`;
+`CurrentSprites_XPos_Full`, `$BA`; `CurrentSprites_YPos`, `$C2`). Every way
+onto a screen loads it so: `Screen_SetupSprites` for every `Screen_Load`, and
+`Game_MainLoop` itself for a scroll (`@LAB_PRG15_MIRROR__dbaf` horizontally,
+before the scroll plays, and `__db91` vertically). The enemies do not move or
+show until the hero's **first update** on the screen (the main loop's first
+pass after the load or the scroll), and the first picture with them on it is
+the frame after that.
+
+Seamless loads a neighbouring room on an isolated machine with the same
+routine (`fax_world.c`'s `initialize`, `call(0xc1b4)`), before it allows
+hooks there, so a hook at `$C205` does not run for it.
+
+**What counts as unfair** (#44): an enemy that hits the hero on entering a
+screen before the player can possibly react. Measured for every way onto every
+screen with enemies, headless, from a temple's save state (its door edited to
+lead there, as `tests/zones/zone_names.py` does): every door within an area,
+region's door, town's edge, building's way out (at both columns: the door's
+and the one to its left, since `Game_EnterBuilding` keeps `Player_PosX_Block
+& $F0` and Up finds the door at `X + 7`), temple's way out, the Trunk's climb
+(`$0C` and `$16`), and every screen edge: walking left or right at each row
+the hero can stand at the edge, climbing a ladder up or down through it, and
+dropping through a hole, holding the way in and letting go at the first
+update. With nothing pressed after the arrival, the first hit
+(`Player_InvincibilityPhase` set to `$3C`) is timed from the first update.
+For the early ones, each move (walk left or right, jump straight or either
+way, swing, Up back through the door or into the building, Down) was then
+started at every frame k after the first update, to find the latest k that
+still avoids the hit. The first picture with the enemy shows on frame 1, and
+a player needs about 12 frames (200 ms) to respond to it, so **the first
+input that can be a reaction is at k = 13**: a way in is unfair when nothing
+pressed from then on avoids the hit.
+
+**The moves.** `fax_entrances.c` hooks `$C205` and rewrites
+`CurrentSprite_XPos` and `CurrentSprite_YPos` for a listed (area, screen,
+entity, placement) before the routine copies them; for Seamless's rooms,
+`fax_entrances_room_loaded` moves the listed enemies still on their placement
+in the slots, right after `initialize` loads them. No ROM is changed and no
+read override is used. Each new block is the nearest tried where, from every
+way onto the screen, nothing hits the hero within 30 frames of the first
+update (or ever, within 240), and where a hit within 60 frames has an escape
+from k = 13 (see the checks under "Screen edges, ladders and drops", which
+every move passed). Zone respawn replays a zone's way in after a
+death, so two of these came back at every death: leaving the Tower of Mist
+enters the Mist (onto the Raiden), and leaving the Castle of Fraternal enters
+Dartmoor (above the wolfmen).
+
+| Screen | Way in (hero) | Enemy | Stock: hit, latest escape | Moved to | Then |
+|---|---|---|---|---|---|
+| Mist `$06` | Mascon's temple (144,128); building `$22` (112,128) | Sir Gawaine `$89` | 0, none; 0, none | `$9E` (224,144), the floor's right end | No hit from any way in |
+| Mist `$17` | The Tower of Mist's way out (80,160) | Raiden `$A5`, on the spot | 0, none | `$A9` (144,160) | 36, which a swing at 13 escapes |
+| Mist `$1F` | Building `$26` (64,144); (48,144) | Sugata `$95` | 4, Up at 4; 20, Left at 16 | `$97` (112,144) | 66, 82 |
+| Mist `$20` | The way out of the tower on `$50-$52` (96,144) | Sir Gawaine `$96`, in the same closet | 0, none | `$46` (96,64), on the closet's roof | No hit |
+| Mist `$29` | Building `$20` (192,112) | Ikeda `$7D` | 4, Up at 4 | `$7E` (224,112) | 104 (and 56 from (176,112), stock 162, which walking right at 13 escapes) |
+| Trunk `$06` | Building `$20` (160,80) | Zombie `$5B` | 8, Up at 8 | `$5C` (192,80) | 50, which a swing at 13 escapes |
+| Branch `$0E` | The door from `$0F` (224,96) | Lamprey `$6D` | 3, none | `$6A` (160,96) | No hit |
+| Branch `$13` | The door from `$14` (224,128) | Maskman `$8C` | 16, none | `$9D` (208,144), beside the door | No hit |
+| Dartmoor `$02` | Building `$22` (160,64); (176,64) | Giant Strider `$49` | 0, none; 16, Up at 16 | `$A9` (144,160), the lower floor | No hit from any door |
+| Dartmoor `$03` | Building `$24` (176,160) | Lamprey `$AA` | 3, Right at 3 | `$A8` (128,160) | 105 |
+| Dartmoor `$08` | Building `$25` (16,64), (32,64) | Sir Gawaine `$42`, on the door | 0, none | `$46` (96,64) | No hit |
+| Dartmoor `$0C` | The Castle of Fraternal's way out (144,64): he drops to the floor | Wolfman `$AB` | 10, none (in the air) | `$AD` (208,160) | No hit |
+
+Why those blocks and not nearer ones, where nearer ones were tried:
+
+- Mist `$06`: Sir Gawaine's reach is wide (he hits at 32 pixels); `$9D`
+  (208,144) hits building `$23`'s way out at 0, and the platform the temple
+  and building `$22` share has no block clear of both.
+- Mist `$20`: the closet the tower opens into is five blocks wide, with the
+  ladder down to `$27` at its left; `$98` hits the arrival at 0 and `$94` the
+  climb up from `$27` at 28, as the stock block does.
+- Trunk `$06`: `$5D` (208,80) hits the walk in from `$07` at the platform's
+  height at 26.
+- Dartmoor `$02`: every block of the upper floor is near one of its four
+  buildings' doors (`$47` hits building `$21`'s way out at 20, `$48` building
+  `$22`'s at 16).
+- Dartmoor `$0C`: the floor's left blocks (`$A1`, `$A2`, `$A4`-`$A6`) hit the
+  walk in from `$0D` at 12-28; `$AC` still hits the landing at 10.
+- Branch `$13`: `$9A` (160,144) is hit at 57 with nothing that escapes it, as
+  are `$8B` and `$9B`; `$9C` at 41. `$9D`, a block from the door, is not
+  hit within 240 frames.
+
+**Near misses left alone** (fair: something pressed after k = 13 avoids the
+hit, measured as the door survey did: nothing hits him for 90 frames after
+the first update):
+
+| Screen | Way in (hero) | First hit, latest escape |
+|---|---|---|
+| Dartmoor `$02` | Building `$23` (208,64) | 48, Right at 40 |
+| Trunk `$06` | Building `$20` (144,80) | 50, a swing at 40 (and moved: 92) |
+| Dartmoor `$02` | Building `$21` (80,64) | 52, Up at 50 |
+| Branch `$00` | The Mist's region door (96,160) | 52, Left or a swing at 40 |
+| Dartmoor `$03` | Building `$24` (192,160) | 54, Up or Right at 50 |
+| Trunk `$29` | The door from `$28` (48,144) | 56, Left at 32 |
+
+Every other door, building and temple is first hit 60 or more frames after
+the first update, or not at all.
+
+**Screen edges, ladders and drops.** Crossing an edge, the destination's
+enemies are loaded as the scroll starts (horizontally) or ends (vertically),
+but none moves or shows until the hero's first update there, so these are
+blind ways in too. Each was timed clean: the hero walked to the source
+screen's edge, then (a fixture) its enemies were cleared, his invincibility
+zeroed, his HP filled, and he was put back at the edge, so nothing from the
+source screen can hit him. Then he held the way in across it (Left, Right, Up
+or Down on a ladder; nothing for a drop), either still holding it on his
+first update there or letting go on it. Up to 60 frames, every hit was
+checked for an escape as the doors were: each move (stand, walk either way,
+jump straight or either way, swing, swing walking either way, Up, Down)
+started at k = 13, and where none worked, at every k from 13 to the hit. A
+drop has little to work with: the hero falls with only a little steering,
+and a swing in the air reaches only what is beside him.
+
+An edge is unfair only when it is so both ways, holding and letting go: a
+player who lets go as the screen changes can stand still and see what is
+there, so an edge that hits only a hero still walking is a near miss. A drop
+has no such choice: once he falls, he lands where the hole is.
+
+The enemy to move for an unfair way in is the one whose removal clears the
+hit, not the one nearest the hero when it lands: dropping into the Mist's
+`$07` at column 9 lands between a hornet and Sir Gawaine, and it is Sir
+Gawaine. Each new block is the nearest where, from every way onto the screen,
+the moved enemy makes no hit within 30 frames that the screen without it
+would not have. Where a screen has two moves, the second was searched with
+the first made: on the Mist's `$08` the hornet at `$28` sits under the drop
+and hits first, hiding that the one at `$4B` would be next. Then every move
+was checked with all of its screen's moves made at once, against every way
+onto the screen (its doors and every edge, held and let go): a hit within 60
+frames that the moves caused or made earlier fails it unless a move started
+at k = 13 or later escapes it; every unfair way in had to come out clear of
+it; and each move had to be needed, its way's hit coming back without it.
+
+**The frame counters.** Enemy scripts time themselves by
+`SpriteUpdateCounter` (`$0383`, counted up on each frame that sprites update,
+and read by 63 sites for animation and behavior phases) and, in one behavior,
+`InterruptCounter` (`$1A`). So a way in's first hit depends on the moment the
+hero arrives as well as on where the enemy starts: dropping into the Mist's
+`$07` at column 9, Sir Gawaine hits on frame 3 with the counters at one
+phase and on frame 18 at another. Every measurement here was taken with the
+counters as the temple's state had them (`InterruptCounter` `$F3`,
+`SpriteUpdateCounter` `$3E`, 21 frames before he walks out), which the
+end-to-end test sets too.
+
+The fixed ways in were also played at seven more phases (the counters
+shifted by 1, 2, 3, 4, 7, 16 and 37 frames on the frame before the first
+update), stock and with the moves, and so were the near misses below and
+every door way onto a screen with a door move. The stock first hit moves in
+a few (Mist `$07`: 3 to 19; Zenis `$0E`: 1 to 17; Zenis `$12`: 6 to 12; the
+Castle of Fraternal's way out: 10 to 26), but with the moves each stays clear
+or keeps its escape at every phase, and each near miss stays one: where
+holding the way in is hit at another frame (Branch `$20`: 0 to 7, Dartmoor
+`$04`: 4 to 10, Mist `$4E`: 4 or 19), letting go still is not.
+
+An escape here means nothing hits him for 120 frames after his first
+update, as the edges were measured; the door survey's near misses below used
+90.
+
+The table gives the earliest stock hit of each way in a move fixes (held and
+let go for an edge; a drop has one), by the hero's column for a drop, and the
+first hit once the screen's moves are made.
+
+| Screen | Enemy (stock block) | Ways in it fixes: first stock hit | Moved to | Then: first hit |
+|---|---|---|---|---|
+| Trunk `$0D` | Zozura `$5E` (224,80) | walking left from `$0E` (row 4): 0 held, 1 let go | `$7E` (224,112) | 72, none |
+| Trunk `$17` | Yuinaru `$5F` (240,80) | walking right from `$16` (row 4): 0 held, 0 let go | `$5E` (224,80) | 78, none |
+| Trunk `$1D` | Yuinaru `$CC` (192,192) | dropping from `$26` (columns 10, 11): 19, 19 | `$BA` (160,176) | none, none |
+| Trunk `$1E` | Yuinaru `$3B` (176,48) | dropping from `$1D` (column 10): 2 | `$2C` (192,32) | none |
+| Trunk `$1E` | Charron `$99` (144,144) | dropping from `$1D` (columns 7, 8): 14, 14 | `$9B` (176,144) | 67, 32 |
+| Trunk `$20` | Ikeda `$95` (80,144) | dropping from `$23` (columns 2, 3, 4, 5): 15, 10, 10, 10 | `$7F` (240,112) | none, none, none, none |
+| Trunk `$20` | Ikeda `$99` (144,144) | dropping from `$23` (columns 6, 7, 8, 9): 15, 10, 10, 10 | `$8F` (240,128) | none, none, none, 70 |
+| Trunk `$21` | Charron `$88` (128,128) | dropping from `$22` (columns 7, 8, 9): 12, 12, 38 | `$9B` (176,144) | 141, 149, 157 |
+| Trunk `$23` | Yuinaru `$35` (80,48) | dropping from `$24` (columns 4, 5): 2, 2 | `$33` (48,48) | none, none |
+| Trunk `$24` | Charron `$35` (80,48) | dropping from `$25` (columns 4, 5): 4, 2 | `$45` (80,64) | none, none |
+| Trunk `$30` | Charron `$45` (80,64) | dropping from `$36` (column 4): 4 | `$46` (96,64) | 30 |
+| Trunk `$32` | Snowman `$23` (48,32) | dropping from `$38` (columns 3, 4): 0, 32 | `$33` (48,48) | none, none |
+| Trunk `$32` | Charron `$99` (144,144) | dropping from `$38` (column 8): 14 | `$A8` (128,160) | 101 |
+| Trunk `$37` | Charron `$95` (80,144) | dropping from `$3C` (column 5): 14 | `$94` (64,144) | 41 |
+| Mist `$04` | Ikeda `$22` (32,32) | climbing down from `$2A` (column 2): 2 held, 3 let go | `$34` (64,48) | 32, 32 |
+| Mist `$07` | Sir Gawaine `$38` (128,48) | dropping from `$01` (column 9): 3 | `$48` (128,64) | none |
+| Mist `$08` | Hornet `$28` (128,32) | dropping from `$02` (columns 7, 8): 1, 0 | `$46` (96,64) | none, none |
+| Mist `$08` | Hornet `$4B` (176,64) | dropping from `$02` (columns 9, 10, 11): 4, 3, 3 | `$3D` (208,48) | none, none, none |
+| Mist `$08` | Sir Gawaine `$98` (128,144) | dropping from `$02` (columns 6, 7, 8): 14, 1, 0 | `$A5` (80,160) | none, none, none |
+| Mist `$09` | Hornet `$38` (128,48) | dropping from `$03` (column 3): 29 | `$28` (128,32) | 86 |
+| Mist `$0F` | Bihoruda `$4C` (192,64) | dropping from `$05` (columns 11, 12): 3, 3 | `$4A` (160,64) | 111, 111 |
+| Mist `$12` | Hornet `$68` (128,96) | dropping from `$0C` (column 6): 7 | `$66` (96,96) | 102 |
+| Mist `$1A` | Raiden `$25` (80,32) | dropping from `$19` (columns 3, 4, 5): 10, 0, 0 | `$35` (80,48) | none, none, none |
+| Mist `$25` | Yareeka `$29` (144,32) | dropping from `$1D` (column 8): 8 | `$2A` (160,32) | 33 |
+| Mist `$27` | Lamprey `$3A` (160,48) | dropping from `$20` (column 10): 2 | `$39` (144,48) | 110 |
+| Mist `$48` | Ripasheiku `$3A` (160,48) | dropping from `$3F` (column 10): 2 | `$37` (112,48) | 83 |
+| Mist `$49` | Rokusutahn `$9C` (192,144) | dropping from `$40` (column 10): 14 | `$AC` (192,160) | 176 |
+| Mist `$49` | Raiden `$A8` (128,160) | dropping from `$40` (column 10): 14 | `$B7` (112,176) | 176 |
+| Branch `$04` | Maskman `$5A` (160,80) | dropping from `$06` (column 12): 25 | `$6A` (160,96) | 96 |
+| Branch `$19` | Giant Strider `$29` (144,32) | dropping from `$14` (columns 11, 12): 26, 32 | `$39` (144,48) | 91, 97 |
+| Branch `$19` | Giant Strider `$56` (96,80) | dropping from `$14` (column 4): 11 | `$54` (64,80) | 124 |
+| Dartmoor `$03` | Yuinaru `$58` (128,80) | dropping from `$01` (column 8): 6 | `$56` (96,80) | none |
+| Zenis `$03` | Geributa `$A5` (80,160) | dropping from `$10` (column 2): 16 | `$B5` (80,176) | none |
+| Zenis `$03` | Geributa `$AA` (160,160) | dropping from `$10` (column 12): 18 | `$BA` (160,176) | none |
+| Zenis `$0E` | Sir Gawaine `$29` (144,32) | dropping from `$09` (columns 7, 8): 1, 1 | `$38` (128,48) | none, none |
+| Zenis `$10` | Zozura `$A6` (96,160) | dropping from `$0B` (column 6): 16 | `$A4` (64,160) | 66 |
+| Zenis `$10` | Zozura `$A8` (128,160) | dropping from `$0B` (columns 6, 7, 8, 9): 16, 16, 16, 16 | `$A5` (80,160) | 66, 109, 161, 161 |
+| Zenis `$10` | Zozura `$AA` (160,160) | dropping from `$0B` (columns 8, 9): 16, 16 | `$AE` (224,160) | 161, 161 |
+| Zenis `$12` | Rokusutahn `$48` (128,64) | dropping from `$0D` (columns 6, 7): 12, 7 | `$58` (128,80) | none, none |
+
+Why some blocks are further off:
+
+- Trunk `$20` is one room 16 blocks wide, and the drop from `$23` lands
+  anywhere in columns 2 to 12, so both Ikedas, which leap at the hero, go to
+  the right wall (`$7F`, `$8F`): every nearer block is hit from some column
+  within 15 frames.
+- Zenis `$10` is a pit: the shaft from `$0B` comes down columns 6 to 9 onto a
+  floor eight blocks wide, with its three Zozuras under it. They go to its
+  ends (`$A4`, `$A5`, `$AE`); with any of them nearer, some column is hit
+  within 25 frames with nothing that escapes it.
+- Mist `$48` is Ripasheiku's room, and the drop from `$3F` lands on him at
+  column 10; three blocks left (`$37`) the first hit is 83 frames in.
+- Mist `$49`: the drop from `$40` lands between Rokusutahn and a Raiden. With
+  Rokusutahn moved alone, the Raiden hits at 28 with no escape, so both move.
+- Branch `$04`, Branch `$19`'s upper Giant Strider, Mist `$08`'s Sir Gawaine
+  (and Branch `$13`'s Maskman at its door): the nearest blocks clear for 30
+  frames still left a hit before 60 that nothing escapes, so these went to
+  the nearest block with no hit within 60 frames.
+
+**Near misses left alone at edges.** Hit only while still holding the way
+in, before any reaction; letting go on the first update avoids it, or leaves
+time to:
+
+| Screen | Way in (hero's row or column) | Holding: first hit | Letting go: first hit, escape at 13 |
+|---|---|---|---|
+| Mist `$2B` | Walking left in from `$2C` (row 4) | 0 | 17, Right |
+| Mist `$4E` | Walking right in from `$4D` (row 10) | 4 | none |
+| Branch `$01` | Walking left in from `$02` (row 7) | 9 | 65 |
+| Branch `$09` | Walking right in from `$08` (row 8) | 16 | 16, a jump or Left |
+| Branch `$20` | Walking left in from `$21` (row 2) | 7 | none |
+| Dartmoor `$04` | Walking right in from `$05` (row 4) | 10 | none |
+| Dartmoor `$1D` | Walking left in from `$17` (row 4) | 9 | 16, Right |
+| Zenis `$05` | Walking left in from `$0F` (row 4) | 0 | 63 |
+| Zenis `$13` | Walking right in from `$12` (row 10) | 13 | 18, Left |
+| Zenis `$0E` | Climbing up from `$13` (column 6) | 8 | none |
+
+Three drops hit later with an escape that only a well-timed move finds: the
+Mist's `$12` from `$0C` at column 8 (41; a swing walking left at 13),
+Dartmoor `$03` from `$01` at column 6 (36; a jump to the right at 25), and
+Zenis `$11` from `$0C` at column 4 (32; a jump at 20). Every other edge,
+ladder and drop arrival is first hit after 60 frames, or not at all, or has
+an escape at 13.
+
 ## Items and the inventory
 
 Five categories, each with a count, a selected entry and a list. Entries are
@@ -2207,7 +2521,8 @@ Red Potion `$10`). Shops and scripts add the category in the top 3 bits
   decrements the count, leaving a stale byte after the end. `Player_AddToInventory`
   (`$9AF7`, bank 12; shops and scripts) overwrites the last entry when the
   category is full; `Player_PickUpItem` (`$C8CD`) refuses when it is full,
-  after the item's line, and the item is gone all the same.
+  after the item's line, and the item is gone all the same (with the
+  remaster, Kept finds leaves it lying: see *Softlocks*).
 - The rings, the Elixir, the Magical Rod, the Pendant and the Black Onyx are
   bits in `SpecialItems` (`$042C`), not list entries.
 - **Picking an item up.** Touching an item sprite runs
@@ -2256,6 +2571,84 @@ Red Potion `$10`). Shops and scripts add the category in the top 3 bits
   (`$C4BF`: `SelectedItem = $FF`, then `UI_ClearSelectedItemPic`): the Red
   Potion at `$C53B`, the Wing Boots at `$C581`, the Hour Glass at `$C5D0`,
   the Mattock at `$C64C`.
+
+## Items in the world (bank 11)
+
+**The sprite lists.** `AREA_SPRITE_ADDRESSES` (`$8210`, bank 11) holds a
+pointer per area (`Area_CurrentArea`) to its screens' pointers, a word a
+screen; in area 4 a building's, by its number (the numbers run far past
+area 4's 10 screens of scroll data). Each points to the screen's list as
+`Screen_LoadSpriteInfo` reads it: an entity and a block `YX` a sprite, to a
+`$FF`; then the values (`CurrentSprites_Values`, an NPC's script) to a `$FF`,
+and maybe `$80` and the screen's event (see *Screen events*).
+`Screen_LoadAllScreenInfo` loads nothing for an area whose first screen's
+pointer has `$FF` for its high byte. The longest list has 5 sprites; 8
+slots take them (`Sprites_PopulateNextAvailableSprite` skips what does not
+fit). The disassembly's labels number the screens in decimal, and not always
+the pointer's (`SPRITE_INFO_APOLUNE_SCREEN_39` sits among 34 and 35): read the
+pointers.
+
+**What decides an item is there** is its entity's behavior script
+(`SPRITE_BSCRIPTS`, bank 14), which switches to one behavior on its first
+frame:
+
+- `BSCRIPTS_OBJ_POTIONLIKE` (`$4B` Red Potion, `$4C` Poison, `$4D` Elixir):
+  `SpriteBehavior_Fall`. Always there; the game keeps no state, so it is back
+  whenever its screen loads.
+- `SpriteBehavior_Glove` (`$48`) and `_Ointment` (`$4E`): there unless one of
+  its kind is running (`DurationGlove` `$0428`, `DurationOintment` `$0427`,
+  `$FF` when not) as the screen loads; no state either.
+- `SpriteBehavior_RandomlyShowItem_*` (`$50` Mattock, `$55` Wing Boots, `$56`
+  Hour Glass, `$5D` Red Potion, `$5E` Poison, `$5F` Glove, `$60` Ointment):
+  `Screen_Is3Of4Visits` counts `Screen_TrackedVisitCount` (`$043A`), the
+  counter only these calls move, and removes the sprite on 3 of 4 counts, so
+  each shows on one counted visit in four. No state: one taken can show
+  again.
+- Held state: `$49` Black Onyx (`SpecialItems` `$01`), `$4A` Pendant (`$02`),
+  `$57` Magical Rod (`$04`) and `$5C` Zorugeriru's Wing Boots (`Quests` `$08`)
+  remove themselves once set; `$5B` Ripasheiku's Mattock too (`Quests` `$10`),
+  but `Player_Spawn` clears that bit, so it is back after a death. The `$58`
+  Battle Suit, `$59` Battle Helmet and `$5A` Dragon Slayer clear the screen's
+  sprites if the hero holds the item (item 3 of its list: worn or selected,
+  for the slayer `Player_CurWeapon`, or in the list's first count entries).
+  Each of these but the Rod also shows or hides itself by whether its boss
+  (`$2D` Ripasheiku, `$2E` Zoradohna, `$31` Zorugeriru, `$32` King Grieve) is
+  on the screen (`Maybe_IsSpriteEntityNotOnScreen`).
+
+Touching one runs `Player_HandleTouchItem` (`$88FB`, bank 14; see *Items and
+the inventory*), which empties the slot after `Player_PickUp`.
+
+**Every item lying in the world** (`tests/map/map_test` checks the count and
+some entries against the ROM; area, screen and block `YX`; "room" is a
+building, marked on the map at its door):
+
+| Item | Entity | There | Where |
+|---|---|---|---|
+| Elixir | `$4D` | every visit | Trunk `$3C` (`$32`), Mist `$41` (`$A1`) |
+| Red Potion | `$4B` | every visit | Trunk `$22` (`$6E`), Mist `$4D` (`$31`), Dartmoor `$13` (`$AE`) |
+| Glove | `$48` | every visit, no Glove running | Trunk `$18` (`$31`), Branch `$21` (`$32`), Zenis `$0A` (`$6D`) |
+| Ointment | `$4E` | every visit, no Ointment running | Trunk `$37` (`$33`), Zenis `$06` (`$B2`) |
+| Red Potion | `$5D` | one in four | Trunk `$0C` (`$3B`), `$21` (`$7E`), Mist `$50` (`$31`), room `$37` (`$98`) off Dartmoor `$02` |
+| Mattock | `$50` | one in four | Trunk `$0E` (`$5D`), Branch `$18` (`$58`) |
+| Wing Boots | `$55` | one in four | Trunk `$2D` (`$41`), Mist `$11` (`$5E`), `$1B` (`$35`), `$32` (`$48`), room `$1F` (`$A3`) off Mist `$06`, Branch `$1C` (`$A9`), `$22` (`$92`) |
+| Hour Glass | `$56` | one in four | Trunk `$13` (`$4D`), Mist `$30` (`$32`), Branch `$16` (`$72`), Dartmoor `$04` (`$5E`), `$12` (`$32`) |
+| Glove | `$5F` | one in four | Branch `$08` (`$4E`), Zenis `$11` (`$AC`) |
+| Ointment | `$60` | one in four | Trunk `$1D` (`$41`), Mist `$47` (`$42`), room `$43` (`$95`) off Dartmoor `$1F`, Branch `$04` (`$4D`), `$10` (`$48`), Dartmoor `$1A` (`$BE`) |
+| Black Onyx | `$49` | until `SpecialItems` `$01` | Mist `$4C` (`$A4`) |
+| Pendant | `$4A` | until `SpecialItems` `$02` | Mist `$34` (`$9E`) |
+| Magical Rod | `$57` | until `SpecialItems` `$04` | Branch `$1E` (`$B9`) |
+| Battle Suit | `$58` | until held | Branch `$1D` (`$BD`) |
+| Battle Helmet | `$59` | until held | Branch `$07` (`$A4`) |
+| Dragon Slayer | `$5A` | until held | Dartmoor `$15` (`$9D`) |
+| Mattock | `$5B` | until `Quests` `$10` (back after a death) | Trunk `$15` (`$AE`) |
+| Wing Boots | `$5C` | until `Quests` `$08` | Trunk `$3B` (`$3D`) |
+| Poison | `$4C` | every visit | Trunk `$29` (`$31`), `$35` (`$A2`), Branch `$0B` (`$7D`), `$17` (`$56`), `$1E` (`$4D`), Dartmoor `$0E` (`$B1`), `$13` (`$A6`), `$14` (`$66`), `$1D` (`$B2`), Zenis `$09` (`$BE`), `$0D` (`$3E`), `$0E` (`$A1`) |
+| Poison | `$5E` | one in four | Mist `$1E` (`$68`), `$1F` (`$A1`) |
+
+That is 44 items and 14 Poisons; Eolis and the towns have none. The three
+rooms each hold an enemy with their item (a Giant Strider, a Grimlock, a
+Wolfman). No ring and no key lies anywhere (the rings and keys come from
+shops and people; see *Doors and keys*).
 
 ## Shops (bank 12)
 
@@ -2384,9 +2777,27 @@ Poison), as the 40th Anniversary Edition pays. Never:
 
 The SpecialItems ones are bits, in no list, so no sell list could show them;
 they are refused even if one were. The selected item and what is equipped are
-in no list either, as in the original. The rest are safe to sell: every other
-key, the Mattock, the Wing Boots and the potions can be bought again, and the
-A and Jo keys' givers hand out another to a hero without one.
+in no list either, as in the original.
+
+**Nor what the hero has for good**: a key (the A, K, Q, J and Jo keys), the
+Mattock, the Wing Boots and the Hour Glass, while the feature that keeps it is
+on (see *What the hero owns* below). These neither buy nor sell: in the buy
+list they are OWNED, in the sell list not for sale. Before, the 100 Golds made
+a farm of the A and Jo keys: their givers hand out another to a hero without
+one, every time he asks (see *Doors and keys*), so a key fetched and sold over
+and over paid 100 each time. The rule is `fax_shops_not_for_sale`, asked of
+the item and the hero as he is when the list is drawn and when A is pressed.
+The rest are safe to sell: the potions and the Poison, and the weapons, armor,
+shields and spells, which no feature keeps. Without its keeper a key, the
+Mattock, the Wing Boots or the Hour Glass is used up, so it sells as before; in
+the one mod the keepers are always on. With the mod off, the shops are the
+original's: a key, the Mattock, the Wing Boots and the Hour Glass sell where a
+shop sells them, at half its price.
+
+An item not for sale is listed with no price (its price cells are painted the
+box's inside, since `Shop_Draw` would write "0"), the hint reads "Not for
+sale" while the cursor is on it, and A on it does nothing: a hook at `$86E0`
+re-enters the wait at `$86DB` by return, before the price is taken.
 
 **What the hero owns, with Quick shops.** An item he already has for good keeps
 its row in every buy list, so the list, its cursor positions and its pages are
@@ -2408,9 +2819,9 @@ mod they always are. A charged Elixir counts either way, since the game refuses
 a second. Shops sell only the J, Q and K keys; the A and Jo keys are in the
 rule for completeness. OWNED is five letters, in the five cells `Shop_Draw`
 gives a price (column 23, an entry's second row, right-aligned), painted over
-the price as an unsellable item's is. The sell list is unchanged: an owned item
-sells, at its price. Weapons, armor, shields and spells the hero has are not
-marked: the game refuses them ("You can't carry any more."), as before.
+the price as an unsellable item's is. In the sell list an owned item is not for
+sale (above). Weapons, armor, shields and spells the hero has are not marked:
+the game refuses them ("You can't carry any more."), as before.
 
 ## Doors and keys
 
@@ -2455,7 +2866,7 @@ key shops from `*_KEY_SHOP_ITEMS`, gifts from the interaction scripts):
 | J | Eolis's exit (screen `$08`) to Trunk; Trunk `$0B` → the Tower of Trunk (`$0D`); Trunk `$28` → `$29` | Key shops: Eolis 100, Apolune 140, Forepaw 200, Mascon 500 |
 | Q | Trunk's gate to Mist (screen `$28`); Mist `$00` → `$3E`; Mist `$01` → `$4F` | Forepaw 500, Mascon 600, Victim 1200, Daybreak 1000 |
 | K | Mist `$17` → `$45`, `$20` → `$50`; Branch `$0A` → `$09`, `$0E` → `$0F`, `$14` → `$13`, `$19` → `$18` | Victim 1500, Daybreak 1200, Dartmoor 1300 |
-| A | Mist's gate to Branch (screen `$1F`), the one A door | A gift: the man in the house on Mist `$1F` (Buildings `$22`, script `$46`, `ISCRIPT_A27C`) gives one if you hold the Black Onyx and no A key, each time you ask |
+| A | Mist's gate to Branch (screen `$1F`), the one A door | A gift: the man in the house on Mist `$1F` (Buildings `$22`, script `$46`, `ISCRIPT_A27C`) gives one if you hold the Black Onyx and no A key, each time you ask. With Quick shops a held key is not for sale, so this is no farm (*Shops*) |
 | Jo | Trunk `$1E` → `$3E`, the one Jo door ("the first spring") | A gift: the man in the house on Trunk `$2D` (Buildings `$15`, script `$24`, `ISCRIPT_A18A`) gives one once the Spring of Sky is done and you hold no Jo key, each time you ask |
 
 The rings: Elf for three Eolis houses (screens `$06`, `$07`), Dworf for
@@ -2554,11 +2965,12 @@ jumping or falling, `Player_Flags & $05`):
   Forepaw sold a second pair). An earlier note here said shops never sell
   what you hold; that holds only for the Elixir. `Player_PickUpItem` adds a
   duplicate too. With the remaster, a find recharges instead, and Quick
-  shops lists a pair or an Hour Glass he has as owned (see *Shops*).
+  shops lists a pair or an Hour Glass he has as owned, and won't buy it (see
+  *Shops*).
 
 | Item | Shops | In the world (bank 11's lists: area, screen, block `YX`) |
 |---|---|---|
-| Wing Boots | Forepaw 2,800, Conflate 5,500 | Sprite `$55`: Trunk `$2D` (`$41`), Mist `$11` (`$5E`), `$1B` (`$35`), `$32` (`$48`), Branch `$1C` (`$A9`), `$22` (`$92`). Sprite `$5C`: Trunk `$3B` (`$3D`), Zorugeriru's |
+| Wing Boots | Forepaw 2,800, Conflate 5,500 | Sprite `$55`: Trunk `$2D` (`$41`), Mist `$11` (`$5E`), `$1B` (`$35`), `$32` (`$48`), the room off Mist `$06` (building `$1F`, `$A3`), Branch `$1C` (`$A9`), `$22` (`$92`). Sprite `$5C`: Trunk `$3B` (`$3D`), Zorugeriru's |
 | Hour Glass | After Mascon 5,600 | Sprite `$56`: Trunk `$13` (`$4D`), Mist `$30` (`$32`), Branch `$16` (`$72`), Dartmoor `$04` (`$5E`), `$12` (`$32`) |
 | Elixir | Eolis 320, after Mascon 4,300 | Sprite `$4D`: Trunk `$3C` (`$32`), Mist `$41` (`$A1`), beside Zoradohna (`$2E`) |
 
@@ -2840,6 +3252,116 @@ Graphics fixes (`fax_graphics.c`) fixes the five that show:
   climbing pose uses slot `$34` (its `$88`), which the Dragon Slayer
   overwrites.
 
+## Softlocks
+
+What was looked for (#38): places and states the hero gets into and cannot
+get out of, short of a reset, on the USA ROM with the remaster off.
+
+**Sources.**
+
+- The Faxanadu 40th Anniversary Edition (fax40.pages.dev) lists "two known
+  (though obscure) softlocks in the original game" among its changes but
+  never names them; its v0.13's "one softlock in Branch" is in its own new
+  screens. Its romhacking.net page (hack 9683) refuses automated fetches
+  (403) and its Discord is not public, so the two stay unnamed.
+- SDA's *Game Mechanics and Glitches* page: speedrun tricks (timers paused,
+  the King's gold, double hits), no softlock.
+- The Retranslation's changelog (github.com/UnsavoryMaggot/Faxanadu-Retranslation):
+  its "fountain ladder bugfix" is its only fix for getting stuck.
+- TASVideos' four Faxanadu runs: wall clips ("useless"), ladder tricks,
+  death as a shortcut; no softlock.
+- minirevver.weebly.com's Faxanadu page: "if your inventory is full when
+  picking up the mattock then it disappears ... and you can't get it again",
+  and "one dead end dungeon in the tower of mist area".
+- tcrf.net served the fetcher no article; TV Tropes and AtariAge refused it
+  (403). chipx86's disassembly marks no softlock among its BUG notes.
+- The game itself: every interaction script (152, from `ISCRIPT_ADDRS_L/U`)
+  walked for a loop with no question or menu in it (none), and a search of
+  every outside area's screens, below.
+
+**The search.** Each area's screens are decoded from ROM (*Screens and
+blocks*: the bank's word table, the 2-bit stream), its block properties
+are bank 3's table at the area's metadata + 2, one byte a block, low nibble
+(`Area_LoadBlockProperties`), impassable by `BLOCK_PROPERTY_IMPASSABLE_MAP`
+(1, 5, 6, 7, 8, 11), climbable 2 and 10, and its links and doors are what
+*The map* reads. A model of the hero, a block wide and two tall, walks,
+falls (ladders catch him), jumps (32 pixels up, measured: two blocks; about
+three blocks across at speed), climbs and takes doors; then flies, for the
+Wing Boots. A place he can reach from which no door or edge into a town can
+be reached is a trap. Block-level, the model misses pixel-exact routes (it
+first flagged the Mist's corridor, below), so every place it found was then
+played in the game. Two engine rules it has to follow:
+
+- **The row below the playfield is the next screen's.** Rows 0-12 show. The
+  ground check (`Player_CheckIfPassable` down, `Y + $20 >= $D0`) reads
+  `FirstRowBelowScreen`, the screen below's row 0, or block 0
+  (`ScreenBuffer_Clear`) where there is none; the check up (`Y - 1 >= $F0`)
+  reads `LastRowAboveScreen`. Sideways moves and `Player_CheckIfOnLadder`
+  read `ScreenBuffer`'s own rows 13 and 14, which hold whatever the screen's
+  stream decodes there, often the next screen's first rows (screens share
+  data). So a solid block in row 13 is not ground: Zenis `$08`'s pit at
+  column 14 drops him into `$0D` (checked in the game).
+- **With no screen below**, `Player_MoveDownScreen` holds him at Y `$C0`
+  (`Player_SetPosAtBottomEdge`), his feet below the picture.
+
+| | Trigger | The original | With the remaster |
+|---|---|---|---|
+| Eolis's edge shafts | Wing Boots in Eolis, over the right wall of `$00` or `$08` | Stuck below the floor (reproduced) | Avoided: the Wing Boots recharge |
+| A find with a full Items list | A Mattock, Wing Boots, Hour Glass or Red Potion touched with 8 listed | Said and lost (reproduced) | Fixed: Kept finds |
+| The fountain's ladder in `$27` | Leaving Trunk `$28` on its first pass | No trap | Fixed already: Ladder fixes |
+| The Tower of Fortress's floor | The Mattock on Trunk `$2D`'s block `$63` | No trap | The block is floor: Graphics fixes |
+| The Mist's corridor `$2D-$2F` | Down the ladders from `$25` or `$26` | No trap | |
+| The Evil One's room | Zenis `$01`'s door into `$00` | By design | |
+
+- **Eolis's edge shafts.** Eolis `$00` and `$08` have no screen to their
+  right, and their right wall (column 14, rows 3-11) stops a block short of
+  the edge: column 15 is open from the sky through the floor (row 11) to the
+  bottom. Flying up over the wall and letting go drops the hero down it to Y
+  `$C0`. There A, Up and Right do nothing, and Left walks him along the open
+  row under the floor into the town's screen (`$01`), whose edge stops him,
+  still at `$C0`; no enemy is on either screen. A reset is the only way out.
+  To have the Wing Boots in Eolis, the hero must die before any temple Guru
+  has set his spawn point (it starts at 0, Eolis), after buying them in
+  Forepaw or finding them: obscure. With the remaster the pair is kept, and
+  once it recharges Down+B flies him up the shaft and out
+  (`tests/softlocks/eolis_shaft.py`). Eolis is the one place found where a
+  flight ends in a trap: Branch's open row under `$10`'s floor, reached by
+  flying left out of `$11`'s floorless bottom, holds him at Y `$C0` too, but
+  walking right takes him back into `$11`, which drops him into `$16`
+  (checked in the game).
+- **A find with a full Items list** (minirevver's Mattock). See *Items and
+  the inventory*. Ripasheiku's Mattock (`$5B`) and Zorugeriru's Wing Boots
+  (`$5C`) set their `Quests` bit before the line, and their sprites remove
+  themselves while it is set: the Mattock is gone until a death clears `$10`
+  (`Player_Spawn`), the boots for good. Not a strict softlock: the Trunk's
+  wall can still be broken with the Tower of Trunk's other Mattock (one visit
+  in four) or Ripasheiku's after a death, and Wing Boots are sold. Kept finds
+  leaves the find lying (*Features and what they use*).
+- **The fountain's ladder** (*Screen events and the fountain's ladder*). In
+  `$27`, the misplaced ladder (column 2, rows 2-8) is reached by a jump from
+  the floor and climbs to the middle floor's upper side (row 1 at its top);
+  walking off its top to the left goes into `$28` at Y 48, on the ledge right
+  of the fountain, from which walking left drops him to `$28`'s floor.
+  Checked in the game: no trap.
+- **The Tower of Fortress's floor** (*Graphics bugs*). The Mattock, used from
+  the ladder at column 2 (`Y` in row 11, facing right), breaks rows 11 and 12
+  of column 3 into a pit one block wide. He drops in and stands on row 13
+  (`$29`'s first row: solid), steps left into the ladder's column and climbs
+  out. Checked in the game: no trap.
+- **The Mist's corridor**, `$2D`, `$2E` and `$2F` under `$25` and `$26`: the
+  ladders down from both end in the corridor's top rows, high over its
+  floor, with no door. It is the way back that is exact: from the floor onto
+  the low ledge at `$2D`'s left (row 10, columns 1-3), at `X` 32 a jump with
+  Up held catches the ladder at column 2 (rows 4-6; the climb check looks at
+  `X + 7`), whose top is beside the block at column 3, row 5; from that block
+  a jump right with Up held, taking off at `X` 58, catches column 4's ladder,
+  which climbs into `$25`. Checked in the game. Its two enemies (entity
+  `$22`) can kill him besides.
+- **The Evil One's room** (Zenis `$00`): the door from `$01` leads in and no
+  door leads out; the doors drawn at its right edge are in no door table. The
+  fight ends in a win (`ScreenEvents_HandleFinalBossKilled`, when every
+  sprite slot is empty) or a death, by design.
+
 ## Features and what they use
 
 Each feature's C is in `src/` (`src/fax_<name>.c`), and `src/cyc_extras.c`
@@ -2885,19 +3407,28 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
   has its last entry replaced, as the Battle Helmet's pickup and the shops
   do. It keeps no state, so it also runs in Seamless's isolated rooms (it
   counts pickups only outside them). See *Items and the inventory*.
-- **Small fixes** (`fax_fixes.c`). Four of the original's small bugs
-  (#39, #82), in three hooks that keep no state, so each also runs in
+- **Small fixes** (`fax_fixes.c`). Three of the original's small bugs
+  (#39, #82), in two hooks that keep no state, so each also runs in
   Seamless's isolated rooms (counting only outside them). At
   `SoundEffect_Message_OnTick`'s `TAX` (`$86B2`, bank 5) it halves A, so the
   typing sound's ticks 3 and 4 read the table's `$01`, not the `$A9` past its
-  end (see *How text types*). At `IScriptAction_ShowPassword`'s entry
-  (`$8737`, bank 12) it points the message at `PASSWORD_ENTERED_CHARS`, so the
-  mantra's line-end check, which reads with bank 12 mapped, always starts a
-  new line (see *The mantra*). At `Player_HandleHitByMagic` (`$87DC`, bank
+  end (see *How text types*). At `Player_HandleHitByMagic` (`$87DC`, bank
   14), after Block's hook, it skips the routine while
   `Player_InvincibilityPhase` is not 0 or Ointment runs, so magic on the
   shield does nothing during iframes or under Ointment, as magic on the hero
   does (see *Shields and enemy magic*).
+- **Kept finds** (`fax_finds.c`). With the Items list full (8 listed), a
+  Mattock, Wing Boots, Hour Glass or Red Potion found lying stays there: a
+  hook at `Player_HandleTouchItem`'s entry (`$88FB`, bank 14) skips the whole
+  routine (no line, no `Quests` bit, the sprite kept) when the touched
+  sprite's routine would end in `Player_PickUpItem` and be refused, and plays
+  the "invalid choice" sound (`$0D`) once a touch (a latch on the slot and
+  `InterruptCounter`, 8 frames). Wing Boots or an Hour Glass the hero already
+  holds go through, for Recharging items to take at `Player_PickUpItem`. The
+  rings, the Magical Rod and the Elixir are bits, the battle gear has its own
+  lists, the Poison only hurts, and the Glove and Ointment are timed: none is
+  touched. Nothing in Seamless's isolated rooms. No ROM, no save-state record
+  (a stale latch costs one sound at most). See *Softlocks*.
 - **Magic button** (`fax_magic.c`). A bindable button (C, or Y on a
   controller) casts the selected spell. On a press, it ORs Up held and B new
   into the joypad masks at `Player_CastMagic`'s entry, when `Game_MainLoop`
@@ -3188,7 +3719,8 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
   scan's list with a page of everything carried and goes on at `Shop_Draw`
   (`$86D8`), past "Which one would like to sell?", or, with nothing to sell
   and a list open, through `Maybe_Shop_DrawTextBox` first; `$86E0`, back to
-  the wait for an item no shop buys; `$86F8`, past the sale's close;
+  the wait for an item not for sale (one no shop buys, or one the hero owns);
+  `$86F8`, past the sale's close;
   `$84F0`, in `IScripts_WaitForMenuInput` before the menu update, where it
   puts the cursor back, Select or a page turn goes through
   `Sound_PlayEffect` (`$0B`) to the other step, and B goes through
@@ -3198,7 +3730,8 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
   `$838E`, where a shop's message goes back to the list; and `$8402`, the buy
   list's A, back to the wait (`$83FA`) for an item the hero owns (see
   *Shops*), which it asks reusable tools and recharging items about
-  (`fax_reusable_tools_on`, `fax_recharge_on`, `fax_recharge_elixir_spent`).
+  (`fax_reusable_tools_on`, `fax_recharge_on`, `fax_recharge_elixir_spent`),
+  as it does for the sell list's.
   Presses while a list is drawn, or the gold counts, are lost, as in the
   original: the game reads the pad only in the list's wait. The hint line
   ("Select to sell", "Select to buy", "Not for sale", "Already owned") is drawn
@@ -3253,14 +3786,20 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
 - **The map** (`fax_map.c`, laid out by `fax_map_layout.c`). A Map button (M,
   or LT on a controller; `MapKey` and `MapButton` in `config.ini` [Game])
   pauses the game on a map of the screens the hero has stood on, a page per
-  region, tower and castle; see *The map*. Two hook sites, the BEQs at
+  region, tower and castle, with only Gurus, doors and the items still
+  lying in the world marked; see *The map*. Three hook sites: the BEQs at
   `$E02F` and `$E040` in `GameLoop_CheckPauseGame`, shared with the quest log
-  (whose hooks come after; neither opens over the other): it changes only A
-  and Z there, and the game's own code pauses and unpauses. Everything else it learns from RAM at the end of each frame, and
-  it draws at present time, after every other feature. Guru travel's visited
-  Gurus (`fax_travel_visited`) count as their temples. Its save-state record is
-  what the hero has seen (312 bytes), the last place, and the map's page and
-  whether it is open. No ROM, no read overrides.
+  (whose hooks come after; neither opens over the other), where it changes
+  only A and Z, and the game's own code pauses and unpauses; and
+  `Player_HandleTouchItem` (`$88FB`, bank 14), after Kept finds' site there,
+  where it only observes the slot touched (recharging items' pickup hook,
+  `Player_PickUpItem`, runs later, inside `Player_PickUp`). Everything else
+  it learns from RAM at the end of each frame and as it draws, at present
+  time, after every other feature. Guru travel's visited Gurus
+  (`fax_travel_visited`) count as their temples. Its save-state record
+  (version 2; it still loads a version 1 record, with no item taken) is what
+  the hero has seen (312 bytes), the last place, the map's page and whether it
+  is open, and the items taken (8 bytes). No ROM, no read overrides.
 
 - **Quest log** (`fax_quests.c`, the quests in `fax_quest_table.c`). Lines in
   dialogue, the log and the marks; see *Quests*. A hook at `Messages_Load`
@@ -3276,6 +3815,17 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
   record (31 bytes) holds the quests given and seen done, the lines still to
   say, the banner and the log's page. No ROM of its own and no read override
   of its own.
+
+- **Fair entrances** (`fax_entrances.c`). The enemies placed where a way onto
+  their screen puts the hero, so they hit him before anyone could react, start
+  on another block (table in "Enemy placement and fair entrances"). A hook at
+  `Sprites_PopulateNextAvailableSprite` (`$C205`) rewrites
+  `CurrentSprite_XPos` and `CurrentSprite_YPos` for a listed placement before
+  the slot is filled; Seamless calls `fax_entrances_room_loaded` after loading
+  a neighbouring room on an isolated machine, where hooks do not run, and it
+  moves the listed enemies in that machine's slots. No ROM, no read overrides,
+  no state of its own: the positions are the game's sprite RAM, which save
+  states keep.
 
 - **Save files** (`fax_save.c`, `fax_files.c`). Three files instead of
   mantras; see "Save files" below.
@@ -3300,7 +3850,7 @@ are kept, in place, through every save.
 | `title`, `next_title` | `PlayerTitle`, `NextPlayerTitle` | 0-15 |
 | `experience`, `gold` | `Experience`, `Gold` | Exact; gold is 24-bit |
 | `spawn` | `TempleSpawnPoint` | The temple of the Guru last saved with: where the file continues and death respawns |
-| `furthest` | Save files' own count | The furthest temple reached: the original's `TempleSpawnPoint`. The file select shows its town |
+| `furthest` | Save files' own count | The furthest temple reached: the original's `TempleSpawnPoint`. The title's file picks show its town |
 | `special_items`, `quests` | `SpecialItems`, `Quests` | Bit flags, decimal |
 | `weapons`, `armor`, `shields`, `spells`, `items` | The five lists, up to their counts | Entries in decimal, space-separated |
 | `selected_weapon` ... `selected_item` | `SelectedWeapon` ... `SelectedItem` | A number, or `none` |
@@ -3309,21 +3859,50 @@ Other fields belong to features: Guru travel's `gurus` (the visited Gurus,
 town names), recharging items' `recharge.wingboots`, `recharge.hourglass` and
 `recharge.elixir` (see its entry in *Features and what they use*), the map's
 `map.eolis`, `map.trunk`, `map.mist`, `map.towns`, `map.branch`,
-`map.dartmoor` and `map.zenis` (see *The map*), the quest log's
-`quests.given` and `quests.done` (see *Quests*), and
-`imported_mantra` on a file imported from a mantra. Missing
-core fields take a new game's values. HP, MP and the timed items are not
+`map.dartmoor`, `map.zenis` and `map.items` (see *The map*), the quest log's
+`quests.given` and `quests.done` (see *Quests*). (`imported_mantra`, on a
+file imported from a mantra before mantras went from the remaster, is kept
+like any field no feature knows.) Missing core fields take a new game's
+values. HP, MP and the timed items are not
 kept: continuing fills HP and MP and clears the timed items, as a mantra did.
 
-**The file select.** A hook at `StartScreen_CheckHandleInput` runs it instead
-of the title's own input (see The title screen), and the file select is drawn
-over the picture: a box of 10 cells on y 160-239, over START / CONTINUE and
-the notices, with two rows a file (its name, then its gold and experience), a
-blank and "Erase a file". It leaves y 144-159, the black between it and the
-logo, to REMASTERED on the title. Up and Down move, A or Start take a file:
-an empty one starts a new game through the stock Start path (nothing is
-written until the first save), a saved one continues. "Erase a file" picks a
-file, then asks "Erase file N? A yes B no"; B steps back.
+**The title's menu.** The title keeps the original's two choices, NEW GAME
+in START's place and CONTINUE. A hook at `StartScreen_CheckHandleInput` reads
+the pad instead of the title's own input (see The title screen):
+
+- **The two choices.** NEW GAME is drawn over START at present time in the
+  title's own letters (tiles `$E0`-`$F9`, read from the line's pattern table,
+  in the palette the attribute table gives START's column), in columns 5-12,
+  so it ends where START did; CONTINUE stays the game's, in columns 16-23.
+  With no file to continue, CONTINUE is redrawn in grey (palette 3's `$00`)
+  and the cursor never lands on it. Select, Left, Right, Up and Down move
+  between them, and the title opens on CONTINUE when a file can be continued.
+  The hook sets `$0687` to the choice, clears Select and Start from
+  `Joy1_ChangedButtonMask` and lets the routine run on, so it toggles nothing
+  and draws its own arrow; a second hook, at its `LDY #$7E` (`$9F62`, after
+  `LDX BYTE_ARRAY_PRG12__9f69,Y` loads the arrow's X), moves NEW GAME's arrow
+  from `$34` to `$1C`, 12 pixels before the word as the stock arrows are.
+  CONTINUE's is the stock `$74`. The arrow is a sprite through
+  `Sprite_SetAppearanceAddrFromOffset`, which switches banks, so it cannot be
+  drawn from a committed call.
+- **A pick.** A or Start on either opens a pick of the three files, drawn
+  over the picture: a box of 10 cells on y 160-239, over the choices and the
+  notices, with two rows a file (its name, then its gold and experience), a
+  blank and what it asks. It leaves y 144-159, the black between it and the
+  logo, to REMASTERED on the title. The routine is handled there, so no arrow
+  shows. Up and Down move, A or Start take a file, B goes back.
+- **NEW GAME's pick** ("New game in which file?") opens on the first empty
+  file. An empty one starts a new game at once, through the stock Start path
+  (nothing is written until the first save); a used one, damaged or newer
+  ones included, asks "Erase file N? A yes B no" on the last row. A erases it
+  and starts the new game in it; B goes back to the pick.
+- **CONTINUE's pick** ("Continue which file?") opens on the first saved file.
+  Only saved files can be chosen: the others are grey and the cursor skips
+  them.
+
+Its save-state record (version 2) holds the menu; a version 1 record, from
+the file select with "Erase a file" this replaced, comes back on the two
+choices.
 
 **Continuing** takes the stock Continue path: the hook at
 `PasswordScreen_Show` puts the file's progress where `Password_Load` would and
@@ -3353,8 +3932,12 @@ file in play, the interpreter goes to a step in unused ROM (bank 12,
   `TempleSpawnPoint` back at the next action and keeps the raise as the
   furthest temple.
 
-Without a file in play (Save files off, or turned on in the middle of a game)
-the Gurus show the mantra as before.
+Without a file in play (a save state from the original game, or one made
+before a file was chosen) or if the choice cannot be supplied, the Guru skips
+the mantra: Save files sends the interpreter to Guru travel's intro if it has
+a Guru to offer (`fax_travel_begin`), else to the script's END (`$A5FF`).
+With the remaster on nothing shows a mantra; with it off the Gurus show it as
+the original does.
 
 Its lines come after the Guru's own, in the same box, and a new title's line
 scrolls: while they (and Guru travel's after them) are up, the hook at
@@ -3365,17 +3948,11 @@ scrolls: while they (and Guru travel's after them) are up, the hook at
 journey and continuing. It keeps the spawn point, so quitting never loses more
 than the last stretch, and only a Guru moves where the file continues.
 
-**Importing mantras.** The first time the title shows with Save files
-(`faxanadu_imported.txt` absent), the mantra in `faxanadu.srm` goes into file
-1 (or the first empty file), with the Gurus in `faxanadu_gurus.txt`. After
-that, a mantra not imported before goes into the first empty file: a new one
-in `faxanadu.srm` (which the launcher's Mantra field edits) or `--password`.
-`faxanadu_imported.txt` lists the mantras imported, so each goes in once;
-delete it to import again. A mantra is decoded by the game's own routines in
-an isolated call (see The mantra), so it gets the title's gold and experience,
-as continuing from it did; its spawn point is also its furthest temple, and
-that Guru counts as visited. With Save files on, `faxanadu.srm` is no longer
-written every 15 seconds.
+**No mantras.** The remaster neither reads nor writes mantras: no import
+(`faxanadu.srm`, `faxanadu_gurus.txt` and `faxanadu_imported.txt` are left
+alone), no `--password`, no Mantra field in the launcher, and no capture of
+the game's mantra. With the remaster off, the title's Continue opens the
+original's mantra screen, empty, to type one in.
 
 **For other features: `fax_save.h`.** Keep your state in the file in play:
 

@@ -4,14 +4,15 @@
  * dialogue font (fax_text.c) and the color the logo's palette draws its
  * highlights in. The title's picture is left as the game drew it: the word
  * goes over the presented picture, in rows the title leaves black (y 148-154,
- * between the logo's last row, 143, and START / CONTINUE or the file select,
- * from 160).
+ * between the logo's last row, 143, and the title's choices, from 160: START
+ * and CONTINUE, NEW GAME and CONTINUE with the remaster, or a file pick).
  *
  * The title is up while Game_ShowStartScreen's loop runs: once a frame it
- * far-calls StartScreen_CheckHandleInput (which Save files takes over), then
+ * far-calls StartScreen_CheckHandleInput (which Save files steers), then
  * reads the pad at @_afterCheckHandleInputFarJump ($FC7A). A hook there only
  * notes that the loop ran; the word shows on the frames it did. Start leaves
- * the loop for the intro or the mantra screen, and the word goes with it.
+ * the loop for the intro or a saved game (the original's mantra screen),
+ * and the word goes with it.
  * No ROM, nothing written to the machine.
  * See docs/GAME_INTERNALS.md, "The title screen". */
 #include "fax_title.h"
@@ -39,7 +40,7 @@ static const char WORD[] = "REMASTERED";
 enum {
     NATIVE_W = 256, NATIVE_H = 240,
     LOGO_LEFT = 16, LOGO_W = 224,   /* the logo and its border: tiles 2-29 of rows 2-17 (StartScreen_Draw, $2042) */
-    WORD_Y = 148,                   /* the logo's last row is 143; START / CONTINUE and the file select start at 160 */
+    WORD_Y = 148,                   /* the logo's last row is 143; the title's choices start at 160 */
     WORD_COLOR = 3,                 /* palette RAM: the logo's palette ($0F $05 $18 $38), its light yellow */
 };
 

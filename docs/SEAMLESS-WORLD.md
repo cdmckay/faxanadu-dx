@@ -73,7 +73,7 @@ CIRAM; the trusted caller remains responsible for layout and mirroring.
 All content-qualified hooks and the payload CRC bind this profile to Faxanadu
 USA `57dd23d1`. No ROM, disassembly, extracted graphics or map data is shipped.
 World instance state and pending seam/collision policy serialize in a validated
-mod record. Old save states need not be compatible; native mantra saves are
+mod record. Old save states need not be compatible; save files are
 separate. The feature marks its session local-only.
 
 ## Validation and limits
