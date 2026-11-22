@@ -90,6 +90,16 @@ asking at once wait for one to make it. Never commit a save state: it holds
 CHR RAM copied from the ROM. Ask for a fixture (`game.state(name)`) before the
 test's own game launches: an uncapped game burns a thread while it waits.
 
+Start past a seam from a fixture, not a walk across it. In Seamless a room's
+enemies run before the hero walks in and wait at the seam he is nearest, so
+one can knock him back across it as he crosses, at a frame that depends on how
+far the script lags; a walk that then stops at an X stops on the other screen
+(#130: the keys test pressed Up in Eolis's town, not at the exit door). Come
+in by a door, whose load spawns the room fresh, as `eolis-zozuras` and the
+keys test's `keys-eolis-exit` do. Where an enemy loads on the spot, walk out
+under Ointment (`DurationOintment`, `$0427`, below `$80`), which no touch
+gets through, and end it (`$FF`) in the `poke()` that clears the slots.
+
 ### Parts
 
 A test that takes much longer than the others splits into parts, each
