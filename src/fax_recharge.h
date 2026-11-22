@@ -20,10 +20,10 @@ bool fax_recharge_elixir_spent(void);
  * showing is put back in message $C3's slot (read overrides are not saved). */
 void fax_recharge_loaded(void);
 
-/* Each recharging item, as the status bar shows it (fax_charges.c): not the
- * hero's (NONE), ready to use (READY), or his but not ready (USED): the Wing
- * Boots or the Hour Glass running or recharging, the Elixir spent. NONE for
- * all three when Recharging items is off. */
+/* Where each recharging item stands (the status bar shows the Elixir's:
+ * fax_charges.c): not the hero's (NONE), ready to use (READY), or his but not
+ * ready (USED): the Wing Boots or the Hour Glass running or recharging, the
+ * Elixir spent. NONE for all three when Recharging items is off. */
 enum { FAX_RECHARGE_BOOTS, FAX_RECHARGE_GLASS, FAX_RECHARGE_ELIXIR, FAX_RECHARGE_ITEMS };
 typedef enum { FAX_CHARGE_NONE, FAX_CHARGE_READY, FAX_CHARGE_USED } FaxCharge;
 FaxCharge fax_recharge_charge(int item);

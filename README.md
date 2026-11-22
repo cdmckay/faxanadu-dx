@@ -140,16 +140,15 @@ keeps the map, and the items you have taken.
   your inventory, without selecting it, and keys and the Mattock are no longer
   used up.
 - **Items that recharge.** The Wing Boots and the Hour Glass recharge after
-  use, counting down on the status bar, and the Wing Boots fly longer as your
-  title rises. The Elixir stays with you after it revives you, and a Guru
+  use, counting down on the status bar while selected, and the Wing Boots fly
+  longer as your title rises. The Elixir stays with you after it revives you, and a Guru
   recharges it and tells you so; the first Guru you bring it to tells you he
   can.
-- **Ready at a glance.** The status bar shows your Wing Boots, Hour Glass and
-  Elixir in a row beside the item box, as Super Metroid shows its reserve
-  tanks: in color when one is ready, grey while it is in use or recharging,
-  or while the Elixir waits for a Guru, and not at all until you have it. An
-  item greys and blinks the moment it is used, so you see when the Elixir
-  saves you.
+- **Ready at a glance.** The status bar shows your Elixir beside the M: and
+  P: bars it refills, as Super Metroid shows a reserve tank beside Energy: in
+  color when it is charged, grey while it waits for a Guru, and not at all
+  until you have it. It greys and blinks the moment it revives you, so you
+  see when it saves you.
 - **Quick shops.** Up on a shopkeeper opens his list at once, Select switches
   between buying and selling, and you stay in the list after each sale. Any
   shop buys what you carry, except what you own for good, like a key or the

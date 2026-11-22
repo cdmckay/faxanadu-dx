@@ -56,6 +56,6 @@ bool fax_text_box_showing(void);
  * PPU $2061 (tiles $1F and $0A, from UI_STATUS_TILES), with the background
  * on in that row. Not on the title, the password screen or the ending, nor
  * while the game has the screen off to load one. For what goes beside the
- * status bar: Seamless's layout and the recharging items' row
+ * status bar: Seamless's layout and the Elixir left of it
  * (fax_charges.c). */
 bool fax_text_hud_showing(void);
