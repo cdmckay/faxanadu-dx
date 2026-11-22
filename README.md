@@ -32,11 +32,13 @@ rest of the title is the original's.
 
 ### Saving and the Gurus
 
-**Save files.** The title screen offers three files, as in Zelda: pick an
-empty one to start a new game, or a saved one to continue exactly as you left
-it: title, gold, experience, items, quests and the Gurus you have met. "Erase
-a file" clears one. A Guru no longer gives a mantra: he offers to remember
-your journey, and the Guru you last saved with is where you continue, and
+**Save files.** Three files, as in Zelda. The title keeps its two choices,
+NEW GAME where START was and CONTINUE. NEW GAME asks which file to start in:
+an empty one starts at once, and a used one asks "Erase file 2? A yes B no"
+first. CONTINUE lists the saved files and continues the one you pick exactly
+as you left it: title, gold, experience, items, quests and the Gurus you have
+met. With nothing saved yet, CONTINUE is grey. A Guru no longer gives a
+mantra: he offers to remember your journey, and the Guru you last saved with is where you continue, and
 where you wake when there's no entrance to come back to. Talking to a Guru
 without saving leaves that where it was. Your file is also saved each time
 you come back from a death or a journey.
@@ -261,12 +263,6 @@ press A to go on.
 of its own two-sound table, so every character ends in a loud clack. Now it
 plays the softer sound the table holds.
 
-**The mantra's line break, fixed.** Where a Guru's mantra starts its second
-line was decided by a byte read from the wrong part of the ROM. In the
-original that byte happens to work, but another would have put the second
-line over the first. Now the break is certain. A Guru shows a mantra only
-when no save file is in play.
-
 **Zone names.** When you enter a different town, region, tower or castle, its
 name appears below the status bar for about two seconds in the game's own
 text box, as the dialogue names it ("Tower of Suffer", "Castle of
@@ -320,6 +316,9 @@ the connected map. It is still a preview, for local play only. See
 | Fullscreen | F11 | |
 | Screenshot | F12 | |
 
+On the title, Select or the D-pad moves between NEW GAME and CONTINUE, A or
+Start chooses, and B goes back from the list of files.
+
 The launcher's Controls page remaps them. To rebind Magic, Block, the Map or
 the Quest log, set `MagicKey`, `BlockKey`, `MapKey` and `QuestLogKey` (a key
 name, like `V` or `Left Shift`) and `MagicButton`, `BlockButton`, `MapButton`
@@ -334,11 +333,8 @@ Your three files are `faxanadu_file1.txt` to `faxanadu_file3.txt`, next to
 the game. Block remembers that it has shown its line in `faxanadu_block.txt`
 beside them.
 
-Mantras from the original still work: the first time, your mantra in
-`faxanadu.srm` (and the Gurus in `faxanadu_gurus.txt`) goes into file 1. To
-bring in another, enter it in the launcher's Mantra field or pass
-`--password`, and it goes into the first empty file. Each mantra comes in
-once.
+The remaster has no mantras: it neither shows nor reads them. Switch it off
+and the original's CONTINUE asks for one, as it always did.
 
 ## The ROM it needs
 

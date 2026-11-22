@@ -62,7 +62,7 @@ int nes_mod_register_savestate_validator(const char *id, NESModSavestateValidate
 void nes_mod_set_local_only(const char *name, int required) { (void)name; (void)required; }
 bool fax_text_load(void) { return true; }
 bool fax_text_loaded(void) { return true; }
-static struct { int x, y, cols, rows, lines, first_line_y, last_line_y; } drawn;   /* the last file select drawn */
+static struct { int x, y, cols, rows, lines, first_line_y, last_line_y; } drawn;   /* the last file pick drawn */
 void fax_text_box_rom(uint32_t *px, int w, int h, int x, int y, int cols, int rows, const uint32_t colors[4], unsigned alpha) {
     (void)px; (void)w; (void)h; (void)colors; (void)alpha;
     drawn.x = x; drawn.y = y; drawn.cols = cols; drawn.rows = rows; drawn.lines = 0;

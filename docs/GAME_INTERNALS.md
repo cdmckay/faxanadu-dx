@@ -661,9 +661,15 @@ and Y, and RTSes into the routine. So at the entry of a far-called routine:
 **The start screen and the mantra screen.** Select toggles `$0687`
 (0 Start, 1 Continue); Start takes it. On the mantra screen the cursor is
 `Password_CursorRow` (`$0663`) and `Password_CursorCol` (`$0662`), and
-`Password_EnteredCharsLength` (`$0666`) counts the characters typed. The last
-row (5) holds →, ←, DEL and END at columns 0-3, and Up from row 0 wraps to it.
-A on END (row 5, column 3) checks the mantra and continues.
+`Password_EnteredCharsLength` (`$0666`) counts the characters typed
+(`Password_EnteredChars`, `$0600`, holds their 6-bit values), and
+`Password_MaxChars` (`$0665`) is set once the screen is up. Rows 0-4 hold the
+64 characters in order, 13 to a row (`PASSWORD_VALUES_FOR_CURSOR_POS`: row ×
+13 + column; the 65th spot is empty), and A types the one under the cursor,
+which stays put. The last row (5) holds →, ←, DEL and END at columns 0-3, and
+Up from row 0 wraps to it. A on END (row 5, column 3) checks the mantra and
+continues. A new game's mantra at Eolis's gate is `rFAAAAQAAA`
+(`tests/remastered/one_switch.py` types it with the remaster off).
 
 ## The title screen (bank 15, bank 12)
 
@@ -676,10 +682,16 @@ to `StartScreen_CheckHandleInput` (`$9F44`, bank 12), then at
 `Joy1_ChangedButtonMask` for Start.
 
 - `StartScreen_CheckHandleInput` toggles `$0687` on Select (with sound `$0B`)
-  and draws the arrow, sprite `$AD`, at x `$34` or `$74`, y `$7E`. Nothing
-  else calls it, so a hook that handles it owns the title's input: the arrow
-  is not drawn (the loop resets sprites each frame), and clearing Start in
-  `Joy1_ChangedButtonMask` there keeps the loop from seeing it.
+  and draws the arrow, sprite appearance `$AD`, at x `$34` or `$74`
+  (`BYTE_ARRAY_PRG12__9f69`, loaded by `LDX` at `$9F5F`), y `$7E`, through
+  `UI_DrawPromptInputSymbol` (`$FCA7`), which ends in
+  `Sprite_SetAppearanceAddrFromOffset` and its bank switch. Nothing else calls
+  it, so a hook there owns the title's input: one that handles it draws no
+  arrow (the loop resets sprites each frame), one that clears Select and
+  returns 0 keeps the arrow and stops the toggle, and clearing Start in
+  `Joy1_ChangedButtonMask` there keeps the loop from seeing it. At `$9F62`
+  (`LDY #$7E`) X holds the arrow's X: Save files moves it there for NEW
+  GAME.
 - Start with `$0687` = 0: music 8, then `@_startGame` (`$FC98`):
   `SplashAnimation_RunIntro`, `Player_SetStartGameState` (`$9570`: everything
   zero or none, but `SelectedArmor` 0) and `JMP Game_Start`.
@@ -694,10 +706,13 @@ to `StartScreen_CheckHandleInput` (`$9F44`, bank 12), then at
   `StartScreen_CheckHandleInput` returns there as the RTS would), and never
   after Start: a hook there that only notes the frame tells a feature the
   title is up. REMASTERED on the title does that.
-- The picture: the logo and its border fill y 16-143; START and CONTINUE are
-  on y 160-166 and the three notices on 184, 200 and 216, black between.
-  REMASTERED takes y 148-155 (its glyphs light 148-154), and the file select
-  y 160-239, a box of 10 cells over START / CONTINUE and the notices. The
+- The picture: the logo and its border fill y 16-143; START (tile columns
+  8-12) and CONTINUE (16-23) are on tile row 20, lit on y 160-166, and the
+  three notices on 184, 200 and 216, black between. The letters are tiles
+  `$E0`-`$F9`, A to Z, of the row's pattern table. REMASTERED takes y 148-155
+  (its glyphs light 148-154). With the remaster NEW GAME takes columns 5-12
+  of row 20, and a file pick y 160-239, a box of 10 cells over the choices
+  and the notices. The
   background palettes are `$0F $05 $18 $38` (the logo's border; `$38`, light
   yellow, is its highlights and REMASTERED's color),
   `$0F $17 $27 $30` (the white text), `$0F $0F $16 $28`
@@ -786,17 +801,17 @@ and starts a new line unless that is `$FF` (the end: `MessageID` 0) or `$FC`
   the `$FF` of `JSR $F4FF`, would not: a save state with
   `Message_ProcessedLength` `$60` shows the original's second half over its
   first (`tests/fixes/small_fixes.py`).
-- **The fix** (Small fixes, chipx86's suggestion): a hook at
+- **A fix, should it be needed** (chipx86's suggestion; Small fixes had it
+  until the remaster stopped showing mantras): a hook at
   `IScriptAction_ShowPassword`'s entry points the message at
   `PASSWORD_ENTERED_CHARS` (`Message_StartAddr` `$8764`,
   `Message_ProcessedLength` 0), so the check reads an A in bank 12 and always
   starts the new line. Nothing reads the pointer again before the next
   `Messages_Load` sets it.
-- **Where a mantra still shows with the remaster:** Save files puts the
-  Guru's choice where the mantra was, so only a game with no file in play
-  shows one: a save state from the original, or Save files turned off by a
-  failure. Importing a mantra (`faxanadu.srm`, `--password`) only decodes it,
-  in an isolated call, and shows nothing.
+- **The remaster shows no mantra.** Save files puts the Guru's choice where
+  the mantra was, and with no file in play (a save state from the original)
+  or if the choice fails, it skips the mantra (see *Save files*). With the
+  remaster off, the Gurus show it as the original does.
 
 ## Weapon damage (bank 14)
 
@@ -2856,15 +2871,12 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
   has its last entry replaced, as the Battle Helmet's pickup and the shops
   do. It keeps no state, so it also runs in Seamless's isolated rooms (it
   counts pickups only outside them). See *Items and the inventory*.
-- **Small fixes** (`fax_fixes.c`). Four of the original's small bugs
-  (#39, #82), in three hooks that keep no state, so each also runs in
+- **Small fixes** (`fax_fixes.c`). Three of the original's small bugs
+  (#39, #82), in two hooks that keep no state, so each also runs in
   Seamless's isolated rooms (counting only outside them). At
   `SoundEffect_Message_OnTick`'s `TAX` (`$86B2`, bank 5) it halves A, so the
   typing sound's ticks 3 and 4 read the table's `$01`, not the `$A9` past its
-  end (see *How text types*). At `IScriptAction_ShowPassword`'s entry
-  (`$8737`, bank 12) it points the message at `PASSWORD_ENTERED_CHARS`, so the
-  mantra's line-end check, which reads with bank 12 mapped, always starts a
-  new line (see *The mantra*). At `Player_HandleHitByMagic` (`$87DC`, bank
+  end (see *How text types*). At `Player_HandleHitByMagic` (`$87DC`, bank
   14), after Block's hook, it skips the routine while
   `Player_InvincibilityPhase` is not 0 or Ointment runs, so magic on the
   shield does nothing during iframes or under Ointment, as magic on the hero
@@ -3271,7 +3283,7 @@ are kept, in place, through every save.
 | `title`, `next_title` | `PlayerTitle`, `NextPlayerTitle` | 0-15 |
 | `experience`, `gold` | `Experience`, `Gold` | Exact; gold is 24-bit |
 | `spawn` | `TempleSpawnPoint` | The temple of the Guru last saved with: where the file continues and death respawns |
-| `furthest` | Save files' own count | The furthest temple reached: the original's `TempleSpawnPoint`. The file select shows its town |
+| `furthest` | Save files' own count | The furthest temple reached: the original's `TempleSpawnPoint`. The title's file picks show its town |
 | `special_items`, `quests` | `SpecialItems`, `Quests` | Bit flags, decimal |
 | `weapons`, `armor`, `shields`, `spells`, `items` | The five lists, up to their counts | Entries in decimal, space-separated |
 | `selected_weapon` ... `selected_item` | `SelectedWeapon` ... `SelectedItem` | A number, or `none` |
@@ -3281,20 +3293,49 @@ town names), recharging items' `recharge.wingboots`, `recharge.hourglass` and
 `recharge.elixir` (see its entry in *Features and what they use*), the map's
 `map.eolis`, `map.trunk`, `map.mist`, `map.towns`, `map.branch`,
 `map.dartmoor` and `map.zenis` (see *The map*), the quest log's
-`quests.given` and `quests.done` (see *Quests*), and
-`imported_mantra` on a file imported from a mantra. Missing
-core fields take a new game's values. HP, MP and the timed items are not
+`quests.given` and `quests.done` (see *Quests*). (`imported_mantra`, on a
+file imported from a mantra before mantras went from the remaster, is kept
+like any field no feature knows.) Missing core fields take a new game's
+values. HP, MP and the timed items are not
 kept: continuing fills HP and MP and clears the timed items, as a mantra did.
 
-**The file select.** A hook at `StartScreen_CheckHandleInput` runs it instead
-of the title's own input (see The title screen), and the file select is drawn
-over the picture: a box of 10 cells on y 160-239, over START / CONTINUE and
-the notices, with two rows a file (its name, then its gold and experience), a
-blank and "Erase a file". It leaves y 144-159, the black between it and the
-logo, to REMASTERED on the title. Up and Down move, A or Start take a file:
-an empty one starts a new game through the stock Start path (nothing is
-written until the first save), a saved one continues. "Erase a file" picks a
-file, then asks "Erase file N? A yes B no"; B steps back.
+**The title's menu.** The title keeps the original's two choices, NEW GAME
+in START's place and CONTINUE. A hook at `StartScreen_CheckHandleInput` reads
+the pad instead of the title's own input (see The title screen):
+
+- **The two choices.** NEW GAME is drawn over START at present time in the
+  title's own letters (tiles `$E0`-`$F9`, read from the line's pattern table,
+  in the palette the attribute table gives START's column), in columns 5-12,
+  so it ends where START did; CONTINUE stays the game's, in columns 16-23.
+  With no file to continue, CONTINUE is redrawn in grey (palette 3's `$00`)
+  and the cursor never lands on it. Select, Left, Right, Up and Down move
+  between them, and the title opens on CONTINUE when a file can be continued.
+  The hook sets `$0687` to the choice, clears Select and Start from
+  `Joy1_ChangedButtonMask` and lets the routine run on, so it toggles nothing
+  and draws its own arrow; a second hook, at its `LDY #$7E` (`$9F62`, after
+  `LDX BYTE_ARRAY_PRG12__9f69,Y` loads the arrow's X), moves NEW GAME's arrow
+  from `$34` to `$1C`, 12 pixels before the word as the stock arrows are.
+  CONTINUE's is the stock `$74`. The arrow is a sprite through
+  `Sprite_SetAppearanceAddrFromOffset`, which switches banks, so it cannot be
+  drawn from a committed call.
+- **A pick.** A or Start on either opens a pick of the three files, drawn
+  over the picture: a box of 10 cells on y 160-239, over the choices and the
+  notices, with two rows a file (its name, then its gold and experience), a
+  blank and what it asks. It leaves y 144-159, the black between it and the
+  logo, to REMASTERED on the title. The routine is handled there, so no arrow
+  shows. Up and Down move, A or Start take a file, B goes back.
+- **NEW GAME's pick** ("New game in which file?") opens on the first empty
+  file. An empty one starts a new game at once, through the stock Start path
+  (nothing is written until the first save); a used one, damaged or newer
+  ones included, asks "Erase file N? A yes B no" on the last row. A erases it
+  and starts the new game in it; B goes back to the pick.
+- **CONTINUE's pick** ("Continue which file?") opens on the first saved file.
+  Only saved files can be chosen: the others are grey and the cursor skips
+  them.
+
+Its save-state record (version 2) holds the menu; a version 1 record, from
+the file select with "Erase a file" this replaced, comes back on the two
+choices.
 
 **Continuing** takes the stock Continue path: the hook at
 `PasswordScreen_Show` puts the file's progress where `Password_Load` would and
@@ -3324,8 +3365,12 @@ file in play, the interpreter goes to a step in unused ROM (bank 12,
   `TempleSpawnPoint` back at the next action and keeps the raise as the
   furthest temple.
 
-Without a file in play (Save files off, or turned on in the middle of a game)
-the Gurus show the mantra as before.
+Without a file in play (a save state from the original game, or one made
+before a file was chosen) or if the choice cannot be supplied, the Guru skips
+the mantra: Save files sends the interpreter to Guru travel's intro if it has
+a Guru to offer (`fax_travel_begin`), else to the script's END (`$A5FF`).
+With the remaster on nothing shows a mantra; with it off the Gurus show it as
+the original does.
 
 Its lines come after the Guru's own, in the same box, and a new title's line
 scrolls: while they (and Guru travel's after them) are up, the hook at
@@ -3336,17 +3381,11 @@ scrolls: while they (and Guru travel's after them) are up, the hook at
 journey and continuing. It keeps the spawn point, so quitting never loses more
 than the last stretch, and only a Guru moves where the file continues.
 
-**Importing mantras.** The first time the title shows with Save files
-(`faxanadu_imported.txt` absent), the mantra in `faxanadu.srm` goes into file
-1 (or the first empty file), with the Gurus in `faxanadu_gurus.txt`. After
-that, a mantra not imported before goes into the first empty file: a new one
-in `faxanadu.srm` (which the launcher's Mantra field edits) or `--password`.
-`faxanadu_imported.txt` lists the mantras imported, so each goes in once;
-delete it to import again. A mantra is decoded by the game's own routines in
-an isolated call (see The mantra), so it gets the title's gold and experience,
-as continuing from it did; its spawn point is also its furthest temple, and
-that Guru counts as visited. With Save files on, `faxanadu.srm` is no longer
-written every 15 seconds.
+**No mantras.** The remaster neither reads nor writes mantras: no import
+(`faxanadu.srm`, `faxanadu_gurus.txt` and `faxanadu_imported.txt` are left
+alone), no `--password`, no Mantra field in the launcher, and no capture of
+the game's mantra. With the remaster off, the title's Continue opens the
+original's mantra screen, empty, to type one in.
 
 **For other features: `fax_save.h`.** Keep your state in the file in play:
 

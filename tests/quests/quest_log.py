@@ -42,8 +42,8 @@ import sys
 import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import (Game, act, batch, fixture, frame, hold, hurry, parse_args, ram, step_toward, tcp,  # noqa: E402
-                     typed, until, until_typed, wait)
+from fax_e2e import (Game, act, batch, choose_file, fixture, frame, hold, hurry, parse_args, ram, step_toward,  # noqa: E402
+                     tcp, title_menu, typed, until, until_typed, wait)
 
 AREA, SCREEN, PLAYER_X = 0x24, 0x63, 0x9E
 SCREEN_READY, SCROLL, PAUSED = 0x0E, 0x54, 0x120
@@ -445,8 +445,8 @@ def main():
             game.close()
 
             game.launch()
-            until("the file select", lambda: tcp("files_state")["shown"], 2000)
-            tcp("pad", buttons="start", frames=10)                  # file 1: continue
+            title_menu()
+            choose_file(False, 1)                                   # CONTINUE, file 1
             until("Eolis's temple", lambda: place() == (BUILDINGS, EOLIS_TEMPLE) and settled(), 1800)
             wait(10)
             s = open_log()
