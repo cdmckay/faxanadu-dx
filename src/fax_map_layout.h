@@ -6,7 +6,8 @@
  * Bank 3's area data gives each screen's neighbours (scroll data: left, right,
  * up, down) and each area's doors (door locations and destinations); bank 15
  * gives the walks off a region's edge into a town (AREA_TOWN_TRANSITIONS_DATA)
- * and the Trunk's climb ($0C to $16, AREA_SCREEN_COMPARATORS). A page is laid
+ * and the Trunk's climb ($0C to $16, AREA_SCREEN_COMPARATORS); bank 11 gives
+ * the items lying in the world (AREA_SPRITE_ADDRESSES). A page is laid
  * out by a breadth-first walk from its first screen, scroll links first, then
  * town edges and climbs: each screen goes one cell over from the one it was
  * reached from, unless that cell is taken (the links are not always both ways
@@ -80,12 +81,37 @@ typedef struct {
     FaxMapCell cell[FAX_MAP_CELLS];
 } FaxMapPage;
 
+/* The world's pickups: the item sprites in each screen's sprite list (bank
+ * 11's AREA_SPRITE_ADDRESSES), and in each building's that a door leads to.
+ * How the game decides one is there is its entity's behavior (bank 14's
+ * BSCRIPTS_OBJ_*), so its kind is the entity's. Poison ($4C, $5E) is no item:
+ * it hurts. See docs/GAME_INTERNALS.md, "The map". */
+enum { FAX_MAP_ITEMS = 64 };
+typedef enum {
+    FAX_MAP_ITEM_ALWAYS,      /* lies there at every visit, and the game keeps no state (the Elixir, a Red
+                                 Potion; a Glove or an Ointment while none is running) */
+    FAX_MAP_ITEM_SOMETIMES,   /* one counted visit in four (Screen_Is3Of4Visits) */
+    FAX_MAP_ITEM_ONCE,        /* until the game's own flag or list says the hero has it */
+} FaxMapItemKind;
+typedef struct {
+    uint8_t area, screen;              /* its sprite list's: in AREA_BUILDINGS, the building's number */
+    uint8_t entity, block;             /* its sprite entity, and block YX */
+    uint8_t kind;                      /* FaxMapItemKind */
+    uint8_t map_area, map_screen;      /* the place the map marks it on: its own, or a building's door's */
+    uint8_t map_block;                 /* and where on it: its block, or the door's */
+} FaxMapItem;
+/* An item sprite's kind, or -1 for an entity that is no item. */
+int fax_map_item_kind(unsigned entity);
+
 typedef struct {
     FaxMapArea area[FAX_MAP_AREAS];
     uint8_t edge_count;
     FaxMapTownEdge edge[FAX_MAP_TOWN_EDGES];
     uint8_t climb[FAX_MAP_SCREENS][2];      /* the Trunk's climb: up, down from a screen; FAX_MAP_NONE */
     FaxMapPage page[FAX_MAP_PAGES];
+    uint8_t item_count;
+    FaxMapItem item[FAX_MAP_ITEMS];         /* in the lists' order: by area, then screen (a building by its
+                                               number), then place in the list. The file names them by it. */
 } FaxMapAtlas;
 
 /* Decode and lay out the map from 16 banks of PRG (no header). False if the
