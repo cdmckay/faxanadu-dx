@@ -18,9 +18,10 @@ eolis      With 500 Golds and HP at 32: Up on the Potion Seller, named on his
            Potion until A, then "Thank you for shopping." and the end: a Red
            Potion in the Items list, HP as it was (no dried meat). Asked
            again, B on his question closes the box, nothing taken. Then
-           Eolis's tool shop (Hand Dagger 400, Elixir 320, Deluge 400): no Red
-           Potion in its list, and it buys the one he carries for 80, half its
-           old price.
+           Eolis's tool shop (Hand Dagger 400, Deluge 400; its Elixir is
+           found, not bought, tests/found/found_items.py): no Red Potion in
+           its list, and it buys the one he carries for 80, half its old
+           price.
 refusals   With 159 Golds, A on his question gets the game's own "This is not
            enough Golds." and the end: nothing taken, no potion. With 8 items
            (a full Items list) and 1000 Golds, the game's own "You can't carry
@@ -241,11 +242,11 @@ def main():
                 # Eolis's tool shop, with the potion he bought.
                 go_in(g.save("eolis-bought"), "eolis-tools", {}, screen=TOOL_SHOP_SCREEN, door=TOOL_SHOP_DOOR,
                       building=EOLIS_TOOL_SHOP)
-                s = tool_list([HAND_DAGGER, ELIXIR, DELUGE], [400, 320, 400], "eolis-tools")
-                assert s["dropped"] == 1, s
+                s = tool_list([HAND_DAGGER, DELUGE], [400, 400], "eolis-tools")
+                assert s["dropped"] == 2, s                         # the Red Potion, and the Elixir (Found items)
                 sells_potion(EOLIS_PRICE // 2)
-                print("ok: Eolis's tool shop lists the Hand Dagger, the Elixir and Deluge, no Red Potion, and buys "
-                      f"his for {EOLIS_PRICE // 2}")
+                print("ok: Eolis's tool shop lists the Hand Dagger and Deluge, no Red Potion, and buys his for "
+                      f"{EOLIS_PRICE // 2}")
 
             if part == "refusals":
                 go_in(shop, "short", carrying(EOLIS_PRICE - 1))

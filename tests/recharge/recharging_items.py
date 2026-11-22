@@ -43,13 +43,14 @@ is checked against the frame counter on a quiet screen.
    respawns with it still spent, and the menu's Player page, which showed it,
    does not. Talking to Eolis's Guru charges it, and says so, and the page
    shows it again.
-9. Eolis's tool shop with a spent Elixir: it is still the hero's, so Quick
-   shops lists it as owned, "Already owned", and A on it does nothing: the
-   gold stays and it stays spent, since buying never charges it (a Guru
-   does). Charged, the same.
-10. Finds: a pair of Wing Boots (Trunk $2D) and an Hour Glass (Trunk $13)
-    the hero holds add nothing, and an Elixir (Trunk $3C) while it is spent
-    charges it.
+9. Eolis's tool shop with a spent Elixir: the Elixir it sold is found, not
+   bought, with the remaster (Found items, tests/found/found_items.py), so
+   its list has none, and the visit leaves it spent (a Guru, or a find,
+   charges it).
+10. Finds: Zorugeriru's pair of Wing Boots (Trunk $3B, the boss gone) the
+    hero already holds adds nothing; with an Hour Glass in his Items, none
+    lies at Mist $30, where Found items keeps the one there is; and an
+    Elixir (Trunk $3C) while it is spent charges it.
 11. The Spring of Sky, the spring the Wing Boots are needed for: from the
     floor of Trunk $20 below the shaft, fly up through $23 and $24 to the
     Spring of Sky's man in $25 and wake him, on a Novice's full bar.
@@ -92,10 +93,10 @@ GOT_WING_BOOTS, GOT_HOUR_GLASS, GOT_ELIXIR = 0xB3, 0xB4, 0xB0        # "I'm hold
 WING_BOOTS_GONE, HOUR_GLASS_GONE, NEGATIVE_THOUGHTS, HO_HO_HO = 0xC0, 0xC1, 0x24, 0x57
 FILE, GURU_SAVED = "faxanadu_file1.txt", 3                          # Start on the title: a new game in file 1
 ELIXIR_LINE = 0xC3                                                  # the slot: a Guru's line about the Elixir
-EOLIS, TRUNK, BUILDINGS = 0, 1, 4
+EOLIS, TRUNK, MIST, BUILDINGS = 0, 1, 2, 4
 EOLIS_TEMPLE, APOLUNE_TEMPLE, TOOL_SHOP = 0x02, 0x0B, 0x04          # building numbers
-PALETTE_EOLIS, PALETTE_OUTSIDE, PALETTE_TOWER = 0x00, 0x06, 0x07
-ZOZURA, RIPASHEIKU = 0x47, 0x2D
+PALETTE_EOLIS, PALETTE_OUTSIDE, PALETTE_TOWER, PALETTE_SUFFER = 0x00, 0x06, 0x07, 0x0B
+ZOZURA, RIPASHEIKU, ZORUGERIRU, HOUR_GLASS_FIND = 0x47, 0x2D, 0x31, 0x56
 QUEST_SPRING_OF_SKY = 0x02
 TRAVEL_DEPART, TRAVEL_TO_GURU = 3, 4                                # fax_travel.c's lines (TO_GURU + temple)
 SECOND = 64                                                         # the game's second, what T: counts
@@ -103,7 +104,7 @@ FULL = 80                                                           # a full bar
 STEPS, FLIGHTS = (32, 40, 48, 64), (40, 50, 60, 80)                 # frames an MP, and a full bar's seconds, by band
 GLASS_STEP, FREEZE = 24, 15                                         # the Hour Glass: frames an MP, its seconds
 FLIGHT, STEP = FLIGHTS[0], STEPS[0]                                 # a Novice's: the lowest band
-ELIXIR_ROW = 1                                                      # Eolis's tools: dagger, Elixir, Deluge
+EOLIS_TOOLS = [0x00, 0x60]                                          # Eolis's tools: dagger, Deluge (no Elixir)
 INTERRUPT_COUNTER = 0x1A                                            # counts NMIs
 PACKAGE = ("faxanadu.dx", "dx")                                  # the one switch: off is the original game
 PARTS = ("bands", "boots-flight", "boots-land", "boots-death", "glass-freeze", "glass-mp", "boss", "elixir",
@@ -367,29 +368,6 @@ def main():
         shot(name)
         act("b", 4, 30)
         until("the menu to close", lambda: not box_open(), 120)
-
-    def owned_in_shop(row, name):
-        """The item on `row` of the shopkeeper's list is the hero's: Quick
-        shops' list marks it owned, its hint says so, and A on it does
-        nothing, with no gold taken and no line. B leaves."""
-        def list_waiting():
-            s = tcp("shops_state")
-            return s["shown"] == "buy" and s["list_up"]
-        act("up", 4, 10)
-        until("the list", list_waiting, 900)
-        wait(20)
-        for _ in range(row):
-            act("down", 4, 10)
-        before, money = tcp("shops_state"), gold()
-        assert before["cursor"] == row and before["owned"][row] and before["hint"] == "Already owned", before
-        shot(name)
-        act("a", 4, 60)
-        after = tcp("shops_state")
-        assert after["ignored"] == before["ignored"] + 1, after
-        assert (after["bought"], after["messages"]) == (before["bought"], before["messages"]), after
-        assert list_waiting() and gold() == money, (after, gold())
-        act("b", 4, 10)
-        until("the shop to close", lambda: not box_open(), 600)
 
     def respawn(frames):
         """Page through the death message until the hero is back: at the temple, or with zone respawn (on by
@@ -684,51 +662,43 @@ def main():
 
         if args.wants("tool-shop"):
             start()
-            # 9. Eolis's tool shop: an Elixir, spent or charged, is the hero's, and buying never charges it.
+            # 9. Eolis's tool shop: it sold the Elixir, and with Found items it lists none, so no purchase charges a
+            # spent one.
             gold_1000 = {GOLD: 0xE8, GOLD + 1: 0x03, GOLD + 2: 0}
             warp(shop, "tool-shop", EOLIS, 3, 0x9A, PALETTE_EOLIS, 0,
                  {SPECIAL_ITEMS: 0, SELECTED_ITEM: NO_ITEM, NUMBER_OF_ITEMS: 0, **gold_1000}, {ELIXIR_SPENT: 1})
             assert state()["elixir_spent"] and gold() == 1000, (state(), gold())
             enter_door(TOOL_SHOP)
             act("left", 120, 10)                                        # to the counter
-            owned_in_shop(ELIXIR_ROW, "shop-elixir-spent")
-            wait(4)
+            act("up", 4, 10)
+            until("the list", lambda: (lambda s: s["shown"] == "buy" and s["list_up"])(tcp("shops_state")), 900)
+            wait(20)
+            listed = tcp("shops_state")["list"]
+            assert listed == EOLIS_TOOLS, listed
+            shot("shop-no-elixir")
+            act("b", 4, 10)
+            until("the shop to close", lambda: not box_open(), 600)
             s = state()
             assert gold() == 1000 and s["elixir_spent"] and not s["elixir_charged"], (gold(), s)
-            warp(shop, "tool-shop-charged", EOLIS, 3, 0x9A, PALETTE_EOLIS, 0,
-                 {SPECIAL_ITEMS: BIT_ELIXIR, SELECTED_ITEM: NO_ITEM, NUMBER_OF_ITEMS: 0, **gold_1000})
-            enter_door(TOOL_SHOP)
-            act("left", 120, 10)
-            owned_in_shop(ELIXIR_ROW, "shop-elixir-charged")
-            s = state()
-            assert gold() == 1000 and s["elixir_charged"] and not s["elixir_spent"], (gold(), s)
-            print("ok: at the tool shop a spent Elixir is owned, A on it does nothing and it stays spent (a Guru charges "
-                  "it, not a purchase); a charged one is owned the same")
+            print("ok: Eolis's tool shop lists no Elixir (found, not bought), and a spent one stays spent through the "
+                  "visit: a Guru or a find charges it")
 
         if args.wants("finds"):
             start()
-            # 10. Finds: one the hero holds adds nothing; an Elixir charges a spent one.
-            warp(shop, "find-boots", TRUNK, 0x2D, 0x31, PALETTE_TOWER, 1,
-                 {SELECTED_ITEM: WING_BOOTS, NUMBER_OF_ITEMS: 0, VISIT_COUNT: 3})
-            clear(0x07)                                                 # it shows once the hornets are gone, under
-            for _ in range(60):                                         # his feet (it lies at x 16, by the wall)
-                if ram(MESSAGE_ID) == GOT_WING_BOOTS:
-                    break
-                act("left", 2, 2)
-            until("the find", lambda: ram(MESSAGE_ID) == GOT_WING_BOOTS, 600)
-            type_out("the line to type out", 900, pauses=False)
-            shot("find-boots-message")
-            page_through()
-            wait(4)
+            # 10. Finds: a pair the hero holds adds nothing; with an Hour Glass held none lies at Mist $30; an Elixir
+            # charges a spent one.
+            warp(shop, "find-boots", TRUNK, 0x3B, 0x2D, PALETTE_TOWER, 1,
+                 {SELECTED_ITEM: WING_BOOTS, NUMBER_OF_ITEMS: 0, QUESTS: 0})
+            clear(ZORUGERIRU)                                           # beaten: his pair shows, under the hero
+            dismiss(GOT_WING_BOOTS, 600)
             s = state()
-            assert s["pickups"] == 1 and items() == ([], WING_BOOTS), (s, items())
-            warp(shop, "find-glass", TRUNK, 0x13, 0x3D, PALETTE_TOWER, 1,
+            assert s["pickups"] == 1 and items() == ([], WING_BOOTS) and ram(QUESTS) & 0x08, (s, items())
+            warp(shop, "find-glass", MIST, 0x30, 0x22, PALETTE_SUFFER, 2,
                  {SELECTED_ITEM: HOUR_GLASS, NUMBER_OF_ITEMS: 0, VISIT_COUNT: 3})
-            clear(0x47)
-            clear(0x26)
-            dismiss(GOT_HOUR_GLASS, 600)
-            s = state()
-            assert s["pickups"] == 2 and items() == ([], HOUR_GLASS), (s, items())
+            wait(10)
+            assert HOUR_GLASS_FIND not in ram(SPRITE_ENTITIES, 8) and not tcp("found_state")["there"], \
+                ram(SPRITE_ENTITIES, 8)
+            assert state()["pickups"] == 1 and items() == ([], HOUR_GLASS), items()
             warp(shop, "find-elixir", TRUNK, 0x3C, 0x22, PALETTE_TOWER, 1,
                  {SPECIAL_ITEMS: 0, SELECTED_ITEM: NO_ITEM, NUMBER_OF_ITEMS: 0}, {ELIXIR_SPENT: 1})
             assert state()["elixir_spent"], state()
@@ -736,8 +706,8 @@ def main():
             dismiss(GOT_ELIXIR, 600)
             until("the Elixir charged", lambda: not state()["elixir_spent"], 60)
             assert state()["elixir_charged"], state()
-            print("ok: a found pair of Wing Boots and an Hour Glass the hero holds add no second copy, and a found "
-                  "Elixir charges the spent one")
+            print("ok: Zorugeriru's pair adds no second to the pair the hero holds, no Hour Glass lies at Mist $30 for "
+                  "a hero who holds one, and a found Elixir charges the spent one")
 
         if args.wants("spring"):
             start()

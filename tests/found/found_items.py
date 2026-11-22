@@ -127,7 +127,7 @@ def main():
         people, $34-$45, nor the items and the fountains, from $48)."""
         now = slots()
         g.poke({ENTITIES + i: 0xFF for i in range(8)
-                if now[i] != 0xFF and (now[i] in entities if entities else now[i] < 0x34)})
+                if now[i] != 0xFF and (now[i] in entities if entities else now[i] < 0x48 and not 0x34 <= now[i] <= 0x45)})
 
     def map_item(area, screen, entity):
         """The map's entry for the item `entity` on `area`'s `screen`: (shown, picked)."""

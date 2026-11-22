@@ -12,20 +12,20 @@ what each scenario needs (external prerequisites, not coverage): where the
 shop's door leads (as tests/speaker/speaker_names.py walks into each Eolis
 building), the gold, and what the hero carries.
 
-1. Eolis's tool shop (Hand Dagger 400, Elixir 320, Deluge 400: its Red
-   Potion is the Potion Seller's now, fax_potions.c), with 700 Golds, the
-   Hand Dagger in hand and, unequipped, the Long Sword and the Dragon Slayer,
-   and the J and A keys, the Wing Boots and three Red Potions. Up opens the
-   buy list at once, and every later press is a choice: Down to the Elixir
-   and A buys it (the list stays up, the cursor on it), Down and A on the
-   Deluge says "This is not enough Golds." and A goes back to the list.
-   Select opens the sell list:
+1. Eolis's tool shop (Hand Dagger 400, Deluge 400: its Red Potion is the
+   Potion Seller's now, fax_potions.c, and its Elixir is found, not bought,
+   fax_found.c), with 700 Golds, the Giant Blade in hand and, unequipped, the
+   Long Sword and the Dragon Slayer, and the J and A keys, the Wing Boots and
+   two Red Potions. Up opens the buy list at once, and every later press is a
+   choice: A buys the Hand Dagger (the list stays up, the cursor on it), Down
+   and A on the Deluge says "This is not enough Golds." and A goes back to
+   the list. Select opens the sell list:
    everything carried, the Items first, at half a shop's price (a Red Potion
-   80, this shop's; the Long Sword 800, Forepaw's), and with no price the
-   Wing Boots and the keys, his for good, and the Dragon Slayer. On the Wing
-   Boots, the J key and the Dragon Slayer the hint says "Not for sale" and A
-   does nothing; Down from the bottom wraps to the top, and a Red Potion
-   sells. B leaves at once, with no closing line. Gold and inventory are
+   80 and the Hand Dagger 200, this shop's; the Long Sword 800, Forepaw's),
+   and with no price the Wing Boots and the keys, his for good, and the
+   Dragon Slayer. On the Wing Boots, the J key and the Dragon Slayer the hint
+   says "Not for sale" and A does nothing; Down from the bottom wraps to the
+   top, and a Red Potion sells. B leaves at once, with no closing line. Gold and inventory are
    checked after each step. Next door, the Key Seller's list opens the same
    way, and he buys a Red Potion for 80 (half the lowest tool shop's price).
 2. A full inventory (8 items and 3 more weapons) is two pages, the keys and
@@ -33,16 +33,17 @@ building), the gold, and what the hero carries.
    turns to the second, a sale there keeps the page, and Select goes back to
    buying; selling the last item (a Red Potion) empties the list ("You have
    nothing to buy.", the game's own line) and the list goes back to buying.
-3. Owned, at Forepaw's tool shop (Long Sword 1600, Studded Mail 2500, Small
-   Shield 1100, Wing Boots 2800, its Red Potion gone to the Potion Seller),
-   with 9000 Golds and a Red Potion: the Wing Boots are priced, and buying
-   them marks them OWNED at once. Leaving and coming back, they keep their row
-   with OWNED where the price was, the hint says "Already owned" on them, and
-   A there does nothing: no gold, no line, the list as it was. The Long Sword
-   at the top still buys. Then a
-   pair found in the world (Trunk $2D, where one lies on one visit in four:
-   the visit counter set to show it, its hornets cleared) is owned the same,
-   carried into the shop. And at Eolis's key shop, a J key held: OWNED, and A
+3. Owned, at Mascon's tool shop (Large Shield 3500, Thunder 1200, Mattock
+   800, its Red Potion gone to the Potion Seller), with 9000 Golds and a Red
+   Potion: the Mattock is priced, and buying it marks it OWNED at once (it is
+   kept, reusable tools). Leaving and coming back, it keeps its row with
+   OWNED where the price was, the hint says "Already owned" on it, and A
+   there does nothing: no gold, no line, the list as it was. Thunder above it
+   still buys. Then a Mattock found in the world (Trunk $0E,
+   where one lies on one visit in four: the visit counter set to show it,
+   its enemies cleared) is owned the same, carried into the shop. (The Wing
+   Boots, the Hour Glass and the Elixir, which recharging items keeps, no
+   shop sells any more: tests/found/found_items.py.) And at Eolis's key shop, a J key held: OWNED, and A
    does nothing; in the sell list it is not for sale, and A keeps it.
 4. The A key farm is gone: the man in the house on Mist $1F gives the A key
    to a hero with the Black Onyx and none (each time he is asked), and from
@@ -77,21 +78,22 @@ AREA_REGION, VISIT_COUNT = 0x435, 0x43A                             # Screen_Tra
 SCREEN_READY, SPRITE_ENTITIES = 0x0E, 0x2CC                         # CurrentSprites_Entities: 8 slots
 TRUNK, TOWNS, BUILDINGS, NO_PORTRAIT = 1, 3, 4, 0xFF
 FOREPAW, FOREPAW_TOOLS_DOOR, FOREPAW_TOOL_SHOP = 0x02, 0x9D, 0x0F    # the towns' screen 2, its door, building $0F
+MASCON, MASCON_TOOLS_DOOR, MASCON_TOOL_SHOP = 0x04, 0x9E, 0x18       # the towns' screen 4, its door, building $18
 PALETTE_TOWN, PALETTE_TOWER = 0x1B, 0x07
 HAND_DAGGER, LONG_SWORD, GIANT_BLADE, DRAGON_SLAYER = 0x00, 0x01, 0x02, 0x03
-STUDDED_MAIL, SMALL_SHIELD = 0x21, 0x40
+STUDDED_MAIL, SMALL_SHIELD, LARGE_SHIELD, THUNDER = 0x21, 0x40, 0x41, 0x61
 KEY_A, KEY_K, KEY_Q, KEY_J, MATTOCK, WING_BOOTS, RED_POTION = 0x04, 0x05, 0x06, 0x07, 0x09, 0x0F, 0x10
-DELUGE, ELIXIR = 0x60, 0x92
+DELUGE = 0x60
 ITEM = 0x80                                                         # the Items category, in a full ID
 NOT_ENOUGH_GOLDS, NOTHING_TO_SELL, GREETING, BUY_OR_SELL = 0x03, 0x12, 0x0F, 0x10   # message IDs
-GOT_WING_BOOTS = 0xB3                                               # "I'm holding Wing Boots."
-HORNET = 0x07
-FOREPAW_LIST = [LONG_SWORD, STUDDED_MAIL, SMALL_SHIELD, ITEM | WING_BOOTS]   # no Red Potion: the Potion Seller's
-FOREPAW_PRICES = [1600, 2500, 1100, 2800]
-SWORD_ROW, BOOTS_ROW = 0, 3
-# The tool shop's sell list: three Red Potions, then the kit's Items from the last, then its weapons.
-BOOTS_SELL_ROW, KEY_A_ROW, KEY_J_ROW, LONG_SWORD_ROW, SLAYER_ROW = 3, 4, 5, 6, 7
-SPECIAL_ITEMS, BLACK_ONYX, ELIXIR_BIT = 0x42C, 0x01, 0x08          # SpecialItems, its Black Onyx and Elixir bits
+GOT_MATTOCK, ABOVE_MATTOCK = 0xB2, 0x4D                            # "I'm holding Mattock."; over $0E's, at $5D (YX)
+DURATION_OINTMENT = 0x427
+MASCON_LIST = [LARGE_SHIELD, THUNDER, ITEM | MATTOCK]               # no Red Potion: the Potion Seller's
+MASCON_PRICES = [3500, 1200, 800]
+THUNDER_ROW, MATTOCK_ROW = 1, 2
+# The tool shop's sell list: two Red Potions, then the kit's Items from the last, then its weapons from the last.
+BOOTS_SELL_ROW, KEY_A_ROW, KEY_J_ROW, DAGGER_ROW, LONG_SWORD_ROW, SLAYER_ROW = 2, 3, 4, 5, 6, 7
+SPECIAL_ITEMS, BLACK_ONYX = 0x42C, 0x01                           # SpecialItems, its Black Onyx bit
 MIST, MIST_SCREEN, MIST_HOUSE, MIST_HOUSE_DOOR = 2, 0x1F, 0x22, 0x94  # the A key's giver: Buildings $22
 PALETTE_MIST, REGION_MIST = 0x0A, 2
 ZONE_NAMES = "faxanadu.zone-names"                                  # its record: the area and screen, at 5 and 6
@@ -134,8 +136,8 @@ def carrying(gold_amount, weapon_list, item_list, weapon=HAND_DAGGER):
 
 
 
-TOOL_KIT = carrying(700, [DRAGON_SLAYER, LONG_SWORD], [KEY_J, KEY_A, WING_BOOTS] + [RED_POTION] * 3)
-PARTS = ("tool-shop", "key-shop", "two-pages", "last-one", "owned-forepaw", "owned-found", "owned-key",
+TOOL_KIT = carrying(700, [DRAGON_SLAYER, LONG_SWORD], [KEY_J, KEY_A, WING_BOOTS] + [RED_POTION] * 2, GIANT_BLADE)
+PARTS = ("tool-shop", "key-shop", "two-pages", "last-one", "owned-mascon", "owned-found", "owned-key",
          "a-key", "original")                                        # each its own game
 
 
@@ -308,28 +310,29 @@ def main():
         until("the sale", lambda: shops()["sold"] == before + 1, 2400)
         return list_up("sell")
 
-    def into_forepaws_shop():
-        """From Forepaw's street, where the shop's door put the hero, go in
+    def into_tool_shop(screen=FOREPAW, building=FOREPAW_TOOL_SHOP):
+        """From a town's street, where the tool shop's door put the hero, go in
         and to the counter. The townsfolk are taken off the screen first, so
         none stands at the door: Up on one would talk to him."""
-        until("Forepaw", lambda: (ram(AREA), ram(SCREEN)) == (TOWNS, FOREPAW) and ram(SCREEN_READY) == 0, 600)
+        until("the town", lambda: (ram(AREA), ram(SCREEN)) == (TOWNS, screen) and ram(SCREEN_READY) == 0, 600)
         wait(30)
         game.poke({SPRITE_ENTITIES + i: 0xFF for i in range(8)})
         wait(4)
         act("up", 4, 10)
-        until("Forepaw's tool shop", lambda: (ram(AREA), ram(SCREEN)) == (BUILDINGS, FOREPAW_TOOL_SHOP))
+        until("the tool shop", lambda: (ram(AREA), ram(SCREEN)) == (BUILDINGS, building))
         wait(40)
         to_counter()
 
-    def to_forepaw(source, name, writes):
-        """From inside a building, walk out onto Forepaw's tool shop door
-        (the towns' screen 2, block $9D), and go in."""
+    def to_tool_shop(source, name, writes, mascon=False):
+        """From inside a building, walk out onto Forepaw's tool shop door (the
+        towns' screen 2, block $9D), or Mascon's (screen 4, block $9E), and go in."""
         target = out / f"{name}.cycstate"
-        fixture(source, target, {AREA_SAVED_AREA: TOWNS, AREA_SAVED_SCREEN: FOREPAW, AREA_SAVED_PALETTE: PALETTE_TOWN,
-                                 PLAYER_SAVED_POS: FOREPAW_TOOLS_DOOR, AREA_REGION: TRUNK, **writes})
+        screen, door = (MASCON, MASCON_TOOLS_DOOR) if mascon else (FOREPAW, FOREPAW_TOOLS_DOOR)
+        fixture(source, target, {AREA_SAVED_AREA: TOWNS, AREA_SAVED_SCREEN: screen, AREA_SAVED_PALETTE: PALETTE_TOWN,
+                                 PLAYER_SAVED_POS: door, AREA_REGION: REGION_MIST if mascon else TRUNK, **writes})
         tcp("load_state", path=str(target))
         walk_out()
-        into_forepaws_shop()
+        into_tool_shop(*((MASCON, MASCON_TOOL_SHOP) if mascon else ()))
 
     def leave():
         act("b", 4, 6)
@@ -362,42 +365,42 @@ def main():
             message_before = ram(MESSAGE_ID)
             act("up", 4, 6)
             state = list_up("buy", "the buy list, straight away")
-            assert state["list"] == [HAND_DAGGER, ELIXIR, DELUGE] and state["dropped"] == 1, state
-            assert state["prices"] == [400, 320, 400] and state["cursor"] == 0, state
+            assert state["list"] == [HAND_DAGGER, DELUGE] and state["dropped"] == 2, state   # the Red Potion, the Elixir
+            assert state["prices"] == [400, 400] and state["cursor"] == 0, state
             assert state["hint"] == "Select to sell" and state["page_label"] is None, state
             assert ram(MESSAGE_ID) == message_before, "a line was loaded before the list"
             speaker_on_list()
             check_hint(game.shot("buy-list"), "Select to sell")
             print("ok: Up opens the buy list at once, with its hint, under the Tool Seller's name")
 
-            press("down")
-            state = buy(1)
-            assert gold() == 700 - 320 and ram(SPECIAL_ITEMS) & ELIXIR_BIT, (gold(), ram(SPECIAL_ITEMS))
-            assert state["owned"] == [False, True, False], state
-            assert items() == [KEY_J, KEY_A, WING_BOOTS] + [RED_POTION] * 3, items()
-            print("ok: A buys the Elixir, the list staying up and the cursor on it")
+            state = buy(0)
+            assert gold() == 700 - 400 and weapons() == [DRAGON_SLAYER, LONG_SWORD, HAND_DAGGER], (gold(), weapons())
+            assert state["owned"] == [False, False], state
+            assert items() == [KEY_J, KEY_A, WING_BOOTS] + [RED_POTION] * 2, items()
+            print("ok: A buys the Hand Dagger, the list staying up and the cursor on it")
 
             press("down")
-            assert shops()["cursor"] == 2, shops()
+            assert shops()["cursor"] == 1, shops()
             act("a", 4, 6)
             until("This is not enough Golds.", lambda: ram(MESSAGE_ID) == NOT_ENOUGH_GOLDS, 600)
             type_out("the line to type out", 600, pauses=False)
             game.shot("not-enough-golds")
-            assert gold() == 380 and not shops()["list_up"], (gold(), shops())
+            assert gold() == 300 and not shops()["list_up"], (gold(), shops())
             act("a", 4, 6)
             state = list_up("buy", "the buy list, after the message")
-            assert state["cursor"] == 2 and state["messages"] == 1, state
+            assert state["cursor"] == 1 and state["messages"] == 1, state
             print("ok: the Deluge is not enough Golds, in the game's words, and A goes back to the list")
 
             state = press("select", "sell")
-            assert state["list"] == [ITEM | RED_POTION] * 3 + [ITEM | WING_BOOTS, ITEM | KEY_A, ITEM | KEY_J,
-                                                                LONG_SWORD, DRAGON_SLAYER], state
-            assert state["prices"] == [80, 80, 80, 0, 0, 0, 800, 0], state
+            assert state["list"] == [ITEM | RED_POTION] * 2 + [ITEM | WING_BOOTS, ITEM | KEY_A, ITEM | KEY_J,
+                                                                HAND_DAGGER, LONG_SWORD, DRAGON_SLAYER], state
+            assert state["prices"] == [80, 80, 0, 0, 0, 200, 800, 0], state
             assert state["hint"] == "Select to buy" and state["pages"] == 1 and state["page_label"] is None, state
             speaker_on_list()
             path = game.shot("sell-list")
             check_hint(path, "Select to buy")
             check_priced(path, 0, 80)
+            check_priced(path, DAGGER_ROW, 200)
             check_priced(path, LONG_SWORD_ROW, 800)
             for row in (BOOTS_SELL_ROW, KEY_A_ROW, KEY_J_ROW, SLAYER_ROW):
                 check_no_price(path, row)
@@ -431,8 +434,8 @@ def main():
             press("down")                                       # one page: Down from the bottom wraps to the top
             assert shops()["cursor"] == 0, shops()
             sell()
-            assert gold() == 380 + 80, gold()
-            assert items() == [KEY_J, KEY_A, WING_BOOTS, RED_POTION, RED_POTION], items()
+            assert gold() == 300 + 80, gold()
+            assert items() == [KEY_J, KEY_A, WING_BOOTS, RED_POTION], items()
             print("ok: a Red Potion sells for 80, half this shop's price")
 
             act("b", 4, 6)
@@ -513,87 +516,85 @@ def main():
             act("b", 4, 6)
             until("the conversation's end", lambda: ram(PORTRAIT) == NO_PORTRAIT, 300)
 
-        if args.wants("owned-forepaw"):
+        if args.wants("owned-mascon"):
             game_up()
-            # 3. Owned: Forepaw's tool shop. Buy the Wing Boots.
-            to_forepaw(start, "forepaw", carrying(9000, [], [RED_POTION]))
+            # 3. Owned: Mascon's tool shop. Buy the Mattock.
+            to_tool_shop(start, "mascon", carrying(9000, [], [RED_POTION]), mascon=True)
             act("up", 4, 6)
-            state = list_up("buy", "Forepaw's buy list")
-            assert state["list"] == FOREPAW_LIST and state["prices"] == FOREPAW_PRICES, state
-            assert state["owned"] == [False] * 4, state
-            for _ in range(BOOTS_ROW):
+            state = list_up("buy", "Mascon's buy list")
+            assert state["list"] == MASCON_LIST and state["prices"] == MASCON_PRICES, state
+            assert state["owned"] == [False] * 3, state
+            for _ in range(MATTOCK_ROW):
                 press("down")
             state = shops()
-            assert state["cursor"] == BOOTS_ROW and state["hint"] == "Select to sell", state
+            assert state["cursor"] == MATTOCK_ROW and state["hint"] == "Select to sell", state
             path = game.shot("owned-before")
             check_hint(path, "Select to sell")
-            check_priced(path, BOOTS_ROW, 2800)
-            state = buy(BOOTS_ROW)
-            assert gold() == 9000 - 2800 and items() == [RED_POTION, WING_BOOTS], (gold(), items())
-            assert state["owned"] == [False] * 3 + [True] and state["hint"] == "Already owned", state
-            print("ok: Forepaw sells the Wing Boots, and once bought they are owned at once")
+            check_priced(path, MATTOCK_ROW, 800)
+            state = buy(MATTOCK_ROW)
+            assert gold() == 9000 - 800 and items() == [RED_POTION, MATTOCK], (gold(), items())
+            assert state["owned"] == [False] * 2 + [True] and state["hint"] == "Already owned", state
+            print("ok: Mascon sells the Mattock, and once bought it is owned at once")
 
-            # Leave, and come back: the row says OWNED, A does nothing, and the Long Sword still buys.
+            # Leave, and come back: the row says OWNED, A does nothing, and Thunder still buys (a first
+            # shield would bring Block's line at the end).
             leave()
             walk_out()
-            into_forepaws_shop()
+            into_tool_shop(MASCON, MASCON_TOOL_SHOP)
             act("up", 4, 6)
-            state = list_up("buy", "Forepaw's buy list, again")
-            assert state["list"] == FOREPAW_LIST and state["prices"] == FOREPAW_PRICES, state
-            assert state["owned"] == [False] * 3 + [True] and state["cursor"] == 0, state
+            state = list_up("buy", "Mascon's buy list, again")
+            assert state["list"] == MASCON_LIST and state["prices"] == MASCON_PRICES, state
+            assert state["owned"] == [False] * 2 + [True] and state["cursor"] == 0, state
             assert state["hint"] == "Select to sell", state
             path = game.shot("owned-after")
             check_hint(path, "Select to sell")
-            check_owned(path, BOOTS_ROW)
-            check_priced(path, SWORD_ROW, 1600)
-            for _ in range(BOOTS_ROW):
+            check_owned(path, MATTOCK_ROW)
+            check_priced(path, THUNDER_ROW, 1200)
+            for _ in range(MATTOCK_ROW):
                 press("down")
             assert shops()["hint"] == "Already owned", shops()
             path = game.shot("owned-hint")
             check_hint(path, "Already owned")
-            check_owned(path, BOOTS_ROW)
-            a_does_nothing(BOOTS_ROW)
-            check_owned(game.shot("owned-a-does-nothing"), BOOTS_ROW)
-            for _ in range(BOOTS_ROW - SWORD_ROW):
+            check_owned(path, MATTOCK_ROW)
+            a_does_nothing(MATTOCK_ROW)
+            check_owned(game.shot("owned-a-does-nothing"), MATTOCK_ROW)
+            for _ in range(MATTOCK_ROW - THUNDER_ROW):
                 press("up")
-            buy(SWORD_ROW)
-            assert gold() == 9000 - 2800 - 1600 and weapons() == [LONG_SWORD], (gold(), weapons())
-            assert items() == [RED_POTION, WING_BOOTS], items()
-            print("ok: back again, the Wing Boots say OWNED and \"Already owned\", A on them does nothing, "
-                  "and the Long Sword still buys")
+            buy(THUNDER_ROW)
+            assert gold() == 9000 - 800 - 1200 and items() == [RED_POTION, MATTOCK], (gold(), items())
+            print("ok: back again, the Mattock says OWNED and \"Already owned\", A on it does nothing, "
+                  "and Thunder still buys")
             leave()
 
         if args.wants("owned-found"):
             game_up()
-            # A pair found in the world, Trunk $2D's (one visit in four), is owned the same.
-            target = out / "find-boots.cycstate"
-            fixture(start, target, {AREA_SAVED_AREA: TRUNK, AREA_SAVED_SCREEN: 0x2D, AREA_SAVED_PALETTE: PALETTE_TOWER,
-                                    PLAYER_SAVED_POS: 0x31, AREA_REGION: TRUNK, VISIT_COUNT: 3,
-                                    **carrying(9000, [], [RED_POTION])})
+            # A Mattock found in the world, Trunk $0E's (one visit in four), is owned the same.
+            target = out / "find-mattock.cycstate"
+            fixture(start, target, {AREA_SAVED_AREA: TRUNK, AREA_SAVED_SCREEN: 0x0E, AREA_SAVED_PALETTE: PALETTE_TOWER,
+                                    PLAYER_SAVED_POS: ABOVE_MATTOCK, AREA_REGION: TRUNK, VISIT_COUNT: 3,
+                                    DURATION_OINTMENT: 0x7F, **carrying(9000, [], [RED_POTION])})
             tcp("load_state", path=str(target))
             walk_out()
-            until("Trunk $2D", lambda: (ram(AREA), ram(SCREEN)) == (TRUNK, 0x2D) and ram(SCREEN_READY) == 0, 600)
-            wait(30)
+            until("Trunk $0E", lambda: (ram(AREA), ram(SCREEN)) == (TRUNK, 0x0E) and ram(SCREEN_READY) == 0, 600)
+            wait(30)                                                    # its sprites in their slots
             slots = ram(SPRITE_ENTITIES, 8)
-            game.poke({SPRITE_ENTITIES + i: 0xFF for i in range(8) if slots[i] == HORNET})   # it shows once they are gone
-            for _ in range(60):                                         # it lies by the wall on the left
-                if ram(MESSAGE_ID) == GOT_WING_BOOTS:
-                    break
-                act("left", 2, 2)
-            until("the find", lambda: ram(MESSAGE_ID) == GOT_WING_BOOTS, 600)
-            fax_e2e.page_through("the box to close", lambda: ram(TEXTBOX_CLOSED) != 0)
+            gone = {SPRITE_ENTITIES + i: 0xFF for i in range(8)                    # it shows once they are gone:
+                    if slots[i] < 0x48 and not 0x34 <= slots[i] <= 0x45}            # the enemies, not the people
+            game.poke({**gone, PLAYER_X: (ABOVE_MATTOCK & 15) * 16})  # where he walked out: standing on it
+            until("the find", lambda: ram(MESSAGE_ID) == GOT_MATTOCK, 600)
+            fax_e2e.page_through("the box to close", lambda: ram(MESSAGE_ID) == 0 and ram(TEXTBOX_CLOSED) != 0)
             wait(10)
             found = items()
-            assert found == [RED_POTION, WING_BOOTS], found
-            to_forepaw(start, "forepaw-found", carrying(9000, [], found))
+            assert found == [RED_POTION, MATTOCK], found
+            to_tool_shop(start, "mascon-found", carrying(9000, [], found), mascon=True)
             act("up", 4, 6)
-            state = list_up("buy", "Forepaw's buy list, with found boots")
-            assert state["owned"] == [False] * 3 + [True], state
-            for _ in range(BOOTS_ROW):
+            state = list_up("buy", "Mascon's buy list, with a found Mattock")
+            assert state["owned"] == [False] * 2 + [True], state
+            for _ in range(MATTOCK_ROW):
                 press("down")
-            check_owned(game.shot("owned-found"), BOOTS_ROW)
-            a_does_nothing(BOOTS_ROW)
-            print("ok: a pair found in the world is owned the same: OWNED, and A does nothing")
+            check_owned(game.shot("owned-found"), MATTOCK_ROW)
+            a_does_nothing(MATTOCK_ROW)
+            print("ok: a Mattock found in the world is owned the same: OWNED, and A does nothing")
             leave()
 
         if args.wants("owned-key"):
@@ -660,7 +661,7 @@ def main():
             print("ok: the man on Mist $1F gives the A key to a hero with the Black Onyx")
 
             # Straight from his house to Forepaw's tool shop, with all he has.
-            to_forepaw(game.save("a-key-given"), "forepaw-a-key", {})
+            to_tool_shop(game.save("a-key-given"), "forepaw-a-key", {})
             act("up", 4, 6)
             list_up("buy", "Forepaw's buy list")
             state = press("select", "sell")
