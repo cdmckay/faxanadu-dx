@@ -246,7 +246,8 @@ a long list. The Dragon Slayer, the Battle Suit and the Battle Helmet are not
 for sale, and what you have equipped or selected is not offered, as before.
 What you already have for good, the Wing Boots, the Hour Glass, the Elixir
 (charged or spent), a key or the Mattock, keeps its place in a shop's list but
-says OWNED instead of a price, and A on it does nothing.
+says OWNED instead of a price, and A on it does nothing. Nor will a shop buy
+it from you: like the Dragon Slayer, it is not for sale.
 
 ![Forepaw's tool shop: its list up at once, with the Wing Boots you carry OWNED, and Select for what it buys from you](docs/screenshots/quick-shops.png)
 

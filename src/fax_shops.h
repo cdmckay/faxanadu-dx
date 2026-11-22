@@ -29,8 +29,14 @@ typedef struct {
     bool elixir_spent;            /* recharging items: it revived him, and waits for a Guru */
     bool recharging, reusable;    /* recharging items and reusable tools are on */
 } FaxShopsHero;
-/* An item in a buy list (its full ID) that the hero already has for good, so
+/* An item (its full ID) that the hero already has for good, so in a buy list
  * Quick shops shows it as owned and A on it does nothing: the Wing Boots and
  * the Hour Glass with recharging items, and a key or the Mattock with reusable
  * tools, selected or in his list; and the Elixir, charged or spent. */
 bool fax_shops_owned(uint8_t id, const FaxShopsHero *hero);
+/* An item in the sell list (its full ID) that Quick shops won't buy from the
+ * hero, so it shows no price and A on it does nothing: one no shop buys
+ * (fax_shops_never_buys), and one he has for good (fax_shops_owned), which
+ * neither buys nor sells, so the A and Jo keys' givers, who hand out another
+ * to a hero without one, can't be farmed for gold. */
+bool fax_shops_not_for_sale(uint8_t id, const FaxShopsHero *hero);
