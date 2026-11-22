@@ -8,6 +8,11 @@ and fixes what has aged.
 - **The real game underneath.** It runs Faxanadu's own code, built from your
   ROM, so the world, music, story and feel are the original's. The remaster
   steers the game from outside; it doesn't rewrite it.
+- **A Metroidvania at heart.** Faxanadu is one connected world that opens up
+  as you find keys, tools and the way through, and it keeps sending you back
+  to places you have been. The remaster leans into that: a map of where you
+  have been and what still lies there, Guru travel to get back quickly, and
+  upgrades that reward a return trip.
 - **Quality of life.** Conveniences the 1987 game lacks, like saving without
   writing down mantras and travelling between Gurus. Where the game can offer
   them itself, it does, in its own text box and voice.
