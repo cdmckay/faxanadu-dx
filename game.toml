@@ -567,6 +567,15 @@ addr = 0x8347
 bank = 12
 bytes = "20 a5 f9 4c 21 83 ce 03 02 a9 3c 8d"   # JSR Player_SubtractGold, JMP IScripts_ProgressivelySubtractGold, DEC Temp_0203, LDA #$3C, STA
 
+# MP from kills (fax_mana.c): the routine both kills (a weapon's, a spell's)
+# call to give the enemy's experience, X its slot. It only observes.
+
+[[mod_function_hook]]
+id = "faxanadu.mana-refill.kill"
+addr = 0x8b87
+bank = 14
+bytes = "bc cc 02 b9 0e b6 85 ec a9 00 85 ed"   # Player_AddExperienceFromSprite: LDY CurrentSprites_Entities,X, LDA ENEMY_EXPERIENCE,Y
+
 # Recharging items (fax_recharge.c): the Wing Boots and the Hour Glass are kept,
 # the boots fly on MP and the glass's freeze drains HP, and the Elixir is kept
 # and a Guru charges it again, and says so. The sites are each routine's entry

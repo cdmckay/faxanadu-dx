@@ -1,12 +1,12 @@
 /* The Magician's lesson. USA 57dd23d1, chipx86 byte-exact disassembly.
  *
- * Eolis's Magician (building $05) sold 40 MP for 200 Golds. MP refill
- * (fax_mana.c) brings MP back by itself, so instead he teaches the hero,
- * once, for PRICE, to recover it faster: the refill's wait after a spend and
- * its step are halved (fax_mana.c's TAUGHT_WAIT and TAUGHT_STEP), and an
- * empty bar is full in 22 s rather than 44. The Wing Boots and the Hour Glass
- * run on MP (fax_recharge.c), so it means flying and freezing again sooner
- * too. He teaches only a hero who has
+ * Eolis's Magician (building $05) sold 40 MP for 200 Golds. MP comes from
+ * kills (fax_mana.c), and a Guru fills it, so instead he teaches the hero,
+ * once, for PRICE, to recover it faster: every kill gives twice its MP
+ * (fax_mana.c's TAUGHT), a Zozura 6 rather than 3 and a boss the whole bar.
+ * The Wing Boots and the Hour Glass run on MP (fax_recharge.c), so it means
+ * flying and freezing longer on the same fights too. His lines say what he
+ * teaches as they always did. He teaches only a hero who has
  * studied at the magic hall in the Mist (ready(), below): bought Fire from
  * its Magician (building $1C), even if he has sold it since.
  *
@@ -102,10 +102,10 @@
 enum { END = 0x00, SHOW_MESSAGE = 0x03, ASK_JUMP_IF_ACCEPTED = 0x16 };
 enum { SLOT_LEN = FAX_TRAVEL_SLOT_LEN, SLOT_ID = FAX_TRAVEL_SLOT_ID };
 
-/* The price, in Golds. His stock 200 bought 40 MP, which MP refill now gives
- * back in 20 s for nothing. The lesson saves the hero half of every wait for
- * the rest of the game, and he teaches only after the magic hall's Fire
- * (3000), so it is priced for the late game: ten times Fire, and twice
+/* The price, in Golds. His stock 200 bought 40 MP, which any Guru now gives
+ * for nothing. The lesson doubles every kill's MP for the rest of the game,
+ * and he teaches only after the magic hall's Fire (3000), so it is priced for
+ * the late game: ten times Fire, and twice
  * Daybreak's Tilte (15000), the dearest thing a shop sells. A multiple of
  * 10, which IScripts_ProgressivelySubtractGold takes exactly, and below
  * $8000: the routine keeps the amount left in Temp_0202/3 and marks its

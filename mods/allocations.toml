@@ -367,7 +367,8 @@ rom = []
 # with Block below) and SpriteUpdateHandler_Enemy_Sugata ($929F), which only
 # Sugata runs. Writes PPU_Mask's greyscale bit (clearing what the behavior
 # just set), Temp_00 and the stack, and Sugata's HP and knockback through
-# Player_HitEnemyWithMagic's own code when the Magic Shield reflects. Under
+# Player_HitEnemyWithMagic's own code when the Magic Shield reflects (and,
+# when that kills, has MP from kills give its MP: fax_mana_killed). Under
 # Ointment it writes what the flash itself writes, Player_InvincibilityPhase
 # and Player_StatusFlag's knockback bit, and plays sound 4. It draws the band
 # over the presented picture, after Seamless composes it and before the zone
@@ -444,11 +445,10 @@ rom = [
 # SpecialItems' Elixir bit (when a Guru recharges it) and T:'s two tiles
 # through the PPU buffer, as UI_DrawTimeValue queues them; and the stack, a
 # return address as a JSR would push it, to jump past Player_UseHourGlass's
-# halving and into the two countdowns' DEC. MP refill (mana-refill) sees the
-# drain as spends and holds while either runs (fax_recharge_draining). Its
-# site at IScripts_InvokeNextAction ($826E) hears a Guru's first action,
-# which Save files and Guru travel leave where it is, and to show his Elixir
-# line writes IScriptOrCHRAddr and IScriptOffset (to the SAY step, then
+# halving and into the two countdowns' DEC. Its site at
+# IScripts_InvokeNextAction ($826E) hears a Guru's first action, which Save
+# files and Guru travel leave where it is, has MP from kills (mana-refill,
+# fax_mana_guru) fill HP and MP there, and to show his Elixir line writes IScriptOrCHRAddr and IScriptOffset (to the SAY step, then
 # back). Keeps the fields recharge.elixir and recharge.elixir_told in the
 # file in play (fax_save.h), when Save files has one, and drops #27's
 # recharge.wingboots and recharge.hourglass from it.
@@ -474,14 +474,23 @@ plugin = "faxanadu.mana-refill"
 source = "src/fax_mana.c"
 hooks = "faxanadu.mana-refill."
 rom = []
-# No hooks and no ROM: it reads RAM and the stack at the end of each frame.
-# When Game_MainLoop is waiting in WaitForNextFrame from its top, it may give
-# 1 MP through Player_AddMP ($C0D9) in a committed call, which writes
-# Player_MP, the MP bar's two commands in the PPU buffer (with
-# PPUBuffer_WriteOffset) and Player_SetMP's temporaries (PPU_TargetAddr,
-# Temp_Int24, Temp_0xEF), and the stack below S; the CPU's registers are put
-# back. Nothing else runs then, so nothing else is using them. No read
-# overrides. Not in save files: continuing fills MP.
+# MP from kills (#125; the id is #98's MP refill's, kept so save states and
+# the switch still find it). One site, Player_AddExperienceFromSprite ($8B87,
+# bank 14), which no other feature hooks and which returns 0: it reads the
+# slot's entity and bank 14's ENEMY_EXPERIENCE and
+# SPRITE_CATEGORIES_BY_ENTITY, and writes Player_MP. Sugata's flash calls it
+# (fax_mana_killed) for a kill its committed call made, and Recharging items
+# (fax_mana_guru) at a Guru's first action, at its site at $826E, where it
+# writes Player_HP_U and Player_MP. It draws the bars as the game does, with
+# UI_DrawPlayerHP ($C0BD) and Player_SetMP ($FA85) in committed calls, there
+# or at a frame's end while Game_MainLoop waits in WaitForNextFrame from its
+# top, only when the PPU buffer has room: they write the bars' commands in
+# the PPU buffer (with PPUBuffer_WriteOffset), Player_HP_U or Player_MP,
+# UI_SetHUDBarValue's temporaries (PPU_TargetAddr, Temp_Int24_U, Temp_0xEF,
+# Temp_AddedHPValue), and the stack below S; the CPU's registers are put
+# back. At a frame's end nothing else runs, and between two of the
+# interpreter's actions nothing is using them. No read overrides. Not in save
+# files: continuing fills MP.
 
 [[feature]]
 id = "magician-lesson"
@@ -511,8 +520,8 @@ rom = [
 # while his pay step runs: every other payment counts 10 a frame. Keeps the
 # fields lesson.studied and lesson.learned in the file in play (fax_save.h),
 # when Save files has one, and reads the core field spells for a file from
-# before lesson.studied. MP refill reads learned (fax_lesson_learned) for its
-# schedule.
+# before lesson.studied. MP from kills reads learned (fax_lesson_learned) to
+# double a kill's MP.
 
 [[feature]]
 id = "double-gold"

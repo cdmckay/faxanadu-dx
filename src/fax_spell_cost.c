@@ -15,7 +15,7 @@
  *
  * The game draws the bar only when Player_SetMP runs, so the span is worked
  * out from Player_MP and SelectedMagic at every present, whatever changed
- * them: a cast, MP refill, the Wing Boots' and the Hour Glass's drain, a
+ * them: a cast, a kill, a Guru, the Wing Boots' and the Hour Glass's drain, a
  * shop. Only the bar's own fill pixels are
  * recolored, those that show the fill's color on its four fill lines, so in
  * the frame or two before the game redraws the bar after MP changes nothing
