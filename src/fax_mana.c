@@ -32,7 +32,7 @@
  * The wait and the MP seen at the last frame's end are this feature's
  * save-state record. MP is not in save files (continuing fills it). Nothing
  * happens inside Seamless's isolated simulation of other rooms. See
- * docs/GAME_INTERNALS.md, "MP refill". */
+ * docs/GAME_INTERNALS.md, "MP and its bar". */
 #include "fax_mana.h"
 #include "cyc_mod.h"
 #include "mod_runtime.h"
@@ -67,8 +67,12 @@ enum { MAIN_LOOP_BANK = 14, MP_MAX = 80 };
  * the second (16 bytes of the partial tile) checks again after it. */
 enum { PPU_ROOM = 0x24, COMMAND = 3 };
 
-/* The schedule. Spells cost 2 (Deluge), 4, 6, 10 and 16 (Tilte) of the 80
- * (MAGIC_COSTS, $B7A9, bank 14); see the PR for why these. */
+/* The schedule, in frames the game plays (60 a second). Spells cost 2
+ * (Deluge), 4, 6, 10 and 16 (Tilte) of the 80 (MAGIC_COSTS, $B7A9, bank 14).
+ * Every cast restarts the wait, and spells fly a second or so, one at a time,
+ * so a fight is fought on the bar the hero brought to it; between fights a
+ * spell's cost comes back in 1 (Deluge) to 8 s (Tilte) after the wait, and an
+ * empty bar fills in 40 s. Retuning means changing these and nothing else. */
 enum { WAIT = 240, STEP = 30 };
 
 /* The state: what a save state must keep. */
@@ -106,7 +110,8 @@ static void hold(Refill *s) { s->left = 1; }   /* due, the next frame that can *
 
 static uint8_t q(uint16_t addr) { return cyc_mod_peek(addr); }
 
-/* Game_MainLoop waits in WaitForNextFrame, called from its top. */
+/* Game_MainLoop waits in WaitForNextFrame, called from its top: the CPU is
+ * in its LDA/BEQ loop on Game_InterruptsHandledLatch. */
 static bool main_loop_waits(const CycModRegs *regs) {
     if (regs->s != MAIN_LOOP_WAIT_S) return false;
     uint16_t pushed = (uint16_t)(q(0x01FE) | q(0x01FF) << 8);
