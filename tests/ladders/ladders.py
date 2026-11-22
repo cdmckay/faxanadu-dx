@@ -221,7 +221,10 @@ def main():
         if "fountain" in wants:
             path_open = out / "trunk-27.cycstate"
             fixture(trunk_27, path_open, {**no_actors(), QUESTS: SPRINGS_AND_PATH, HP: 0x50})
-            back = [(0, "LEFT"), (60, "RIGHT")]                          # into $28, then straight back out
+            # Into $28, then straight back out: the original's scroll back
+            # has begun by 120 frames, and Seamless, which walks him without
+            # one, has him on $27 by then, and he stops there.
+            back = [(0, "LEFT"), (60, "RIGHT"), (120, "-")]
             was, now = pair(path_open, back, 300, "fountain")
             for rams in (was, now):
                 screens = [r[SCREEN] for r in rams]

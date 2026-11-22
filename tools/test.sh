@@ -209,6 +209,7 @@ E2E=(
   "softlocks    tests/softlocks/eolis_shaft.py --parts"
   "entrances    tests/entrances/fair_entrances.py --parts"
   "view         tests/world/fixed_view.py"
+  "arenas       tests/world/boss_arenas.py --parts"
 )
 # At most E2E_JOBS runs play at once (default: one a hardware thread; 0: all
 # at once): a game is uncapped and takes a whole thread, and more of them

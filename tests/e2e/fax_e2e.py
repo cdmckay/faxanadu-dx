@@ -831,26 +831,28 @@ def _conflate_words(g):
     dissolve()
 
 
-@recipe("eolis-zozuras", parent="gate")
+@recipe("eolis-zozuras", parent="eolis-meat-shop")
 def _eolis_zozuras(g):
-    """Through Eolis's gate (the intro's trigger dropped, the hero at the
-    door, EOLIS_DOOR_LOCATIONS' $9C), left out of town to screen 4, as its
-    two Zozuras crawl in (slots 6 and 7, the nearer in 7), once the scroll
-    onto it has ended (during it the hero's X reads 0)."""
-    screen, entities, zozura = 0x63, 0x2CC, 0x47                     # Area_CurrentScreen, CurrentSprites_Entities
-    assert (g.ram(0x24), g.ram(screen), g.ram(entities + 7)) == (0, 0, 0x4F), "the intro's trigger at the gate"
-    g.poke({entities + 7: 0xFF, 0x9E: 195})                           # SPRITE_TRIGGER_INTRO; Player_PosX_Block
-    g.wait(10)
-    g.tcp("action", name="up", frames=6)
-    g.until("the town", lambda: g.ram(screen) == 1, 600)
-    g.wait(30)
-    for _ in range(60):
-        if g.ram(screen) == 4:
+    """On Eolis's screen 4 as its two Zozuras crawl in (slots 6 and 7, the
+    nearer in 7, fresh at the screen's left, YX $A9 and $A4), the hero at its
+    right facing them, on the ground. He walks out of the meat shop, its door
+    edited to lead there (Area_SavedScreen 4, Player_SavedPos $9E), so the
+    screen loads as a walk left onto it does in the original. The remaster
+    plays in Seamless, which runs a screen's actors before the hero walks onto
+    it, so a walk there would find them wherever they had crawled; the door's
+    load is the same with the remaster on or off."""
+    area, screen, entities, zozura = 0x24, 0x63, 0x2CC, 0x47          # Area_CurrentArea, _CurrentScreen, CurrentSprites_Entities
+    g.poke({0x3D6: 4, 0x3D8: 0x9E})                                   # Area_SavedScreen, Player_SavedPos
+    hold("right", lambda: g.ram(area) != 4)                           # BUILDINGS: out of the shop
+    g.until("the Zozuras", lambda: (g.ram(area), g.ram(screen)) == (0, 4) and
+            tuple(g.ram(entities + 6, 2)) == (zozura, zozura), 300)
+    g.until("the screen to load", lambda: g.ram(0x0E) == 0 and g.ram(0x54) == 0xFF and g.ram(0x13) != 0, 300)
+    for _ in range(10):                                               # a building's way out faces him right
+        if not g.ram(0xA4) & 0x40:                                    # Player_Flags: facing right
             break
-        g.tcp("action", name="left", frames=30)
-        g.wait(31)
-    g.until("the Zozuras", lambda: g.ram(screen) == 4 and tuple(g.ram(entities + 6, 2)) == (zozura, zozura), 300)
-    g.until("the scroll to end", lambda: g.ram(0x0E) == 0 and g.ram(0x54) == 0xFF and g.ram(0x13) != 0, 300)
+        g.tcp("action", name="left", frames=2)
+        g.wait(4)
+    assert not g.ram(0xA4) & 0x40, "facing the Zozuras"
 
 
 def tcp(cmd, **kw):
