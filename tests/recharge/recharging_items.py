@@ -31,7 +31,8 @@ used with Down+B, as a player would.
 4. The Elixir on Eolis screen 4 with 1 HP: a Zozura's hit, and it revives the
    hero ("I've used Elixir."). With 1 HP again, the next hit kills him; he
    respawns with it still spent, and the menu's Player page, which showed it,
-   does not. Talking to Eolis's Guru charges it, and the page shows it again.
+   does not. Talking to Eolis's Guru charges it, and says so, and the page
+   shows it again.
 5. Eolis's tool shop with a spent Elixir: it is still the hero's, so Quick
    shops lists it as owned, "Already owned", and A on it does nothing: the
    gold stays and it stays spent, since buying never charges it (a Guru
@@ -51,7 +52,8 @@ used with Down+B, as a player would.
    an Elixir the file says is spent stays spent.
 10. A temple Guru: Apolune's, whose conversation Save files and Guru travel
     steer (Eolis's, in 4, takes another path), charges a spent Elixir at his
-    first action.
+    first action, and says so before his greeting (the lines themselves are
+    tests/recharge/guru_lines.py's).
 11. With the remaster off, the original: the pair is used up after one 40 s
     (Novice) flight.
 """
@@ -79,7 +81,7 @@ USED_HOUR_GLASS, USED_WING_BOOTS, USED_ELIXIR = 0xAC, 0xAD, 0xAF      # message 
 GOT_WING_BOOTS, GOT_HOUR_GLASS, GOT_ELIXIR = 0xB3, 0xB4, 0xB0        # "I'm holding ..."
 WING_BOOTS_GONE, HOUR_GLASS_GONE, NEGATIVE_THOUGHTS, HO_HO_HO = 0xC0, 0xC1, 0x24, 0x57
 FILE, GURU_SAVED = "faxanadu_file1.txt", 3                          # Start on the title: a new game in file 1
-MEDITATE_WITH_YOU = 0x22                                            # a temple Guru's greeting, then the mantra
+ELIXIR_LINE = 0xC3                                                  # the slot: a Guru's line about the Elixir
 EOLIS, TRUNK, BUILDINGS = 0, 1, 4
 EOLIS_TEMPLE, APOLUNE_TEMPLE, TOOL_SHOP = 0x02, 0x0B, 0x04          # building numbers
 PALETTE_EOLIS, PALETTE_OUTSIDE, PALETTE_TOWER = 0x00, 0x06, 0x07
@@ -596,10 +598,11 @@ def main():
             talk_to_guru()
             until("the Guru to charge it", lambda: state()["guru_recharges"] == 1, 120)
             s = state()
-            assert s["elixir_charged"] and not s["elixir_spent"], s
+            assert s["elixir_charged"] and not s["elixir_spent"] and s["restored_lines"] == 1, s
             page_through()
             status_shot("status-elixir-recharged")
-            print("ok: talking to Eolis's Guru charges the spent Elixir, and the status page shows it again")
+            print("ok: talking to Eolis's Guru charges the spent Elixir, and says so, and the status page shows it "
+                  "again")
 
         if args.wants("tool-shop"):
             start()
@@ -817,11 +820,11 @@ def main():
             assert state()["elixir_spent"], state()
             saves = tcp("files_state")["saves"]
             talk_to_guru()
-            until("his greeting", lambda: ram(MESSAGE_ID) == MEDITATE_WITH_YOU, 300)
+            until("his line about it", lambda: ram(MESSAGE_ID) == ELIXIR_LINE, 300)
             until("the Guru to charge it", lambda: state()["guru_recharges"] == 1, 120)
             s = state()
-            assert s["elixir_charged"] and not s["elixir_spent"], s
-            # His greeting, then "Remember my journey." (A on his menu saves).
+            assert s["elixir_charged"] and not s["elixir_spent"] and s["line"] == 1, s
+            # His line, his greeting, then "Remember my journey." (A on his menu saves).
             page_to(lambda s: s["saves"] == saves + 1, "the save", "files_state", tries=20)
             for _ in range(20):                                         # B closes what follows
                 if not box_open():
@@ -829,7 +832,7 @@ def main():
                 act("b", 6, 20)
             assert not box_open() and state()["elixir_charged"], state()
             print("ok: Apolune's Guru, whose conversation Save files and Guru travel steer, charges the spent Elixir "
-                  "as he greets the hero, and remembers the journey")
+                  "and says so as he greets the hero, and remembers the journey")
             game.close()
 
         if args.wants("original"):
