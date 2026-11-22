@@ -100,6 +100,10 @@ keeps the map, and the items you have taken.
 - **Block.** Hold V, or B on a controller, with a shield or the Battle Helmet
   to raise it and stop enemy magic from the front, and Sugata's flash from any
   side. You glint in the shield's colors as you raise it.
+- **Spell cost on the MP bar.** As in Castlevania: Belmont's Curse, the end
+  of the M: bar lights a shade brighter for what your selected spell will
+  cost, so you see what a cast leaves you. Short of MP for it, the whole bar
+  goes a shade darker: the spell won't go off.
 - **Magic button.** C, or Y on a controller, casts your selected spell, as
   Up+B does, but without going through a door, talking to anyone or swinging
   your sword.

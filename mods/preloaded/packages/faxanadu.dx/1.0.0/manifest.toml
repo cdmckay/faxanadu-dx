@@ -169,3 +169,7 @@ id = "faxanadu.kept-finds"
 [[plugin]]
 feature = "dx"
 id = "faxanadu.fair-entrances"
+
+[[plugin]]
+feature = "dx"
+id = "faxanadu.spell-cost"
