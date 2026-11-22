@@ -1932,7 +1932,35 @@ jump a few updates after stepping off, as A from the hang itself would.
   `PPUBuffer_WriteOffset` is 0 or at least `$24`), so the whole bar goes in
   at once when that room is 0 or at least 50 (14 bytes, then `$24` more). A
   poke of `Player_MP` leaves the bar as it was, so a test that pokes MP and
-  shows the bar starts from a real cast (`tests/mana/mana_refill.py`).
+  shows the bar starts from a real cast (`tests/mana/mana_refill.py`,
+  `tests/spell_cost/spell_cost.py`). `UI_DrawHUD` calls `Player_SetMP` too,
+  so drawing the whole status bar draws it from `Player_MP`.
+- **The bar in pixels.** One pixel an MP, from x 24 (column 3 of row 2) for
+  at most 80 pixels (the width × 8, to which `UI_SetHUDBarValue` caps the
+  value), then the end tile, whose white column is x 104. Its tiles are bank
+  10's (`HUD_TILES_START`, copied to `$1000`): `$07` empty, `$09` full (the
+  Power bar's is `$08`), `$0B` the end, and `$0D` the partial, whose pattern
+  `UI_SetHUDBarValue` writes from `STATUS_BAR_PARTIAL_PPU_TILES` (fixed
+  bank, `$FB2F`), filled from the left. Each has a border on its rows 1 and
+  6, lines 17 and 22, in pixel value 3 (the palette's white, `$30`), and the
+  fill on rows 2-5, lines 18-21; rows 0 and 7 are blank. The Magic bar's
+  partial tile takes the table's two planes swapped, so its fill is pixel
+  value 2 where the Power bar's is 1, as in `$09` and `$08`. So the MP bar's
+  fill is color 2 of the status bar's palette (`UI_AttributeDataIndex` × 4
+  + 2): `$19`, a middle green, in 25 of bank 11's 31 screen palettes, and
+  `$1A` in one (14). The other five have `$0F` (4, loaded only by dead
+  code), `$27` (16, the title's, and 28), `$25` (29) and `$1C` (30).
+- **A spell goes off with MP equal to its cost.** `Player_ReduceMP`
+  subtracts `MAGIC_COSTS` (`$B7A9`, bank 14: 2, 4, 6, 10, 16, by
+  `SelectedMagic`) from `Player_MP` and refuses only on a borrow, so a spell
+  needs at least its cost, and cast at exactly its cost leaves 0. Spell cost
+  (*Features*) shows the cost on the bar.
+- **The game darkens a color a row of the palette at a time.**
+  `Screen_SetFadeOutPalette` (`$D0AD`) fades a screen out by subtracting
+  `FADE_OUT_DELTA_TABLE` (`$D0E0`: `$10`, `$20`, `$30`, `$40`, by
+  `Screen_FadeOutStage`) from each color of its palette, black (`$0F`) where
+  that goes below 0: the bar's `$19` is `$09`, then black. A row up, `$29`,
+  is the same hue lighter.
 - **Where the main loop waits for its frames.** Every wait is a `JSR
   WaitForNextFrame` (`$CA25`: `LDA #$00`, `STA Game_InterruptsHandledLatch`
   (`$10`), then `LDA $10`, `BEQ` until the NMI sets it), each from its own
@@ -4510,6 +4538,32 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   moves the listed enemies in that machine's slots. No ROM, no read overrides,
   no state of its own: the positions are the game's sprite RAM, which save
   states keep.
+
+- **Spell cost** (`fax_spell_cost.c`, #126). The `M:` bar shows what the
+  selected spell will cost, as Castlevania: Belmont's Curse's MP bar does:
+  the last N pixels of the fill, N its cost (`MAGIC_COSTS`, read from the
+  cart image's bank 14), are drawn a row of the palette lighter (`$19` to
+  `$29`), so the plain fill before them is what a cast leaves. With less MP
+  than the cost the spell will not go off, and the whole fill is drawn a row
+  darker (`$09`) instead; at exactly the cost it is all lighter. No spell
+  selected (`SelectedMagic` `$FF`, or anything from 5, which
+  `Player_CastMagic` will not cast): the game's bar. The span is worked out
+  at every present from `Player_MP`, capped to the bar's 80 pixels, and
+  `SelectedMagic`, so it follows MP however it changes (a cast, MP refill,
+  the Wing Boots' and the Hour Glass's drain, a shop, the Elixir's fill) and
+  the spell as the menu changes it. Only the
+  bar's own fill is recolored: in the span, on its fill lines 18-21, the
+  pixels showing the fill's color (*MP and its bar*), so in the frame or two
+  before the game redraws the bar after MP changes, nothing is drawn where
+  it shows no fill. The fill's color is the status bar palette's color 2,
+  through the emphasis and greyscale its lines were drawn with; one that is
+  black (a fade's last stages), or would darken to black, is left alone.
+  Drawn at present time, over the status bar band wherever Seamless put it
+  (`fax_world_hud_x`, plus 24), after Charges draws the Elixir and before
+  every other feature, only while the frame shows the status bar
+  (`fax_text_hud_showing`). It shows only the selected spell's cost, never
+  an item's. No hooks, no ROM, no read overrides, no save-state record,
+  nothing written to the machine.
 
 - **Save files** (`fax_save.c`, `fax_files.c`). Three files instead of
   mantras; see "Save files" below.
