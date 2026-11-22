@@ -30,9 +30,9 @@ The next person should never have to rediscover it.
 
 ## Workflow
 
-- Work from an issue, on a branch, through a PR on **cdmckay/faxanadu-remastered**.
+- Work from an issue, on a branch, through a PR on **cdmckay/faxanadu-dx**.
   `gh` defaults to the upstream parent for a fork, so always pass
-  `-R cdmckay/faxanadu-remastered` (and `--base master` for PRs).
+  `-R cdmckay/faxanadu-dx` (and `--base master` for PRs).
 - Merge with a merge commit once `tools/test.sh` passes and the PR's test plan
   is run.
 - The remote is HTTPS; push with `gh` as the credential helper if git has none.

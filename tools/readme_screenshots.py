@@ -69,7 +69,7 @@ CAPTION_ROWS = 14                           # native rows above each picture for
 WHITE, BLACK = (0xFF, 0xFF, 0xFF), (0, 0, 0)
 GLYPHS = 16 + 13 * 16384                    # TILE_GLYPHS_START: the font, bank 13 $8000, from $20
 DX = ("faxanadu.dx", "dx")
-LOCK = Path(os.environ.get("XDG_RUNTIME_DIR") or os.environ.get("TMPDIR") or "/tmp") / "faxanadu-remastered-e2e.lock"
+LOCK = Path(os.environ.get("XDG_RUNTIME_DIR") or os.environ.get("TMPDIR") or "/tmp") / "faxanadu-dx-e2e.lock"
 SCENE_TIMEOUT = 30 * 60                     # seconds
 
 # RAM (docs/GAME_INTERNALS.md; the names are the disassembly's)

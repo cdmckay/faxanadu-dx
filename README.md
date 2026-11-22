@@ -261,8 +261,8 @@ repo; otherwise run the commands inside `nix develop`. Put your ROM at the
 repo root as `Faxanadu (USA).nes` (`*.nes` is gitignored).
 
 ```bash
-git clone https://github.com/cdmckay/faxanadu-remastered
-cd faxanadu-remastered
+git clone https://github.com/cdmckay/faxanadu-dx
+cd faxanadu-dx
 ./setup.sh
 direnv allow
 cmake -S . -B build-cycle -DCMAKE_BUILD_TYPE=Release -DNESRECOMP_ROM="$PWD/Faxanadu (USA).nes"
