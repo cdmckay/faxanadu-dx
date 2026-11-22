@@ -1098,9 +1098,9 @@ block `$9C`); Up from x=195 goes into the town, screen 1, at x=144. The
 screens run 7-6-5-4-3-2-1-8 from left to right (`EOLIS_SCROLL_DATA`, bank 3;
 screen 0 has no neighbours). Screens 4 and 5 each have two Zozura (`$47`,
 9 HP) crawling right along the ground, and screen 8 a Monodron (`$2A`,
-10 HP), which loads on the exit door's column (x 192): a door load that
-stands the hero at the exit door (block `$9C`) puts him on it, and it hits
-him within a few frames. Walking left from the town, the hero comes onto screen 4 at x=240.
+10 HP), which loads on the exit door's own block, `$9C` (x 192): a door
+load that stands the hero at the exit door puts him on it, and it hits him
+within a few frames. Walking left from the town, the hero comes onto screen 4 at x=240.
 The stock Hand Dagger passes over a Zozura (see *Weapon reach*); facing it,
 the swords hit one from up to 31 pixels left of the hero (his x minus its x),
 and it hurts him from 15. A Zozura that reaches a hero at the screen's right

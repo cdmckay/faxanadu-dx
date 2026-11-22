@@ -70,9 +70,9 @@ def _eolis_exit(g):
     """At Eolis's exit door (screen 8, x 192), the screen's Monodron cleared.
     He walks out of the meat shop, its door edited to lead there
     (Area_SavedScreen 8, Player_SavedPos $9C), so the screen loads the game's
-    own way, with the remaster on or off. The Monodron spawns on the door's
-    column, so he walks out under Ointment, which no touch gets through, until
-    it is cleared. A walk from the town is no way there: in Seamless the
+    own way, with the remaster on or off. The Monodron loads on the door's
+    own block, so he walks out under Ointment, which no touch gets through,
+    until it is cleared. A walk from the town is no way there: in Seamless the
     Monodron runs before he arrives and waits at the seam, and a touch as he
     crosses knocks him back into the town (#130)."""
     g.poke({AREA_SAVED_SCREEN: EOLIS_EXIT, PLAYER_SAVED_POS: EXIT_DOOR_POS, DURATION_OINTMENT: 0x40})
