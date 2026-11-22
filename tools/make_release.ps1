@@ -7,15 +7,12 @@ if (-not $Rom) {
     if ($images.Count -eq 1) { $Rom=$images[0].FullName }
 }
 $notes = @'
-Optional experimental Seamless mod: open Mods and enable Seamless, the first
-mod in the list and marked Experimental. Connected rooms form a continuous
-world with moving neighboring actors and adaptive Fit to screen.
-Resize the window freely. Mouse wheel changes pixel zoom; F4 shows the map.
-Start pauses, Select opens native inventory, B closes it.
-Doors and scripted region changes retain their native transitions.
-Seamless passed a preliminary owner playtest; cross-room combat/projectiles
-and broader progression coverage remain incomplete. It is disabled by default
-and local-play only.
+Faxanadu Remastered plays in Seamless: connected rooms form one continuous
+world, with no stop to scroll between them and the next room's actors moving,
+in a fixed 424x240 view scaled to the window. F4 shows the region. Doors,
+region changes and each boss's room (while its boss lives) keep the
+original's own transitions. Switch Faxanadu Remastered off in Mods to play
+the original game in its own view. Local play only.
 '@
 $buildPath = if ([IO.Path]::IsPathRooted($BuildDir)) { $BuildDir } else { Join-Path $root $BuildDir }
 if (-not $SkipBuild) {
