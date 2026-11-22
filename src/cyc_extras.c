@@ -28,6 +28,7 @@
 #include "fax_respawn.h"
 #include "fax_recharge.h"
 #include "fax_mana.h"
+#include "fax_gold.h"
 #include "fax_slain.h"
 #include "fax_indoor.h"
 #include "fax_damage.h"
@@ -196,6 +197,7 @@ static void tcp_setup(void *ctx) {
     fax_respawn_tcp_setup();
     fax_recharge_tcp_setup();
     fax_mana_tcp_setup();
+    fax_gold_tcp_setup();
     fax_slain_tcp_setup();
     fax_indoor_tcp_setup();
     fax_damage_tcp_setup();

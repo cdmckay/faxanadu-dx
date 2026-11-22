@@ -394,7 +394,7 @@ def main():
             lines_before = state()["lines"]
             said = converse("king")
             assert said == ["New quest|The King's Plea"], said
-            assert ram(GOLD, 3) == bytes([0xDC, 0x05, 0x00]), "the King gives 1500 Golds"
+            assert ram(GOLD, 3) == bytes([0xB8, 0x0B, 0x00]), "the King gives 3000 Golds (Double gold)"
             wait(10)
             assert not marks(KING), state()["marks"]
             check_mark(game.shot("king-no-mark"), m, "!", present=False)
