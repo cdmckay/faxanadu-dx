@@ -314,12 +314,14 @@ last here, so the others always see the Guru's own action and the step's \
 END, never the SAY step it points at. The Magician's lesson acts on Eolis's \
 Magician's script ($A35D), which has neither a Guru's actions nor the shops' \
 layout, so none of the others acts in it: at his first action it points the \
-script at Guru travel's ASK or SAY step, then at his own pay step ($A360), \
-or the SAY step's END. At those steps it acts only in a conversation of his \
-it began, which it forgets when any script begins (IScriptOffset 1, which it \
-sees before Recharging items moves anything), and Guru travel's \
-conversation, Save files' choice and Recharging items' line are never under \
-way in his script, so they do nothing there. So the five may run in this \
+script at Guru travel's SAY step, from its END at the SAY step again or the \
+ASK step, then at his own pay step ($A360), or the SAY step's END. At those \
+steps it acts only in a conversation of his it began, which it forgets when \
+any script begins (IScriptOffset 1, which it sees before Recharging items \
+moves anything), and Guru travel's conversation, Save files' choice and \
+Recharging items' line are never under way in his script, so they do nothing \
+there. In the magic hall's Magician's script ($A368), likewise no Guru's and \
+no shop's, it only reads where the script stands. So the five may run in this \
 order."""
 
 [[feature]]
@@ -477,13 +479,21 @@ rom = [
 ]
 # Its site at IScripts_InvokeNextAction ($826E, shared, above) acts only in
 # Eolis's Magician's script and the steps it sends it to, and writes
-# IScriptOrCHRAddr and IScriptOffset. Its site in IScriptAction_SpendGold
+# IScriptOrCHRAddr and IScriptOffset; in the magic hall's Magician's script
+# ($A368) it only notes, at the step that gives Fire ($A372), that the hero
+# has studied there, and writes nothing. Its site in IScriptAction_SpendGold
 # ($8367, bank 12), which no other feature hooks and which returns 0, writes
 # Temp_0202/3, the amount the next instructions copy to Temp_Int24 to check
 # and take: on his pay step, while his lesson is being bought, 200 becomes
-# the lesson's price. Keeps the field lesson.learned in the file in play
-# (fax_save.h), when Save files has one. MP refill reads it
-# (fax_lesson_learned) for its schedule.
+# the lesson's price. Its site at IScripts_ProgressivelySubtractGold's JSR
+# Player_SubtractGold ($8347, bank 12), which no other feature hooks (Double
+# gold's count is on the add side, $8560) and which returns 0, writes
+# Temp_0202/3 (140 more taken) and Temp_Int24 (the subtract, 150 for 10), only
+# while his pay step runs: every other payment counts 10 a frame. Keeps the
+# fields lesson.studied and lesson.learned in the file in play (fax_save.h),
+# when Save files has one, and reads the core field spells for a file from
+# before lesson.studied. MP refill reads learned (fax_lesson_learned) for its
+# schedule.
 
 [[feature]]
 id = "double-gold"

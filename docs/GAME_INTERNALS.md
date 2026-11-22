@@ -114,7 +114,7 @@ between actions.
 | `$02` | msg | Question: A continues, B ends the script |
 | `$03` | msg | Message. B, at any point, ends the script (`IScriptAction_ShowMessage` jumps to `IScriptAction_EndScript`) |
 | `$04` | addr | `CHECK_UPDATE_PLAYER_TITLE`: if `NextPlayerTitle` differs, take it and jump; else go on |
-| `$05` | amount (16-bit) | Pay (`IScriptAction_SpendGold`, `$835B`): reads the amount into `Temp_0202/3`, copies it to `Temp_Int24`/`_M` (`$8367`) for `IScripts_CheckEnoughMoney`; too little, "This is not enough Golds." (message 3) and the script ends; else `IScripts_ProgressivelySubtractGold` takes it, 10 Golds a frame, then holds 60 frames |
+| `$05` | amount (16-bit) | Pay (`IScriptAction_SpendGold`, `$835B`): reads the amount into `Temp_0202/3`, copies it to `Temp_Int24`/`_M` (`$8367`) for `IScripts_CheckEnoughMoney`; too little, "This is not enough Golds." (message 3) and the script ends; else `IScripts_ProgressivelySubtractGold` takes it, 10 Golds a frame, then holds 60 frames (*Gold*, "Taken over time") |
 | `$06` | temple | Set spawn point. **Only raises** `TempleSpawnPoint` |
 | `$08` | items | A shop's buy list (see *Shops*) |
 | `$0F` | addr | The shops' Buy/Sell menu: message `$10`, then a cursor on its lines 1 and 3. A on the first choice jumps to addr, A on the second goes on to the next action, B ends the script |
@@ -744,7 +744,7 @@ continues. A new game's mantra at Eolis's gate is `rFAAAAQAAA`
 |---|---|---|
 | `Player_HandleTouchCoin` | `$8B9A`, bank 14 | A coin touched: sound 9, then `Gold` + the coin's `CurrentSprites_Values` byte, carried into `Gold_M` and `Gold_U` and **not capped**: past `$FFFFFF` it wraps around to 0 and up |
 | `Player_AddGold` | `$F9C1`, fixed | `Gold` + `Temp_Int24`/`_M` (16 bits; the top byte of the add is 0), **held at `$FFFFFF`** when it carries out: the game's cap. Only `IScripts_ProgressivelyAddGold` calls it |
-| `Player_SubtractGold` | `$F9A5`, fixed | Paying, 10 a frame, through `IScripts_ProgressivelySubtractGold` (a purchase, and scripts' `$05`) |
+| `Player_SubtractGold` | `$F9A5`, fixed | `Gold` − `Temp_Int24`/`_M` (16 bits; the borrow carries into `Gold_U`), **not floored**. Only `IScripts_ProgressivelySubtractGold` calls it, 10 a frame (a purchase, and scripts' `$05`), after the gold has been checked |
 | `Player_SetInitialExpAndGold` | `$95B1`, bank 12 | The title's starting gold, after a mantra or a death (see *Titles, experience and gold*) |
 
 Each ends in `UI_DrawGoldValue` (`$F9E7`), which draws **7 digits**
@@ -765,6 +765,30 @@ adds `Temp_Int24`/`_M` and draws the gold; then `JMP` back to the top. So
 `IScriptAction_AddGold` (`$8525`, action `$09`), which reads the amount from
 the script and calls it at `$8531`, and the sell list
 (`IScriptAction_ShowSellMenu`, half the shop's price).
+
+**Taken over time.** `IScripts_ProgressivelySubtractGold` (`$8321`, bank
+12) is the add's mirror, without the sound. Each turn calls
+`IScripts_UpdatePortraitAnimation` (a frame), then: with bit 15 of
+`Temp_0202/3` clear and something left, it takes 10 from it (`$832E-$833E`:
+`SEC`, `SBC #$0A`, `SBC #$00`), puts 10 in `Temp_Int24`/`_M` (`$833F-$8346`)
+and calls `Player_SubtractGold` at `$8347` (`20 A5 F9`), then `JMP $8321`.
+With nothing left, `DEC Temp_0203` (to `$FF`) and 60 into `Temp_0202`
+(`$834D`), and from then each turn takes 1 from `Temp_0202` until 0, then
+`RTS`. So an amount of n takes n / 10 frames of counting, a frame each, then
+60: 3000 is 300 + 60 (measured, the magic hall's Fire). The amount must be
+below `$8000` and a multiple of 10 (what one that is not does: *Shops*). Two
+callers: `IScriptAction_SpendGold` (`JSR` at `$8376`, action `$05`), from a
+script, and the buy list (`IScriptAction_OpenShop`, `JSR` at `$8460`).
+During a `$05`, `IScriptOrCHRAddr` + `IScriptOffset` stands past its amount,
+at the next action; during a purchase, in the shop's script, past the `08` and
+its list's address.
+
+**`IScripts_CheckEnoughMoney`** (`$87DC`) compares 24-bit `Gold` with the
+16-bit `Temp_Int24`/`_M` and returns the carry: `Gold_U` not 0 is enough
+(`CMP #$00`); else `Gold_M` against `Temp_Int24_M`, and only if they are
+equal `Gold` against `Temp_Int24`. That is a correct compare, so any amount
+up to `$7FFF` works: 29999 is short of 30000 and 30000 is enough (checked
+with the Magician's lesson).
 
 **`CHECK_GOLD`** (`IScriptAction_IfPlayerHasGold`, `$861F`, action `$0D`) is
 `LDA Gold`, `ORA Gold_M`, `ORA Gold_U`, `BNE @_hasGold`; with no gold,
@@ -831,8 +855,8 @@ So Eolis's Zozuras leave bread; the Trunk's first coin is a Monodron's.
 plea says so, counted 20 a frame in the original's 150 frames, and only once
 a game: after it, he says "nothing more" whatever the hero's gold. Every coin
 pays twice its value, held at the cap; see *Features and what they use*.
-Selling, the title's gold and spending are the
-original's.
+Selling, the title's gold and spending are the original's, but for the
+Magician's lesson (`fax_lesson.c`), whose 30000 is taken 150 a frame.
 
 ## The title screen (bank 15, bank 12)
 
@@ -2889,6 +2913,17 @@ script), pay 200, add 40 MP, "Watch your remaining power level." (`01`, B
 cannot skip it), end. The magic hall's (`ISCRIPT_AFTER_VICTIM_MAGIC_SHOP`,
 `$A368`, building `$1C`) is `83, 12 62 A377, 02 17, 05 B8 0B, 07 62, 01 79,
 00`, and with Fire, `03 18, 00` at `$A377` ("Don't rely too much on magic.").
+Its steps: `CHECK_FOR_ITEM` Fire at `$A369`, the question at `$A36D` ("Do you
+know the magic of fire? I'll teach you for 3000 Golds."), pay 3000 at `$A36F`,
+`ADD_ITEM` Fire at `$A372`, "It can be magic of justice or a magic of
+destruction. It all depends on who uses it." (`$79`, which B cannot skip) at
+`$A374`, `END` at `$A376`. So the script reaches `$A372` only once 3000 is
+paid, and `ADD_ITEM` always gives (`Player_AddToInventory` overwrites the last
+spell of a full list): that step is where the hero learns Fire. Fire comes
+from nowhere else. The hall is on the Mist's screen `$29`, its door at block
+`$7C` (`MIST_DOOR_LOCATIONS`: `29 7C 20 9E`), with the same room and the
+Magician on the same step (`$71`) as Eolis's; Victim's man calls it "a magic
+hall outside town" (`$72`).
 The pay steps in the game ask 50, 150, 180, 200 (twice), 250 (twice), 350,
 500 (twice), 800, 1000, 1800, 2500 and 3000 (twice): a price none of them asks
 has to be served, which the Magician's lesson does in
@@ -3668,40 +3703,69 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
   120 frames and the step 15; a wait running when it is learned is cut to
   120.
 - **The Magician's lesson** (`fax_lesson.c`, #105). Eolis's Magician no
-  longer sells 40 MP for 200: he teaches the hero, once, for 2000 Golds, to
-  recover MP twice as fast (MP refill's 120 and 15). His script (*The two
-  Magicians*) is steered at `IScripts_InvokeNextAction`, through Guru
-  travel's steps and message `$C3`'s slot, served with the same bytes:
-  - at his first action (`$A35E`, the question), his offer, "Learn to
-    recover / magic faster / for 2000 Golds.", at Guru travel's ASK step
-    (`16 C3 00 AE`, `$AE03`): A jumps to the SAY step (`$AE00`), B goes on to
-    `$AE07`. Learned, "I have nothing / more to teach / you." at the SAY step
-    instead, then its END.
-  - A (the script at `$AE00`): back to his own pay step (`IScriptOrCHRAddr`
-    `$A35D`, `IScriptOffset` 3). A hook in `IScriptAction_SpendGold` at
-    `$8367` (`LDA Temp_0202`, after the two `IScripts_LoadByte`), while the
-    script stands past that step (`$A363`) with 200 read, writes 2000 to
-    `Temp_0202/3`, which the next instructions copy to `Temp_Int24` and
-    check. So the game takes it (200 frames of counting, then its 60) or
-    says "This is not enough Golds." and ends the script, as at any counter.
+  longer sells 40 MP for 200: he teaches the hero, once, for 30000 Golds, to
+  recover MP twice as fast (MP refill's 120 and 15), and only a hero who has
+  studied at the magic hall in the Mist (bought Fire from its Magician). His
+  script (*The two Magicians*) is steered at `IScripts_InvokeNextAction`,
+  through Guru travel's steps and message `$C3`'s slot, served with the same
+  bytes:
+  - at his first action (`$A35E`, the question), what he teaches, "I can
+    teach you / to recover magic / faster.", at Guru travel's SAY step
+    (`03 C3 00`, `$AE00`); B on it ends the script. Learned, "I have nothing
+    / more to teach / you." there instead, then its END.
+  - A on it (the script at the SAY step's END, `$AE02`): not studied, "First
+    study at / the magic hall / in the Mist." at the SAY step again, then
+    its END, so gold is never checked; studied, his price, "It will cost /
+    30000 Golds.", at Guru travel's ASK step (`16 C3 00 AE`, `$AE03`): A
+    jumps to the SAY step, B goes on to `$AE07`. Who he teaches is one
+    predicate with its line beside it (`ready()`, `NOT_READY_TEXT`). Two
+    lines in a row from the one slot work: the first has typed out before
+    the second is served, and the next `SHOW_MESSAGE` loads the slot afresh.
+  - A on the price (the script at `$AE00`): back to his own pay step
+    (`IScriptOrCHRAddr` `$A35D`, `IScriptOffset` 3). A hook in
+    `IScriptAction_SpendGold` at `$8367` (`LDA Temp_0202`, after the two
+    `IScripts_LoadByte`), while the script stands past that step (`$A363`)
+    with 200 read, writes 30000 to `Temp_0202/3`, which the next
+    instructions copy to `Temp_Int24` and check (`IScripts_CheckEnoughMoney`
+    compares all 16 bits: 29999 is refused, 30000 paid). A hook at
+    `IScripts_ProgressivelySubtractGold`'s `JSR Player_SubtractGold`
+    (`$8347`), while his pay step runs and the script still stands at
+    `$A363`, takes 140 more from what is left (if that much is) and makes
+    `Temp_Int24` 150, as Double gold's count does on the add side: the game's
+    own subtract takes 150 a frame, so 30000 counts down in 200 frames, then
+    the game's 60 (measured: A on frame 10, gold taken on frames 11-210, his
+    line on 270). At the game's 10 it would be 3000 frames. A shop's
+    purchase, the hall's Fire, the keys and the doctor stand elsewhere and
+    count 10.
   - Paid (the script at his `ADD_MP`, `$A363`): learned, and "Your magic
     will / now return / faster." at the SAY step instead of the 40 MP and
     "Watch your remaining power level.".
-  - B on the offer (`$AE07`): the SAY step's END (`$AE02`), so the box
+  - B on the price (`$AE07`): the SAY step's END (`$AE02`), so the box
     closes, as B on his question did.
+
+  **Studied.** The same hook at `$826E` sees the magic hall's Magician's
+  script (`$A368`) reach its `ADD_ITEM` Fire (`$A372`), which it does only
+  once 3000 is paid, and from then the hero has studied; it steers nothing
+  there. The flag stays when Fire is sold (Quick shops buys it). The file in
+  play keeps `lesson.studied` (`yes` or `no`, at every save) and
+  `lesson.learned` (`yes`, or no field). A file saved before
+  `lesson.studied` has studied if Fire (spell 2) is in its `spells` or
+  `selected_spell` (a hero who sold Fire before then cannot be told apart).
+  The save-state record is version 2: learned, the conversation's phase, his
+  line, studied; a version 1 record or none takes studied from the spells in
+  RAM once the state is in (`fax_lesson_loaded`), and his old offer (line 1)
+  comes back as the price.
 
   It acts only in his script and at those steps in a conversation of his,
   which it forgets when any script begins (`IScriptOffset` 1), so a
   conversation that B or a lack of gold ended leaves nothing behind. Its
-  site at `$826E` comes before Recharging items', which stays last. The magic
-  hall's Magician is untouched. The file in play keeps `lesson.learned`
-  (`yes`, or no field); its save-state record keeps it and the conversation,
-  and after a load his line is served again (`fax_lesson_loaded`, after
-  Recharging items'). If the overrides cannot be set, he sells his MP as
-  before for the session. `lesson_state` over TCP. The price is set against
-  Double gold's economy: with the King's 3000, the dagger (400) and Deluge
-  (400, the lesson does nothing without a spell), 200 is left, so the Elixir
-  and Apolune's Small Shield (800) wait for coins.
+  site at `$826E` comes before Recharging items', which stays last. After a
+  load his line is served again (`fax_lesson_loaded`, after Recharging
+  items'). If the overrides cannot be set, he sells his MP as before for the
+  session (the hall still counts). `lesson_state` over TCP. The price is ten
+  times the hall's Fire and twice Daybreak's Tilte (15000), the dearest
+  thing a shop sells: a late-game purchase, since he teaches only after the
+  hall.
 - **Double gold** (`fax_gold.c`, #102, #104). The King gives 3000 instead of
   1500, counted in the original's 150 frames, and once a game; every coin a
   monster leaves pays twice its value. Five hooks, each returning 0, with no

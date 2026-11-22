@@ -8,6 +8,11 @@ and fixes what has aged.
 - **The real game underneath.** It runs Faxanadu's own code, built from your
   ROM, so the world, music, story and feel are the original's. The remaster
   steers the game from outside; it doesn't rewrite it.
+- **A Metroidvania at heart.** Faxanadu is one connected world that opens up
+  as you find keys, tools and the way through, and it keeps sending you back
+  to places you have been. The remaster leans into that: a map of where you
+  have been and what still lies there, Guru travel to get back quickly, and
+  upgrades that reward a return trip.
 - **Quality of life.** Conveniences the 1987 game lacks, like saving without
   writing down mantras and travelling between Gurus. Where the game can offer
   them itself, it does, in its own text box and voice.
@@ -96,8 +101,8 @@ play only. See [docs/SEAMLESS-WORLD.md](docs/SEAMLESS-WORLD.md).
   your sword.
 - **MP that refills.** Four seconds after your last spell, your MP starts to
   climb back toward full, a point every half second. Eolis's Magician no
-  longer sells MP: for 2000 Golds he teaches you, once, to recover it twice
-  as fast.
+  longer sells MP: once you have learned Fire at the magic hall in the Mist,
+  he teaches you, once, for 30000 Golds, to recover it twice as fast.
 - **Damage numbers.** Every hit that takes HP shows how much, floating up from
   where it landed: white for the damage you deal, pink for the damage you take.
 - **A taller dagger.** The Hand Dagger's swing reaches as low as the swords',
