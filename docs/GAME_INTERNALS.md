@@ -521,10 +521,11 @@ What a feature can rely on, and the traps:
   wait) never returns in it, since no NMI runs, so the call fails and nothing
   is committed: test what it would wait for first.
 - **At a frame's end** (`frame_end`, at the start of VBlank, before the NMI)
-  `cyc_mod_regs` gives the CPU's registers where the frame left it, and the
-  stack at S + 1 says which `JSR` it is in: MP refill tells a frame the game
-  played from S and the return address there (see *MP and its bar*), and
-  gives MP from there with a committed call (`Player_AddMP`).
+  `cyc_mod_regs` gives the CPU's registers where the frame left it (the PC
+  too), and the stack at S + 1 says which `JSR` it is in: MP from kills
+  tells a frame that ended waiting in `WaitForNextFrame` by the return
+  address there (see *MP and its bar*), and draws the HP and MP bars from
+  there with committed calls (`UI_DrawPlayerHP`, `Player_SetMP`).
 - Mods activate **before** the cart loads. Set up in the extras' `power_on`,
   which runs after the cart loads and before any save state is restored.
 - A headless run loads mods only with `--mods-root DIR`. A hidden window
@@ -745,6 +746,56 @@ which stays put. The last row (5) holds →, ←, DEL and END at columns 0-3, an
 Up from row 0 wraps to it. A on END (row 5, column 3) checks the mantra and
 continues. A new game's mantra at Eolis's gate is `rFAAAAQAAA`
 (`tests/dx/one_switch.py` types it with the remaster off).
+
+## Kills and experience (bank 14)
+
+- **One routine gives a kill's experience.** `Player_AddExperienceFromSprite`
+  (`$8B87`: `LDY CurrentSprites_Entities,X`, `LDA ENEMY_EXPERIENCE,Y`, `STA
+  Temp_Int24`, `LDA #$00`, `STA Temp_Int24_M`, `JSR Player_UpdateExperience`,
+  `LDX CurrentSpriteIndex`, `RTS`), with X the slot, is called from exactly
+  two places, both on the frame the enemy's HP borrows (*Damage, dealt and
+  taken*): `Player_HitSpriteWithWeapon` (`$8804`), after the kill's sound 3
+  and clearing `CurrentSprites_HitCounter`, and `Player_HitEnemyWithMagic`
+  (`$81A7`) at `@_addExperience` (`$8215`), before the sound. Both then send a
+  category 7 entity (`SPRITE_CATEGORIES_BY_ENTITY`, `$B544`) to
+  `Sprite_ShowBigEnemyDeathByMagicOrWeapon` (`$ABEC`, the boss death, entity
+  `$64`) and any other to `Sprite_ShowNormalEnemyDeathByWeapon` (`$ABF1`) or
+  `...ByMagic` (`$ABF6`, the death effect `$13`). Bosses die the same way, so
+  that one site sees every kill the hero makes: falls, the springs and the
+  Glove's and Ointment's 100 (`Player_Add100XP`, `$C609`, from their
+  pickups) never reach it. MP from kills hooks it. Sugata's flash turned back
+  by the Magic Shield runs `$81FD`'s death code in a committed call, which
+  runs no hooks, so that feature reports its kill itself.
+- **`Player_UpdateExperience`** (`$F957`) adds `Temp_Int24`/`_M` to the
+  16-bit `Experience`, held at `$FFFF` on a carry, checks the next title and
+  draws the five digits.
+- **`ENEMY_EXPERIENCE`** (`$B60E`), by entity, as the ROM has it (chipx86's
+  comments name the entity before from `$31` on, as in
+  `SPRITE_CATEGORIES_BY_ENTITY`: `$47`, the Zozura, is 30, not 25):
+
+  | Experience | Enemies |
+  |---|---|
+  | 10-20 | Ishiisu `$0F` 10, Sugata `$18` 13, Tamazutsu `$2C` 15, Monodron `$2A` 20 |
+  | 25-35 | Zombie `$06`, Hornet `$07`, Lilith `$09`, Yuinaru `$0B` 25; Myconid `$1B` 26; Giant Bees `$1A` 29; Yareeka `$22`, Lamprey `$28`, Zozura `$47` 30; Ikeda `$26` 33; Raiden `$04`, Bihoruda `$08`, Naga `$1C` 35 |
+  | 40-50 | Geributa `$17` 40, Fire Giant `$0E` 45, Giant Strider `$1E` 48, Wolfman `$21` 49, Execution Hood `$10` 50 |
+  | 54-65 | Maskman `$20` 54, Necron Aides `$05` and Snowman `$0C` 55, Grimlock `$19` and Sir Gawaine `$1F` 58, Nash `$0D` 60, Magman `$23` 62, Charron `$15` 65 |
+  | Bosses (category 7) | Borabohra `$2F` 75, Zorugeriru `$31` 80, Pakukame `$30` 85, Ripasheiku `$2D` 90, Rokusutahn `$11` 120 (a boss by category, though it roams), Zoradohna `$2E` 158; King Grieve `$32` and Shadow Eura `$33` 0 |
+
+  The shots (`$51`, `$53`, `$54`, category 6) have 8, and the rocks (`$03`)
+  none.
+- **A screen's worth.** Bank 11's lists (*Areas, screens and zones*) put
+  about two enemies on a screen everywhere (2.0 in the Trunk, 2.3 in the
+  Mist, 1.9 in the Branch, 2.1 in Dartmoor, 2.4 in Zenis). Counting the
+  enemies (category 0) on each screen with any, the median screen is worth
+  75 experience in the Trunk, 89 in the Mist, 96 in the Branch, 99 in
+  Dartmoor and 116 in Zenis; the Trunk's first screens (`$00-$0B`, Monodrons,
+  Zozuras and Zombies) 20 to 80. MP from kills is tuned on these
+  (*Features*).
+- **Placing a boss.** A boss's box is bigger (`MAYBE_SPRITE_EXTENTS`,
+  `$B407`: 32 wide for most, 64 for King Grieve), so a boss poked into a
+  slot where a Zozura was touches a hero the Zozura would not: placed 16
+  pixels further off, a Rokusutahn with 1 HP dies to the same swing
+  (`tests/mana/mp_from_kills.py`).
 
 ## Gold
 
@@ -1916,8 +1967,9 @@ jump a few updates after stepping off, as A from the hang itself would.
   MP for 200 G, `ISCRIPT_EOLIS_MARTIAL_ARTS_MAGIC_SHOP`; both through
   `IScriptAction_AddMP`, `$8580`, bank 12, 1 MP at a time with its sound) and
   the Elixir's fill (`Player_FillHPAndMP`, `$C4DA`, 4 at a time). It never
-  comes back on its own. With the remaster, MP refill brings it back, and the
-  Magician teaches a faster refill instead of selling MP (*Features*).
+  comes back on its own. With the remaster, kills give it and a Guru fills
+  it, and the Magician teaches the hero to draw twice as much from a kill
+  instead of selling MP (*Features*).
 - **Only a cast takes MP.** The stores to `Player_MP` are `Game_Start`'s,
   `Player_Spawn`'s, `Player_ReduceMP` (`$C0C3`, from `Player_CastMagic`, the
   only one that lowers it), `Player_AddMP` (`$C0D9`: `CLC`, `ADC Player_MP`,
@@ -1925,7 +1977,8 @@ jump a few updates after stepping off, as A from the hang itself would.
   capped at 80). So MP lower than a frame before means a spell was cast (or a
   new game began). With the remaster the Wing Boots and the Hour Glass take
   MP too (Recharging items stores it and draws the bar with `Player_SetMP`),
-  and MP refill counts those as spends as well.
+  and a kill or a Guru stores it (MP from kills, which draws it the same
+  way).
 - **The bar is drawn only when MP changes through those routines.**
   `Player_SetMP` stores MP and falls into `UI_SetHUDBarValue` with Y = 1, the
   Magic bar, which queues two PPU buffer commands: the bar at `$2043`,
@@ -1938,9 +1991,28 @@ jump a few updates after stepping off, as A from the hang itself would.
   `PPUBuffer_WriteOffset` is 0 or at least `$24`), so the whole bar goes in
   at once when that room is 0 or at least 50 (14 bytes, then `$24` more). A
   poke of `Player_MP` leaves the bar as it was, so a test that pokes MP and
-  shows the bar starts from a real cast (`tests/mana/mana_refill.py`,
-  `tests/spell_cost/spell_cost.py`). `UI_DrawHUD` calls `Player_SetMP` too,
-  so drawing the whole status bar draws it from `Player_MP`.
+  shows the bar starts from a real cast (`tests/spell_cost/spell_cost.py`)
+  or a kill (`tests/mana/mp_from_kills.py`). `UI_DrawHUD` calls
+  `Player_SetMP` too, so drawing the whole status bar, as a screen's load
+  does, draws it from `Player_MP`.
+- **The HP bar is the same bar.** `UI_DrawPlayerHP` (`$C0BD`: `LDA
+  Player_HP_U`, `JMP UI_DrawPlayerHPValue`) and `UI_DrawPlayerHPValue`
+  (`$FA75`: capped at 80, stored in `Temp_AddedHPValue`, `$0399`, and
+  `Player_HP_U`, then `UI_SetHUDBarValue` with Y = 0) draw the Power bar the
+  same way, at `$2063`, full tiles `$08` and the partial `$0C`
+  (`STATUS_BAR_PPU_ADDR_L`, `STATUS_BAR_FILL_TILE_INDEXES` and
+  `STATUS_BAR_PARTIAL_TILE_INDEXES`, by Y). Only whole HP is drawn:
+  `Player_AddHP` (`$C07B`) and `Player_Spawn` set `Player_HP_U` and leave
+  `Player_HP_L`, the 256ths, as they were.
+- **A command is queued in pieces.** `PPUBuffer_QueueCommandOrLength` pushes
+  A, waits in `PPUBuffer_WaitForCapacity` (a spin on `PPUBuffer_HasCapacity`
+  until the NMI has sent enough, with no `WaitForNextFrame`), then writes the
+  length and `PPU_TargetAddr` at `PPUBuffer_WriteOffset` and returns X past
+  them; the caller writes the tiles (`PPUBuffer_Set`) and stores X back to
+  `PPUBuffer_WriteOffset`. So a frame can end mid-command only in its
+  caller, never in `WaitForNextFrame`, and a text box opening keeps the
+  buffer full for frames on end, its frames ending in that spin (a Guru's
+  box, about 18 frames).
 - **The bar in pixels.** One pixel an MP, from x 24 (column 3 of row 2) for
   at most 80 pixels (the width × 8, to which `UI_SetHUDBarValue` caps the
   value), then the end tile, whose white column is x 104. Its tiles are bank
@@ -1979,7 +2051,11 @@ jump a few updates after stepping off, as A from the hang itself would.
   routines. A frame that ends with the CPU in the first, S `$FD` and `$DB4F`
   on the stack, is one the game played: its pass finished and nothing held
   it. On a quiet screen every frame ends so; a lag frame ends inside the
-  pass. MP refill counts those frames (`fax_mana.c`).
+  pass. Any wait at all shows as the `JSR WaitForNextFrame` whose return
+  address is at S + 1 (`20 25 CA` ending at it): whatever called it is
+  between two of its steps. MP from kills draws its bars at such a frame's
+  end, on a screen that is up (*Areas, screens and zones*), when the buffer
+  has room (`fax_mana.c`).
 
 ## Areas, screens and zones
 
@@ -3462,7 +3538,7 @@ flights on MP):
   above this town".
 - Flying again is not new reach. The original sells pairs in two shops and
   lets found pairs stack, so it gave any number of flights for gold. A kept
-  pair flies again as soon as there is MP, which MP refill brings back.
+  pair flies again as soon as there is MP, which kills and Gurus give.
 - Flights longer than the original's longest (40 s, a Novice's) come only from
   Adept on (50 s on a full bar), Swordman (60 s) and Champion (80 s), and
   only on a full bar. Not checked: whether any place needs one flight of more
@@ -3750,7 +3826,7 @@ played in the game. Two engine rules it has to follow:
 
 | | Trigger | The original | With the remaster |
 |---|---|---|---|
-| Eolis's edge shafts | Wing Boots in Eolis, over the right wall of `$00` or `$08` | Stuck below the floor (reproduced) | Avoided: the Wing Boots are kept |
+| Eolis's edge shafts | Wing Boots in Eolis, over the right wall of `$00` or `$08` | Stuck below the floor (reproduced) | Avoided while MP lasts: the Wing Boots are kept; at 0 MP stuck again (#125) |
 | A find with a full Items list | A Mattock, Wing Boots, Hour Glass or Red Potion touched with 8 listed | Said and lost (reproduced) | Fixed: Kept finds |
 | The fountain's ladder in `$27` | Leaving Trunk `$28` on its first pass | No trap | Fixed already: Ladder fixes |
 | The Tower of Fortress's floor | The Mattock on Trunk `$2D`'s block `$63` | No trap | The block is floor: Graphics fixes |
@@ -3767,8 +3843,12 @@ played in the game. Two engine rules it has to follow:
   To have the Wing Boots in Eolis, the hero must die before any temple Guru
   has set his spawn point (it starts at 0, Eolis), after buying them in
   Forepaw or finding them: obscure. With the remaster the pair is kept, and
-  once MP refill has brought MP back Down+B flies him up the shaft and out
-  (`tests/softlocks/eolis_shaft.py`). Eolis is the one place found where a
+  with MP Down+B flies him up the shaft and out
+  (`tests/softlocks/eolis_shaft.py`). Guru travel reaches Eolis's Guru too,
+  so the Wing Boots come to Eolis easily. Since #125 MP comes only from
+  kills and Gurus, and neither is down there: a flight that ends in the
+  shaft at 0 MP (run out, not ended with Down+B) leaves him stuck as in the
+  original, which only a reset (back to the last save) ends. Open. Eolis is the one place found where a
   flight ends in a trap: Branch's open row under `$10`'s floor, reached by
   flying left out of `$11`'s floorless bottom, holds him at Y `$C0` too, but
   walking right takes him back into `$11`, which drops him into `$16`
@@ -3914,31 +3994,58 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   against the real one. A press lasts one frame, as a pad read does. The
   bindings are `MagicKey` and `MagicButton` in `config.ini` [Game], in the
   host's own key and button names.
-- **MP refill** (`fax_mana.c`). Once no MP has been spent for 240 frames (4
-  s), MP climbs back toward 80, 1 every 30 frames. No hooks and no ROM: at
-  each frame's end it takes MP lower than at the last as a spend, which
-  starts the wait again (the frame of the spend does not count), as does
-  each frame the Wing Boots or the Hour Glass runs on MP
-  (`fax_recharge_draining`: they take an MP only every 24 to 64 frames, and
-  the lesson's step is 15, so without it MP could come back mid-run), and counts
-  the wait down only on frames the game played, those that end with
-  `Game_MainLoop` waiting at its top (S `$FD`, `$DB4F` on the stack, bank 14,
-  not paused or dead; see *MP and its bar*). A pause, the map, the quest log,
-  a text box, a menu, a screen change, a death, a lag frame and the title
-  hold it still. Each MP is `Player_AddMP` with A = 1 in a committed call, so
-  the game draws the bar; its registers are put back after, and when the PPU
-  buffer has less than 50 bytes of room (not empty), the MP waits for the
-  next frame that has it. A new game's MP climbs from 0 like any other. The
-  wait and the MP last seen are its save-state record; MP is in no save file.
-  Once the Magician's lesson is learned (`fax_lesson_learned()`), the wait is
-  120 frames and the step 15; a wait running when it is learned is cut to
-  120.
+- **MP from kills** (`fax_mana.c`, #125; #98's MP refill, which brought MP
+  back over time, is gone). Every kill the game gives experience for gives
+  MP, as hearts do in Castlevania. A site at `Player_AddExperienceFromSprite`
+  (`$8B87`, *Kills and experience*) reads the slot's entity (X) and its
+  `ENEMY_EXPERIENCE` and category from bank 14, mapped there, and returns 0:
+  - **How much:** experience² / 256, at least 1; a boss (category 7) 40; the
+    Magician's lesson doubles it (`fax_lesson_learned()`); MP stops at 80.
+    The aim was an early fight giving back a Deluge or two (2 MP each) and a
+    mid-game one a Tilte (16). A screen's experience only about doubles from
+    the Trunk's first screens (two Monodrons or Zozuras, 40-60) to the Mist's
+    and the Branch's median ones (89, 96), so no share of experience meets
+    both (experience / 5 gives those first screens 8-10 MP, four or five
+    Deluges): the square does. A Monodron gives 1, a Hornet 2, a Zozura 3, a
+    Wolfman 9, a Sir Gawaine or a Grimlock 13, a Charron 16; the Trunk's
+    first screens 2-4, the median screens of the Mist 15, the Branch 16,
+    Dartmoor 18 and Zenis 18. The constants are one enum (`SCALE`, `LEAST`,
+    `BOSS_MP`, `TAUGHT`), for Cameron's playtest.
+  - **At once:** the MP goes into `Player_MP` in the site, so a cast or a
+    drain that frame has it, and nothing holds it: the Wing Boots and the
+    Hour Glass read MP afresh each frame of a run. The bar is drawn at the
+    frame's end with `Player_SetMP` in a committed call, its registers put
+    back, when the CPU waits in `WaitForNextFrame` (from anywhere: the
+    return address at S + 1 is a `JSR WaitForNextFrame`'s), the screen is up
+    (`Screen_ReadyState` 0, `Game_InterruptHandlersEnabled` set,
+    `Screen_ScrollDirection` `$FF`) and the PPU buffer has room for both of
+    the bar's commands (0, empty, or at least 50 bytes); else at the next
+    frame's end that has all three.
+  - **A Guru** fills HP and MP to 80 at his first action (`fax_mana_guru`,
+    from Recharging items' site at `$826E`, with the Elixir's charge), before
+    he speaks: the safety net for stretches with nothing to kill. Each bar
+    that changed is drawn then (`UI_DrawPlayerHP`, `Player_SetMP`, committed)
+    if the buffer has room; his box has usually filled it, so it is drawn a
+    frame's end later, as his first line types. `Player_HP_L` is left as the
+    game's own fills leave it.
+  - Sugata's flash turned back by the Magic Shield kills in a committed call
+    that runs no hooks; Sugata's flash calls `fax_mana_killed` for it.
+  - Nothing comes back over time. With the remaster off, the original: MP
+    only from the meat shops, Eolis's Magician, the Elixir and a spawn.
+  - The bars still to draw are its save-state record (version 2; #98's
+    version 1, its refill's wait, loads with nothing to draw). MP is in no
+    save file. Nothing happens in Seamless's isolated simulation. The id is
+    still `faxanadu.mana-refill` (plugin, record, hook prefix), so the switch
+    and old states find it.
 - **The Magician's lesson** (`fax_lesson.c`, #105). Eolis's Magician no
-  longer sells 40 MP for 200: he teaches the hero, once, for 30000 Golds, to
-  recover MP twice as fast (MP refill's 120 and 15), and only a hero who has
-  studied at the magic hall in the Mist (bought Fire from its Magician).
+  longer sells 40 MP for 200 (any Guru now fills MP): he teaches the hero,
+  once, for 30000 Golds, to recover MP faster, twice the MP from every kill
+  (MP from kills' `TAUGHT`; a boss's 80, the whole bar), and only a hero who
+  has studied at the magic hall in the Mist (bought Fire from its Magician).
   Since the Wing Boots and the Hour Glass run on MP (#124), it also means
-  flying and freezing again sooner. His
+  flying and freezing longer on the same fights. His lines, "I can teach you
+  to recover magic faster." and "Your magic will now return faster.", still
+  say it. His
   script (*The two Magicians*) is steered at `IScripts_InvokeNextAction`,
   through Guru travel's steps and message `$C3`'s slot, served with the same
   bytes:
@@ -4272,7 +4379,7 @@ one of them since #110, so the remaster always plays in its 424x240 view.
     frame while its item runs: that frame of the run. MP goes on schedule
     (stored at once; its bar drawn with `Player_SetMP` in a committed call
     when the PPU buffer has room for both of its commands, else at the next
-    frame that has, as MP refill gives its MP), the duration is set to the
+    frame that has, as MP from kills draws its bars), the duration is set to the
     seconds left, rounded up, and the site returns 1, an RTS, so the game's
     own second never ticks. At the run's end (0 MP, the freeze's 15 s, or
     Down+B) it sets the duration to 0 and jumps to the `DEC` (`$C5F6`,
@@ -4293,9 +4400,11 @@ one of them since #110, so the remaster always plays in its 424x240 view.
     would allow it, when it changes, and every 16 frames while not 0, since
     `UI_DrawHUD` draws `00` there. A bar still to draw is drawn. A spent
     Elixir whose bit came back (found) is charged.
-  - MP refill (below) holds while either runs (`fax_recharge_draining`): no
-    MP comes back during a flight or a freeze, and its wait starts from the
-    run's end.
+  - A kill's MP (MP from kills, below) comes during a flight or a freeze as
+    at any time: each frame of a run reads `Player_MP` afresh and takes its
+    MP from what there is.
+  - At a Guru's first action, with the Elixir's charge, MP from kills fills
+    HP and MP (`fax_mana_guru`).
   - `Player_UseElixir`: the Elixir is spent. `SpecialItems`' bit stays the
     game's own "a revive is in reserve", so `Player_ReduceHP`, the Player page
     and the Spring of Trunk go by whether it is charged.
@@ -4622,8 +4731,8 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   selected (`SelectedMagic` `$FF`, or anything from 5, which
   `Player_CastMagic` will not cast): the game's bar. The span is worked out
   at every present from `Player_MP`, capped to the bar's 80 pixels, and
-  `SelectedMagic`, so it follows MP however it changes (a cast, MP refill,
-  the Wing Boots' and the Hour Glass's drain, a shop, the Elixir's fill) and
+  `SelectedMagic`, so it follows MP however it changes (a cast, a kill, a
+  Guru, the Wing Boots' and the Hour Glass's drain, a shop, the Elixir's fill) and
   the spell as the menu changes it. Only the
   bar's own fill is recolored: in the span, on its fill lines 18-21, the
   pixels showing the fill's color (*MP and its bar*), so in the frame or two

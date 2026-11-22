@@ -368,6 +368,11 @@ enum { NEXT_PLAYER_TITLE = 0x04ED };
 static char said[12][64];
 static unsigned said_n;
 static void note(const char *text) { CHECK(said_n < 12); snprintf(said[said_n++], sizeof said[0], "%s", text); }
+/* MP from kills (fax_mana.c) fills HP and MP when Recharging items tells it a
+ * Guru's conversation begins: here, how many times, and how many messages the
+ * box had shown by the last. */
+static unsigned guru_fills, said_at_fill;
+void fax_mana_guru(void) { ++guru_fills; said_at_fill = said_n; }
 static void (*on_line)(void);                 /* called as each message shows, for a test to act mid-script */
 /* Run the script at `script` as IScripts_Begin starts it (IScriptOffset 1,
  * past its entity byte), firing IScripts_InvokeNextAction's hooks before
@@ -1171,6 +1176,34 @@ static void elixir_found_not_bought(void) {
     CHECK(!fax_recharge_on() && !fax_recharge_elixir_spent() && !(ram[SPECIAL_ITEMS] & BIT_ELIXIR));
 }
 
+/* Each Guru's conversation fills HP and MP (MP from kills) at his first
+ * action, with the Elixir's charge, before he says anything: his Elixir line
+ * too. Once a conversation; no one else's script; not when off. */
+static void gurus_fill_hp_and_mp(void) {
+    static const unsigned temples[] = { 0, 1, 3, 5, 6 };
+    for (unsigned i = 0; i < sizeof temples / sizeof temples[0]; ++i) {
+        play(true);
+        ram[SPECIAL_ITEMS] = 0x80;          /* the Ring of Elf, no Elixir: no line */
+        guru_fills = 0;
+        meet_guru(temples[i]);
+        CHECK(guru_fills == 1 && said_at_fill == 0 && said_n >= 1);
+        ram[SPECIAL_ITEMS] = BIT_ELIXIR | 0x80;
+        hurt();                             /* spent: he says so, after the fill */
+        CHECK(charge.elixir_spent);
+        meet_guru(temples[i]);
+        CHECK(guru_fills == 2 && said_at_fill == 0 && !strcmp(said[0], RESTORED) && !charge.elixir_spent);
+    }
+    play(true);
+    guru_fills = 0;
+    static const uint8_t npc[] = { 0x81, 0x03, 0x40, 0x00 };   /* a portrait, a line, the end */
+    memcpy(bank12 + (0xA310 - 0x8000), npc, sizeof npc);
+    run_script(0xA310, 0);
+    CHECK(guru_fills == 0 && said_n == 2);
+    play(false);
+    meet_guru(1);
+    CHECK(guru_fills == 0);
+}
+
 /* ---- what a Guru says about the Elixir ---- */
 
 static uint8_t spawn_seen[12], title_seen[12];   /* TempleSpawnPoint and PlayerTitle as each message showed */
@@ -1417,6 +1450,7 @@ int main(void) {
     guru_travel_keeps_them();
     elixir();
     elixir_found_not_bought();
+    gurus_fill_hp_and_mp();
     charges_on_the_status_bar();
     finds_add_nothing();
     other_items_untouched();
