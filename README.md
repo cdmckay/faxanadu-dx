@@ -83,7 +83,7 @@ keeps the map, and the items you have taken.
 
 ### Saving and the Gurus
 
-- **Save files.** Three files, as in Zelda. The title keeps NEW GAME and
+- **Save files.** Three files, as in Zelda. The title has NEW GAME over
   CONTINUE: NEW GAME asks which file to start in, and asks before erasing a
   used one, and CONTINUE picks a saved file and continues it exactly as you
   left it. A Guru no longer gives a mantra: he offers to remember your
@@ -166,8 +166,9 @@ keeps the map, and the items you have taken.
   dialogue box, as the game names them: "Guru of Apolune", "King of Eolis".
 - **Slain by.** When something takes your last HP, a banner names it while you
   fall: "Slain by a Sugata", "Slain by Poison".
-- **DX on the title.** The title screen shows DX under the FAXANADU logo, in
-  the title's own letters and the logo's light yellow.
+- **DX on the title.** The title screen shows DX on the logo, just under the
+  FAXANADU letters, in the title's own letters and the logo's light yellow,
+  outlined in black.
 
 ## Bugs fixed
 

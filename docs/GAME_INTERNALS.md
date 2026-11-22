@@ -875,15 +875,23 @@ to `StartScreen_CheckHandleInput` (`$9F44`, bank 12), then at
 
 - `StartScreen_CheckHandleInput` toggles `$0687` on Select (with sound `$0B`)
   and draws the arrow, sprite appearance `$AD`, at x `$34` or `$74`
-  (`BYTE_ARRAY_PRG12__9f69`, loaded by `LDX` at `$9F5F`), y `$7E`, through
-  `UI_DrawPromptInputSymbol` (`$FCA7`), which ends in
+  (`BYTE_ARRAY_PRG12__9f69`, loaded by `LDX` at `$9F5F`), y `$7E` (`LDY` at
+  `$9F62`), through `UI_DrawPromptInputSymbol` (`$FCA7`), which ends in
   `Sprite_SetAppearanceAddrFromOffset` and its bank switch. Nothing else calls
   it, so a hook there owns the title's input: one that handles it draws no
   arrow (the loop resets sprites each frame), one that clears Select and
   returns 0 keeps the arrow and stops the toggle, and clearing Start in
-  `Joy1_ChangedButtonMask` there keeps the loop from seeing it. At `$9F62`
-  (`LDY #$7E`) X holds the arrow's X: Save files moves it there for NEW
-  GAME.
+  `Joy1_ChangedButtonMask` there keeps the loop from seeing it. At `$9F64`
+  (`LDA #$AD`) X and Y hold the arrow's place: Save files moves it there,
+  beside NEW GAME or CONTINUE. (At `$9F62`, the `LDY`, setting Y is no use:
+  the `LDY` runs after the hook.)
+- **The arrow's place on screen.** Its X is the screen's: the arrow lights
+  columns X to X + 6 (52-58 for START at 64, 12 pixels before the word). Its
+  lit rows are 34 below the Y it is given: Y `$7E` (126) lights 160-166,
+  START's row. So an arrow beside text lit from row R takes Y = R - 34. The
+  sprite is drawn into the shadow OAM the frame the routine runs and shows
+  the frame after: a picture shows the arrow the routine drew a frame
+  before.
 - Start with `$0687` = 0: music 8, then `@_startGame` (`$FC98`):
   `SplashAnimation_RunIntro`, `Player_SetStartGameState` (`$9570`: everything
   zero or none, but `SelectedArmor` 0) and `JMP Game_Start`.
@@ -900,14 +908,21 @@ to `StartScreen_CheckHandleInput` (`$9F44`, bank 12), then at
   title is up. DX on the title does that.
 - The picture: the logo and its border fill y 16-143; START (tile columns
   8-12) and CONTINUE (16-23) are on tile row 20, lit on y 160-166, and the
-  three notices on 184, 200 and 216, black between. The letters are tiles
+  three notices on 184, 200 and 216, black between (nothing else is drawn in
+  y 144-183 but START and CONTINUE). The letters are tiles
   `$E0`-`$F9`, A to Z, of the row's pattern table, and `$FA` is the
   copyright sign: `StartScreen_Draw` copies them from `CHR_LETTERS` (bank 10
   `$8240`, 27 tiles). They are drawn in one color, 3, both bit planes alike,
   and their A to Z are the dialogue font's (bank 13, see The text box), pixel
-  for pixel. DX takes y 148-155 (its letters light 148-154). With the
-  remaster NEW GAME takes columns 5-12 of row 20, and a file pick y 160-239,
-  a box of 10 cells over the choices and the notices. The background
+  for pixel, lit on rows 0-6 of each cell. Under FAXANADU's letters, on y
+  112-127, the tree's trunk is red and green dither from x 129 to about 153,
+  with black to its left: the remaster's DX sits there, centred on the logo
+  at x 120-134 on y 116-122, across the trunk's left edge, with a black
+  outline. With the
+  remaster the original's START and CONTINUE are hidden, NEW GAME and
+  CONTINUE are a column from x 96, lit on y 151-157 and 165-171, and a file
+  pick takes y 160-239, a box of 10 cells over the original's choices and the
+  notices. The background
   palettes are `$0F $05 $18 $38` (the logo's border; `$38`, light
   yellow, is its highlights and DX's color),
   `$0F $17 $27 $30` (the white text), `$0F $0F $16 $28`
@@ -3991,12 +4006,17 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   characters loses the tab's blank cells, so no tab is wider than the dialogue
   box. No hooks, no ROM, no state: it reads RAM and the nametable when the
   picture is presented, and draws after Seamless and zone names.
-- **DX on the title** (`fax_title.c`, with `fax_text.c`). The word under
-  the logo, centered on it (x 120-135 natively), on y 148-155, in the
+- **DX on the title** (`fax_title.c`, with `fax_text.c`). The word on the
+  logo, just under FAXANADU's letters, centred on the logo across the
+  trunk's left edge (its cells x 120-135 natively, lit on 120-134 and y
+  116-122), in the
   title's own letters (the dialogue font's A to Z are its letter tiles, pixel
-  for pixel) and palette entry 3 (`$38`, the logo's light yellow), drawn
-  over the presented picture after speaker names and before Save files' file
-  select. A hook at `@_afterCheckHandleInputFarJump` (`$FC7A`) that only
+  for pixel) and palette entry 3 (`$38`, the logo's light yellow), with a
+  black outline (palette entry 0, the backdrop `$0F`) a pixel wide all round,
+  the diagonals too, so it reads over the trunk's dither. Only the letters
+  and the outline are drawn; the logo shows everywhere else. It is drawn
+  over the presented picture after speaker names and before Save files'
+  menu. A hook at `@_afterCheckHandleInputFarJump` (`$FC7A`) that only
   observes notes each frame the title's loop runs; the word shows on the
   presents after such a frame, so it goes with the frame Start leaves the
   loop. In a wider picture (Seamless, the wide modes) it follows the native
@@ -4456,31 +4476,41 @@ like any field no feature knows.) Missing core fields take a new game's
 values. HP, MP and the timed items are not
 kept: continuing fills HP and MP and clears the timed items, as a mantra did.
 
-**The title's menu.** The title keeps the original's two choices, NEW GAME
-in START's place and CONTINUE. A hook at `StartScreen_CheckHandleInput` reads
-the pad instead of the title's own input (see The title screen):
+**The title's menu.** The title's two choices are NEW GAME over CONTINUE, a
+centred column (as in Metroid's title) in place of the original's START and
+CONTINUE side by side. A hook at `StartScreen_CheckHandleInput` reads the pad
+instead of the title's own input (see The title screen):
 
-- **The two choices.** NEW GAME is drawn over START at present time in the
-  title's own letters (tiles `$E0`-`$F9`, read from the line's pattern table,
-  in the palette the attribute table gives START's column), in columns 5-12,
-  so it ends where START did; CONTINUE stays the game's, in columns 16-23.
-  With no file to continue, CONTINUE is redrawn in grey (palette 3's `$00`)
-  and the cursor never lands on it. Select, Left, Right, Up and Down move
-  between them, and the title opens on CONTINUE when a file can be continued.
-  The hook sets `$0687` to the choice, clears Select and Start from
-  `Joy1_ChangedButtonMask` and lets the routine run on, so it toggles nothing
-  and draws its own arrow; a second hook, at its `LDY #$7E` (`$9F62`, after
-  `LDX BYTE_ARRAY_PRG12__9f69,Y` loads the arrow's X), moves NEW GAME's arrow
-  from `$34` to `$1C`, 12 pixels before the word as the stock arrows are.
-  CONTINUE's is the stock `$74`. The arrow is a sprite through
+- **The two choices.** At present time, the original's START and CONTINUE
+  (columns 8-23 of row 20, y 160-167) are painted black, the frame's sprites
+  that cross that row are drawn again over it (`cyc_render_sprites`, so the
+  arrow beside CONTINUE stays whole), and NEW GAME and CONTINUE are drawn in
+  the title's own letters (tiles `$E0`-`$F9`, read from the line's pattern
+  table, in the palette the attribute table gives START's column, the
+  original's white), only their letters' pixels. Both are 64 pixels wide,
+  left-aligned at x 96 and so centred in the native picture, lit on y
+  151-157 and 165-171: 7 black rows under the logo and 7 between them, so
+  they read as one menu, and 12 above the first notice (which have 9 between
+  them). With no file to continue, CONTINUE is grey (palette 3's `$00`) and
+  the cursor never lands on it. Select, Left, Right, Up and Down all move
+  between them (with two choices each toggles), and the title opens on
+  CONTINUE when a file can be continued. The hook sets `$0687` to the
+  choice, clears Select and Start from `Joy1_ChangedButtonMask` and lets the
+  routine run on, so it toggles nothing and draws its own arrow; a second
+  hook, at its `LDA #$AD` (`$9F64`, once X and Y hold the arrow's place),
+  puts the arrow beside the chosen line: X `$54` (84), 12 pixels before the
+  words as the stock arrows are, and Y 117 or 131 (lit on the line's rows,
+  see The title screen). The arrow is a sprite through
   `Sprite_SetAppearanceAddrFromOffset`, which switches banks, so it cannot be
   drawn from a committed call.
 - **A pick.** A or Start on either opens a pick of the three files, drawn
-  over the picture: a box of 10 cells on y 160-239, over the choices and the
-  notices, with two rows a file (its name, then its gold and experience), a
-  blank and what it asks. It leaves y 144-159, the black between it and the
-  logo, to DX on the title. The routine is handled there, so no arrow
-  shows. Up and Down move, A or Start take a file, B goes back.
+  over the picture: a box of 10 cells on y 160-239, over the original's
+  choices and the notices, with two rows a file (its name, then its gold and
+  experience), a blank and what it asks. The band above it (y 144-159) is
+  painted black: the picture shows the sprites of the frame before, so on a
+  pick's first frame the arrow would still be beside NEW GAME. The routine
+  is handled there, so no arrow is drawn. Up and Down move, A or Start take
+  a file, B goes back.
 - **NEW GAME's pick** ("New game in which file?") opens on the first empty
   file. An empty one starts a new game at once, through the stock Start path
   (nothing is written until the first save); a used one, damaged or newer

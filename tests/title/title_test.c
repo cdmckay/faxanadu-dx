@@ -176,7 +176,7 @@ static void only_on_the_title(void) {
     activate();
 }
 
-/* Wider pictures (Seamless, the wide modes): under the logo wherever the
+/* Wider pictures (Seamless, the wide modes): on the logo wherever the
  * native picture sits; a picture smaller than the native one is left alone. */
 static void wider_pictures(void) {
     font(); power_on();

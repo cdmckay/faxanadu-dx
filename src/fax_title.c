@@ -1,14 +1,14 @@
 /* DX on the title. USA 57dd23d1, chipx86 byte-exact disassembly.
  *
  * The word sits on the logo, just under the FAXANADU letters, centred on the
- * tree's trunk, in the title's own letters and the color the logo's palette
- * draws its highlights in, with a black outline a pixel wide all round (its
- * 8 neighbours) so it reads on the art. Only the word and its outline are
- * drawn: the logo shows everywhere else. The letters come from the game's
- * dialogue font (fax_text.c): its A to Z are the title's letter tiles
- * (CHR_LETTERS, bank 10 $8240, one color), pixel for pixel. The title's
- * picture is left as the game drew it: the word goes over the presented
- * picture.
+ * logo across the left edge of the tree's trunk, in the title's own letters
+ * and the color the logo's palette draws its highlights in, with a black
+ * outline a pixel wide all round (its 8 neighbours) so it reads on the art.
+ * Only the word and its outline are drawn: the logo shows everywhere else.
+ * The letters come from the game's dialogue font (fax_text.c): its A to Z
+ * are the title's letter tiles (CHR_LETTERS, bank 10 $8240, one color), pixel
+ * for pixel. The title's picture is left as the game drew it: the word goes
+ * over the presented picture.
  *
  * The title is up while Game_ShowStartScreen's loop runs: once a frame it
  * far-calls StartScreen_CheckHandleInput (which Save files steers), then
@@ -43,7 +43,7 @@ static const char WORD[] = "DX";
 enum {
     NATIVE_W = 256, NATIVE_H = 240,
     LOGO_LEFT = 16, LOGO_W = 224,   /* the logo and its border: tiles 2-29 of rows 2-17 (StartScreen_Draw, $2042) */
-    WORD_Y = 116,                   /* on the trunk, just under FAXANADU's letters: lit on 116-122 */
+    WORD_Y = 116,                   /* on the logo, just under FAXANADU's letters: lit on 116-122 */
     WORD_W = 16, WORD_H = 8,        /* two cells of the font */
     WORD_COLOR = 3,                 /* palette RAM: the logo's palette ($0F $05 $18 $38), its light yellow */
     OUTLINE_COLOR = 0,              /* the backdrop, $0F: the title's black */

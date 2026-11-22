@@ -641,7 +641,8 @@ static void title_text(uint32_t *px, int w, int h, int x, int y, const char *s, 
  * that crosses it. */
 static int in_choices_row(int slot, int x, int y, int *out_x, void *user) {
     (void)slot; (void)x; (void)out_x; (void)user;
-    return y < TITLE_Y + FAX_TEXT_CELL && y + 16 > TITLE_Y;   /* 8 or 16 high */
+    int height = cyc_render_line_sprite16(y < 240 ? y : 239) ? 16 : 8;
+    return y < TITLE_Y + FAX_TEXT_CELL && y + height > TITLE_Y;
 }
 /* The original's START and CONTINUE go: their cells are black, as the rest of
  * the band is, and the frame's sprites there are drawn again over them. */
