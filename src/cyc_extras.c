@@ -44,6 +44,7 @@
 #include "fax_graphics.h"
 #include "fax_entrances.h"
 #include "fax_spell_cost.h"
+#include "fax_found.h"
 #ifdef CYC_WITH_SDL
 #include "cyc_tcp.h"
 #include <SDL.h>
@@ -219,6 +220,7 @@ static void tcp_setup(void *ctx) {
     fax_shaft_tcp_setup();
     fax_entrances_tcp_setup();
     fax_spell_cost_tcp_setup();
+    fax_found_tcp_setup();
 }
 #endif
 static const uint32_t *present(void *ctx,int *w,int *h) {

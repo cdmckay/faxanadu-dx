@@ -19,6 +19,9 @@
  * observes; the game keeps no state for these, so the map does, in the file);
  * one the game keeps a flag or a list for, until that says he has it; one that
  * shows on one counted visit in four, never: it is there only while it is.
+ * With Found items on (fax_found.h), a Wing Boots or Hour Glass find it
+ * removes shows nowhere, and the one Hour Glass it keeps lying (Mist $30)
+ * shows until he has taken it.
  *
  * The Map button (M, or LT on a controller; MapKey and MapButton in
  * config.ini [Game]) opens it during play, through the game's own pause:
@@ -42,6 +45,7 @@
  * (fax_save.h), one an area, and the items taken one more. See
  * docs/GAME_INTERNALS.md, "The map". */
 #include "fax_map.h"
+#include "fax_found.h"
 #include "fax_map_layout.h"
 #include "fax_quests.h"
 #include "fax_save.h"
@@ -249,8 +253,11 @@ static bool running(unsigned entity) {
 static bool item_shown(unsigned i) {
     const FaxMapItem *it = &atlas.item[i];
     if (!valid_place(it->map_area, it->map_screen) || !bit(v.seen[it->map_area], it->map_screen)) return false;
+    FaxFoundSpawn found = fax_found_on() ? fax_found_spawn(it->area, it->screen, it->entity) : FAX_FOUND_AS_IS;
+    if (found == FAX_FOUND_GONE) return false;   /* Found items removes it */
     if (q(AREA_CURRENT_AREA) == it->area && q(AREA_CURRENT_SCREEN) == it->screen && settled())
         return in_slot(it->entity);   /* he is there: it is, if its sprite is */
+    if (found == FAX_FOUND_FIXED) return fax_found_glass_there();   /* until taken */
     switch (it->kind) {
     case FAX_MAP_ITEM_ALWAYS: return !bit(picked, i) && !running(it->entity);
     case FAX_MAP_ITEM_ONCE: return !had(it->entity);

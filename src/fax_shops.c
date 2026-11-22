@@ -56,7 +56,10 @@
  *   while they do, a tool shop's buy list loses its Red Potion: after
  *   Shop_Populate has copied the list, before Shop_Draw draws it, the entries
  *   after the potion move up (fax_shops_without). The shop still buys one,
- *   at half the price its own list in the ROM gives.
+ *   at half the price its own list in the ROM gives. The Wing Boots, the Hour
+ *   Glass and the Elixir are found, not bought (Found items, fax_found.h), so
+ *   while it is on their lines go the same way: Eolis's Elixir, Forepaw's and
+ *   Conflate's Wing Boots, the shop after Mascon's Hour Glass and Elixir.
  *
  * A step is entered "by return": a hook writes the address it wants on the
  * stack where the routine's RTS will pull it, or pushes a chain of them, and
@@ -68,6 +71,7 @@
  * game's font (fax_text.c), while the list's frame is on screen. See
  * docs/GAME_INTERNALS.md, "Shops". */
 #include "fax_shops.h"
+#include "fax_found.h"
 #include "fax_keys.h"
 #include "fax_potions.h"
 #include "fax_recharge.h"
@@ -185,7 +189,7 @@ bool fax_shops_never_buys(uint8_t id) {
     case 0x43:   /* SHIELD_BATTLE_HELMET: worn only with the Dragon Slayer, for the last fight ($8B) */
     case 0x80: case 0x81: case 0x82: case 0x83:   /* the rings of Elf, Ruby, Dworf, the Demon's: doors, the rock */
     case 0x8A:   /* SPECIAL_MAGICAL_ROD */
-    case 0x92:   /* SPECIAL_ELIXIR: the Spring of Trunk takes it */
+    case 0x92:   /* SPECIAL_ELIXIR: the Spring of Trunk asks for it (with the remaster, its charge) */
     case 0x93:   /* SPECIAL_PENDANT */
     case 0x94:   /* SPECIAL_BLACK_ONYX: the man by the gate to Branch gives the A key for it */
         return true;
@@ -421,19 +425,30 @@ static int buy_pick_hook(uint16_t addr) {
     return go(false, BUY_WAIT, 0, 0, -1);
 }
 
-unsigned fax_shops_without(uint8_t id, uint8_t items[], uint16_t prices[], unsigned n) {
+static bool dropped_item(const uint8_t drop[], unsigned drops, uint8_t id) {
+    for (unsigned k = 0; k < drops; ++k) if (drop[k] == id) return true;
+    return false;
+}
+unsigned fax_shops_without(const uint8_t drop[], unsigned drops, uint8_t items[], uint16_t prices[], unsigned n) {
     unsigned kept = 0;
     for (unsigned i = 0; i < n; ++i)
-        if (items[i] != id) items[kept] = items[i], prices[kept] = prices[i], ++kept;
+        if (!dropped_item(drop, drops, items[i])) items[kept] = items[i], prices[kept] = prices[i], ++kept;
     return kept;
 }
 
-/* OpenShop, its list copied (Shop_Populate) and not yet drawn: while the
- * Potion Sellers sell the Red Potions, the list without its Red Potion. A
- * list of nothing else (no shop's) would be kept. */
+/* OpenShop, its list copied (Shop_Populate) and not yet drawn: the list
+ * without its Red Potion while the Potion Sellers sell them, and without the
+ * Wing Boots, the Hour Glass and the Elixir while Found items is on. A list of
+ * nothing else (no shop's) would be kept. */
 static int drawing_hook(uint16_t addr) {
     (void)addr;
-    if (!here() || !in_step(BUY, 3) || !fax_potions_selling()) return 0;
+    if (!here() || !in_step(BUY, 3)) return 0;
+    uint8_t drop[1 + FAX_FOUND_UNSOLD];
+    unsigned drops = 0;
+    if (fax_potions_selling()) drop[drops++] = FAX_POTIONS_RED_POTION;
+    if (fax_found_on())
+        for (unsigned k = 0; k < FAX_FOUND_UNSOLD; ++k) drop[drops++] = fax_found_unsold[k];
+    if (!drops) return 0;
     uint8_t items[PAGE];
     uint16_t prices[PAGE];
     unsigned n = q(ARG_STRINGS_COUNT);
@@ -442,7 +457,7 @@ static int drawing_hook(uint16_t addr) {
         items[i] = q((uint16_t)(DATA_ARRAY + i));
         prices[i] = (uint16_t)(q((uint16_t)(SHOP_ITEM_COSTS_L + i)) | q((uint16_t)(SHOP_ITEM_COSTS_U + i)) << 8);
     }
-    unsigned kept = fax_shops_without(FAX_POTIONS_RED_POTION, items, prices, n);
+    unsigned kept = fax_shops_without(drop, drops, items, prices, n);
     if (kept == n || kept == 0) return 0;
     for (unsigned i = 0; i < kept; ++i) {
         p((uint16_t)(DATA_ARRAY + i), items[i]);
