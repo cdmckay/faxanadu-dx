@@ -1,6 +1,7 @@
 #pragma once
 /* The Magician's lesson (fax_lesson.c): Eolis's Magician teaches the hero,
- * once, for gold, to recover MP faster, in place of his 40 MP sale, and only
+ * once, for gold, to recover MP faster (for spells, and for the Wing Boots
+ * and the Hour Glass, which run on it), in place of his 40 MP sale, and only
  * a hero who has studied at the magic hall in the Mist (bought Fire there).
  * It registers itself and keeps whether the hero has studied and learned in
  * its save-state record and in the file in play (Save files' named fields

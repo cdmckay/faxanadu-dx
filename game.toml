@@ -567,9 +567,10 @@ addr = 0x8347
 bank = 12
 bytes = "20 a5 f9 4c 21 83 ce 03 02 a9 3c 8d"   # JSR Player_SubtractGold, JMP IScripts_ProgressivelySubtractGold, DEC Temp_0203, LDA #$3C, STA
 
-# Recharging items (fax_recharge.c): the Wing Boots and the Hour Glass are kept
-# and recharge, and the Elixir is kept and a Guru charges it again, and says
-# so. The sites are each routine's entry unless noted.
+# Recharging items (fax_recharge.c): the Wing Boots and the Hour Glass are kept,
+# the boots fly on MP and the glass's freeze drains HP, and the Elixir is kept
+# and a Guru charges it again, and says so. The sites are each routine's entry
+# unless noted.
 
 [[mod_function_hook]]
 id = "faxanadu.recharge.elixir"
@@ -596,10 +597,28 @@ bank = 15
 bytes = "8d 29 04 20 90 f9 60 28 1e 14 0a ad"   # STA DurationWingBoots, JSR UI_DrawTimeValue
 
 [[mod_function_hook]]
+id = "faxanadu.recharge.boots-second"
+addr = 0xc5a8
+bank = 15
+bytes = "a5 1a 29 3f d0 19 ce 29 04 ad 29 04"   # Game_DecWingBootsDuration, running: LDA InterruptCounter, AND #$3F, BNE
+
+[[mod_function_hook]]
 id = "faxanadu.recharge.use-glass"
 addr = 0xc5c8
 bank = 15
 bytes = "a9 82 20 59 f8 0c 41 82 20 bf c4 a9"   # Player_UseHourGlass: LDA #$82, JSR MMC1_LoadBankAndJump
+
+[[mod_function_hook]]
+id = "faxanadu.recharge.glass-cost"
+addr = 0xc5d8
+bank = 15
+bytes = "4e 31 04 6e 32 04 20 bd c0 a9 0f 8d"   # LSR Player_HP_U, ROR Player_HP_L, JSR UI_DrawPlayerHP: the half
+
+[[mod_function_hook]]
+id = "faxanadu.recharge.glass-second"
+addr = 0xc5f0
+bank = 15
+bytes = "a5 1a 29 3f d0 12 ce 2a 04 10 0d a9"   # Game_DecHourGlassDuration, running: LDA InterruptCounter, AND #$3F, BNE
 
 [[mod_function_hook]]
 id = "faxanadu.recharge.spawn"

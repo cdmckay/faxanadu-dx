@@ -42,8 +42,8 @@ GURU_MENU = 1                                                       # fax_files.
 PASSWORD_SCRATCH = (0x4C6, 0x27)                                    # Password_TempY .. the encoded state: the mantra's
 FILE = "faxanadu_file1.txt"                                         # the gate's new game is file 1
 PACKAGE = ("faxanadu.dx", "dx")
-RECORD = "faxanadu.recharge"                                        # its save-state record: [5] the Elixir spent,
-SPENT, TOLD = 5, 9                                                  # [9] a Guru has told the hero
+RECORD = "faxanadu.recharge"                                        # its save-state record: [11] the Elixir spent,
+SPENT, TOLD = 11, 12                                                # [12] a Guru has told the hero
 PARTS = ("restored", "can", "none", "original")
 
 

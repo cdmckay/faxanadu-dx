@@ -13,7 +13,8 @@
  * stays, so nothing moves when he finds it. The moment it revives him it
  * greys and blinks: through its "I've used Elixir." line, and 1.5 s after,
  * so the save is noticed. The Wing Boots and the Hour Glass are not drawn:
- * T: counts their recharge down (#117).
+ * they run on MP with no cooldown (#124), and T: counts the selected one's
+ * run down.
  *
  * Seamless's view is 424 wide, and lays the status bar and the Elixir out
  * centred together (fax_world_hud_x): the Elixir is drawn against the status

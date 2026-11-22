@@ -203,7 +203,7 @@ bool fax_shops_owned(uint8_t id, const FaxShopsHero *h) {
     switch (id) {
     case 0x92:                                   /* SPECIAL_ELIXIR: a bit, one at most; spent, still his */
         return (h->special & BIT_ELIXIR) || h->elixir_spent;
-    case 0x8D: case 0x8F:                        /* the Hour Glass, the Wing Boots: they recharge */
+    case 0x8D: case 0x8F:                        /* the Hour Glass, the Wing Boots: kept, they run on MP */
         kept = h->recharging;
         break;
     case 0x84: case 0x85: case 0x86: case 0x87: case 0x88:   /* the A, K, Q, J and Jo keys */

@@ -4,7 +4,9 @@
  * (fax_mana.c) brings MP back by itself, so instead he teaches the hero,
  * once, for PRICE, to recover it faster: the refill's wait after a spend and
  * its step are halved (fax_mana.c's TAUGHT_WAIT and TAUGHT_STEP), and an
- * empty bar is full in 22 s rather than 44. He teaches only a hero who has
+ * empty bar is full in 22 s rather than 44. The Wing Boots and the Hour Glass
+ * run on MP (fax_recharge.c), so it means flying and freezing again sooner
+ * too. He teaches only a hero who has
  * studied at the magic hall in the Mist (ready(), below): bought Fire from
  * its Magician (building $1C), even if he has sold it since.
  *
