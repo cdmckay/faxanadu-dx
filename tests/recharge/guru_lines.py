@@ -96,6 +96,13 @@ def main():
         assert in_temple() and not box_open(), "Conflate's temple"
         s = state()
         assert s["enabled"] == on and (not on or (s["elixir_spent"], s["elixir_told"]) == (bool(spent), bool(told))), s
+        return s
+
+    def counts(before):
+        """How many charges, restored lines and "can" lines since `before` (the
+        counts run on from earlier parts in the same game)."""
+        s = state()
+        return tuple(s[k] - before[k] for k in ("guru_recharges", "restored_lines", "can_lines"))
 
     def talk(walk=True):
         """Walk left to the Guru (from where the hero came back) and press Up;
@@ -144,10 +151,10 @@ def main():
 
         if args.wants("restored"):
             # 1. A spent Elixir: the restored line first, then the greeting and the menu.
-            start("spent", elixir=False, spent=1)
+            before = start("spent", elixir=False, spent=1)
             assert talk() == SLOT_ID, "the line comes first"
-            s = line_shown(LINE_RESTORED, "restored-line")
-            assert s["guru_recharges"] == 1 and s["restored_lines"] == 1 and s["can_lines"] == 0, s
+            line_shown(LINE_RESTORED, "restored-line")
+            assert counts(before) == (1, 1, 0), (before, state())
             to_menu("restored-then-menu")
             assert state()["elixir_charged"] and ram(SPECIAL_ITEMS) & BIT_ELIXIR
             leave()
@@ -156,10 +163,10 @@ def main():
 
         if args.wants("can"):
             # 2. A charged Elixir, nothing told: the line once, kept in the file.
-            start("charged", elixir=True)
+            before = start("charged", elixir=True)
             assert talk() == SLOT_ID, "the line comes first"
             s = line_shown(LINE_CAN, "can-line")
-            assert s["guru_recharges"] == 0 and s["can_lines"] == 1 and s["elixir_told"], s
+            assert counts(before) == (0, 0, 1) and s["elixir_told"], (before, s)
             saves = tcp("files_state")["saves"]
             to_menu("can-then-menu")
             page_to(lambda f: f["saves"] == saves + 1, "the save", "files_state")   # A: "Remember my journey."
@@ -169,7 +176,7 @@ def main():
             print("ok: with a charged Elixir, Conflate's Guru says \"If your Elixir is used, a Guru will restore it.\", "
                   "then greets the hero and offers the menu; saving writes recharge.elixir_told = yes to file 1")
             assert talk(walk=False) == MEDITATE_WITH_YOU, "told: no line the second time"
-            assert state()["can_lines"] == 1, state()
+            assert counts(before) == (0, 0, 1), (before, state())
             leave()
             print("ok: talking to him again, he only greets the hero")
             game.close()
@@ -187,11 +194,11 @@ def main():
 
         if args.wants("none"):
             # 3. No Elixir: no line, nothing told.
-            start("none", elixir=False)
+            before = start("none", elixir=False)
             assert talk() == MEDITATE_WITH_YOU, "no Elixir: no line"
             to_menu("none-menu")
             s = state()
-            assert not s["elixir_told"] and s["restored_lines"] == s["can_lines"] == 0 and s["talk"] == 0, s
+            assert not s["elixir_told"] and counts(before) == (0, 0, 0) and s["talk"] == 0, (before, s)
             leave()
             print("ok: with no Elixir, he only greets the hero, and tells him nothing")
 
