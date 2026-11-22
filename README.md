@@ -22,275 +22,43 @@ How the game works, as far as we've learned it, is in
 
 ## What's new
 
-### The title
+### A quest log
 
-**REMASTERED on the title.** The title screen shows REMASTERED under the
-FAXANADU logo, in the game's own font and the light yellow of the logo. The
-rest of the title is the original's.
-
-![The original title, with START and CONTINUE, beside the remaster's: REMASTERED under the logo, above the file select](docs/screenshots/title.png)
-
-### Saving and the Gurus
-
-**Save files.** The title screen offers three files, as in Zelda: pick an
-empty one to start a new game, or a saved one to continue exactly as you left
-it: title, gold, experience, items, quests and the Gurus you have met. "Erase
-a file" clears one. A Guru no longer gives a mantra: he offers to remember
-your journey, and the Guru you last saved with is where you continue, and
-where you wake when there's no entrance to come back to. Talking to a Guru
-without saving leaves that where it was. Your file is also saved each time
-you come back from a death or a journey.
-
-![The file select with a saved file (Adept, 123456 gold, Conflate), beside the Guru of Conflate offering to remember your journey](docs/screenshots/save-files.png)
-
-**Guru travel.** A temple's Guru can send you to any other Guru you have
-visited: choose "Send me to another Guru." when he asks, or say yes after he
-remembers your journey. A to go, B to hear the next town. HP, MP, gold and
-your spawn point are kept.
-
-![The Guru of Conflate offers to send you to another Guru, and B moves on to the next Guru you have met](docs/screenshots/guru-travel.png)
-
-**Death keeps gold.** When you die, the Guru brings you back with all your
-gold and experience, instead of your title's starting amounts. You still come
-back with full HP and MP, and the timed items are gone, as before.
-
-![The status bar after the Guru brings a Soldier back: the original resets him to 3500 experience and 1200 gold, the remaster keeps his 5000 and 12345](docs/screenshots/death-keeps-gold.png)
-
-**Zone respawn.** After the Guru's words, you come back where you last
-entered the tower, castle, town or region you died in, instead of at a
-temple. Until you have entered one, and after continuing or a Guru's journey
-until you walk out of the temple, you wake at the temple as before.
-
-![Dying inside the Tower of Trunk: the original wakes the hero at Eolis's temple, the remaster at the tower's door](docs/screenshots/zone-respawn.png)
-
-### Combat
-
-**Block.** Hold V on the keyboard, or B on a controller, with a shield (or the
-Battle Helmet) in hand to stand your ground and raise it: enemy magic from the
-front, and Sugata's flash from any side, is stopped with the shield's sound.
-Contact and sword damage are as before. As you raise it, you glint twice in
-the shield's colors, so you can see you're blocking. The first time you get a
-shield or the Battle Helmet, the game adds a line naming your key, once.
-
-![An Execution Hood's shot coming at the hero: not blocking, he is in his own colors; blocking, he glints in his shield's](docs/screenshots/block.png)
-
-**Magic button.** C on the keyboard, or Y on a controller, casts your selected
-spell, as Up+B does, but without going through a door, talking to anyone or
-swinging your sword. Up+B still works.
-
-![Beside a Guru, Up and B starts his conversation; the Magic button casts Deluge instead](docs/screenshots/magic-button.png)
-
-**Sugata's flash.** Sugata, in the Mist, blinks for half a second before it
-flashes, and the band of the screen its flash will reach dims faintly. The
-flash greys only that band and hurts only there: step out of it, or hold
-Block. With the Magic Shield, Block turns the flash back on Sugata. Ointment
-now keeps your HP, though the flash still knocks you back. In the original it
-hit you anywhere on the screen, Ointment or not.
-
-![Sugata blinks and dims the band its flash will reach; the flash greys only that band, missing the hero just outside it](docs/screenshots/sugata.png)
-
-**The Pendant, fixed.** The Pendant was meant to make your weapon hit a
-quarter harder, but a reversed check in the original gave that bonus to
-everyone without it, and finding the Pendant took it away. Now your weapon
-does its base damage until you find the Pendant, and the original's full
-damage once you have it. The Glove adds its bonus as before.
-
-![The same Long Sword hit on a Zozura: 8 without the Pendant, leaving it alive; 10 with it, a kill](docs/screenshots/pendant.png)
-
-**Ointment and the shield, fixed.** Ointment kept enemy magic from hurting
-you, except a shot that hit your shield: the shield still let its share
-through and knocked you back. Now Ointment covers that too: the shield takes
-the shot, and you take nothing.
-
-**The shield after a hit, fixed.** For a second after you are hit, an enemy
-or a shot that touches you does nothing, but in the original a shot on your
-shield still let its share through and knocked you back once more. Now the
-shield takes it, and you take nothing.
-
-**Damage numbers.** Every hit that takes HP shows how much, in the status
-bar's own digits, floating up from where it landed and fading: white for the
-damage you deal, with your weapon, your magic or a reflected flash, and pink
-for the damage you take. A killing blow shows the whole hit. Hits that take
-nothing, through Ointment, Block or a moment of invincibility, show nothing.
-
-![A Long Sword swing hits a Zozura for a white 8 while the other bites the hero from behind for a pink 7](docs/screenshots/damage-numbers.png)
-
-**A taller dagger.** The Hand Dagger used to swing over low enemies that every
-sword hits, like the Zozura crawling outside Eolis. Now its swing reaches as
-low as the swords', so it hits them. It keeps its short reach, so the Long
-Sword is still an upgrade.
-
-![The same swing of the Hand Dagger at a crawling Zozura: the original's passes over it, the remaster's hits it for 4](docs/screenshots/taller-dagger.png)
-
-**Weapons indoors.** In shops, houses and temples the Select menu equips what
-you choose, as it does outside, and you keep your weapon in hand: buy a sword
-and swing it on the spot. Swinging at townsfolk does nothing, as before. In
-the few rooms with enemies inside, in the Mist and Dartmoor, your sword now
-hurts them too; in the original only magic did.
-
-![A swing at the counter of Forepaw's tool shop: empty-handed in the original, with the Long Sword in the remaster](docs/screenshots/equip-indoors.png)
-
-### Getting around
-
-**The map.** Press M, or the left trigger on a controller, and the game
-pauses on a map of where you have been, as in Metroid: a box for every screen
-you have stood on, laid out by how the screens join, with the one you are on
-blinking. Screens you haven't seen stay blank. Each region, tower and castle
-has its page, the towns sitting between the screens they join; Left and Right
-turn the page, and B, Start or M close the map. Marks show the doors you have
-used: Gurus, shops, other buildings, and doors to towers, castles and other
-regions. Ladders you have climbed join the screens above and below. Your file
-keeps the map.
-
-![The map on the Trunk's page: the screens seen from its first to Forepaw, with the towns between them, the doors used marked and the hero's screen lit](docs/screenshots/map.png)
-
-**A quest log.** Faxanadu's people tell you where to go and what to find, but
-nothing says which lines matter, and they are easy to forget. Now when someone
-asks something of you, the text box adds "New quest" and its name after their
-line, and "Quest complete" when it is done: the King's plea for the fountain's
-water, the Ring of Elf, the Mattock and the wall, the three springs, the path
-to Mascon, the meteorite, the Battle Suit, the rings of Dworf and the Demon,
-and the Evil One, 17 in all. Chatter stays chatter. A gold "!" floats over
-anyone with a quest for you, and a "?" over the one you should see next. Press
-L, or the right stick on a controller, and the game pauses on your quests: the
-ones under way with what to do, then the ones done. Your file keeps them.
-
-![Before you speak to the King, a "!" over him; after, none. The man on Mist who sent you for the meteorite, with a "?" now you have it](docs/screenshots/quest-marks.png)
+Faxanadu's people tell you where to go and what to find, but nothing says
+which lines matter, and they are easy to forget. Now when someone asks
+something of you, the text box adds "New quest" and its name after their
+line, and "Quest complete" when it is done: the King's plea for the
+fountain's water, the Ring of Elf, the Mattock and the wall, the three
+springs, the path to Mascon, the meteorite, the Battle Suit, the rings of
+Dworf and the Demon, and the Evil One, 17 in all. Chatter stays chatter.
+Press L, or the right stick on a controller, and the game pauses on your
+quests: the ones under way with what to do, then the ones done. Your file
+keeps them.
 
 ![The King's plea ends with New quest, The King's Plea, in his box; the quest log, partway to Mascon](docs/screenshots/quest-log.png)
 
-**Forgiving jumps.** A pressed up to 5 frames after you walk off a ledge still
-jumps, from where you are, and A pressed in the air up to 6 frames before you
-land jumps as you land. No jump goes higher or further than a well-timed one
-in the original. The Wing Boots, ladders and knockback work as before, and
-raising Block drops a press it was keeping, so you land standing your ground.
+A gold "!" floats over anyone with a quest for you, and a "?" over the one
+you should see next.
 
-![A pressed 3 frames after walking off a ledge, with the hero's path traced: the original falls, the remaster jumps](docs/screenshots/forgiving-jumps.png)
+![Before you speak to the King, a "!" over him; after, none. The man on Mist who sent you for the meteorite, with a "?" now you have it](docs/screenshots/quest-marks.png)
 
-**A falling pose.** Walking off a ledge, the hero used to fall standing or
-mid-step, as if walking on air. Now he shows the jump pose until he lands, as
-in a jump.
+### The map
 
-![The same frame of a fall off a ledge: a walking pose in the original, the jump pose in the remaster](docs/screenshots/falling-pose.png)
+Press M, or the left trigger on a controller, and the game pauses on a map of
+where you have been, as in Metroid: a box for every screen you have stood on,
+laid out by how the screens join, with the one you are on blinking. Screens
+you haven't seen stay blank. Each region, tower and castle has its page, the
+towns sitting between the screens they join; Left and Right turn the page,
+and B, Start or M close the map. Marks show the doors you have used: Gurus,
+shops, other buildings, and doors to towers, castles and other regions.
+Ladders you have climbed join the screens above and below. Your file keeps
+the map.
 
-**Ladders, fixed.** Holding Up at the top of a ladder used to lift you a pixel
-past its end, drop you, and lift you again, bobbing for as long as you held
-it. Now you stop at the top, and A jumps from there as soon as you let go of
-Up; the original jumped only if you let go right after a drop. And stepping
-onto the dried fountain's screen, by the door to the Mist, and straight back
-off dropped the fountain's ladder into the next screen, through its floor;
-now it drops only on its own screen.
+![The map on the Trunk's page: the screens seen from its first to Forepaw, with the towns between them, the doors used marked and the hero's screen lit](docs/screenshots/map.png)
 
-![Trunk's screen beside the fountain's, after walking into the fountain's screen and straight back: the original has dropped the fountain's ladder here, through the floor; the remaster leaves the screen as it is](docs/screenshots/ladders.png)
+### Seamless
 
-**Holding on to ladders.** A hit while you're on a ladder no longer knocks you
-off it: you take the damage and hold on. On the ground, knockback is as
-before.
-
-![The same hit on a ladder, a few frames later: the original has knocked the hero off it and he falls; the remaster keeps him on it](docs/screenshots/ladder-hold.png)
-
-### Keys and items
-
-**Keys that find themselves.** Press Up at a locked door and the right key
-from your inventory opens it, without selecting it first; whatever item you
-had selected stays selected.
-
-![Up at Eolis's locked door with the Mattock selected: the original names the key it needs, the remaster uses the J key](docs/screenshots/keys.png)
-
-**Tools that last.** A key stays in your inventory after it opens a door, and
-the Mattock after it breaks a wall. Potions and the other consumables are
-still used up.
-
-![The item list after the J key opened a door and the Mattock broke a wall: empty in the original, both kept in the remaster](docs/screenshots/tools-that-last.png)
-
-**Items that recharge.** The Wing Boots, the Hour Glass and the Elixir are
-kept after use. The Wing Boots fly longer as your title rises (30, 40, 50 and
-60 seconds, every four titles, where the original's flights got shorter),
-then recharge for 60 seconds. The Hour Glass still stops time for 15 seconds
-and costs half your HP, then recharges for 60 seconds. While one recharges,
-T: on the status bar blinks the seconds left, and using it does nothing.
-Dying makes both ready. The Elixir still revives you, then stays with you,
-spent, until you talk to a Guru; the menu's Player page shows it only while
-it is charged. Finding one you already own recharges it; buying does not, since
-a shop won't sell you a second Elixir, charged or spent. Your save file keeps
-the cooldowns and whether the Elixir is spent.
-
-![The Wing Boots flying with T: counting the flight down, then recharging with T: counting the 60 seconds](docs/screenshots/recharging.png)
-
-**The Battle Suit and the Dragon Slayer, fixed.** In the original, picking up
-the Battle Suit counted your weapons instead of your armor, and the Dragon
-Slayer your armor instead of your weapons, so either could wipe out armor or
-weapons you carried, or list ones you didn't have. Now each joins its own
-list, after what you carry.
-
-![The armor list after picking up the Battle Suit with three armors listed: the original keeps only the suit, the remaster adds it after them](docs/screenshots/battle-suit.png)
-
-**The original's graphics glitches, fixed.** On a ladder in Studded Mail, the
-hero's chest showed a stray tile left by an earlier armor or shield; the Fire
-spell's second frame had a piece of its first; the Myconid's foot flickered
-into the wrong colors; the Tower of Fortress had a wall block in its floor;
-and the tip of the F in the title's logo was grey. Each is drawn as it was
-meant to be.
-
-![Five glitches, the original's on the left and the remaster's on the right: Studded Mail climbing with a stray tile at the chest, the Fire spell's second frame, the Myconid's foot, the Tower of Fortress's floor under its left pillar, and the tip of the title's F](docs/screenshots/graphics.png)
-
-### Shops and text
-
-**Quick shops.** Up on a shopkeeper opens his list straight away, with no
-greeting or questions. Select switches between buying and selling, buying or
-selling keeps you in the list with the cursor where it was, and B leaves.
-Prices, what you can carry and "This is not enough Golds." are the game's own.
-Any shop buys anything you carry: half its price where a shop sells it,
-otherwise 100 Golds. Up from the top or Down from the bottom turns the page of
-a long list. The Dragon Slayer, the Battle Suit and the Battle Helmet are not
-for sale, and what you have equipped or selected is not offered, as before.
-What you already have for good, the Wing Boots, the Hour Glass, the Elixir
-(charged or spent), a key or the Mattock, keeps its place in a shop's list but
-says OWNED instead of a price, and A on it does nothing.
-
-![Forepaw's tool shop: its list up at once, with the Wing Boots you carry OWNED, and Select for what it buys from you](docs/screenshots/quick-shops.png)
-
-**Hold A to speed up text.** Text types at the game's own pace; hold A and it
-types 4 times as fast. A page break or a question still waits for a fresh
-press of A, so holding it never skips a page or answers for you: let go, then
-press A to go on.
-
-![The same 40 frames of the Guru's greeting, without A and with A held](docs/screenshots/text-speed.png)
-
-**The typing sound, fixed.** The original's typing sound reads past the end
-of its own two-sound table, so every character ends in a loud clack. Now it
-plays the softer sound the table holds.
-
-**The mantra's line break, fixed.** Where a Guru's mantra starts its second
-line was decided by a byte read from the wrong part of the ROM. In the
-original that byte happens to work, but another would have put the second
-line over the first. Now the break is certain. A Guru shows a mantra only
-when no save file is in play.
-
-**Zone names.** When you enter a different town, region, tower or castle, its
-name appears below the status bar for about two seconds in the game's own
-text box, as the dialogue names it ("Tower of Suffer", "Castle of
-Fraternal"). Shops, houses and temples show nothing.
-
-![Walking into the Tower of Fortress shows its name below the status bar](docs/screenshots/zone-names.png)
-
-**Slain by.** When something takes your last HP, the same banner names it
-while you fall: "Slain by a Sugata", "Slain by an Execution Hood", "Slain
-by Poison". A shot or a falling rock is named after whoever cast it. The
-Guru's words that follow are as before.
-
-![An Execution Hood's shot takes the hero's last HP: Slain by an Execution Hood](docs/screenshots/slain-by.png)
-
-**Speaker names.** When someone with a portrait talks to you, their name sits
-on a tab above the dialogue box for the whole conversation, as the game names
-them: "Guru of Apolune", "King of Eolis", "Martial Artist", "Key Seller".
-People without a portrait show no name.
-
-![The King of Eolis, named on a tab above the dialogue box](docs/screenshots/speaker-names.png)
-
-### A way to view it: Seamless
-
-**Seamless** is a separate option in the launcher's Mods screen, marked
+Seamless is a separate option in the launcher's Mods screen, marked
 Experimental and off by default. It is a way to view the game rather than
 part of the remaster, so it has a switch of its own. It joins connected rooms
 into one continuous world, keeps neighboring rooms' actors moving, and fits
@@ -299,6 +67,105 @@ the connected map. It is still a preview, for local play only. See
 [docs/SEAMLESS-WORLD.md](docs/SEAMLESS-WORLD.md).
 
 ![The same spot in the stock view and in Seamless, which joins the next screen on](docs/screenshots/seamless.png)
+
+## Also new
+
+### Saving and the Gurus
+
+- **Save files.** The title screen offers three files, as in Zelda, each
+  continuing exactly as you left it. A Guru no longer gives a mantra: he
+  offers to remember your journey, and you continue at the last Guru you saved
+  with.
+- **Guru travel.** A temple's Guru can send you to any other Guru you have
+  visited, keeping your HP, MP and gold.
+- **Zone respawn.** After a death you come back where you last entered the
+  tower, castle, town or region you died in, instead of at a temple.
+- **Death keeps gold.** The Guru brings you back with all your gold and
+  experience, instead of your title's starting amounts.
+
+### Combat
+
+- **Block.** Hold V, or B on a controller, with a shield or the Battle Helmet
+  to raise it and stop enemy magic from the front, and Sugata's flash from any
+  side. You glint in the shield's colors as you raise it.
+- **Magic button.** C, or Y on a controller, casts your selected spell, as
+  Up+B does, but without going through a door, talking to anyone or swinging
+  your sword.
+- **Damage numbers.** Every hit that takes HP shows how much, floating up from
+  where it landed: white for the damage you deal, pink for the damage you take.
+- **A taller dagger.** The Hand Dagger's swing reaches as low as the swords',
+  so it hits low enemies like the Zozura outside Eolis. It keeps its short
+  reach.
+- **Sugata's flash, made fair.** Sugata, in the Mist, blinks before it flashes
+  and dims the band of the screen the flash will reach, and the flash hurts
+  only there, where it used to hit you anywhere, Ointment or not. With the
+  Magic Shield, Block turns it back on Sugata.
+- **Weapons indoors.** In shops, houses and temples the Select menu equips
+  what you choose and you keep your weapon in hand, and your sword hurts the
+  few enemies indoors, in the Mist and Dartmoor.
+
+### Getting around
+
+- **Forgiving jumps.** A pressed up to 5 frames after you walk off a ledge
+  still jumps, and up to 6 frames before you land jumps as you land. Walking
+  off a ledge shows the jump pose, instead of walking on air.
+- **Holding on to ladders.** A hit while you're on a ladder no longer knocks
+  you off it.
+- **Zone names.** Entering a different town, region, tower or castle shows its
+  name below the status bar for about two seconds.
+
+### Items and shops
+
+- **Keys and tools.** Up at a locked door opens it with the right key from
+  your inventory, without selecting it, and keys and the Mattock are no longer
+  used up.
+- **Items that recharge.** The Wing Boots and the Hour Glass recharge after
+  use, counting down on the status bar, and the Wing Boots fly longer as your
+  title rises. The Elixir stays with you after it revives you, and a Guru
+  recharges it.
+- **Quick shops.** Up on a shopkeeper opens his list at once, Select switches
+  between buying and selling, and you stay in the list after each sale. Any
+  shop buys anything you carry, and what you own for good says OWNED.
+
+### Text and the title
+
+- **Faster text.** Hold A and text types 4 times as fast. A page break or a
+  question still waits for a fresh press of A, so you never skip a page.
+- **Speaker names.** Someone with a portrait is named on a tab above the
+  dialogue box, as the game names them: "Guru of Apolune", "King of Eolis".
+- **Slain by.** When something takes your last HP, a banner names it while you
+  fall: "Slain by a Sugata", "Slain by Poison".
+- **REMASTERED on the title.** The title screen shows REMASTERED under the
+  FAXANADU logo, in the game's font and the logo's light yellow.
+
+## Bugs fixed
+
+The remaster also fixes these bugs in the original game:
+
+- The Pendant was meant to make your weapon hit a quarter harder, but a
+  reversed check gave that bonus to everyone without it, and finding the
+  Pendant took it away. Now the bonus comes with the Pendant.
+- A shot on your shield still let its share through and knocked you back when
+  nothing should have hurt you: with Ointment, or in the second after a hit.
+  Now the shield takes it, and you take nothing.
+- Picking up the Battle Suit counted your weapons instead of your armor, and
+  the Dragon Slayer your armor instead of your weapons, so either could wipe
+  out what you carried or list what you didn't have. Now each joins its own
+  list.
+- Holding Up at the top of a ladder bobbed you a pixel past its end and back
+  for as long as you held it. Now you stop at the top, and A jumps from there.
+- Stepping onto the dried fountain's screen and straight back off dropped the
+  fountain's ladder into the next screen, through its floor. Now it drops only
+  on its own screen.
+- Five graphics glitches are drawn as they were meant to be: a stray tile on
+  the hero's chest on a ladder in Studded Mail, a piece of the Fire spell's
+  first frame in its second, the Myconid's foot flickering into the wrong
+  colors, a wall block in the Tower of Fortress's floor, and the grey tip of
+  the F in the title's logo.
+- The typing sound read past the end of its own table, so every character
+  ended in a loud clack. Now it plays the softer sound the table holds.
+- Where a Guru's mantra starts its second line came from a byte read from the
+  wrong part of the ROM, which only happens to work. Now the break is certain.
 
 ## Controls
 
@@ -374,8 +241,8 @@ launcher first.
 
 The game's C is in `src/` (each feature is a `fax_<name>.c`), its tests in
 `tests/`, the mod in `mods/`, scripts in `tools/` and notes in `docs/`.
-`tools/readme_screenshots.py` plays each feature from your ROM to make the
-screenshots above.
+`tools/readme_screenshots.py` plays the quest log, the map and Seamless from
+your ROM to make the screenshots above.
 
 ## Credits
 
