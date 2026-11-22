@@ -66,7 +66,6 @@
 #include "fax_keys.h"
 #include "fax_recharge.h"
 #include "fax_text.h"
-#include "fax_world.h"
 #include "cyc_mod.h"
 #include "cyc_render.h"
 #include "mod_runtime.h"
@@ -564,13 +563,12 @@ static bool list_shown(void) {
     return shown_tile(LIST_X, LIST_Y) == CORNER_TOP_LEFT && shown_tile(RIGHT, LIST_Y) == CORNER_TOP_RIGHT &&
            shown_tile(LIST_X, BOTTOM) == CORNER_BOTTOM_LEFT && shown_tile(RIGHT, BOTTOM) == CORNER_BOTTOM_RIGHT;
 }
-/* Where native pixel (x, y) is in a presented picture w x h: where Seamless
- * put the native columns (fax_world_native_x), or scaled to fit and
- * centered, as Seamless shows a building (fax_speaker.c). */
+/* Where native pixel (x, y) is in a presented picture w x h: as it is, or
+ * scaled to fit and centered, as Seamless shows a building (fax_speaker.c). */
 static void to_picture(int w, int h, int *x, int *y) {
     int nw = w < 256 ? w : 256, nh = 240 * nw / 256;
     if (nh > h) { nh = h; nw = 256 * nh / 240; }
-    *x = (nw == 256 ? fax_world_native_x(w) : (w - nw) / 2) + *x * nw / 256;
+    *x = (w - nw) / 2 + *x * nw / 256;
     *y = *y * nh / 240;
 }
 

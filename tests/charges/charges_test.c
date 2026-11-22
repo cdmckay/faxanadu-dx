@@ -29,7 +29,7 @@ uint32_t hw_palette_argb[512];
 FaxCharge fax_recharge_charge(int item) { return item >= 0 && item < FAX_RECHARGE_ITEMS ? charge_now[item] : FAX_CHARGE_NONE; }
 bool fax_text_box_showing(void) { return box_up; }
 bool fax_text_hud_showing(void) { return hud_up; }
-int fax_world_native_x(int width) { return width <= 256 ? 0 : world_x; }
+int fax_world_hud_x(int width) { return width <= 256 ? 0 : world_x; }
 uint8_t cyc_mod_peek(uint16_t addr) { return addr < 0x2000 ? ram[addr & 0x7FF] : 0; }
 size_t cyc_mod_copy_cart_payload(uint8_t *out, size_t capacity) {
     if (out && capacity >= cart_size) memcpy(out, cart, cart_size);

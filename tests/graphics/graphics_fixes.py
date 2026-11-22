@@ -162,7 +162,7 @@ class Look:
             xy = replies[3]["xy"]
             self.origin = (xy[0] * ROOM_W - world["camera"][0], HUD + xy[1] * ROOM_H - world["camera"][1])
         else:
-            self.origin = (fax_e2e.native_x(len(self.rows[0])), HUD)
+            self.origin = ((len(self.rows[0]) - 256) // 2, HUD)
 
     def drop(self):
         self.game.shots.remove(self.shot.name)

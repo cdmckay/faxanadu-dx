@@ -21,7 +21,6 @@
  * did when saved. See docs/GAME_INTERNALS.md, "Portraits" and "The text box". */
 #include "fax_speaker.h"
 #include "fax_text.h"
-#include "fax_world.h"
 #include "fax_zone.h"
 #include "cyc_mod.h"
 #include "cyc_render.h"
@@ -140,13 +139,12 @@ static bool tab_now(Tab *t) {
     return true;
 }
 
-/* Where native pixel (x, y) is in a presented picture w x h: where Seamless
- * put the native columns (fax_world_native_x), or scaled to fit and
- * centered, as Seamless shows a building (fax_world.c). */
+/* Where native pixel (x, y) is in a presented picture w x h: as it is, or
+ * scaled to fit and centered, as Seamless shows a building (fax_world.c). */
 static void to_picture(int w, int h, int *x, int *y) {
     int nw = w < 256 ? w : 256, nh = 240 * nw / 256;
     if (nh > h) { nh = h; nw = 256 * nh / 240; }
-    *x = (nw == 256 ? fax_world_native_x(w) : (w - nw) / 2) + *x * nw / 256;
+    *x = (w - nw) / 2 + *x * nw / 256;
     *y = *y * nh / 240;
 }
 

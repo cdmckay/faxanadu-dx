@@ -172,7 +172,7 @@ def check_hint(path, text, page=None):
     its hint line holding `text`'s letters in one color on black, and the
     page, if any, at the right of the row over its first entry."""
     width, height, px = png(path)
-    ox = fax_e2e.native_x(width)                                  # where Seamless puts the native picture
+    ox = (width - 256) // 2 if width >= 256 else 0                 # where Seamless puts the native picture
     corner = [px[LIST_FRAME[1] + r][ox + LIST_FRAME[0] + c] for r in range(8) for c in range(8)]
     assert len(set(corner)) > 1, f"{path.name}: no frame at the list's corner"
     lines = [(HINT[0], HINT[1], text)] + ([(LINE_END - 8 * len(page), PAGE_ROW, page)] if page else [])
@@ -189,7 +189,7 @@ def check_no_price(path, entry):
     column 23, 5 digits, on the entry's second row) are the list's inside, as
     the blank row over the first entry is."""
     width, height, px = png(path)
-    ox = fax_e2e.native_x(width)
+    ox = (width - 256) // 2 if width >= 256 else 0
     inside = px[PAGE_ROW][ox + 96]
     y = 88 + entry * 16
     cells = {px[y + r][ox + 184 + c] for r in range(8) for c in range(40)}
@@ -201,7 +201,7 @@ def price_cells(path, entry):
     entry's second row): for each, the set of colors in it other than the
     list's inside."""
     width, height, px = png(path)
-    ox = fax_e2e.native_x(width)
+    ox = (width - 256) // 2 if width >= 256 else 0
     inside = px[PAGE_ROW][ox + 96]
     y = 88 + entry * 16
     return [{px[y + r][ox + 184 + 8 * k + c] for r in range(8) for c in range(8)} - {inside} for k in range(5)]

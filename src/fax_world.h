@@ -27,11 +27,9 @@ const uint8_t *fax_world_room_ram(int area,int room);
  * filled it, before the room is drawn, collided with or adopted. NULL for
  * none. The graphics fixes (fax_graphics.c) set it. */
 void fax_world_set_room_fixup(void (*fixup)(uint8_t area,uint8_t screen,uint8_t *ram));
-/* Where native column 0 goes in a picture `width` wide, for the status bar
- * and what lines up with it: the native picture, its text boxes and menus,
- * and the banners below the status bar. Seamless centres the status bar and
- * the recharging items' row beside it together (fax_charges.h) whenever the
- * status bar shows, and centres the native 256 columns otherwise (the title,
- * a dark screen); this is where the last picture put them. Without Seamless,
- * the engine's own origin (0 at 256 wide). */
-int fax_world_native_x(int width);
+/* Where the status bar band's column 0 (its 32 lines) went in the last
+ * picture, `width` wide: Seamless centres the band and the recharging items'
+ * row past it together (fax_charges.h) while the status bar shows. Only the
+ * band: rooms, the native picture below it and its text boxes stay centred
+ * in the view. Without Seamless, the engine's own origin (0 at 256 wide). */
+int fax_world_hud_x(int width);

@@ -48,7 +48,6 @@ import sys
 import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-import fax_e2e  # noqa: E402
 from fax_e2e import Game, act, batch, chunks, fixture, frame, parse_args, ram, tcp, until, wait  # noqa: E402
 
 AREA, SCREEN, POS_X, POS_Y, PLAYER_FLAGS, STATUS, IFRAMES = 0x24, 0x63, 0x9E, 0xA1, 0xA4, 0xA5, 0xAD
@@ -156,7 +155,7 @@ def main():
             camera, xy = replies[2]["camera"], replies[3]["xy"]
             origin = (xy[0] * 256 - camera[0], HUD + xy[1] * 208 - camera[1])
         else:
-            origin = (fax_e2e.native_x(width), HUD)
+            origin = ((width - 256) // 2, HUD)
         for n in s["numbers"]:
             assert n["room"] == ZOZURA_SCREEN, n
             assert n["drawn"] == [origin[0] + n["x"], origin[1] + n["y"]], (n, origin)

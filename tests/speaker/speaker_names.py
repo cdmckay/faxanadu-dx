@@ -26,8 +26,8 @@ import sys
 import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import (PAGE_FRAMES, Game, act, fixture, frame, hold, hold_a, hurry_page, let_go, native_x,  # noqa: E402
-                     page_through, page_to, parse_args, ram, step_toward, tcp, type_out, typed, until, wait, walk)
+from fax_e2e import (PAGE_FRAMES, Game, act, fixture, frame, hold, hold_a, hurry_page, let_go, page_through,  # noqa: E402
+                     page_to, parse_args, ram, step_toward, tcp, type_out, typed, until, wait, walk)
 
 AREA, SCREEN, PLAYER_X = 0x24, 0x63, 0x9E
 TEXTBOX_CLOSED, MESSAGE_ID, TEXTBOX_PAUSED = 0x20C, 0x213, 0x215
@@ -88,7 +88,7 @@ def check_tab(path, row, length, inside):
     and its line holds the name: `length` characters of the text box's text
     color on black."""
     width, height, px = png(path)
-    ox = native_x(width)                                          # where Seamless puts the native picture
+    ox = (width - 256) // 2 if width >= 256 else 0                 # where Seamless puts the native picture
     block = lambda x, y: [px[y + r][ox + x + c] for r in range(8) for c in range(8)]
     assert block(TAB_X, row * 8) == block(*PORTRAIT_BOX), f"{path.name}: no frame corner at the tab"
     assert block(TAB_X, row * 8 - 8) != block(*PORTRAIT_BOX), f"{path.name}: the tab is not where expected"

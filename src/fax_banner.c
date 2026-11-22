@@ -18,7 +18,6 @@
  * See docs/GAME_INTERNALS.md, "Areas, screens and zones" and "The text box". */
 #include "fax_banner.h"
 #include "fax_text.h"
-#include "fax_world.h"
 #include "fax_zone.h"
 #include "cyc_mod.h"
 #include "cyc_render.h"
@@ -146,12 +145,11 @@ const uint32_t *fax_banner_draw(const uint32_t *picture, int *w, int *h, const c
         }
         memcpy(canvas, from, n * sizeof *canvas);
     }
-    /* Below the HUD (scaled down with the picture if it is under 256 wide),
-     * centered under it: in Seamless, where it put the native columns. */
+    /* Below the HUD (scaled down with the picture if it is under 256 wide), centered. */
     int cols = (int)strlen(line) + 2 * PAD;
     int box_w = (cols + 2) * FAX_TEXT_CELL;
     int hud = width < 256 ? HUD * width / 256 : HUD;
-    int x = width < 256 ? (width - box_w) / 2 : fax_world_native_x(width) + (256 - box_w) / 2, y = hud + FAX_TEXT_CELL;
+    int x = (width - box_w) / 2, y = hud + FAX_TEXT_CELL;
     fax_text_box(canvas, width, height, x, y, cols, 1, alpha);
     fax_text_draw(canvas, width, height, x + (1 + PAD) * FAX_TEXT_CELL, y + FAX_TEXT_CELL, line, alpha);
     *w = width; *h = height;

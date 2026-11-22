@@ -1867,15 +1867,17 @@ jump a few updates after stepping off, as A from the hang itself would.
   15). The Player page's special items are Items-category IDs too
   (`SPECIAL_ITEM_TILE_START_IDS`, `$8E63`, bank 12): the Elixir's `$92` is
   `$80` | `ITEMINVENTORY_ELIXIR` (`$12`), so the page shows the same picture.
-- **In Seamless** (`fax_world_native_x`), the status bar is copied from the
-  native picture into the 424-wide view, with the recharging items' row
-  (`fax_charges.c`) 64 pixels past its right edge, and the two are centred
-  as one group: the status bar's column 0 at x 52, not 84. Everything that
-  lines up with the status bar goes there too: the native picture while it
-  shows the status bar, its text boxes and menus, the zone and quest banners,
-  and an area narrower than the view (a building, an arena), which sits under
-  it as on the NES. The title and other screens without the status bar stay
-  centred. With the remaster off there is no row and no Seamless.
+- **In Seamless** (`fax_world_hud_x`), the status bar band (lines 0-31) is
+  copied from the native picture into the 424-wide view, with the recharging
+  items' row (`fax_charges.c`) 64 pixels past its right edge, and the two are
+  centred as one group: the band's column 0 at x 52, not 84. Only the band
+  moves. Everything below it stays centred in the view as before: a room
+  narrower than the view (a building, an arena), the native picture's lines
+  32-239 (a region load, a script), its text boxes and menus, the speaker
+  tabs, Quick shops' list, and the zone and quest banners. So in a building
+  the band sits 32 pixels left of the room under it. The title and other
+  screens without the status bar are centred whole. With the remaster off
+  there is no row and no Seamless.
 
 ## MP and its bar (bank 15)
 
@@ -4186,7 +4188,7 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   1.5 s after. Drawn at present time, after Seamless composes its picture and
   before every other feature's drawing, only while the frame shows the status
   bar (`fax_text_hud_showing`), and only where there is room: Seamless lays
-  the status bar out with the row (`fax_charges_row`, `fax_world_native_x`),
+  the status bar band out with the row (`fax_charges_row`, `fax_world_hud_x`),
   and the stock 256-wide view, the remaster off, has none. No hooks, no ROM,
   and nothing written to the machine. Its 7-byte save-state record (a
   version, each item's state at the last frame's end, each one's blink left)

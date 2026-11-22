@@ -33,8 +33,6 @@ size_t cyc_mod_copy_cart_payload(uint8_t *out, size_t capacity) {
 }
 uint16_t cyc_render_line_bg_table(int y) { (void)y; return bg_table; }
 uint8_t cyc_render_line_mask(int y) { (void)y; return 0x1E; }   /* fax_text.c's HUD test: rendering on */
-static int world_x = -1;            /* Seamless's native column 0, or -1: centered */
-int fax_world_native_x(int width) { return width <= 256 ? 0 : world_x >= 0 ? world_x : (width - 256) / 2; }
 uint8_t cyc_render_chr(uint16_t a) { return chr[a & 0x1FFF]; }
 int cyc_render_line_scroll_x(int y) { (void)y; return 0; }
 int cyc_render_line_scroll_y(int y) { return y; }
@@ -485,14 +483,6 @@ static void presenting(void) {
     out = fax_banner_present(wide, &w, &h);
     CHECK(out != wide && w == 424 && h == 240 && presents == 0);
     CHECK(out[40 * 424 + (424 - 168) / 2] != 0xFF654321u && out[40 * 424 + (424 - 168) / 2 - 1] == 0xFF654321u);
-    /* With the recharging items' row, Seamless puts the status bar left of
-     * centre (fax_world_native_x): the banner is centered under it. */
-    world_x = 52;
-    for (unsigned i = 0; i < 424 * 240; ++i) wide[i] = 0xFF654321u;
-    out = fax_banner_present(wide, &w, &h);
-    CHECK(out[40 * 424 + 52 + x0] != 0xFF654321u && out[40 * 424 + 52 + x0 - 1] == 0xFF654321u);
-    CHECK(out[40 * 424 + 52 + x0 + 167] != 0xFF654321u && out[40 * 424 + 52 + x0 + 168] == 0xFF654321u);
-    world_x = -1;
     /* Off, or nothing showing: the picture as it came. */
     deactivate();
     CHECK(fax_banner_present(wide, &w, &h) == wide && fax_banner_present(NULL, &w, &h) == NULL);

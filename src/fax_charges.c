@@ -16,7 +16,7 @@
  * after, so an Elixir that just saved him is noticed.
  *
  * Seamless's view is 424 wide, and lays the status bar and the row out
- * centred together (fax_world_native_x): the row is drawn past the status
+ * centred together (fax_world_hud_x): the row is drawn past the status
  * bar's right edge, wherever that is. The stock 256-wide picture has no room
  * for it, so there it draws nothing. It shows only beside the status bar, by
  * what the last frame showed (fax_text_hud_showing): not on the title or the
@@ -155,7 +155,7 @@ const uint32_t *fax_charges_present(const uint32_t *picture, int *w, int *h) {
     if (from) width = *w, height = *h;
     else from = cyc_render_present(&width, &height);
     if (!from || height < FAX_CHARGES_TOP + FAX_CHARGES_ITEM) return picture;
-    int x0 = fax_world_native_x(width) + NATIVE_W;   /* the status bar's right edge */
+    int x0 = fax_world_hud_x(width) + NATIVE_W;   /* the status bar's right edge */
     if (x0 < NATIVE_W || x0 + FAX_CHARGES_ROW > width || !fax_text_hud_showing()) return picture;
     if (!loaded && !(loaded = load_pictures())) {
         FAX_CHARGES_LOG("[charges] cannot read the items' pictures; the status bar's row is off\n");

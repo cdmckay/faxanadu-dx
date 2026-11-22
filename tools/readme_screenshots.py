@@ -239,13 +239,13 @@ class Game(harness.Game):
     # Pictures
     def shot_lit(self, box, name, tries=40):
         """Screenshot, retaken until something is drawn in `box`, in the
-        native picture (where the game says it put it: fax_e2e.native_x()):
-        a blinking mark (a text box's arrow or prompt, the status bar's T:),
-        so every run catches it lit. Its path."""
+        native picture (centred in Seamless's view, as picture() crops it): a
+        blinking mark (a text box's arrow or prompt), so every run catches it
+        lit. Its path."""
         for attempt in range(tries):
             path = self.shot(f"{name}-{attempt}")
             width, rows = read_png(path)
-            ox = fax_e2e.native_x(width)
+            ox = (width - 256) // 2
             if lit(rows, (box[0] + ox, box[1], box[2] + ox, box[3])):
                 return path
             self.wait(3)
@@ -308,24 +308,20 @@ class Scene:
     def __init__(self, name, game):
         self.name, self.game, self.panels, self.sources = name, game, [], []
 
-    def shot(self, caption=None, box=(0, 0, 256, 240), name=None, overlay=False):
+    def shot(self, caption=None, box=(0, 0, 256, 240), name=None):
         """Screenshot the game's picture (what the window shows, with the
         remaster's drawing on it), cropped to `box` (x0, y0, x1, y1), in the
         native picture's place (picture())."""
-        return self.picture(self.game.shot(name or (caption or self.name).lower().replace(" ", "-")), caption, box,
-                            overlay=overlay)
+        return self.picture(self.game.shot(name or (caption or self.name).lower().replace(" ", "-")), caption, box)
 
-    def picture(self, path, caption=None, box=None, native=True, overlay=False):
+    def picture(self, path, caption=None, box=None, native=True):
         """A picture from a file: a screenshot, or a headless run's, cropped
         to `box`. With `native`, the box is in the NES's 256x240 picture,
-        where the remaster's Seamless shows it in its wider view: under the
-        status bar, as it shows buildings and text boxes, where the game says
-        it put them (fax_e2e.native_x(), so call this right after the
-        screenshot); with `overlay`, centred, as it shows the remaster's own
-        screens (the map, the quest log)."""
+        where the remaster's Seamless shows it in its wider view: centred, as
+        it shows buildings, text boxes and the remaster's own screens."""
         width, rows = read_png(path)
         if box and native:
-            ox = (width - 256) // 2 if overlay else fax_e2e.native_x(width)
+            ox = (width - 256) // 2
             box = (box[0] + ox, box[1], box[2] + ox, box[3])
         self.panels.append((crop(rows, box or (0, 0, width, len(rows))), caption))
         self.sources.append(Path(path).name)
@@ -449,7 +445,7 @@ def quest_log(s):
     g.wait(4)
     state = g.tcp("quest_state")
     assert state["active"] == ["king", "sky"] and state["pages"] == 1, state
-    s.shot(name="log", overlay=True)
+    s.shot(name="log")
 
 
 @scene("quest-marks")
@@ -571,7 +567,7 @@ def map_(s):
         g.wait(8)
     else:
         raise AssertionError("the hero's box never lit")
-    s.picture(path, box=(0, 0, 256, 240), overlay=True)          # the map's own screen, where Seamless centres it
+    s.picture(path, box=(0, 0, 256, 240))                        # the map's own screen, where Seamless centres it
 
 
 # ---- running them ----
