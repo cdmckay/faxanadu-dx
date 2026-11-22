@@ -38,6 +38,7 @@
 #include "fax_inventory.h"
 #include "fax_fixes.h"
 #include "fax_finds.h"
+#include "fax_shaft.h"
 #include "fax_map.h"
 #include "fax_quests.h"
 #include "fax_graphics.h"
@@ -215,6 +216,7 @@ static void tcp_setup(void *ctx) {
     fax_quests_tcp_setup();
     fax_graphics_tcp_setup();
     fax_finds_tcp_setup();
+    fax_shaft_tcp_setup();
     fax_entrances_tcp_setup();
     fax_spell_cost_tcp_setup();
 }

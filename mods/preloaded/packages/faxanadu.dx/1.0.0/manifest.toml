@@ -172,6 +172,10 @@ id = "faxanadu.kept-finds"
 
 [[plugin]]
 feature = "dx"
+id = "faxanadu.eolis-shaft"
+
+[[plugin]]
+feature = "dx"
 id = "faxanadu.fair-entrances"
 
 [[plugin]]

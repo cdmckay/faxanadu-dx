@@ -855,6 +855,23 @@ rom = []
 # does. No ROM, no read overrides, no save-state record.
 
 [[feature]]
+id = "eolis-shaft"
+package = "faxanadu.dx"
+plugin = "faxanadu.eolis-shaft"
+source = "src/fax_shaft.c"
+hooks = "faxanadu.eolis-shaft."
+rom = []
+# Hooks, which no other feature hooks: ScreenBuffer_IsBlockImpassable's entry
+# ($E87C), handled (A, Y and P set, then an RTS) only for column 15, rows
+# 0-11, of Eolis $00 and $08, and Game_MainLoop's JSR GameLoop_UpdatePlayer
+# ($DB53), which it only observes, before Seamless's site at
+# GameLoop_UpdatePlayer's entry ($E0CA). There it writes Player_PosX_Block and
+# Player_PosY, and only for a hero in that column or under Eolis's floor, so
+# Seamless reads him where he was put. Seamless's collision read hook redirects
+# ScreenBuffer reads at a seam, and these screens have none to their right.
+# No ROM, no read overrides, no save-state record.
+
+[[feature]]
 id = "spell-cost"
 package = "faxanadu.dx"
 plugin = "faxanadu.spell-cost"

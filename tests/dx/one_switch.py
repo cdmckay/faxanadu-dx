@@ -71,6 +71,7 @@ STATES = {
     "damage-numbers": ("damage_state", "enabled"),
     "inventory-fix": ("inventory_fix_state", "enabled"), "small-fixes": ("small_fixes_state", "enabled"),
     "kept-finds": ("kept_finds_state", "enabled"),
+    "eolis-shaft": ("eolis_shaft_state", "enabled"),
     "map": ("map_state", "enabled"),
     "graphics-fix": ("graphics_fix_state", "enabled"),
     "quest-log": ("quest_state", "enabled"),
