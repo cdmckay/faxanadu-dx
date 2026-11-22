@@ -514,9 +514,12 @@ rom = []
 # hooks come after (below); Seamless observes the routine's entry, $E02B,
 # which runs before either. It
 # changes only A and Z at them, so the game's own code pauses and unpauses
-# (Game_PausedState). Reads bank 3's area tables and bank 15's town edges and
-# climb from a copy of the cart, writes nothing to the machine but those two
-# registers, and draws at present time. No ROM, no read overrides.
+# (Game_PausedState). And Player_HandleTouchItem ($88FB, bank 14), which no
+# other feature hooks, where it only observes X, the slot of the item touched
+# (recharging items' pickup hook is Player_PickUpItem, $C8CD, further in).
+# Reads bank 3's area tables, bank 15's town edges and climb and bank 11's
+# sprite lists from a copy of the cart, writes nothing to the machine but A and
+# Z at the BEQs, and draws at present time. No ROM, no read overrides.
 
 [[feature]]
 id = "small-fixes"

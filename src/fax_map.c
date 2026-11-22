@@ -11,6 +11,15 @@
  * which a respawn or a Guru travel journey also sets, so a temple he wakes
  * in counts. Guru travel's visited Gurus count as their temples' doors.
  *
+ * The items lying in the world (fax_map_layout.c, from bank 11's sprite
+ * lists): one shows on a screen seen while the game would have it there. On
+ * the screen the hero is on (or in the building), that is its sprite in a
+ * slot. Elsewhere it is by its kind: one that lies there at every visit, until
+ * he has touched it (Player_HandleTouchItem, $88FB, bank 14: a hook that only
+ * observes; the game keeps no state for these, so the map does, in the file);
+ * one the game keeps a flag or a list for, until that says he has it; one that
+ * shows on one counted visit in four, never: it is there only while it is.
+ *
  * The Map button (M, or LT on a controller; MapKey and MapButton in
  * config.ini [Game]) opens it during play, through the game's own pause:
  * at GameLoop_CheckPauseGame's BEQ ($E02F), which returns when Start is not
@@ -26,10 +35,12 @@
  * after Seamless composes its own), in the game's text box frame and font
  * (fax_text.c) and fixed NES colors: a box per screen seen, joined to its
  * neighbours seen beside it, and to those above and below by a ladder he has
- * taken; the current screen blinks; and a mark for each door used, at its
- * place on the screen: Gurus, shops, other buildings, and doors to towers,
- * castles and regions. Seen sets are named fields of the file in play
- * (fax_save.h), one an area. See docs/GAME_INTERNALS.md, "The map". */
+ * taken; the current screen blinks; and at their places on their screens, as
+ * Metroid's map does it, only what matters: a cross for a Guru, a mark for
+ * any other door used (buildings, towers, castles, regions), and a dot for an
+ * item still there. Seen sets are named fields of the file in play
+ * (fax_save.h), one an area, and the items taken one more. See
+ * docs/GAME_INTERNALS.md, "The map". */
 #include "fax_map.h"
 #include "fax_map_layout.h"
 #include "fax_quests.h"
@@ -64,8 +75,22 @@ extern uint32_t hw_palette_argb[512];   /* the host's NES colors, emphasis in bi
 #define SCREEN_SCROLL_DIRECTION 0x0054u   /* $FF unless scrolling to the next screen */
 #define AREA_CURRENT_SCREEN     0x0063u
 #define GAME_PAUSED_STATE       0x0120u   /* nonzero while the game is paused */
+#define SPRITE_ENTITIES         0x02CCu   /* CurrentSprites_Entities: 8 slots, $FF empty */
+#define WEAPON_INVENTORY        0x039Du   /* WeaponInventory, ArmorInventory, ShieldInventory: 4 entries each */
+#define ARMOR_INVENTORY         0x03A1u
+#define SHIELD_INVENTORY        0x03A5u
+#define SELECTED_ARMOR          0x03BEu
+#define SELECTED_SHIELD         0x03BFu
+#define NUMBER_OF_WEAPONS       0x03C2u
+#define NUMBER_OF_ARMORS        0x03C3u
+#define NUMBER_OF_SHIELDS       0x03C4u
+#define PLAYER_CUR_WEAPON       0x03C8u   /* the weapon in hand, which the Dragon Slayer's behavior reads */
 #define AREA_SAVED_AREA         0x03D5u   /* where a building's way out leads */
 #define AREA_SAVED_SCREEN       0x03D6u
+#define DURATION_OINTMENT       0x0427u   /* seconds left, $FF (negative) when not running */
+#define DURATION_GLOVE          0x0428u
+#define SPECIAL_ITEMS           0x042Cu   /* bits: $01 Black Onyx, $02 Pendant, $04 Magical Rod */
+#define QUESTS                  0x042Du   /* bits: $08 Zorugeriru's Wing Boots, $10 Ripasheiku's Mattock */
 #define PLAYER_IS_DEAD          0x0438u   /* set from the killing hit until Player_Spawn */
 /* Fixed bank: GameLoop_CheckPauseGame ($E02B): LDA Joy1_ChangedButtonMask, AND #$10, BEQ RETURN_E02A,
  * LDA #$01, STA Game_PausedState, then @_waitForUnpause ($E036): JSR WaitForNextFrame, JSR Sprites_FlipRanges,
@@ -73,6 +98,10 @@ extern uint32_t hw_palette_argb[512];   /* the host's NES colors, emphasis in bi
  * instructions after the BEQs load A, N and Z again, and nothing reads C or V, so Z (and A) alone steer them. */
 #define PAUSE_CHECK 0xE02Fu   /* BEQ RETURN_E02A: Start not new, no pause */
 #define PAUSE_LOOP  0xE040u   /* BEQ @_waitForUnpause: Start not new, another frame paused */
+/* Bank 14: Player_HandleTouchItem, the item category's touch: LDA CurrentSprites_Entities,X, JSR Player_PickUp
+ * (the item's "I've got" script and what it gives), LDX CurrentSpriteIndex, LDA #$FF, STA
+ * CurrentSprites_Entities,X (the item gone), RTS. X is the slot of the item the hero touched. */
+#define PLAYER_HANDLE_TOUCH_ITEM 0x88FBu
 
 #define BUTTON_B     0x40u
 #define BUTTON_START 0x10u
@@ -91,7 +120,7 @@ enum { OPEN_WINDOW = 30 };   /* frames a press waits for the main loop's pause c
 
 /* ---- what the hero has seen ---- */
 
-enum { SET = (FAX_MAP_SCREENS + 7) / 8, DOOR_SET = FAX_MAP_DOORS / 8 };
+enum { SET = (FAX_MAP_SCREENS + 7) / 8, DOOR_SET = FAX_MAP_DOORS / 8, ITEM_SET = FAX_MAP_ITEMS / 8, SLOTS = 8 };
 typedef struct {
     uint8_t seen[FAX_MAP_AREAS][SET];   /* screens stood on */
     uint8_t up[FAX_MAP_AREAS][SET];     /* left upward: a ladder, or the Trunk's climb */
@@ -102,12 +131,13 @@ typedef struct {
 static bool enabled, failed, decoded;
 static FaxMapAtlas atlas;
 static Visits v;
+static uint8_t picked[ITEM_SET];                        /* the items that lie at every visit, taken */
 static struct { uint8_t area, screen, valid; } last;   /* the place seen last, outside or in */
 static uint8_t gurus_merged;                           /* Guru travel's visited Gurus already counted */
 static bool open, closing;
 static int shown = -1;                                 /* the page on display */
 static uint64_t frames, want;                          /* a press waits until frame `want` */
-static unsigned opens, closes, turns, presses, age;
+static unsigned opens, closes, turns, presses, age, pickups;
 static char label[80] = "Map: M / LT";
 
 static uint8_t q(uint16_t a) { return cyc_mod_peek(a); }
@@ -179,6 +209,53 @@ static void merge_gurus(void) {
 
 static bool settled(void) {
     return q(SCREEN_READY_STATE) == 0 && q(INTERRUPT_HANDLERS_ON) && q(SCREEN_SCROLL_DIRECTION) == 0xFF;
+}
+
+/* ---- the items ---- */
+
+static int item_at(unsigned area, unsigned screen, unsigned entity) {
+    for (unsigned i = 0; i < atlas.item_count; ++i)
+        if (atlas.item[i].area == area && atlas.item[i].screen == screen && atlas.item[i].entity == entity)
+            return (int)i;   /* no list holds one item twice */
+    return -1;
+}
+static bool in_slot(unsigned entity) {
+    for (unsigned i = 0; i < SLOTS; ++i) if (q((uint16_t)(SPRITE_ENTITIES + i)) == entity) return true;
+    return false;
+}
+static bool listed(uint16_t list, uint16_t count, uint8_t id) {
+    for (unsigned i = 0, n = q(count); i < n && i < 8; ++i) if (q((uint16_t)(list + i)) == id) return true;
+    return false;
+}
+/* A one-time item the hero has, as its sprite's behavior asks. */
+static bool had(unsigned entity) {
+    switch (entity) {
+    case 0x49: return q(SPECIAL_ITEMS) & 0x01;   /* SpriteBehavior_BlackOnyxDropFromZoradohna */
+    case 0x4A: return q(SPECIAL_ITEMS) & 0x02;   /* SpriteBehavior_PendantDroppedFromRipasheiku */
+    case 0x57: return q(SPECIAL_ITEMS) & 0x04;   /* SpriteBehavior_ShowMagicalRod */
+    case 0x58: return q(SELECTED_ARMOR) == 3 || listed(ARMOR_INVENTORY, NUMBER_OF_ARMORS, 3);       /* Battle Suit */
+    case 0x59: return q(SELECTED_SHIELD) == 3 || listed(SHIELD_INVENTORY, NUMBER_OF_SHIELDS, 3);    /* Battle Helmet */
+    case 0x5A: return q(PLAYER_CUR_WEAPON) == 3 || listed(WEAPON_INVENTORY, NUMBER_OF_WEAPONS, 3);  /* Dragon Slayer */
+    case 0x5B: return q(QUESTS) & 0x10;          /* Ripasheiku's Mattock: Player_Spawn clears it */
+    case 0x5C: return q(QUESTS) & 0x08;          /* Zorugeriru's Wing Boots */
+    default: return false;
+    }
+}
+/* A Glove or an Ointment lying there is gone while one is running (SpriteBehavior_Glove, _Ointment). */
+static bool running(unsigned entity) {
+    return (entity == 0x48 && !(q(DURATION_GLOVE) & 0x80)) || (entity == 0x4E && !(q(DURATION_OINTMENT) & 0x80));
+}
+/* Item i on the map: on a screen seen, and there as the game would have it. */
+static bool item_shown(unsigned i) {
+    const FaxMapItem *it = &atlas.item[i];
+    if (!valid_place(it->map_area, it->map_screen) || !bit(v.seen[it->map_area], it->map_screen)) return false;
+    if (q(AREA_CURRENT_AREA) == it->area && q(AREA_CURRENT_SCREEN) == it->screen && settled())
+        return in_slot(it->entity);   /* he is there: it is, if its sprite is */
+    switch (it->kind) {
+    case FAX_MAP_ITEM_ALWAYS: return !bit(picked, i) && !running(it->entity);
+    case FAX_MAP_ITEM_ONCE: return !had(it->entity);
+    default: return false;            /* one counted visit in four: only while it is there */
+    }
 }
 
 /* Where the hero is, once the screen has settled. */
@@ -290,6 +367,21 @@ static int loop_hook(uint16_t addr) {
     return 0;
 }
 
+/* Player_HandleTouchItem: the hero touched an item. One the game keeps no
+ * state for is taken; the others the game keeps, or brings back. */
+static int touch_hook(uint16_t addr) {
+    (void)addr;
+    if (!enabled || cyc_mod_isolated() || !decoded) return 0;
+    CycModRegs regs;
+    cyc_mod_regs(&regs);
+    if (regs.x >= SLOTS) return 0;
+    int i = item_at(q(AREA_CURRENT_AREA), q(AREA_CURRENT_SCREEN), q((uint16_t)(SPRITE_ENTITIES + regs.x)));
+    if (i < 0) return 0;
+    ++pickups;
+    if (atlas.item[i].kind == FAX_MAP_ITEM_ALWAYS) set_bit(picked, (unsigned)i);
+    return 0;
+}
+
 void fax_map_frame_end(void) {
     if (!enabled) return;
     ++frames;
@@ -319,6 +411,7 @@ static void press(void) {
 static const char *const field[FAX_MAP_AREAS] = {
     "map.eolis", "map.trunk", "map.mist", "map.towns", NULL, "map.branch", "map.dartmoor", "map.zenis",
 };
+#define ITEMS_FIELD "map.items"   /* the items taken, by their place in the atlas's list */
 
 /* A set as hex digits, the first holding items 0-3 (item 0 its lowest bit). */
 static char *put_set(char *out, const uint8_t *set, unsigned count) {
@@ -370,6 +463,7 @@ static bool parse_area(unsigned area, const char *text) {
 
 static void forget(void) {
     memset(&v, 0, sizeof v);
+    memset(picked, 0, sizeof picked);
     last.valid = 0;
     gurus_merged = 0;
 }
@@ -387,6 +481,20 @@ static void on_save(FaxSaveEvent event) {
             fax_save_set(field[area], format_area(area, text) ? text : NULL);
         }
     }
+    if (event == FAX_SAVE_CONTINUED) {   /* damaged: every item shows again, rather than a guess */
+        const char *text = fax_save_get(ITEMS_FIELD);
+        uint8_t got[ITEM_SET];
+        bool ok = !text || get_set(text, got, atlas.item_count, ITEM_SET);
+        if (text && ok) memcpy(picked, got, sizeof picked);
+        else memset(picked, 0, sizeof picked);
+        if (!ok) FAX_MAP_LOG("[map] %s is damaged; every item shows again\n", ITEMS_FIELD);
+    } else {
+        bool any = false;
+        for (unsigned i = 0; i < ITEM_SET; ++i) any |= picked[i] != 0;
+        char text[FAX_SAVE_VALUE];
+        put_set(text, picked, atlas.item_count);
+        fax_save_set(ITEMS_FIELD, any ? text : NULL);
+    }
     if (event == FAX_SAVE_CONTINUED) { last.valid = 0; gurus_merged = 0; }
 }
 
@@ -395,17 +503,22 @@ static void on_save(FaxSaveEvent event) {
 /* NES colors */
 enum {
     BLACK = 0x0F, ROOM = 0x02, ROOM_WALL = 0x22, TOWN = 0x08, TOWN_WALL = 0x28, HERE = 0x16,
-    GURU = 0x30, SHOP = 0x2A, HOUSE = 0x26, DOOR = 0x38,
+    GURU = 0x30, DOOR = 0x38, ITEM = 0x2A,
 };
-enum { MARK_GURU, MARK_SHOP, MARK_HOUSE, MARK_DOOR, MARKS };
-static const uint8_t mark_color[MARKS] = { GURU, SHOP, HOUSE, DOOR };
-static const char *const mark_name[MARKS] = { "Guru", "Shop", "House", "Door" };
-/* 3 x 3 pixels, a row a byte's low 3 bits, the left pixel highest */
+enum { MARK_GURU, MARK_DOOR, MARK_ITEM, MARKS };
+static const uint8_t mark_color[MARKS] = { GURU, DOOR, ITEM };
+static const char *const mark_name[MARKS] = { "Guru", "Door", "Item" };
+/* On the map, 3 x 3 pixels, a row a byte's low 3 bits, the left pixel highest */
 static const uint8_t mark_shape[MARKS][3] = {
     { 2, 7, 2 },   /* a cross */
     { 7, 7, 7 },   /* a block */
-    { 2, 7, 5 },   /* a roof on two walls */
-    { 6, 6, 6 },   /* a door */
+    { 6, 6, 0 },   /* a dot */
+};
+/* In the key, 6 x 6: the same, twice the size, the dot round */
+static const uint8_t key_shape[MARKS][6] = {
+    { 0x0C, 0x0C, 0x3F, 0x3F, 0x0C, 0x0C },
+    { 0x3F, 0x3F, 0x3F, 0x3F, 0x3F, 0x3F },
+    { 0x00, 0x0C, 0x1E, 0x1E, 0x0C, 0x00 },
 };
 
 /* Where the map sits in the native picture: the frame is the whole 256 x 240,
@@ -417,6 +530,9 @@ static const uint8_t cell_sizes[][2] = { { 16, 13 }, { 14, 11 }, { 12, 10 }, { 1
 typedef struct { int16_t x, y, w, h; uint8_t area, screen, seen; } Drawn;
 static Drawn drawn[FAX_MAP_CELLS];
 static unsigned drawn_count;
+typedef struct { int16_t x, y; uint8_t item; } Dot;
+static Dot dots[FAX_MAP_ITEMS];   /* the items drawn on the page shown last */
+static unsigned dot_count;
 static int drawn_page = -1, drawn_cw, drawn_ch;
 static uint32_t *canvas;
 static size_t capacity;
@@ -426,16 +542,24 @@ static void fill(uint32_t *px, int w, int h, int x, int y, int rw, int rh, uint3
     for (int j = y < 0 ? 0 : y; j < y + rh && j < h; ++j)
         for (int i = x < 0 ? 0 : x; i < x + rw && i < w; ++i) px[(size_t)j * (size_t)w + (size_t)i] = color;
 }
-static void mark(uint32_t *px, int w, int h, int x, int y, unsigned kind, int scale) {
+static void mark(uint32_t *px, int w, int h, int x, int y, unsigned kind) {
     for (int r = 0; r < 3; ++r)
         for (int c = 0; c < 3; ++c)
-            if (mark_shape[kind][r] >> (2 - c) & 1) fill(px, w, h, x + c * scale, y + r * scale, scale, scale, nes(mark_color[kind]));
+            if (mark_shape[kind][r] >> (2 - c) & 1) fill(px, w, h, x + c, y + r, 1, 1, nes(mark_color[kind]));
+}
+static void key_mark(uint32_t *px, int w, int h, int x, int y, unsigned kind) {
+    for (int r = 0; r < 6; ++r)
+        for (int c = 0; c < 6; ++c)
+            if (key_shape[kind][r] >> (5 - c) & 1) fill(px, w, h, x + c, y + r, 1, 1, nes(mark_color[kind]));
 }
 static unsigned mark_of(const FaxMapDoor *d) {
-    if (d->kind != FAX_MAP_DOOR_BUILDING) return MARK_DOOR;
-    if (d->palette == FAX_MAP_TEMPLE) return MARK_GURU;
-    if (d->palette == FAX_MAP_TOOL_SHOP || d->palette == FAX_MAP_KEY_SHOP) return MARK_SHOP;
-    return MARK_HOUSE;
+    return d->kind == FAX_MAP_DOOR_BUILDING && d->palette == FAX_MAP_TEMPLE ? MARK_GURU : MARK_DOOR;
+}
+/* Where a 3 x 3 mark for block `block` (YX, 16 x 13 blocks) goes on a box. */
+static void spot(const Drawn *c, unsigned block, int *x, int *y) {
+    int bx = block & 15, by = block >> 4;
+    *x = c->x + 1 + bx * (c->w - 5) / 15;
+    *y = c->y + 1 + (by > 12 ? 12 : by) * (c->h - 5) / 12;
 }
 static const Drawn *drawn_at(unsigned area, unsigned screen) {
     for (unsigned i = 0; i < drawn_count; ++i)
@@ -498,10 +622,21 @@ static void draw_page(uint32_t *px, int w, int h, int ox, int oy) {
         for (unsigned j = 0; j < a->door_count; ++j) {
             const FaxMapDoor *d = &a->door[j];
             if (d->screen != c->screen || !bit(v.doors[c->area], j)) continue;
-            int bx = d->block & 15, by = d->block >> 4;   /* 16 x 13 blocks */
-            int x = c->x + 1 + bx * (c->w - 5) / 15, y = c->y + 1 + (by > 12 ? 12 : by) * (c->h - 5) / 12;
-            mark(px, w, h, x, y, mark_of(d), 1);
+            int x, y;
+            spot(c, d->block, &x, &y);
+            mark(px, w, h, x, y, mark_of(d));
         }
+    }
+    /* The items still there, over the doors: a building's lies at its door. */
+    dot_count = 0;
+    for (unsigned i = 0; i < atlas.item_count; ++i) {
+        const FaxMapItem *it = &atlas.item[i];
+        const Drawn *c = drawn_at(it->map_area, it->map_screen);
+        if (!c || !c->seen || c->w < 6 || c->h < 5 || !item_shown(i)) continue;
+        int x, y;
+        spot(c, it->map_block, &x, &y);
+        mark(px, w, h, x, y, MARK_ITEM);
+        dots[dot_count++] = (Dot){ (int16_t)x, (int16_t)y, (uint8_t)i };
     }
 }
 
@@ -522,7 +657,7 @@ static void draw(uint32_t *px, int w, int h) {
     for (unsigned k = 0; k < MARKS; ++k) width += 6 + 3 + fax_text_width(mark_name[k]) + (k + 1 < MARKS ? 12 : 0);
     int x = ox + (NATIVE_W - width) / 2;
     for (unsigned k = 0; k < MARKS; ++k) {
-        mark(px, w, h, x, oy + KEY_Y + 1, k, 2);
+        key_mark(px, w, h, x, oy + KEY_Y + 1, k);
         x += 9;
         fax_text_draw(px, w, h, x, oy + KEY_Y, mark_name[k], 255);
         x += fax_text_width(mark_name[k]) + 12;
@@ -549,7 +684,9 @@ const uint32_t *fax_map_present(const uint32_t *picture, int *w, int *h) {
 
 /* ---- save states: everything above ---- */
 
-enum { VERSION = 1, RECORD = 1 + sizeof(Visits) + 3 + 1 + 4 + 2 };
+/* Version 2 adds the items taken at the end; a version 1 record (before the
+ * items) loads with none taken. */
+enum { VERSION = 2, RECORD_1 = 1 + sizeof(Visits) + 3 + 1 + 4 + 2, RECORD = RECORD_1 + ITEM_SET };
 static int state_get(uint8_t *buf, int cap) {
     if (cap < (int)RECORD) return -1;
     uint8_t *p = buf;
@@ -559,11 +696,12 @@ static int state_get(uint8_t *buf, int cap) {
     *p++ = gurus_merged;
     *p++ = open; *p++ = (uint8_t)shown; *p++ = (uint8_t)(age & 0xFF); *p++ = (uint8_t)(want > frames ? want - frames : 0);
     *p++ = 0; *p++ = 0;
+    memcpy(p, picked, sizeof picked); p += sizeof picked;
     return (int)(p - buf);
 }
 static int state_validate(const uint8_t *buf, int len) {
     if (len == 0) return 1;
-    if (len != (int)RECORD || buf[0] != VERSION) return 0;
+    if (!(len == (int)RECORD && buf[0] == VERSION) && !(len == (int)RECORD_1 && buf[0] == 1)) return 0;
     const uint8_t *p = buf + 1 + sizeof(Visits);
     return p[0] < FAX_MAP_AREAS && p[2] <= 1 && p[4] <= 1 && (p[5] == 0xFF || p[5] < FAX_MAP_PAGES) && (!p[4] || p[5] != 0xFF);
 }
@@ -576,6 +714,9 @@ static int state_set(const uint8_t *buf, int len) {
     gurus_merged = p[3];
     open = p[4]; shown = p[5] == 0xFF ? -1 : p[5]; age = p[6]; want = p[7] ? frames + p[7] : 0;
     closing = false;
+    p += 10;
+    if (len == (int)RECORD) memcpy(picked, p, sizeof picked);
+    else memset(picked, 0, sizeof picked);
     return 1;
 }
 
@@ -667,6 +808,17 @@ static void map_state(int id, const char *line) {
             n += (size_t)snprintf(fields + n, sizeof fields - n, "%s[%u,%u,%d,%d,%d,%d,%u]", i ? "," : "",
                                   drawn[i].area, drawn[i].screen, drawn[i].x, drawn[i].y, drawn[i].w, drawn[i].h,
                                   drawn[i].seen);
+        n += (size_t)snprintf(fields + n, sizeof fields - n, "],\"pickups\":%u,\"items\":[", pickups);
+        for (unsigned i = 0; i < atlas.item_count && n < sizeof fields - 64; ++i) {
+            const FaxMapItem *it = &atlas.item[i];
+            n += (size_t)snprintf(fields + n, sizeof fields - n, "%s[%u,%u,%u,%u,%u,%u,%u,%u,%d,%d]", i ? "," : "",
+                                  i, it->area, it->screen, it->entity, it->kind, it->map_area, it->map_screen,
+                                  it->map_block, item_shown(i), bit(picked, i));
+        }
+        n += (size_t)snprintf(fields + n, sizeof fields - n, "],\"dots\":[");
+        for (unsigned i = 0; i < dot_count && n < sizeof fields - 64; ++i)
+            n += (size_t)snprintf(fields + n, sizeof fields - n, "%s[%u,%d,%d]", i ? "," : "", dots[i].item, dots[i].x,
+                                  dots[i].y);
         n += (size_t)snprintf(fields + n, sizeof fields - n, "],\"layout\":[");
         for (int p = 0; p < FAX_MAP_PAGES && n < sizeof fields - 64; ++p)
             n += (size_t)snprintf(fields + n, sizeof fields - n, "%s[\"%s\",%u,%u,%u]", p ? "," : "",
@@ -677,7 +829,8 @@ static void map_state(int id, const char *line) {
 }
 void fax_map_tcp_setup(void) {
     cyc_tcp_register("map_state",
-                     "Map: open, the page shown, the screens seen, ladders and doors used, and the boxes drawn", map_state);
+                     "Map: open, the page shown, the screens seen, ladders and doors used, the items, and the boxes "
+                     "and item dots drawn", map_state);
 }
 #else
 bool fax_map_load_setting(const char *name, const char *value) { (void)name; (void)value; return false; }
@@ -686,7 +839,7 @@ void fax_map_event(const void *ev) { (void)ev; }
 void fax_map_tcp_setup(void) {}
 #endif
 
-static const char *const hook_ids[] = { "faxanadu.map.check", "faxanadu.map.loop" };
+static const char *const hook_ids[] = { "faxanadu.map.check", "faxanadu.map.loop", "faxanadu.map.touch" };
 static void hooks(int on) {
     for (unsigned i = 0; i < sizeof hook_ids / sizeof hook_ids[0]; ++i) nes_mod_set_function_hook_enabled(hook_ids[i], on);
 }
@@ -694,7 +847,8 @@ static void deactivate(void) {
     enabled = false;
     open = closing = false;
     shown = -1; want = 0;
-    opens = closes = turns = presses = age = 0;
+    opens = closes = turns = presses = age = pickups = 0;
+    dot_count = 0;
     forget();
     hooks(0);
 }
@@ -707,6 +861,7 @@ static void activate(void) {
 NES_MOD_CONSTRUCTOR(register_map) {
     if (!nes_mod_register_function_entry_plugin(hook_ids[0], PAUSE_CHECK, check_hook) ||
         !nes_mod_register_function_entry_plugin(hook_ids[1], PAUSE_LOOP, loop_hook) ||
+        !nes_mod_register_function_entry_plugin(hook_ids[2], PLAYER_HANDLE_TOUCH_ITEM, touch_hook) ||
         !nes_mod_register_reset_callback(deactivate) ||
         !nes_mod_register_activation_plugin("faxanadu.map", activate) ||
         !nes_mod_register_savestate_hook("faxanadu.map", state_get, state_set) ||
