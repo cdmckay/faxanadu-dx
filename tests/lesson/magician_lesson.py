@@ -23,7 +23,10 @@ buy       With 3000 Golds, he offers "Learn to recover magic faster for 2000
           taken. Then, outside on the street, headless runs from the same
           spot with Deluge cast on a frame: MP comes back 120 frames after
           the cast, then 1 every 15; without the lesson (its record cleared),
-          240 and 30 as before.
+          240 and 30 as before. Last, a save state from while his offer
+          typed, loaded after his other lines took message $C3's slot: the
+          feature's record puts the conversation back (not learned, his
+          offer up) and serves the offer again, the same picture as before.
 refuse    B on his offer closes the box: nothing taken, nothing learned. With
           1999 Golds, A gets the game's own "This is not enough Golds." and
           the script ends: nothing taken, nothing learned.
@@ -35,7 +38,7 @@ original  With Faxanadu Remastered off: "I shall give magic for 200 Golds.";
           level.", as the original does.
 
 Screenshots of his three lines, the game's "not enough" and the original's
-sale go in OUT.
+sale go in OUT, each with the box's blinking "?" or arrow lit.
 """
 from pathlib import Path
 import sys
