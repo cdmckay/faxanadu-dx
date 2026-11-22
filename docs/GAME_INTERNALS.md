@@ -1955,6 +1955,32 @@ jump a few updates after stepping off, as A from the hang itself would.
   and quest banners. So in a building the band sits 8 pixels right of the
   room under it. The title and other screens without the status bar are
   centred whole. With the remaster off there is no Elixir and no Seamless.
+- **Seamless takes the band live** (#132). At each frame's end
+  (`fax_world_step`) it copies the native picture's top 32 lines whenever
+  that frame shows the status bar (`fax_text_hud_showing`), whatever the
+  game is doing: play, a conversation, a shop, a script, a pause or the
+  Select menu. A frame without it (the screen off while one loads) keeps the
+  last band shown. Before #132 it copied only frames of play (`playing()`:
+  no script, no portrait, not paused, bank 14 mapped), so a whole
+  conversation showed the band of the frame before it: a purchase's gold
+  appeared only when the conversation ended, and the King's 3000 never
+  counted. The native picture was right all along, so it was the copy that
+  froze, not the nametable: no box or portrait covers rows 0-3 (the boxes
+  start at tile row 6, *The text box*), and nothing in a conversation writes
+  them but the game's own redraws. `UI_DrawGoldValue` queues its digits in
+  the PPU buffer and the next NMI sends them, so the picture shows a frame's
+  gold a frame later: buying the Elixir at Eolis's tool shop with 700, RAM
+  reads 690 the frame after A goes down and the picture shows 690 the frame
+  after that, then 10 less a frame to 380 (measured headless, every frame's
+  picture and RAM). `tests/world/live_status_bar.py` reads the band's gold
+  and bars off the presented picture.
+- **Reading the status bar off a picture.** Both bars are one pixel a point
+  from x 24 for 80 pixels, so a fill line's lit pixels are the value: MP on
+  row 2 (fill lines 18-21), HP on row 3 (lines 26-29; the Power bar's fill
+  is pixel value 1, pink in Eolis). The colon tile after `M` and `P` (`$0A`)
+  ends in the bars' left cap at x 23, so the count starts at x 24. The
+  gold's 7 digits are tiles `$30-$39` in row 3 from x 128 (PPU `$2070`),
+  each a HUD tile's pattern (bank 10, `$8140` + t × 16) in color 3.
 
 ## MP and its bar (bank 15)
 
@@ -3906,7 +3932,9 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   `faxanadu.world.hud`) are checked whether it is on or not and set aside
   when it is off, so a state saved with the remaster on loads with it off,
   as the other features' do; one saved with it off has none, and Seamless
-  lays the map out again from the room the state is in. **Boss screens are
+  lays the map out again from the room the state is in. `faxanadu.world.hud`
+  is the status bar band of the last frame that showed it (*The status
+  bar*), taken live every such frame (#132). **Boss screens are
   arenas:** when it lays a map out (`topology()`), it first reads every
   screen's event for the area once, with the game's own
   `Screen_LoadAllScreenInfo` (`$C154`, bank 11) on an isolated machine
@@ -4149,10 +4177,10 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   price from its list in the ROM (Eolis 80, Dartmoor 1000), or at a key shop
   half the lowest (80). The save-state record (3 bytes: version, phase,
   shop) puts his question back in the slot after a load
-  (`fax_potions_loaded`). `potions_state` over TCP. Seamless keeps the
-  status bar it showed when play stopped (`frozen_hud`, `fax_world.c`), so
-  during the conversation the gold does not count down on screen; it shows
-  the new amount once the conversation ends, as after any counter's.
+  (`fax_potions_loaded`). `potions_state` over TCP. The gold counts down on
+  the status bar as he is paid, as at any counter: Seamless takes the band
+  live through conversations (#132; until then it kept the band of the frame
+  before one, and the new amount showed only once it ended).
 - **Double gold** (`fax_gold.c`, #102, #104). The King gives 3000 instead of
   1500, counted in the original's 150 frames, and once a game; every coin a
   monster leaves pays twice its value. Five hooks, each returning 0, with no
