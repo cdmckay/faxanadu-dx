@@ -2,14 +2,15 @@
 made its placement unfair, in the original game and in the remaster.
 
     python3 tests/entrances/fair_entrances.py --build build-cycle --rom "Faxanadu (USA).nes" --out /tmp/entrances
-    python3 tests/entrances/fair_entrances.py ... --game-arg=--world-view=seamless
+    python3 tests/entrances/fair_entrances.py ... --part edges --game-arg=--world-view=seamless
     python3 tests/entrances/fair_entrances.py ... --only 'Mist $08'     # the spots whose name has this
 
-A hidden window over TCP starts a new game, and (an external prerequisite, not
-coverage) a save-state RAM fixture kills the hero with Mascon as his furthest
-temple and a Long Sword, Leather Armor and a Small Shield, so the death path
-wakes him in that temple. Every way in starts from that saved game, edited
-into a fixture, and plays headless from it, frame by frame, with the same
+Its parts: doors (doors, buildings and temples), edges (screen edges, ladders
+and drops) and seamless-room (Seamless only). Every way in starts from the
+fixture entrances-mascon-temple: (an external prerequisite, not coverage) the
+hero, killed at Eolis's gate with Mascon as his furthest temple and a Long
+Sword, Leather Armor and a Small Shield, wakes at Mascon's Guru. That saved
+game, edited into a fixture, plays headless, frame by frame, with the same
 --game-arg options (so the same world view):
 
 - Mascon's temple: walking out of it, as after every death there. It opens on
@@ -37,12 +38,12 @@ off (the original game, the whole mod switched off), then on:
 2. On, the enemy starts at its new block, and nothing hits him for SAFE
    frames.
 3. With Seamless on, an edge is no blind way in: the room beyond is on screen,
-   its actors running, before he crosses. Instead, walking to the edge has the
-   enemy start at its new block in the room Seamless loads (the move's use
-   count). And walking from the Mist's screen 5 toward screen 6 has Seamless
-   load screen 6 on an isolated machine, where hooks do not run: its Sir
-   Gawaine starts at the new block there too, read from Seamless's own room
-   record.
+   its actors running, before he crosses. Instead (edges), walking to the
+   edge in the window has the enemy start at its new block in the room
+   Seamless loads (the move's use count). And (seamless-room) walking from the
+   Mist's screen 5 toward screen 6 has Seamless load screen 6 on an isolated
+   machine, where hooks do not run: its Sir Gawaine starts at the new block
+   there too, read from Seamless's own room record.
 """
 from concurrent.futures import ThreadPoolExecutor
 import itertools
@@ -71,11 +72,18 @@ BUILDINGS, NEGATIVE_THOUGHTS, MASCON = 4, 0x24, 3
 PACKAGE, FEATURE = "faxanadu.remastered", "remastered"              # the one switch: off is the original game
 HOLD = {"right": "RIGHT", "left": "LEFT", "up": "UP", "down": "DOWN", "drop": None}
 SAFE = 30                   # frames after his first update with the fix on, and nothing hits him
+# InterruptCounter and SpriteUpdateCounter, which enemy scripts time
+# themselves by, as the temple's state had them when the ways in were
+# measured: from another phase, a way in's first hit can come at another
+# frame (docs/GAME_INTERNALS.md, "Enemy placement and fair entrances").
+INTERRUPT_COUNTER, SPRITE_UPDATE_COUNTER = 0x1A, 0x383
+PHASE = {INTERRUPT_COUNTER: 0xF3, SPRITE_UPDATE_COUNTER: 0x3E}
 TRUNK, MIST, BRANCH, DARTMOOR, ZENIS = 1, 2, 5, 6, 7
 REGION = {TRUNK: 1, MIST: 2, BRANCH: 3, DARTMOOR: 4, ZENIS: 5}
-RAIDEN, ZOMBIE, SUGATA, GIANT_STRIDER, GAWAINE = 0x04, 0x06, 0x18, 0x1E, 0x1F
-MASKMAN, WOLFMAN, IKEDA, LAMPREY = 0x20, 0x21, 0x26, 0x28
-YUINARU, ZOZURA = 0x0B, 0x47
+RAIDEN, ZOMBIE, HORNET, BIHORUDA, YUINARU, SNOWMAN = 0x04, 0x06, 0x07, 0x08, 0x0B, 0x0C
+ROKUSUTAHN, CHARRON, GERIBUTA, SUGATA, GIANT_STRIDER, GAWAINE = 0x11, 0x15, 0x17, 0x18, 0x1E, 0x1F
+MASKMAN, WOLFMAN, YAREEKA, IKEDA, LAMPREY, RIPASHEIKU, ZOZURA = 0x20, 0x21, 0x22, 0x26, 0x28, 0x2D, 0x47
+SIR_GAWAINE = GAWAINE
 
 # Each spot: what it is, the screen (area, screen, palette), the way in, the
 # enemy (entity, stock block, new block; YX as bank 11 stores them), and the
@@ -102,10 +110,42 @@ SPOTS = [
     ("Dartmoor $08, building $25's way out", (DARTMOOR, 0x08, 0x0C), ("building", 0x41), (GAWAINE, 0x42, 0x46), 16),
     ("the Castle of Fraternal's way out", (DARTMOOR, 0x0C, 0x0C), ("door", 0x10, 0x0D, 0x90, None),
      (WOLFMAN, 0xAB, 0xAD), 16),
-    # EDGES
+    # Screen edges, ladders and drops: each move at its earliest stock hit.
     ("Trunk $0D, walking left in from $0E", (TRUNK, 0x0D, 0x06), ("edge", "left", 0x0E, 0x06, 0, 4), (ZOZURA, 0x5E, 0x7E), 10),
     ("Trunk $17, walking right in from $16", (TRUNK, 0x17, 0x06), ("edge", "right", 0x16, 0x06, 15, 4), (YUINARU, 0x5F, 0x5E), 10),
+    ("Trunk $1D, dropping in from $26 at column 10", (TRUNK, 0x1D, 0x06), ("edge", "drop", 0x26, 0x06, 10, 9), (YUINARU, 0xCC, 0xBA), 29),
+    ("Trunk $1E, dropping in from $1D at column 10", (TRUNK, 0x1E, 0x06), ("edge", "drop", 0x1D, 0x06, 10, 9), (YUINARU, 0x3B, 0x2C), 12),
+    ("Trunk $1E, dropping in from $1D at column 7", (TRUNK, 0x1E, 0x06), ("edge", "drop", 0x1D, 0x06, 7, 9), (CHARRON, 0x99, 0x9B), 24),
+    ("Trunk $21, dropping in from $22 at column 7", (TRUNK, 0x21, 0x06), ("edge", "drop", 0x22, 0x06, 7, 9), (CHARRON, 0x88, 0x9B), 22),
+    ("Trunk $23, dropping in from $24 at column 4", (TRUNK, 0x23, 0x06), ("edge", "drop", 0x24, 0x06, 4, 9), (YUINARU, 0x35, 0x33), 12),
+    ("Trunk $24, dropping in from $25 at column 5", (TRUNK, 0x24, 0x06), ("edge", "drop", 0x25, 0x06, 5, 9), (CHARRON, 0x35, 0x45), 12),
+    ("Trunk $30, dropping in from $36 at column 4", (TRUNK, 0x30, 0x06), ("edge", "drop", 0x36, 0x06, 4, 9), (CHARRON, 0x45, 0x46), 14),
+    ("Trunk $32, dropping in from $38 at column 3", (TRUNK, 0x32, 0x06), ("edge", "drop", 0x38, 0x06, 3, 9), (SNOWMAN, 0x23, 0x33), 10),
+    ("Trunk $32, dropping in from $38 at column 8", (TRUNK, 0x32, 0x06), ("edge", "drop", 0x38, 0x06, 8, 9), (CHARRON, 0x99, 0xA8), 24),
+    ("Trunk $37, dropping in from $3C at column 5", (TRUNK, 0x37, 0x06), ("edge", "drop", 0x3C, 0x06, 5, 9), (CHARRON, 0x95, 0x94), 24),
     ("Mist $04, climbing down from $2A", (MIST, 0x04, 0x0A), ("edge", "down", 0x2A, 0x0A, 2, 9), (IKEDA, 0x22, 0x34), 12),
+    ("Mist $07, dropping in from $01 at column 9", (MIST, 0x07, 0x0A), ("edge", "drop", 0x01, 0x0A, 9, 9), (HORNET, 0x3B, 0x2B), 13),
+    ("Mist $08, dropping in from $02 at column 8", (MIST, 0x08, 0x0A), ("edge", "drop", 0x02, 0x0A, 8, 9), (HORNET, 0x28, 0x46), 10),
+    ("Mist $08, dropping in from $02 at column 10", (MIST, 0x08, 0x0A), ("edge", "drop", 0x02, 0x0A, 10, 9), (HORNET, 0x4B, 0x49), 13),
+    ("Mist $08, dropping in from $02 at column 6", (MIST, 0x08, 0x0A), ("edge", "drop", 0x02, 0x0A, 6, 9), (SIR_GAWAINE, 0x98, 0xAA), 24),
+    ("Mist $09, dropping in from $03 at column 3", (MIST, 0x09, 0x0A), ("edge", "drop", 0x03, 0x0A, 3, 9), (HORNET, 0x38, 0x28), 39),
+    ("Mist $0F, dropping in from $05 at column 11", (MIST, 0x0F, 0x0A), ("edge", "drop", 0x05, 0x0A, 11, 9), (BIHORUDA, 0x4C, 0x4A), 13),
+    ("Mist $12, dropping in from $0C at column 6", (MIST, 0x12, 0x0A), ("edge", "drop", 0x0C, 0x0A, 6, 9), (HORNET, 0x68, 0x66), 17),
+    ("Mist $1A, dropping in from $19 at column 4", (MIST, 0x1A, 0x0A), ("edge", "drop", 0x19, 0x0A, 4, 9), (RAIDEN, 0x25, 0x35), 10),
+    ("Mist $25, dropping in from $1D at column 8", (MIST, 0x25, 0x0A), ("edge", "drop", 0x1D, 0x0A, 8, 9), (YAREEKA, 0x29, 0x2A), 18),
+    ("Mist $27, dropping in from $20 at column 10", (MIST, 0x27, 0x0A), ("edge", "drop", 0x20, 0x0A, 10, 9), (LAMPREY, 0x3A, 0x39), 12),
+    ("Mist $48, dropping in from $3F at column 10", (MIST, 0x48, 0x0A), ("edge", "drop", 0x3F, 0x0A, 10, 9), (RIPASHEIKU, 0x3A, 0x37), 12),
+    ("Mist $49, dropping in from $40 at column 10", (MIST, 0x49, 0x0A), ("edge", "drop", 0x40, 0x0A, 10, 9), (ROKUSUTAHN, 0x9C, 0xAC), 24),
+    ("Branch $04, dropping in from $06 at column 12", (BRANCH, 0x04, 0x08), ("edge", "drop", 0x06, 0x08, 12, 9), (MASKMAN, 0x5A, 0x59), 35),
+    ("Branch $19, dropping in from $14 at column 11", (BRANCH, 0x19, 0x08), ("edge", "drop", 0x14, 0x08, 11, 9), (GIANT_STRIDER, 0x29, 0x28), 36),
+    ("Branch $19, dropping in from $14 at column 4", (BRANCH, 0x19, 0x08), ("edge", "drop", 0x14, 0x08, 4, 9), (GIANT_STRIDER, 0x56, 0x54), 21),
+    ("Dartmoor $03, dropping in from $01 at column 8", (DARTMOOR, 0x03, 0x0C), ("edge", "drop", 0x01, 0x0C, 8, 9), (YUINARU, 0x58, 0x56), 16),
+    ("Zenis $03, dropping in from $10 at column 2", (ZENIS, 0x03, 0x0F), ("edge", "drop", 0x10, 0x0F, 2, 9), (GERIBUTA, 0xA5, 0xB5), 26),
+    ("Zenis $03, dropping in from $10 at column 12", (ZENIS, 0x03, 0x0F), ("edge", "drop", 0x10, 0x0F, 12, 9), (GERIBUTA, 0xAA, 0xBA), 28),
+    ("Zenis $0E, dropping in from $09 at column 7", (ZENIS, 0x0E, 0x0F), ("edge", "drop", 0x09, 0x0F, 7, 9), (SIR_GAWAINE, 0x29, 0x38), 11),
+    ("Zenis $10, dropping in from $0B at column 6", (ZENIS, 0x10, 0x0F), ("edge", "drop", 0x0B, 0x0F, 6, 9), (ZOZURA, 0xA8, 0x96), 26),
+    ("Zenis $10, dropping in from $0B at column 8", (ZENIS, 0x10, 0x0F), ("edge", "drop", 0x0B, 0x0F, 8, 9), (ZOZURA, 0xAA, 0x9A), 26),
+    ("Zenis $12, dropping in from $0D at column 7", (ZENIS, 0x12, 0x0F), ("edge", "drop", 0x0D, 0x0F, 7, 9), (ROKUSUTAHN, 0x48, 0x58), 17),
 ]
 
 
@@ -193,10 +233,12 @@ class Spots:
 
     def leading_to(self, tag, area, screen, palette, pos, more=None):
         """The temple's saved game with its door edited to lead to `pos` on
-        (area, screen)."""
+        (area, screen), and the frame counters set to where the measurements
+        had them (PHASE)."""
         state = self.out / f"{tag}.cycstate"
         fixture(self.temple, state, {SAVED_AREA: area, SAVED_SCREEN: screen, SAVED_PALETTE: palette,
-                                     SAVED_POS: pos, AREA_REGION: REGION[area], HP: 0x50, **(more or {})})
+                                     SAVED_POS: pos, AREA_REGION: REGION[area], HP: 0x50, **PHASE,
+                                     **(more or {})})
         return state
 
     def arrive(self, state, area, screen, schedule, frames, on):
@@ -206,20 +248,24 @@ class Spots:
         rams = self.runs.run(state, schedule, frames, on)
         came = next((i for i, r in enumerate(rams) if (r[AREA], r[SCREEN]) == (area, screen)), None)
         assert came is not None, f"never reached {area}:{screen:#04x}: at {rams[-1][AREA]}:{rams[-1][SCREEN]:#04x}"
-        blank = next(i for i in range(max(came - 1, 0), len(rams)) if visible(rams[i]) <= 1)
-        return rams, next(i for i in range(blank, len(rams)) if visible(rams[i]) > 1)
+        blank = next((i for i in range(max(came - 1, 0), len(rams)) if visible(rams[i]) <= 1), None)
+        first = blank and next((i for i in range(blank, len(rams)) if visible(rams[i]) > 1), None)
+        assert first, f"no first update on {area}:{screen:#04x} within {frames} frames"
+        return rams, first
 
     def door(self, state, src, door, key, on):
         """The walk out of the temple to `door` on `src`, Up on the first
         update there (and the key's message paged after it), and the frame the
-        door's screen starts loading."""
-        _, first = self.arrive(state, src[0], src[1], self.walk, self.exit_frame + 120, on)
+        door's screen starts loading: about 28 frames after Up, 140 with the
+        key's message."""
+        _, first = self.arrive(state, src[0], src[1], self.walk, self.exit_frame + 60, on)
         sched = self.walk + [(first, "UP"), (first + 4, "-")]
         if key is not None:
-            for k in range(20):                          # "I've used key.": A, 6 frames, every 16
+            for k in range(10):                          # "I've used key.": A, 6 frames, every 16
                 sched += [(first + 10 + 16 * k, "A"), (first + 16 + 16 * k, "-")]
-        rams = self.runs.run(state, sched, first + 700, on)
-        left = next(i for i in range(first, len(rams)) if (rams[i][AREA], rams[i][SCREEN]) != src)
+        rams = self.runs.run(state, sched, first + (180 if key is not None else 40), on)
+        left = next((i for i in range(first, len(rams)) if (rams[i][AREA], rams[i][SCREEN]) != src), None)
+        assert left is not None, f"never went through the door on {src}"
         assert rams[left][IFRAMES] == 0, f"hit on {src} before the door"
         return [step for step in sched if step[0] < left] + [(left, "-")], left
 
@@ -237,15 +283,14 @@ class Spots:
         raw, ready = self.out / f"{tag}-raw.cycstate", self.out / f"{tag}-edge.cycstate"
         clear = {**{SPRITE_ENTITY + k: 0xFF for k in range(8)}, IFRAMES: 0, HP: 0x50}
         if kind == "drop":
-            # He falls on his first update there: saved as the screen
-            # finishes loading, before it.
-            rams = self.runs.run(there, self.walk, self.exit_frame + 60, False)
-            f = next(i for i in range(self.exit_frame, len(rams)) if (rams[i][AREA], rams[i][SCREEN]) == (area, src)
-                     and rams[i][SCREEN_READY] == 0 and rams[i][SCROLL_DIRECTION] == 0xFF)
-            self.runs.run(there, self.walk, f + 1, False, save=(f, raw))
+            # He falls on his first update there: saved on the frame before
+            # it, once the screen's sprites are in their slots (a frame or two
+            # after the screen is ready), and cleared then.
+            _, first = self.arrive(there, area, src, self.walk, self.exit_frame + 50, False)
+            self.runs.run(there, self.walk, first, False, save=(first - 1, raw))
             fixture(raw, ready, clear)
         else:
-            self.runs.run(there, self.walk, self.exit_frame + 60, False, save=(self.exit_frame + 59, raw))
+            self.runs.run(there, self.walk, self.exit_frame + 50, False, save=(self.exit_frame + 49, raw))
             fixture(raw, ready, {**clear, STATUS: 0, X: col * 16, X_FRACTION: 0, Y: row * 16,
                                  FLAGS: 0x00 if kind == "left" else 0x40})
         return ready
@@ -257,29 +302,36 @@ class Spots:
         if way[0] == "edge":
             state = self.edge(tag, area, way)
             key = HOLD[way[1]]
-            plans = {on: (([(0, key)] if key else []), 420) for on in (False, True)}
+            # The scroll ends 90-110 frames in.
+            plans = {on: (([(0, key)] if key else []), 150 + latest) for on in (False, True)}
         elif way[0] == "temple":
-            state = self.temple
-            plans = {on: (self.walk, self.exit_frame + 120) for on in (False, True)}
+            state = self.leading_to(tag, area, screen, palette, 0x89)                # its own door
+            plans = {on: (self.walk, self.exit_frame + 60 + latest) for on in (False, True)}   # in 35-46
         elif way[0] == "building":
             state = self.leading_to(tag, area, screen, palette, way[1])
-            plans = {on: (self.walk, self.exit_frame + 120) for on in (False, True)}
+            plans = {on: (self.walk, self.exit_frame + 60 + latest) for on in (False, True)}
         else:
             _, src, src_palette, door, key = way
             state = self.leading_to(tag, area, src, src_palette, door, {SELECTED_ITEM: key} if key else None)
-            plans = {}
-            for on in (False, True):
-                sched, left = self.door(state, (area, src), door, key, on)
-                plans[on] = (sched, left + 120)
-        seen = {}
+            plans, lefts = {}, {}
+            for on in (False, True):        # the remaster's keys can change the door's timing
+                sched, lefts[on] = self.door(state, (area, src), door, key, on)
+                plans[on] = (sched, lefts[on] + 50 + latest)                        # in 20-36
+        # Off, long enough for the first update and the stock hit; on, the
+        # same way in (the moves change no timing before the first update),
+        # then SAFE frames.
+        seen, first = {}, None
         for on in (False, True):
             sched, frames = plans[on]
+            if on:
+                frames = first + SAFE + 2 + (lefts[True] - lefts[False] if way[0] == "door" else 0)
             if way[0] == "edge":
                 rams = self.runs.run(state, sched, frames, on)
                 first = scrolled_in(rams, area, screen)
                 assert first is not None, f"{name}: never reached {area}:{screen:#04x}"
             else:
-                rams, first = self.arrive(state, area, screen, sched, frames + SAFE + 40, on)
+                rams, first = self.arrive(state, area, screen, sched, frames, on)
+            assert first + (SAFE if on else latest) < len(rams), f"{name}: the first update came at {first}"
             before = rams[first - 1]
             slots = [k for k in range(8) if before[SPRITE_ENTITY + k] == entity and
                      before[SPRITE_Y + k] | before[SPRITE_X + k] >> 4 in (stock, moved)]
@@ -301,10 +353,17 @@ class Spots:
         return (f"ok: {name} (hero at {hero}): in the original, {entity:#04x} at {stock:#04x} hits him "
                 f"{seen[False]} frames after his first update; moved to {moved:#04x}, "
                 + ("nothing hits him" if seen[True] is None else f"the first hit is {seen[True]} frames in")
-                + f" ({SAFE} frames watched)")
+                + f" (watched {SAFE})")
 
 
-PARTS = ("doors", "edges", "seamless-room")
+# The edges by region, so the suite plays them at once.
+EDGE_PARTS = {TRUNK: "edges-trunk", MIST: "edges-mist", BRANCH: "edges-south", DARTMOOR: "edges-south",
+              ZENIS: "edges-south"}
+PARTS = ("doors", "edges-trunk", "edges-mist", "edges-south", "seamless-room")
+
+
+def part(spot):
+    return EDGE_PARTS[spot[1][0]] if spot[2][0] == "edge" else "doors"
 
 
 @fax_e2e.recipe("entrances-mascon-temple", parent="gate")
@@ -363,7 +422,7 @@ def main():
         state = game.tcp("entrances_state")
         assert state["enabled"], "Fair entrances is on in the remaster"
         table = [tuple(m) for m in state["table"]]
-        if not (seamless and (args.wants("edges") or args.wants("seamless-room"))):
+        if not (seamless and any(args.wants(p) for p in PARTS if p != "doors")):
             game.close()                                   # the rest is headless
         ram0 = state_ram(temple)
         assert (ram0[AREA], ram0[SAVED_AREA], ram0[SAVED_SCREEN], ram0[SAVED_POS]) == \
@@ -371,31 +430,26 @@ def main():
 
         # How long the walk out of the temple takes, holding Right: the same
         # from every fixture of this state, and in the original.
-        rams = runs.run(temple, [(0, "RIGHT")], 120, False)
+        rams = runs.run(temple, [(0, "RIGHT")], 40, False)
         exit_frame = next(i for i, r in enumerate(rams) if r[AREA] != BUILDINGS)
         spots = Spots(runs, temple, exit_frame)
         chosen_spots = [s for s in SPOTS if not args.only or any(o in s[0] for o in args.only)]
         for name, (area, screen, _), _, (entity, stock, moved), _ in chosen_spots:
             assert (area, screen, entity, stock, moved) in table, f"{name}: not in the feature's table"
 
-        played = []
-        if args.wants("doors"):
-            played += [s for s in chosen_spots if s[2][0] != "edge"]
         # With Seamless, an edge's room is on screen before he crosses: those
         # are checked in the window, below.
-        if args.wants("edges") and not seamless:
-            played += [s for s in chosen_spots if s[2][0] == "edge"]
+        played = [s for s in chosen_spots if args.wants(part(s)) and not (seamless and s[2][0] == "edge")]
         with ThreadPoolExecutor(max(1, args.jobs)) as pool:
             for line in pool.map(spots.check, played):
                 print(line, flush=True)
 
-        if seamless and args.wants("edges"):
+        walked = [s for s in chosen_spots if seamless and s[2][0] == "edge" and args.wants(part(s))]
+        if walked:
             # The enemy starts at its new block whichever machine loads the
             # room: Seamless's isolated one, or the game's own scroll where a
             # seam is not joined. The move's use count says it was made.
-            for name, (area, screen, _), way, (entity, stock, moved), _ in chosen_spots:
-                if way[0] != "edge":
-                    continue
+            for name, (area, screen, _), way, (entity, stock, moved), _ in walked:
                 there = spots.source(slug(name), area, way)
                 i = table.index((area, screen, entity, stock, moved))
                 used = game.tcp("entrances_state")["uses"][i]

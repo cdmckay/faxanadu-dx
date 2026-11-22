@@ -2248,8 +2248,63 @@ hit):
 | Dartmoor `$03` | Building `$24` (192,160) | 54, Up or Right at 50 |
 | Trunk `$29` | The door from `$28` (48,144) | 56, Left at 32 |
 
-Every other way in is first hit 60 or more frames after the first update, or
-not at all.
+Every other door, building and temple is first hit 60 or more frames after
+the first update, or not at all.
+
+**Screen edges, ladders and drops.** Crossing an edge, the destination's
+enemies are loaded as the scroll starts (horizontally) or ends (vertically),
+but none moves or shows until the hero's first update there, so these are
+blind ways in too. Each was timed clean: the hero walked to the source
+screen's edge, then (a fixture) its enemies were cleared, his invincibility
+zeroed, his HP filled, and he was put back at the edge, so nothing from the
+source screen can hit him. Then he held the way in across it (Left, Right, Up
+or Down on a ladder; nothing for a drop), either still holding it on his
+first update there or letting go on it. Up to 60 frames, every hit was
+checked for an escape as the doors were: each move (stand, walk either way,
+jump straight or either way, swing, swing walking either way, Up, Down)
+started at k = 13, and where none worked, at every k from 13 to the hit. A
+drop has little to work with: the hero falls with only a little steering,
+and a swing in the air reaches only what is beside him.
+
+An edge is unfair only when it is so both ways, holding and letting go: a
+player who lets go as the screen changes can stand still and see what is
+there, so an edge that hits only a hero still walking is a near miss. A drop
+has no such choice: once he falls, he lands where the hole is.
+
+Each move was then checked with every move on its screen made at once,
+against every way onto the screen (its doors and every edge, held and let
+go): a hit within 60 frames that the moves caused or made earlier fails it
+unless a move started at k = 13 or later escapes it. The table gives the
+earliest stock hit of each way in it fixes (held / let go; a drop has one),
+by the hero's column for a drop.
+
+[TABLE]
+
+[WHY]
+
+**Near misses left alone at edges.** Hit only while still holding the way
+in, before any reaction; letting go on the first update avoids it, or leaves
+time to:
+
+| Screen | Way in (hero's row or column) | Holding: first hit | Letting go: first hit, escape at 13 |
+|---|---|---|---|
+| Mist `$2B` | Walking left in from `$2C` (row 4) | 0 | 17, Right |
+| Mist `$4E` | Walking right in from `$4D` (row 10) | 4 | none |
+| Branch `$01` | Walking left in from `$02` (row 7) | 9 | 65 |
+| Branch `$09` | Walking right in from `$08` (row 8) | 16 | 16, a jump or Left |
+| Branch `$20` | Walking left in from `$21` (row 2) | 7 | none |
+| Dartmoor `$04` | Walking right in from `$05` (row 4) | 10 | none |
+| Dartmoor `$1D` | Walking left in from `$17` (row 4) | 9 | 16, Right |
+| Zenis `$05` | Walking left in from `$0F` (row 4) | 0 | 63 |
+| Zenis `$13` | Walking right in from `$12` (row 10) | 13 | 18, Left |
+| Zenis `$0E` | Climbing up from `$13` (column 6) | 8 | none |
+
+Three drops hit later with an escape that only a well-timed move finds: the
+Mist's `$12` from `$0C` at column 8 (41; a swing walking left at 13),
+Dartmoor `$03` from `$01` at column 6 (36; a jump to the right at 25), and
+Zenis `$11` from `$0C` at column 4 (32; a jump at 20). Every other edge,
+ladder and drop arrival is first hit after 60 frames, or not at all, or has
+an escape at 13.
 
 ## Items and the inventory
 

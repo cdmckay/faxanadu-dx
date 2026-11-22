@@ -130,10 +130,10 @@ hurts them too; in the original only magic did.
 
 ![A swing at the counter of Forepaw's tool shop: empty-handed in the original, with the Long Sword in the remaster](docs/screenshots/equip-indoors.png)
 
-**Fair entrances.** A few enemies stood right where a door, a ladder or a
-screen's edge puts you, and hit you before you could react. They start a
-little way off now, so you see them coming; every other enemy is where the
-original puts it.
+**Fair entrances.** Some enemies stood right where a door, a ladder, a
+screen's edge or the bottom of a drop puts you, and hit you before you could
+react. They start a little way off now, so you see them coming; every other
+enemy is where the original puts it.
 
 ### Getting around
 

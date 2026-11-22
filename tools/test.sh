@@ -207,7 +207,7 @@ E2E=(
   "fixes        tests/fixes/small_fixes.py --parts"
   "graphics     tests/graphics/graphics_fixes.py --parts"
   "graphics+sw  tests/graphics/graphics_fixes.py --parts $SW"
-  "entrances    tests/entrances/fair_entrances.py --parts=doors,edges"
+  "entrances    tests/entrances/fair_entrances.py --parts=doors,edges-trunk,edges-mist,edges-south"
   "entrances+sw tests/entrances/fair_entrances.py --parts $SW"
 )
 # At most E2E_JOBS runs play at once (default: one a hardware thread; 0: all

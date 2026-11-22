@@ -56,9 +56,10 @@
 typedef struct { uint8_t area, screen, entity, from, to; } FaxEntranceMove;
 
 /* Entities, from chipx86's DEFS.asm */
-enum { RAIDEN = 0x04, ZOMBIE = 0x06, YUINARU = 0x0B, SUGATA = 0x18, GIANT_STRIDER = 0x1E, SIR_GAWAINE = 0x1F,
-       MASKMAN = 0x20, WOLFMAN = 0x21, IKEDA = 0x26, LAMPREY = 0x28, ZOZURA = 0x47 };
-enum { TRUNK = 1, MIST = 2, BRANCH = 5, DARTMOOR = 6 };
+enum { RAIDEN = 0x04, ZOMBIE = 0x06, HORNET = 0x07, BIHORUDA = 0x08, YUINARU = 0x0B, SNOWMAN = 0x0C,
+       ROKUSUTAHN = 0x11, CHARRON = 0x15, GERIBUTA = 0x17, SUGATA = 0x18, GIANT_STRIDER = 0x1E, SIR_GAWAINE = 0x1F,
+       MASKMAN = 0x20, WOLFMAN = 0x21, YAREEKA = 0x22, IKEDA = 0x26, LAMPREY = 0x28, RIPASHEIKU = 0x2D, ZOZURA = 0x47 };
+enum { TRUNK = 1, MIST = 2, BRANCH = 5, DARTMOOR = 6, ZENIS = 7 };
 
 static const FaxEntranceMove moves[] = {
     { TRUNK,    0x06, ZOMBIE,        0x5B, 0x5C },   /* building $20's way out (160,80): hit in 8 */
@@ -73,10 +74,42 @@ static const FaxEntranceMove moves[] = {
     { DARTMOOR, 0x03, LAMPREY,       0xAA, 0xA8 },   /* building $24's way out (176,160): 3 */
     { DARTMOOR, 0x08, SIR_GAWAINE,   0x42, 0x46 },   /* building $25's way out (16,64), (32,64): 0 */
     { DARTMOOR, 0x0C, WOLFMAN,       0xAB, 0xAD },   /* the Castle of Fraternal's way out (144,64): 10 */
-    /* EDGES */
+    /* Screen edges, ladders and drops: the way in, and its earliest stock hit in frames */
     { TRUNK,    0x0D, ZOZURA,        0x5E, 0x7E },   /* walking left in from $0E: 0 */
     { TRUNK,    0x17, YUINARU,       0x5F, 0x5E },   /* walking right in from $16: 0 */
+    { TRUNK,    0x1D, YUINARU,       0xCC, 0xBA },   /* dropping from $26: 19 */
+    { TRUNK,    0x1E, YUINARU,       0x3B, 0x2C },   /* dropping from $1D: 2 */
+    { TRUNK,    0x1E, CHARRON,       0x99, 0x9B },   /* dropping from $1D: 14 */
+    { TRUNK,    0x21, CHARRON,       0x88, 0x9B },   /* dropping from $22: 12 */
+    { TRUNK,    0x23, YUINARU,       0x35, 0x33 },   /* dropping from $24: 2 */
+    { TRUNK,    0x24, CHARRON,       0x35, 0x45 },   /* dropping from $25: 2 */
+    { TRUNK,    0x30, CHARRON,       0x45, 0x46 },   /* dropping from $36: 4 */
+    { TRUNK,    0x32, SNOWMAN,       0x23, 0x33 },   /* dropping from $38: 0 */
+    { TRUNK,    0x32, CHARRON,       0x99, 0xA8 },   /* dropping from $38: 14 */
+    { TRUNK,    0x37, CHARRON,       0x95, 0x94 },   /* dropping from $3C: 14 */
     { MIST,     0x04, IKEDA,         0x22, 0x34 },   /* climbing down from $2A: 2 */
+    { MIST,     0x07, HORNET,        0x3B, 0x2B },   /* dropping from $01: 3 */
+    { MIST,     0x08, HORNET,        0x28, 0x46 },   /* dropping from $02: 0 */
+    { MIST,     0x08, HORNET,        0x4B, 0x49 },   /* dropping from $02: 3 */
+    { MIST,     0x08, SIR_GAWAINE,   0x98, 0xAA },   /* dropping from $02: 14 */
+    { MIST,     0x09, HORNET,        0x38, 0x28 },   /* dropping from $03: 29 */
+    { MIST,     0x0F, BIHORUDA,      0x4C, 0x4A },   /* dropping from $05: 3 */
+    { MIST,     0x12, HORNET,        0x68, 0x66 },   /* dropping from $0C: 7 */
+    { MIST,     0x1A, RAIDEN,        0x25, 0x35 },   /* dropping from $19: 0 */
+    { MIST,     0x25, YAREEKA,       0x29, 0x2A },   /* dropping from $1D: 8 */
+    { MIST,     0x27, LAMPREY,       0x3A, 0x39 },   /* dropping from $20: 2 */
+    { MIST,     0x48, RIPASHEIKU,    0x3A, 0x37 },   /* dropping from $3F: 2 */
+    { MIST,     0x49, ROKUSUTAHN,    0x9C, 0xAC },   /* dropping from $40: 14 */
+    { BRANCH,   0x04, MASKMAN,       0x5A, 0x59 },   /* dropping from $06: 25 */
+    { BRANCH,   0x19, GIANT_STRIDER, 0x29, 0x28 },   /* dropping from $14: 26 */
+    { BRANCH,   0x19, GIANT_STRIDER, 0x56, 0x54 },   /* dropping from $14: 11 */
+    { DARTMOOR, 0x03, YUINARU,       0x58, 0x56 },   /* dropping from $01: 6 */
+    { ZENIS,    0x03, GERIBUTA,      0xA5, 0xB5 },   /* dropping from $10: 16 */
+    { ZENIS,    0x03, GERIBUTA,      0xAA, 0xBA },   /* dropping from $10: 18 */
+    { ZENIS,    0x0E, SIR_GAWAINE,   0x29, 0x38 },   /* dropping from $09: 1 */
+    { ZENIS,    0x10, ZOZURA,        0xA8, 0x96 },   /* dropping from $0B: 16 */
+    { ZENIS,    0x10, ZOZURA,        0xAA, 0x9A },   /* dropping from $0B: 16 */
+    { ZENIS,    0x12, ROKUSUTAHN,    0x48, 0x58 },   /* dropping from $0D: 7 */
 };
 enum { MOVES = sizeof moves / sizeof moves[0] };
 
