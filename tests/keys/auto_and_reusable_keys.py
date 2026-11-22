@@ -103,7 +103,7 @@ def main():
         else:
             walk(direction, lambda: ram(PLAYER_X) <= x, f"x={x}")
 
-    def press_up(expect):
+    def press_up(expect, frames=300):
         """Up at a door; returns the message it shows, once typed out."""
         tcp("action", name="up", frames=4)
         seen = []
@@ -111,7 +111,7 @@ def main():
         def shown():
             seen.append(ram(MESSAGE_ID))
             return seen[-1] in expect
-        until(f"one of messages {[hex(m) for m in expect]}", shown, 300)
+        until(f"one of messages {[hex(m) for m in expect]}", shown, frames)
         type_out("the message to type out", 600, pauses=False)
         return seen[-1]
 
@@ -159,8 +159,19 @@ def main():
         wait(30)
 
     def open_eolis_exit(expect):
-        """From Eolis's first town screen, walk to the exit door and press Up."""
+        """From Eolis's first town screen, walk to the exit door and press Up.
+        In Seamless the exit screen's enemies chase him before he crosses,
+        and once in the suite the first Up there opened nothing (an enemy
+        beside him in the picture): then clear them again, walk back, and
+        press Up again."""
         enter("right", EOLIS, EOLIS_EXIT)
+        for _ in range(2):
+            walk_to(186)
+            try:
+                return press_up(expect, 120)
+            except AssertionError:
+                clear_enemies()
+                game.poke({0xAD: 0})                                  # Player_InvincibilityPhase: hit, and over
         walk_to(186)
         return press_up(expect)
 

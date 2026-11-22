@@ -146,8 +146,10 @@ risks a playtest must cover):
   Pendant fix counts only the live game's hits). This changes encounter timing compared with stock.
 - **Secrets and breakable terrain** (the Mattock's walls, the path to
   Mascon's fountain): the suite covers the fountain's ladder (the ladder
-  fixes' test) and the Mattock wall's block drawn in a neighbour
-  (`tests/graphics/graphics_fixes.py`), not breaking a wall across a seam.
+  fixes' test), breaking Trunk `$0C`'s Mattock wall in its own room (the keys
+  test) and the wall's block drawn in a neighbour
+  (`tests/graphics/graphics_fixes.py`); not a wall at a seam, nor whether a
+  broken one stays broken after walking away and back.
 - **Death and retry**: zone respawn's test dies and comes back in rooms Seamless
   joined (Eolis, a screen into the Tower of Trunk); not every region.
 - **The ending**: `tests/world/boss_arenas.py` kills the final boss and checks
