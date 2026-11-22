@@ -71,8 +71,9 @@ static void font(void) {
     fax_text_unload();
 }
 /* The title as StartScreen_Draw leaves it, in a picture `w` x `h` with the
- * native one at column x0: the logo and border on rows 16-143, START and
- * CONTINUE on 160-166, the notices on 184-222, black between. */
+ * native one at column x0: the logo and border on rows 16-143 (every pixel
+ * lit, so whatever the word leaves shows), START and CONTINUE on 160-166, the
+ * notices on 184-222, black between. */
 static void title_picture(uint32_t *px, int w, int h, int x0) {
     for (int i = 0; i < w * h; ++i) px[i] = BLACK;
     for (int y = 16; y < 144; ++y) for (int x = 16; x < 240; ++x) px[y * w + x0 + x] = LOGO;
@@ -97,8 +98,18 @@ static void registration(void) {
     CHECK(hook_on == 1);
 }
 
-/* The word: DX in the font, centered under the logo, in palette entry
- * 3, and nothing else of the picture changed. */
+/* Whether the word's letters light native pixel (x, y), with its top-left
+ * at (x0, y0). */
+static bool lit_at(int x0, int y0, int x, int y) {
+    if (x < x0 || x >= x0 + 16 || y < y0 || y >= y0 + 8) return false;
+    uint8_t bits = cart[13 * 16384 + (WORD[(x - x0) / 8] - 0x20) * 8 + (y - y0)];
+    return bits >> (7 - (x - x0) % 8) & 1;
+}
+
+/* The word: DX in the font, on the logo just under its letters, centred on
+ * it, in palette entry 3, with a black outline a pixel wide all round (its 8
+ * neighbours, diagonals too); everything else is the picture as it was, the
+ * logo included. */
 static void the_word(void) {
     font(); power_on(); title_picture(native, 256, 240, 0);
     frame(true);
@@ -106,30 +117,36 @@ static void the_word(void) {
     presents = 0;
     const uint32_t *out = fax_title_present(NULL, &w, &h);
     CHECK(out && out != native && presents == 1 && w == 256 && h == 240);
-    int x0 = 120, y0 = 148;   /* 16 wide, centered on the logo (16-239); between rows 143 and 160 */
+    int x0 = 120, y0 = 116;   /* 16 wide, centred on the logo (16-239), on the trunk under FAXANADU */
     CHECK(fax_text_width(WORD) == 16 && !strcmp(WORD, "DX"));
-    int top = 240, bottom = -1, left = 256, right = -1;
+    int top = 240, bottom = -1, left = 256, right = -1, outlined = 0, letters = 0;
     for (int y = 0; y < 240; ++y)
         for (int x = 0; x < 256; ++x) {
             uint32_t was = native[y * 256 + x], is = out[y * 256 + x];
-            bool inside = x >= x0 && x < x0 + 16 && y >= y0 && y < y0 + 8;
-            if (!inside) { CHECK(is == was); continue; }
-            uint8_t bits = cart[13 * 16384 + (WORD[(x - x0) / 8] - 0x20) * 8 + (y - y0)];
-            bool on = bits >> (7 - (x - x0) % 8) & 1;
-            CHECK(was == BLACK);   /* only rows the title leaves black */
-            CHECK(is == (on ? cyc_render_color(3) : BLACK));
+            bool on = lit_at(x0, y0, x, y), near = false;
+            for (int dy = -1; dy <= 1; ++dy)
+                for (int dx = -1; dx <= 1; ++dx) near = near || lit_at(x0, y0, x + dx, y + dy);
             if (on) {
+                CHECK(is == cyc_render_color(3));
+                ++letters;
                 if (y < top) top = y;
                 if (y > bottom) bottom = y;
                 if (x < left) left = x;
                 if (x > right) right = x;
-            }
+            } else if (near) {
+                CHECK(is == cyc_render_color(0));   /* the outline: the title's black */
+                ++outlined;
+            } else CHECK(is == was);                /* the logo shows everywhere else */
         }
-    /* Clear of the logo above and of the title's choices (START and CONTINUE,
-     * NEW GAME and CONTINUE, or a file pick, all from y 160) below, by 4 rows
-     * or more. */
-    CHECK(top >= 148 && bottom <= 155 && top - 143 > 4 && 160 - bottom > 4);
+    /* On the logo, just under its letters (on the trunk, the logo's rows
+     * 116-122), and the outline too. */
+    CHECK(top == 116 && bottom == 122 && top - 1 > 16 && bottom + 1 < 144);
     CHECK(left >= 120 && right <= 135 && (left - 16) - (239 - right) <= 8 && (239 - right) - (left - 16) <= 8);
+    CHECK(letters > 20 && outlined > letters);
+    /* The outline is a pixel wide: nothing two away from a letter changed. */
+    for (int x = x0 - 2; x < x0 + 18; ++x)
+        CHECK(out[(y0 - 2) * 256 + x] == LOGO && out[(y0 + 8) * 256 + x] == LOGO);
+    for (int y = y0 - 2; y < y0 + 10; ++y) CHECK(out[y * 256 + x0 - 2] == LOGO && out[y * 256 + x0 + 17] == LOGO);
     CHECK(fax_title_present(native, &w, &h) != native);   /* a composed picture is drawn over too */
 }
 
@@ -171,14 +188,14 @@ static void wider_pictures(void) {
     CHECK(out != wide && w == 512 && h == 320);
     int changed = 0, minx = 512;
     for (int i = 0; i < 512 * 320; ++i)
-        if (out[i] != wide[i]) { ++changed; if (i % 512 < minx) minx = i % 512; CHECK(i / 512 >= 148 && i / 512 < 156); }
-    CHECK(changed > 0 && minx >= 128 + 120 && minx < 128 + 128);
+        if (out[i] != wide[i]) { ++changed; if (i % 512 < minx) minx = i % 512; CHECK(i / 512 >= 115 && i / 512 < 124); }
+    CHECK(changed > 0 && minx >= 128 + 119 && minx < 128 + 128);
     origin = 40;   /* a compositor that put the native picture elsewhere */
     title_picture(wide, 512, 320, 40);
     out = fax_title_present(wide, &w, &h);
     minx = 512;
     for (int i = 0; i < 512 * 320; ++i) if (out[i] != wide[i] && i % 512 < minx) minx = i % 512;
-    CHECK(minx >= 40 + 120 && minx < 40 + 128);
+    CHECK(minx >= 40 + 119 && minx < 40 + 128);
     origin = -1;
     w = 200; h = 188;   /* scaled down into a small window */
     CHECK(fax_title_present(wide, &w, &h) == wide && w == 200 && h == 188);
