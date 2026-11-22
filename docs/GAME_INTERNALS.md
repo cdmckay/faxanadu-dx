@@ -739,7 +739,7 @@ and Y, and RTSes into the routine. So at the entry of a far-called routine:
 which stays put. The last row (5) holds →, ←, DEL and END at columns 0-3, and
 Up from row 0 wraps to it. A on END (row 5, column 3) checks the mantra and
 continues. A new game's mantra at Eolis's gate is `rFAAAAQAAA`
-(`tests/remastered/one_switch.py` types it with the remaster off).
+(`tests/dx/one_switch.py` types it with the remaster off).
 
 ## Gold
 
@@ -3705,7 +3705,7 @@ Each feature's C is in `src/` (`src/fax_<name>.c`), and `src/cyc_extras.c`
 calls each one from the host. `mods/allocations.toml` lists each feature's ROM,
 hook sites and shared addresses, and `tools/check_allocations.py` enforces it.
 
-Every feature below is a trusted plugin of the one Faxanadu Remastered mod
+Every feature below is a trusted plugin of the one Faxanadu DX mod
 (`mods/preloaded/packages/faxanadu.remastered`, feature `remastered`), so
 they are on or off together, and may rely on each other. Each still checks
 its own `enabled` flag, which the mod runtime sets for all of them at once:

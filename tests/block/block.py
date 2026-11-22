@@ -49,7 +49,7 @@ HOOD_MAGIC, MAGIC_DAMAGE = 0x51, 8                                # the Executio
 SHIELD_HEIGHT, HEAD_HEIGHT = 150, 136                             # the shot's Y, the hero on the ledge at 144
 OUR_LINE, PORTRAIT, NO_PORTRAIT = 0xC3, 0x3C7, 0xFF              # Guru travel's slot; IScript_PortraitID
 LINE = "Hold V to raise\nyour shield\nagainst magic."
-PACKAGE, FEATURE = "faxanadu.remastered", "remastered"          # the one switch: off is the original game
+PACKAGE, FEATURE = "faxanadu.dx", "dx"                          # the one switch: off is the original game
 
 
 PARTS = ("stand", "hood", "tutorial", "helmet", "config", "original")   # each its own game

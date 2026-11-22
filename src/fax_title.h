@@ -1,7 +1,7 @@
 #pragma once
-/* REMASTERED on the title (fax_title.c): the word under the FAXANADU logo,
- * drawn over the presented picture while the title screen's loop runs, in the
- * game's dialogue font and the logo's own palette. It registers itself; the
+/* DX on the title (fax_title.c): the word under the FAXANADU logo, drawn
+ * over the presented picture while the title screen's loop runs, in the
+ * title's own letters and the logo's own palette. It registers itself; the
  * host calls these. */
 #include <stdbool.h>
 #include <stdint.h>

@@ -1,4 +1,4 @@
-/* Faxanadu Remastered on the cycle host: every feature's power-on, frame,
+/* Faxanadu DX on the cycle host: every feature's power-on, frame,
  * present, input, settings and TCP calls, and the content tools' options
  * (text overrides, tile overrides). Saving is Save files' (fax_files.c). */
 #include "cyc_host_extras.h"

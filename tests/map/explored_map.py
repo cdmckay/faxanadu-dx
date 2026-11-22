@@ -61,7 +61,7 @@ ELIXIR_SCREEN, ELIXIR, ELIXIR_BLOCK, LEDGE = 0x3C, 0x4D, 0x32, 0x24     # Trunk 
 GOT_ELIXIR, HORNET = 0xB0, 0x07                                     # "I've got Elixir."; the tower's enemies
 NEGATIVE_THOUGHTS = 0x24                                            # the Guru's words after a death
 FILE = "faxanadu_file1.txt"
-PACKAGE = ("faxanadu.remastered", "remastered")
+PACKAGE = ("faxanadu.dx", "dx")
 # Eolis's doors, in EOLIS_DOOR_LOCATIONS' order: 0 the gate (screen 0, block $9C), 3 the temple (screen 2),
 # 5 the tool shop (screen 3, block $9A).
 GATE_DOOR, TEMPLE_DOOR, SHOP_DOOR = 0, 3, 5

@@ -71,7 +71,7 @@ SAVED_AREA, SAVED_SCREEN, SAVED_PALETTE, SAVED_POS = 0x3D5, 0x3D6, 0x3D7, 0x3D8
 HP, AREA_REGION, PLAYER_IS_DEAD, TEMPLE_SPAWN_POINT = 0x431, 0x435, 0x438, 0x439
 LONG_SWORD, LEATHER_ARMOR, SMALL_SHIELD, KEY_K = 1, 0, 0, 0x05     # ITEMINVENTORY_KEY_K
 BUILDINGS, NEGATIVE_THOUGHTS, MASCON = 4, 0x24, 3
-PACKAGE, FEATURE = "faxanadu.remastered", "remastered"              # the one switch: off is the original game
+PACKAGE, FEATURE = "faxanadu.dx", "dx"                              # the one switch: off is the original game
 HOLD = {"right": "RIGHT", "left": "LEFT", "up": "UP", "down": "DOWN", "drop": None}
 SAFE = 30                   # frames after his first update with the fix on, and nothing hits him
 # InterruptCounter and SpriteUpdateCounter, which enemy scripts time

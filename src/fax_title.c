@@ -1,8 +1,10 @@
-/* REMASTERED on the title. USA 57dd23d1, chipx86 byte-exact disassembly.
+/* DX on the title. USA 57dd23d1, chipx86 byte-exact disassembly.
  *
- * The word sits under the FAXANADU logo, centered on it, in the game's own
- * dialogue font (fax_text.c) and the color the logo's palette draws its
- * highlights in. The title's picture is left as the game drew it: the word
+ * The word sits under the FAXANADU logo, centered on it, in the title's own
+ * letters and the color the logo's palette draws its highlights in. The
+ * letters come from the game's dialogue font (fax_text.c): its A to Z are the
+ * title's letter tiles (CHR_LETTERS, bank 10 $8240, one color), pixel for
+ * pixel. The title's picture is left as the game drew it: the word
  * goes over the presented picture, in rows the title leaves black (y 148-154,
  * between the logo's last row, 143, and the title's choices, from 160: START
  * and CONTINUE, NEW GAME and CONTINUE with the remaster, or a file pick).
@@ -36,7 +38,7 @@
 /* Fixed bank */
 #define TITLE_LOOP 0xFC7Au   /* Game_ShowStartScreen's @_afterCheckHandleInputFarJump: LDA Joy1_ChangedButtonMask */
 
-static const char WORD[] = "REMASTERED";
+static const char WORD[] = "DX";
 enum {
     NATIVE_W = 256, NATIVE_H = 240,
     LOGO_LEFT = 16, LOGO_W = 224,   /* the logo and its border: tiles 2-29 of rows 2-17 (StartScreen_Draw, $2042) */
@@ -74,7 +76,7 @@ void fax_title_frame_end(void) {
 const uint32_t *fax_title_present(const uint32_t *picture, int *w, int *h) {
     if (!title_up()) return picture;
     if (!fax_text_loaded() && !fax_text_load()) {
-        FAX_TITLE_LOG("[title] cannot read the game's font; REMASTERED is off\n");
+        FAX_TITLE_LOG("[title] cannot read the game's font; DX is off\n");
         failed = true;
         return picture;
     }
@@ -130,7 +132,7 @@ static void title_state(int id, const char *line) {
     cyc_tcp_ok(id, fields);
 }
 void fax_title_tcp_setup(void) {
-    cyc_tcp_register("title_state", "REMASTERED on the title: whether it shows, and where", title_state);
+    cyc_tcp_register("title_state", "DX on the title: whether it shows, and where", title_state);
 }
 #else
 void fax_title_tcp_setup(void) {}
@@ -148,6 +150,8 @@ static void activate(void) {
     nes_mod_set_function_hook_enabled("faxanadu.title-remastered.loop", 1);
 }
 
+/* The plugin, hook site and record keep their names from before the project
+ * was Faxanadu DX (#116): save states know the record by its name. */
 NES_MOD_CONSTRUCTOR(register_title) {
     if (!nes_mod_register_function_entry_plugin("faxanadu.title-remastered.loop", TITLE_LOOP, loop_hook) ||
         !nes_mod_register_reset_callback(deactivate) ||

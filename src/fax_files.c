@@ -654,7 +654,7 @@ const uint32_t *fax_files_present(const uint32_t *picture, int *w, int *h) {
         return canvas;
     }
     /* A pick: over the choices and the notices (y 160-239), leaving the rows
-     * between them and the logo to REMASTERED (fax_title.c). */
+     * between them and the logo to DX (fax_title.c). */
     int x = x0 + 16, y = TITLE_Y;
     uint32_t colors[4];
     for (int v = 0; v < 4; ++v) colors[v] = cyc_render_color(menu_palette[v]);

@@ -68,7 +68,7 @@ GAP = 8                                     # native pixels between two pictures
 CAPTION_ROWS = 14                           # native rows above each picture for its caption
 WHITE, BLACK = (0xFF, 0xFF, 0xFF), (0, 0, 0)
 GLYPHS = 16 + 13 * 16384                    # TILE_GLYPHS_START: the font, bank 13 $8000, from $20
-REMASTER = ("faxanadu.remastered", "remastered")
+REMASTER = ("faxanadu.dx", "dx")
 LOCK = Path(os.environ.get("XDG_RUNTIME_DIR") or os.environ.get("TMPDIR") or "/tmp") / "faxanadu-remastered-e2e.lock"
 SCENE_TIMEOUT = 30 * 60                     # seconds
 
@@ -254,7 +254,7 @@ class Game(harness.Game):
     def catalog(self, original=False):
         """A mod catalog for headless runs: the build's packages, the remaster
         on, or off for the original."""
-        root = self.out / ("mods-original" if original else "mods-remastered")
+        root = self.out / ("mods-original" if original else "mods-dx")
         if not root.exists():
             shutil.copytree(self.out / "game" / "mods" / "packages", root / "packages")
             (root / "state.toml").write_text(fax_e2e.features_toml({REMASTER: False} if original else {}))

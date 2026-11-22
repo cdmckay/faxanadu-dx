@@ -435,7 +435,7 @@ static void menu_presses(void) {
 
 /* Where the menu goes: the two choices on the title's row (y 160), NEW GAME
  * ending where START did; a pick over them and the notices (rows 160-239),
- * clear of the logo (to 143) and of REMASTERED (148-155, fax_title.c). */
+ * clear of the logo (to 143) and of DX (148-155, fax_title.c). */
 static uint32_t at(const uint32_t *px, int w, int x, int y) { return px[y * w + x]; }
 static void placement(void) {
     stock(); remove_files();

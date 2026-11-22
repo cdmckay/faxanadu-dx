@@ -21,7 +21,7 @@ over the wall (Up, then Right with A held) and lets go: he falls down column
    open row under the floor, into the town's screen ($01), whose edge stops
    him, still at Y $C0, where A does nothing either. No enemy can reach him
    there: a softlock, which only a reset ends.
-2. remastered: the same flight, and when it ends Recharging items keeps the
+2. dx: the same flight, and when it ends Recharging items keeps the
    pair and starts its cooldown (its record's seconds poked to the last one,
    as recharging_items.py plays a whole cooldown). Then Down+B flies again,
    up the shaft and left over the wall, and he lands on Eolis's floor.
@@ -33,8 +33,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 import fax_e2e  # noqa: E402
 from fax_e2e import Game, parse_args, ram, tcp, type_out, until, wait  # noqa: E402
 
-PARTS = ("original", "remastered")
-PACKAGE = ("faxanadu.remastered", "remastered")               # the one switch: off is the original game
+PARTS = ("original", "dx")
+PACKAGE = ("faxanadu.dx", "dx")                               # the one switch: off is the original game
 AREA, SCREEN, HERO_X, HERO_Y, FLAGS, STATUS = 0x24, 0x63, 0x9E, 0xA1, 0xA4, 0xA5
 TEXTBOX_CLOSED, ENTITIES, HP = 0x20C, 0x2CC, 0x431
 SELECTED_ITEM, DURATION_WING_BOOTS = 0x3C1, 0x429
@@ -208,7 +208,7 @@ def main():
                      ({"a", "dpup", "dpleft"}, "over the wall", lambda: ram(HERO_X) <= WALL_X - 40)])
                 until("on Eolis's floor", lambda: ram(HERO_Y) == FLOOR_Y and not ram(FLAGS) & 0x05, 300)
                 assert ram(SCREEN) == GATE_SCREEN and ram(HERO_X) < WALL_X, hero()
-                game.shot("remastered-out")
+                game.shot("dx-out")
                 print("ok: with the remaster the Wing Boots are kept and recharge: Down+B flies him up the shaft "
                       "and over the wall, back onto Eolis's floor")
             game.close()

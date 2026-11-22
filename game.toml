@@ -645,7 +645,7 @@ addr = 0xa202
 bank = 14
 bytes = "8a 48 b9 cc 02 0a aa bd 2d ad 99 54"
 
-# REMASTERED on the title (fax_title.c): Game_ShowStartScreen's loop, after
+# DX on the title (fax_title.c): Game_ShowStartScreen's loop, after
 # the far call to StartScreen_CheckHandleInput (which Save files takes over),
 # notes once a frame that the title is up. It only observes.
 

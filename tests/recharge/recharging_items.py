@@ -94,7 +94,7 @@ FLIGHT = FLIGHTS[0]                                                 # a Novice's
 ELIXIR_ROW = 2                                                      # EOLIS_TOOL_SHOP_ITEMS: dagger, potion, Elixir
 SECOND = 64
 INTERRUPT_COUNTER = 0x1A                                            # counts NMIs; the game's second is & $3F == 0
-PACKAGE = ("faxanadu.remastered", "remastered")                  # the one switch: off is the original game
+PACKAGE = ("faxanadu.dx", "dx")                                  # the one switch: off is the original game
 PARTS = ("bands", "boots-flight", "boots-cooldown", "boots-death", "glass-freeze", "glass-cooldown", "boss",
          "elixir", "tool-shop", "finds", "spring", "travel", "save", "apolune-guru", "original")
 GURUS = ("Eolis", "Apolune")                                        # met, for Guru travel's journey

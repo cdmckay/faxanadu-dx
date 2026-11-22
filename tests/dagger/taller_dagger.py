@@ -70,7 +70,7 @@ JUMP_AT = 27                                                        # jump when 
 GROUND = 144                                                        # Player_PosY standing on screen 4
 TOUGH = 60                                                          # a Zozura's HP that no hit here ends
 FULL_HP = 0x50
-PACKAGE, FEATURE = "faxanadu.remastered", "remastered"          # the one switch: off is the original game
+PACKAGE, FEATURE = "faxanadu.dx", "dx"                          # the one switch: off is the original game
 
 
 def main():
