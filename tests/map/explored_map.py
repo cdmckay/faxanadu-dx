@@ -5,7 +5,7 @@
     python3 tests/map/explored_map.py ... --part file
 
 The game runs uncapped and the script waits on the game's own state, never on
-the clock, on a reserved TCP port (tests/e2e/fax_e2e.py). Three parts, each its
+the clock, on a reserved TCP port (tests/e2e/fax_e2e.py). Four parts, each its
 own game:
 
 explore  From Eolis town (the fixture: a new game in file 1, through the gate):
@@ -13,7 +13,8 @@ explore  From Eolis town (the fixture: a new game in file 1, through the gate):
          opens the map: the game pauses (Game_PausedState, and the hero stays
          put with the d-pad held), on the Eolis page, with a box for each
          screen he has stood on (the gate, 1, 2, 3) and none for the rest, the
-         gate's door and the shop marked where their doors are. B closes it.
+         gate's door and the shop's marked where they are, both the one door
+         mark. B closes it.
          Then out of the shop onto the Trunk's first screen (its door edited to
          lead there, an external prerequisite), its enemies cleared, and right
          across two screens: the map opens on the Trunk page; Right and Left
@@ -24,6 +25,14 @@ file     The map's record set to screens of Eolis and the Trunk, a ladder and
          Quit, continue file 1: the hero wakes in Eolis's temple, and the map
          shows what it did, the temple's door now too. Continuing from the
          title is the check, so this part boots.
+items    Out of the shop onto Trunk $3C, in the Tower of Fortress, on the
+         ledge right of the Elixir that lies there at every visit (its door
+         edited to lead there): the map shows the Elixir's dot, its pixels the
+         item color, at its place on the box. Dropped onto it, the hero takes
+         it ("I've got Elixir"): the dot is gone. Death writes the file (Save
+         files saves at every respawn), map.items holding the Elixir; quit,
+         continue file 1: in Eolis's temple, on the Tower of Fortress page,
+         the box seen and still no dot.
 original With the remaster off (the default view only): M does nothing, no
          pause.
 """
@@ -41,10 +50,13 @@ SCREEN_READY, SCROLL, PAUSED = 0x0E, 0x54, 0x120
 TEXTBOX_CLOSED, MESSAGE_ID = 0x20C, 0x213
 HP, PLAYER_IS_DEAD = 0x431, 0x438
 SPRITE_ENTITIES = 0x2CC
+SPECIAL_ITEMS, BIT_ELIXIR = 0x42C, 0x08
 SAVED_AREA, SAVED_SCREEN, SAVED_PALETTE, SAVED_POS, REGION = 0x3D5, 0x3D6, 0x3D7, 0x3D8, 0x435
 EOLIS, TRUNK, BUILDINGS = 0, 1, 4
 EOLIS_TEMPLE, TOOL_SHOP = 0x02, 0x04
-PALETTE_OUTSIDE, REGION_TRUNK = 0x06, 1
+PALETTE_OUTSIDE, PALETTE_TOWER, REGION_TRUNK = 0x06, 0x07, 1
+ELIXIR_SCREEN, ELIXIR, ELIXIR_BLOCK, LEDGE = 0x3C, 0x4D, 0x32, 0x24     # Trunk $3C's Elixir; where he starts
+GOT_ELIXIR, HORNET = 0xB0, 0x07                                     # "I've got Elixir."; the tower's enemies
 NEGATIVE_THOUGHTS = 0x24                                            # the Guru's words after a death
 FILE = "faxanadu_file1.txt"
 PACKAGE = ("faxanadu.remastered", "remastered")
@@ -55,7 +67,7 @@ GATE_BLOCK, SHOP_BLOCK = 0x9C, 0x9A
 # The map's save-state record (fax_map.c): a version, then seen, up and down (11 bytes an area each), then
 # doors (6 bytes an area).
 RECORD, SEEN, UP, DOWN, DOORS = "faxanadu.map", 1, 1 + 88, 1 + 176, 1 + 264
-PARTS = ("explore", "file", "original")
+PARTS = ("explore", "file", "items", "original")
 
 
 def png(path):
@@ -173,11 +185,45 @@ def main():
         assert len(fills) <= 1 and len(walls) == 1, (name, fills, walls)
         return rows, fills.pop() if fills else None
 
-    def mark_at(rows, s, area, screen, block):
-        """The pixel at the middle of a door's mark, where fax_map.c puts it on its screen's box."""
+    def spot(s, area, screen, block):
+        """Where fax_map.c puts a mark's top left for `block` on its screen's box, and the box's inside."""
         x, y, w, h = next((b[2], b[3], b[4], b[5]) for b in s["boxes"] if b[0] == area and b[1] == screen)
         bx, by = block & 15, block >> 4
-        return rows[y + 1 + by * (h - 5) // 12 + 1][x + 1 + bx * (w - 5) // 15]
+        return (x + 1 + bx * (w - 5) // 15, y + 1 + min(by, 12) * (h - 5) // 12), (x + 1, y + 1)
+
+    def mark_at(rows, s, area, screen, block):
+        """The pixel at the middle of a door's mark, where fax_map.c puts it on its screen's box."""
+        (x, y), _ = spot(s, area, screen, block)
+        return rows[y + 1][x + 1]
+
+    def turn_to(name):
+        for _ in range(12):
+            if state()["page_name"] == name:
+                return state()
+            turns = state()["turns"]
+            tcp("action", name="right", frames=4)
+            until("a page turn", lambda: state()["turns"] > turns, 120)
+        raise AssertionError(f"no page {name}")
+
+    def respawn_save():
+        """Die, page through the Guru's words, until Save files writes the file at the respawn."""
+        saves = tcp("files_state")["saves"]
+        game.poke({PLAYER_IS_DEAD: 1})
+        until("the Guru's words", lambda: ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 1800)
+        for _ in range(20):                                         # A on each page until the box closes
+            if not box_open():
+                break
+            until_typed()
+            act("a", 6, 14)
+        until("the respawn's save", lambda: tcp("files_state")["saves"] > saves, 1800)
+        return read_file(out / "game" / FILE)
+
+    def continue_file():
+        game.launch()
+        title_menu()
+        choose_file(False, 1)                                       # CONTINUE, file 1
+        until("Eolis's temple", lambda: place() == (BUILDINGS, EOLIS_TEMPLE) and settled(), 1800)
+        wait(10)
 
     try:
         if args.wants("explore"):
@@ -206,8 +252,7 @@ def main():
             rows, fill = check_boxes("eolis-map", state(), seen)
             s = state()
             shop_mark, gate_mark = mark_at(rows, s, EOLIS, 3, SHOP_BLOCK), mark_at(rows, s, EOLIS, 0, GATE_BLOCK)
-            assert shop_mark not in (fill, rows[0][0]) and gate_mark not in (fill, rows[0][0], shop_mark), \
-                (shop_mark, gate_mark, fill)
+            assert shop_mark not in (fill, rows[0][0]) and gate_mark == shop_mark, (shop_mark, gate_mark, fill)
             close_map()
             assert ram(PAUSED) == 0 and place() == (EOLIS, 3)
             print(f"ok: the map opens paused on Eolis with boxes for the gate and screens 1-3 only, and marks for "
@@ -245,18 +290,10 @@ def main():
             seen = {EOLIS: {0, 1, 2, 3}, TRUNK: {0, 1, 2, 3, 4}}
             record = {**bits(SEEN, 11, seen), **bits(UP, 11, {TRUNK: {3}}), **bits(DOWN, 11, {TRUNK: {4}}),
                       **bits(DOORS, 6, {EOLIS: {GATE_DOOR, SHOP_DOOR}})}
-            saves = tcp("files_state")["saves"]
-            game.poke({PLAYER_IS_DEAD: 1}, {RECORD: record})
+            game.poke({}, {RECORD: record})
             before = state()
             assert members(before["seen"][TRUNK]) == seen[TRUNK] and members(before["up"][TRUNK]) == {3}, before
-            until("the Guru's words", lambda: ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 1800)
-            for _ in range(20):                                     # A on each page until the box closes
-                if not box_open():
-                    break
-                until_typed()
-                act("a", 6, 14)
-            until("the respawn's save", lambda: tcp("files_state")["saves"] > saves, 1800)
-            saved = read_file(out / "game" / FILE)
+            saved = respawn_save()
             for area, key in ((EOLIS, "map.eolis"), (TRUNK, "map.trunk")):
                 fields = saved[key].split(" ")
                 assert len(fields) == 4 and members(fields[0]) == seen[area], (key, saved[key])
@@ -266,11 +303,7 @@ def main():
                   f"map.trunk = {saved['map.trunk']}")
             game.close()
 
-            game.launch()
-            title_menu()
-            choose_file(False, 1)                                   # CONTINUE, file 1
-            until("Eolis's temple", lambda: place() == (BUILDINGS, EOLIS_TEMPLE) and settled(), 1800)
-            wait(10)
+            continue_file()
             s = open_map()
             assert s["page_name"] == "Eolis" and s["here"] == [EOLIS, 2] and s["pages_seen"] == 2, s
             for key in ("seen", "up", "down"):
@@ -282,6 +315,80 @@ def main():
             check_boxes("continued-map-trunk", state(), seen)
             close_map()
             print("ok: continuing file 1 puts the map back as it was, with the temple he woke in")
+            game.close()
+
+        if args.wants("items"):
+            game.set_features({PACKAGE: True})
+            shop = game.state("eolis-meat-shop")
+            game.launch(at="eolis-meat-shop")
+            tower = out / "tower.cycstate"
+            fixture(shop, tower, {SAVED_AREA: TRUNK, SAVED_SCREEN: ELIXIR_SCREEN, SAVED_PALETTE: PALETTE_TOWER,
+                                  SAVED_POS: LEDGE, REGION: REGION_TRUNK, HP: 0x50, SPECIAL_ITEMS: 0})
+            game.load(tower)
+            hold("right", lambda: ram(AREA) != BUILDINGS, 600)
+            tcp("action", name="right", frames=1)                  # let go: he stays on the ledge
+            until("the tower", lambda: place() == (TRUNK, ELIXIR_SCREEN) and settled(), 600)
+            game.poke({SPRITE_ENTITIES + i: 0xFF for i, e in enumerate(ram(SPRITE_ENTITIES, 8)) if e == HORNET})
+            index = next(i[0] for i in state()["items"] if i[1:4] == [TRUNK, ELIXIR_SCREEN, ELIXIR])
+            seen = {EOLIS: {0, 1}, TRUNK: {ELIXIR_SCREEN}}
+
+            def elixir(s):
+                """(shown, taken, its dot) as map_state has them."""
+                item = s["items"][index]
+                assert item[1:8] == [TRUNK, ELIXIR_SCREEN, ELIXIR, 0, TRUNK, ELIXIR_SCREEN, ELIXIR_BLOCK], item
+                return item[8], item[9], next((d[1:] for d in s["dots"] if d[0] == index), None)
+
+            def pixels(name, s):
+                """The screenshot's pixel at the Elixir's spot, and the box's inside beside it."""
+                _, _, rows = png(game.shot(name))
+                (x, y), (ix, iy) = spot(s, TRUNK, ELIXIR_SCREEN, ELIXIR_BLOCK)
+                return rows, rows[y][x], rows[y + 1][x + 1], rows[iy][ix]
+
+            s = open_map()
+            assert s["page_name"] == "Tower of Fortress" and s["here"] == [TRUNK, ELIXIR_SCREEN], s
+            shown, taken, dot = elixir(s)
+            (x, y), _ = spot(s, TRUNK, ELIXIR_SCREEN, ELIXIR_BLOCK)
+            assert shown and not taken and dot == [x, y] and s["pickups"] == 0, (s["items"][index], s["dots"])
+            rows, top, bottom, inside = pixels("elixir-dot", s)
+            assert top == bottom and top not in (inside, rows[0][0]), (top, bottom, inside)
+            item_color = top
+            close_map()
+            print(f"ok: on Trunk $3C the map shows the Elixir's dot at its place "
+                  f"({'Seamless' if seamless else 'the original view'})")
+
+            game.poke({PLAYER_X: (ELIXIR_BLOCK & 15) * 16, PLAYER_Y: 2 * 16})   # over it: he drops onto it
+            until("the Elixir's line", lambda: ram(MESSAGE_ID) == GOT_ELIXIR, 600)
+            for _ in range(20):
+                if not box_open():
+                    break
+                until_typed()
+                act("a", 6, 14)
+            assert ram(SPECIAL_ITEMS) & BIT_ELIXIR, hex(ram(SPECIAL_ITEMS))
+            s = open_map()
+            shown, taken, dot = elixir(s)
+            assert not shown and taken and dot is None and s["pickups"] == 1, (s["items"][index], s["dots"])
+            rows, top, bottom, inside = pixels("elixir-taken", s)
+            assert top == inside and item_color not in (top, bottom), (top, inside, item_color)
+            check_boxes("elixir-taken-boxes", s, seen)
+            close_map()
+            print("ok: taken, the Elixir's dot is gone")
+
+            saved = respawn_save()
+            assert members(saved.get("map.items", "")) == {index}, saved.get("map.items")
+            assert members(saved["map.trunk"].split(" ")[0]) == {ELIXIR_SCREEN}, saved["map.trunk"]
+            game.close()
+            continue_file()
+            s = open_map()
+            assert s["page_name"] == "Eolis" and s["pages_seen"] == 2, s
+            s = turn_to("Tower of Fortress")
+            shown, taken, dot = elixir(s)
+            assert not shown and taken and dot is None, (s["items"][index], s["dots"])
+            rows, top, bottom, inside = pixels("elixir-continued", s)
+            assert top == inside and item_color not in (top, bottom), (top, inside, item_color)
+            check_boxes("elixir-continued-boxes", s, seen)
+            close_map()
+            print(f"ok: death wrote map.items = {saved['map.items']} to {FILE}, and continuing it the Elixir "
+                  f"stays taken: no dot")
             game.close()
 
         if args.wants("original") and not seamless:

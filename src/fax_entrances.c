@@ -1,0 +1,221 @@
+/* Fair entrances. USA 57dd23d1, chipx86 byte-exact disassembly.
+ * Some enemies are placed where the hero comes onto their screen (a door, a
+ * building's or a temple's way out, a screen's edge, a ladder, the bottom of
+ * a drop), so they hit him before the player can react: on his first update,
+ * or before anything he presses once he could react saves him. This moves
+ * just those, a little way off; every other enemy stays where the original
+ * puts it (#44). The spots and the measurements behind each move are in
+ * docs/GAME_INTERNALS.md, "Enemy placement and fair entrances".
+ *
+ * Each screen's sprites come from bank 11's placement list, one (entity, YX)
+ * pair at a time: Screen_LoadSpriteInfo reads a pair into CurrentSprite_Entity,
+ * CurrentSprite_YPos and CurrentSprite_XPos, then calls
+ * Sprites_PopulateNextAvailableSprite, which copies them into a free slot.
+ * Every way onto a screen loads it this way (Screen_SetupSprites for a door, a
+ * building's or a temple's way out, a region's door and a town's edge; the
+ * main loop for a scroll), so a hook at that routine's entry rewrites the
+ * position of a listed enemy before anything reads it. No ROM is changed and
+ * no read override is used: bank 11 serves its stock bytes, and only their
+ * copy in RAM is changed, before the slot is filled.
+ *
+ * Seamless (fax_world.c) loads a neighbouring room's sprites with the same
+ * routine on an isolated machine, where hooks do not run, so it calls
+ * fax_entrances_room_loaded right after: that moves listed enemies still at
+ * their placement in that machine's sprite slots.
+ *
+ * The positions live in the game's own sprite RAM, so a save state keeps
+ * them and the feature has no state of its own. */
+#include "fax_entrances.h"
+#include "cyc_mod.h"
+#include "mod_runtime.h"
+#include "mod_function_hooks.h"
+#ifdef CYC_WITH_SDL
+#include "cyc_tcp.h"
+#endif
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+/* Fixed bank */
+#define POPULATE_SPRITE     0xC205u   /* Sprites_PopulateNextAvailableSprite: LDX #$07, STX CurrentSpriteIndex */
+/* RAM */
+#define AREA_CURRENT_AREA   0x0024u
+#define AREA_CURRENT_SCREEN 0x0063u
+#define SPRITE_X            0x00BAu   /* CurrentSprites_XPos_Full, 8 slots */
+#define SPRITE_Y            0x00C2u   /* CurrentSprites_YPos, 8 slots */
+#define SPRITE_ENTITY       0x02CCu   /* CurrentSprites_Entities, 8 slots, $FF free */
+#define CURRENT_X           0x0389u   /* CurrentSprite_XPos: block X << 4, from the placement's low nibble */
+#define CURRENT_Y           0x038Au   /* CurrentSprite_YPos: the placement's high nibble */
+#define CURRENT_ENTITY      0x038Bu   /* CurrentSprite_Entity */
+#define SLOTS 8
+
+/* One move: the enemy (entity) bank 11 places at block `from` (YX, as the
+ * placement list stores it) on area:screen starts at block `to` instead. */
+typedef struct { uint8_t area, screen, entity, from, to; } FaxEntranceMove;
+
+/* Entities, from chipx86's DEFS.asm */
+enum { RAIDEN = 0x04, ZOMBIE = 0x06, HORNET = 0x07, BIHORUDA = 0x08, YUINARU = 0x0B, SNOWMAN = 0x0C,
+       ROKUSUTAHN = 0x11, CHARRON = 0x15, GERIBUTA = 0x17, SUGATA = 0x18, GIANT_STRIDER = 0x1E, SIR_GAWAINE = 0x1F,
+       MASKMAN = 0x20, WOLFMAN = 0x21, YAREEKA = 0x22, IKEDA = 0x26, LAMPREY = 0x28, RIPASHEIKU = 0x2D, ZOZURA = 0x47 };
+enum { TRUNK = 1, MIST = 2, BRANCH = 5, DARTMOOR = 6, ZENIS = 7 };
+
+static const FaxEntranceMove moves[] = {
+    { TRUNK,    0x06, ZOMBIE,        0x5B, 0x5C },   /* building $20's way out (160,80): hit in 8 */
+    { MIST,     0x06, SIR_GAWAINE,   0x89, 0x9E },   /* Mascon's temple (144,128), building $22's (112,128): 0 */
+    { MIST,     0x17, RAIDEN,        0xA5, 0xA9 },   /* the Tower of Mist's way out (80,160): 0 */
+    { MIST,     0x1F, SUGATA,        0x95, 0x97 },   /* building $26's way out (64,144): 4 */
+    { MIST,     0x20, SIR_GAWAINE,   0x96, 0x46 },   /* the tower on $50-$52's way out (96,144): 0 */
+    { MIST,     0x29, IKEDA,         0x7D, 0x7E },   /* building $20's way out (192,112): 4 */
+    { BRANCH,   0x0E, LAMPREY,       0x6D, 0x6A },   /* the door from $0F (224,96): 3 */
+    { BRANCH,   0x13, MASKMAN,       0x8C, 0x9D },   /* the door from $14 (224,128): 16, no escape */
+    { DARTMOOR, 0x02, GIANT_STRIDER, 0x49, 0xA9 },   /* building $22's way out (160,64): 0 */
+    { DARTMOOR, 0x03, LAMPREY,       0xAA, 0xA8 },   /* building $24's way out (176,160): 3 */
+    { DARTMOOR, 0x08, SIR_GAWAINE,   0x42, 0x46 },   /* building $25's way out (16,64), (32,64): 0 */
+    { DARTMOOR, 0x0C, WOLFMAN,       0xAB, 0xAD },   /* the Castle of Fraternal's way out (144,64): 10 */
+    /* Screen edges, ladders and drops: the way in, and its earliest stock hit in frames */
+    { TRUNK,    0x0D, ZOZURA,        0x5E, 0x7E },   /* walking left in from $0E: 0 */
+    { TRUNK,    0x17, YUINARU,       0x5F, 0x5E },   /* walking right in from $16: 0 */
+    { TRUNK,    0x1D, YUINARU,       0xCC, 0xBA },   /* dropping from $26: 19 */
+    { TRUNK,    0x1E, YUINARU,       0x3B, 0x2C },   /* dropping from $1D: 2 */
+    { TRUNK,    0x1E, CHARRON,       0x99, 0x9B },   /* dropping from $1D: 14 */
+    { TRUNK,    0x20, IKEDA,         0x95, 0x7F },   /* dropping from $23: 10 */
+    { TRUNK,    0x20, IKEDA,         0x99, 0x8F },   /* dropping from $23: 10 */
+    { TRUNK,    0x21, CHARRON,       0x88, 0x9B },   /* dropping from $22: 12 */
+    { TRUNK,    0x23, YUINARU,       0x35, 0x33 },   /* dropping from $24: 2 */
+    { TRUNK,    0x24, CHARRON,       0x35, 0x45 },   /* dropping from $25: 2 */
+    { TRUNK,    0x30, CHARRON,       0x45, 0x46 },   /* dropping from $36: 4 */
+    { TRUNK,    0x32, SNOWMAN,       0x23, 0x33 },   /* dropping from $38: 0 */
+    { TRUNK,    0x32, CHARRON,       0x99, 0xA8 },   /* dropping from $38: 14 */
+    { TRUNK,    0x37, CHARRON,       0x95, 0x94 },   /* dropping from $3C: 14 */
+    { MIST,     0x04, IKEDA,         0x22, 0x34 },   /* climbing down from $2A: 2 */
+    { MIST,     0x07, SIR_GAWAINE,   0x38, 0x48 },   /* dropping from $01: 3 */
+    { MIST,     0x08, HORNET,        0x28, 0x46 },   /* dropping from $02: 0 */
+    { MIST,     0x08, HORNET,        0x4B, 0x3D },   /* dropping from $02: 3 */
+    { MIST,     0x08, SIR_GAWAINE,   0x98, 0xA5 },   /* dropping from $02: 0 */
+    { MIST,     0x09, HORNET,        0x38, 0x28 },   /* dropping from $03: 29 */
+    { MIST,     0x0F, BIHORUDA,      0x4C, 0x4A },   /* dropping from $05: 3 */
+    { MIST,     0x12, HORNET,        0x68, 0x66 },   /* dropping from $0C: 7 */
+    { MIST,     0x1A, RAIDEN,        0x25, 0x35 },   /* dropping from $19: 0 */
+    { MIST,     0x25, YAREEKA,       0x29, 0x2A },   /* dropping from $1D: 8 */
+    { MIST,     0x27, LAMPREY,       0x3A, 0x39 },   /* dropping from $20: 2 */
+    { MIST,     0x48, RIPASHEIKU,    0x3A, 0x37 },   /* dropping from $3F: 2 */
+    { MIST,     0x49, ROKUSUTAHN,    0x9C, 0xAC },   /* dropping from $40: 14 */
+    { MIST,     0x49, RAIDEN,        0xA8, 0xB7 },   /* dropping from $40: 14 */
+    { BRANCH,   0x04, MASKMAN,       0x5A, 0x6A },   /* dropping from $06: 25 */
+    { BRANCH,   0x19, GIANT_STRIDER, 0x29, 0x39 },   /* dropping from $14: 26 */
+    { BRANCH,   0x19, GIANT_STRIDER, 0x56, 0x54 },   /* dropping from $14: 11 */
+    { DARTMOOR, 0x03, YUINARU,       0x58, 0x56 },   /* dropping from $01: 6 */
+    { ZENIS,    0x03, GERIBUTA,      0xA5, 0xB5 },   /* dropping from $10: 16 */
+    { ZENIS,    0x03, GERIBUTA,      0xAA, 0xBA },   /* dropping from $10: 18 */
+    { ZENIS,    0x0E, SIR_GAWAINE,   0x29, 0x38 },   /* dropping from $09: 1 */
+    { ZENIS,    0x10, ZOZURA,        0xA6, 0xA4 },   /* dropping from $0B: 16 */
+    { ZENIS,    0x10, ZOZURA,        0xA8, 0xA5 },   /* dropping from $0B: 16 */
+    { ZENIS,    0x10, ZOZURA,        0xAA, 0xAE },   /* dropping from $0B: 16 */
+    { ZENIS,    0x12, ROKUSUTAHN,    0x48, 0x58 },   /* dropping from $0D: 7 */
+};
+enum { MOVES = sizeof moves / sizeof moves[0] };
+
+static bool enabled;
+static unsigned moved;                       /* enemies the hook moved since the feature came on */
+static unsigned seamless;                    /* enemies moved in Seamless's isolated room loads */
+static int last = -1;                        /* the last move the hook used, an index into moves */
+static int last_room = -1;                   /* the last move made in an isolated room load */
+static unsigned uses[MOVES];                 /* each move's uses, by the hook or in a room load */
+
+static uint8_t peek(uint16_t a) { return cyc_mod_peek(a); }
+static void poke(uint16_t a, uint8_t v) { cyc_mod_poke(a, v); }
+
+static int find(uint8_t area, uint8_t screen, uint8_t entity, uint8_t yx) {
+    for (int i = 0; i < MOVES; ++i)
+        if (moves[i].area == area && moves[i].screen == screen && moves[i].entity == entity && moves[i].from == yx)
+            return i;
+    return -1;
+}
+
+/* Sprites_PopulateNextAvailableSprite's entry: the next placement is in
+ * CurrentSprite_*, and nothing has read it yet. The routine's first
+ * instruction loads X, so no register needs keeping. */
+static int populate_hook(uint16_t addr) {
+    (void)addr;
+    uint8_t x = peek(CURRENT_X), y = peek(CURRENT_Y);
+    int i = find(peek(AREA_CURRENT_AREA), peek(AREA_CURRENT_SCREEN), peek(CURRENT_ENTITY),
+                 (uint8_t)(y | x >> 4));
+    if (i < 0) return 0;
+    poke(CURRENT_X, (uint8_t)(moves[i].to << 4));
+    poke(CURRENT_Y, (uint8_t)(moves[i].to & 0xF0));
+    if (!cyc_mod_isolated()) { ++moved; ++uses[i]; last = i; }
+    return 0;
+}
+
+unsigned fax_entrances_room_loaded(void) {
+    if (!enabled) return 0;
+    unsigned n = 0;
+    uint8_t area = peek(AREA_CURRENT_AREA), screen = peek(AREA_CURRENT_SCREEN);
+    for (unsigned k = 0; k < SLOTS; ++k) {
+        uint8_t x = peek((uint16_t)(SPRITE_X + k)), y = peek((uint16_t)(SPRITE_Y + k));
+        if (x & 0x0F || y & 0x0F) continue;              /* placements are on whole blocks */
+        int i = find(area, screen, peek((uint16_t)(SPRITE_ENTITY + k)), (uint8_t)(y | x >> 4));
+        if (i < 0) continue;
+        poke((uint16_t)(SPRITE_X + k), (uint8_t)(moves[i].to << 4));
+        poke((uint16_t)(SPRITE_Y + k), (uint8_t)(moves[i].to & 0xF0));
+        last_room = i;
+        ++uses[i];
+        ++n;
+    }
+    seamless += n;
+    return n;
+}
+
+static const char *const hook_id = "faxanadu.fair-entrances.populate";
+static void deactivate(void) {
+    enabled = false;
+    moved = seamless = 0;
+    last = last_room = -1;
+    memset(uses, 0, sizeof uses);
+    nes_mod_set_function_hook_enabled(hook_id, 0);
+}
+static void activate(void) {
+    enabled = true;
+    nes_mod_set_function_hook_enabled(hook_id, 1);
+    nes_mod_set_local_only("Fair entrances", 1);
+}
+
+#ifdef CYC_WITH_SDL
+static void entrances_state(int id, const char *line) {
+    (void)line;
+    char fields[2048];
+    size_t n = (size_t)snprintf(fields, sizeof fields, "\"enabled\":%s,\"moved\":%u,\"seamless\":%u,\"moves\":%d",
+                                enabled ? "true" : "false", moved, seamless, (int)MOVES);
+    const struct { const char *name; int i; } records[] = { { "last", last }, { "last_room", last_room } };
+    for (unsigned r = 0; r < 2; ++r) {
+        int i = records[r].i;
+        if (i < 0 || n >= sizeof fields) continue;
+        n += (size_t)snprintf(fields + n, sizeof fields - n,
+                              ",\"%s\":{\"area\":%u,\"screen\":%u,\"entity\":%u,\"from\":%u,\"to\":%u}",
+                              records[r].name, moves[i].area, moves[i].screen, moves[i].entity, moves[i].from,
+                              moves[i].to);
+    }
+    for (int i = 0; i < MOVES && n + 8 < sizeof fields; ++i)
+        n += (size_t)snprintf(fields + n, sizeof fields - n, "%s%u", i ? "," : ",\"uses\":[", uses[i]);
+    if (n + 2 < sizeof fields) { fields[n++] = ']'; fields[n] = 0; }
+    for (int i = 0; i < MOVES && n + 32 < sizeof fields; ++i)
+        n += (size_t)snprintf(fields + n, sizeof fields - n, "%s[%u,%u,%u,%u,%u]", i ? "," : ",\"table\":[",
+                              moves[i].area, moves[i].screen, moves[i].entity, moves[i].from, moves[i].to);
+    if (n + 2 < sizeof fields) { fields[n++] = ']'; fields[n] = 0; }
+    cyc_tcp_ok(id, fields);
+}
+void fax_entrances_tcp_setup(void) {
+    cyc_tcp_register("entrances_state", "Fair entrances: enemies moved off the ways onto their screens",
+                     entrances_state);
+}
+#else
+void fax_entrances_tcp_setup(void) {}
+#endif
+
+NES_MOD_CONSTRUCTOR(register_fair_entrances) {
+    if (!nes_mod_register_function_entry_plugin(hook_id, POPULATE_SPRITE, populate_hook) ||
+        !nes_mod_register_reset_callback(deactivate) ||
+        !nes_mod_register_activation_plugin("faxanadu.fair-entrances", activate)) abort();
+}
