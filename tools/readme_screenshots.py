@@ -542,11 +542,9 @@ def seamless(s):
     the stock view and the Seamless one, which joins the next screen on, with
     its actors. Those keep moving (Seamless runs them in their own room), so
     this picture differs a little from run to run: where they are, or
-    whether one is in view. Seamless is fixed at 426x240, the suite's size
-    (tools/test.sh): fitted to the helper's window, at scale 1, it would be
-    142x96."""
+    whether one is in view. Seamless's view is 424x240, whatever the window."""
     g = s.game
-    for caption, options in (("Stock", []), ("Seamless", ["--world-view=seamless", "--world-size=426x240"])):
+    for caption, options in (("Stock", []), ("Seamless", ["--world-view=seamless"])):
         g.game_args = options                                   # Seamless has fixtures of its own
         g.launch(at="eolis-town")
         g.walk("right", lambda: g.ram(POS_X) >= 196, "x 196")

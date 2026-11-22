@@ -412,7 +412,7 @@ class Game:
         self.build = Path(build).resolve()
         self.out = Path(out).resolve()
         shutil.rmtree(self.out, ignore_errors=True)
-        install(build, self.out / "game", game_args)
+        install(build, self.out / "game")
         self.exe = self.out / "game" / "FaxanaduRecomp"
         self.env = dict(os.environ, **HIDDEN_ENV)
         self.log_path = self.out / "game.log"
@@ -642,14 +642,13 @@ class Game:
         self.tcp("load_state", path=str(path))
 
 
-def install(build, folder, game_args=()):
+def install(build, folder):
     """The build's game in `folder`, for a test's own copy: FaxanaduRecomp
     hard-linked (one copy of the program in memory however many games run,
     which plays them about 10% faster than separate copies; a copy if the
     link fails), assets/ and mods/ copied, and a config.ini with the window at
-    scale 1: the hidden window's scaling blit is a tenth of a frame at 3. Not
-    in Seamless with its picture fitted to the window (at scale 1, 142x96);
-    the suite fixes it at 426x240 (--world-size), what scale 3 fits."""
+    scale 1: the hidden window's scaling blit is a tenth of a frame at 3.
+    Seamless's view is 424x240 at any window size, so it runs at scale 1 too."""
     build, folder = Path(build), Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
     try:
@@ -658,9 +657,7 @@ def install(build, folder, game_args=()):
         shutil.copy2(build / "FaxanaduRecomp", folder)
     for sub in ("assets", "mods"):
         shutil.copytree(build / sub, folder / sub)
-    fitted = any("world-view" in arg for arg in game_args) and not any("world-size" in arg for arg in game_args)
-    if not fitted:
-        (folder / "config.ini").write_text(CONFIG)
+    (folder / "config.ini").write_text(CONFIG)
 
 
 class _Line:

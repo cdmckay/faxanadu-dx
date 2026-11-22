@@ -8,7 +8,6 @@
 #include "cyc_mod.h"
 #include "cyc_core.h"
 #include "cyc_render.h"
-#include "cyc_video.h"
 #include "cyc_tcp.h"
 #include "cyc_state.h"
 #include "mod_runtime.h"
@@ -26,7 +25,10 @@ static uint64_t SDL_GetPerformanceFrequency(void){return CLOCKS_PER_SEC;}
 #include <string.h>
 extern uint32_t hw_palette_argb[512];
 
-enum { MAX_ROOMS=83, RW=256, RH=208, HUD=32 };
+/* The view is fixed at 424x240, whatever the window: the original's full
+ * 240 lines (its 32-line HUD and a room's 208), 53 of its 8-pixel tiles
+ * wide, as Sonic Mania widens its own. The host scales it to the window. */
+enum { MAX_ROOMS=83, RW=256, RH=208, HUD=32, VIEW_W=424, VIEW_H=240 };
 typedef struct {
     uint8_t ram[2048],chr[8192],palette[32];
     uint8_t valid,live,owned,edges[4];
@@ -37,14 +39,14 @@ static Room rooms[MAX_ROOMS];
 static const unsigned counts[8]={9,64,83,14,10,40,32,20};
 static uint8_t payload[262144],local[2048];
 static bool rom_ok,enabled,atlas,mask_ready,speculative;
-static int area=-1,active=-1,zoom=3,fixed_w,fixed_h;
+static int area=-1,active=-1;
 static int pre_x,pre_y,pending=-1,direction;
 static int pending_y;
 static unsigned ticks,last_tick,handoffs,failures,portals;
 static bool player_tick;
 static bool collision_active;
 static bool death_mode,script_mode;
-static int camera_x,camera_y,picture_w,picture_h,draw_w=1280,draw_h=720;
+static int camera_x,camera_y,picture_w,picture_h;
 static int origin_x,origin_y;static bool origin_valid;
 static uint32_t *canvas;
 static size_t capacity;
@@ -303,10 +305,6 @@ static int draw_hook(uint16_t pc){
     }
     return 0;
 }
-static void dimensions(int *w,int *h){
-    int dw,dh;cyc_video_drawable_size(&dw,&dh);if(dw>0&&dh>0){draw_w=dw;draw_h=dh;}
-    *w=fixed_w?fixed_w:clamp(draw_w/zoom,128,4096);*h=fixed_h?fixed_h:clamp(draw_h/zoom,96,2048);
-}
 void fax_world_step(void){
     if(!enabled||!supported())return;
     if(!trace){const char *path=getenv("NESRECOMP_WORLD_TRACE");if(path&&*path){trace=fopen(path,"w");if(trace)fprintf(trace,"cycles,area,room,x,y,scroll,ready,handoffs,failures,simulation_ms\n");}}
@@ -315,7 +313,7 @@ void fax_world_step(void){
     memcpy(frozen_hud,cyc_frame_argb(),sizeof frozen_hud);hud_valid=true;
     uint64_t start=SDL_GetPerformanceCounter();refresh(true);if(active<0)return;
     if(ticks==last_tick)return;last_tick=ticks;
-    int w,h;dimensions(&w,&h);Room *a=&rooms[active];
+    int w=VIEW_W,h=VIEW_H;Room *a=&rooms[active];
     for(unsigned id=0;id<counts[area];id++)if(id!=(unsigned)active&&rooms[id].owned){
         Room *r=&rooms[id];int dx=abs(r->x-a->x)*RW,dy=abs(r->y-a->y)*RH;
         if(atlas||(dx<w/2+RW&&dy<(h-HUD)/2+RH))tick_room(id);
@@ -389,15 +387,13 @@ static void player_edge(int w,int h){
         }
     }
 }
-static void menu_rect(int width,int height,const uint32_t *native,int x,int y,int w,int h){
-    int pw=width<RW?width:RW,ph=RH*pw/RW;
-    if(ph>height-HUD){ph=height-HUD;pw=RW*ph/RH;}
-    int px=(width-pw)/2;
-    for(int dy=0;dy<ph;dy++)for(int dx=0;dx<pw;dx++){
-        int sx=dx*RW/pw,sy=HUD+dy*RH/ph;
-        if(sx>=x&&sx<x+w&&sy>=y&&sy<y+h)
-            canvas[(size_t)(HUD+dy)*width+px+dx]=native[sy*RW+sx];
-    }
+/* A native text box or menu panel, in native tile units, copied over the
+ * world at the native picture's place: centred, under the HUD. Every view
+ * (424x240, or F4's map) is at least a room wide and tall. */
+static void menu_rect(int width,const uint32_t *native,int x,int y,int w,int h){
+    int px=(width-RW)/2;
+    for(int sy=y<HUD?HUD:y;sy<y+h&&sy<240;sy++)for(int sx=x<0?0:x;sx<x+w&&sx<RW;sx++)
+        canvas[(size_t)sy*width+px+sx]=native[sy*RW+sx];
 }
 static bool ui_pixel(int x,int y){
     if((!script_mode&&q(0x100)!=12)||q(0x20c))return false;
@@ -407,11 +403,11 @@ static bool ui_pixel(int x,int y){
 }
 const uint32_t *fax_world_present(int *w,int *h,const uint32_t *native){
     /* Start pauses native simulation, not the expanded picture. Select's
-     * native inventory is composited over the frozen world at the same zoom.
+     * native inventory is composited over the frozen world at the same scale.
      * Never show a cached region while an original portal is replacing it. */
     origin_valid=false;
     if(!enabled||!supported())return NULL;
-    uint64_t start=SDL_GetPerformanceCounter();dimensions(w,h);
+    uint64_t start=SDL_GetPerformanceCounter();*w=VIEW_W;*h=VIEW_H;
     bool same=active>=0&&area==q(0x24)&&active==q(0x63);
     Room *a=same?&rooms[active]:NULL;int l=0,t=0,r=0,b=0;
     if(same){l=r=a->x;t=b=a->y;
@@ -420,13 +416,11 @@ const uint32_t *fax_world_present(int *w,int *h,const uint32_t *native){
     int width=*w,height=*h;size_t n=(size_t)width*height;
     if(n>capacity){uint32_t *v=realloc(canvas,n*sizeof *v);if(!v)return NULL;canvas=v;capacity=n;}
     for(size_t i=0;i<n;i++)canvas[i]=0xff000000;
-    /* Native scripts and region loaders keep their original image, inside
-     * the same adaptive canvas. No frame may change the viewport to 4:3. */
+    /* Native scripts and region loaders keep their original image, centred
+     * in the same fixed canvas. No frame may change the viewport to 4:3. */
     if(!same){
-        int nw=width<RW?width:RW,nh=240*nw/RW;
-        if(nh>height){nh=height;nw=RW*nh/240;}
-        int nx=(width-nw)/2;
-        for(int y=0;y<nh;y++)for(int x=0;x<nw;x++)canvas[(size_t)y*width+nx+x]=native[(y*240/nh)*RW+x*RW/nw];
+        int nx=(width-RW)/2;
+        for(int y=0;y<240;y++)memcpy(canvas+(size_t)y*width+nx,native+y*RW,RW*sizeof *canvas);
         goto finished;
     }
     camera_x=atlas?l*RW:a->x*RW+a->ram[0x9e]+8-width/2;
@@ -461,13 +455,13 @@ const uint32_t *fax_world_present(int *w,int *h,const uint32_t *native){
          * the neighboring actors visible. Inventory submenus retain the
          * top menu underneath them. All coordinates are native tile units. */
         int x=q(0x208)*8,y=q(0x209)*8;
-        if(x==32&&y==64)menu_rect(width,height,native,16,48,80,112);
-        if(q(0x3c7)<128)menu_rect(width,height,native,16,112,64,80);
-        menu_rect(width,height,native,x,y,q(0x20a)*8,q(0x20b)*8);
+        if(x==32&&y==64)menu_rect(width,native,16,48,80,112);
+        if(q(0x3c7)<128)menu_rect(width,native,16,112,64,80);
+        menu_rect(width,native,x,y,q(0x20a)*8,q(0x20b)*8);
     }
-    int hw=width<256?width:256,hh=HUD*hw/256,hx=(width-hw)/2;
+    int hx=(width-RW)/2;
     const uint32_t *hud=hud_valid&&!original_scene?frozen_hud:native;
-    for(int y=0;y<hh;y++)for(int x=0;x<hw;x++)canvas[(size_t)y*width+hx+x]=hud[(y*HUD/hh)*256+x*256/hw];
+    for(int y=0;y<HUD;y++)memcpy(canvas+(size_t)y*width+hx,hud+y*RW,RW*sizeof *canvas);
 finished:
     picture_w=width;picture_h=height;render_ms=(SDL_GetPerformanceCounter()-start)*1000.0/SDL_GetPerformanceFrequency();return canvas;
 }
@@ -478,11 +472,11 @@ const uint8_t *fax_world_room_ram(int a,int id){if(!enabled||!origin_valid||a!=a
 void fax_world_loaded(void){memset(raster_valid,0,sizeof raster_valid);cyc_mod_set_ram_read_hook(collision_active?collision_read:NULL);}
 bool fax_world_option(const char *name,const char *value){
     if(!strcmp(name,"--world-view")){if(strcmp(value,"off")&&strcmp(value,"seamless")&&strcmp(value,"atlas"))return false;enabled=strcmp(value,"off")!=0;hooks(enabled);atlas=!strcmp(value,"atlas");if(enabled)nes_mod_set_local_only("Seamless world",1);return true;}
-    if(!strcmp(name,"--world-size")){int w,h;char c;if(sscanf(value,"%dx%d%c",&w,&h,&c)!=2||w<128||w>4096||h<96||h>2048)return false;fixed_w=w;fixed_h=h;return true;}return false;
+    return false;
 }
 void fax_world_event(const void *ev){
 #ifdef CYC_WITH_SDL
-    const SDL_Event *e=ev;if(!enabled)return;if(e->type==SDL_MOUSEWHEEL)zoom=clamp(zoom-e->wheel.y,1,8);if(e->type==SDL_KEYDOWN&&!e->key.repeat&&e->key.keysym.sym==SDLK_F4)atlas=!atlas;
+    const SDL_Event *e=ev;if(!enabled)return;if(e->type==SDL_KEYDOWN&&!e->key.repeat&&e->key.keysym.sym==SDLK_F4)atlas=!atlas;
 #else
     (void)ev;
 #endif
@@ -538,8 +532,8 @@ static int hud_set(const uint8_t *buf,int len){
     if(hud_valid)memcpy(frozen_hud,buf+4,sizeof frozen_hud);return 1;
 }
 static void hooks(bool on){const char *ids[]={"player","seam","draw","queue","wait","pause","inventory","death","script"};char id[64];for(unsigned i=0;i<sizeof ids/sizeof ids[0];i++){snprintf(id,sizeof id,"faxanadu.world.%s",ids[i]);nes_mod_set_function_hook_enabled(id,on);}}
-static void deactivate(void){enabled=atlas=false;fixed_w=fixed_h=0;cyc_mod_set_ram_read_hook(NULL);hooks(false);}
-static void activate(void){enabled=true;hooks(true);zoom=nes_mod_get_option_int("faxanadu.enhancement.seamless-world","seamless-world","pixel-zoom",3);nes_mod_set_local_only("Seamless world",1);}
+static void deactivate(void){enabled=atlas=false;cyc_mod_set_ram_read_hook(NULL);hooks(false);}
+static void activate(void){enabled=true;hooks(true);nes_mod_set_local_only("Seamless world",1);}
 NES_MOD_CONSTRUCTOR(register_world){
     if(!nes_mod_register_function_entry_plugin("faxanadu.world.player",0xe0ca,player_hook)||
        !nes_mod_register_function_entry_plugin("faxanadu.world.seam",0xe8e9,seam_hook)||

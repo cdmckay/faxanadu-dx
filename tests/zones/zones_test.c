@@ -476,12 +476,12 @@ static void presenting(void) {
     CHECK(out[(40 + 24) * 256 + 128] == 0xFF123456u);
     CHECK(out[31 * 256 + 128] == 0xFF123456u);                       /* the HUD is left alone */
     /* A wider picture of Seamless's: centered on it, below the HUD. */
-    static uint32_t wide[426 * 240];
-    for (unsigned i = 0; i < 426 * 240; ++i) wide[i] = 0xFF654321u;
-    w = 426; h = 240; presents = 0;
+    static uint32_t wide[424 * 240];
+    for (unsigned i = 0; i < 424 * 240; ++i) wide[i] = 0xFF654321u;
+    w = 424; h = 240; presents = 0;
     out = fax_banner_present(wide, &w, &h);
-    CHECK(out != wide && w == 426 && h == 240 && presents == 0);
-    CHECK(out[40 * 426 + (426 - 168) / 2] != 0xFF654321u && out[40 * 426 + (426 - 168) / 2 - 1] == 0xFF654321u);
+    CHECK(out != wide && w == 424 && h == 240 && presents == 0);
+    CHECK(out[40 * 424 + (424 - 168) / 2] != 0xFF654321u && out[40 * 424 + (424 - 168) / 2 - 1] == 0xFF654321u);
     /* Off, or nothing showing: the picture as it came. */
     deactivate();
     CHECK(fax_banner_present(wide, &w, &h) == wide && fax_banner_present(NULL, &w, &h) == NULL);

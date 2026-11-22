@@ -1029,11 +1029,11 @@ static void the_hint(void) {
     ram[MENU_CURSOR_POS] = 1;
     CHECK(hint(line) && !strcmp(line, "Select to buy"));
     /* In a wider picture (Seamless), the native picture is centered. */
-    static uint32_t wide[426 * 240];
-    for (int i = 0; i < 426 * 240; ++i) wide[i] = 0xFF654321u;
-    w = 426; h = 240;
+    static uint32_t wide[424 * 240];
+    for (int i = 0; i < 424 * 240; ++i) wide[i] = 0xFF654321u;
+    w = 424; h = 240;
     px = fax_shops_present(wide, &w, &h);
-    CHECK(px != wide && w == 426 && px[(HINT_ROW * 8) * 426 + 85 + HINT_COL * 8] != wide[0]);
+    CHECK(px != wide && w == 424 && px[(HINT_ROW * 8) * 424 + 84 + HINT_COL * 8] != wide[0]);
     /* Off: nothing. */
     on(false);
     w = 256; h = 240;

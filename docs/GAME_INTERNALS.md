@@ -557,10 +557,29 @@ What a feature can rely on, and the traps:
   presenting scales the picture to it every uncapped frame: a frame in
   Eolis's town is 74 million instructions at scale 3 and 67 at 1 (`perf stat`,
   one window alone). A window starts from a `config.ini` holding only that
-  key and writes the rest. Seamless fits its picture to the window (drawable
-  size over the `pixel-zoom` option, 3), so at scale 1 its picture is 142x96;
-  `--world-size 426x240` fixes it at what scale 3 fits, 70 million
-  instructions a frame against 82 at scale 3.
+  key and writes the rest. Seamless's picture is a fixed 424x240 whatever the
+  window (#107), so at scale 1 its window is the picture's own size. When it
+  fitted its picture to the window, it needed `--world-size 426x240` for
+  that: 70 million instructions a frame at scale 1 against 82 at 3.
+- **The host scales a game's picture; the game cannot.** The picture a
+  game's `present` returns becomes a texture of its size, drawn with
+  `SDL_RenderSetLogicalSize` at that size, so SDL fits it to the window with
+  bars. The player's `[Display]` settings choose how: `IntegerScale` (on by
+  default) takes the largest whole multiple that fits, once the window is at
+  least the picture's size, and `LinearFilter` (off) filters the whole
+  texture. So Seamless's 424x240 is 4x (1696x960) at 1080p, and 3x, 6x and
+  9x fill 720p, 1440p and 4K. The game has no hook between the texture and
+  the window, so a two-filter scale such as sharp bilinear (nearest up to a
+  whole multiple, then linear down) needs the host to change. Nor can a game
+  hand over a picture already scaled to the window: the host also sizes the
+  window as the picture times `WindowScale` on F11 and on every Display
+  change (`apply_settings` in `cyc_sdl.c`), and every screenshot of the
+  `picture` layer would be window-sized.
+- In the hidden test window (`SDL_VIDEODRIVER=dummy`, so SDL's software
+  renderer), the `ui` layer of a TCP `screenshot` (what the window presents)
+  shows the scaled picture at the window's top left, not centred, in the
+  stock view as in Seamless (`tests/world/fixed_view.py`). TCP `window_size`
+  resizes that window, and the host follows it as it does a real one.
 - **24 windows run faster from one program file than from 24 copies.** Each
   copy is its own page cache, so its own copy of the code in the L3: from
   hard links to one file, 24 windows ran 10% more instructions a cycle (2.75

@@ -334,12 +334,12 @@ static void presenting(void) {
     /* The name, after the blank cell. */
     CHECK(shows(out, 256, 96, 112, "Guru of Apolune", 1));
     /* A wider picture of Seamless's: at the native picture's place in it, centered. */
-    static uint32_t wide[426 * 240];
-    for (unsigned i = 0; i < 426 * 240; ++i) wide[i] = 0xFF654321u;
-    w = 426; h = 240; presents = 0;
+    static uint32_t wide[424 * 240];
+    for (unsigned i = 0; i < 424 * 240; ++i) wide[i] = 0xFF654321u;
+    w = 424; h = 240; presents = 0;
     out = fax_speaker_present(wide, &w, &h);
-    CHECK(out != wide && w == 426 && h == 240 && presents == 0);
-    CHECK(out[104 * 426 + 85 + 79] == 0xFF654321u && out[104 * 426 + 85 + 80] == cyc_render_color(1 * 4 + 1));
+    CHECK(out != wide && w == 424 && h == 240 && presents == 0);
+    CHECK(out[104 * 424 + 84 + 79] == 0xFF654321u && out[104 * 424 + 84 + 80] == cyc_render_color(1 * 4 + 1));
     /* And a taller one: the native picture at the top, as Seamless draws a building. */
     static uint32_t tall[300 * 320];
     for (unsigned i = 0; i < 300 * 320; ++i) tall[i] = 0xFF654321u;

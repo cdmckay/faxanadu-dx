@@ -259,7 +259,6 @@ const CycHostExtras *cyc_host_extras(void) {
         { "--tile-dump", false, "Dump unique CHR transfers as PNG and binary assets" },
         { "--tile-compile", true, "Compile tile PNGs to CHR caches and exit" },
         { "--world-view", true, "World camera: off, seamless or atlas" },
-        { "--world-size", true, "Fixed development viewport WxH; omit for adaptive Fit" },
     };
 #ifdef CYC_WITH_RECOMP_UI
     menu_rows[0].label = fax_magic_controls_label();

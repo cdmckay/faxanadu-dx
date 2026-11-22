@@ -49,7 +49,7 @@ def main():
         route.write_text("".join(f"{first + f} {b}\n" for f, b in events))
         end = first + duration
         cmd = [str(args.exe.resolve()), str(args.rom.resolve()), "--no-save",
-               "--mods-root", str(empty), "--world-view", "seamless", "--world-size", "512x320",
+               "--mods-root", str(empty), "--world-view", "seamless",
                "--load-state", str(initial), "--frames", str(end), "--input", str(route),
                "--hash-out", str(folder / "hash.txt"), "--present-out", str(folder / "picture.png"),
                "--save-state", f"{end - 1}:{folder}/final.cycstate"]
@@ -104,7 +104,7 @@ def main():
         paused_mem = state.ram(paused_bytes)
         def mod_records(data):
             return [data[p:p+n] for tag, p, n in state.chunks(data) if tag == b"MOD "]
-        results[name + "_expanded"] = struct.unpack_from(">II", (paused / "picture.png").read_bytes(), 16) == (512, 320)
+        results[name + "_expanded"] = struct.unpack_from(">II", (paused / "picture.png").read_bytes(), 16) == (424, 240)
         results[name + "_native_mode"] = paused_mem[0x100] == bank and bool(paused_mem[0x120]) == (name == "pause")
         results[name + "_world_frozen"] = mod_records(paused_bytes) == mod_records((paused / "sample.cycstate").read_bytes())
         results[name + "_backend_state"] = paused_bytes == (paused_interp / "final.cycstate").read_bytes()

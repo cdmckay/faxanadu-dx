@@ -21,12 +21,12 @@ frames went to.
 
 A test runs in Seamless too (`+sw` in the table) only where the view changes
 what it checks: a feature that draws or places something on screen, or moves
-the hero between rooms. Those runs fix Seamless's picture at 426x240
-(`--game-arg=--world-size=426x240`), what it fits to a window at scale 3, so
-their window, like every test game's, can be at scale 1 (the `config.ini`
-`install()` writes): the hidden window's scaling blit is a tenth of a frame at
-3. A test's game is the build's, hard-linked: one copy of the program in
-memory for every game, which plays them about 10% faster than copies.
+the hero between rooms (`--game-arg=--world-view=seamless`). Seamless's view
+is 424x240 whatever the window, what a player sees, so its window, like every
+test game's, is at scale 1 (the `config.ini` `install()` writes): the hidden
+window's scaling blit is a tenth of a frame at 3. A test's game is the
+build's, hard-linked: one copy of the program in memory for every game, which
+plays them about 10% faster than copies.
 
 ## End-to-end tests and `e2e/fax_e2e.py`
 

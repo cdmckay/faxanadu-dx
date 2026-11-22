@@ -68,10 +68,10 @@ keeps the map, and the items you have taken.
 Seamless is a separate option in the launcher's Mods screen, marked
 Experimental and off by default. It is a way to view the game rather than
 part of the remaster, so it has a switch of its own. It joins connected rooms
-into one continuous world, keeps neighboring rooms' actors moving, and fits
-the view to your window. The mouse wheel changes the pixel zoom, and F4 shows
-the connected map. It is still a preview, for local play only. See
-[docs/SEAMLESS-WORLD.md](docs/SEAMLESS-WORLD.md).
+into one continuous world and keeps neighboring rooms' actors moving. Its
+view is always 424x240: the original's full height, 53 tiles wide, scaled
+to your window. F4 shows the connected map. It is still a preview, for local
+play only. See [docs/SEAMLESS-WORLD.md](docs/SEAMLESS-WORLD.md).
 
 ![The same spot in the stock view and in Seamless, which joins the next screen on](docs/screenshots/seamless.png)
 
