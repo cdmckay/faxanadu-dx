@@ -4,7 +4,7 @@
 build, then every end-to-end test. `tools/test.sh --quick` skips the
 end-to-end runs. While developing, run `--quick` and your own end-to-end test
 directly; run the full suite before a PR. The end-to-end part takes a
-machine-wide `flock` (`$XDG_RUNTIME_DIR/faxanadu-remastered-e2e.lock`), so a
+machine-wide `flock` (`$XDG_RUNTIME_DIR/faxanadu-dx-e2e.lock`), so a
 second checkout's suite waits for the first's games to finish.
 
 The end-to-end runs (a test, or each part of one) go through a queue: at most
