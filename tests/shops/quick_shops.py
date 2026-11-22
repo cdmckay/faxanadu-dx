@@ -12,13 +12,14 @@ what each scenario needs (external prerequisites, not coverage): where the
 shop's door leads (as tests/speaker/speaker_names.py walks into each Eolis
 building), the gold, and what the hero carries.
 
-1. Eolis's tool shop (Hand Dagger 400, Red Potion 160, Elixir 320, Deluge
-   400), with 700 Golds, the Hand Dagger in hand and, unequipped, the Long
-   Sword and the Dragon Slayer, and the J and A keys and the Wing Boots. Up
-   opens the buy list at once, and every later press is a choice: Down to the
-   Red Potion and A three times buys three (the list stays up, the cursor on
-   the potion), Down twice and A on the Deluge says "This is not enough
-   Golds." and A goes back to the list. Select opens the sell list:
+1. Eolis's tool shop (Hand Dagger 400, Elixir 320, Deluge 400: its Red
+   Potion is the Potion Seller's now, fax_potions.c), with 700 Golds, the
+   Hand Dagger in hand and, unequipped, the Long Sword and the Dragon Slayer,
+   and the J and A keys, the Wing Boots and three Red Potions. Up opens the
+   buy list at once, and every later press is a choice: Down to the Elixir
+   and A buys it (the list stays up, the cursor on it), Down and A on the
+   Deluge says "This is not enough Golds." and A goes back to the list.
+   Select opens the sell list:
    everything carried, the Items first, at half a shop's price (a Red Potion
    80, this shop's; the Long Sword 800, Forepaw's), and with no price the
    Wing Boots and the keys, his for good, and the Dragon Slayer. On the Wing
@@ -33,11 +34,12 @@ building), the gold, and what the hero carries.
    buying; selling the last item (a Red Potion) empties the list ("You have
    nothing to buy.", the game's own line) and the list goes back to buying.
 3. Owned, at Forepaw's tool shop (Long Sword 1600, Studded Mail 2500, Small
-   Shield 1100, Red Potion 400, Wing Boots 2800), with 9000 Golds and a Red
-   Potion: the Wing Boots are priced, and buying them marks them OWNED at once.
-   Leaving and coming back, they keep their row with OWNED where the price
-   was, the hint says "Already owned" on them, and A there does nothing: no
-   gold, no line, the list as it was. The Red Potion above still buys. Then a
+   Shield 1100, Wing Boots 2800, its Red Potion gone to the Potion Seller),
+   with 9000 Golds and a Red Potion: the Wing Boots are priced, and buying
+   them marks them OWNED at once. Leaving and coming back, they keep their row
+   with OWNED where the price was, the hint says "Already owned" on them, and
+   A there does nothing: no gold, no line, the list as it was. The Long Sword
+   at the top still buys. Then a
    pair found in the world (Trunk $2D, where one lies on one visit in four:
    the visit counter set to show it, its hornets cleared) is owned the same,
    carried into the shop. And at Eolis's key shop, a J key held: OWNED, and A
@@ -84,12 +86,12 @@ ITEM = 0x80                                                         # the Items 
 NOT_ENOUGH_GOLDS, NOTHING_TO_SELL, GREETING, BUY_OR_SELL = 0x03, 0x12, 0x0F, 0x10   # message IDs
 GOT_WING_BOOTS = 0xB3                                               # "I'm holding Wing Boots."
 HORNET = 0x07
-FOREPAW_LIST = [LONG_SWORD, STUDDED_MAIL, SMALL_SHIELD, ITEM | RED_POTION, ITEM | WING_BOOTS]
-FOREPAW_PRICES = [1600, 2500, 1100, 400, 2800]
-POTION_ROW, BOOTS_ROW = 3, 4
+FOREPAW_LIST = [LONG_SWORD, STUDDED_MAIL, SMALL_SHIELD, ITEM | WING_BOOTS]   # no Red Potion: the Potion Seller's
+FOREPAW_PRICES = [1600, 2500, 1100, 2800]
+SWORD_ROW, BOOTS_ROW = 0, 3
 # The tool shop's sell list: three Red Potions, then the kit's Items from the last, then its weapons.
 BOOTS_SELL_ROW, KEY_A_ROW, KEY_J_ROW, LONG_SWORD_ROW, SLAYER_ROW = 3, 4, 5, 6, 7
-SPECIAL_ITEMS, BLACK_ONYX = 0x42C, 0x01                             # SpecialItems, its Black Onyx bit
+SPECIAL_ITEMS, BLACK_ONYX, ELIXIR_BIT = 0x42C, 0x01, 0x08          # SpecialItems, its Black Onyx and Elixir bits
 MIST, MIST_SCREEN, MIST_HOUSE, MIST_HOUSE_DOOR = 2, 0x1F, 0x22, 0x94  # the A key's giver: Buildings $22
 PALETTE_MIST, REGION_MIST = 0x0A, 2
 ZONE_NAMES = "faxanadu.zone-names"                                  # its record: the area and screen, at 5 and 6
@@ -132,7 +134,7 @@ def carrying(gold_amount, weapon_list, item_list, weapon=HAND_DAGGER):
 
 
 
-TOOL_KIT = carrying(700, [DRAGON_SLAYER, LONG_SWORD], [KEY_J, KEY_A, WING_BOOTS])
+TOOL_KIT = carrying(700, [DRAGON_SLAYER, LONG_SWORD], [KEY_J, KEY_A, WING_BOOTS] + [RED_POTION] * 3)
 PARTS = ("tool-shop", "key-shop", "two-pages", "last-one", "owned-forepaw", "owned-found", "owned-key",
          "a-key", "original")                                        # each its own game
 
@@ -360,8 +362,8 @@ def main():
             message_before = ram(MESSAGE_ID)
             act("up", 4, 6)
             state = list_up("buy", "the buy list, straight away")
-            assert state["list"] == [HAND_DAGGER, ITEM | RED_POTION, ELIXIR, DELUGE], state
-            assert state["prices"] == [400, 160, 320, 400] and state["cursor"] == 0, state
+            assert state["list"] == [HAND_DAGGER, ELIXIR, DELUGE] and state["dropped"] == 1, state
+            assert state["prices"] == [400, 320, 400] and state["cursor"] == 0, state
             assert state["hint"] == "Select to sell" and state["page_label"] is None, state
             assert ram(MESSAGE_ID) == message_before, "a line was loaded before the list"
             speaker_on_list()
@@ -369,23 +371,22 @@ def main():
             print("ok: Up opens the buy list at once, with its hint, under the Tool Seller's name")
 
             press("down")
-            for _ in range(3):
-                buy(1)
-            assert gold() == 700 - 3 * 160, gold()
+            state = buy(1)
+            assert gold() == 700 - 320 and ram(SPECIAL_ITEMS) & ELIXIR_BIT, (gold(), ram(SPECIAL_ITEMS))
+            assert state["owned"] == [False, True, False], state
             assert items() == [KEY_J, KEY_A, WING_BOOTS] + [RED_POTION] * 3, items()
-            print("ok: A three times buys three Red Potions, the list staying up and the cursor on them")
+            print("ok: A buys the Elixir, the list staying up and the cursor on it")
 
             press("down")
-            press("down")
-            assert shops()["cursor"] == 3, shops()
+            assert shops()["cursor"] == 2, shops()
             act("a", 4, 6)
             until("This is not enough Golds.", lambda: ram(MESSAGE_ID) == NOT_ENOUGH_GOLDS, 600)
             type_out("the line to type out", 600, pauses=False)
             game.shot("not-enough-golds")
-            assert gold() == 220 and not shops()["list_up"], (gold(), shops())
+            assert gold() == 380 and not shops()["list_up"], (gold(), shops())
             act("a", 4, 6)
             state = list_up("buy", "the buy list, after the message")
-            assert state["cursor"] == 3 and state["messages"] == 1, state
+            assert state["cursor"] == 2 and state["messages"] == 1, state
             print("ok: the Deluge is not enough Golds, in the game's words, and A goes back to the list")
 
             state = press("select", "sell")
@@ -430,7 +431,7 @@ def main():
             press("down")                                       # one page: Down from the bottom wraps to the top
             assert shops()["cursor"] == 0, shops()
             sell()
-            assert gold() == 220 + 80, gold()
+            assert gold() == 380 + 80, gold()
             assert items() == [KEY_J, KEY_A, WING_BOOTS, RED_POTION, RED_POTION], items()
             print("ok: a Red Potion sells for 80, half this shop's price")
 
@@ -519,7 +520,7 @@ def main():
             act("up", 4, 6)
             state = list_up("buy", "Forepaw's buy list")
             assert state["list"] == FOREPAW_LIST and state["prices"] == FOREPAW_PRICES, state
-            assert state["owned"] == [False] * 5, state
+            assert state["owned"] == [False] * 4, state
             for _ in range(BOOTS_ROW):
                 press("down")
             state = shops()
@@ -529,22 +530,22 @@ def main():
             check_priced(path, BOOTS_ROW, 2800)
             state = buy(BOOTS_ROW)
             assert gold() == 9000 - 2800 and items() == [RED_POTION, WING_BOOTS], (gold(), items())
-            assert state["owned"] == [False] * 4 + [True] and state["hint"] == "Already owned", state
+            assert state["owned"] == [False] * 3 + [True] and state["hint"] == "Already owned", state
             print("ok: Forepaw sells the Wing Boots, and once bought they are owned at once")
 
-            # Leave, and come back: the row says OWNED, A does nothing, and the Red Potion still buys.
+            # Leave, and come back: the row says OWNED, A does nothing, and the Long Sword still buys.
             leave()
             walk_out()
             into_forepaws_shop()
             act("up", 4, 6)
             state = list_up("buy", "Forepaw's buy list, again")
             assert state["list"] == FOREPAW_LIST and state["prices"] == FOREPAW_PRICES, state
-            assert state["owned"] == [False] * 4 + [True] and state["cursor"] == 0, state
+            assert state["owned"] == [False] * 3 + [True] and state["cursor"] == 0, state
             assert state["hint"] == "Select to sell", state
             path = game.shot("owned-after")
             check_hint(path, "Select to sell")
             check_owned(path, BOOTS_ROW)
-            check_priced(path, POTION_ROW, 400)
+            check_priced(path, SWORD_ROW, 1600)
             for _ in range(BOOTS_ROW):
                 press("down")
             assert shops()["hint"] == "Already owned", shops()
@@ -553,11 +554,13 @@ def main():
             check_owned(path, BOOTS_ROW)
             a_does_nothing(BOOTS_ROW)
             check_owned(game.shot("owned-a-does-nothing"), BOOTS_ROW)
-            press("up")
-            buy(POTION_ROW)
-            assert gold() == 9000 - 2800 - 400 and items() == [RED_POTION, WING_BOOTS, RED_POTION], (gold(), items())
+            for _ in range(BOOTS_ROW - SWORD_ROW):
+                press("up")
+            buy(SWORD_ROW)
+            assert gold() == 9000 - 2800 - 1600 and weapons() == [LONG_SWORD], (gold(), weapons())
+            assert items() == [RED_POTION, WING_BOOTS], items()
             print("ok: back again, the Wing Boots say OWNED and \"Already owned\", A on them does nothing, "
-                  "and the Red Potion still buys")
+                  "and the Long Sword still buys")
             leave()
 
         if args.wants("owned-found"):
@@ -585,7 +588,7 @@ def main():
             to_forepaw(start, "forepaw-found", carrying(9000, [], found))
             act("up", 4, 6)
             state = list_up("buy", "Forepaw's buy list, with found boots")
-            assert state["owned"] == [False] * 4 + [True], state
+            assert state["owned"] == [False] * 3 + [True], state
             for _ in range(BOOTS_ROW):
                 press("down")
             check_owned(game.shot("owned-found"), BOOTS_ROW)

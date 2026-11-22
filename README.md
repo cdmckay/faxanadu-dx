@@ -164,6 +164,9 @@ keeps the map, and the items you have taken.
   between buying and selling, and you stay in the list after each sale. Any
   shop buys what you carry, except what you own for good, like a key or the
   Wing Boots: it says OWNED and isn't for sale.
+- **Potion Sellers.** The meat shops sell Red Potions instead of dried meat,
+  each at the price its town's tool shop charged, and the tool shops no longer
+  stock them. They still buy one back.
 - **Double gold.** The King gives you 3000 Golds instead of 1500, counted out
   in the same 2.5 seconds, but only once: come back broke and he has nothing
   more for you. Every coin a monster drops is worth twice as much. Selling

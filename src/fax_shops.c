@@ -52,6 +52,11 @@
  *   the hero has for good, so a key's giver can't be farmed for gold) is listed
  *   without a price, the hint says "Not for sale" while the cursor is on it,
  *   and A on it is ignored.
+ * - The meat shops sell the Red Potions (Potion Sellers, fax_potions.h), so
+ *   while they do, a tool shop's buy list loses its Red Potion: after
+ *   Shop_Populate has copied the list, before Shop_Draw draws it, the entries
+ *   after the potion move up (fax_shops_without). The shop still buys one,
+ *   at half the price its own list in the ROM gives.
  *
  * A step is entered "by return": a hook writes the address it wants on the
  * stack where the routine's RTS will pull it, or pushes a chain of them, and
@@ -64,6 +69,7 @@
  * docs/GAME_INTERNALS.md, "Shops". */
 #include "fax_shops.h"
 #include "fax_keys.h"
+#include "fax_potions.h"
 #include "fax_recharge.h"
 #include "fax_text.h"
 #include "cyc_mod.h"
@@ -105,6 +111,7 @@
 #define FINAL_MESSAGE_END   0x838Eu   /* IScripts_ShowFinalMessage's @_endScript: JMP IScriptAction_EndScript */
 #define OPEN_SHOP           0x83D8u   /* IScriptAction_OpenShop: LDA #$14 ("What would you like?"), its loop */
 #define OPEN_SHOP_LIST      0x83EAu   /* ... after the loop: JSR IScripts_LoadByte (the items), Populate, Draw */
+#define OPEN_SHOP_DRAW      0x83F7u   /* ... after JSR Shop_Populate: JSR Shop_Draw */
 #define BUY_WAIT            0x83FAu   /* ... JSR IScripts_WaitForMenuInput, BCC to BUY_PICK, JMP EndScript */
 #define BUY_PICK            0x8402u   /* ... A: JSR Shop_GetPlayerHasSelectedItem, the room, the gold, the item */
 #define BOUGHT              0x8463u   /* ... after Player_AddToInventory and the gold: JSR Maybe_Shop_DrawTextBox,
@@ -162,7 +169,7 @@ typedef struct {
 static bool enabled, failed, priced;
 static Session shop;
 static uint16_t lowest[256];   /* by item: the lowest price any shop asks, 0 if none sells it */
-static unsigned opened, bought, sold, refused, ignored, switched, turned, messages;
+static unsigned opened, bought, sold, refused, ignored, switched, turned, messages, dropped;
 static unsigned waits;         /* frames a list has waited for a button: it reads the pad */
 
 static uint8_t q(uint16_t addr) { return cyc_mod_peek(addr); }
@@ -414,6 +421,39 @@ static int buy_pick_hook(uint16_t addr) {
     return go(false, BUY_WAIT, 0, 0, -1);
 }
 
+unsigned fax_shops_without(uint8_t id, uint8_t items[], uint16_t prices[], unsigned n) {
+    unsigned kept = 0;
+    for (unsigned i = 0; i < n; ++i)
+        if (items[i] != id) items[kept] = items[i], prices[kept] = prices[i], ++kept;
+    return kept;
+}
+
+/* OpenShop, its list copied (Shop_Populate) and not yet drawn: while the
+ * Potion Sellers sell the Red Potions, the list without its Red Potion. A
+ * list of nothing else (no shop's) would be kept. */
+static int drawing_hook(uint16_t addr) {
+    (void)addr;
+    if (!here() || !in_step(BUY, 3) || !fax_potions_selling()) return 0;
+    uint8_t items[PAGE];
+    uint16_t prices[PAGE];
+    unsigned n = q(ARG_STRINGS_COUNT);
+    if (n > PAGE) n = PAGE;
+    for (unsigned i = 0; i < n; ++i) {
+        items[i] = q((uint16_t)(DATA_ARRAY + i));
+        prices[i] = (uint16_t)(q((uint16_t)(SHOP_ITEM_COSTS_L + i)) | q((uint16_t)(SHOP_ITEM_COSTS_U + i)) << 8);
+    }
+    unsigned kept = fax_shops_without(FAX_POTIONS_RED_POTION, items, prices, n);
+    if (kept == n || kept == 0) return 0;
+    for (unsigned i = 0; i < kept; ++i) {
+        p((uint16_t)(DATA_ARRAY + i), items[i]);
+        p((uint16_t)(SHOP_ITEM_COSTS_L + i), (uint8_t)prices[i]);
+        p((uint16_t)(SHOP_ITEM_COSTS_U + i), (uint8_t)(prices[i] >> 8));
+    }
+    p(ARG_STRINGS_COUNT, (uint8_t)kept);
+    dropped += n - kept;
+    return 0;
+}
+
 /* After a purchase: keep the list up and go on (to BUY + 3, which comes back). */
 static int bought_hook(uint16_t addr) {
     (void)addr;
@@ -640,14 +680,14 @@ const uint32_t *fax_shops_present(const uint32_t *picture, int *w, int *h) {
 static const char *const hook_ids[] = {
     "faxanadu.shops.next-action", "faxanadu.shops.open", "faxanadu.shops.bought", "faxanadu.shops.sell-list",
     "faxanadu.shops.sell-pick", "faxanadu.shops.sold", "faxanadu.shops.menu", "faxanadu.shops.final",
-    "faxanadu.shops.buy-pick" };
+    "faxanadu.shops.buy-pick", "faxanadu.shops.drawing" };
 static void hooks(int on) {
     for (unsigned i = 0; i < sizeof hook_ids / sizeof hook_ids[0]; ++i) nes_mod_set_function_hook_enabled(hook_ids[i], on);
 }
 static void deactivate(void) {
     enabled = failed = priced = false;
     shop = (Session){ .shown = NONE };
-    opened = bought = sold = refused = ignored = switched = turned = messages = waits = 0;
+    opened = bought = sold = refused = ignored = switched = turned = messages = waits = dropped = 0;
     hooks(0);
 }
 static void activate(void) {
@@ -705,13 +745,13 @@ static void shops_state(int id, const char *line) {
              "\"selling\":%u,\"cursor\":%u,\"list\":[%s],\"prices\":[%s],\"owned\":[%s],\"list_up\":%s,"
              "\"hint\":%s%s%s,\"page_label\":%s%s%s,"
              "\"script\":%u,\"opened\":%u,\"bought\":%u,\"sold\":%u,\"refused\":%u,\"ignored\":%u,"
-             "\"switched\":%u,\"turned\":%u,\"messages\":%u,\"waits\":%u",
+             "\"switched\":%u,\"turned\":%u,\"messages\":%u,\"waits\":%u,\"dropped\":%u",
              enabled ? "true" : "false", shop.active ? "true" : "false", modes[shop.mode <= SELL ? shop.mode : 2],
              modes[shop.shown <= NONE ? shop.shown : 2], shop.page, pages(), shop.selling, q(MENU_CURSOR_POS),
              items, prices, mine, up ? "true" : "false", hinted && up ? "\"" : "", hinted && up ? say : "null",
              hinted && up ? "\"" : "", hinted && up && paged ? "\"" : "", hinted && up && paged ? page : "null",
              hinted && up && paged ? "\"" : "", shop.script.base, opened, bought, sold, refused, ignored, switched,
-             turned, messages, waits);
+             turned, messages, waits, dropped);
     cyc_tcp_ok(id, fields);
 }
 void fax_shops_tcp_setup(void) {
@@ -723,10 +763,10 @@ void fax_shops_tcp_setup(void) {}
 
 NES_MOD_CONSTRUCTOR(register_shops) {
     static const uint16_t at[] = { INVOKE_NEXT_ACTION, OPEN_SHOP, BOUGHT, SELL_LIST, SELL_PICK, SOLD, MENU_UPDATE,
-                                   FINAL_MESSAGE_END, BUY_PICK };
+                                   FINAL_MESSAGE_END, BUY_PICK, OPEN_SHOP_DRAW };
     static const NESModFunctionEntryCallback cb[] = { next_action_hook, open_hook, bought_hook, sell_list_hook,
                                                       sell_pick_hook, sold_hook, menu_hook, final_hook,
-                                                      buy_pick_hook };
+                                                      buy_pick_hook, drawing_hook };
     for (unsigned i = 0; i < sizeof at / sizeof at[0]; ++i)
         if (!nes_mod_register_function_entry_plugin(hook_ids[i], at[i], cb[i])) abort();
     if (!nes_mod_register_reset_callback(deactivate) ||
