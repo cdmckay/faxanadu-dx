@@ -1,7 +1,6 @@
 """Play damage numbers end to end in a hidden window.
 
     python3 tests/damage/damage_numbers.py --build build-cycle --rom "Faxanadu (USA).nes" --out /tmp/damage
-    python3 tests/damage/damage_numbers.py ... --game-arg=--world-view=seamless
 
 The game runs uncapped and the script counts the game's frames, never the
 clock, on a reserved port (tests/e2e/fax_e2e.py), so any number can run in
@@ -14,8 +13,8 @@ hero at Eolis's gate, with full HP and Ointment for the walk. He goes in and wal
 is saved there. Every case starts from that save, its RAM edited: the Long
 Sword in hand (8 a hit with the Pendant fix and no Pendant), Leather Armor,
 full HP, no knockback or iframes, and where he and the Zozura stand, crawling
-toward him: with Seamless on, the room's actors move before he arrives, so the
-walk-in leaves them anywhere. A swing or a cast goes in with its case's load
+toward him: the remaster plays in Seamless, where the room's actors move
+before he arrives, so the walk-in leaves them anywhere. A swing or a cast goes in with its case's load
 (batch), so it starts on the state's first frame however far the script lags.
 
 1. One swing at both Zozura, 26 and 30 pixels off: the nearer, left 1 HP, dies,
@@ -39,8 +38,8 @@ walk-in leaves them anywhere. A swing or a cast goes in with its case's load
 
 The pictures are taken with the state, at one frame boundary (batch): every
 number is drawn at its room's place in the picture plus its own (the screen's
-in the original view; with Seamless, its room's, from Seamless's camera,
-fax_world and fax_world_room), and its pixels there are the HUD's digit tiles
+with the remaster off, the stock view's; with it on, its room's in
+Seamless, from Seamless's camera, fax_world and fax_world_room), and its pixels there are the HUD's digit tiles
 from the ROM (bank 10, tiles $30-$39, color 3) in one ink, outlined in black.
 """
 from pathlib import Path
@@ -96,7 +95,6 @@ def png(path):
 
 def main():
     args = parse_args(__doc__)
-    seamless = True  # SEAMLESS-ALWAYS
     game = Game.from_args(args)
     out, rom = game.out, game.image[16:]
 
@@ -145,10 +143,10 @@ def main():
         must be drawn at its room's place plus its own, in the HUD's digits.
         Returns the state."""
         path = out / f"{len(game.shots):02d}-{name}.png"
-        cmds = [("screenshot", dict(layer="picture", path=str(path))), ("damage_state", {})]
-        if seamless:
-            cmds += [("fax_world", {}), ("fax_world_room", dict(room=ZOZURA_SCREEN))]
+        cmds = [("screenshot", dict(layer="picture", path=str(path))), ("damage_state", {}),
+                ("fax_world", {}), ("fax_world_room", dict(room=ZOZURA_SCREEN))]
         replies = batch(*cmds)
+        seamless = replies[2]["enabled"]
         game.shots.append(path.name)
         s = replies[1]
         bpp, rows = png(path)
@@ -220,7 +218,7 @@ def main():
         assert (ram(AREA), ram(SCREEN), ram(ENTITIES + 7)) == (EOLIS, 0, INTRO_TRIGGER)
         gate, door = out / "gate.cycstate", out / "door.cycstate"
         tcp("save_state", path=str(gate))
-        # Ointment and full HP for the walk: with Seamless on, the Zozura roam before he arrives, and a
+        # Ointment and full HP for the walk: in Seamless the Zozura roam before he arrives, and a
         # new game's HP does not outlast three of their touches. Each case puts both back.
         fixture(gate, door, {ENTITIES + 7: 0xFF, POS_X: GATE_DOOR_X, HP: FULL, DURATION_OINTMENT: 0x40})
         tcp("load_state", path=str(door))

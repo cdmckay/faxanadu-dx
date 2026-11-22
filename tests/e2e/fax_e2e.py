@@ -1189,7 +1189,7 @@ def parser(doc, parts=()):
     for key in ("build", "rom", "out"):
         ap.add_argument("--" + key, type=Path, required=True)
     ap.add_argument("--game-arg", action="append", default=[],
-                    help="extra game option, e.g. --game-arg=--world-view=seamless (repeatable)")
+                    help="extra game option, e.g. --game-arg=--text-overrides=FILE (repeatable)")
     ap.add_argument("--port", type=int, default=0, help="TCP port (default: a reserved free one)")
     ap.add_argument("--realtime", action="store_true", help="run at normal speed instead of uncapped")
     return ap

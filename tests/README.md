@@ -19,14 +19,14 @@ a run that waits, walks or reads more than its check needs makes the whole
 suite later. `FAX_E2E_PROFILE=1` prints, as a test exits, the lines of it its
 frames went to.
 
-A test runs in Seamless too (`+sw` in the table) only where the view changes
-what it checks: a feature that draws or places something on screen, or moves
-the hero between rooms (`--game-arg=--world-view=seamless`). Seamless's view
-is 424x240 whatever the window, what a player sees, so its window, like every
-test game's, is at scale 1 (the `config.ini` `install()` writes): the hidden
-window's scaling blit is a tenth of a frame at 3. A test's game is the
-build's, hard-linked: one copy of the program in memory for every game, which
-plays them about 10% faster than copies.
+Every run plays the remaster as players get it, in Seamless, its one view
+(#110), so each part runs once; "the original" parts switch the remaster off
+and play in the stock view. Seamless's view is 424x240 whatever the window,
+what a player sees, so its window, like every test game's, is at scale 1 (the
+`config.ini` `install()` writes): the hidden window's scaling blit is a tenth
+of a frame at 3. A test's game is the build's, hard-linked: one copy of the
+program in memory for every game, which plays them about 10% faster than
+copies.
 
 ## End-to-end tests and `e2e/fax_e2e.py`
 

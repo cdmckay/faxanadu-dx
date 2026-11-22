@@ -1,7 +1,6 @@
 """Play the map end to end in a hidden window.
 
     python3 tests/map/explored_map.py --build build-cycle --rom "Faxanadu (USA).nes" --out /tmp/map
-    python3 tests/map/explored_map.py ... --game-arg=--world-view=seamless
     python3 tests/map/explored_map.py ... --part file
 
 The game runs uncapped and the script waits on the game's own state, never on
@@ -35,7 +34,7 @@ items    Out of the shop onto Trunk $3C, in the Tower of Fortress, on the
          files saves at every respawn), map.items holding the Elixir; quit,
          continue file 1: in Eolis's temple, on the Tower of Fortress page,
          the box seen and still no dot.
-original With the remaster off (the default view only): M does nothing, no
+original With the remaster off (the stock view): M does nothing, no
          pause.
 """
 from pathlib import Path
@@ -158,7 +157,6 @@ def main():
     args = parse_args(__doc__, parts=PARTS)
     game = Game.from_args(args)
     out = game.out
-    seamless = True  # SEAMLESS-ALWAYS
 
     def walk(direction, target, frames=1800):
         """Hold `direction` until the hero stands on `target` (area, screen), settled."""
@@ -275,7 +273,7 @@ def main():
             close_map()
             assert ram(PAUSED) == 0 and place() == (EOLIS, 3)
             print(f"ok: the map opens paused on Eolis with boxes for the gate and screens 1-3 only, and marks for "
-                  f"the gate's door and the shop's ({'Seamless' if seamless else 'the original view'})")
+                  f"the gate's door and the shop's (in Seamless)")
 
             trunk = out / "trunk.cycstate"
             fixture(shop, trunk, {SAVED_AREA: TRUNK, SAVED_SCREEN: 0, SAVED_PALETTE: PALETTE_OUTSIDE,
@@ -372,7 +370,7 @@ def main():
             item_color = top
             close_map()
             print(f"ok: on Trunk $3C the map shows the Elixir's dot at its place "
-                  f"({'Seamless' if seamless else 'the original view'})")
+                  f"(in Seamless)")
 
             game.poke({PLAYER_X: (ELIXIR_BLOCK & 15) * 16, PLAYER_Y: 2 * 16})   # over it: he drops onto it
             until("the Elixir's line", lambda: ram(MESSAGE_ID) == GOT_ELIXIR, 600)
