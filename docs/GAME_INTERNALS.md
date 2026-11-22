@@ -227,8 +227,8 @@ from the Magician ($15, $17), "Our doctor can help." ($45), "I sell keys." and
 
 The King's guard (`ISCRIPT_EOLIS_KINGS_GUARD`, no portrait) stands at `$9A` on
 screen 7, two blocks right of the King's door. The Eolis Guru gives the Ring
-of Elf (`SpecialItems` `$80`) the first time; the King gives 1500 gold only to
-a hero with none.
+of Elf (`SpecialItems` `$80`) the first time; the King gives 1500 gold (3000
+with the remaster) only to a hero with none (see *Gold*).
 
 ## Messages (bank 13)
 
@@ -712,6 +712,83 @@ which stays put. The last row (5) holds →, ←, DEL and END at columns 0-3, an
 Up from row 0 wraps to it. A on END (row 5, column 3) checks the mantra and
 continues. A new game's mantra at Eolis's gate is `rFAAAAQAAA`
 (`tests/remastered/one_switch.py` types it with the remaster off).
+
+## Gold
+
+`Gold` (`$0392-$0394`) is 24 bits, little-endian. Four routines write it:
+
+| Routine | Where | Does |
+|---|---|---|
+| `Player_HandleTouchCoin` | `$8B9A`, bank 14 | A coin touched: sound 9, then `Gold` + the coin's `CurrentSprites_Values` byte, carried into `Gold_M` and `Gold_U` and **not capped**: past `$FFFFFF` it wraps around to 0 and up |
+| `Player_AddGold` | `$F9C1`, fixed | `Gold` + `Temp_Int24`/`_M` (16 bits; the top byte of the add is 0), **held at `$FFFFFF`** when it carries out: the game's cap. Only `IScripts_ProgressivelyAddGold` calls it |
+| `Player_SubtractGold` | `$F9A5`, fixed | Paying, 10 a frame, through `IScripts_ProgressivelySubtractGold` (a purchase, and scripts' `$05`) |
+| `Player_SetInitialExpAndGold` | `$95B1`, bank 12 | The title's starting gold, after a mantra or a death (see *Titles, experience and gold*) |
+
+Each ends in `UI_DrawGoldValue` (`$F9E7`), which draws **7 digits**
+(`UI_DrawDigitsZeroPadded`, Y = 7): past 9,999,999 the HUD shows the low 7,
+so the cap, 16,777,215, reads `6777215`. Nobody gets near either.
+
+**Paid over time.** `IScripts_ProgressivelyAddGold` (`$8537`, bank 12) pays
+the 16-bit amount in `Temp_0202/3` 10 Golds a frame (each turn waits a frame
+in `IScripts_UpdatePortraitAnimation`), with the gold sound every fourth
+frame, then waits 60 frames: once the amount is 0 it sets bit 15 (`DEC
+Temp_0203` to `$FF`) and counts `Temp_0202` down from 60. So an amount must
+be below `$8000` and a multiple of 10 (*Shops* says what one that is not
+does). Two callers: `IScriptAction_AddGold` (`$8525`, action `$09`), which
+reads the amount from the script and calls it at `$8531`, and the sell list
+(`IScriptAction_ShowSellMenu`, half the shop's price).
+
+**The King** is the only `ADD_GOLD` in the game. `ISCRIPT_EOLIS_KING`
+(`$A350`, bank 12, script `$08`) is `80`, `0D A35A` (`CHECK_GOLD`: any gold
+jumps), `01 35` (his plea, which B cannot skip), `09 DC 05` (1500), `00`; at
+`$A35A`, `03 36, 00` ("There is nothingmore I can do tohelp you.", then
+"Looking forward/to good news."). So he gives only to a hero with no gold: once, unless the gold
+is spent to 0 first. At the action's `JSR`, `IScriptOrCHRAddr` +
+`IScriptOffset` is `$A359`, his `END`. The plea (message `$35`, `$8BB6` in
+bank 13) names the amount: "You are our lasthope./I shall give you1500
+Golds.", its digits at `$8C81-$8C84`. The quest log's line for The King's
+Plea ("Bring the water back to the Elf fountain, our life source.") names
+none.
+
+**Coins come only from monsters.** No screen's sprite list (bank 11) places a
+coin (`$02`) or bread (`$01`). A monster that dies by weapon or magic becomes
+a death effect: `Sprite_SetDeathEntity` keeps its entity in
+`CurrentSprites_InternalBehaviorStates` and puts `$13` in its slot, or `$64`
+(the boss death) for a boss (`SPRITE_CATEGORIES_BY_ENTITY` 7). Its behavior
+calls `Sprite_HandleDeathDropIfPossible` (`$AC21`): `SpriteBehavior_EnemyDeath`
+once, 8 frames on, then empties the slot; `SpriteBehavior_BossDeath` at each
+of its phases 1-4, so a boss leaves up to four. A drop needs a slot free
+(`Sprites_HasMaxOnScreen` leaves the first in Y), so a monster that dies on a
+screen with all 8 slots taken leaves nothing. `Sprite_RunDeathDropHandler`
+(`$AC2D`) then looks the entity up in `SPRITE_ENTITY_DROP_VALUES_INDEX`
+(`$B672`): `$FF` or `$40` and up, nothing; otherwise the index picks the
+value in `SPRITE_DROP_VALUES` (`$ACED`), which goes in the drop's
+`CurrentSprites_Values`, and the drop is a coin below `$30`
+(`Sprites_ReplaceWithCoinDrop`, `$AC75`, sound `$10`) and bread from `$30`
+(`Sprite_ReplaceWithBreadDrop`, `$AC9F`; its value is HP, through
+`Player_AddHP`). Nothing is random: a kind of monster always leaves the same.
+A coin bounces and then goes (`SPRITE_BEHAVIOR_BOUNCE_AND_EXPIRE`). Touching
+it runs `Player_HandleTouchBreadOrCoin` (`$8968`), which empties the slot and
+jumps to `Player_HandleTouchCoin`. chipx86's comments on the index table are
+one off from `$31` on: his "King Grieve" is Zorugeriru (`$31`), his "Zozura"
+the unused eyeball (`$46`), and his "Item: Glove" the Zozura (`$47`).
+
+What each monster placed in the game leaves (entity, then Golds for a coin,
+HP for bread; a boss up to four):
+
+| Leaves | Monsters |
+|---|---|
+| A coin | Hornet `$07` 53, Raiden `$04` 56, Bihoruda `$08` 56, Monodron `$2A` 59, Geributa `$17` 78, Necron Aides `$05` 90, Fire Giant `$0E` 90, Nash `$0D` 98, Grimlock `$19` 98, Snowman `$0C` 100, Sugata `$18` 100, Ikeda `$26` 100, Charron `$15` 115, Giant Bees `$1A` 115, Ishiisu `$0F` 120, Tamazutsu `$2C` 120, Giant Strider `$1E` 128, Sir Gawaine `$1F` 150, Maskman `$20` 180, Wolfman `$21` 190, Magman `$23` 200, Execution Hood `$10` 230 |
+| Coins (a boss) | Zorugeriru `$31` 20, Borabohra `$2F` 56, Rokusutahn `$11` 120, Pakukame `$30` 128, Ripasheiku `$2D` 180, Zoradohna `$2E` 220 |
+| Bread | Zozura `$47` 8, Yuinaru `$0B` 8, Myconid `$1B` 8, Lamprey `$28` 14, Yareeka `$22` 16, Naga `$1C` 31 |
+| Nothing | Zombie `$06`, King Grieve `$32`, Shadow Eura `$33` |
+
+So Eolis's Zozuras leave bread; the Trunk's first coin is a Monodron's.
+
+**With the remaster** (Double gold, `fax_gold.c`) the King pays 3000 and his
+plea says so, and every coin pays twice its value, held at the cap; see
+*Features and what they use*. Selling, the title's gold and spending are the
+original's.
 
 ## The title screen (bank 15, bank 12)
 
@@ -3529,6 +3606,35 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
   buffer has less than 50 bytes of room (not empty), the MP waits for the
   next frame that has it. A new game's MP climbs from 0 like any other. The
   wait and the MP last seen are its save-state record; MP is in no save file.
+- **Double gold** (`fax_gold.c`, #102). The King gives 3000 instead of 1500,
+  and every coin a monster leaves pays twice its value. Three hooks, each
+  returning 0, with no ROM and no read overrides (the budget is full), and no
+  state: each decision is made from RAM and the registers (see *Gold*).
+  - At `IScriptAction_AddGold`'s `JSR IScripts_ProgressivelyAddGold`
+    (`$8531`, bank 12), when the script stands at the King's `END` (`$A359`)
+    and `Temp_0202/3` holds 1500, it writes 3000 there. The game pays it, 10
+    a frame: 300 frames of counting where the original takes 150. Selling
+    reaches the same routine from the sell list, never through `$8531`.
+  - At the text box's reader, after `LDA (Temp_Int24),Y` (`$F4DF`, `CMP
+    #$FF`, fixed bank), while `MessageID` is `$35` with bank 13 mapped, the
+    byte read from `$8C81` or `$8C82` (`Temp_Int24` + Y, so past a page
+    carried into `Message_StartAddr_U` too) and still the stock `1` or `5`
+    becomes `3` or `0` in A: the plea says "I shall give you3000 Golds.".
+    The compare after it sets the flags from A.
+  - At `Player_HandleTouchCoin` before its add (`$8B9F`, `LDA Gold`, after
+    the sound), it stores `Gold` as the gold it should end with less the
+    coin's value: the gold plus twice the value (X picks the slot, as the
+    game's `ADC CurrentSprites_Values,X` does), held at `$FFFFFF`. The game's
+    own add of the value then lands there and never carries out of
+    `Gold_U`, so where the original wraps past the cap, this stops at it.
+    It runs in Seamless's isolated rooms too, on their scratch machine, and
+    counts only outside them.
+
+  Every coin in the game is a monster's, so nothing else is doubled: no
+  gold lies in the world, and selling, the title's gold and spending are
+  untouched. `gold_state` over TCP gives the gold, the gifts doubled, the
+  plea's digits served and typed (`plea_digits`, on or off, for a test's
+  picture), and the coins, what they paid and how many reached the cap.
 
 - **Zone names** (`fax_banner.c`, with `fax_zone.c` and `fax_text.c`).
   Entering a zone with a different name shows it below the HUD for 2 s, in a
