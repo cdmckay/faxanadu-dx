@@ -27,10 +27,9 @@
  * the freeze's, at the MP there is and what drains it, rounded up (a full
  * bar's 40 s shows 40). Otherwise it is what the original shows: the
  * flight's while the Wing Boots fly, whatever is selected, else 00 (#119).
- * Dying ends both
- * (a respawn clears timed items); a Guru travel journey does not. Finding a
- * pair or an Hour Glass in the world while you own one adds nothing: one is
- * all he needs. The game's shops would sell a second
+ * Dying ends both (a respawn clears timed items); a Guru travel journey does
+ * not. Finding a pair or an Hour Glass in the world while you own one adds
+ * nothing: one is all he needs. The game's shops would sell a second
  * (Shop_GetPlayerHasSelectedItem refuses no Items you have); Quick shops
  * (fax_shops.c) lists one you have as owned instead, and ignores A on it
  * (fax_recharge_on).
@@ -78,9 +77,8 @@
  *   InterruptCounter, which each reaches once a main-loop frame while its
  *   item runs: that frame of the run. MP goes on schedule, the bar drawn by
  *   the game's own Player_SetMP in a committed call (when the PPU buffer
- *   has room, else at the first frame that has), and the
- *   duration is set to the seconds left, and the game's second is skipped
- *   (an RTS). At the run's end the site jumps to the routine's DEC with the
+ *   has room, else at the first frame that has), the duration is set to the
+ *   seconds left, and the game's second is skipped (an RTS). At the run's end the site jumps to the routine's DEC with the
  *   duration at 0, so it wraps to $FF and the game ends the item as it
  *   always did, with its line (and the Hour Glass, the area's music).
  *   Another value of DurationHourGlass than this module set is the game's
