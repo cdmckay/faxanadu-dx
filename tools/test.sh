@@ -169,10 +169,9 @@ python3 tests/e2e/fax_e2e_test.py --build build-cycle --rom "$ROM" --out "$OUT/e
 # hero between rooms. Block, Equip indoors, the inventory fix and the rest
 # are logic on the game's state, the same in either view. Quick shops draws its list's hint,
 # page and OWNED over the picture, placed for Seamless's: its two parts that
-# check all three run there. Seamless's picture is fixed at 426x240, what it
-# fits to the window at scale 3, so the window can be at scale 1 (fax_e2e's
-# install()).
-SW="--game-arg=--world-view=seamless --game-arg=--world-size=426x240"
+# check all three run there. Seamless's view is 424x240 whatever the window,
+# what a player sees, so its window is at scale 1 too (fax_e2e's install()).
+SW="--game-arg=--world-view=seamless"
 E2E=(
   "travel       tests/travel/guru_travel.py --parts"
   "travel+sw    tests/travel/guru_travel.py --parts $SW"
@@ -223,6 +222,7 @@ E2E=(
   "softlocks    tests/softlocks/eolis_shaft.py --parts"
   "entrances    tests/entrances/fair_entrances.py --parts=doors,edges-trunk,edges-mist,edges-south"
   "entrances+sw tests/entrances/fair_entrances.py --parts $SW"
+  "view+sw      tests/world/fixed_view.py $SW"
 )
 # At most E2E_JOBS runs play at once (default: one a hardware thread; 0: all
 # at once): a game is uncapped and takes a whole thread, and more of them

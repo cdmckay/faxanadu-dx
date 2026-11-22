@@ -53,7 +53,7 @@ def main():
             events = [(110 - 41, "B"), (118 - 41, "-")]
         route.write_text("".join(f"{start+f} {b}\n" for f, b in events))
         cmd = [str(args.exe.resolve()), str(args.rom.resolve()), "--no-save", "--mods-root", str(empty),
-               "--world-view", mode, "--world-size", "512x320", "--load-state", str(source),
+               "--world-view", mode, "--load-state", str(source),
                "--frames", str(end), "--input", str(route), "--present-out", str(folder / "frame.png"),
                "--present-every", "1", "--hash-out", str(folder / "hash.txt"),
                "--save-state", f"{end-1}:{folder}/final.cycstate"]
@@ -93,10 +93,12 @@ def main():
         # there, including the extended bounds; dimensions alone miss erasure.
         paths = sorted(folder.glob("frame_*.png"))
         images = [Image.open(p).convert("RGB") for p in paths]
-        ypos = poses[1][2][0xa1] + 112  # floor-aligned 512x320 view
-        box = (0, ypos, 512, min(ypos+40, 320))
+        # The fixed view's 208 lines under the HUD are one room's: a region a
+        # room tall sits with its top at the HUD.
+        ypos = poses[1][2][0xa1] + 32
+        box = (0, ypos, 424, min(ypos+40, 240))
         checks[name+"_visible_pose_stable"] = all(im.crop(box).tobytes() == images[15].crop(box).tobytes() for im in images[16:101])
-        checks[name+"_adaptive_every_frame"] = all(im.size == (512, 320) for im in images)
+        checks[name+"_fixed_view_every_frame"] = all(im.size == (424, 240) for im in images)
         final = (folder / "final.cycstate").read_bytes()
         checks[name+"_guest_matches_original"] = core(final) == core((native / "final.cycstate").read_bytes())
         checks[name+"_backend_state"] = final == (interp / "final.cycstate").read_bytes()
