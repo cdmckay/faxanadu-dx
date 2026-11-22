@@ -80,11 +80,13 @@ and data tables after it shifted). Not supported: the build rejects it.
 | `$0390`, `$0392-$0394` | `Experience`, `Gold` | Gold is 24-bit little-endian |
 | `$039A` | `Player_MP` | |
 | `$03C7` | `IScript_PortraitID` | The portrait showing, `$FF` for none (see *Portraits*) |
+| `$0427`, `$0428` | `DurationOintment`, `DurationGlove` | Seconds left, `$FF` when not running; an Ointment or Glove lying in the world is not there while its kind runs (see *Items in the world*) |
 | `$042C` | `SpecialItems` | Bit flags; `$08` the Elixir, which saves a death once |
 | `$042D` | `Quests` | Bit flags (see *Quests*) |
 | `$0431`, `$0432` | `Player_HP_U`, `Player_HP_L` | |
 | `$0438` | `PlayerIsDead` | Set it to 1 and the main loop runs the death path |
 | `$0439` | `TempleSpawnPoint` | Where death respawns and a mantra continues, 0-7. In the original, the furthest temple reached; with Save files, the temple of the Guru last saved with |
+| `$043A` | `Screen_TrackedVisitCount` | The one-visit-in-four items' counter (see *Items in the world*) |
 | `$04BC`, `$04BD` | `Arg_PlayerHealthDelta_L`, `_U` | The HP `Player_ReduceHP` takes: fraction, whole |
 | `$0600-$061F` | `Password_EnteredChars` | The mantra screen's characters, as 6-bit values (shares `ScreenBuffer`) |
 | `$0666` | `Password_EnteredCharsLength` | |
@@ -1950,11 +1952,42 @@ fits the page, from 16 x 13 down to 10 x 8 (each keeps a screen's 256 x 208
 shape), a 1-pixel wall in `$22` around `$02` inside (a town's: `$28` around
 `$08`), the current one blinking `$16` every 16 frames. Seen neighbours a link
 or a town edge joins beside each other are open through both walls; above and
-below, only a ladder he has taken opens a gap. A used door's mark, 3 x 3
-pixels, sits on its screen where its block is: a cross for a Guru (`$30`), a
-block for a tool or key shop (`$2A`), a roof for any other building (`$26`),
-and a bar for a door to a tower, a castle or a region (`$38`). TCP `map_state`
-gives every box's rectangle in the last presented picture.
+below, only a ladder he has taken opens a gap. On the boxes, as Metroid's map
+has it, only what matters, each where its block is on its screen: a cross
+(3 x 3, `$30`) for a Guru's door used, a block (3 x 3, `$27`) for any other
+door used (a shop, a house, the hospital, a tower, a castle, another region),
+and a dot (2 x 2, `$2A`) for an item still there (below). A town's doors are
+3 to 5 blocks apart, so on the smaller boxes their marks run together: the
+Gurus' crosses are drawn over the other doors, and the dots over both. The
+key under the grid reads "Guru", "Door", "Item", each beside its mark at
+twice the size, the dot rounded. TCP `map_state` gives every box's rectangle
+in the last presented picture, each item with whether it shows and whether it
+is taken, and every dot drawn.
+
+**Items on the map.** The items are the world pickups in the screens' sprite
+lists (*Items in the world*): 44, read from bank 11 with the rest of the map,
+Poison left out (it hurts; a dot would send the hero to it). A building's
+item is marked at the door that leads in. One shows on a screen seen while
+the game would have it there:
+
+- On the screen the hero is on (in a building, that building), while its
+  sprite is in a slot (`CurrentSprites_Entities`), hidden or not: what is
+  there, is.
+- Elsewhere, by its kind. One that lies there at every visit (the Elixirs,
+  `$4B` Red Potions, `$48` Gloves, `$4E` Ointments), until the hero has
+  touched it; a Glove or an Ointment not while one of its kind runs (its
+  behavior removes it then). One the game keeps state for, until that state
+  says he has it (`SpecialItems`, `Quests`, the Battle Suit's armor list and
+  the like, as its behavior checks); Ripasheiku's Mattock comes back after a
+  death, as the game brings it back. One shown on one counted visit in four
+  (`Screen_Is3Of4Visits`), never: it is there only while it is.
+- The touch: a hook at `Player_HandleTouchItem` (`$88FB`, bank 14: `LDA
+  CurrentSprites_Entities,X`, `JSR Player_PickUp`, then the slot emptied),
+  which only observes X, the slot. The game keeps nothing for the items that
+  lie there at every visit (each comes back whenever its screen loads), so
+  the map keeps them taken itself, in the file. A full item list refuses the
+  item after its line but takes it off the screen all the same, so a touch is
+  a take.
 
 **In the file.** One field an area that has anything seen: `map.eolis`,
 `map.trunk`, `map.mist`, `map.towns`, `map.branch`, `map.dartmoor`,
@@ -1965,7 +1998,11 @@ item 0 its lowest bit: Eolis's gate and screens 1-2, with the gate's door
 and the temple's (doors 0 and 3 of its 10), read `700 000 000 900`. Written when the file is (`FAX_SAVE_WRITING`),
 read back on `FAX_SAVE_CONTINUED`, cleared for a new game; a damaged field
 forgets that area only. Every field fits a value (the Mist's, everything set,
-is 71 characters).
+is 71 characters). And `map.items`, when any is taken: the items taken, as a
+set by their place in *Items in the world*'s order (by area, a building's in
+area 4 by its number, then screen, then place in the list); the Elixir on
+Trunk `$3C`, the twelfth, alone reads `00800000000`. A damaged one shows
+every item again.
 
 ## Quests
 
@@ -2480,6 +2517,84 @@ Red Potion `$10`). Shops and scripts add the category in the top 3 bits
   Potion at `$C53B`, the Wing Boots at `$C581`, the Hour Glass at `$C5D0`,
   the Mattock at `$C64C`.
 
+## Items in the world (bank 11)
+
+**The sprite lists.** `AREA_SPRITE_ADDRESSES` (`$8210`, bank 11) holds a
+pointer per area (`Area_CurrentArea`) to its screens' pointers, a word a
+screen; in area 4 a building's, by its number (the numbers run far past
+area 4's 10 screens of scroll data). Each points to the screen's list as
+`Screen_LoadSpriteInfo` reads it: an entity and a block `YX` a sprite, to a
+`$FF`; then the values (`CurrentSprites_Values`, an NPC's script) to a `$FF`,
+and maybe `$80` and the screen's event (see *Screen events*).
+`Screen_LoadAllScreenInfo` loads nothing for an area whose first screen's
+pointer has `$FF` for its high byte. The longest list has 5 sprites; 8
+slots take them (`Sprites_PopulateNextAvailableSprite` skips what does not
+fit). The disassembly's labels number the screens in decimal, and not always
+the pointer's (`SPRITE_INFO_APOLUNE_SCREEN_39` sits among 34 and 35): read the
+pointers.
+
+**What decides an item is there** is its entity's behavior script
+(`SPRITE_BSCRIPTS`, bank 14), which switches to one behavior on its first
+frame:
+
+- `BSCRIPTS_OBJ_POTIONLIKE` (`$4B` Red Potion, `$4C` Poison, `$4D` Elixir):
+  `SpriteBehavior_Fall`. Always there; the game keeps no state, so it is back
+  whenever its screen loads.
+- `SpriteBehavior_Glove` (`$48`) and `_Ointment` (`$4E`): there unless one of
+  its kind is running (`DurationGlove` `$0428`, `DurationOintment` `$0427`,
+  `$FF` when not) as the screen loads; no state either.
+- `SpriteBehavior_RandomlyShowItem_*` (`$50` Mattock, `$55` Wing Boots, `$56`
+  Hour Glass, `$5D` Red Potion, `$5E` Poison, `$5F` Glove, `$60` Ointment):
+  `Screen_Is3Of4Visits` counts `Screen_TrackedVisitCount` (`$043A`), the
+  counter only these calls move, and removes the sprite on 3 of 4 counts, so
+  each shows on one counted visit in four. No state: one taken can show
+  again.
+- Held state: `$49` Black Onyx (`SpecialItems` `$01`), `$4A` Pendant (`$02`),
+  `$57` Magical Rod (`$04`) and `$5C` Zorugeriru's Wing Boots (`Quests` `$08`)
+  remove themselves once set; `$5B` Ripasheiku's Mattock too (`Quests` `$10`),
+  but `Player_Spawn` clears that bit, so it is back after a death. The `$58`
+  Battle Suit, `$59` Battle Helmet and `$5A` Dragon Slayer clear the screen's
+  sprites if the hero holds the item (item 3 of its list: worn or selected,
+  for the slayer `Player_CurWeapon`, or in the list's first count entries).
+  Each of these but the Rod also shows or hides itself by whether its boss
+  (`$2D` Ripasheiku, `$2E` Zoradohna, `$31` Zorugeriru, `$32` King Grieve) is
+  on the screen (`Maybe_IsSpriteEntityNotOnScreen`).
+
+Touching one runs `Player_HandleTouchItem` (`$88FB`, bank 14; see *Items and
+the inventory*), which empties the slot after `Player_PickUp`.
+
+**Every item lying in the world** (`tests/map/map_test` checks the count and
+some entries against the ROM; area, screen and block `YX`; "room" is a
+building, marked on the map at its door):
+
+| Item | Entity | There | Where |
+|---|---|---|---|
+| Elixir | `$4D` | every visit | Trunk `$3C` (`$32`), Mist `$41` (`$A1`) |
+| Red Potion | `$4B` | every visit | Trunk `$22` (`$6E`), Mist `$4D` (`$31`), Dartmoor `$13` (`$AE`) |
+| Glove | `$48` | every visit, no Glove running | Trunk `$18` (`$31`), Branch `$21` (`$32`), Zenis `$0A` (`$6D`) |
+| Ointment | `$4E` | every visit, no Ointment running | Trunk `$37` (`$33`), Zenis `$06` (`$B2`) |
+| Red Potion | `$5D` | one in four | Trunk `$0C` (`$3B`), `$21` (`$7E`), Mist `$50` (`$31`), room `$37` (`$98`) off Dartmoor `$02` |
+| Mattock | `$50` | one in four | Trunk `$0E` (`$5D`), Branch `$18` (`$58`) |
+| Wing Boots | `$55` | one in four | Trunk `$2D` (`$41`), Mist `$11` (`$5E`), `$1B` (`$35`), `$32` (`$48`), room `$1F` (`$A3`) off Mist `$06`, Branch `$1C` (`$A9`), `$22` (`$92`) |
+| Hour Glass | `$56` | one in four | Trunk `$13` (`$4D`), Mist `$30` (`$32`), Branch `$16` (`$72`), Dartmoor `$04` (`$5E`), `$12` (`$32`) |
+| Glove | `$5F` | one in four | Branch `$08` (`$4E`), Zenis `$11` (`$AC`) |
+| Ointment | `$60` | one in four | Trunk `$1D` (`$41`), Mist `$47` (`$42`), room `$43` (`$95`) off Dartmoor `$1F`, Branch `$04` (`$4D`), `$10` (`$48`), Dartmoor `$1A` (`$BE`) |
+| Black Onyx | `$49` | until `SpecialItems` `$01` | Mist `$4C` (`$A4`) |
+| Pendant | `$4A` | until `SpecialItems` `$02` | Mist `$34` (`$9E`) |
+| Magical Rod | `$57` | until `SpecialItems` `$04` | Branch `$1E` (`$B9`) |
+| Battle Suit | `$58` | until held | Branch `$1D` (`$BD`) |
+| Battle Helmet | `$59` | until held | Branch `$07` (`$A4`) |
+| Dragon Slayer | `$5A` | until held | Dartmoor `$15` (`$9D`) |
+| Mattock | `$5B` | until `Quests` `$10` (back after a death) | Trunk `$15` (`$AE`) |
+| Wing Boots | `$5C` | until `Quests` `$08` | Trunk `$3B` (`$3D`) |
+| Poison | `$4C` | every visit | Trunk `$29` (`$31`), `$35` (`$A2`), Branch `$0B` (`$7D`), `$17` (`$56`), `$1E` (`$4D`), Dartmoor `$0E` (`$B1`), `$13` (`$A6`), `$14` (`$66`), `$1D` (`$B2`), Zenis `$09` (`$BE`), `$0D` (`$3E`), `$0E` (`$A1`) |
+| Poison | `$5E` | one in four | Mist `$1E` (`$68`), `$1F` (`$A1`) |
+
+That is 44 items and 14 Poisons; Eolis and the towns have none. The three
+rooms each hold an enemy with their item (a Giant Strider, a Grimlock, a
+Wolfman). No ring and no key lies anywhere (the rings and keys come from
+shops and people; see *Doors and keys*).
+
 ## Shops (bank 12)
 
 There are 17 shops: 10 tool shops (which also sell the weapons, armor,
@@ -2800,7 +2915,7 @@ jumping or falling, `Player_Flags & $05`):
 
 | Item | Shops | In the world (bank 11's lists: area, screen, block `YX`) |
 |---|---|---|
-| Wing Boots | Forepaw 2,800, Conflate 5,500 | Sprite `$55`: Trunk `$2D` (`$41`), Mist `$11` (`$5E`), `$1B` (`$35`), `$32` (`$48`), Branch `$1C` (`$A9`), `$22` (`$92`). Sprite `$5C`: Trunk `$3B` (`$3D`), Zorugeriru's |
+| Wing Boots | Forepaw 2,800, Conflate 5,500 | Sprite `$55`: Trunk `$2D` (`$41`), Mist `$11` (`$5E`), `$1B` (`$35`), `$32` (`$48`), the room off Mist `$06` (building `$1F`, `$A3`), Branch `$1C` (`$A9`), `$22` (`$92`). Sprite `$5C`: Trunk `$3B` (`$3D`), Zorugeriru's |
 | Hour Glass | After Mascon 5,600 | Sprite `$56`: Trunk `$13` (`$4D`), Mist `$30` (`$32`), Branch `$16` (`$72`), Dartmoor `$04` (`$5E`), `$12` (`$32`) |
 | Elixir | Eolis 320, after Mascon 4,300 | Sprite `$4D`: Trunk `$3C` (`$32`), Mist `$41` (`$A1`), beside Zoradohna (`$2E`) |
 
@@ -3497,14 +3612,20 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
 - **The map** (`fax_map.c`, laid out by `fax_map_layout.c`). A Map button (M,
   or LT on a controller; `MapKey` and `MapButton` in `config.ini` [Game])
   pauses the game on a map of the screens the hero has stood on, a page per
-  region, tower and castle; see *The map*. Two hook sites, the BEQs at
+  region, tower and castle, with only Gurus, doors and the items still
+  lying in the world marked; see *The map*. Three hook sites: the BEQs at
   `$E02F` and `$E040` in `GameLoop_CheckPauseGame`, shared with the quest log
-  (whose hooks come after; neither opens over the other): it changes only A
-  and Z there, and the game's own code pauses and unpauses. Everything else it learns from RAM at the end of each frame, and
-  it draws at present time, after every other feature. Guru travel's visited
-  Gurus (`fax_travel_visited`) count as their temples. Its save-state record is
-  what the hero has seen (312 bytes), the last place, and the map's page and
-  whether it is open. No ROM, no read overrides.
+  (whose hooks come after; neither opens over the other), where it changes
+  only A and Z, and the game's own code pauses and unpauses; and
+  `Player_HandleTouchItem` (`$88FB`, bank 14), which no other feature hooks,
+  where it only observes the slot touched (recharging items' pickup hook,
+  `Player_PickUpItem`, runs later, inside `Player_PickUp`). Everything else
+  it learns from RAM at the end of each frame and as it draws, at present
+  time, after every other feature. Guru travel's visited Gurus
+  (`fax_travel_visited`) count as their temples. Its save-state record
+  (version 2; it still loads a version 1 record, with no item taken) is what
+  the hero has seen (312 bytes), the last place, the map's page and whether it
+  is open, and the items taken (8 bytes). No ROM, no read overrides.
 
 - **Quest log** (`fax_quests.c`, the quests in `fax_quest_table.c`). Lines in
   dialogue, the log and the marks; see *Quests*. A hook at `Messages_Load`
@@ -3564,7 +3685,7 @@ Other fields belong to features: Guru travel's `gurus` (the visited Gurus,
 town names), recharging items' `recharge.wingboots`, `recharge.hourglass` and
 `recharge.elixir` (see its entry in *Features and what they use*), the map's
 `map.eolis`, `map.trunk`, `map.mist`, `map.towns`, `map.branch`,
-`map.dartmoor` and `map.zenis` (see *The map*), the quest log's
+`map.dartmoor`, `map.zenis` and `map.items` (see *The map*), the quest log's
 `quests.given` and `quests.done` (see *Quests*), and
 `imported_mantra` on a file imported from a mantra. Missing
 core fields take a new game's values. HP, MP and the timed items are not
