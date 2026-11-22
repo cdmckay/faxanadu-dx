@@ -1579,6 +1579,14 @@ jump a few updates after stepping off, as A from the hang itself would.
   masks keep their values, and a button pressed and let go within lag frames
   is never seen. A cycle-host frame ends at the start of VBlank (scanline
   241, dot 1), so each frame begins with that read, when there is one.
+- **After a screen loads, the first frames are lag frames.** Entering a
+  screen (through a door, say) queues its sprites' tiles in the PPU buffer,
+  and for about six frames the loop waits on the buffer while the NMI flushes
+  it, so the pad is not read until `PPUBuffer_ReadOffset` (`$1F`) reaches
+  `PPUBuffer_WriteOffset` (`$20`); the first frame after, it is. The scroll
+  has ended by then (`Screen_ScrollDirection` `$FF`), so a save state taken
+  ten frames after the scroll can still be a frame or two short of reading a
+  press: `tests/ladders/ladders.py`'s recipes wait for the buffer to empty.
 - **Who reads the masks, in `Game_MainLoop`'s order:**
   - `GameLoop_UpdatePlayer` (`$E0CA`): `Player_CheckHandleAttack` swings the
     sword on a new B, unless climbing. `Player_CheckHandleEnterDoor` goes
