@@ -57,7 +57,7 @@ import block  # noqa: E402,F401  (registers the fixture "block-hood-cast")
 import harness  # noqa: E402
 import guru_travel  # noqa: E402,F401  (registers the fixture "travel-conflate-temple")
 
-PACKAGE, FEATURE = "faxanadu.remastered", "remastered"          # the one switch: off is the original game
+PACKAGE, FEATURE = "faxanadu.dx", "dx"                          # the one switch: off is the original game
 PARTS = ("sound", "ointment", "iframes")
 # RAM
 IFRAMES, SOUND_NOISE_TICKS, SOUND_COUNTER = 0xAD, 0x126, 0x127  # Player_InvincibilityPhase;
@@ -99,7 +99,7 @@ class Game(harness.Game):
 
     def mods(self, original):
         """A mod catalog for headless runs: the remaster on, or off for the original."""
-        root = self.out / ("mods-original" if original else "mods-remastered")
+        root = self.out / ("mods-original" if original else "mods-dx")
         if not root.exists():
             shutil.copytree(self.out / "game" / "mods" / "packages", root / "packages")
             (root / "state.toml").write_text(fax_e2e.features_toml({(PACKAGE, FEATURE): False} if original else {}))
@@ -191,14 +191,14 @@ def main():
                 state = out / f"{name}.cycstate"
                 fixture(cast, state, {**alone, SPRITE_Y + slot: y, SELECTED_SHIELD: SMALL, HP: 0x50,
                                       DURATION_OINTMENT: ointment, IFRAMES: 0})
-                tag = f"{name}-{'original' if original else 'remastered'}"
+                tag = f"{name}-{'original' if original else 'dx'}"
                 rams = g.headless(state, [], 100, original, picture=out / f"shot-{tag}.png")
                 g.shots.append(f"shot-{tag}.png")
                 gone = rams[-1][ENTITIES + slot] != HOOD_MAGIC
                 return 0x50 - min(r[HP] for r in rams), any(r[IFRAMES] for r in rams), gone
 
             for original in (True, False):
-                which = "original" if original else "remastered"
+                which = "original" if original else "dx"
                 assert shot("shield", SHIELD_HEIGHT, 0xFF, original) == (4, True, True), which
                 assert shot("head-ointment", HEAD_HEIGHT, 0x05, original) == (0, False, False), which   # through him
             assert shot("shield-ointment", SHIELD_HEIGHT, 0x05, True) == (4, True, True)
@@ -236,7 +236,7 @@ def main():
             frames = {}
             between_hits = None                                 # where the fixture's shot hits first: the original's run
             for original in (True, False):
-                tag = "original" if original else "remastered"
+                tag = "original" if original else "dx"
                 rams = g.headless(two, [], 70, original, picture=out / f"two-shots-{tag}.png",
                                   save=None if original else (between_hits, between))
                 g.shots.append(f"two-shots-{tag}.png")
@@ -251,7 +251,7 @@ def main():
                     assert (lost2, iframes2, x2 - after2) == (4, IFRAMES_ON_HIT, KNOCKBACK), (tag, lost2, iframes2)
                 else:
                     assert (lost2, iframes2, after2) == (0, rams[k2 - 1][IFRAMES] - 1, x2), (tag, lost2, iframes2)
-            assert frames["original"] == frames["remastered"], frames
+            assert frames["original"] == frames["dx"], frames
             k1, k2 = frames["original"]
             assert k1 + 3 < between_hits < k2 - 10, (k1, k2)
             print(f"ok: two shots on the Small Shield {k2 - k1} frames apart: the original takes 4 and 4, the second "

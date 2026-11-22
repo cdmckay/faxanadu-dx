@@ -52,7 +52,7 @@ from fax_e2e import batch, chunks, parse_args, ram, tcp, until, wait  # noqa: E4
 from play import Game  # noqa: E402  (fax_e2e's, with what play's fixtures use)
 
 PARTS = ("studded", "fire", "myconid", "fortress", "title")
-PACKAGE = ("faxanadu.remastered", "remastered")                 # the one switch: off is the original game
+PACKAGE = ("faxanadu.dx", "dx")                                 # the one switch: off is the original game
 HUD, ROOM_W, ROOM_H = 32, 256, 208
 # RAM
 AREA, SCREEN, POS_X, POS_Y, FLAGS = 0x24, 0x63, 0x9E, 0xA1, 0xA4

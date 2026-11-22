@@ -69,7 +69,7 @@ IN_REACH = 26                                       # the nearer Zozura this far
 KNOCKED = 8                                         # frames a weapon's hit knocks an enemy back (its hit counter)
 STEP, LIFE, ABOVE, GLYPH = 3, 60, 8, 7              # fax_damage.h and .c
 HUD, FULL = 32, 0x50
-PACKAGE, FEATURE = "faxanadu.remastered", "remastered"
+PACKAGE, FEATURE = "faxanadu.dx", "dx"
 
 
 def png(path):

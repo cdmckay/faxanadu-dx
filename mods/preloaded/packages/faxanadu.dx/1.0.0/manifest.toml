@@ -1,0 +1,171 @@
+format_version = 1
+id = "faxanadu.dx"
+version = "1.0.0"
+name = "Faxanadu DX"
+author = "Faxanadu DX"
+description = "All of Faxanadu DX: one continuous world with no stop to scroll between rooms, save files, Guru travel, Block, fairer combat, quicker shops and text, and fixes to the original's bugs. Switch it off to play the original game."
+license = "MIT"
+resolver = "declarative"
+save_compatibility = "shared"
+
+[[target]]
+game_id = "faxanadu-usa"
+rom_crc32 = "57dd23d1"
+
+# Every feature of the remaster is a trusted plugin of this one feature, so
+# they are on or off together. The features may rely on each other:
+# mods/allocations.toml says what each takes and what they share.
+[[feature]]
+id = "dx"
+name = "Faxanadu DX"
+description = "Everything Faxanadu DX adds, as one: Seamless, one continuous world with no stop to scroll between rooms (F4 shows the region), three save files, Guru travel, respawning where you died, Block and the Magic button, the Pendant, the dagger, the Battle Suit and the Dragon Slayer fixed, the typing sound, Ointment against magic on the shield and the original's graphics glitches fixed, finds left lying while your items are full, weapons equipped and swung indoors, Sugata's flash with a warning, quick shops, keys found for you and kept, Wing Boots, Hour Glass and Elixir that recharge, shown ready or not beside the item box, MP that refills when you stop casting, and faster once Eolis's Magician teaches you, twice the gold from the King and from monsters, forgiving jumps, ladders fixed and held on to, faster text, damage numbers, enemies moved off the ways in where they hit before you can react, the names of zones and speakers, what killed you, a quest log with marks over the people who have one, and DX under the title's logo. Switch it off to play the original game."
+group = "Game"
+default_enabled = true
+# Seamless draws the picture itself, so the remaster cannot be on with a
+# display mode such as an HD pack (nesrecomp's MOD_PACKAGES.md).
+exclusive_groups = ["display-mode"]
+
+# Seamless, the view: on whenever the remaster is (#110).
+[[plugin]]
+feature = "dx"
+id = "faxanadu.seamless-world"
+
+[[plugin]]
+feature = "dx"
+id = "faxanadu.save-files"
+
+[[plugin]]
+feature = "dx"
+id = "faxanadu.guru-travel"
+
+[[plugin]]
+feature = "dx"
+id = "faxanadu.death-keeps-gold"
+
+[[plugin]]
+feature = "dx"
+id = "faxanadu.zone-respawn"
+
+[[plugin]]
+feature = "dx"
+id = "faxanadu.block"
+
+[[plugin]]
+feature = "dx"
+id = "faxanadu.magic-button"
+
+[[plugin]]
+feature = "dx"
+id = "faxanadu.pendant-fix"
+
+[[plugin]]
+feature = "dx"
+id = "faxanadu.taller-dagger"
+
+[[plugin]]
+feature = "dx"
+id = "faxanadu.sugata-flash"
+
+[[plugin]]
+feature = "dx"
+id = "faxanadu.shops"
+
+[[plugin]]
+feature = "dx"
+id = "faxanadu.auto-keys"
+
+[[plugin]]
+feature = "dx"
+id = "faxanadu.reusable-tools"
+
+[[plugin]]
+feature = "dx"
+id = "faxanadu.recharge"
+
+[[plugin]]
+feature = "dx"
+id = "faxanadu.charges"
+
+[[plugin]]
+feature = "dx"
+id = "faxanadu.mana-refill"
+
+[[plugin]]
+feature = "dx"
+id = "faxanadu.magician-lesson"
+
+[[plugin]]
+feature = "dx"
+id = "faxanadu.double-gold"
+
+[[plugin]]
+feature = "dx"
+id = "faxanadu.forgiving-jumps"
+
+[[plugin]]
+feature = "dx"
+id = "faxanadu.falling-pose"
+
+[[plugin]]
+feature = "dx"
+id = "faxanadu.ladder-fixes"
+
+[[plugin]]
+feature = "dx"
+id = "faxanadu.ladder-hold"
+
+[[plugin]]
+feature = "dx"
+id = "faxanadu.text-speed"
+
+[[plugin]]
+feature = "dx"
+id = "faxanadu.zone-names"
+
+[[plugin]]
+feature = "dx"
+id = "faxanadu.slain-by"
+
+[[plugin]]
+feature = "dx"
+id = "faxanadu.speaker-names"
+
+[[plugin]]
+feature = "dx"
+id = "faxanadu.title-remastered"
+
+[[plugin]]
+feature = "dx"
+id = "faxanadu.indoor-equip"
+
+[[plugin]]
+feature = "dx"
+id = "faxanadu.damage-numbers"
+
+[[plugin]]
+feature = "dx"
+id = "faxanadu.inventory-fix"
+
+[[plugin]]
+feature = "dx"
+id = "faxanadu.small-fixes"
+
+[[plugin]]
+feature = "dx"
+id = "faxanadu.map"
+
+[[plugin]]
+feature = "dx"
+id = "faxanadu.graphics-fix"
+
+[[plugin]]
+feature = "dx"
+id = "faxanadu.quest-log"
+
+[[plugin]]
+feature = "dx"
+id = "faxanadu.kept-finds"
+
+[[plugin]]
+feature = "dx"
+id = "faxanadu.fair-entrances"

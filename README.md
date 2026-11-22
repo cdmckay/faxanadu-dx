@@ -1,4 +1,4 @@
-# Faxanadu Remastered
+# Faxanadu DX
 
 A remaster of Faxanadu (NES) that keeps as much of the real game as possible,
 and fixes what has aged.
@@ -20,8 +20,8 @@ and fixes what has aged.
 - **Combat, tuned with care.** Combat may be adjusted to be a bit more fun,
   without losing what makes Faxanadu feel like Faxanadu.
 - **The original, one switch away.** Everything below is one mod, Faxanadu
-  Remastered, on by default. Switch it off in the launcher's Mods screen and
-  you play the original game, mantras and all.
+  DX, on by default. Switch it off in the launcher's Mods screen and you play
+  the original game, mantras and all.
 
 How the game works, as far as we've learned it, is in
 [docs/GAME_INTERNALS.md](docs/GAME_INTERNALS.md).
@@ -167,8 +167,8 @@ keeps the map, and the items you have taken.
   dialogue box, as the game names them: "Guru of Apolune", "King of Eolis".
 - **Slain by.** When something takes your last HP, a banner names it while you
   fall: "Slain by a Sugata", "Slain by Poison".
-- **REMASTERED on the title.** The title screen shows REMASTERED under the
-  FAXANADU logo, in the game's font and the logo's light yellow.
+- **DX on the title.** The title screen shows DX under the FAXANADU logo, in
+  the title's own letters and the logo's light yellow.
 
 ## Bugs fixed
 

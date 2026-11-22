@@ -1,13 +1,13 @@
-"""Play REMASTERED on the title end to end in a hidden window and check it.
+"""Play DX on the title end to end in a hidden window and check it.
 
-    python3 tests/title/title_remastered.py --build build-cycle --rom "Faxanadu (USA).nes" --out /tmp/title
+    python3 tests/title/title_dx.py --build build-cycle --rom "Faxanadu (USA).nes" --out /tmp/title
 
 The game runs uncapped (about 5x real time; --realtime to watch it at normal
 speed) and the script waits on the game's own frames, never on the clock, on a
 reserved TCP port (tests/e2e/fax_e2e.py), so any number can go in parallel.
 
 Copies the build to OUT/game, then:
-  1. Screenshots the title with the remaster on (REMASTERED over NEW GAME
+  1. Screenshots the title with the remaster on (DX over NEW GAME
      and CONTINUE) and, on the same frame, with the whole remaster off (the
      original title, START / CONTINUE and the notices), and compares them. The
      logo is the same to the pixel, but for the tile with the tip of its F
@@ -15,8 +15,8 @@ Copies the build to OUT/game, then:
      instead of the stars' grey (tests/graphics/graphics_fixes.py checks its
      colors). Between it and what is below (y 144-159),
      the original is black and the remaster differs only by the word: pixel
-     for pixel the glyphs of the game's font (read from the ROM), in the light
-     yellow of the logo's palette, centered under the logo, with at least 4
+     for pixel the title's own letter tiles (CHR_LETTERS, read from the ROM),
+     in the light yellow of the logo's palette, centered under the logo, with at least 4
      black rows above it and below it, down to NEW GAME and CONTINUE in the
      one picture and to START / CONTINUE in the other, both from y 160.
   2. Opens NEW GAME's file pick, and moves its cursor: the word stays as it
@@ -38,13 +38,13 @@ import zlib
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 from fax_e2e import FILES_NEW, Game, act, choose_file, frame, parser, tcp, until, wait  # noqa: E402
 
-WORD = "REMASTERED"
-GLYPHS = 16 + 13 * 16384                                            # TILE_GLYPHS_START: bank 13, $8000, from $20
+WORD = "DX"
+LETTERS = 16 + 10 * 16384 + 0x0240                                  # CHR_LETTERS: bank 10, $8240, A to Z (StartScreen_Draw)
 LOGO_ROWS, LOGO_LEFT, LOGO_RIGHT = (16, 144), 16, 240               # the logo and its border, natively
 F_TIP = (48, 40)                                                    # the tile with the F's tip (graphics fixes)
 BAND = (144, 160)                                                   # black between the logo and the title's choices
 CLEAR = 4                                                           # rows of black the word keeps from the art
-REMASTER = ("faxanadu.remastered", "remastered")
+DX = ("faxanadu.dx", "dx")
 
 
 def title():
@@ -91,13 +91,17 @@ def write_png(path, rows):
 
 
 def word_mask(rom):
-    """The pixels of WORD in the game's font: {(dx, dy)} from its top left."""
+    """The pixels of WORD in the title's own letters, the tiles StartScreen_Draw
+    puts at $E0-$F9 of its pattern table: {(dx, dy)} from its top left. They
+    are drawn in one color, 3, the one the word takes from the logo's palette."""
     lit = set()
     for i, ch in enumerate(WORD):
-        glyph = rom[GLYPHS + (ord(ch) - 0x20) * 8:GLYPHS + (ord(ch) - 0x20) * 8 + 8]
+        tile = rom[LETTERS + (ord(ch) - ord("A")) * 16:LETTERS + (ord(ch) - ord("A")) * 16 + 16]
         for dy in range(8):
             for dx in range(8):
-                if glyph[dy] >> (7 - dx) & 1:
+                value = (tile[dy] >> (7 - dx) & 1) | (tile[dy + 8] >> (7 - dx) & 1) << 1
+                assert value in (0, 3), f"{ch}'s tile has color {value}"
+                if value:
                     lit.add((i * 8 + dx, dy))
     return lit
 
@@ -134,7 +138,7 @@ def compare(remaster, original, state, mask):
     assert not lit, f"{original.name}: the original draws in y {BAND[0]}-{BAND[1] - 1}, at {lit[0]}"
     diff = {(x, y) for y in range(*BAND) for x in range(w) if on[y][x] != off[y][x]}
     expect = {(x0 + dx, y0 + dy) for dx, dy in mask}
-    assert diff == expect, f"{remaster.name}: {len(diff ^ expect)} pixels differ from the word in the game's font"
+    assert diff == expect, f"{remaster.name}: {len(diff ^ expect)} pixels differ from the word in the title's letters"
     assert all(on[y][x] == color for x, y in diff), f"{remaster.name}: the word is not all {color}"
     top, bottom = min(y for _, y in diff), max(y for _, y in diff)
     left, right = min(x for x, _ in diff), max(x for x, _ in diff)
@@ -148,7 +152,7 @@ def compare(remaster, original, state, mask):
     centre = (left + right) / 2 - origin
     assert abs(centre - (LOGO_LEFT + LOGO_RIGHT - 1) / 2) <= 1, (left, right, origin)
     assert any(off[y][x] == color for y in range(*LOGO_ROWS) for x in range(w)), f"{color} is not in the logo"
-    print(f"ok: {remaster.name}: REMASTERED at ({x0}, {y0}) in {color}, rows {top}-{bottom}; the logo is the "
+    print(f"ok: {remaster.name}: DX at ({x0}, {y0}) in {color}, rows {top}-{bottom}; the logo is the "
           f"original's but for its F's tip; {top - logo_bottom - 1} black rows under the logo, {menu_top - bottom - 1} above "
           f"NEW GAME and CONTINUE, as above the original's START / CONTINUE")
     return [[on[y][x] if (x, y) in diff else off[y][x] for x in range(w)] for y in range(h)]
@@ -160,7 +164,7 @@ def absent(path, state, mask):
     color = rgb(state["argb"])
     x0, y0 = state["x"], state["y"]
     assert not all(px[y0 + dy][x0 + dx] == color for dx, dy in mask if y0 + dy < h and x0 + dx < w), \
-        f"{path.name}: REMASTERED is drawn"
+        f"{path.name}: DX is drawn"
 
 
 def main():
@@ -170,12 +174,12 @@ def main():
     args = ap.parse_args()
     g = Game.from_args(args)
     mask = word_mask(g.image)
-    assert len(mask) > 100, "no glyphs where the font should be"
+    assert len(mask) > 40, "no letters where the title's tiles should be"
     worth = {}
 
     def launch(remaster):
         """Start the game with the whole remaster on or off."""
-        g.set_features({REMASTER: remaster})
+        g.set_features({DX: remaster})
         g.launch()
         assert title()["enabled"] == remaster and tcp("files_state")["enabled"] == remaster, title()
 
@@ -199,6 +203,7 @@ def main():
         launch(True)
         at = title_at()
         state = title()
+        assert state["word"] == WORD, state
         remaster = shot("new-game-continue", "new-game-continue")
         # 2. NEW GAME's pick, and its cursor moving; the word stays as it was.
         _, _, a = png(remaster)

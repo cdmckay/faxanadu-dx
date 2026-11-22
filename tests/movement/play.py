@@ -39,7 +39,7 @@ SELECTED_WEAPON, SELECTED_ARMOR, SELECTED_SHIELD, PLAYER_CUR_WEAPON = 0x3BD, 0x3
 LONG_SWORD, LEATHER_ARMOR, SMALL_SHIELD = 1, 0, 0
 APOLUNE, TRUNK, BUILDINGS, NEGATIVE_THOUGHTS = 1, 1, 4, 0x24
 LEDGE_SCREEN, LADDER_SCREEN = 7, 6
-PACKAGE, FEATURE = "faxanadu.remastered", "remastered"          # the one switch: off is the original game
+PACKAGE, FEATURE = "faxanadu.dx", "dx"                          # the one switch: off is the original game
 
 
 def selection(original=False):

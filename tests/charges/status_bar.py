@@ -40,7 +40,7 @@ from fax_e2e import Game, act, box_open, page_through, parse_args, ram, tcp, typ
 import recharging_items as recharge  # noqa: E402  (its recipes, and its walk out of a shop)
 
 PARTS = ("layout", "boots", "glass", "elixir", "guru", "original")
-PACKAGE = ("faxanadu.remastered", "remastered")
+PACKAGE = ("faxanadu.dx", "dx")
 ITEMS = ("boots", "glass", "elixir")                       # the slots, left to right
 ROW, SLOT, ITEM, TOP = 64, 24, 16, 16                      # fax_charges.h
 HUD, NATIVE_W = 32, 256

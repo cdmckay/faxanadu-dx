@@ -61,7 +61,7 @@ RING_OF_ELF, BLACK_ONYX = 0x80, 0x01
 NEGATIVE_THOUGHTS = 0x24                                            # the Guru's words after a death
 WOMAN, GURU, KING, MIST_HOUSE_MAN = 0x03, 0x04, 0x08, 0x46          # their scripts (CurrentSprites_Values)
 GO_SEE_THE_GURU, THE_KINGS_PLEA = 0x2A, 0x35                        # their lines
-PACKAGE = ("faxanadu.remastered", "remastered")
+PACKAGE = ("faxanadu.dx", "dx")
 ZONE_NAMES, QUESTS = "faxanadu.zone-names", "faxanadu.quests"       # save-state records
 # fax_quests.c's record: a version, then given (4 bytes, a bit per quest in fax_quest_table.h's order).
 GIVEN = 1

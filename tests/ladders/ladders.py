@@ -117,7 +117,7 @@ def main():
             """The same run with the remaster off and on, at once; with `name`,
             a screenshot of each one's last frame."""
             return game.headless_all([(state, schedule, frames, mods, shots / f"{name}-{kind}.png" if name else None)
-                                      for mods, kind in ((off, "original"), (on, "remastered"))])
+                                      for mods, kind in ((off, "original"), (on, "dx"))])
 
         if "top" in wants:
             ladder = out / "ladder.cycstate"
@@ -144,7 +144,7 @@ def main():
             # climbing) and on it (Y=$48, out of the climb), and the remaster then, at the top.
             game.headless_all([(ladder, hold, fell[2] + 1, off, shots / "top-original-peak.png"),
                                (ladder, hold, fell[2] + 2, off, shots / "top-original-drop.png"),
-                               (ladder, hold, fell[2] + 2, on, shots / "top-remastered.png")])
+                               (ladder, hold, fell[2] + 2, on, shots / "top-dx.png")])
             # In the window: on by default, counting the climbs it stopped; off with the remaster off.
             game.launch()
             game.load(ladder)
@@ -190,7 +190,7 @@ def main():
             assert arrived is not None, "Up on $0C's ladder climbs into $16"
             assert not drops(up[:arrived]), "on the ladder all the way"
             down = game.headless(out / "climb-16.cycstate", [(0, "-"), (5, "DOWN")], 200, on,
-                                 screenshot=shots / "climb-back-remastered.png")
+                                 screenshot=shots / "climb-back-dx.png")
             assert any((r[AREA], r[SCREEN]) == (TRUNK, 0x0C) for r in down), "Down on $16's ladder climbs to $0C"
             print(f"ok: the Trunk's climb: Up on $0C's ladder reaches $16 (frame {arrived}), and Down there "
                   "comes back to $0C, with the remaster on")

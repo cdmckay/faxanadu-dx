@@ -155,7 +155,8 @@ rm -f "$OUT/checks.code"
 ( JOBS=4; set +e; ( set -e; checks ) > "$OUT/checks.log" 2>&1; echo $? > "$OUT/checks.code" ) &
 # Two suites at once double every game's time and make the timing tests flaky,
 # so wait for any other checkout's end-to-end runs to finish. The lock is held
-# on fd 9 until this script exits.
+# on fd 9 until this script exits. It is named after the repository, not the
+# project (Faxanadu DX since #116), so checkouts from before and after share it.
 LOCK="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/faxanadu-remastered-e2e.lock"
 if command -v flock >/dev/null; then
   exec 9>"$LOCK"
@@ -199,8 +200,8 @@ E2E=(
   "mana         tests/mana/mana_refill.py"
   "lesson       tests/lesson/magician_lesson.py --parts"
   "gold         tests/gold/double_gold.py --parts"
-  "switch       tests/remastered/one_switch.py"
-  "title        tests/title/title_remastered.py"
+  "switch       tests/dx/one_switch.py"
+  "title        tests/title/title_dx.py"
   "slain        tests/slain/slain_by.py"
   "indoor       tests/indoor/indoor_equip.py --parts"
   "damage       tests/damage/damage_numbers.py"

@@ -43,7 +43,7 @@ OUTSIDE_EOLIS, INSIDE_EOLIS = (0, 0), (0, 1)                        # (area, scr
 GATE = range(188, 200)                                              # Up there goes through the gate
 MEDITATE_WITH_YOU, NEGATIVE_THOUGHTS = 0x22, 0x24                  # the Guru's greeting; the death message
 DELUGE_COST = 2
-PACKAGE, FEATURE = "faxanadu.remastered", "remastered"          # the one switch: off is the original game
+PACKAGE, FEATURE = "faxanadu.dx", "dx"                          # the one switch: off is the original game
 
 
 def never(what, test, frames):

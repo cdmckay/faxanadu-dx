@@ -37,7 +37,7 @@ MIST, SCREEN_30, PALETTE_MIST, REGION_MIST = 2, 30, 0x0A, 2
 SUGATA, DEATH = 0x18, 0x14
 REACH, WARNING, REFLECTED, FLASH_DAMAGE = 40, 30, 12, 10
 DURATION_OINTMENT = 0x427
-PACKAGE, FEATURE = "faxanadu.remastered", "remastered"          # the one switch: off is the original game
+PACKAGE, FEATURE = "faxanadu.dx", "dx"                          # the one switch: off is the original game
 
 
 def main():

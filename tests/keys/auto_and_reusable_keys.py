@@ -42,7 +42,7 @@ WALL_BLOCKS = (0xA3, 0xB3)                                          # (3,10), (3
 WALL_BLOCK = 0x63
 WALL_STOP = 0x20                                                    # the hero's x up against it
 MENU_ITEM_ROW = 4                                                   # WEAPON ARMOR SHIELD MAGIC ITEM PLAYER
-PACKAGE, FEATURE = "faxanadu.remastered", "remastered"          # the one switch: off is the original game
+PACKAGE, FEATURE = "faxanadu.dx", "dx"                          # the one switch: off is the original game
 
 
 def typed():
@@ -74,12 +74,12 @@ def main():
         if not game.running():
             launch()
 
-    def launch(remastered=True, at=None):
+    def launch(dx=True, at=None):
         """Start the game with the remaster, and so both features, on or off."""
-        game.set_features({(PACKAGE, FEATURE): remastered})
+        game.set_features({(PACKAGE, FEATURE): dx})
         game.launch(at=at)
         state = tcp("keys_state")
-        assert (state["auto"], state["reuse"]) == (remastered, remastered), state
+        assert (state["auto"], state["reuse"]) == (dx, dx), state
 
     def clear_enemies():
         game.poke({SPRITE_ENTITIES + slot: 0xFF for slot in range(8)})
@@ -257,7 +257,7 @@ def main():
             game.close()
 
         if args.wants("original"):
-            launch(remastered=False)
+            launch(dx=False)
             # 3. The remaster off: the original.
             tcp("load_state", path=str(keys))
             select(MATTOCK)
