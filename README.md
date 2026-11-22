@@ -106,7 +106,8 @@ keeps the map, and the items you have taken.
 - **MP that refills.** Four seconds after your last spell, your MP starts to
   climb back toward full, a point every half second. Eolis's Magician no
   longer sells MP: once you have learned Fire at the magic hall in the Mist,
-  he teaches you, once, for 30000 Golds, to recover it twice as fast.
+  he teaches you, once, for 30000 Golds, to recover it twice as fast, which
+  gets the Wing Boots and the Hour Glass going again sooner too.
 - **Damage numbers.** Every hit that takes HP shows how much, floating up from
   where it landed: white for the damage you deal, pink for the damage you take.
 - **A taller dagger.** The Hand Dagger's swing reaches as low as the swords',
@@ -139,11 +140,15 @@ keeps the map, and the items you have taken.
 - **Keys and tools.** Up at a locked door opens it with the right key from
   your inventory, without selecting it, and keys and the Mattock are no longer
   used up.
-- **Items that recharge.** The Wing Boots and the Hour Glass recharge after
-  use, counting down on the status bar while selected, and the Wing Boots fly
-  longer as your title rises. The Elixir stays with you after it revives you, and a Guru
-  recharges it and tells you so; the first Guru you bring it to tells you he
-  can.
+- **Items that run on MP.** The Wing Boots and the Hour Glass stay with you,
+  and both run on MP, so you balance them against your spells. The Wing Boots
+  fly as long as your MP lasts: 40 seconds on a full bar at first, up to 80
+  as your title rises. The Hour Glass freezes enemies for its 15 seconds for
+  40 MP, and no longer costs half your HP. Use either again to end it early;
+  with no MP, they do nothing. There's no cooldown: they work again as soon
+  as you have MP, and T: on the status bar counts the selected one down. The
+  Elixir stays with you after it revives you, and a Guru recharges it and
+  tells you so; the first Guru you bring it to tells you he can.
 - **Ready at a glance.** The status bar shows your Elixir beside the M: and
   P: bars it refills, as Super Metroid shows a reserve tank beside Energy: in
   color when it is charged, grey while it waits for a Guru, and not at all

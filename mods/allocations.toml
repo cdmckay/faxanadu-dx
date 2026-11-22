@@ -439,14 +439,13 @@ rom = [
     { bank = 13, start = 0xB45B, end = 0xB48B, use = "message $C3, the line slot, for a Guru's Elixir line" },
 ]
 # Writes DurationWingBoots (through A at its STA, then each frame of a
-# flight) and DurationHourGlass (each frame of a freeze), Player_MP (the
-# flight's drain) and Player_HP_U and Player_HP_L (the freeze's), drawing
-# their bars with Player_SetMP and UI_DrawPlayerHP in committed calls,
+# flight) and DurationHourGlass (each frame of a freeze), Player_MP (both
+# items run on it), drawing its bar with Player_SetMP in a committed call,
 # SpecialItems' Elixir bit (when a Guru recharges it) and T:'s two tiles
 # through the PPU buffer, as UI_DrawTimeValue queues them; and the stack, a
 # return address as a JSR would push it, to jump past Player_UseHourGlass's
 # halving and into the two countdowns' DEC. MP refill (mana-refill) sees the
-# drain as spends and holds while the boots fly (fax_recharge_flying). Its
+# drain as spends and holds while either runs (fax_recharge_draining). Its
 # site at IScripts_InvokeNextAction ($826E) hears a Guru's first action,
 # which Save files and Guru travel leave where it is, and to show his Elixir
 # line writes IScriptOrCHRAddr and IScriptOffset (to the SAY step, then

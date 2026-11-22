@@ -4,7 +4,7 @@
  * shows a reserve tank beside Energy: in its colours when it is charged,
  * grey when it is spent, and not at all when he does not have it. It blinks
  * as it greys, when it revives him. The Wing Boots and the Hour Glass are not
- * drawn: T: counts their recharge. Seamless (fax_world.c) centres the status
+ * drawn: they run on MP, and T: counts the selected one's run. Seamless (fax_world.c) centres the status
  * bar and the Elixir together; the stock 256-wide view has no room for it, so
  * there it draws nothing. It registers itself; the host calls these. */
 #include <stdbool.h>
