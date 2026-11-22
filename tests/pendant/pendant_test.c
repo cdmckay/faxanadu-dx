@@ -26,6 +26,7 @@ static const uint8_t base[WEAPONS] = {4, 8, 12, 16}, with_pendant[WEAPONS] = {5,
 static uint8_t ram[0x800], bank14[0x4000];
 static CycModRegs cpu;
 static int hook_on = -1;                         /* the hook's enabled state, as last set */
+static bool isolated;                            /* in one of Seamless's isolated rooms */
 
 uint8_t cyc_mod_peek(uint16_t addr) {
     if (addr < 0x2000) return ram[addr & 0x7FF];
@@ -37,6 +38,7 @@ bool cyc_mod_poke(uint16_t addr, uint8_t value) {
     return true;
 }
 void cyc_mod_regs(CycModRegs *out) { *out = cpu; }
+bool cyc_mod_isolated(void) { return isolated; }
 int nes_mod_register_function_entry_plugin(const char *id, uint16_t addr, NESModFunctionEntryCallback cb) {
     return id && !strcmp(id, hook_id) && addr == CHECK_GLOVE && cb == check_glove_hook;
 }
@@ -165,6 +167,17 @@ static void it_kills_as_the_game_does(void) {
     CHECK(hit(7, true) == 8 && ram[CURRENT_SPRITES_HP + 7] == 1);
 }
 
+static void the_same_rule_in_seamless_rooms_uncounted(void) {
+    /* A hit in one of Seamless's isolated rooms: the same damage, not counted. */
+    setup();
+    isolated = true;
+    CHECK(damage(LONG_SWORD, false, false, true) == base[LONG_SWORD]);
+    CHECK(damage(LONG_SWORD, true, false, true) == with_pendant[LONG_SWORD]);
+    CHECK(hits == 0 && last_weapon == 0xFF);
+    isolated = false;
+    CHECK(damage(LONG_SWORD, false, false, true) == base[LONG_SWORD] && hits == 1);
+}
+
 static void off_means_off(void) {
     setup();
     damage(DRAGON_SLAYER, true, false, true);
@@ -178,6 +191,7 @@ int main(void) {
     the_original_is_reversed();
     without_the_pendant_the_base_strength();
     with_the_pendant_the_originals_damage();
+    the_same_rule_in_seamless_rooms_uncounted();
     it_kills_as_the_game_does();
     off_means_off();
     printf("pendant_test: %u checks passed\n", checks);
