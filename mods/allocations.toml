@@ -252,30 +252,32 @@ overrides = [
 bank = 13
 start = 0xB45B
 end = 0xB48B
-features = ["guru-travel", "save-files", "block", "quest-log"]
+features = ["guru-travel", "save-files", "block", "quest-log", "recharging-items"]
 why = """Message $C3, one line slot for the lines the remaster adds to \
 scripts. Each feature writes its line there just before the step that shows \
-it, and none shows a line while another's is up: Save files' choice comes \
-first in a Guru's conversation and starts Guru travel's part through \
-fax_travel_begin, and Block's line follows only the end of a shop's script or \
-the Battle Helmet's pickup, never a Guru's. The quest log's lines follow a \
-script's end too, after Block's (its hook at IScriptAction_EndScript comes \
-second), and come only at the end of a script that gave or completed a quest, \
-which no temple Guru's does, so never with Save files' or Guru travel's. Guru \
-travel, Save files and the quest log write their own line again before each \
-one they say. After a save state loads, Save files puts its line back in \
-state_loaded, after Guru travel's record has restored its own, and Block and \
-the quest log put back theirs if they were saying them."""
+it, and none shows a line while another's is up: Recharging items' Elixir \
+line opens a Guru's conversation, before his greeting, and is read before \
+any of the others speak; Save files' choice comes next and starts Guru \
+travel's part through fax_travel_begin, and Block's line follows only the end \
+of a shop's script or the Battle Helmet's pickup, never a Guru's. The quest \
+log's lines follow a script's end too, after Block's (its hook at \
+IScriptAction_EndScript comes second), and come only at the end of a script \
+that gave or completed a quest, which no temple Guru's does, so never with \
+Save files' or Guru travel's. Every feature writes its own line again before \
+each one it says. After a save state loads, Save files puts its line back in \
+state_loaded, after Guru travel's record has restored its own, and Block, \
+the quest log and Recharging items put back theirs, after it, if they were \
+saying them."""
 
 [[shared_rom]]
 bank = 12
 start = 0xAE00
 end = 0xAE07
-features = ["guru-travel", "block", "quest-log"]
-why = """Guru travel's SAY step, $AE00-$AE02: SHOW_MESSAGE $C3, END. Block \
-and the quest log serve the same three bytes there to show their lines from \
-message $C3, so whichever served them last, the step is the same. Neither \
-touches Guru travel's ASK step ($AE03-$AE06)."""
+features = ["guru-travel", "block", "quest-log", "recharging-items"]
+why = """Guru travel's SAY step, $AE00-$AE02: SHOW_MESSAGE $C3, END. Block, \
+the quest log and Recharging items serve the same three bytes there to show \
+their lines from message $C3, so whichever served them last, the step is the \
+same. None touches Guru travel's ASK step ($AE03-$AE06)."""
 
 [[shared_site]]
 addr = 0x826E   # IScripts_InvokeNextAction
@@ -290,10 +292,21 @@ action rather than skipping it, so Guru travel still meets the Guru there. \
 Quick shops acts only on a script with the shops' layout, at its first action \
 (IScriptOffset 1, before which the others have moved nothing in a shop), and \
 then only on its two list steps; no Guru's script has that layout, and no \
-shop's has a Guru's action or step. Recharging items only reads: at a Guru's \
-first action (a temple Guru's SET_SPAWN_POINT, or $A0BD for Eolis's), which \
-none redirects, it charges a spent Elixir (SpecialItems), which none reads \
-there. So all four may run in any order."""
+shop's has a Guru's action or step. Guru travel also forgets a conversation \
+of its own that B ended when any script begins (IScriptOffset 1), before \
+anyone steers it. Recharging items, at a Guru's first action (a temple Guru's \
+SET_SPAWN_POINT, or $A0BD for Eolis's), which none redirects, charges a spent \
+Elixir (SpecialItems), which none reads there, and chooses the Guru's Elixir \
+line. It shows the line by pointing the script at Guru travel's SAY step \
+before an action no other hook acts on ($A0BD itself, or the \
+CHECK_UPDATE_PLAYER_TITLE after a temple Guru's SET_SPAWN_POINT, so \
+SET_SPAWN_POINT still runs where Save files and Guru travel see it), and \
+points it back at the step's END ($AE02). There Guru travel, whose \
+conversation in this script has not begun (meet() at SET_SPAWN_POINT, or the \
+reset above, left it idle), does nothing, and Save files acts at $AE02 only \
+after its saved line, which comes later in a conversation. Its site is the \
+last here, so the others always see the Guru's own action and the step's \
+END, never the SAY step it points at. So the four may run in this order."""
 
 [[feature]]
 id = "block"
@@ -402,14 +415,22 @@ package = "faxanadu.remastered"
 plugin = "faxanadu.recharge"
 source = "src/fax_recharge.c"
 hooks = "faxanadu.recharge."
-rom = []
+# A Guru's Elixir line borrows Guru travel's SAY step and line slot
+# (fax_travel.h), as Block's tutorial and the quest log do, through the same
+# read overrides: no override of its own, so the budget stays at 64.
+rom = [
+    { bank = 12, start = 0xAE00, end = 0xAE03, use = "Guru travel's SAY step, to show a Guru's Elixir line" },
+    { bank = 13, start = 0xB45B, end = 0xB48B, use = "message $C3, the line slot, for a Guru's Elixir line" },
+]
 # Writes DurationWingBoots (through A at its STA),
 # SpecialItems' Elixir bit (when a Guru recharges it) and T:'s two tiles
-# through the PPU buffer, as UI_DrawTimeValue queues them. Its own observing
-# site at IScripts_InvokeNextAction ($826E) hears a Guru's first action, which
-# Save files and Guru travel leave where it is. No read overrides. Keeps the fields
-# recharge.wingboots, recharge.hourglass and recharge.elixir in the file in
-# play (fax_save.h), when Save files has one.
+# through the PPU buffer, as UI_DrawTimeValue queues them. Its site at
+# IScripts_InvokeNextAction ($826E) hears a Guru's first action, which Save
+# files and Guru travel leave where it is, and to show his Elixir line writes
+# IScriptOrCHRAddr and IScriptOffset (to the SAY step, then back). Keeps the
+# fields recharge.wingboots, recharge.hourglass, recharge.elixir and
+# recharge.elixir_told in the file in play (fax_save.h), when Save files has
+# one.
 
 [[feature]]
 id = "fair-entrances"

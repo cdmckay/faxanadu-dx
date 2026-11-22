@@ -17,9 +17,40 @@ static bool isolated;
 static int sound = -1;                        /* the last effect Sound_PlayEffect queued */
 
 static uint8_t bank12[0x4000];               /* $8000-$BFFF as bank 12 maps it: the Gurus' scripts */
+/* Read overrides (cyc_mod_set_prg_read_override), in banks 12 and 13: what a
+ * read of a byte returns instead, and how many bytes have an entry. They are
+ * not machine state: a save state's load does not bring them back. */
+static uint8_t served[2][0x4000];
+static bool serving[2][0x4000];
+static unsigned entries;
+static bool table_full;                      /* the engine's table has no room: every new entry fails */
+bool cyc_mod_set_prg_read_override(uint32_t offset, uint8_t compare, uint8_t value) {
+    unsigned bank = offset / 0x4000, at = offset % 0x4000;
+    CHECK((bank == 12 || bank == 13) && compare == 0xFF);   /* unused ROM, in the two banks it uses */
+    if (!serving[bank - 12][at]) {
+        if (table_full) return false;
+        ++entries;
+    }
+    serving[bank - 12][at] = true;
+    served[bank - 12][at] = value;
+    return true;
+}
+static void overrides_lost(void) { memset(serving, 0, sizeof serving); entries = 0; }
 uint8_t cyc_mod_peek(uint16_t addr) {
     if (addr < 0x2000) return ram[addr & 0x7FF];
-    return addr >= 0x8000 && addr < 0xC000 ? bank12[addr - 0x8000] : 0;
+    if (addr < 0x8000 || addr >= 0xC000) return 0;
+    return serving[0][addr - 0x8000] ? served[0][addr - 0x8000] : bank12[addr - 0x8000];
+}
+/* Message $C3, as Messages_Load would read it from bank 13: '/' for a new line. */
+static void slot_text(char out[64]) {
+    unsigned n = 0;
+    for (unsigned i = 0; i < SLOT_LEN && n < 63; ++i) {
+        uint16_t at = (uint16_t)(SLOT - 0x8000 + i);
+        uint8_t c = serving[1][at] ? served[1][at] : 0xFF;
+        if (c == 0xFF) break;
+        out[n++] = c == 0xFD ? ' ' : c == 0xFE ? '/' : (char)c;
+    }
+    out[n] = 0;
 }
 bool cyc_mod_poke(uint16_t addr, uint8_t value) {
     if (addr >= 0x2000) return false;
@@ -252,32 +283,112 @@ static void respawn(void) {
 /* A Guru travel journey: Player_Spawn entered past Game_ClearTimedItems, at
  * its JSR Game_SpawnInTemple. Nothing here for this feature. */
 static void journey(void) { nmi(); }
-/* A Guru's conversation begins (fax_travel.c tells its listeners). */
 /* IScripts_InvokeNextAction, about to run the action at `at`. */
 static void next_action(uint16_t at) {
     ram[ISCRIPT_ADDR] = (uint8_t)at; ram[ISCRIPT_ADDR + 1] = (uint8_t)(at >> 8); ram[ISCRIPT_OFFSET] = 0;
-    CHECK(!fire(ISCRIPTS_INVOKE_NEXT_ACTION));   /* it only observes */
+    CHECK(!fire(ISCRIPTS_INVOKE_NEXT_ACTION));   /* it never handles the call */
 }
-/* Talking to a Guru: his script's actions, as the interpreter reaches each.
- * A temple Guru's opens with 06 temple (then the mantra or a new title, or
- * Save files' or Guru travel's steps); Eolis's with CHECK_FOR_ITEM. */
-static void meet_guru(unsigned temple) {
-    static const uint16_t script = 0xA200, eolis = 0xA0BC;
-    if (temple == 0) {
-        bank12[eolis - 0x8000] = 0x81;                          /* the Guru's portrait */
-        static const uint8_t first[] = { 0x12, 0x80, 0xC6, 0xA0, 0x01, 0x2B, 0x10, 0x80, 0x00 };
-        memcpy(bank12 + (eolis + 1 - 0x8000), first, sizeof first);
-        ram[ISCRIPT_ADDR] = (uint8_t)eolis; ram[ISCRIPT_ADDR + 1] = (uint8_t)(eolis >> 8); ram[ISCRIPT_OFFSET] = 1;
+
+/* The interpreter, for whole conversations: what the box showed, in order
+ * ("msg 22", the slot's text, "mantra", "end", or "B" for a line B ended). */
+enum { NEXT_PLAYER_TITLE = 0x04ED };
+static char said[12][64];
+static unsigned said_n;
+static void note(const char *text) { CHECK(said_n < 12); snprintf(said[said_n++], sizeof said[0], "%s", text); }
+static void (*on_line)(void);                 /* called as each message shows, for a test to act mid-script */
+/* Run the script at `script` as IScripts_Begin starts it (IScriptOffset 1,
+ * past its entity byte), firing IScripts_InvokeNextAction's hooks before
+ * each action and going wherever they point it. B goes down on message
+ * number `b_on` (from 1; 0 never), which ends the script if B may dismiss it
+ * (03, not 01), as IScriptAction_ShowMessage jumps to IScriptAction_EndScript. */
+static void run_from(uint16_t script, uint8_t offset, unsigned b_on) {
+    said_n = 0;
+    ram[ISCRIPT_ADDR] = (uint8_t)script; ram[ISCRIPT_ADDR + 1] = (uint8_t)(script >> 8); ram[ISCRIPT_OFFSET] = offset;
+    unsigned messages = 0;
+    for (int steps = 0; steps < 64; ++steps) {
         CHECK(!fire(ISCRIPTS_INVOKE_NEXT_ACTION));
-        next_action(0xA0C6);                                    /* 03 2D, 00: he has the ring */
-        return;
+        uint16_t base = (uint16_t)(ram[ISCRIPT_ADDR] | ram[ISCRIPT_ADDR + 1] << 8), p = (uint16_t)(base + ram[ISCRIPT_OFFSET]);
+        uint8_t op = cyc_mod_peek(p), arg = cyc_mod_peek((uint16_t)(p + 1));
+        uint16_t to = (uint16_t)(arg | cyc_mod_peek((uint16_t)(p + 2)) << 8);                        /* 04, 17 */
+        uint16_t if_held = (uint16_t)(cyc_mod_peek((uint16_t)(p + 2)) | cyc_mod_peek((uint16_t)(p + 3)) << 8);   /* 12 */
+        unsigned len = 0;
+        bool jump = false;
+        switch (op) {
+        case 0x00: note("end"); return;
+        case 0x01: case 0x03: {
+            char text[64];
+            if (arg == SLOT_ID) slot_text(text); else snprintf(text, sizeof text, "msg %02X", arg);
+            note(text);
+            if (on_line) on_line();
+            if (++messages == b_on && op == 0x03) { note("B"); return; }
+            len = 2;
+            break; }
+        case 0x04:                                              /* CHECK_UPDATE_PLAYER_TITLE */
+            if (ram[NEXT_PLAYER_TITLE] != ram[PLAYER_TITLE]) { ram[PLAYER_TITLE] = ram[NEXT_PLAYER_TITLE]; jump = true; }
+            else len = 3;
+            break;
+        case 0x06: if (arg > ram[0x0439]) ram[0x0439] = arg; len = 2; break;   /* only raises TempleSpawnPoint */
+        case 0x07: ram[SPECIAL_ITEMS] |= arg; len = 2; break;  /* ADD_ITEM: the Ring of Elf ($80) here */
+        case 0x12:                                              /* CHECK_FOR_ITEM: the ring; nothing else is held */
+            if (arg == 0x80 && (ram[SPECIAL_ITEMS] & 0x80)) { to = if_held; jump = true; }
+            else len = 4;
+            break;
+        case 0x14: note("mantra"); len = 1; break;
+        case 0x17: jump = true; break;
+        default: fprintf(stderr, "unmodelled action %02X at $%04X\n", op, p); exit(1);
+        }
+        if (jump) { ram[ISCRIPT_ADDR] = (uint8_t)to; ram[ISCRIPT_ADDR + 1] = (uint8_t)(to >> 8); ram[ISCRIPT_OFFSET] = 0; }
+        else ram[ISCRIPT_OFFSET] = (uint8_t)(ram[ISCRIPT_OFFSET] + len);
     }
-    const uint8_t bytes[] = { 0x06, (uint8_t)temple, 0x17, 0xFC, 0xA5 };
-    memcpy(bank12 + (script - 0x8000), bytes, sizeof bytes);
-    next_action(script);
-    next_action(script + 2);                                    /* 17: on to the mantra */
-    next_action(0xA5FC);
+    CHECK(!"the script did not end");
 }
+static void run_script(uint16_t script, unsigned b_on) { run_from(script, 1, b_on); }
+static void expect(const char *const *lines) {
+    unsigned n = 0;
+    for (; lines[n]; ++n) {
+        if (n >= said_n || strcmp(said[n], lines[n])) {
+            fprintf(stderr, "said %u: \"%s\", expected \"%s\"\n", n, n < said_n ? said[n] : "", lines[n]);
+            for (unsigned i = 0; i < said_n; ++i) fprintf(stderr, "  %s\n", said[i]);
+            exit(1);
+        }
+        ++checks;
+    }
+    CHECK(n == said_n);
+}
+#define SAID(...) do { static const char *const lines_[] = { __VA_ARGS__, NULL }; expect(lines_); } while (0)
+#define RESTORED "Your Elixir is/restored. Come/back when used."
+#define CAN "If your Elixir/is used, a Guru/will restore it."
+
+/* The stock Gurus' scripts (bank 12), as the ROM has them. */
+enum { EOLIS_GURU = 0xA0BC, APOLUNE_GURU = 0xA603, CONFLATE_GURU = 0xA627, OTHER_GURU = 0xA200, FRATERNAL_GURU = 0xA33C };
+static void stock_scripts(void) {
+    static const uint8_t common[] = { 0x03, 0x22, 0x14, 0x00, 0x01, 0x23, 0x00 };   /* $A5FC: mantra; $A600: new title */
+    static const uint8_t eolis[] = { 0x81, 0x12, 0x80, 0xC6, 0xA0, 0x01, 0x2C, 0x07, 0x80, 0x00, 0x03, 0x2D, 0x00 };
+    static const uint8_t conflate[] = { 0x81, 0x12, 0x23, 0x34, 0xA6, 0x06, 0x05, 0x04, 0x00, 0xA6, 0x17, 0xFC, 0xA5,
+                                        0x12, 0x82, 0x2C, 0xA6, 0x01, 0x8C, 0x07, 0x82, 0x00 };
+    static const uint8_t fraternal[] = { 0x81, 0x12, 0x45, 0x48, 0xA3, 0x03, 0x60, 0x00 };   /* no Dragon Slayer: a line */
+    memcpy(bank12 + (0xA5FC - 0x8000), common, sizeof common);
+    memcpy(bank12 + (EOLIS_GURU - 0x8000), eolis, sizeof eolis);
+    memcpy(bank12 + (CONFLATE_GURU - 0x8000), conflate, sizeof conflate);
+    memcpy(bank12 + (FRATERNAL_GURU - 0x8000), fraternal, sizeof fraternal);
+}
+/* A temple Guru's script at `at`: 06 temple, 04 NEW_RANK, 17 PASSWORD, as Apolune's ($A603) and four others. */
+static void temple_script(uint16_t at, unsigned temple) {
+    const uint8_t bytes[] = { 0x81, 0x06, (uint8_t)temple, 0x04, 0x00, 0xA6, 0x17, 0xFC, 0xA5 };
+    memcpy(bank12 + (at - 0x8000), bytes, sizeof bytes);
+}
+/* Talking to a Guru: his whole script. Eolis's (0) checks for the Ring of
+ * Elf; Conflate's (5) for the Battle Suit first; the rest set the spawn
+ * point, then the mantra or a new title. No Save files or Guru travel steps:
+ * the stock endings. */
+static void meet_guru_b(unsigned temple, unsigned b_on) {
+    stock_scripts();
+    if (temple == 0) { run_script(EOLIS_GURU, b_on); return; }
+    if (temple == 5) { run_script(CONFLATE_GURU, b_on); return; }
+    temple_script(OTHER_GURU, temple);
+    run_script(OTHER_GURU, b_on);
+}
+static void meet_guru(unsigned temple) { meet_guru_b(temple, 0); }
 /* Player_PickUpWingBoots / Player_PickUpHourGlass: the script, then
  * JMP Player_PickUpItem with A the item, back to Player_HandleTouchItem. */
 static void pick_up(uint8_t item) {
@@ -305,6 +416,9 @@ static void play(bool on) {                 /* a launch with the toggle */
     give(NULL, 0, NO_ITEM);
     memcpy(t_shown, "00", 3);
     isolated = false;
+    overrides_lost();                       /* a launch: the engine's table starts empty */
+    table_full = false;
+    on_line = NULL;
     if (on) plugin_cb();
     title_screen();
     respawn();                              /* Game_Start clears the timed items too */
@@ -669,21 +783,30 @@ static void save_states(void) {
     seconds(7);
     ram[SELECTED_ITEM] = HOUR_GLASS;
     use();
-    uint8_t buf[16];
+    uint8_t buf[32];
     int n = save_get(buf, sizeof buf);
     CHECK(n == RECORD && save_validate(buf, n));
-    CHECK(buf[0] == 1 && buf[1] == 0 && buf[2] >= 52 && buf[2] <= 54 && buf[3] == 1 && buf[4] == 0 && buf[5] == 1);
-    CHECK(buf[6] == 0 && buf[7] == 0 && buf[8] == 0);
+    CHECK(buf[0] == 2 && buf[1] == 0 && buf[2] >= 52 && buf[2] <= 54 && buf[3] == 1 && buf[4] == 0 && buf[5] == 1);
+    CHECK(buf[6] == 0 && buf[7] == 0 && buf[8] == 0 && buf[9] == 0 && buf[10] == TALK_IDLE && buf[11] == LINE_NONE);
     CHECK(save_get(buf, RECORD - 1) == -1);
     Charge saved = charge;
     play(true);
     CHECK(save_set(buf, n) == 1 && !memcmp(&charge, &saved, sizeof charge));
     /* A state from before the feature: everything ready, nothing spent. */
     CHECK(save_validate(buf, 0) && save_set(buf, 0) == 1 && boots_ready() && glass_ready() && !charge.elixir_spent);
+    /* A version 1 record (before the Guru's lines): the same, with nothing told. */
+    uint8_t v1[RECORD_V1];
+    memcpy(v1, buf, sizeof v1);
+    v1[0] = 1;
+    CHECK(save_validate(v1, RECORD_V1) && save_set(v1, RECORD_V1) == 1 && charge.elixir_spent && !charge.elixir_told);
+    CHECK(charge.cooldown[BOOTS] == saved.cooldown[BOOTS] && talk.phase == TALK_IDLE);
+    v1[0] = 2;
+    CHECK(!save_validate(v1, RECORD_V1));    /* a version 2 record is whole */
     /* Records it does not accept change nothing. */
     CHECK(save_set(buf, n) == 1);
     static const struct { int at; uint8_t value; } bad[] = {
-        { 0, 2 }, { 1, 2 }, { 2, 100 }, { 3, 7 }, { 4, 0xFF }, { 5, 2 }, { 6, 2 }, { 7, 100 }, { 8, 200 } };
+        { 0, 3 }, { 0, 1 }, { 1, 2 }, { 2, 100 }, { 3, 7 }, { 4, 0xFF }, { 5, 2 }, { 6, 2 }, { 7, 100 }, { 8, 200 },
+        { 9, 2 }, { 10, TALK_PHASES }, { 11, LINES }, { 11, LINE_CAN } };   /* the last: a line with no talk */
     for (unsigned i = 0; i < sizeof bad / sizeof bad[0]; ++i) {
         uint8_t b[RECORD];
         memcpy(b, buf, sizeof b);
@@ -761,7 +884,238 @@ static void save_files(void) {
     play(false);
     fields_clear();
     save_listener(FAX_SAVE_WRITING);
-    CHECK(field("recharge.wingboots") == NULL && field("recharge.elixir") == NULL);
+    CHECK(field("recharge.wingboots") == NULL && field("recharge.elixir") == NULL && field("recharge.elixir_told") == NULL);
+    file_in_play = false;
+}
+
+/* ---- what a Guru says about the Elixir ---- */
+
+static uint8_t spawn_seen[12], title_seen[12];   /* TempleSpawnPoint and PlayerTitle as each message showed */
+static void note_state(void) { spawn_seen[said_n - 1] = ram[0x0439]; title_seen[said_n - 1] = ram[PLAYER_TITLE]; }
+/* Only Guru travel's SAY step and message $C3's slot are served: no entry Guru travel has not made already. */
+static bool only_the_shared_bytes(void) {
+    for (unsigned b = 0; b < 2; ++b)
+        for (unsigned at = 0; at < 0x4000; ++at) {
+            uint16_t addr = (uint16_t)(0x8000 + at);
+            bool shared = b == 0 ? addr >= SAY && addr < SAY + 3 : addr >= SLOT && addr < SLOT + SLOT_LEN;
+            if (serving[b][at] && !shared) return false;
+        }
+    return true;
+}
+
+static void guru_lines_fit(void) {
+    uint8_t out[SLOT_LEN];
+    for (int i = LINE_NONE + 1; i < LINES; ++i) CHECK(encode(guru_line[i], out));
+    CHECK(encode("sixteen chars ok", out) && out[16] == 0xFF);
+    CHECK(!encode("seventeen chars!!", out) && !encode("1\n2\n3\n4\n5", out) && !encode("tab\there", out));
+    CHECK(encode("a b\nc", out) && out[1] == 0xFD && out[3] == 0xFE && out[5] == 0xFF);
+    /* Which line, by what the hero carries and what he has been told. */
+    Charge c = { 0 };
+    CHECK(guru_says(&c, false) == LINE_NONE && guru_says(&c, true) == LINE_CAN);
+    c.elixir_told = 1;
+    CHECK(guru_says(&c, true) == LINE_NONE && guru_says(&c, false) == LINE_NONE);
+    c.elixir_spent = 1;
+    CHECK(guru_says(&c, false) == LINE_RESTORED);
+    c.elixir_told = 0;
+    CHECK(guru_says(&c, false) == LINE_RESTORED);
+}
+
+/* A spent Elixir: each Guru who charges it says so first, every time, and
+ * then goes on as he would have. A temple Guru's SET_SPAWN_POINT has run by
+ * then, and his CHECK_UPDATE_PLAYER_TITLE runs after. */
+static void the_restored_line(void) {
+    play(true);
+    ram[SPECIAL_ITEMS] = BIT_ELIXIR | 0x80;  /* and the Ring of Elf */
+    hurt();
+    on_line = note_state;
+    meet_guru(1);
+    SAID(RESTORED, "msg 22", "mantra", "end");
+    CHECK(!charge.elixir_spent && (ram[SPECIAL_ITEMS] & BIT_ELIXIR) && guru_recharges == 1);
+    CHECK(lines_said[LINE_RESTORED] == 1 && charge.elixir_told && talk.phase == TALK_IDLE);
+    CHECK(spawn_seen[0] == 1);              /* SET_SPAWN_POINT ran before the line */
+    CHECK(entries == 3 + SLOT_LEN && only_the_shared_bytes());
+    hurt();
+    meet_guru(0);                           /* Eolis's Guru, with the ring */
+    SAID(RESTORED, "msg 2D", "end");
+    hurt();
+    ram[NEXT_PLAYER_TITLE] = 3; ram[PLAYER_TITLE] = 2;
+    meet_guru(5);                           /* Conflate's, past his CHECK_FOR_ITEM, with a new title */
+    SAID(RESTORED, "msg 23", "end");
+    CHECK(title_seen[0] == 2 && ram[PLAYER_TITLE] == 3);   /* the title's check ran after the line */
+    CHECK(guru_recharges == 3 && lines_said[LINE_RESTORED] == 3);
+    /* Charged and told: he only greets. */
+    meet_guru(3);
+    SAID("msg 22", "mantra", "end");
+    CHECK(lines_said[LINE_RESTORED] == 3 && lines_said[LINE_CAN] == 0);
+}
+
+/* A charged Elixir: the first Guru the hero brings it to says once that any
+ * Guru restores it. Either line tells him. */
+static void the_can_line(void) {
+    play(true);
+    ram[SPECIAL_ITEMS] = BIT_ELIXIR | 0x80;
+    meet_guru(2);
+    SAID(CAN, "msg 22", "mantra", "end");
+    CHECK(charge.elixir_told && lines_said[LINE_CAN] == 1 && guru_recharges == 0);
+    meet_guru(2);
+    SAID("msg 22", "mantra", "end");
+    meet_guru(0);                           /* told is told, whichever Guru */
+    SAID("msg 2D", "end");
+    CHECK(lines_said[LINE_CAN] == 1);
+    /* Eolis's Guru the first time, before he gives the ring. */
+    play(true);
+    ram[SPECIAL_ITEMS] = BIT_ELIXIR;
+    meet_guru(0);
+    SAID(CAN, "msg 2C", "end");
+    CHECK(ram[SPECIAL_ITEMS] == (BIT_ELIXIR | 0x80));
+    /* The restored line told him: no other line once it is charged. */
+    play(true);
+    ram[SPECIAL_ITEMS] = BIT_ELIXIR | 0x80;
+    hurt();
+    meet_guru(6);
+    SAID(RESTORED, "msg 22", "mantra", "end");
+    meet_guru(6);
+    SAID("msg 22", "mantra", "end");
+    CHECK(lines_said[LINE_CAN] == 0);
+    /* No Elixir: nothing said, nothing told, nothing served. */
+    play(true);
+    ram[SPECIAL_ITEMS] = 0x80;
+    meet_guru(4);
+    SAID("msg 22", "mantra", "end");
+    meet_guru(0);
+    SAID("msg 2D", "end");
+    CHECK(!charge.elixir_told && lines_said[LINE_CAN] == 0 && entries == 0);
+    /* A Guru who sets no spawn point (the Castle of Fraternal's) charges nothing and says nothing. */
+    play(true);
+    ram[SPECIAL_ITEMS] = BIT_ELIXIR | 0x80;
+    stock_scripts();
+    run_script(FRATERNAL_GURU, 0);
+    SAID("msg 60", "end");
+    CHECK(!charge.elixir_told && entries == 0);
+    /* Off, the original: no line, and nothing served. */
+    play(false);
+    ram[SPECIAL_ITEMS] = BIT_ELIXIR | 0x80;
+    meet_guru(1);
+    SAID("msg 22", "mantra", "end");
+    CHECK(entries == 0);
+    /* Inside Seamless's isolated rooms: nothing. */
+    play(true);
+    ram[SPECIAL_ITEMS] = BIT_ELIXIR | 0x80;
+    isolated = true;
+    meet_guru(1);
+    SAID("msg 22", "mantra", "end");
+    CHECK(!charge.elixir_told && entries == 0);
+    isolated = false;
+}
+
+/* B on the line ends the script, as on any of the Guru's lines: the Elixir
+ * is charged and he has told the hero. The next script is someone else's,
+ * even one whose end shows a line through the same SAY step (a shop's, with
+ * Block's tutorial): its END ends it. */
+static void b_on_the_line(void) {
+    play(true);
+    ram[SPECIAL_ITEMS] = BIT_ELIXIR | 0x80;
+    hurt();
+    meet_guru_b(1, 1);
+    SAID(RESTORED, "B");
+    CHECK(!charge.elixir_spent && (ram[SPECIAL_ITEMS] & BIT_ELIXIR) && charge.elixir_told);
+    static const uint8_t shop[] = { 0x89, 0x03, 0x0E, 0x17, SAY & 0xFF, SAY >> 8 };
+    memcpy(bank12 + (0xA300 - 0x8000), shop, sizeof shop);
+    run_script(0xA300, 0);
+    SAID("msg 0E", RESTORED, "end");        /* the slot as it was left: Block would have served its own line */
+    CHECK(talk.phase == TALK_IDLE);
+    meet_guru(1);
+    SAID("msg 22", "mantra", "end");
+}
+
+/* Save states: the line, waiting or showing, comes back with the record, and
+ * the slot is served again (the engine's overrides are not saved). */
+static uint8_t mid_line[32];
+static void save_and_relaunch(void) {
+    if (said_n != 1) return;
+    CHECK(save_get(mid_line, sizeof mid_line) == RECORD && mid_line[10] == TALK_SAYING && mid_line[11] == LINE_RESTORED);
+    overrides_lost();                       /* a new launch, with this machine's RAM loaded */
+    reset_cb();
+    plugin_cb();
+    CHECK(save_set(mid_line, RECORD) == 1);
+    fax_recharge_loaded();
+    char text[64];
+    slot_text(text);
+    CHECK(!strcmp(text, RESTORED) && cyc_mod_peek(SAY) == 0x03 && cyc_mod_peek(SAY + 2) == 0x00);
+}
+static void line_in_a_save_state(void) {
+    play(true);
+    ram[SPECIAL_ITEMS] = BIT_ELIXIR | 0x80;
+    hurt();
+    on_line = save_and_relaunch;
+    meet_guru(1);
+    SAID(RESTORED, "msg 22", "mantra", "end");
+    CHECK(talk.phase == TALK_IDLE && !charge.elixir_spent && charge.elixir_told);
+    /* Saved between SET_SPAWN_POINT and the action the line goes before. */
+    play(true);
+    ram[SPECIAL_ITEMS] = BIT_ELIXIR | 0x80;
+    hurt();
+    stock_scripts();
+    temple_script(OTHER_GURU, 1);
+    ram[ISCRIPT_ADDR] = (uint8_t)OTHER_GURU; ram[ISCRIPT_ADDR + 1] = (uint8_t)(OTHER_GURU >> 8); ram[ISCRIPT_OFFSET] = 1;
+    CHECK(!fire(ISCRIPTS_INVOKE_NEXT_ACTION));   /* at SET_SPAWN_POINT */
+    uint8_t buf[RECORD];
+    CHECK(save_get(buf, sizeof buf) == RECORD && buf[10] == TALK_PENDING && (buf[12] | buf[13] << 8) == OTHER_GURU + 3);
+    reset_cb(); plugin_cb();
+    CHECK(save_set(buf, RECORD) == 1 && talk.phase == TALK_PENDING);
+    run_from(OTHER_GURU, 3, 0);
+    SAID(RESTORED, "msg 22", "mantra", "end");
+}
+
+/* No room for the line's overrides: the Guru restores the Elixir silently. */
+static void no_room_for_the_line(void) {
+    play(true);
+    table_full = true;
+    ram[SPECIAL_ITEMS] = BIT_ELIXIR | 0x80;
+    hurt();
+    meet_guru(1);
+    SAID("msg 22", "mantra", "end");
+    CHECK(lines_failed && !charge.elixir_spent && (ram[SPECIAL_ITEMS] & BIT_ELIXIR) && !charge.elixir_told);
+    table_full = false;
+    hurt();
+    meet_guru(1);
+    SAID("msg 22", "mantra", "end");        /* off for the session */
+    CHECK(!charge.elixir_spent);
+}
+
+/* Save files: that a Guru told the hero is the file's recharge.elixir_told. */
+static void told_in_the_file(void) {
+    play(true);
+    file_in_play = true;
+    fields_clear();
+    save_listener(FAX_SAVE_NEW_GAME);
+    ram[SPECIAL_ITEMS] = BIT_ELIXIR | 0x80;
+    save_listener(FAX_SAVE_WRITING);
+    CHECK(field("recharge.elixir_told") == NULL);
+    meet_guru(1);
+    SAID(CAN, "msg 22", "mantra", "end");
+    save_listener(FAX_SAVE_WRITING);        /* "Remember my journey.", or the next spawn */
+    CHECK(field("recharge.elixir_told") && !strcmp(field("recharge.elixir_told"), "yes"));
+    /* Quit, then continue the file: told, so no line. */
+    title_screen();
+    CHECK(!charge.elixir_told);
+    save_listener(FAX_SAVE_CONTINUED);
+    respawn();
+    CHECK(charge.elixir_told);
+    meet_guru(1);
+    SAID("msg 22", "mantra", "end");
+    /* A new game in the file: not told, and the file says so at its next write. */
+    save_listener(FAX_SAVE_NEW_GAME);
+    CHECK(!charge.elixir_told);
+    save_listener(FAX_SAVE_WRITING);
+    CHECK(field("recharge.elixir_told") == NULL);
+    /* A file from before the lines: not told. */
+    fields_clear();
+    title_screen();
+    save_listener(FAX_SAVE_CONTINUED);
+    respawn();
+    meet_guru(1);
+    SAID(CAN, "msg 22", "mantra", "end");
     file_in_play = false;
 }
 
@@ -781,6 +1135,13 @@ int main(void) {
     isolated_runs_change_nothing();
     save_states();
     save_files();
+    guru_lines_fit();
+    the_restored_line();
+    the_can_line();
+    b_on_the_line();
+    line_in_a_save_state();
+    no_room_for_the_line();
+    told_in_the_file();
     printf("recharge_test: %u checks passed\n", checks);
     return 0;
 }

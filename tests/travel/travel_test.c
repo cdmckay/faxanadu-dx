@@ -103,11 +103,13 @@ static void message(uint8_t id) {
     char text[64];
     if (id == SLOT_ID) { slot_text(text); say("%s", text); } else say("msg %02X", id);
 }
-/* Run a Guru's script from `at`. Each question takes the next answer, 'A' or 'B'. */
-static void run(uint16_t at, uint8_t furthest, const char *answers) {
+/* Run a script from IScriptOrCHRAddr `base` + IScriptOffset `offset` (1 for a
+ * script that begins, as IScripts_Begin leaves it after the entity byte).
+ * Each question takes the next answer, 'A' or 'B'. */
+static void run_at(uint16_t base, uint8_t offset, uint8_t furthest, const char *answers) {
     said_n = 0;
     ram[TEMPLE_SPAWN_POINT] = furthest;
-    ram[ISCRIPT_ADDR] = (uint8_t)at; ram[ISCRIPT_ADDR + 1] = (uint8_t)(at >> 8); ram[ISCRIPT_OFFSET] = 0;
+    ram[ISCRIPT_ADDR] = (uint8_t)base; ram[ISCRIPT_ADDR + 1] = (uint8_t)(base >> 8); ram[ISCRIPT_OFFSET] = offset;
     for (int steps = 0; steps < 64; ++steps) {
         next_action_hook(0x826E);
         uint16_t p = (uint16_t)((ram[ISCRIPT_ADDR] | ram[ISCRIPT_ADDR + 1] << 8) + ram[ISCRIPT_OFFSET]);
@@ -137,6 +139,8 @@ static void run(uint16_t at, uint8_t furthest, const char *answers) {
     }
     CHECK(!"the script did not end");
 }
+/* Run a Guru's script from `at`. */
+static void run(uint16_t at, uint8_t furthest, const char *answers) { run_at(at, 0, furthest, answers); }
 /* A temple Guru as in the stock scripts: SET_SPAWN_POINT here, then the
  * mantra (JUMP ISCRIPT_COMMON_GURU_PASSWORD) or a new title (..._NEW_RANK). */
 static void guru(uint8_t here, uint8_t furthest, bool new_title, const char *answers) {
@@ -157,6 +161,7 @@ static void expect(const char *const *lines) {
     CHECK(n == said_n);
 }
 #define EXPECT(...) do { static const char *const lines_[] = { __VA_ARGS__, NULL }; expect(lines_); } while (0)
+enum { PHASE_INTRO = INTRO };                        /* the phase, before INTRO names its line */
 #define INTRO "All Gurus/meditate as one."
 #define OFFER_LINE "Shall I send/you to another/Guru?"
 
@@ -218,6 +223,20 @@ static void conversations(void) {
     put(0xA100, npc, sizeof npc);
     run(0xA100, 7, "");
     EXPECT("msg 40", "end");
+}
+
+/* B on "All Gurus meditate as one." ends the script with the intro under
+ * way. The next script to begin is someone else's, which shows a line
+ * through the same SAY step (a shop's end with Block's tutorial, Eolis's
+ * Guru with the Elixir's line): its END is not taken for the intro's. */
+static void b_on_the_intro(void) {
+    stock(); visited = 0x2B;
+    talk.phase = PHASE_INTRO;                        /* the intro was said, then B */
+    static const uint8_t script[] = { 0x83, 0x17, SAY & 0xFF, SAY >> 8 };   /* a portrait, then on to SAY */
+    put(0xA100, script, sizeof script);
+    run_at(0xA100, 1, 5, "");
+    EXPECT("", "end");                               /* the slot's line, then END: no offer */
+    CHECK(talk.phase == IDLE && dest == -1);
 }
 
 /* With a file in play, Save files asks first (fax_files.c): the script's end
@@ -317,6 +336,7 @@ int main(void) {
     lines_fit();
     what_is_offered();
     conversations();
+    b_on_the_intro();
     after_save_files();
     in_the_file();
     journey_path();
