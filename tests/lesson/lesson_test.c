@@ -545,6 +545,16 @@ static void other_payments(void) {
     subtract_progressively();
     CHECK(gold() == 2500 && pay_turns == 250 && take_min == 10 && take_max == 10 && pay_frames == 310);
     CHECK(seen.pays == 0);
+    /* His count never takes more than is left: an amount that is not a
+     * multiple of 150 ends at 10 a frame, and exactly that much is taken. */
+    play(true);
+    lesson.phase = PAYING;
+    go_to(MAGICIAN);
+    ram[ISCRIPT_OFFSET] = 6;
+    set_gold(1500);
+    set_temp(TEMP_0202, 1000);
+    subtract_progressively();
+    CHECK(gold() == 500 && pay_turns == 6 + 10 && take_min == 10 && take_max == 150 && seen.pays == 6);
     /* Isolated, his own count is 10 too (the price hook did not run there). */
     play(true);
     lesson.phase = PAYING;

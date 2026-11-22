@@ -104,17 +104,19 @@ enum { SLOT_LEN = FAX_TRAVEL_SLOT_LEN, SLOT_ID = FAX_TRAVEL_SLOT_ID };
  * back in 20 s for nothing. The lesson saves the hero half of every wait for
  * the rest of the game, and he teaches only after the magic hall's Fire
  * (3000), so it is priced for the late game: ten times Fire, and twice
- * Daybreak's Tilte (15000), the dearest thing a shop sells. A multiple of 10, which IScripts_ProgressivelySubtractGold takes exactly, and
- * below $8000: the routine keeps the amount left in Temp_0202/3 and marks its
+ * Daybreak's Tilte (15000), the dearest thing a shop sells. A multiple of
+ * 10, which IScripts_ProgressivelySubtractGold takes exactly, and below
+ * $8000: the routine keeps the amount left in Temp_0202/3 and marks its
  * closing wait with bit 15. His price line names it (it must fit his box). */
 enum { STOCK_PRICE = 200, PRICE = 30000 };
 _Static_assert(PRICE % 10 == 0 && PRICE < 0x8000, "a price the game takes exactly, in Temp_0202/3");
 
 /* His count: the game takes 10 a frame, so 30000 would take 3000 frames (50 s).
- * PAY a frame takes his in 200, then the game's 60. Every other payment
- * counts 10. */
+ * PAY a frame takes it in 200, then the game's 60. Every other payment
+ * counts 10. The count never takes more than is left, so any price is taken
+ * exactly; what a price leaves below PAY goes at 10 a frame. */
 enum { STOCK_PAY = 10, PAY = 150 };
-_Static_assert(PAY % STOCK_PAY == 0 && PRICE % PAY == 0, "his count pays whole steps");
+_Static_assert(PAY % STOCK_PAY == 0 && PAY > STOCK_PAY, "a count in the game's steps of 10");
 
 /* His lines, in his own box: 16 columns, 4 lines, '\n' breaks a line. The
  * price is a question: the game adds its flashing "?". The first three keep
