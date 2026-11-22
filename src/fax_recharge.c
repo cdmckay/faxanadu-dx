@@ -21,6 +21,17 @@
  * where the game's shop would have sold one to a spent Elixir, its bit being
  * clear. The Spring of Trunk still takes a charged one for good.
  *
+ * The Guru says so. A Guru who charges a spent Elixir opens the conversation
+ * with "Your Elixir is restored. Come back when used.", every time; the
+ * first time the hero talks to one while carrying a charged Elixir, he opens
+ * with "If your Elixir is used, a Guru will restore it.", once.
+ * Either line tells him (charge.elixir_told), so once he has heard the
+ * restored line he never hears the other. Then the Guru goes on as he would
+ * have: his greeting, Save files' choice, Guru travel. The line is one more
+ * native message in his box, through Guru travel's SAY step and message
+ * $C3's slot (fax_travel.h), as Block's tutorial and the quest log show
+ * theirs. B on it ends the conversation, as on any of his lines.
+ *
  * How, on the unchanged ROM:
  * - Player_UseWingBoots / Player_UseHourGlass entry: refuse when not ready.
  * - Player_ClearSelectedItem from those two routines: skipped, so the item
@@ -33,21 +44,27 @@
  *   shows a recharging item's cooldown, blinking, through the PPU buffer as
  *   UI_DrawTimeValue writes it. Flight time stays the game's steady count.
  * - Player_UseElixir: the Elixir is spent. IScripts_InvokeNextAction, at the
- *   first action of a Guru's script: a spent Elixir is charged again.
+ *   first action of a Guru's script: a spent Elixir is charged again, and his
+ *   line is chosen. It is shown before his next action that no other feature
+ *   steers (a temple Guru's CHECK_UPDATE_PLAYER_TITLE, right after
+ *   SET_SPAWN_POINT; Eolis's Guru's first, CHECK_FOR_ITEM): the script goes
+ *   to the SAY step, and at its END comes back where it was.
  * - Player_PickUpItem: a duplicate recharges instead of being added.
  * - Game_ClearTimedItems (every spawn but a Guru journey): both ready, or a
  *   continued file's cooldowns.
  * - Game_ShowStartScreen (power-on or reset, before a new game or a file):
  *   everything forgotten.
  * Hooks do nothing inside Seamless's isolated simulation of other rooms. The
- * state is the save-state record, and Save files keeps the cooldowns and the
- * Elixir's charge in the file in play (on_save): written whenever the file
- * is, read back when it is continued, reset by a new game. Talking to any
- * Guru charges the Elixir before he speaks, so whichever of Save files' menu
- * options is picked, or none. See docs/GAME_INTERNALS.md. */
+ * state is the save-state record, and Save files keeps the cooldowns, the
+ * Elixir's charge and whether a Guru has told the hero in the file in play
+ * (on_save): written whenever the file is, read back when it is continued,
+ * reset by a new game. Talking to any Guru charges the Elixir before he
+ * speaks, so whichever of Save files' menu options is picked, or none. See
+ * docs/GAME_INTERNALS.md. */
 #include "fax_recharge.h"
 #include "fax_items.h"
 #include "fax_save.h"
+#include "fax_travel.h"
 #include "cyc_mod.h"
 #include "mod_runtime.h"
 #include "mod_function_hooks.h"
@@ -75,6 +92,9 @@
 /* Bank 12 */
 #define ISCRIPTS_INVOKE_NEXT_ACTION 0x826Eu  /* JSR IScripts_LoadByte: the action at IScriptOrCHRAddr + IScriptOffset */
 #define EOLIS_GURU_FIRST        0xA0BDu  /* ISCRIPT_EOLIS_GURU's first action: CHECK_FOR_ITEM Ring of Elf */
+#define SAY                     FAX_TRAVEL_SAY      /* $AE00, Guru travel's step: 03 C3 00, show the slot, then END */
+/* Bank 13 */
+#define SLOT                    FAX_TRAVEL_SLOT     /* $B45B: message $C3, the line slot */
 /* RAM */
 #define INTERRUPT_COUNTER       0x001Au  /* +1 each NMI; the game's second is when & $3F == 0 */
 #define ISCRIPT_ADDR            0x00DBu  /* IScriptOrCHRAddr; the next action is at it + IScriptOffset ($DD) */
@@ -96,8 +116,12 @@
 #define PPU_BUFFER_ROOM         0x24u    /* PPUBuffer_HasCapacity: at least 36 bytes free, or empty */
 #define TILE_BLANK              0x00u    /* the HUD's blank tile */
 #define MAX_ITEMS               8
-#define ISCRIPT_SET_SPAWN_POINT 0x06u    /* 06 temple: each temple Guru's first action */
+#define ISCRIPT_SET_SPAWN_POINT 0x06u    /* 06 temple: each temple Guru's first action (Conflate's after a
+                                            CHECK_FOR_ITEM); CHECK_UPDATE_PLAYER_TITLE follows it */
+#define ISCRIPT_SHOW_MESSAGE    0x03u
+#define ISCRIPT_END             0x00u
 #define TEMPLES                 8
+enum { SLOT_LEN = FAX_TRAVEL_SLOT_LEN, SLOT_ID = FAX_TRAVEL_SLOT_ID };
 
 enum { BOOTS, GLASS, TIMED };   /* the two timed items */
 enum { BANDS = 4 };             /* title bands: PlayerTitle / 4 */
@@ -128,7 +152,23 @@ typedef struct {
     uint8_t running[TIMED];    /* used, and its time has not run out */
     uint8_t cooldown[TIMED];   /* the game's seconds until ready; 0 when ready */
     uint8_t elixir_spent;      /* it revived the hero; a Guru charges it again */
+    uint8_t elixir_told;       /* a Guru has said that he restores it (either line) */
 } Charge;
+
+/* What a Guru says about the Elixir, in his own box: 16 columns, 4 lines;
+ * '\n' breaks a line. */
+enum { LINE_NONE, LINE_RESTORED, LINE_CAN, LINES };
+static const char *const guru_line[LINES] = {
+    "", "Your Elixir is\nrestored. Come\nback when used.", "If your Elixir\nis used, a Guru\nwill restore it." };
+/* One Guru's conversation: his line waits for the action it goes before
+ * (PENDING), then shows (SAYING) with the script parked at `resume`. */
+enum { TALK_IDLE, TALK_PENDING, TALK_SAYING, TALK_PHASES };
+typedef struct {
+    uint8_t phase, line;
+    uint16_t at;               /* PENDING: the action the line goes before */
+    uint16_t resume;           /* SAYING: IScriptOrCHRAddr and IScriptOffset to go back to */
+    uint8_t offset;
+} Talk;
 
 /* What the HUD's T: should show. */
 typedef struct { int value; bool blank; } Show;   /* value -1: the game's own (flight) count */
@@ -141,7 +181,10 @@ typedef struct { uint8_t pending, cooldown[TIMED]; } Resume;
 static Resume resume;
 static Show drawn;                 /* what this module last queued on T: */
 static bool drawn_valid;
+static Talk talk;
+static bool lines_failed;          /* the line could not be supplied: the Gurus charge it silently */
 static unsigned flights, freezes, refused, kept, pickups, revives, guru_recharges, spawns;   /* for TCP */
+static unsigned lines_said[LINES];
 
 /* ---- the rules, on plain values ---- */
 
@@ -173,6 +216,32 @@ static Show hud_show(const Charge *c, uint8_t boots_duration, uint8_t selected, 
     for (int k = 0; k < TIMED && i < 0; ++k) if (cooling(c, k)) i = k;
     if (i < 0) return (Show){ 0, false };
     return (Show){ c->cooldown[i], (counter & 0x30) == 0x30 };
+}
+
+/* What a Guru says as he greets the hero: that he restored a spent Elixir,
+ * every time; that he can, the first time the hero brings a charged one and
+ * no Guru has said either; else nothing (no Elixir, or told already). */
+static int guru_says(const Charge *c, bool charged) {
+    if (c->elixir_spent) return LINE_RESTORED;
+    return charged && !c->elixir_told ? LINE_CAN : LINE_NONE;
+}
+
+/* A line in the dialogue font ($FD a space, $FE a new line), $FF-terminated
+ * and padded to the slot; false if it would not fit the box (16 columns, 4
+ * lines) or the slot. */
+static bool encode(const char *s, uint8_t out[SLOT_LEN]) {
+    unsigned n = 0, col = 0, row = 1;
+    for (; *s; ++s) {
+        uint8_t v;
+        if (*s == '\n') v = 0xFE, col = 0, ++row;
+        else if (*s == ' ') v = 0xFD, ++col;
+        else if (*s > 0x20 && *s < 0x7F) v = (uint8_t)*s, ++col;
+        else return false;
+        if (col > 16 || row > 4 || n + 1 >= SLOT_LEN) return false;
+        out[n++] = v;
+    }
+    while (n < SLOT_LEN) out[n++] = 0xFF;
+    return true;
 }
 
 /* ---- the machine ---- */
@@ -315,31 +384,97 @@ static int title_hook(uint16_t addr) {
     if (cyc_mod_isolated()) return 0;
     memset(&charge, 0, sizeof charge);
     resume = (Resume){ 0 };
+    talk = (Talk){ 0 };
     drawn_valid = false;
     return 0;
 }
 
 /* The Guru whose conversation begins with the action at `at`, or -1: a
- * temple Guru's script opens with SET_SPAWN_POINT (06 temple), the only
- * scripts that use it; Eolis's Guru sets none, so his first action. */
+ * temple Guru's script reaches SET_SPAWN_POINT (06 temple), the only scripts
+ * that use it, before he speaks (Conflate's after a CHECK_FOR_ITEM); Eolis's
+ * Guru sets none, so his first action. */
 static int guru_begins(uint16_t at) {
     if (q(at) == ISCRIPT_SET_SPAWN_POINT && q((uint16_t)(at + 1)) < TEMPLES) return q((uint16_t)(at + 1));
     return at == EOLIS_GURU_FIRST ? 0 : -1;
 }
+/* Where his line goes: before the next action no other feature steers. A
+ * temple Guru's SET_SPAWN_POINT must run as it is (Save files holds the
+ * spawn point at it, and Guru travel meets him there), so the line goes
+ * before the CHECK_UPDATE_PLAYER_TITLE that follows it in all seven; Eolis's
+ * Guru's first action is his CHECK_FOR_ITEM, which no one steers. */
+static uint16_t line_goes_before(uint16_t first) {
+    return q(first) == ISCRIPT_SET_SPAWN_POINT ? (uint16_t)(first + 2) : first;
+}
+
+static uint32_t prg(unsigned bank, uint16_t addr) { return bank * 16384u + (addr - 0x8000u); }
+/* The line into message $C3's slot, and Guru travel's SAY step that shows
+ * it, as Block's tutorial and the quest log serve them: the same three step
+ * bytes whoever serves them. */
+static bool serve_line(int which) {
+    static const uint8_t say[] = { ISCRIPT_SHOW_MESSAGE, SLOT_ID, ISCRIPT_END };
+    uint8_t bytes[SLOT_LEN];
+    if (which <= LINE_NONE || which >= LINES || !encode(guru_line[which], bytes)) return false;
+    for (unsigned i = 0; i < sizeof say; ++i)
+        if (!cyc_mod_set_prg_read_override(prg(12, (uint16_t)(SAY + i)), 0xFF, say[i])) return false;
+    for (unsigned i = 0; i < SLOT_LEN; ++i)
+        if (!cyc_mod_set_prg_read_override(prg(13, (uint16_t)(SLOT + i)), 0xFF, bytes[i])) return false;
+    return true;
+}
+static uint16_t word(uint16_t addr) { return (uint16_t)(q(addr) | q((uint16_t)(addr + 1)) << 8); }
+static void go(uint16_t script, uint8_t offset) {
+    cyc_mod_poke(ISCRIPT_ADDR, (uint8_t)script);
+    cyc_mod_poke(ISCRIPT_ADDR + 1, (uint8_t)(script >> 8));
+    cyc_mod_poke(ISCRIPT_OFFSET, offset);
+}
+/* Say `which` now, as the script's next action: park the script, and point
+ * it at the SAY step. Either line tells the hero. */
+static void say(int which) {
+    if (!serve_line(which)) {
+        fprintf(stderr, "[recharge] cannot supply the Guru's line; the Gurus restore the Elixir silently\n");
+        lines_failed = true;
+        return;
+    }
+    talk = (Talk){ TALK_SAYING, (uint8_t)which, 0, word(ISCRIPT_ADDR), q(ISCRIPT_OFFSET) };
+    go(SAY, 0);
+    charge.elixir_told = 1;
+    ++lines_said[which];
+}
 
 /* IScripts_InvokeNextAction: a Guru's conversation begins, so charge a spent
  * Elixir before he speaks, whatever he goes on to offer (the mantra, Save
- * files' choice, Guru travel) and however it ends. It only observes, and the
- * Gurus' other hooks here never redirect these two actions, so it sees them
- * whichever runs first. */
+ * files' choice, Guru travel) and however it ends, and choose his line. The
+ * line goes before an action no other hook here steers (line_goes_before),
+ * and the script comes back to it at the SAY step's END ($AE02), where Guru
+ * travel, with no conversation of its own in this script, and Save files,
+ * whose saved line cannot be up yet, leave it be. This hook runs last at the
+ * address, so each of the others saw the Guru's own action first. B on the
+ * line ends the script, as on any of his lines: the next action seen is then
+ * another script's. */
 static int guru_hook(uint16_t addr) {
     (void)addr;
-    if (cyc_mod_isolated() || !charge.elixir_spent) return 0;
-    uint16_t at = (uint16_t)((q(ISCRIPT_ADDR) | q(ISCRIPT_ADDR + 1) << 8) + q(ISCRIPT_OFFSET));
+    if (cyc_mod_isolated()) return 0;
+    uint16_t at = (uint16_t)(word(ISCRIPT_ADDR) + q(ISCRIPT_OFFSET));
+    Talk was = talk;
+    talk = (Talk){ 0 };
+    if (was.phase == TALK_SAYING && at == SAY + 2) {        /* his line has been read: back to his script */
+        go(was.resume, was.offset);
+        return 0;
+    }
+    if (was.phase == TALK_PENDING && at == was.at) {
+        say(was.line);
+        return 0;
+    }
     if (guru_begins(at) < 0) return 0;
-    cyc_mod_poke(SPECIAL_ITEMS, (uint8_t)(q(SPECIAL_ITEMS) | BIT_ELIXIR));
-    charge.elixir_spent = 0;
-    ++guru_recharges;
+    int line = guru_says(&charge, q(SPECIAL_ITEMS) & BIT_ELIXIR);
+    if (charge.elixir_spent) {
+        cyc_mod_poke(SPECIAL_ITEMS, (uint8_t)(q(SPECIAL_ITEMS) | BIT_ELIXIR));
+        charge.elixir_spent = 0;
+        ++guru_recharges;
+    }
+    if (line == LINE_NONE || lines_failed) return 0;
+    uint16_t before = line_goes_before(at);
+    if (before == at) say(line);
+    else talk = (Talk){ TALK_PENDING, (uint8_t)line, before, 0, 0 };
     return 0;
 }
 
@@ -351,11 +486,13 @@ bool fax_recharge_elixir_spent(void) { return enabled && charge.elixir_spent; }
 
 /* The fields: how many of the game's seconds until each timed item is ready
  * (0: ready; a run that has not ended counts as its whole cooldown, since
- * continuing spawns the hero with no timed item running), and whether the
- * Elixir is spent ("spent", or no field). Whether it is charged is the
+ * continuing spawns the hero with no timed item running), whether the
+ * Elixir is spent ("spent", or no field), and whether a Guru has told the
+ * hero he restores it ("yes", or no field). Whether it is charged is the
  * file's own special items. */
 static const char *const FIELD[TIMED] = { "recharge.wingboots", "recharge.hourglass" };
 #define FIELD_ELIXIR "recharge.elixir"
+#define FIELD_TOLD "recharge.elixir_told"
 
 static uint8_t until_ready(const Charge *c, int i, uint8_t title) {
     return c->running[i] ? timing(title)->cooldown[i] : c->cooldown[i];
@@ -373,32 +510,44 @@ static void on_save(FaxSaveEvent event) {
             long v = fax_save_get_int(FIELD[i], 0);
             resume.cooldown[i] = (uint8_t)(v < 0 ? 0 : v > MOST_SECONDS ? MOST_SECONDS : v);
         }
-        const char *e = fax_save_get(FIELD_ELIXIR);
+        const char *e = fax_save_get(FIELD_ELIXIR), *t = fax_save_get(FIELD_TOLD);
         charge.elixir_spent = e && !strcmp(e, "spent");
+        charge.elixir_told = t && !strcmp(t, "yes");
     } else {
         for (int i = 0; i < TIMED; ++i) fax_save_set_int(FIELD[i], until_ready(&charge, i, q(PLAYER_TITLE)));
         fax_save_set(FIELD_ELIXIR, charge.elixir_spent ? "spent" : NULL);
+        fax_save_set(FIELD_TOLD, charge.elixir_told ? "yes" : NULL);
     }
 }
 
 /* ---- the save-state record ---- */
 
-/* Version 1: [0] 1, [1] the Wing Boots running, [2] their cooldown, [3] the
+/* Version 2: [0] 2, [1] the Wing Boots running, [2] their cooldown, [3] the
  * Hour Glass running, [4] its cooldown, [5] the Elixir spent, [6] a continued
- * file's cooldowns waiting for the spawn, [7] and [8] those cooldowns. */
-enum { RECORD_VERSION = 1, RECORD = 9 };
+ * file's cooldowns waiting for the spawn, [7] and [8] those cooldowns, [9] a
+ * Guru has told the hero, and the Guru's line: [10] its phase, [11] which,
+ * [12-13] the action it goes before, [14-15] and [16] where the script goes
+ * back to. Version 1 was [0]-[8], with nothing told and no line. */
+enum { RECORD_VERSION = 2, RECORD = 17, RECORD_V1 = 9 };
 static int state_get(uint8_t *buf, int cap) {
     if (cap < RECORD) return -1;
     const uint8_t rec[RECORD] = { RECORD_VERSION, charge.running[BOOTS], charge.cooldown[BOOTS],
                                   charge.running[GLASS], charge.cooldown[GLASS], charge.elixir_spent,
-                                  resume.pending, resume.cooldown[BOOTS], resume.cooldown[GLASS] };
+                                  resume.pending, resume.cooldown[BOOTS], resume.cooldown[GLASS],
+                                  charge.elixir_told, talk.phase, talk.line, (uint8_t)talk.at,
+                                  (uint8_t)(talk.at >> 8), (uint8_t)talk.resume, (uint8_t)(talk.resume >> 8),
+                                  talk.offset };
     memcpy(buf, rec, sizeof rec);
     return RECORD;
 }
 static int record_validate(const uint8_t *buf, int len) {
-    return len == 0 || (len == RECORD && buf[0] == RECORD_VERSION && buf[1] <= 1 && buf[2] <= MOST_SECONDS &&
-                        buf[3] <= 1 && buf[4] <= MOST_SECONDS && buf[5] <= 1 && buf[6] <= 1 &&
-                        buf[7] <= MOST_SECONDS && buf[8] <= MOST_SECONDS);
+    if (len == 0) return 1;
+    bool v1 = len == RECORD_V1 && buf[0] == 1, v2 = len == RECORD && buf[0] == RECORD_VERSION;
+    if (!v1 && !v2) return 0;
+    if (buf[1] > 1 || buf[2] > MOST_SECONDS || buf[3] > 1 || buf[4] > MOST_SECONDS || buf[5] > 1 || buf[6] > 1 ||
+        buf[7] > MOST_SECONDS || buf[8] > MOST_SECONDS)
+        return 0;
+    return v1 || (buf[9] <= 1 && buf[10] < TALK_PHASES && buf[11] < LINES && (buf[10] == TALK_IDLE) == (buf[11] == LINE_NONE));
 }
 /* Length 0 (a state from before the feature) means everything ready and
  * nothing spent. */
@@ -406,14 +555,28 @@ static int state_set(const uint8_t *buf, int len) {
     if (!record_validate(buf, len)) return 0;
     memset(&charge, 0, sizeof charge);
     resume = (Resume){ 0 };
+    talk = (Talk){ 0 };
     if (len) {
         charge.running[BOOTS] = buf[1]; charge.cooldown[BOOTS] = buf[2];
         charge.running[GLASS] = buf[3]; charge.cooldown[GLASS] = buf[4];
         charge.elixir_spent = buf[5];
         resume = (Resume){ buf[6], { buf[7], buf[8] } };
     }
+    if (len == RECORD) {
+        charge.elixir_told = buf[9];
+        talk = (Talk){ buf[10], buf[11], (uint16_t)(buf[12] | buf[13] << 8), (uint16_t)(buf[14] | buf[15] << 8),
+                       buf[16] };
+    }
     drawn_valid = false;                           /* the loaded picture has its own T: */
     return 1;
+}
+
+/* After the whole state is in: the line's overrides are not machine state, and
+ * Guru travel's record may have put its own last line back in the slot. */
+void fax_recharge_loaded(void) {
+    if (!enabled || talk.phase != TALK_SAYING || lines_failed || serve_line(talk.line)) return;
+    fprintf(stderr, "[recharge] cannot supply the Guru's line; the Gurus restore the Elixir silently\n");
+    lines_failed = true;
 }
 
 /* ---- activation ---- */
@@ -429,8 +592,11 @@ static void deactivate(void) {
     enabled = false;
     memset(&charge, 0, sizeof charge);
     resume = (Resume){ 0 };
+    talk = (Talk){ 0 };
+    lines_failed = false;
     drawn_valid = false;
     flights = freezes = refused = kept = pickups = revives = guru_recharges = spawns = 0;
+    memset(lines_said, 0, sizeof lines_said);
     hooks(false);
 }
 static void activate(void) {
@@ -442,9 +608,9 @@ static void activate(void) {
 #ifdef CYC_WITH_SDL
 static void recharge_state(int id, const char *line) {
     (void)line;
-    char fields[640];
+    char fields[900];
     Show s = hud_show(&charge, q(DURATION_WING_BOOTS), q(SELECTED_ITEM), q(INTERRUPT_COUNTER));
-    snprintf(fields, sizeof fields,
+    int n = snprintf(fields, sizeof fields,
              "\"enabled\":%s,\"boots_ready\":%s,\"boots_running\":%u,\"boots_cooldown\":%u,"
              "\"glass_ready\":%s,\"glass_running\":%u,\"glass_cooldown\":%u,"
              "\"elixir_spent\":%s,\"elixir_charged\":%s,\"flights\":%u,\"freezes\":%u,\"refused\":%u,"
@@ -456,6 +622,12 @@ static void recharge_state(int id, const char *line) {
              q(SPECIAL_ITEMS) & BIT_ELIXIR ? "true" : "false", flights, freezes, refused, kept, pickups, revives,
              guru_recharges, spawns, s.value, s.blank ? "true" : "false", drawn_valid ? drawn.value : SHOW_GAME,
              drawn_valid && drawn.blank ? "true" : "false");
+    /* The Guru's line: told, talk (0 none, 1 waiting, 2 showing), line (0 none, 1 restored, 2 can), how many of
+     * each he has said, and whether the lines are off (their overrides could not be set). */
+    snprintf(fields + n, sizeof fields - (size_t)n,
+             ",\"elixir_told\":%s,\"talk\":%u,\"line\":%u,\"restored_lines\":%u,\"can_lines\":%u,\"lines_failed\":%s",
+             charge.elixir_told ? "true" : "false", talk.phase, talk.line, lines_said[LINE_RESTORED],
+             lines_said[LINE_CAN], lines_failed ? "true" : "false");
     cyc_tcp_ok(id, fields);
 }
 void fax_recharge_tcp_setup(void) {

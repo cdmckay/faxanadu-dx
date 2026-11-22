@@ -131,7 +131,8 @@ the connected map. It is still a preview, for local play only. See
 - **Items that recharge.** The Wing Boots and the Hour Glass recharge after
   use, counting down on the status bar, and the Wing Boots fly longer as your
   title rises. The Elixir stays with you after it revives you, and a Guru
-  recharges it.
+  recharges it and tells you so; the first Guru you bring it to tells you he
+  can.
 - **Quick shops.** Up on a shopkeeper opens his list at once, Select switches
   between buying and selling, and you stay in the list after each sale. Any
   shop buys what you carry, except what you own for good, like a key or the

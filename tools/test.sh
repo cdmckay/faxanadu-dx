@@ -197,6 +197,7 @@ E2E=(
   "respawn      tests/respawn/zone_respawn.py --parts"
   "respawn+sw   tests/respawn/zone_respawn.py --parts $SW"
   "recharge     tests/recharge/recharging_items.py --parts"
+  "elixir-lines tests/recharge/guru_lines.py --parts"
   "mana         tests/mana/mana_refill.py"
   "switch       tests/remastered/one_switch.py"
   "title        tests/title/title_remastered.py"

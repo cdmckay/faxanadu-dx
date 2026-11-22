@@ -112,8 +112,8 @@ between actions.
 | `$00` | | End: close the box |
 | `$01` | msg | Message B cannot skip |
 | `$02` | msg | Question: A continues, B ends the script |
-| `$03` | msg | Message |
-| `$04` | addr | Jump if the player's title went up |
+| `$03` | msg | Message. B, at any point, ends the script (`IScriptAction_ShowMessage` jumps to `IScriptAction_EndScript`) |
+| `$04` | addr | `CHECK_UPDATE_PLAYER_TITLE`: if `NextPlayerTitle` differs, take it and jump; else go on |
 | `$06` | temple | Set spawn point. **Only raises** `TempleSpawnPoint` |
 | `$08` | items | A shop's buy list (see *Shops*) |
 | `$0F` | addr | The shops' Buy/Sell menu: message `$10`, then a cursor on its lines 1 and 3. A on the first choice jumps to addr, A on the second goes on to the next action, B ends the script |
@@ -124,11 +124,22 @@ between actions.
 
 The full table is in chipx86's notes. The Gurus' scripts:
 
-- Each temple Guru: `06 temple`, `04 NEW_RANK`, `17 PASSWORD`.
+- Each temple Guru: `06 temple`, `04 NEW_RANK`, `17 PASSWORD` (Apolune's,
+  `$A603`: `81 06 01 04 00 A6 17 FC A5`).
   `ISCRIPT_COMMON_GURU_PASSWORD` (`$A5FC`) is `03 22, 14, 00`, and
-  `ISCRIPT_COMMON_GURU_NEW_RANK` (`$A600`) is `01 23, 00`.
-- Eolis's Guru (`$A0BC`) sets no spawn point. With the Ring of Elf he says
+  `ISCRIPT_COMMON_GURU_NEW_RANK` (`$A600`) is `01 23, 00`. Conflate's
+  (`$A627`) checks first: `12 23 A634` (the Battle Suit), then the same
+  three at `$A62C`; with the suit, `12 82 A62C` (the Ring of Dworf) goes back
+  to them, and without the ring he gives it (`01 8C, 07 82, 00`) and sets no
+  spawn point. So in all seven, `04` follows `06` directly, and nothing a
+  Guru says comes before `06`.
+- Eolis's Guru (`$A0BC`) sets no spawn point: `12 80 A0C6` (the Ring of
+  Elf), else `01 2C, 07 80, 00` (he gives it). With the ring he says
   `03 2D, 00` at `$A0C6`.
+- The Guru in the Castle of Fraternal (`ISCRIPT_FRATERNAL_GURU`, building
+  `$42`) has the Guru's portrait but sets no spawn point: `12` for the Dragon
+  Slayer, then the Demon's Ring. Dartmoor's temple Guru is
+  `ISCRIPT_GURU_FINAL` (temple 7).
 - Death runs script `$1F` ("Don't have negative thoughts", message `$24`),
   not a Guru's.
 - Only `ISCRIPT_COMMON_GURU_PASSWORD` uses action `$14`. Without a new title
@@ -225,7 +236,11 @@ a hero with none.
 `MESSAGE_STRINGS` (`$8300`). There is no lookup table. Messages 1-193 end at
 `$B3xx`, followed by glyph data that contains no `$FF`, so the scan counts the
 glyph block as message `$C2`, ending at the first unused byte, `$B45A`. A new
-message therefore starts at `$B45B` with ID `$C3`.
+message therefore starts at `$B45B` with ID `$C3`. The remaster's slot there
+is 48 bytes (`$B45B-$B48A`, all the override budget allows), so a line of
+its own is at most 47 bytes, newlines included, before its `$FF`: four full
+rows of 16 do not fit. The Elixir lines were cut to fit ("Return whenever it
+is used." did not).
 
 Encoding: `$21-$7E` ASCII, `$FD` space, `$FE` newline (ignored at the start
 of a line), `$FC` pause, `$FB` the player's title, `$FF` end.
@@ -450,8 +465,8 @@ What a feature can rely on, and the traps:
   (its 48-byte line slot and 7 step bytes), the Taller dagger 1, and Save
   files shares the slot and adds 5 (4 step bytes and the menu's operand), or
   8 if Guru travel's steps are not served (its own 3-byte SAY): 61 to 64 of
-  64. Block and the quest log borrow Guru travel's SAY step and slot, and Quick
-  shops takes none. `tools/check_allocations.py` counts every byte claimed in
+  64. Block, the quest log and Recharging items' Elixir lines borrow Guru
+  travel's SAY step and slot, and Quick shops takes none. `tools/check_allocations.py` counts every byte claimed in
   `mods/allocations.toml` once and fails past 64, so the claims, now 64, are
   the budget. A new message for the text box should share the slot, and
   anything more needs the table made larger or Guru travel's slot cut to its
@@ -3079,7 +3094,7 @@ the bit. With recharging items a spent Elixir is still the hero's
 (`fax_recharge_elixir_spent`), so Quick shops lists it as owned, as it does a
 charged one. Its bit is clear, so the game's own shop would sell one to a spent
 Elixir; through Quick shops, buying one never charges it. A Guru, or one found
-in the world, does.
+in the world, does, and a Guru says so (see *Features and what they use*).
 
 **Flying.** While `Player_StatusFlag` has `$80` and A is held,
 `Player_CheckHandleVertMovement` (`$E2C8`) treats the hero as on a ladder
@@ -3443,7 +3458,15 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
   play, Save files asks first and starts Guru travel through
   `fax_travel_begin`; the visited Gurus are then the file's `gurus` field.
   Without Save files they persist in `faxanadu_gurus.txt`; a new game resets
-  them.
+  them. B on its intro ("All Gurus meditate as one.", a `03` message) ends
+  the script with its conversation under way; it forgets it when the next
+  script begins (`IScriptOffset` 1 at `IScripts_InvokeNextAction`, which
+  `IScripts_Begin` leaves after the entity byte, and no feature's steering
+  does: they all enter a step at 0). Before #99 it did not, so by the code
+  the next END of the shared SAY step (`$AE02`: Block's tutorial at a shop,
+  the quest log, the Elixir line at Eolis's Guru) would have been taken for
+  its intro's and steered to its offer (`tests/travel/travel_test.c`,
+  `b_on_the_intro`; not seen in play).
 - **Death keeps gold** (`fax_death.c`). Dying brings the hero back with the
   gold, experience and earned title he had. It hooks
   `Player_SetInitialExpAndGold` and returns at once when the far call's resume
@@ -3670,28 +3693,65 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
     wherever he comes back.
     `Game_ShowStartScreen`: everything forgotten. A mantra keeps a charged
     Elixir (the bit) and loses a spent one.
-  - `IScripts_InvokeNextAction` (`$826E`, bank 12), observing only: at a
-    Guru's first action (a temple Guru's `SET_SPAWN_POINT`, which only their
-    seven scripts use, or `$A0BD`, Eolis's Guru's `CHECK_FOR_ITEM`), a spent
-    Elixir is charged, before he speaks. So any Guru conversation counts: the
-    plain mantra one with Save files and Guru travel off, and with them on,
+  - `IScripts_InvokeNextAction` (`$826E`, bank 12): at a Guru's first
+    action (a temple Guru's `SET_SPAWN_POINT`, which only their seven scripts
+    use, or `$A0BD`, Eolis's Guru's `CHECK_FOR_ITEM`), a spent Elixir is
+    charged, before he speaks. So any Guru conversation counts: the plain
+    mantra one with Save files and Guru travel off, and with them on,
     whichever of Save files' choices is picked, or B. Their hooks at the same
     address never redirect those two actions (Save files undoes the spawn
-    point's raise at the next action), so the three run in any order.
+    point's raise at the next action). The Guru in the Castle of Fraternal
+    sets no spawn point, and charges nothing.
+  - **The Guru says so** (#99). At that first action his line is chosen:
+    a spent Elixir, "Your Elixir is / restored. Come / back when used.",
+    every time; a charged one and no Guru has told the hero yet, "If your
+    Elixir / is used, a Guru / will restore it.", once; else none. Either
+    line tells him (`recharge.elixir_told`), so after the restored line he
+    never hears the other. It opens the conversation, before the Guru's own
+    words (his greeting or a new title, Eolis's "Visit all Gurus", or the
+    ring), and so before Save files' choice and Guru travel; the quest log's
+    lines come at a script's end, and Block's never in a Guru's. The line is
+    a native message in his box: the script is pointed at Guru travel's SAY
+    step (`03 C3 00`, `$AE00`) with the line in message `$C3`'s slot, both
+    served as Block and the quest log serve them, and at the step's END
+    (`$AE02`) it is pointed back at the `IScriptOrCHRAddr` and
+    `IScriptOffset` it had. Where: before the first action no other hook at
+    this address steers. Eolis's Guru's `CHECK_FOR_ITEM` is that already.
+    A temple Guru's `SET_SPAWN_POINT` is not (Guru travel meets him there,
+    and Save files holds the spawn point at it: steering away and back would
+    have it run unseen and raise the spawn point), so the line goes before the
+    `CHECK_UPDATE_PLAYER_TITLE` that follows it in all seven, and the choice
+    waits one action (`PENDING`). At `$AE02` Guru travel has no conversation
+    of its own going (`meet()` at `SET_SPAWN_POINT`, or its reset when a
+    script begins) and Save files acts there only after its saved line; this
+    site is the last of the four at the address, so each of them sees the
+    Guru's own actions and the step's END, never the SAY step it points at.
+    B on the line ends the conversation, as on the Guru's greeting
+    (`IScriptAction_ShowMessage`); the next action seen is then another
+    script's, and the line is forgotten. A Guru greets a hero with no
+    Elixir as before. If the overrides cannot be set, the Gurus charge it
+    silently for the session.
   - Save files: the file in play keeps `recharge.wingboots` and
     `recharge.hourglass` (the game's seconds until ready, 0 when ready; a run
-    not yet over counts as its whole cooldown) and `recharge.elixir` (`spent`,
-    or no field: the core `special_items` says whether it is charged). They
+    not yet over counts as its whole cooldown), `recharge.elixir` (`spent`,
+    or no field: the core `special_items` says whether it is charged) and
+    `recharge.elixir_told` (`yes`, or no field: a Guru has said either line,
+    so a continued file never hears "If your Elixir is used" again). They
     are written whenever the file is (`FAX_SAVE_WRITING`: a Guru's save, and
     every spawn's, so a death writes them ready), read back on
     `FAX_SAVE_CONTINUED`, and reset by `FAX_SAVE_NEW_GAME`. Continuing spawns
     the hero through `Player_Spawn`, whose `Game_ClearTimedItems` would make
     both ready, so the continued cooldowns wait for that call and are put
     back there, before the spawn's save writes the file again.
-  - Its hooks do nothing inside Seamless's isolated simulations. Its 9-byte
-    save-state record (a version, each timed item's running flag and cooldown,
-    the Elixir spent, and a continued file's cooldowns waiting for the spawn)
-    is its whole state while playing.
+  - Its hooks do nothing inside Seamless's isolated simulations. Its 17-byte
+    save-state record, version 2 (a version, each timed item's running flag
+    and cooldown, the Elixir spent, a continued file's cooldowns waiting for
+    the spawn, whether a Guru has told the hero, and the Guru's line: waiting
+    or showing, which, the action it goes before, and where the script goes
+    back to) is its whole state while playing. A state saved while the line
+    shows gets it back in the slot after the load (`fax_recharge_loaded`,
+    after Guru travel's record has put its own last line there). Version 1
+    records (9 bytes) load with nothing told.
 - **Block** (`fax_block.c`). A bindable button (V, or B on a controller)
   raises whatever the shield slot holds, the Battle Helmet included. The host
   input callback clears the d-pad, A and B while it is up and a pass of
@@ -3924,8 +3984,9 @@ are kept, in place, through every save.
 | `selected_weapon` ... `selected_item` | `SelectedWeapon` ... `SelectedItem` | A number, or `none` |
 
 Other fields belong to features: Guru travel's `gurus` (the visited Gurus,
-town names), recharging items' `recharge.wingboots`, `recharge.hourglass` and
-`recharge.elixir` (see its entry in *Features and what they use*), the map's
+town names), recharging items' `recharge.wingboots`, `recharge.hourglass`,
+`recharge.elixir` and `recharge.elixir_told` (see its entry in *Features and
+what they use*), the map's
 `map.eolis`, `map.trunk`, `map.mist`, `map.towns`, `map.branch`,
 `map.dartmoor`, `map.zenis` and `map.items` (see *The map*), the quest log's
 `quests.given` and `quests.done` (see *Quests*). (`imported_mantra`, on a

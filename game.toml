@@ -542,8 +542,8 @@ bank = 15
 bytes = "20 f7 ca 20 06 de 20 17 cb 20 25 ca"
 
 # Recharging items (fax_recharge.c): the Wing Boots and the Hour Glass are kept
-# and recharge, and the Elixir is kept and a Guru charges it again. The sites
-# are each routine's entry unless noted.
+# and recharge, and the Elixir is kept and a Guru charges it again, and says
+# so. The sites are each routine's entry unless noted.
 
 [[mod_function_hook]]
 id = "faxanadu.recharge.elixir"
@@ -603,7 +603,7 @@ bytes = "a2 ff 9a 20 59 f8 0c 20 9e 20 25 ca"   # Game_ShowStartScreen: LDX #$FF
 id = "faxanadu.recharge.guru"
 addr = 0x826e
 bank = 12
-bytes = "20 a4 87 aa bd 93 82 48 bd 7b 82 48"   # IScripts_InvokeNextAction: a Guru's first action charges the Elixir
+bytes = "20 a4 87 aa bd 93 82 48 bd 7b 82 48"   # IScripts_InvokeNextAction: a Guru's first action charges the Elixir; it says so. Keep last at $826E
 
 # Slain by (fax_slain.c): every loss of HP, and every sprite another spawns
 # (a shot, a rock). Both only observe.

@@ -237,6 +237,13 @@ static int next_action_hook(uint16_t addr) {
     if (!served) return 0;
     uint16_t at = (uint16_t)((cyc_mod_peek(ISCRIPT_ADDR) | cyc_mod_peek(ISCRIPT_ADDR + 1) << 8) +
                              cyc_mod_peek(ISCRIPT_OFFSET));
+    /* A script begins (IScripts_Begin leaves IScriptOffset 1; every step of
+     * ours is entered at 0): a conversation of ours that B ended is over. B on
+     * "All Gurus meditate as one." leaves INTRO or INTRO_TOWNS, and the next
+     * END of the SAY step that anyone else shows a line through (Block's
+     * tutorial, the quest log, the Guru's Elixir line) would have been taken
+     * for the intro's, and steered to the offer. */
+    if (cyc_mod_peek(ISCRIPT_OFFSET) == 1) talk.phase = IDLE;
     if (cyc_mod_peek(at) == SET_SPAWN_POINT && cyc_mod_peek((uint16_t)(at + 1)) < TEMPLES)
         meet(cyc_mod_peek((uint16_t)(at + 1)));
     else if (at == EOLIS_GURU_HAS_RING)
