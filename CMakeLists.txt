@@ -62,7 +62,7 @@ if(NESRECOMP_BACKEND STREQUAL "cycle")
             src/fax_finds.c
             src/fax_entrances.c
         MODS GAME_ID "faxanadu-usa"
-        PLAYERS 1 REGION NTSC PASSWORD_SAVE "faxanadu.srm" PASSWORD_SAVE_LABEL "Mantra"
+        PLAYERS 1 REGION NTSC
         BOXART "${CMAKE_CURRENT_SOURCE_DIR}/assets/boxart.tga")
     target_sources(FaxanaduRecomp PRIVATE src/override_text.c
         "${NESRECOMP_ROOT}/runner/src/override_chr.c"

@@ -124,8 +124,9 @@ static void the_word(void) {
                 if (x > right) right = x;
             }
         }
-    /* Clear of the logo above and of START / CONTINUE (and the file select,
-     * which starts on the same row) below, by 4 rows or more. */
+    /* Clear of the logo above and of the title's choices (START and CONTINUE,
+     * NEW GAME and CONTINUE, or a file pick, all from y 160) below, by 4 rows
+     * or more. */
     CHECK(top >= 148 && bottom <= 155 && top - 143 > 4 && 160 - bottom > 4);
     CHECK(left >= 88 && right <= 167 && (left - 16) - (239 - right) <= 8 && (239 - right) - (left - 16) <= 8);
     CHECK(fax_title_present(native, &w, &h) != native);   /* a composed picture is drawn over too */
@@ -143,7 +144,7 @@ static void only_on_the_title(void) {
     CHECK(fax_title_present(native, &w, &h) != native);   /* every present of that frame */
     frame(true);
     CHECK(fax_title_present(native, &w, &h) != native);
-    frame(false);                                         /* Start: the intro, or the mantra screen */
+    frame(false);                                         /* Start: the intro, or a saved game */
     CHECK(fax_title_present(native, &w, &h) == native);
     for (int i = 0; i < 300; ++i) frame(false);
     CHECK(fax_title_present(native, &w, &h) == native && seen == 255);

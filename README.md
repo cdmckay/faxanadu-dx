@@ -74,10 +74,11 @@ the connected map. It is still a preview, for local play only. See
 
 ### Saving and the Gurus
 
-- **Save files.** The title screen offers three files, as in Zelda, each
-  continuing exactly as you left it. A Guru no longer gives a mantra: he
-  offers to remember your journey, and you continue at the last Guru you saved
-  with.
+- **Save files.** Three files, as in Zelda. The title keeps NEW GAME and
+  CONTINUE: NEW GAME asks which file to start in, and asks before erasing a
+  used one, and CONTINUE picks a saved file and continues it exactly as you
+  left it. A Guru no longer gives a mantra: he offers to remember your
+  journey, and you continue at the last Guru you saved with.
 - **Guru travel.** A temple's Guru can send you to any other Guru you have
   visited, keeping your HP, MP and gold.
 - **Zone respawn.** After a death you come back where you last entered the
@@ -175,8 +176,6 @@ The remaster also fixes these bugs in the original game:
   the F in the title's logo.
 - The typing sound read past the end of its own table, so every character
   ended in a loud clack. Now it plays the softer sound the table holds.
-- Where a Guru's mantra starts its second line came from a byte read from the
-  wrong part of the ROM, which only happens to work. Now the break is certain.
 
 ## Controls
 
@@ -198,6 +197,9 @@ The remaster also fixes these bugs in the original game:
 | Fullscreen | F11 | |
 | Screenshot | F12 | |
 
+On the title, Select or the D-pad moves between NEW GAME and CONTINUE, A or
+Start chooses, and B goes back from the list of files.
+
 The launcher's Controls page remaps them. To rebind Magic, Block, the Map or
 the Quest log, set `MagicKey`, `BlockKey`, `MapKey` and `QuestLogKey` (a key
 name, like `V` or `Left Shift`) and `MagicButton`, `BlockButton`, `MapButton`
@@ -212,11 +214,8 @@ Your three files are `faxanadu_file1.txt` to `faxanadu_file3.txt`, next to
 the game. Block remembers that it has shown its line in `faxanadu_block.txt`
 beside them.
 
-Mantras from the original still work: the first time, your mantra in
-`faxanadu.srm` (and the Gurus in `faxanadu_gurus.txt`) goes into file 1. To
-bring in another, enter it in the launcher's Mantra field or pass
-`--password`, and it goes into the first empty file. Each mantra comes in
-once.
+The remaster has no mantras: it neither shows nor reads them. Switch it off
+and the original's CONTINUE asks for one, as it always did.
 
 ## The ROM it needs
 

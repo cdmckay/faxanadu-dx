@@ -234,18 +234,19 @@ rom = [
 overrides = [
     { bank = 12, start = 0x8631, stock = [0x10], use = "IScriptAction_ShowBuySellMenu's LDA #$10: the menu's message, served as $C3 for the Guru's menu only" },
 ]
-# Hooks StartScreen_CheckHandleInput ($9F44), PasswordScreen_Show ($909D),
-# the start screen's JMP Player_Spawn ($FC95) and Player_Spawn after
-# Game_SpawnInTemple ($DB20), which no other feature hooks,
+# Hooks StartScreen_CheckHandleInput ($9F44) and its LDY #$7E after the
+# arrow's X is loaded ($9F62, bank 12), PasswordScreen_Show ($909D), the start
+# screen's JMP Player_Spawn ($FC95) and Player_Spawn after Game_SpawnInTemple
+# ($DB20), which no other feature hooks,
 # IScripts_InvokeNextAction ($826E) with Guru travel, and
 # TextBox_ClearPasswordSize after it zeroes the line scroll ($F439) with the
 # quest log (below).
 # The operand is $C3 only from the Guru's menu step to the end of that frame
 # (the menu reads it at once), then the stock $10 again, so the shops' menu
 # never sees it. Writes TempleSpawnPoint (the saved Guru), the joypad's
-# changed mask on the title screen, DAT_0687 (Start or Continue),
-# IScriptOrCHRAddr and IScriptOffset, and the progress Password_Load would
-# write when continuing.
+# changed mask on the title screen, DAT_0687 (Start or Continue), X at $9F62
+# (the arrow's place, on the title only), IScriptOrCHRAddr and IScriptOffset,
+# and the progress Password_Load would write when continuing.
 
 [[shared_rom]]
 bank = 13
@@ -464,11 +465,11 @@ hooks = "faxanadu.title-remastered."
 rom = []
 # Hooks only Game_ShowStartScreen's @_afterCheckHandleInputFarJump ($FC7A),
 # which no other feature hooks, and returns 0 there: it notes that the title's
-# loop ran this frame and writes nothing. Save files' handled
-# StartScreen_CheckHandleInput returns to $FC7A as its RTS would, so the site
-# fires each frame of the title. The word is drawn over the presented picture
-# (fax_text.c), in rows the title leaves black (y 148-155), above Save files'
-# file select (from y 160).
+# loop ran this frame and writes nothing. StartScreen_CheckHandleInput, run or
+# handled by Save files, returns to $FC7A as its RTS would, so the site fires
+# each frame of the title. The word is drawn over the presented picture
+# (fax_text.c), in rows the title leaves black (y 148-155), above NEW GAME and
+# CONTINUE and Save files' file picks (from y 160).
 
 [[feature]]
 id = "indoor-equip"
@@ -542,14 +543,11 @@ plugin = "faxanadu.small-fixes"
 source = "src/fax_fixes.c"
 hooks = "faxanadu.small-fixes."
 rom = []
-# Hooks SoundEffect_Message_OnTick's TAX ($86B2, bank 5) and
-# IScriptAction_ShowPassword's entry ($8737, bank 12), which no other feature
-# hooks, and Player_HandleHitByMagic ($87DC), shared with Block (below). At
-# the TAX it changes only A. At the mantra it writes Message_StartAddr and
-# Message_ProcessedLength ($0218, $0219, $0214), which only the mantra's
-# line-end check reads before the next Messages_Load sets them again. At
-# Player_HandleHitByMagic it only reads Player_InvincibilityPhase and
-# DurationOintment. No ROM, no read overrides, no state.
+# Hooks SoundEffect_Message_OnTick's TAX ($86B2, bank 5), which no other
+# feature hooks, and Player_HandleHitByMagic ($87DC), shared with Block
+# (below). At the TAX it changes only A. At Player_HandleHitByMagic it only
+# reads Player_InvincibilityPhase and DurationOintment. No ROM, no read
+# overrides, no state.
 
 [[shared_site]]
 addr = 0x87DC   # Player_HandleHitByMagic

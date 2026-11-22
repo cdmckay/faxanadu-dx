@@ -60,7 +60,8 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 import fax_e2e  # noqa: E402
-from fax_e2e import Game, act, batch, chunks, frame, hold, page_to, parse_args, ram, tcp, typed, until, until_typed, wait  # noqa: E402
+from fax_e2e import (Game, act, batch, choose_file, chunks, frame, hold, page_to, parse_args, ram, tcp,  # noqa: E402
+                     title_menu, typed, until, until_typed, wait)
 
 AREA, SCREEN, PLAYER_X, PLAYER_Y, PLAYER_FLAGS, PLAYER_STATUS = 0x24, 0x63, 0x9E, 0xA1, 0xA4, 0xA5
 SCREEN_READY = 0x0E
@@ -769,8 +770,8 @@ def main():
             saved["special_items"] = str(int(saved["special_items"]) & ~BIT_ELIXIR)
             write_file(out / "game" / FILE, saved)
             launch()
-            until("the file select", lambda: frame() > 700)
-            tcp("pad", buttons="start", frames=10)                      # file 1: continue
+            title_menu()
+            choose_file(False, 1)                                       # CONTINUE, file 1
             until("Eolis's temple", lambda: place() == (BUILDINGS, EOLIS_TEMPLE) and settled(), 1800)
             wait(30)
             s = state()

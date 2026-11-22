@@ -1,10 +1,10 @@
 /* Unit tests for Save files (fax_save.c, fax_files.c), without the emulator or
  * a ROM. The modules run against a model of the machine: CPU RAM, the stock
  * bytes of the Guru scripts and the Buy/Sell menu's message operand, unused ROM
- * ($FF), the engine's read overrides and isolated calls, with the mantra's
- * routines modelled for two known mantras. A small interpreter plays the
- * interaction-script actions the Gurus use, calling the hook before each as
- * IScripts_InvokeNextAction does. Files are written in a scratch directory. */
+ * ($FF), the engine's read overrides, and the title's letters in its pattern
+ * table. A small interpreter plays the interaction-script actions the Gurus
+ * use, calling the hook before each as IScripts_InvokeNextAction does. Files
+ * are written in a scratch directory. */
 #define _POSIX_C_SOURCE 200809L
 #include "fax_save.c"
 #include "fax_files.c"
@@ -16,12 +16,12 @@ static unsigned checks;
 #define CHECK(test) do{++checks;if(!(test)){fprintf(stderr,"FAIL line %u: %s\n",__LINE__,#test);exit(1);}}while(0)
 
 /* ---- the machine ---- */
-static uint8_t ram[0x800], isolated_ram[0x800];
+static uint8_t ram[0x800];
 static uint8_t rom[16 * 16384];
 static uint8_t over[16 * 16384];
 static bool overridden[16 * 16384];
 static CycModRegs cpu = { .s = 0xFD };
-static bool isolated, saves_on = true;
+static bool saves_on = true;
 
 static uint32_t at_rom(uint16_t addr) {   /* bank 13 for the message slot, 15 above $C000, else 12 */
     if (addr >= 0xC000) return prg(15, (uint16_t)(addr - 0x4000));
@@ -44,59 +44,12 @@ bool cyc_mod_set_prg_read_override(uint32_t offset, uint8_t compare, uint8_t val
 }
 void cyc_mod_regs(CycModRegs *out) { *out = cpu; }
 void cyc_mod_set_regs(const CycModRegs *in) { cpu = *in; }
-bool cyc_mod_isolate_begin(void) { CHECK(!isolated); isolated = true; memcpy(isolated_ram, ram, sizeof ram); return true; }
-void cyc_mod_isolate_end(void) { CHECK(isolated); isolated = false; memcpy(ram, isolated_ram, sizeof ram); }
 size_t cyc_mod_copy_cart_payload(uint8_t *out, size_t capacity) {
     if (out && capacity >= sizeof rom) memcpy(out, rom, sizeof rom);
     return sizeof rom;
 }
 bool cyc_mod_call_commit(uint16_t routine, CycModRegs *regs) { (void)regs; CHECK(routine == SOUND_PLAY_EFFECT); return true; }
 bool cyc_host_saves_enabled(void) { return saves_on; }
-
-/* The mantra's routines, for two mantras the "game" knows. */
-typedef struct { const char *mantra; uint8_t title, spawn, special, quests; uint8_t items[3], items_n, selected_item; } Known;
-static const Known known[] = {
-    { "Mantra1", 4, 5, 0x82, 0x03, { 4, 9, 16 }, 3, 7 },
-    { "Mantra2", 1, 1, 0x00, 0x00, { 16 }, 1, 0xFF },
-};
-static const Known *checked;
-static int mantra_calls;
-bool cyc_mod_call(uint16_t routine, CycModRegs *regs) {
-    CHECK(isolated);
-    regs->p &= (uint8_t)~1;
-    if (routine == MMC1_SWITCH_BANK) { CHECK(regs->x == 12); return true; }
-    if (routine == PASSWORD_CHECK) {
-        ++mantra_calls; checked = NULL;
-        for (unsigned k = 0; k < sizeof known / sizeof known[0]; ++k) {
-            size_t n = strlen(known[k].mantra);
-            bool same = ram[ENTERED_LENGTH] == n;
-            for (size_t i = 0; same && i < n; ++i) same = ram[ENTERED_CHARS + i] == mantra_value(known[k].mantra[i]);
-            if (same) checked = &known[k];
-        }
-        if (!checked) regs->p |= 1;
-        return true;
-    }
-    if (routine == PASSWORD_LOAD) {
-        CHECK(checked);
-        const Known *k = checked;
-        ram[PLAYER_TITLE] = k->title; ram[TEMPLE_SPAWN_POINT] = k->spawn;
-        ram[SPECIAL_ITEMS] = k->special; ram[QUESTS] = k->quests;
-        for (int c = 0; c < FAX_SAVE_LISTS; ++c) { ram[COUNTS + c] = 0; ram[SELECTED + c] = 0xFF; }
-        ram[COUNTS + FAX_SAVE_ITEMS] = k->items_n;
-        memcpy(&ram[lists[FAX_SAVE_ITEMS]], k->items, k->items_n);
-        ram[SELECTED + FAX_SAVE_ITEMS] = k->selected_item;
-        return true;
-    }
-    if (routine == SET_INITIAL_EXP_AND_GOLD) {   /* PLAYER_TITLE_EXP_NEEDED and PLAYER_TITLE_GOLD for titles 1 and 4 */
-        unsigned t = ram[PLAYER_TITLE], exp = t == 4 ? 4800 : t == 1 ? 1000 : 0, gold = t == 4 ? 1600 : t == 1 ? 500 : 0;
-        ram[NEXT_PLAYER_TITLE] = (uint8_t)t;
-        ram[EXPERIENCE] = (uint8_t)exp; ram[EXPERIENCE + 1] = (uint8_t)(exp >> 8);
-        ram[GOLD] = (uint8_t)gold; ram[GOLD + 1] = (uint8_t)(gold >> 8); ram[GOLD + 2] = 0;
-        return true;
-    }
-    CHECK(!"unmodelled routine");
-    return false;
-}
 
 /* Registration and the rest of the host. */
 int nes_mod_register_function_entry_plugin(const char *id, uint16_t addr, NESModFunctionEntryCallback cb) { (void)id; (void)addr; (void)cb; return 1; }
@@ -109,7 +62,7 @@ int nes_mod_register_savestate_validator(const char *id, NESModSavestateValidate
 void nes_mod_set_local_only(const char *name, int required) { (void)name; (void)required; }
 bool fax_text_load(void) { return true; }
 bool fax_text_loaded(void) { return true; }
-static struct { int x, y, cols, rows, lines, first_line_y, last_line_y; } drawn;   /* the last file select drawn */
+static struct { int x, y, cols, rows, lines, first_line_y, last_line_y; } drawn;   /* the last file pick drawn */
 void fax_text_box_rom(uint32_t *px, int w, int h, int x, int y, int cols, int rows, const uint32_t colors[4], unsigned alpha) {
     (void)px; (void)w; (void)h; (void)colors; (void)alpha;
     drawn.x = x; drawn.y = y; drawn.cols = cols; drawn.rows = rows; drawn.lines = 0;
@@ -119,11 +72,18 @@ void fax_text_draw_color(uint32_t *px, int w, int h, int x, int y, const char *s
     if (!drawn.lines++) drawn.first_line_y = y;
     drawn.last_line_y = y;
 }
-uint32_t cyc_render_color(int entry) { return (uint32_t)entry; }
+uint32_t cyc_render_color(int entry) { return 0xFF000000u | (uint32_t)entry; }   /* the palette entry, opaque */
 int cyc_render_native_origin(int width) { return (width - 256) / 2; }
 const uint32_t *cyc_render_present(int *width, int *height) { *width = 0; *height = 0; return NULL; }
-static const char *cli;
-const char *faxanadu_cli_mantra(void) { return cli; }
+/* The title's pattern table ($1000 on its lines) and nametable: each letter
+ * tile a solid block of pixel value 3, and the choices' row in palette 1. */
+uint16_t cyc_render_line_bg_table(int y) { CHECK(y == TITLE_Y); return 0x1000; }
+uint8_t cyc_render_chr(uint16_t addr) {
+    unsigned tile = (addr - 0x1000u) / 16u;
+    return addr >= 0x1000 && tile >= TITLE_LETTERS && tile < TITLE_LETTERS + 26u ? 0xFF : 0x00;
+}
+uint8_t cyc_render_nametable(uint16_t addr) { return addr == 0x23C0 + (TITLE_ROW / 4) * 8 + START_COL / 4 ||
+                                                     addr == 0x23C0 + (TITLE_ROW / 4) * 8 + CONTINUE_COL / 4 ? 0x55 : 0; }
 
 /* Guru travel, as Save files sees it. */
 #define TRAVEL_SAY 0xAE00u
@@ -147,13 +107,12 @@ static void stock(void) {
     static const char titles[] = "Novice          Aspirant        Battler         Fighter         Adept           ";
     memcpy(rom + prg(15, 0xF649 - 0x4000), titles, sizeof titles - 1);
     for (int c = 0; c < FAX_SAVE_LISTS; ++c) ram[SELECTED + c] = 0xFF;
-    travel_offers = travel_served = false; travel_begun = -1; cli = NULL;
+    travel_offers = travel_served = false; travel_begun = -1;
     deactivate(); activate();
     names_loaded = false;
 }
 static void remove_files(void) {
-    static const char *const names[] = { "faxanadu_file1.txt", "faxanadu_file2.txt", "faxanadu_file3.txt",
-                                         "faxanadu.srm", "faxanadu_gurus.txt", "faxanadu_imported.txt" };
+    static const char *const names[] = { "faxanadu_file1.txt", "faxanadu_file2.txt", "faxanadu_file3.txt" };
     for (unsigned i = 0; i < sizeof names / sizeof names[0]; ++i) remove(names[i]);
 }
 static void write_text(const char *name, const char *text) {
@@ -291,19 +250,6 @@ static void machine(void) {
     CHECK(back.count[FAX_SAVE_WEAPONS] == 4);
 }
 
-static void mantras(void) {
-    stock();
-    FaxSaveProgress p;
-    ram[0x0100] = 0x5A;
-    CHECK(fax_save_progress_from_mantra("Mant ra1", &p) && !isolated);   /* spaces are dropped, as on the screen */
-    CHECK(p.title == 4 && p.next_title == 4 && p.experience == 4800 && p.gold == 1600 && p.spawn == 5 && p.furthest == 5);
-    CHECK(p.special_items == 0x82 && p.count[FAX_SAVE_ITEMS] == 3 && p.list[FAX_SAVE_ITEMS][2] == 16 && p.selected[4] == 7);
-    CHECK(ram[PLAYER_TITLE] == 0 && ram[0x0100] == 0x5A);   /* the machine is as it was */
-    CHECK(!fax_save_progress_from_mantra("Unknown", &p) && !isolated);
-    CHECK(!fax_save_progress_from_mantra("Ma", &p) && !fax_save_progress_from_mantra("bad!", &p));
-    CHECK(!fax_save_progress_from_mantra("AAAAAAAAAAAAAAAAAAAAAAAAA", &p));   /* 25 characters */
-}
-
 /* ---- files ---- */
 
 static void files_on_disk(void) {
@@ -362,87 +308,163 @@ static void api(void) {
     remove_files();
 }
 
-/* ---- the file select ---- */
+/* ---- the title's menu ---- */
 
-static void file_select(void) {
-    stock(); remove_files();
+static void write_sample(int file) {
     FaxSaveRecord r;
     FaxSaveProgress p = sample();
     fax_save_record_clear(&r);
     fax_save_progress_put(&r, &p);
-    CHECK(fax_save_file_write(2, &r));
+    CHECK(fax_save_file_write(file, &r));
+}
+static void row(const Menu *m, int n, const char *text, bool cursor, bool dim) {
+    char got[MENU_COLS + 1];
+    bool c, d;
+    menu_row(m, n, got, &c, &d);
+    if (strcmp(got, text) || c != cursor || d != dim) {
+        fprintf(stderr, "row %d: \"%s\" cursor %d dim %d, expected \"%s\" %d %d\n", n, got, c, d, text, cursor, dim);
+        CHECK(0);
+    }
+    ++checks;
+}
+
+static void menu_rows(void) {
+    stock(); remove_files();
+    write_sample(2);
     write_text("faxanadu_file3.txt", "nonsense\n");
     enter_title();
     CHECK(title_up && slots[0].status == FAX_SAVE_MISSING && slots[1].status == FAX_SAVE_OK &&
           slots[2].status == FAX_SAVE_MALFORMED);
-    char text[MENU_COLS + 1];
-    bool cursor;
-    menu_row(&menu, 0, text, &cursor);
-    CHECK(cursor && !strcmp(text, "} 1 New game"));
-    menu_row(&menu, 1, text, &cursor);
-    CHECK(!cursor && !strcmp(text, ""));
-    menu_row(&menu, 2, text, &cursor);
-    CHECK(!cursor && !strcmp(text, "  2 Adept        Conflate"));
-    menu_row(&menu, 3, text, &cursor);
-    CHECK(!strcmp(text, "    Gold 11259375 Exp 4900"));
+    CHECK(menu.mode == TOP && menu.cursor == 1);                   /* on CONTINUE: a file can be continued */
+    for (int n = 0; n < MENU_ROWS; ++n) row(&menu, n, "", false, false);   /* the two choices are not rows */
+    Menu m = { NEW_PICK, 0, 0 };
+    row(&m, 0, "} 1 Empty", true, false);
+    row(&m, 1, "", false, false);
+    row(&m, 2, "  2 Adept        Conflate", false, false);
+    row(&m, 3, "    Gold 11259375 Exp 4900", false, false);
     slots[1].p.gold = 1234567;
-    menu_row(&menu, 3, text, &cursor);
-    CHECK(!strcmp(text, "    Gold 1234567 Exp 4900"));   /* Exp under the town */
+    row(&m, 3, "    Gold 1234567 Exp 4900", false, false);       /* Exp under the town */
     slots[1].p.gold = 0xABCDEF;
-    menu_row(&menu, 4, text, &cursor);
-    CHECK(!strcmp(text, "  3 Damaged file"));
-    menu_row(&menu, 5, text, &cursor);
-    CHECK(!strcmp(text, ""));
-    menu_row(&menu, 6, text, &cursor);
-    CHECK(!strcmp(text, ""));                                  /* a blank before Erase */
-    menu_row(&menu, 7, text, &cursor);
-    CHECK(MENU_ROWS == 8 && !strcmp(text, "  Erase a file"));
-
-    bool moved;
-    Menu m = { PICK, 0, 0 };
-    CHECK(menu_press(&m, BUTTON_UP, &moved) == 0 && moved && m.cursor == ERASE_ROW);   /* wraps */
-    CHECK(menu_press(&m, BUTTON_DOWN, &moved) == 0 && m.cursor == 0);
-    CHECK(menu_press(&m, BUTTON_START, &moved) == 1);                                 /* a new game in file 1 */
-    m.cursor = 1;
-    CHECK(menu_press(&m, BUTTON_A, &moved) == 2);                                     /* continue file 2 */
-    m.cursor = 2;
-    CHECK(menu_press(&m, BUTTON_A, &moved) == 0 && m.mode == PICK);                   /* a damaged file */
-    CHECK(menu_press(&m, BUTTON_B | BUTTON_SELECT, &moved) == 0 && !moved);
-    /* Erase: the cursor starts on the first file with something in it. */
-    m.cursor = ERASE_ROW;
-    CHECK(menu_press(&m, BUTTON_A, &moved) == 0 && m.mode == ERASE && m.cursor == 1);
-    menu_row(&m, 7, text, &cursor);
-    CHECK(!strcmp(text, "  Erase which file?"));
-    CHECK(menu_press(&m, BUTTON_UP, &moved) == 0 && m.cursor == 0);
-    CHECK(menu_press(&m, BUTTON_A, &moved) == 0 && m.mode == ERASE);                  /* nothing to erase */
-    CHECK(menu_press(&m, BUTTON_B, &moved) == 0 && m.mode == PICK && m.cursor == ERASE_ROW);
-    CHECK(menu_press(&m, BUTTON_A, &moved) == 0 && m.mode == ERASE && m.cursor == 1);
-    CHECK(menu_press(&m, BUTTON_A, &moved) == 0 && m.mode == CONFIRM && m.target == 1);
-    menu_row(&m, 7, text, &cursor);
-    CHECK(!strcmp(text, "  Erase file 2? A yes B no"));
-    menu_row(&m, 2, text, &cursor);
-    CHECK(cursor);
-    CHECK(menu_press(&m, BUTTON_DOWN, &moved) == 0 && m.mode == CONFIRM && m.target == 1);
-    CHECK(menu_press(&m, BUTTON_B, &moved) == 0 && m.mode == ERASE);
-    CHECK(menu_press(&m, BUTTON_A, &moved) == 0 && m.mode == CONFIRM);
-    CHECK(menu_press(&m, BUTTON_A, &moved) == 0 && m.mode == PICK && m.cursor == 1);
-    CHECK(!exists("faxanadu_file2.txt") && slots[1].status == FAX_SAVE_MISSING);
-    m.cursor = ERASE_ROW;
-    CHECK(menu_press(&m, BUTTON_A, &moved) == 0 && m.mode == ERASE && m.cursor == 2);  /* the damaged one is left */
+    row(&m, 4, "  3 Damaged file", false, false);
+    row(&m, 5, "", false, false);
+    row(&m, 6, "", false, false);                                 /* a blank before the question */
+    row(&m, 7, "  New game in which file?", false, false);
+    CHECK(MENU_ROWS == 8);
+    m = (Menu){ CONFIRM, 0, 1 };
+    row(&m, 2, "} 2 Adept        Conflate", true, false);
+    row(&m, 7, "  Erase file 2? A yes B no", false, false);
+    m = (Menu){ CONTINUE_PICK, 1, 0 };                            /* only file 2 can be continued: the rest grey */
+    row(&m, 0, "  1 Empty", false, true);
+    row(&m, 1, "", false, true);
+    row(&m, 2, "} 2 Adept        Conflate", true, false);
+    row(&m, 3, "    Gold 11259375 Exp 4900", false, false);
+    row(&m, 4, "  3 Damaged file", false, true);
+    row(&m, 7, "  Continue which file?", false, false);
+    slots[2].status = FAX_SAVE_NEWER;
+    row(&m, 4, "  3 From a newer version", false, true);
     remove_files();
 }
 
-/* Where the file select goes: over START / CONTINUE and the notices (rows
- * 160-239), clear of the logo (to 143) and of REMASTERED (148-155,
- * fax_title.c) above it. */
+static void menu_presses(void) {
+    stock(); remove_files();
+    write_sample(2);
+    write_text("faxanadu_file3.txt", "nonsense\n");
+    scan();
+    bool moved;
+    int file;
+    /* The two choices: Select, Left, Right, Up and Down all toggle. */
+    Menu m = top_menu();
+    CHECK(m.mode == TOP && m.cursor == 1);
+    CHECK(menu_press(&m, BUTTON_SELECT, &moved, &file) == STAY && moved && m.cursor == 0);
+    CHECK(menu_press(&m, BUTTON_RIGHT, &moved, &file) == STAY && moved && m.cursor == 1);
+    CHECK(menu_press(&m, BUTTON_LEFT, &moved, &file) == STAY && m.cursor == 0);
+    CHECK(menu_press(&m, BUTTON_DOWN, &moved, &file) == STAY && m.cursor == 1);
+    CHECK(menu_press(&m, BUTTON_B, &moved, &file) == STAY && !moved && m.mode == TOP);
+    /* CONTINUE: only saved files, the cursor skipping the rest. */
+    CHECK(menu_press(&m, BUTTON_A, &moved, &file) == STAY && moved && m.mode == CONTINUE_PICK && m.cursor == 1);
+    CHECK(menu_press(&m, BUTTON_DOWN, &moved, &file) == STAY && !moved && m.cursor == 1);   /* none other */
+    CHECK(menu_press(&m, BUTTON_UP, &moved, &file) == STAY && !moved && m.cursor == 1);
+    CHECK(menu_press(&m, BUTTON_START, &moved, &file) == CONTINUE && file == 2);
+    m.cursor = 2;                                                  /* a damaged file is never continued */
+    CHECK(menu_press(&m, BUTTON_A, &moved, &file) == STAY && file == 0);
+    CHECK(menu_press(&m, BUTTON_B, &moved, &file) == STAY && moved && m.mode == TOP && m.cursor == 1);
+    /* NEW GAME: the cursor starts on the first empty file, which starts at once. */
+    m.cursor = 0;
+    CHECK(menu_press(&m, BUTTON_START, &moved, &file) == STAY && m.mode == NEW_PICK && m.cursor == 0);
+    CHECK(menu_press(&m, BUTTON_UP, &moved, &file) == STAY && moved && m.cursor == 2);   /* wraps */
+    CHECK(menu_press(&m, BUTTON_DOWN, &moved, &file) == STAY && m.cursor == 0);
+    CHECK(menu_press(&m, BUTTON_A, &moved, &file) == NEW_GAME && file == 1 && !moved);
+    /* A used file asks first; B keeps it. */
+    m = (Menu){ NEW_PICK, 1, 0 };
+    CHECK(menu_press(&m, BUTTON_A, &moved, &file) == STAY && moved && m.mode == CONFIRM && m.target == 1);
+    CHECK(menu_press(&m, BUTTON_DOWN, &moved, &file) == STAY && !moved && m.mode == CONFIRM && m.target == 1);
+    CHECK(menu_press(&m, BUTTON_B, &moved, &file) == STAY && moved && m.mode == NEW_PICK && m.cursor == 1);
+    CHECK(exists("faxanadu_file2.txt") && slots[1].status == FAX_SAVE_OK);
+    CHECK(menu_press(&m, BUTTON_B, &moved, &file) == STAY && m.mode == TOP && m.cursor == 0);
+    /* A damaged file asks too; A erases it, and the new game starts in it. */
+    m = (Menu){ NEW_PICK, 2, 0 };
+    CHECK(menu_press(&m, BUTTON_A, &moved, &file) == STAY && m.mode == CONFIRM && m.target == 2);
+    CHECK(menu_press(&m, BUTTON_A, &moved, &file) == NEW_GAME && file == 3);
+    CHECK(!exists("faxanadu_file3.txt") && slots[2].status == FAX_SAVE_MISSING && exists("faxanadu_file2.txt"));
+    /* --no-save: the erase fails, and the new game still starts. */
+    m = (Menu){ CONFIRM, 1, 1 };
+    saves_on = false;
+    CHECK(menu_press(&m, BUTTON_A, &moved, &file) == NEW_GAME && file == 2 && exists("faxanadu_file2.txt"));
+    saves_on = true;
+    /* Nothing to continue: CONTINUE is grey, and the cursor stays on NEW GAME. */
+    remove_files();
+    scan();
+    m = top_menu();
+    CHECK(m.cursor == 0 && !can_continue());
+    CHECK(menu_press(&m, BUTTON_SELECT | BUTTON_RIGHT, &moved, &file) == STAY && !moved && m.cursor == 0);
+    m.cursor = 1;                                                  /* had the files changed under it */
+    CHECK(menu_press(&m, BUTTON_A, &moved, &file) == STAY && m.mode == NEW_PICK && m.cursor == 0);
+    m = (Menu){ NEW_PICK, 0, 0 };
+    CHECK(menu_press(&m, BUTTON_B, &moved, &file) == STAY && m.mode == TOP && m.cursor == 0);
+    /* Every file used: NEW GAME's cursor starts on file 1. */
+    write_sample(1); write_sample(2); write_sample(3);
+    scan();
+    m = (Menu){ TOP, 0, 0 };
+    CHECK(menu_press(&m, BUTTON_A, &moved, &file) == STAY && m.mode == NEW_PICK && m.cursor == 0);
+    m = (Menu){ TOP, 1, 0 };
+    CHECK(menu_press(&m, BUTTON_A, &moved, &file) == STAY && m.mode == CONTINUE_PICK && m.cursor == 0);
+    CHECK(menu_press(&m, BUTTON_UP, &moved, &file) == STAY && moved && m.cursor == 2);
+    CHECK(menu_press(&m, BUTTON_DOWN, &moved, &file) == STAY && m.cursor == 0);
+    remove_files();
+}
+
+/* Where the menu goes: the two choices on the title's row (y 160), NEW GAME
+ * ending where START did; a pick over them and the notices (rows 160-239),
+ * clear of the logo (to 143) and of REMASTERED (148-155, fax_title.c). */
+static uint32_t at(const uint32_t *px, int w, int x, int y) { return px[y * w + x]; }
 static void placement(void) {
     stock(); remove_files();
     enter_title();
-    static uint32_t picture[256 * 240];
+    static uint32_t picture[256 * 240], out[256 * 240];
+    for (int i = 0; i < 256 * 240; ++i) picture[i] = 0x12345678;
     int w = 256, h = 240;
     seen = 5;
     CHECK(fax_files_present(picture, &w, &h) == picture);   /* the title's loop did not run */
     seen = 0;
+    drawn.lines = 0;
+    const uint32_t *got = fax_files_present(picture, &w, &h);
+    CHECK(got != picture && drawn.lines == 0);              /* no box on the two choices */
+    memcpy(out, got, sizeof out);
+    /* NEW GAME in columns 5-12, in the palette START's column has (1): its
+     * letters' pixel value 3 is palette entry 7, a space's cell black. */
+    CHECK(at(out, w, 5 * 8, TITLE_Y) == cyc_render_color(7) && at(out, w, 12 * 8 + 7, TITLE_Y + 7) == cyc_render_color(7));
+    CHECK(at(out, w, 8 * 8, TITLE_Y) == cyc_render_color(0));             /* the space, over START's S */
+    CHECK(at(out, w, 4 * 8 + 7, TITLE_Y) == 0x12345678 && at(out, w, 13 * 8, TITLE_Y) == 0x12345678);
+    CHECK(at(out, w, 40, TITLE_Y - 1) == 0x12345678 && at(out, w, 40, TITLE_Y + 8) == 0x12345678);
+    /* CONTINUE, with nothing to continue: grey over the game's own. */
+    CHECK(at(out, w, 16 * 8, TITLE_Y) == cyc_render_color(MENU_DIM_COLOR) &&
+          at(out, w, 23 * 8 + 7, TITLE_Y + 7) == cyc_render_color(MENU_DIM_COLOR));
+    write_sample(1);
+    scan();
+    memcpy(out, fax_files_present(picture, &w, &h), sizeof out);
+    CHECK(at(out, w, 16 * 8, TITLE_Y) == 0x12345678);                    /* the game's own CONTINUE */
+    /* A pick. */
+    menu.mode = NEW_PICK;
     CHECK(fax_files_present(picture, &w, &h) != picture);
     CHECK(drawn.x == 16 && drawn.y == 160 && drawn.cols == MENU_COLS && drawn.rows == MENU_ROWS);
     CHECK(drawn.y + (drawn.rows + 2) * FAX_TEXT_CELL == 240);   /* the frame's bottom on the last row */
@@ -450,9 +472,14 @@ static void placement(void) {
     static uint32_t wide[512 * 240];
     w = 512;
     CHECK(fax_files_present(wide, &w, &h) != wide && drawn.x == 128 + 16 && drawn.y == 160);
+    menu.mode = TOP;
+    memcpy(wide, fax_files_present(wide, &w, &h), sizeof wide);
+    CHECK(wide[TITLE_Y * 512 + 128 + 5 * 8] == cyc_render_color(7));       /* NEW GAME, in the native picture */
+    remove_files();
 }
 
 /* The title's loop: the game sees Start only when a file is chosen. */
+static void press(uint8_t buttons) { ram[JOY1_CHANGED] = buttons; }
 static void title(void) {
     stock(); remove_files();
     FaxSaveRecord r;
@@ -461,14 +488,24 @@ static void title(void) {
     fax_save_progress_put(&r, &p);
     fax_save_record_set(&r, "gurus", "Eolis Mascon");
     CHECK(fax_save_file_write(3, &r));
-    ram[JOY1_CHANGED] = BUTTON_START | BUTTON_SELECT;
-    menu = (Menu){ PICK, 0, 0 };
-    title_up = true;
-    menu.cursor = 2;
-    ram[JOY1_CHANGED] = BUTTON_SELECT;
-    CHECK(title_hook(START_SCREEN_INPUT) == 1 && ram[JOY1_CHANGED] == 0 && title_up);
-    ram[JOY1_CHANGED] = BUTTON_A;
-    scan();
+    title_up = false;
+    /* The two choices: the routine runs on, without Select or Start, and draws
+     * its arrow where the hook puts it. */
+    press(BUTTON_SELECT);                                          /* from CONTINUE, where it opens */
+    CHECK(title_hook(START_SCREEN_INPUT) == 0 && title_up && menu.mode == TOP && menu.cursor == 0);
+    CHECK(ram[JOY1_CHANGED] == 0 && ram[START_SCREEN_CHOICE] == 0);
+    cpu.x = 0x34;
+    CHECK(arrow_hook(ARROW_X_LOADED) == 0 && cpu.x == ARROW_NEW_GAME_X && ARROW_NEW_GAME_X == 28);
+    press(BUTTON_RIGHT);
+    CHECK(title_hook(START_SCREEN_INPUT) == 0 && menu.cursor == 1 && ram[START_SCREEN_CHOICE] == 1);
+    cpu.x = 0x74;
+    CHECK(arrow_hook(ARROW_X_LOADED) == 0 && cpu.x == 0x74);
+    /* CONTINUE's pick: handled, no arrow; Start stays hidden until a file. */
+    press(BUTTON_START);
+    CHECK(title_hook(START_SCREEN_INPUT) == 1 && ram[JOY1_CHANGED] == 0 && menu.mode == CONTINUE_PICK && menu.cursor == 2);
+    cpu.x = 0x74;
+    CHECK(arrow_hook(ARROW_X_LOADED) == 0 && cpu.x == 0x74);       /* not on the choices: left alone */
+    press(BUTTON_A);
     CHECK(title_hook(START_SCREEN_INPUT) == 1 && ram[JOY1_CHANGED] == (BUTTON_A | BUTTON_START));
     CHECK(ram[START_SCREEN_CHOICE] == 1 && continuing == 3 && fax_save_file() == 3 && !title_up && furthest == 5);
     /* Continue: no mantra screen, the file's progress in RAM ... */
@@ -478,79 +515,50 @@ static void title(void) {
     /* ... and they come back before Player_Spawn. */
     CHECK(start_spawn_hook(START_SPAWN) == 0 && ram[GOLD + 2] == 0xAB && ram[EXPERIENCE] == (4900 & 255) &&
           ram[NEXT_PLAYER_TITLE] == 5 && continuing == 0);
-    CHECK(mantra_screen_hook(PASSWORD_SCREEN_SHOW) == 0);   /* the mantra screen, if anything else shows it */
     /* Respawning (here, continuing) saves the file, keeping its spawn point. */
     ram[AREA_CURRENT_SCREEN] = temple_screen[3];
     ram[GOLD] = 1;
     CHECK(spawned_hook(SPAWNED) == 0);
     CHECK(fax_save_file_read(3, &r) == FAX_SAVE_OK && !strcmp(fax_save_record_get(&r, "spawn"), "3") &&
           !strcmp(fax_save_record_get(&r, "gurus"), "Eolis Mascon") && !strcmp(fax_save_record_get(&r, "furthest"), "5"));
-    /* A new game in an empty file. */
+    /* NEW GAME in an empty file: at once. */
     enter_title();
-    menu.cursor = 0;
-    ram[JOY1_CHANGED] = BUTTON_START;
+    CHECK(menu.cursor == 1);
+    press(BUTTON_LEFT);
+    title_hook(START_SCREEN_INPUT);
+    press(BUTTON_A);
+    CHECK(title_hook(START_SCREEN_INPUT) == 1 && menu.mode == NEW_PICK && menu.cursor == 0 && ram[JOY1_CHANGED] == BUTTON_A);
+    press(BUTTON_START);
     CHECK(title_hook(START_SCREEN_INPUT) == 1 && ram[JOY1_CHANGED] == BUTTON_START && ram[START_SCREEN_CHOICE] == 0);
     CHECK(fax_save_file() == 1 && continuing == 0 && furthest == 0 && !exists("faxanadu_file1.txt"));
     CHECK(mantra_screen_hook(PASSWORD_SCREEN_SHOW) == 0 && start_spawn_hook(START_SPAWN) == 0);
+    /* NEW GAME over file 3: asked, B cancels, then A erases it and starts. */
+    enter_title();
+    menu = (Menu){ NEW_PICK, 2, 0 };
+    press(BUTTON_A);
+    CHECK(title_hook(START_SCREEN_INPUT) == 1 && menu.mode == CONFIRM && ram[JOY1_CHANGED] == BUTTON_A && title_up);
+    press(BUTTON_B);
+    CHECK(title_hook(START_SCREEN_INPUT) == 1 && menu.mode == NEW_PICK && exists("faxanadu_file3.txt"));
+    press(BUTTON_A);
+    title_hook(START_SCREEN_INPUT);
+    press(BUTTON_A);
+    CHECK(title_hook(START_SCREEN_INPUT) == 1 && ram[JOY1_CHANGED] == (BUTTON_A | BUTTON_START));
+    CHECK(ram[START_SCREEN_CHOICE] == 0 && fax_save_file() == 3 && continuing == 0 && !exists("faxanadu_file3.txt"));
     /* A file damaged since the title showed it is not continued, nor started over. */
+    write_sample(3);
     enter_title();
     CHECK(slots[2].status == FAX_SAVE_OK);
     write_text("faxanadu_file3.txt", "broken\n");
-    menu.cursor = 2;
-    ram[JOY1_CHANGED] = BUTTON_A;
+    menu = (Menu){ CONTINUE_PICK, 2, 0 };
+    press(BUTTON_A);
     CHECK(title_hook(START_SCREEN_INPUT) == 1 && ram[JOY1_CHANGED] == BUTTON_A && fax_save_file() == 0);
-    CHECK(slots[2].status == FAX_SAVE_MALFORMED && title_up);
+    CHECK(slots[2].status == FAX_SAVE_MALFORMED && title_up && menu.mode == CONTINUE_PICK);
     /* Off, the title is the game's own. */
     deactivate();
-    ram[JOY1_CHANGED] = BUTTON_START;
+    press(BUTTON_START);
     CHECK(title_hook(START_SCREEN_INPUT) == 0 && ram[JOY1_CHANGED] == BUTTON_START);
-    remove_files();
-}
-
-/* ---- importing mantras ---- */
-
-static void importing(void) {
-    stock(); remove_files();
-    /* The first run: faxanadu.srm's mantra and the visited Gurus into file 1. */
-    write_text("faxanadu.srm", "Mant ra1\n");
-    write_text("faxanadu_gurus.txt", "Eolis\nApolune\n");
-    enter_title();
-    CHECK(imports == 1 && slots[0].status == FAX_SAVE_OK && slots[0].p.title == 4 && slots[0].p.gold == 1600);
-    FaxSaveRecord r;
-    CHECK(fax_save_file_read(1, &r) == FAX_SAVE_OK);
-    CHECK(!strcmp(fax_save_record_get(&r, "gurus"), "Eolis Apolune Conflate"));   /* and the furthest Guru */
-    CHECK(!strcmp(fax_save_record_get(&r, "imported_mantra"), "Mantra1") && !strcmp(fax_save_record_get(&r, "items"), "4 9 16"));
-    CHECK(exists("faxanadu_imported.txt"));
-    /* Not again, even into an emptied file. */
-    fax_save_file_erase(1);
-    enter_title();
-    CHECK(imports == 1 && slots[0].status == FAX_SAVE_MISSING);
-    /* A new mantra (--password, or the launcher's Mantra field) goes into the
-     * first empty file; a rejected one is noted, not imported. */
-    fax_save_file_write(1, &r);
-    cli = "Mantra2";
-    enter_title();
-    CHECK(imports == 2 && slots[1].status == FAX_SAVE_OK && slots[1].p.title == 1 && slots[1].p.selected[4] == 0xFF);
-    CHECK(fax_save_file_read(2, &r) == FAX_SAVE_OK && !strcmp(fax_save_record_get(&r, "gurus"), "Eolis Apolune"));
-    cli = "Wrong";
-    int calls = mantra_calls;
-    enter_title();
-    CHECK(imports == 2 && mantra_calls == calls + 1 && slots[2].status == FAX_SAVE_MISSING);
-    enter_title();
-    CHECK(mantra_calls == calls + 1);
-    /* No empty file: kept for later. */
-    write_text("faxanadu_file3.txt", "version = 1\n");
-    write_text("faxanadu.srm", "Mantra2x\n");
-    calls = mantra_calls;
-    enter_title();
-    CHECK(mantra_calls == calls && !was_imported("Mantra2x"));
-    /* --no-save imports nothing. */
-    remove_files();
-    saves_on = false;
-    write_text("faxanadu.srm", "Mantra1\n");
-    enter_title();
-    CHECK(slots[0].status == FAX_SAVE_MISSING && !exists("faxanadu_imported.txt"));
-    saves_on = true;
+    cpu.x = 0x34;
+    CHECK(arrow_hook(ARROW_X_LOADED) == 0 && cpu.x == 0x34);
     remove_files();
 }
 
@@ -712,21 +720,31 @@ static void choices(void) {
     EXPECT("msg 2D", QUESTION, SAVED, "end");
     CHECK(ram[TEMPLE_SPAWN_POINT] == 0 && furthest == 3);
 
-    /* No file in play, or Save files off: the mantra, as before. */
+    /* No file in play (a save state from the original game): no choice and no
+     * mantra; Guru travel offers if it can, else the script ends. */
     stock(); remove_files();
     temple_guru(5, false, "");
-    EXPECT("msg 22", "mantra", "end");
-    CHECK(ram[TEMPLE_SPAWN_POINT] == 5);
+    EXPECT("msg 22", "end");
+    CHECK(ram[TEMPLE_SPAWN_POINT] == 5 && travel_begun == -1);   /* the stock raise: no file keeps a spawn point */
+    stock(); remove_files(); travel_offers = true;
+    temple_guru(5, false, "");
+    EXPECT("msg 22", "end");                                      /* the model's travel ends the script */
+    CHECK(travel_begun == 0);
+    temple_guru(4, true, "");                                     /* after a new title the original shows none */
+    EXPECT("msg 23", "end");
+    /* The remaster off: the original's mantra. */
     in_play(); deactivate();
     temple_guru(5, false, "");
     EXPECT("msg 22", "mantra", "end");
 
-    /* A layout where our step would go is refused: the mantra shows. */
+    /* A layout where our step would go is refused: no save, and still no mantra. */
     in_play();
     rom[prg(12, STEP)] = 0x00;
     temple_guru(5, false, "");
-    EXPECT("msg 22", "mantra", "end");
+    EXPECT("msg 22", "end");
     CHECK(failed && !fax_files_guru_choice());
+    temple_guru(3, false, "");
+    EXPECT("msg 22", "end");
     remove_files();
 }
 
@@ -753,6 +771,27 @@ static void save_states(void) {
     CHECK(!state_validate(buf, n) && !state_set(buf, n));
     buf[8] = 0; buf[1] = 4;
     CHECK(!state_validate(buf, n));
+    /* On the title: the menu comes back, CONTINUE's place only with a file to continue. */
+    stock(); remove_files();
+    enter_title();
+    menu = (Menu){ CONFIRM, 2, 2 };
+    n = state_get(buf, sizeof buf);
+    CHECK(buf[0] == VERSION && buf[2] == 1 && state_validate(buf, n));
+    menu = (Menu){ TOP, 0, 0 };
+    CHECK(state_set(buf, n) && menu.mode == CONFIRM && menu.cursor == 2 && menu.target == 2 && title_up);
+    buf[3] = TOP; buf[4] = 1;
+    CHECK(state_set(buf, n));
+    fax_files_state_loaded();
+    CHECK(menu.mode == TOP && menu.cursor == 0);                  /* nothing to continue */
+    buf[3] = MODES;
+    CHECK(!state_validate(buf, n));
+    buf[3] = TOP; buf[4] = 3;
+    CHECK(!state_validate(buf, n));
+    /* Version 1 had the file select ("Erase a file" its row 3): the two choices come back. */
+    buf[0] = 1; buf[3] = 2; buf[4] = 3;
+    CHECK(state_validate(buf, n) && state_set(buf, n) && menu.mode == TOP && menu.cursor == 0 && title_up);
+    buf[3] = 3;
+    CHECK(!state_validate(buf, n));
     CHECK(state_set(buf, 0) && guru == GURU_IDLE && !title_up);
     fax_files_state_loaded();
     CHECK(fax_save_file() == 0);
@@ -771,13 +810,12 @@ int main(void) {
     progress();
     gurus();
     machine();
-    mantras();
     files_on_disk();
     api();
-    file_select();
+    menu_rows();
+    menu_presses();
     placement();
     title();
-    importing();
     choices();
     save_states();
     if (!base) { CHECK(chdir("/") == 0); rmdir(dir); }
