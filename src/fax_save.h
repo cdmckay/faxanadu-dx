@@ -83,10 +83,6 @@ void fax_save_progress_capture(FaxSaveProgress *p, unsigned furthest);
 /* Put the progress into CPU RAM, as Password_Load does with a mantra, plus
  * the exact gold, experience and next title. */
 void fax_save_progress_apply(const FaxSaveProgress *p);
-/* Decode a mantra with the game's own routines in an isolated call, as the
- * mantra screen would (gold and experience from the title, as continuing
- * from it did). False if the game rejects it. */
-bool fax_save_progress_from_mantra(const char *mantra, FaxSaveProgress *p);
 
 /* ---- files: faxanadu_file1.txt to faxanadu_file3.txt beside the game ---- */
 

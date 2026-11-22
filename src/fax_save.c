@@ -34,15 +34,8 @@
 #define NEXT_PLAYER_TITLE  0x04EDu
 #define SELECTED           0x03BDu   /* SelectedWeapon, SelectedArmor, SelectedShield, SelectedMagic, SelectedItem */
 #define COUNTS             0x03C2u   /* NumberOfWeapons ... NumberOfItems */
-#define ENTERED_CHARS      0x0600u   /* Password_EnteredChars (ScreenBuffer): 6-bit values */
-#define ENTERED_LENGTH     0x0666u   /* Password_EnteredCharsLength */
 static const uint16_t lists[FAX_SAVE_LISTS] = {
     0x039D, 0x03A1, 0x03A5, 0x03A9, 0x03AD };   /* WeaponInventory ... ItemInventory */
-/* The mantra's own routines */
-#define MMC1_SWITCH_BANK        0xCC1Au   /* fixed bank; X = the 16 KiB bank */
-#define PASSWORD_CHECK          0x9850u   /* Password_Maybe_CheckPasswordLength: repack, length, checksum */
-#define PASSWORD_LOAD           0x95E9u   /* Password_Load: C clear if the state is valid */
-#define SET_INITIAL_EXP_AND_GOLD 0x95B1u  /* Player_SetInitialExpAndGold */
 
 const char *const fax_save_list_key[FAX_SAVE_LISTS] = { "weapons", "armor", "shields", "spells", "items" };
 const char *const fax_save_selected_key[FAX_SAVE_LISTS] = {
@@ -314,38 +307,6 @@ void fax_save_progress_apply(const FaxSaveProgress *p) {
         cyc_mod_poke((uint16_t)(COUNTS + c), p->count[c]);
         for (int i = 0; i < p->count[c]; ++i) cyc_mod_poke((uint16_t)(lists[c] + i), p->list[c][i]);
     }
-}
-
-static int mantra_value(char ch) {   /* the mantra screen's 64 characters, in order */
-    if (ch >= 'A' && ch <= 'Z') return ch - 'A';
-    if (ch >= 'a' && ch <= 'z') return ch - 'a' + 26;
-    if (ch >= '0' && ch <= '9') return ch - '0' + 52;
-    return ch == ',' ? 62 : ch == '?' ? 63 : -1;
-}
-
-bool fax_save_progress_from_mantra(const char *mantra, FaxSaveProgress *p) {
-    uint8_t values[32];
-    unsigned n = 0;
-    for (; mantra && *mantra; ++mantra) {
-        if (*mantra == ' ') continue;
-        int v = mantra_value(*mantra);
-        if (v < 0 || n == 24) return false;
-        values[n++] = (uint8_t)v;
-    }
-    if (n < 3) return false;
-    if (!cyc_mod_isolate_begin()) return false;
-    for (unsigned i = 0; i < 32; ++i) cyc_mod_poke((uint16_t)(ENTERED_CHARS + i), i < n ? values[i] : 0xFF);
-    cyc_mod_poke(ENTERED_LENGTH, (uint8_t)n);
-    CycModRegs regs;
-    cyc_mod_regs(&regs);
-    regs.x = 12;
-    bool ok = cyc_mod_call(MMC1_SWITCH_BANK, &regs);
-    ok = ok && cyc_mod_call(PASSWORD_CHECK, &regs) && !(regs.p & 1);
-    ok = ok && cyc_mod_call(PASSWORD_LOAD, &regs) && !(regs.p & 1);
-    ok = ok && cyc_mod_call(SET_INITIAL_EXP_AND_GOLD, &regs);
-    if (ok) fax_save_progress_capture(p, FAX_SAVE_TEMPLES);
-    cyc_mod_isolate_end();
-    return ok;
 }
 
 /* ---- files ---- */
