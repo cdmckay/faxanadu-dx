@@ -225,6 +225,7 @@ E2E=(
   "entrances    tests/entrances/fair_entrances.py --parts"
   "view         tests/world/fixed_view.py"
   "arenas       tests/world/boss_arenas.py --parts"
+  "live-hud     tests/world/live_status_bar.py --parts"
   "spell-cost   tests/spell_cost/spell_cost.py --parts"
 )
 # At most E2E_JOBS runs play at once (default: one a hardware thread; 0: all
