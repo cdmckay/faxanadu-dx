@@ -68,7 +68,7 @@ GAP = 8                                     # native pixels between two pictures
 CAPTION_ROWS = 14                           # native rows above each picture for its caption
 WHITE, BLACK = (0xFF, 0xFF, 0xFF), (0, 0, 0)
 GLYPHS = 16 + 13 * 16384                    # TILE_GLYPHS_START: the font, bank 13 $8000, from $20
-REMASTER = ("faxanadu.dx", "dx")
+DX = ("faxanadu.dx", "dx")
 LOCK = Path(os.environ.get("XDG_RUNTIME_DIR") or os.environ.get("TMPDIR") or "/tmp") / "faxanadu-remastered-e2e.lock"
 SCENE_TIMEOUT = 30 * 60                     # seconds
 
@@ -257,7 +257,7 @@ class Game(harness.Game):
         root = self.out / ("mods-original" if original else "mods-dx")
         if not root.exists():
             shutil.copytree(self.out / "game" / "mods" / "packages", root / "packages")
-            (root / "state.toml").write_text(fax_e2e.features_toml({REMASTER: False} if original else {}))
+            (root / "state.toml").write_text(fax_e2e.features_toml({DX: False} if original else {}))
         return root
 
     def replay(self, state, schedule, frames, original=False, picture=None, save=None):
@@ -356,14 +356,14 @@ def seamless(s):
     differs a little from run to run: where they are, or whether one is in
     view. Seamless's view is 424x240, whatever the window."""
     g = s.game
-    for caption, on in (("Original", False), ("Remastered", True)):
-        g.set_features({} if on else {REMASTER: False})
+    for caption, name, on in (("Original", "original", False), ("Faxanadu DX", "dx", True)):
+        g.set_features({} if on else {DX: False})
         g.launch(at="eolis-town")
         assert g.tcp("fax_world")["enabled"] == on
         g.walk("right", lambda: g.ram(POS_X) >= 196, "x 196")
         g.clear_actors()                                        # this screen's walker, so the original's picture is the same
         g.wait(30)
-        path = g.shot(caption.lower())
+        path = g.shot(name)
         width, _ = read_png(path)
         s.picture(path, caption, (0, 8, width, 232), native=False)
         g.close()

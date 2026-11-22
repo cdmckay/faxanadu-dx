@@ -147,7 +147,7 @@ def cli(rom):
     broken(shared_rom, 'features = ["guru-travel", "save-files", "quest-log", "recharging-items", "magician-lesson"]',
            "(block: message $C3, the line slot")
     feature = re.search(r'\[\[feature\]\]\nid = "pendant-fix".*?(?=\n\[\[)', text, re.S).group(0)
-    err = broken(feature, "", "faxanadu.remastered's plugin faxanadu.pendant-fix belongs to no feature")
+    err = broken(feature, "", "faxanadu.dx's plugin faxanadu.pendant-fix belongs to no feature")
     check("hook site faxanadu.pendant-fix.check-glove belongs to 0 features" in err, err)
     broken('plugin = "faxanadu.block"', 'plugin = "faxanadu.shield"', "has no plugin faxanadu.shield")
 

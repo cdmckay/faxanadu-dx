@@ -897,16 +897,19 @@ to `StartScreen_CheckHandleInput` (`$9F44`, bank 12), then at
   as the title is up, with Save files on or off (its handled
   `StartScreen_CheckHandleInput` returns there as the RTS would), and never
   after Start: a hook there that only notes the frame tells a feature the
-  title is up. REMASTERED on the title does that.
+  title is up. DX on the title does that.
 - The picture: the logo and its border fill y 16-143; START (tile columns
   8-12) and CONTINUE (16-23) are on tile row 20, lit on y 160-166, and the
   three notices on 184, 200 and 216, black between. The letters are tiles
-  `$E0`-`$F9`, A to Z, of the row's pattern table. REMASTERED takes y 148-155
-  (its glyphs light 148-154). With the remaster NEW GAME takes columns 5-12
-  of row 20, and a file pick y 160-239, a box of 10 cells over the choices
-  and the notices. The
-  background palettes are `$0F $05 $18 $38` (the logo's border; `$38`, light
-  yellow, is its highlights and REMASTERED's color),
+  `$E0`-`$F9`, A to Z, of the row's pattern table, and `$FA` is the
+  copyright sign: `StartScreen_Draw` copies them from `CHR_LETTERS` (bank 10
+  `$8240`, 27 tiles). They are drawn in one color, 3, both bit planes alike,
+  and their A to Z are the dialogue font's (bank 13, see The text box), pixel
+  for pixel. DX takes y 148-155 (its letters light 148-154). With the
+  remaster NEW GAME takes columns 5-12 of row 20, and a file pick y 160-239,
+  a box of 10 cells over the choices and the notices. The background
+  palettes are `$0F $05 $18 $38` (the logo's border; `$38`, light
+  yellow, is its highlights and DX's color),
   `$0F $17 $27 $30` (the white text), `$0F $0F $16 $28`
   and `$0F $0F $00 $10`; `UI_AttributeDataIndex` is 1. The playfield's
   pattern table holds the title's tiles, not the text box's, so a box drawn
@@ -3706,7 +3709,7 @@ calls each one from the host. `mods/allocations.toml` lists each feature's ROM,
 hook sites and shared addresses, and `tools/check_allocations.py` enforces it.
 
 Every feature below is a trusted plugin of the one Faxanadu DX mod
-(`mods/preloaded/packages/faxanadu.remastered`, feature `remastered`), so
+(`mods/preloaded/packages/faxanadu.dx`, feature `dx`), so
 they are on or off together, and may rely on each other. Each still checks
 its own `enabled` flag, which the mod runtime sets for all of them at once:
 "with X off" below means with the remaster off, or X turning itself off on an
@@ -3985,9 +3988,10 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   characters loses the tab's blank cells, so no tab is wider than the dialogue
   box. No hooks, no ROM, no state: it reads RAM and the nametable when the
   picture is presented, and draws after Seamless and zone names.
-- **REMASTERED on the title** (`fax_title.c`, with `fax_text.c`). The word
-  under the logo, centered on it (x 88-167 natively), on y 148-155, in the
-  dialogue font and palette entry 3 (`$38`, the logo's light yellow), drawn
+- **DX on the title** (`fax_title.c`, with `fax_text.c`). The word under
+  the logo, centered on it (x 120-135 natively), on y 148-155, in the
+  title's own letters (the dialogue font's A to Z are its letter tiles, pixel
+  for pixel) and palette entry 3 (`$38`, the logo's light yellow), drawn
   over the presented picture after speaker names and before Save files' file
   select. A hook at `@_afterCheckHandleInputFarJump` (`$FC7A`) that only
   observes notes each frame the title's loop runs; the word shows on the
@@ -4461,7 +4465,7 @@ the pad instead of the title's own input (see The title screen):
   over the picture: a box of 10 cells on y 160-239, over the choices and the
   notices, with two rows a file (its name, then its gold and experience), a
   blank and what it asks. It leaves y 144-159, the black between it and the
-  logo, to REMASTERED on the title. The routine is handled there, so no arrow
+  logo, to DX on the title. The routine is handled there, so no arrow
   shows. Up and Down move, A or Start take a file, B goes back.
 - **NEW GAME's pick** ("New game in which file?") opens on the first empty
   file. An empty one starts a new game at once, through the stock Start path
