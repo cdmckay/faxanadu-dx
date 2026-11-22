@@ -78,7 +78,7 @@ and data tables after it shifted). Not supported: the build rejects it.
 | `$036C-$0373` | `CurrentSprites_Values` | Each slot's value from the screen's sprite list: a person's interaction script (see *Quests*), $FF none |
 | `$0378` | `CurrentSpriteIndex` | The slot whose behavior or collision is running |
 | `$0390`, `$0392-$0394` | `Experience`, `Gold` | Gold is 24-bit little-endian |
-| `$039A` | `Player_MP` | |
+| `$039A` | `Player_MP` | At most 80; 0 at a new game (see *MP and its bar*) |
 | `$03C7` | `IScript_PortraitID` | The portrait showing, `$FF` for none (see *Portraits*) |
 | `$0427`, `$0428` | `DurationOintment`, `DurationGlove` | Seconds left, `$FF` when not running; an Ointment or Glove lying in the world is not there while its kind runs (see *Items in the world*) |
 | `$042C` | `SpecialItems` | Bit flags; `$08` the Elixir, which saves a death once |
@@ -489,7 +489,18 @@ What a feature can rely on, and the traps:
   overrides. A feature that reads a table another feature serves through an
   override sees the stock byte.
 - `cyc_mod_call_commit` runs a routine that only touches memory, at once,
-  and keeps its effects.
+  and keeps its effects. **The registers it returns with become the CPU's,**
+  so a call made anywhere but a site that handles its routine saves them
+  (`cyc_mod_regs`) and puts them back (`cyc_mod_set_regs`) after: P too, or a
+  `BEQ` that was about to test the interrupted code's Z goes the other way.
+  A routine that waits on the hardware (`PPUBuffer_WaitForCapacity`, a frame
+  wait) never returns in it, since no NMI runs, so the call fails and nothing
+  is committed: test what it would wait for first.
+- **At a frame's end** (`frame_end`, at the start of VBlank, before the NMI)
+  `cyc_mod_regs` gives the CPU's registers where the frame left it, and the
+  stack at S + 1 says which `JSR` it is in: MP refill tells a frame the game
+  played from S and the return address there (see *MP and its bar*), and
+  gives MP from there with a committed call (`Player_AddMP`).
 - Mods activate **before** the cart loads. Set up in the extras' `power_on`,
   which runs after the cart loads and before any save state is restored.
 - A headless run loads mods only with `--mods-root DIR`. A hidden window
@@ -1596,7 +1607,7 @@ jump a few updates after stepping off, as A from the hang itself would.
 | `$0018` | `Joy1_PrevButtonMask` | The held mask at the read before. While the screen scrolls, `Game_UpdatePlayerOnScroll` copies it back into `Joy1_ButtonMask` |
 | `$00A4` | `Player_Flags` | `$80` attacking, `$40` facing right, `$20` moving, `$10` climbing, `$08` a ladder to climb, `$04` falling (in the air without jumping; see The hero's movement), `$02` holding to climb, `$01` jumping |
 | `$02B3` | `CastMagic_Type` | The spell on screen, `$FF` for none. Each spell's handler takes it back to `$FF` when it hits or leaves |
-| `$039A` | `Player_MP` | At most 80 |
+| `$039A` | `Player_MP` | At most 80. A cast is the only thing that lowers it (see *MP and its bar*) |
 | `$03A9-$03AC` | `MagicInventory` | Spells owned. `NumberOfMagicSpells` (`$03C5`) counts them |
 | `$03C0` | `SelectedMagic` | 0 Deluge, 1 Thunder, 2 Fire, 3 Death, 4 Tilte; `$FF` none |
 
@@ -1652,6 +1663,50 @@ jump a few updates after stepping off, as A from the hang itself would.
 - On Eolis screen 0 (see *Eolis, for tests*), the intro's trigger stops the
   hero at x=53 for a long monologue that A pages through. Up goes through the
   gate from anywhere in x=188-199.
+
+## MP and its bar (bank 15)
+
+- **A new game starts with no MP.** `Game_Start` (`$DB26`) stores 0 in
+  `Player_MP` (`$DB31`); `Player_Spawn` (`$DB0A`: `LDA #$50`, `STA
+  Player_HP_U`, `STA Player_MP`) fills HP and MP for a death, a continue or a
+  mantra. In the original, MP otherwise comes only from the meat shops (30 HP
+  and 30 MP, for 50 G in Eolis and up to 250 G later), Eolis's Magician (40
+  MP for 200 G, `ISCRIPT_EOLIS_MARTIAL_ARTS_MAGIC_SHOP`; both through
+  `IScriptAction_AddMP`, `$8580`, bank 12, 1 MP at a time with its sound) and
+  the Elixir's fill (`Player_FillHPAndMP`, `$C4DA`, 4 at a time). It never
+  comes back on its own.
+- **Only a cast takes MP.** The stores to `Player_MP` are `Game_Start`'s,
+  `Player_Spawn`'s, `Player_ReduceMP` (`$C0C3`, from `Player_CastMagic`, the
+  only one that lowers it), `Player_AddMP` (`$C0D9`: `CLC`, `ADC Player_MP`,
+  capped at `$50`, then `JMP Player_SetMP`) and `Player_SetMP` (`$FA85`,
+  capped at 80). So MP lower than a frame before means a spell was cast (or a
+  new game began).
+- **The bar is drawn only when MP changes through those routines.**
+  `Player_SetMP` stores MP and falls into `UI_SetHUDBarValue` with Y = 1, the
+  Magic bar, which queues two PPU buffer commands: the bar at `$2043`,
+  `UI_MPAndHPBarWidth` (`$04EE`, 10, set by `UI_DrawHUDSprites`) + 1 tiles
+  (MP / 8 full tiles `$09`, a partial `$0D` unless full, empty `$07` to the
+  width, and the end `$0B`), then the partial tile's 16-byte pattern at PPU
+  `$10D0`, filled MP & 7 pixels. Each command waits for room first
+  (`PPUBuffer_QueueCommandOrLength` calls `PPUBuffer_WaitForCapacity`, and
+  `PPUBuffer_HasCapacity` is true when `PPUBuffer_ReadOffset` -
+  `PPUBuffer_WriteOffset` is 0 or at least `$24`), so the whole bar goes in
+  at once when that room is 0 or at least 50 (14 bytes, then `$24` more). A
+  poke of `Player_MP` leaves the bar as it was, so a test that pokes MP and
+  shows the bar starts from a real cast (`tests/mana/mana_refill.py`).
+- **Where the main loop waits for its frames.** Every wait is a `JSR
+  WaitForNextFrame` (`$CA25`: `LDA #$00`, `STA Game_InterruptsHandledLatch`
+  (`$10`), then `LDA $10`, `BEQ` until the NMI sets it), each from its own
+  address: `Game_MainLoop`'s top at `$DB4D` (it has just set S to `$FF`, so
+  S is `$FD` inside, with `$DB4F` at `$01FE`), the screen-change and scroll
+  paths after a pass at `$DB94`, `$DB9D`, `$DBAF`, `$DBC4` and `$DBCA`,
+  `EndGame_MainLoop`'s at `$DBF6` (it sets no S), the pause loop's at `$E036`
+  (under the `JSR GameLoop_CheckPauseGame` at `$DB74`, so S is `$FB`), and
+  the text box's, the menu's, the death's and the screen loads' in their own
+  routines. A frame that ends with the CPU in the first, S `$FD` and `$DB4F`
+  on the stack, is one the game played: its pass finished and nothing held
+  it. On a quiet screen every frame ends so; a lag frame ends inside the
+  pass. MP refill counts those frames (`fax_mana.c`).
 
 ## Areas, screens and zones
 
@@ -3438,6 +3493,19 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
   against the real one. A press lasts one frame, as a pad read does. The
   bindings are `MagicKey` and `MagicButton` in `config.ini` [Game], in the
   host's own key and button names.
+- **MP refill** (`fax_mana.c`). Once no MP has been spent for 240 frames (4
+  s), MP climbs back toward 80, 1 every 30 frames. No hooks and no ROM: at
+  each frame's end it takes MP lower than at the last as a spend, which
+  starts the wait again (the frame of the spend does not count), and counts
+  the wait down only on frames the game played, those that end with
+  `Game_MainLoop` waiting at its top (S `$FD`, `$DB4F` on the stack, bank 14,
+  not paused or dead; see *MP and its bar*). A pause, the map, the quest log,
+  a text box, a menu, a screen change, a death, a lag frame and the title
+  hold it still. Each MP is `Player_AddMP` with A = 1 in a committed call, so
+  the game draws the bar; its registers are put back after, and when the PPU
+  buffer has less than 50 bytes of room (not empty), the MP waits for the
+  next frame that has it. A new game's MP climbs from 0 like any other. The
+  wait and the MP last seen are its save-state record; MP is in no save file.
 
 - **Zone names** (`fax_banner.c`, with `fax_zone.c` and `fax_text.c`).
   Entering a zone with a different name shows it below the HUD for 2 s, in a

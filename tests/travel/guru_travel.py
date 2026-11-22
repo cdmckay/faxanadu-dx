@@ -160,6 +160,7 @@ def main():
             # 3. Travel to Mascon: everything but the place is kept.
             tcp("load_state", path=str(temple))
             before = progress()
+            refilled = tcp("mana_state")["refills"]                     # MP refill's, from here on
             talk_to_guru()
             advance(TO_GURU + 0)
             answer("b", TO_GURU + 1)
@@ -172,7 +173,9 @@ def main():
             wait(90)
             game.shot("arrived")
             assert ram(TEMPLE_SPAWN_POINT) == CONFLATE, "the furthest temple stays the spawn point"
-            assert (ram(HP), ram(MP), ram(GOLD, 3)) == (0x2A, 0x11, bytes([0xE8, 0x03, 0x00]))
+            mana = tcp("mana_state")                                    # MP and what MP refill gave, one frame's
+            kept = mana["mp"] - (mana["refills"] - refilled)
+            assert (ram(HP), kept, ram(GOLD, 3)) == (0x2A, 0x11, bytes([0xE8, 0x03, 0x00])), (ram(HP), mana)
             assert progress() == before, "what a mantra would hold is unchanged by travel"
             print("ok: travelled to Mascon keeping HP, MP, gold, spawn point, title, items and quests")
 
