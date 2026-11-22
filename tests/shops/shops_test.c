@@ -14,9 +14,10 @@
  * game reads them, so the tests count presses as a player would, and check
  * what the hero ends up with, what the game said, and that the stack is
  * where it started. The hint, and an owned item's OWNED, are drawn on a model
- * picture. Reusable tools and recharging items are switches here, and so is
- * whether the Potion Sellers sell the Red Potions (fax_potions.h): off but in
- * potion_sellers(), so the other tests have the tool shops' own lists. */
+ * picture. Reusable tools and recharging items are switches here, and so are
+ * whether the Potion Sellers sell the Red Potions (fax_potions.h) and whether
+ * Found items is on (fax_found.h): off but in potion_sellers() and
+ * found_items(), so the other tests have the tool shops' own lists. */
 #include <stdio.h>
 static char logged[160];
 #define FAX_SHOPS_LOG(...) snprintf(logged, sizeof logged, __VA_ARGS__)
@@ -37,6 +38,11 @@ bool fax_recharge_elixir_spent(void) { return recharging_on && spent; }
 /* The Potion Sellers (fax_potions.c), as a switch. */
 static bool potions_on;
 bool fax_potions_selling(void) { return potions_on; }
+/* Found items (fax_found.c), as a switch, with its list (found_test.c checks
+ * fax_found.c's own). */
+static bool found_on;
+bool fax_found_on(void) { return found_on; }
+const uint8_t fax_found_unsold[FAX_FOUND_UNSOLD] = { 0x8F, 0x8D, 0x92 };
 static uint8_t cart[16 * 16384];
 static uint8_t ciram[0x800];
 static uint8_t chr[0x2000];
@@ -902,12 +908,14 @@ static void off(void) {
  * buys one, at half its own old price. */
 static void potion_sellers(void) {
     /* On plain values: every entry of the item goes, the rest keep their order. */
+    static const uint8_t potion[] = { RED_POTION };
     uint8_t ids[] = { HAND_DAGGER, RED_POTION, ELIXIR, RED_POTION, DELUGE };
     uint16_t costs[] = { 400, 160, 320, 300, 400 };
-    CHECK(fax_shops_without(RED_POTION, ids, costs, 5) == 3);
+    CHECK(fax_shops_without(potion, 1, ids, costs, 5) == 3);
     CHECK(ids[0] == HAND_DAGGER && ids[1] == ELIXIR && ids[2] == DELUGE);
     CHECK(costs[0] == 400 && costs[1] == 320 && costs[2] == 400);
-    CHECK(fax_shops_without(RED_POTION, ids, costs, 3) == 3 && fax_shops_without(RED_POTION, ids, costs, 0) == 0);
+    CHECK(fax_shops_without(potion, 1, ids, costs, 3) == 3 && fax_shops_without(potion, 1, ids, costs, 0) == 0);
+    CHECK(fax_shops_without(potion, 0, ids, costs, 3) == 3 && ids[1] == ELIXIR);   /* nothing to drop */
 
     on(true);
     potions_on = true;
@@ -972,6 +980,72 @@ static void potion_sellers(void) {
     talk(shops[EOLIS_TOOLS].index);
     CHECK(listed((const uint8_t[]){ HAND_DAGGER, RED_POTION, ELIXIR, DELUGE }, (const uint16_t[]){ 400, 160, 320, 400 }, 4));
     potions_on = false;
+    on(true);
+}
+
+/* With Found items on, no tool shop sells the Wing Boots, the Hour Glass or
+ * the Elixir: their lines go as the Red Potion's do, with it or without it,
+ * and what is left buys as before. */
+static void found_items(void) {
+    /* On plain values: the three, and the Red Potion beside them. */
+    static const uint8_t drops[] = { WING_BOOTS, HOUR_GLASS, ELIXIR, RED_POTION };
+    uint8_t ids[] = { DEATH, HOUR_GLASS, ELIXIR, RED_POTION };          /* the shop after Mascon's */
+    uint16_t costs[] = { 9800, 5600, 4300, 300 };
+    CHECK(fax_shops_without(drops, 3, ids, costs, 4) == 2 && ids[0] == DEATH && ids[1] == RED_POTION);
+    CHECK(costs[0] == 9800 && costs[1] == 300);
+    CHECK(fax_shops_without(drops, 4, ids, costs, 2) == 1 && ids[0] == DEATH && costs[0] == 9800);
+
+    on(true);
+    for (int potions = 0; potions <= 1; ++potions) {
+        potions_on = potions;
+        found_on = true;
+        /* Every shop: its own list, less the three (and its Red Potion). Two
+         * sold the Wing Boots, one the Hour Glass, two the Elixir. */
+        unsigned lost = 0;
+        for (unsigned k = 0; k < SHOPS; ++k) {
+            uint8_t want[5];
+            uint16_t want_costs[5];
+            unsigned n = 0, had = 0;
+            for (unsigned j = 0; j < 5 && shops[k].list[j].price; ++j, ++had) {
+                uint8_t id = shops[k].list[j].id;
+                if (id == WING_BOOTS || id == HOUR_GLASS || id == ELIXIR || (potions && id == RED_POTION)) continue;
+                want[n] = id, want_costs[n++] = shops[k].list[j].price;
+            }
+            carry(0, NULL, 0);
+            press("B");
+            talk(shops[k].index);
+            CHECK(listed(want, want_costs, n) && draws == 1 && !stuck);
+            lost += had - n;
+        }
+        CHECK(lost == (potions ? 5u + 9u : 5u));
+    }
+    /* Eolis's: the Hand Dagger and Deluge. Down, A: the Deluge. */
+    carry(1000, (const uint8_t[]){ KEY_J }, 1);
+    press("dAB");
+    talk(shops[EOLIS_TOOLS].index);
+    CHECK(gold() == 1000 - 400 && count_of(DELUGE) == 1 && !(ram[SPECIAL_ITEMS] & 0x08));
+    CHECK(listed((const uint8_t[]){ HAND_DAGGER, DELUGE }, (const uint16_t[]){ 400, 400 }, 2));
+    /* Forepaw's: the Long Sword, the Studded Mail and the Small Shield; Up
+     * from the top wraps to the shield, the last of three. */
+    carry(2000, NULL, 0);
+    press("uAB");
+    talk(shops[FOREPAW_TOOLS].index);
+    CHECK(gold() == 2000 - 1100 && count_of(WING_BOOTS) == 0 && !stuck);
+    CHECK(listed((const uint8_t[]){ LONG_SWORD, STUDDED_MAIL, SMALL_SHIELD }, (const uint16_t[]){ 1600, 2500, 1100 }, 3));
+    /* Off (the original's lists), or Quick shops off: the lists as they were. */
+    found_on = potions_on = false;
+    carry(0, NULL, 0);
+    press("B");
+    talk(shops[FOREPAW_TOOLS].index);
+    CHECK(listed((const uint8_t[]){ LONG_SWORD, STUDDED_MAIL, SMALL_SHIELD, RED_POTION, WING_BOOTS },
+                 (const uint16_t[]){ 1600, 2500, 1100, 400, 2800 }, 5));
+    found_on = true;
+    on(false);
+    carry(700, NULL, 0);
+    press("AAAB");
+    talk(shops[EOLIS_TOOLS].index);
+    CHECK(listed((const uint8_t[]){ HAND_DAGGER, RED_POTION, ELIXIR, DELUGE }, (const uint16_t[]){ 400, 160, 320, 400 }, 4));
+    found_on = false;
     on(true);
 }
 
@@ -1142,6 +1216,7 @@ int main(void) {
     isolated_and_saved();
     the_hint();
     potion_sellers();
+    found_items();
     printf("shops_test: %u checks passed (%u hook calls)\n", checks, fired);
     return 0;
 }

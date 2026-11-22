@@ -37,6 +37,11 @@ void fax_text_draw(uint32_t *px, int w, int h, int x, int y, const char *s, unsi
 static uint8_t gurus = 1;   /* Guru travel's visited Gurus: Eolis's from the start */
 uint8_t fax_travel_visited(void) { return gurus; }
 bool fax_quests_showing(void) { return false; }   /* the quest log, closed */
+/* Found items (fax_found.c): on or off, and whether the fixed Hour Glass lies
+ * there; its rule, fax_found_spawn, is the header's own. */
+static bool found_on, glass_there = true;
+bool fax_found_on(void) { return found_on; }
+bool fax_found_glass_there(void) { return glass_there; }
 
 /* Save files: the file in play's fields, a small key-value list. */
 static FaxSaveListener save_listener;
@@ -231,6 +236,7 @@ static void world(void) {
     sprite(FAX_MAP_TRUNK, 0x08, 0x4A, 0x9E);           /* item 2: the Pendant, until SpecialItems has it */
     sprite(FAX_MAP_TRUNK, 0x09, 0x48, 0x52);           /* item 3: a Glove, unless one is running */
     sprite(FAX_MAP_MIST, 0x00, 0x58, 0xBD);            /* item 4: the Battle Suit, until he holds it */
+    sprite(FAX_MAP_MIST, 0x30, 0x56, 0x32);            /* item 5: the Hour Glass, one visit in four */
     sprite(FAX_MAP_BUILDINGS, TOOL_SHOP_05, 0x5D, 0x98);   /* item 5: a Red Potion in the shop on Trunk 00 */
     sprite(FAX_MAP_BUILDINGS, 0x30, 0x4D, 0x98);       /* in a building no door leads to: none */
     sprite(FAX_MAP_ZENIS, 0x00, 0x4D, 0x98);           /* in an area that loads nothing: none */
@@ -335,16 +341,17 @@ static void test_layout(void) {
     CHECK(got.area[FAX_MAP_TOWNS].door[0].to == APOLUNE_TEMPLE && got.area[FAX_MAP_TOWNS].door[0].palette == FAX_MAP_TEMPLE);
 
     /* The items: in the lists' order, a building's marked at its door. */
-    CHECK(got.item_count == 6);
-    static const uint8_t want[6][8] = {
+    CHECK(got.item_count == 7);
+    static const uint8_t want[7][8] = {
         { 1, 0x00, 0x4D, 0x3B, FAX_MAP_ITEM_ALWAYS, 1, 0x00, 0x3B },
         { 1, 0x01, 0x55, 0x41, FAX_MAP_ITEM_SOMETIMES, 1, 0x01, 0x41 },
         { 1, 0x08, 0x4A, 0x9E, FAX_MAP_ITEM_ONCE, 1, 0x08, 0x9E },
         { 1, 0x09, 0x48, 0x52, FAX_MAP_ITEM_ALWAYS, 1, 0x09, 0x52 },
         { 2, 0x00, 0x58, 0xBD, FAX_MAP_ITEM_ONCE, 2, 0x00, 0xBD },
+        { 2, 0x30, 0x56, 0x32, FAX_MAP_ITEM_SOMETIMES, 2, 0x30, 0x32 },
         { 4, TOOL_SHOP_05, 0x5D, 0x98, FAX_MAP_ITEM_SOMETIMES, 1, 0x00, 0x95 },
     };
-    for (unsigned i = 0; i < 6; ++i) {
+    for (unsigned i = 0; i < 7; ++i) {
         const FaxMapItem *it = &got.item[i];
         CHECK(it->area == want[i][0] && it->screen == want[i][1] && it->entity == want[i][2] && it->block == want[i][3]);
         CHECK(it->kind == want[i][4] && it->map_area == want[i][5] && it->map_screen == want[i][6] &&
@@ -526,7 +533,7 @@ static void touch(unsigned slot, unsigned entity) {
     CHECK(SITES(PLAYER_HANDLE_TOUCH_ITEM, "faxanadu.map.touch"));   /* it only observes */
     ram[SPRITE_ENTITIES + slot] = 0xFF;
 }
-enum { ELIXIR, BOOTS, PENDANT, GLOVE, SUIT, SHOP_POTION };
+enum { ELIXIR, BOOTS, PENDANT, GLOVE, SUIT, GLASS, SHOP_POTION };
 
 static void test_items(void) {
     world();
@@ -609,6 +616,29 @@ static void test_items(void) {
     settle_at(1, 0x00);
     CHECK(!item_shown(SHOP_POTION));
 
+    /* Found items: the Wing Boots it removes show nowhere, even with a sprite
+     * (a state from before it); Mist $30's Hour Glass shows while it lies there,
+     * on its screen as its sprite says. Off, they are the original's. */
+    settle_at(2, 0x30);
+    settle_at(1, 0x01);
+    CHECK(!item_shown(GLASS));                               /* off: one visit in four, he is not there */
+    found_on = true;
+    glass_there = true;
+    CHECK(item_shown(GLASS));                                /* there until taken, he is not there */
+    ram[SPRITE_ENTITIES + 5] = 0x55;
+    CHECK(!item_shown(BOOTS));                               /* gone, even with a sprite */
+    no_sprites();
+    glass_there = false;
+    CHECK(!item_shown(GLASS));                               /* taken */
+    glass_there = true;
+    settle_at(2, 0x30);
+    CHECK(!item_shown(GLASS));                               /* he is there: its sprite is not */
+    ram[SPRITE_ENTITIES + 7] = 0x56;
+    CHECK(item_shown(GLASS));
+    no_sprites();
+    found_on = false;
+    settle_at(1, 0x00);
+
     /* The file: the items picked, by their place in the list, a field of their own. */
     field_count = 0;
     save_listener(FAX_SAVE_WRITING);
@@ -619,7 +649,7 @@ static void test_items(void) {
     CHECK(bit(picked, ELIXIR) && picked[0] == 1);
     snprintf(fields[field_at("map.items")].value, 96, "fff");   /* past the items: dropped */
     save_listener(FAX_SAVE_CONTINUED);
-    CHECK(picked[0] == 0x3F && picked[1] == 0);
+    CHECK(picked[0] == 0x7F && picked[1] == 0);
     snprintf(fields[field_at("map.items")].value, 96, "1z");    /* damaged: every item shows again */
     save_listener(FAX_SAVE_CONTINUED);
     CHECK(!bit(picked, ELIXIR) && seen(1, 0x01));
@@ -837,6 +867,16 @@ static void test_rom(const char *path) {
     CHECK(boots->area == 4 && boots->screen == 0x1F && boots->entity == 0x55 && boots->map_area == 2 &&
           boots->map_screen == 0x06 && boots->map_block == 0x9B);   /* the Wing Boots in a house off Mist $06 */
     CHECK(slayer->area == 6 && slayer->screen == 0x15 && slayer->entity == 0x5A && slayer->kind == FAX_MAP_ITEM_ONCE);
+    /* Found items: the 7 Wing Boots and 4 of the 5 Hour Glasses that show one visit in four are gone; the
+     * Hour Glass on Mist $30 ($32) is kept, and every other item is as it is. */
+    unsigned gone = 0, fixed = 0;
+    for (unsigned i = 0; i < got.item_count; ++i) {
+        const FaxMapItem *it = &got.item[i];
+        FaxFoundSpawn rule = fax_found_spawn(it->area, it->screen, it->entity);
+        if (rule == FAX_FOUND_GONE) { ++gone; CHECK(it->kind == FAX_MAP_ITEM_SOMETIMES); }
+        if (rule == FAX_FOUND_FIXED) { ++fixed; CHECK(it->area == 2 && it->block == 0x32 && it->entity == 0x56); }
+    }
+    CHECK(gone == 11 && fixed == 1);
     /* Every area's field fits a save file's value with everything seen and used. */
     memset(&v, 0xFF, sizeof v);
     for (unsigned a = 0; a < FAX_MAP_AREAS; ++a) {

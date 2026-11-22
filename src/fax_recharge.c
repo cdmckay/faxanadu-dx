@@ -153,9 +153,10 @@
 /* Bank 12 */
 #define ISCRIPTS_INVOKE_NEXT_ACTION 0x826Eu  /* JSR IScripts_LoadByte: the action at IScriptOrCHRAddr + IScriptOffset */
 #define EOLIS_GURU_FIRST        0xA0BDu  /* ISCRIPT_EOLIS_GURU's first action: CHECK_FOR_ITEM Ring of Elf */
-#define ISCRIPT_SPRING_OF_TRUNK 0xA1ABu  /* 00, 0B 01 A1C0 (done: on), 02 59, 12 92 A1B9 (the Elixir: on), 03 5B, 00 */
-#define SPRING_CONSUME          0xA1BBu  /* @_ISCRIPT_SPRING_OF_TRUNK_HAS_ELIXIR ($A1B9: 01 5A, "2 more springs")
-                                            + 2: 10 92, CONSUME_ITEM the Elixir; then 0E 01, SET_QUEST, and 00 */
+/* ISCRIPT_SPRING_OF_TRUNK ($A1AB): 00, 0B 01 A1C0 (done: on), 02 59, 12 92 A1B9 (the Elixir: on), 03 5B, 00. Its
+ * CHECK_FOR_ITEM jumps (IScripts_JumpToNextAddr: IScriptOrCHRAddr $A1B9, IScriptOffset 0) to
+ * @_ISCRIPT_SPRING_OF_TRUNK_HAS_ELIXIR: 01 5A ("2 more springs"), then this: */
+#define SPRING_CONSUME          0xA1BBu  /* 10 92, CONSUME_ITEM the Elixir; then 0E 01, SET_QUEST 1, and 00 */
 #define SAY                     FAX_TRAVEL_SAY      /* $AE00, Guru travel's step: 03 C3 00, show the slot, then END */
 /* Bank 13 */
 #define SLOT                    FAX_TRAVEL_SLOT     /* $B45B: message $C3, the line slot */
@@ -352,12 +353,12 @@ static int guru_says(const Charge *c, bool charged) {
     return charged && !c->elixir_told ? LINE_CAN : LINE_NONE;
 }
 
-/* The Spring of Trunk is about to take the Elixir: its script's next action
- * is its CONSUME_ITEM Elixir, and the Elixir is charged (SpecialItems'
- * bit, which its CHECK_FOR_ITEM asked for). Then it spends it instead. */
-static bool spring_spends(uint16_t script, uint16_t at, uint8_t action, uint8_t item, uint8_t special) {
-    return script == ISCRIPT_SPRING_OF_TRUNK && at == SPRING_CONSUME && action == ISCRIPT_CONSUME_ITEM &&
-           item == SPECIAL_ELIXIR && (special & BIT_ELIXIR);
+/* The Spring of Trunk is about to take the Elixir: the script's next action,
+ * at `at`, is its CONSUME_ITEM Elixir, and the Elixir is charged
+ * (SpecialItems' bit, which its CHECK_FOR_ITEM asked for). Then it spends it
+ * instead. No other script takes the Elixir. */
+static bool spring_spends(uint16_t at, uint8_t action, uint8_t item, uint8_t special) {
+    return at == SPRING_CONSUME && action == ISCRIPT_CONSUME_ITEM && item == SPECIAL_ELIXIR && (special & BIT_ELIXIR);
 }
 
 /* A line in the dialogue font ($FD a space, $FE a new line), $FF-terminated
@@ -685,7 +686,7 @@ static int guru_hook(uint16_t addr) {
     (void)addr;
     if (cyc_mod_isolated()) return 0;
     uint16_t at = (uint16_t)(word(ISCRIPT_ADDR) + q(ISCRIPT_OFFSET));
-    if (spring_spends(word(ISCRIPT_ADDR), at, q(at), q((uint16_t)(at + 1)), q(SPECIAL_ITEMS))) {
+    if (spring_spends(at, q(at), q((uint16_t)(at + 1)), q(SPECIAL_ITEMS))) {
         charge.elixir_spent = 1;                /* the step clears the bit: spent, as after a revive */
         ++springs;
     }

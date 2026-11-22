@@ -68,9 +68,7 @@
 #define NUMBER_OF_ITEMS     0x03C6u
 /* Values */
 enum { SLOTS = 8, MAX_ITEMS = 8, P_C = 0x01 };
-enum { WING_BOOTS_FIND = 0x55, HOUR_GLASS_FIND = 0x56 };   /* SpriteBehavior_RandomlyShowItem_55, _51 */
-enum { ITEM_HOUR_GLASS = 0x0D };                            /* in the Items list */
-enum { MIST = 2, GLASS_SCREEN = 0x30 };                     /* the Tower of Suffer's first room */
+enum { ITEM_HOUR_GLASS = 0x0D };   /* in the Items list */
 
 const uint8_t fax_found_unsold[FAX_FOUND_UNSOLD] = {
     0x8F,   /* ITEM_WING_BOOTS: Forepaw 2800, Conflate 5500 */
@@ -83,13 +81,7 @@ static uint8_t taken;              /* the fixed Hour Glass: the hero has picked 
 static unsigned gone, shown, away, takes;   /* for TCP: finds removed, the glass shown, kept away, taken */
 static struct { int entity, area, screen, rule, left; } last = { -1, -1, -1, -1, -1 };   /* the last answer */
 
-/* ---- the rules, on plain values ---- */
-
-FaxFoundSpawn fax_found_spawn(unsigned area, unsigned screen, unsigned entity) {
-    if (entity == WING_BOOTS_FIND) return FAX_FOUND_GONE;
-    if (entity != HOUR_GLASS_FIND) return FAX_FOUND_AS_IS;
-    return area == MIST && screen == GLASS_SCREEN ? FAX_FOUND_FIXED : FAX_FOUND_GONE;
-}
+/* ---- the rules, on plain values (and fax_found_spawn, fax_found.h's) ---- */
 
 /* Whether a find left by the rule lies there this visit: C clear for
  * Screen_Is3Of4Visits' answer. */
