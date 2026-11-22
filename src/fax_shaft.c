@@ -32,8 +32,9 @@
  *   15 of $00 or $08 (X past 224), or under Eolis's floor (Y 145 to $C0). The
  *   floor (row 11) is solid on every Eolis screen but for that column, so
  *   only the shaft leads under it, and from $08 the open row beneath takes
- *   him left into $01 (in Seamless as far as $06). A hook at Game_MainLoop's
- *   JSR GameLoop_UpdatePlayer ($DB53), before he moves each frame, puts him
+ *   him left through the town's screens (to $07's left edge in the original,
+ *   as far as $06 in Seamless). A hook at Game_MainLoop's JSR
+ *   GameLoop_UpdatePlayer ($DB53), before he moves each frame, puts him
  *   standing on the floor (Y 144) where he is, or next to the wall (X 208)
  *   on $00 and $08 (fax_shaft_rescue). Rows 9 and 10, where he then stands,
  *   are clear wherever the open row leads.
