@@ -2607,9 +2607,27 @@ Poison), as the 40th Anniversary Edition pays. Never:
 
 The SpecialItems ones are bits, in no list, so no sell list could show them;
 they are refused even if one were. The selected item and what is equipped are
-in no list either, as in the original. The rest are safe to sell: every other
-key, the Mattock, the Wing Boots and the potions can be bought again, and the
-A and Jo keys' givers hand out another to a hero without one.
+in no list either, as in the original.
+
+**Nor what the hero has for good**: a key (the A, K, Q, J and Jo keys), the
+Mattock, the Wing Boots and the Hour Glass, while the feature that keeps it is
+on (see *What the hero owns* below). These neither buy nor sell: in the buy
+list they are OWNED, in the sell list not for sale. Before, the 100 Golds made
+a farm of the A and Jo keys: their givers hand out another to a hero without
+one, every time he asks (see *Doors and keys*), so a key fetched and sold over
+and over paid 100 each time. The rule is `fax_shops_not_for_sale`, asked of
+the item and the hero as he is when the list is drawn and when A is pressed.
+The rest are safe to sell: the potions and the Poison, and the weapons, armor,
+shields and spells, which no feature keeps. Without its keeper a key, the
+Mattock, the Wing Boots or the Hour Glass is used up, so it sells as before; in
+the one mod the keepers are always on. With the mod off, the shops are the
+original's: a key, the Mattock, the Wing Boots and the Hour Glass sell where a
+shop sells them, at half its price.
+
+An item not for sale is listed with no price (its price cells are painted the
+box's inside, since `Shop_Draw` would write "0"), the hint reads "Not for
+sale" while the cursor is on it, and A on it does nothing: a hook at `$86E0`
+re-enters the wait at `$86DB` by return, before the price is taken.
 
 **What the hero owns, with Quick shops.** An item he already has for good keeps
 its row in every buy list, so the list, its cursor positions and its pages are
@@ -2631,9 +2649,9 @@ mod they always are. A charged Elixir counts either way, since the game refuses
 a second. Shops sell only the J, Q and K keys; the A and Jo keys are in the
 rule for completeness. OWNED is five letters, in the five cells `Shop_Draw`
 gives a price (column 23, an entry's second row, right-aligned), painted over
-the price as an unsellable item's is. The sell list is unchanged: an owned item
-sells, at its price. Weapons, armor, shields and spells the hero has are not
-marked: the game refuses them ("You can't carry any more."), as before.
+the price as an unsellable item's is. In the sell list an owned item is not for
+sale (above). Weapons, armor, shields and spells the hero has are not marked:
+the game refuses them ("You can't carry any more."), as before.
 
 ## Doors and keys
 
@@ -2678,7 +2696,7 @@ key shops from `*_KEY_SHOP_ITEMS`, gifts from the interaction scripts):
 | J | Eolis's exit (screen `$08`) to Trunk; Trunk `$0B` → the Tower of Trunk (`$0D`); Trunk `$28` → `$29` | Key shops: Eolis 100, Apolune 140, Forepaw 200, Mascon 500 |
 | Q | Trunk's gate to Mist (screen `$28`); Mist `$00` → `$3E`; Mist `$01` → `$4F` | Forepaw 500, Mascon 600, Victim 1200, Daybreak 1000 |
 | K | Mist `$17` → `$45`, `$20` → `$50`; Branch `$0A` → `$09`, `$0E` → `$0F`, `$14` → `$13`, `$19` → `$18` | Victim 1500, Daybreak 1200, Dartmoor 1300 |
-| A | Mist's gate to Branch (screen `$1F`), the one A door | A gift: the man in the house on Mist `$1F` (Buildings `$22`, script `$46`, `ISCRIPT_A27C`) gives one if you hold the Black Onyx and no A key, each time you ask |
+| A | Mist's gate to Branch (screen `$1F`), the one A door | A gift: the man in the house on Mist `$1F` (Buildings `$22`, script `$46`, `ISCRIPT_A27C`) gives one if you hold the Black Onyx and no A key, each time you ask. With Quick shops a held key is not for sale, so this is no farm (*Shops*) |
 | Jo | Trunk `$1E` → `$3E`, the one Jo door ("the first spring") | A gift: the man in the house on Trunk `$2D` (Buildings `$15`, script `$24`, `ISCRIPT_A18A`) gives one once the Spring of Sky is done and you hold no Jo key, each time you ask |
 
 The rings: Elf for three Eolis houses (screens `$06`, `$07`), Dworf for
@@ -2777,7 +2795,8 @@ jumping or falling, `Player_Flags & $05`):
   Forepaw sold a second pair). An earlier note here said shops never sell
   what you hold; that holds only for the Elixir. `Player_PickUpItem` adds a
   duplicate too. With the remaster, a find recharges instead, and Quick
-  shops lists a pair or an Hour Glass he has as owned (see *Shops*).
+  shops lists a pair or an Hour Glass he has as owned, and won't buy it (see
+  *Shops*).
 
 | Item | Shops | In the world (bank 11's lists: area, screen, block `YX`) |
 |---|---|---|
@@ -3411,7 +3430,8 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
   scan's list with a page of everything carried and goes on at `Shop_Draw`
   (`$86D8`), past "Which one would like to sell?", or, with nothing to sell
   and a list open, through `Maybe_Shop_DrawTextBox` first; `$86E0`, back to
-  the wait for an item no shop buys; `$86F8`, past the sale's close;
+  the wait for an item not for sale (one no shop buys, or one the hero owns);
+  `$86F8`, past the sale's close;
   `$84F0`, in `IScripts_WaitForMenuInput` before the menu update, where it
   puts the cursor back, Select or a page turn goes through
   `Sound_PlayEffect` (`$0B`) to the other step, and B goes through
@@ -3421,7 +3441,8 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
   `$838E`, where a shop's message goes back to the list; and `$8402`, the buy
   list's A, back to the wait (`$83FA`) for an item the hero owns (see
   *Shops*), which it asks reusable tools and recharging items about
-  (`fax_reusable_tools_on`, `fax_recharge_on`, `fax_recharge_elixir_spent`).
+  (`fax_reusable_tools_on`, `fax_recharge_on`, `fax_recharge_elixir_spent`),
+  as it does for the sell list's.
   Presses while a list is drawn, or the gold counts, are lost, as in the
   original: the game reads the pad only in the list's wait. The hint line
   ("Select to sell", "Select to buy", "Not for sale", "Already owned") is drawn
