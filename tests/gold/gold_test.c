@@ -3,12 +3,15 @@
  * and the game's code around each hook site played as the disassembly has
  * it: Player_HandleTouchCoin's add from $8B9F, IScriptAction_AddGold with
  * IScripts_LoadByte and IScripts_ProgressivelyAddGold (through
- * Player_AddGold, 10 Golds a frame), and the text box's reader,
+ * Player_AddGold, 10 Golds a frame), the King's whole script as
+ * IScripts_InvokeNextAction runs it (IScriptAction_IfPlayerHasGold's two
+ * paths among its actions), and the text box's reader,
  * TextBox_ShowMessage_LoadMessage, over a copy of the King's plea where bank
- * 13 has it. So the tests check the gold and the text the game ends with,
- * not the module's own arithmetic. */
+ * 13 has it. Save files, the save-state loader and the quest log are stubs
+ * that record what the module asks and give what a test sets. So the tests
+ * check the gold, the lines and the text the game ends with, not the
+ * module's own arithmetic. */
 #include "fax_gold.c"
-#include <string.h>
 
 static unsigned checks;
 #define CHECK(test) do{++checks;if(!(test)){fprintf(stderr,"FAIL line %u: %s\n",__LINE__,#test);exit(1);}}while(0)
@@ -23,7 +26,8 @@ static uint8_t ram[0x800];
 static uint8_t rom[0x10000];        /* what the CPU reads at $8000-$FFFF, for the routines modelled here */
 static CycModRegs cpu;
 static bool isolated;
-static int king_on = -1, coin_on = -1, line_on = -1;   /* the hooks' enabled states, as last set */
+static int king_on = -1, count_on = -1, once_on = -1, coin_on = -1, line_on = -1;   /* the hooks' enabled
+                                                                                      states, as last set */
 
 uint8_t cyc_mod_peek(uint16_t addr) { return addr < 0x2000 ? ram[addr & 0x7FF] : addr >= 0x8000 ? rom[addr] : 0; }
 bool cyc_mod_poke(uint16_t addr, uint8_t value) {
@@ -36,11 +40,15 @@ void cyc_mod_set_regs(const CycModRegs *in) { uint16_t pc = cpu.pc; cpu = *in; c
 bool cyc_mod_isolated(void) { return isolated; }
 int nes_mod_register_function_entry_plugin(const char *id, uint16_t addr, NESModFunctionEntryCallback cb) {
     return (!strcmp(id, king_id) && addr == ADD_GOLD_PAY && cb == king_hook) ||
+           (!strcmp(id, count_id) && addr == COUNT_PAY && cb == count_hook) ||
+           (!strcmp(id, once_id) && addr == NO_GOLD_SKIP && cb == once_hook) ||
            (!strcmp(id, coin_id) && addr == TOUCH_COIN_ADD && cb == coin_hook) ||
            (!strcmp(id, line_id) && addr == LOAD_MESSAGE_CHAR && cb == line_hook);
 }
 int nes_mod_set_function_hook_enabled(const char *id, int on) {
     if (!strcmp(id, king_id)) king_on = on;
+    else if (!strcmp(id, count_id)) count_on = on;
+    else if (!strcmp(id, once_id)) once_on = on;
     else if (!strcmp(id, coin_id)) coin_on = on;
     else if (!strcmp(id, line_id)) line_on = on;
     else return 0;
@@ -51,6 +59,27 @@ int nes_mod_register_activation_plugin(const char *id, NESModActivationCallback 
     return !strcmp(id, "faxanadu.double-gold") && cb == activate;
 }
 void nes_mod_set_local_only(const char *name, int required) { (void)name; (void)required; }
+int nes_mod_register_savestate_hook(const char *id, NESModSavestateGet get, NESModSavestateSet set) {
+    return !strcmp(id, "faxanadu.double-gold") && get == state_get && set == state_set;
+}
+int nes_mod_register_savestate_validator(const char *id, NESModSavestateValidate validate) {
+    return !strcmp(id, "faxanadu.double-gold") && validate == state_validate;
+}
+
+/* The file in play: one field, ours, and the quest log's answers. */
+static bool in_play;                /* a file is in play */
+static char field[FAX_SAVE_VALUE];  /* gold.king_given's value, "" without it */
+static bool plea_in_file, plea_given;   /* fax_quests_given_in_file / fax_quests_given for The King's Plea */
+static FaxSaveListener listener;
+bool fax_save_listen(FaxSaveListener l) { listener = l; return l == on_save; }
+const char *fax_save_get(const char *key) { return in_play && !strcmp(key, FIELD_GIVEN) && field[0] ? field : NULL; }
+bool fax_save_set(const char *key, const char *value) {
+    if (!in_play || strcmp(key, FIELD_GIVEN)) return false;
+    snprintf(field, sizeof field, "%s", value ? value : "");
+    return true;
+}
+bool fax_quests_given_in_file(unsigned quest) { return quest == FAX_QUEST_KING && in_play && plea_in_file; }
+bool fax_quests_given(unsigned quest) { return quest == FAX_QUEST_KING && plea_given; }
 
 static uint32_t gold_now(void) { return ram[GOLD] | ram[GOLD + 1] << 8 | (uint32_t)ram[GOLD + 2] << 16; }
 static void set_gold_to(uint32_t g) { ram[GOLD] = (uint8_t)g; ram[GOLD + 1] = (uint8_t)(g >> 8); ram[GOLD + 2] = (uint8_t)(g >> 16); }
@@ -59,16 +88,18 @@ static void reset(void) {
     memset(ram, 0, sizeof ram);
     cpu = (CycModRegs){.a = 0x5A, .x = 0x77, .y = 0x33, .s = 0xF0, .p = 0x24};
     isolated = false;
+    in_play = plea_in_file = plea_given = false;
+    field[0] = 0;
 }
 static void on(void) {
     deactivate();
     activate();
-    CHECK(king_on == 1 && coin_on == 1 && line_on == 1 && enabled);
+    CHECK(king_on == 1 && count_on == 1 && once_on == 1 && coin_on == 1 && line_on == 1 && enabled && !given);
 }
 static void off(void) {
     activate();
     deactivate();
-    CHECK(king_on == 0 && coin_on == 0 && line_on == 0 && !enabled);
+    CHECK(king_on == 0 && count_on == 0 && once_on == 0 && coin_on == 0 && line_on == 0 && !enabled && !given);
 }
 
 /* ---- Player_HandleTouchCoin, from the hook site on ----
@@ -95,40 +126,50 @@ static uint8_t load_byte(void) {                    /* IScripts_LoadByte */
     ram[ISCRIPT_OFFSET] = y;
     return value;
 }
-static void add_gold(uint8_t amount) {              /* Player_AddGold, the upper byte of the add 0 */
-    unsigned sum = ram[GOLD] + amount;
+static void add_gold(void) {                        /* Player_AddGold: Temp_Int24/_M, the upper byte of the add 0 */
+    unsigned sum = ram[GOLD] + ram[TEMP_INT24];
     ram[GOLD] = (uint8_t)sum;
-    sum = ram[GOLD + 1] + (sum >> 8);
+    sum = ram[GOLD + 1] + ram[TEMP_INT24 + 1] + (sum >> 8);
     ram[GOLD + 1] = (uint8_t)sum;
     sum = ram[GOLD + 2] + (sum >> 8);
     ram[GOLD + 2] = (uint8_t)sum;
     if (sum > 0xFF) ram[GOLD] = ram[GOLD + 1] = ram[GOLD + 2] = 0xFF;
 }
 /* IScripts_ProgressivelyAddGold: 10 Golds a frame while the amount is above
- * 0 (its bit 15 clear), then a 60-frame wait. The frames it took. */
-static unsigned progressively_add_gold(void) {
-    unsigned frames = 0;
+ * 0 (its bit 15 clear), then a 60-frame wait. The frames it took, those
+ * that paid, and the least and most a frame paid. */
+typedef struct { unsigned frames, pays, least, most; } Count;
+static Count progressively_add_gold(void) {
+    Count c = { 0, 0, ~0u, 0 };
     for (;;) {
-        ++frames;                                   /* IScripts_UpdatePortraitAnimation waits for the frame */
+        ++c.frames;                                 /* IScripts_UpdatePortraitAnimation waits for the frame */
         uint8_t hi = ram[TEMP_0202 + 1];
         if (!(hi & 0x80)) {
             if (hi | ram[TEMP_0202]) {
-                unsigned left = (unsigned)(ram[TEMP_0202] | hi << 8) - 10u;
+                unsigned left = (unsigned)(ram[TEMP_0202] | hi << 8) - 10u;   /* SEC, SBC #$0A, SBC #$00 */
                 ram[TEMP_0202] = (uint8_t)left;
                 ram[TEMP_0202 + 1] = (uint8_t)(left >> 8);
-                add_gold(10);
+                ram[TEMP_INT24] = 10;               /* LDA #$0A, STA Temp_Int24, LDA #$00, STA Temp_Int24_M */
+                ram[TEMP_INT24 + 1] = 0;
+                if (count_on == 1) CHECK(count_hook(COUNT_PAY) == 0);   /* JSR Player_AddGold */
+                uint32_t before = gold_now();
+                add_gold();
+                unsigned paid = gold_now() - before;
+                ++c.pays;
+                if (paid < c.least) c.least = paid;
+                if (paid > c.most) c.most = paid;
                 continue;
             }
             --ram[TEMP_0202 + 1];                   /* $FF: the wait */
             ram[TEMP_0202] = 0x3C;
         }
-        if (--ram[TEMP_0202] == 0) return frames;
+        if (--ram[TEMP_0202] == 0) return c;
     }
 }
 /* The script at `script` run from its first byte to its ADD_GOLD at `at`
  * (IScripts_InvokeNextAction has read the action byte), then the action:
- * the frames it paid for. */
-static unsigned run_add_gold(uint16_t script, uint16_t at) {
+ * how it paid. */
+static Count run_add_gold(uint16_t script, uint16_t at) {
     ram[ISCRIPT_ADDR] = (uint8_t)script;
     ram[ISCRIPT_ADDR + 1] = (uint8_t)(script >> 8);
     ram[ISCRIPT_OFFSET] = 0;
@@ -137,10 +178,61 @@ static unsigned run_add_gold(uint16_t script, uint16_t at) {
     ram[TEMP_0202] = load_byte();
     ram[TEMP_0202 + 1] = load_byte();
     if (king_on == 1) CHECK(king_hook(ADD_GOLD_PAY) == 0);     /* JSR IScripts_ProgressivelyAddGold */
-    unsigned frames = progressively_add_gold();
+    Count c = progressively_add_gold();
     CHECK(load_byte() == 0x00);                      /* IScripts_InvokeNextAction: the END */
-    return frames;
+    return c;
 }
+
+/* ---- the King's script, as IScripts_InvokeNextAction runs it ----
+ * From his entity byte at ISCRIPT_EOLIS_KING, each action as the game does
+ * it: IfPlayerHasGold ($0D) jumps (IScripts_JumpToNextAddr) with any gold,
+ * and with none reaches the hook site at $862A, then
+ * IScripts_SkipAddrAndInvoke; the messages ($01, $03) are kept, in order;
+ * AddGold ($09) as run_add_gold; END ($00) ends it. */
+typedef struct { uint8_t said[4]; unsigned lines; Count paid; } Talk;
+static Talk talk_to_king(void) {
+    Talk t = { {0}, 0, {0, 0, 0, 0} };
+    ram[ISCRIPT_ADDR] = (uint8_t)KING_SCRIPT;
+    ram[ISCRIPT_ADDR + 1] = (uint8_t)(KING_SCRIPT >> 8);
+    ram[ISCRIPT_OFFSET] = 0;
+    CHECK(load_byte() == 0x80);                      /* the King's portrait */
+    for (unsigned steps = 0; steps < 16; ++steps) {
+        uint8_t action = load_byte(), lo, hi;
+        switch (action) {
+        case 0x0D:
+            if (ram[GOLD] | ram[GOLD + 1] | ram[GOLD + 2]) {
+                lo = load_byte();
+                hi = load_byte();
+                ram[ISCRIPT_ADDR] = lo;
+                ram[ISCRIPT_ADDR + 1] = hi;
+                ram[ISCRIPT_OFFSET] = 0;
+            } else {
+                if (once_on == 1) CHECK(once_hook(NO_GOLD_SKIP) == 0);   /* JMP IScripts_SkipAddrAndInvoke */
+                load_byte();
+                load_byte();
+            }
+            break;
+        case 0x01: case 0x03:
+            lo = load_byte();
+            if (t.lines < sizeof t.said) t.said[t.lines++] = lo;
+            break;
+        case 0x09:
+            ram[TEMP_0202] = load_byte();
+            ram[TEMP_0202 + 1] = load_byte();
+            if (king_on == 1) CHECK(king_hook(ADD_GOLD_PAY) == 0);
+            t.paid = progressively_add_gold();
+            break;
+        case 0x00:
+            return t;
+        default:
+            CHECK(!"an action the King's script does not have");
+            return t;
+        }
+    }
+    CHECK(!"the King's script ends");
+    return t;
+}
+static bool said_only(const Talk *t, uint8_t line) { return t->lines == 1 && t->said[0] == line; }
 
 /* ---- the text box's reader over message `id` at `start` ----
  * Messages_Load: MessageID, Message_StartAddr; then a byte a turn:
@@ -190,6 +282,8 @@ static void load_rom(void) {
 static void the_script_and_the_line_are_where_the_module_looks(void) {
     CHECK(KING_SCRIPT + 6 == 0xA356u && rom[0xA356] == 0x09);                 /* ADD_GOLD $05DC, then END */
     CHECK(KING_GIFT_END == KING_SCRIPT + 9 && rom[KING_GIFT_END] == 0x00);
+    CHECK(rom[KING_CHECK_GOLD - 1] == 0x0D && (rom[KING_CHECK_GOLD] | rom[KING_CHECK_GOLD + 1] << 8) == KING_NOTHING_MORE);
+    CHECK(rom[KING_NOTHING_MORE] == 0x03 && rom[KING_NOTHING_MORE + 1] == 0x36 && rom[KING_NOTHING_MORE + 2] == 0x00);
     CHECK(!memcmp(rom + KING_DIGITS, "1500", 4) && !memcmp(rom + KING_DIGITS - 3, "you", 3));
     CHECK(rom[KING_DIGITS + 4] == 0xFD);
 }
@@ -265,45 +359,219 @@ static void isolated_coins_double_but_do_not_count(void) {
     CHECK(seen.coins == 0 && seen.coin_gold == 0);
 }
 
-static void the_king_pays_3000(void) {
+static void the_king_pays_3000_in_150_frames(void) {
     reset();
     on();
-    unsigned frames = run_add_gold(KING_SCRIPT, 0xA356);
+    Count c = run_add_gold(KING_SCRIPT, 0xA356);
     CHECK(gold_now() == 3000);
-    CHECK(frames == 300 + 60);                            /* 10 a frame, then the wait */
-    CHECK(seen.kings == 1);
+    CHECK(c.pays == 150 && c.least == 20 && c.most == 20);    /* 20 a frame: 150 frames, as the original's 1500 */
+    CHECK(c.frames == 150 + 60);                              /* then the routine's wait */
+    CHECK(seen.kings == 1 && seen.king_pays == 150 && given);
     reset();
     off();
-    frames = run_add_gold(KING_SCRIPT, 0xA356);
-    CHECK(gold_now() == 1500 && frames == 150 + 60);
-    CHECK(seen.kings == 0);
+    c = run_add_gold(KING_SCRIPT, 0xA356);
+    CHECK(gold_now() == 1500 && c.pays == 150 && c.least == 10 && c.most == 10 && c.frames == 150 + 60);
+    CHECK(seen.kings == 0 && seen.king_pays == 0 && !given);
+    /* Near the cap, Player_AddGold holds the 20 there as it would the 10. */
+    reset();
+    on();
+    set_gold_to(FAX_GOLD_MAX - 1005);
+    run_add_gold(KING_SCRIPT, 0xA356);
+    CHECK(gold_now() == FAX_GOLD_MAX);
 }
 
 static void only_the_kings_step(void) {
     /* Another script's ADD_GOLD (the game has none; the King's step served
-     * elsewhere) pays what it says. */
+     * elsewhere) pays what it says, 10 a frame. */
     reset();
     on();
-    run_add_gold(OTHER_GIFT, OTHER_GIFT + 1);
-    CHECK(gold_now() == 1500 && seen.kings == 0);
+    Count c = run_add_gold(OTHER_GIFT, OTHER_GIFT + 1);
+    CHECK(gold_now() == 1500 && c.pays == 150 && c.most == 10 && seen.kings == 0 && seen.king_pays == 0 && !given);
     /* The King's step with another amount read (something served there) is
-     * left alone too. */
+     * not doubled, and his count never pays more than is left: 1010 is 50
+     * frames of 20 and a last of 10. */
     reset();
     on();
-    rom[0xA357] = 0xE8;
-    rom[0xA358] = 0x03;                                   /* 1000 */
-    run_add_gold(KING_SCRIPT, 0xA356);
-    CHECK(gold_now() == 1000 && seen.kings == 0);
+    rom[0xA357] = 0xF2;
+    rom[0xA358] = 0x03;                                   /* 1010 */
+    c = run_add_gold(KING_SCRIPT, 0xA356);
+    CHECK(gold_now() == 1010 && seen.kings == 0 && !given);
+    CHECK(c.pays == 51 && c.least == 10 && c.most == 20 && seen.king_pays == 50);
     rom[0xA357] = 0xDC;
     rom[0xA358] = 0x05;
     /* Selling pays through IScripts_ProgressivelyAddGold without the
-     * action's JSR: the hook never sees it. */
+     * action's JSR, the script in a shop's: 10 a frame. */
     reset();
     on();
+    ram[ISCRIPT_ADDR] = 0x40;
+    ram[ISCRIPT_ADDR + 1] = 0xA4;                         /* a shop's script, somewhere else in bank 12 */
     ram[TEMP_0202] = 0x2C;
     ram[TEMP_0202 + 1] = 0x01;                            /* 300, half a Red Potion's 600 */
-    progressively_add_gold();
-    CHECK(gold_now() == 300 && seen.kings == 0);
+    c = progressively_add_gold();
+    CHECK(gold_now() == 300 && c.pays == 30 && c.least == 10 && c.most == 10 && c.frames == 30 + 60);
+    CHECK(seen.kings == 0 && seen.king_pays == 0 && !given);
+}
+
+static void the_king_gives_once(void) {
+    reset();
+    on();
+    Talk t = talk_to_king();                              /* no gold: his plea, and the gift */
+    CHECK(said_only(&t, 0x35) && gold_now() == 3000 && t.paid.pays == 150 && given);
+    set_gold_to(0);                                       /* all spent */
+    t = talk_to_king();
+    CHECK(said_only(&t, 0x36) && gold_now() == 0 && t.paid.pays == 0);   /* "nothing more" */
+    CHECK(seen.kings == 1 && seen.nothing_more == 1);
+    t = talk_to_king();                                   /* and again */
+    CHECK(said_only(&t, 0x36) && gold_now() == 0 && seen.kings == 1 && seen.nothing_more == 2);
+    set_gold_to(50);                                      /* with gold, the game's own jump */
+    t = talk_to_king();
+    CHECK(said_only(&t, 0x36) && gold_now() == 50 && seen.nothing_more == 2);
+    /* A hero who comes with gold first hears "nothing more" and has not been
+     * given: at 0, the plea and the gift, once. */
+    reset();
+    on();
+    set_gold_to(118);
+    t = talk_to_king();
+    CHECK(said_only(&t, 0x36) && !given && seen.nothing_more == 0);
+    set_gold_to(0);
+    t = talk_to_king();
+    CHECK(said_only(&t, 0x35) && gold_now() == 3000 && given);
+    set_gold_to(0);
+    t = talk_to_king();
+    CHECK(said_only(&t, 0x36) && gold_now() == 0);
+    /* In Seamless's isolated rooms nothing is counted or given (no script
+     * runs there; if one did, it would not give for the hero). */
+    reset();
+    on();
+    isolated = true;
+    t = talk_to_king();
+    CHECK(said_only(&t, 0x35) && gold_now() == 3000 && !given && seen.kings == 0 && seen.king_pays == 0);
+}
+
+static void the_original_gives_again_and_again(void) {
+    reset();
+    off();
+    for (unsigned i = 1; i <= 3; ++i) {
+        Talk t = talk_to_king();
+        CHECK(said_only(&t, 0x35) && gold_now() == 1500 && t.paid.pays == 150 && t.paid.most == 10);
+        set_gold_to(0);
+    }
+    set_gold_to(10);
+    Talk t = talk_to_king();
+    CHECK(said_only(&t, 0x36) && gold_now() == 10);
+    CHECK(!given && seen.kings == 0 && seen.nothing_more == 0);
+}
+
+static void given_is_kept_in_the_file(void) {
+    /* Written at each save; nothing without a file in play. */
+    reset();
+    on();
+    listener(FAX_SAVE_WRITING);
+    CHECK(!field[0]);
+    in_play = true;
+    listener(FAX_SAVE_NEW_GAME);
+    CHECK(!given);
+    listener(FAX_SAVE_WRITING);
+    CHECK(!strcmp(field, "no"));
+    talk_to_king();
+    listener(FAX_SAVE_WRITING);
+    CHECK(!strcmp(field, "yes"));
+    /* Continued: as written, whatever the quest log says. */
+    listener(FAX_SAVE_NEW_GAME);
+    CHECK(!given);
+    plea_in_file = true;
+    strcpy(field, "no");
+    listener(FAX_SAVE_CONTINUED);
+    CHECK(!given);
+    strcpy(field, "yes");
+    plea_in_file = false;
+    listener(FAX_SAVE_CONTINUED);
+    CHECK(given);
+    set_gold_to(0);
+    Talk t = talk_to_king();
+    CHECK(said_only(&t, 0x36) && gold_now() == 0);
+    /* A new game in the same session starts ungiven. */
+    listener(FAX_SAVE_NEW_GAME);
+    CHECK(!given);
+    t = talk_to_king();
+    CHECK(said_only(&t, 0x35) && gold_now() == 3000);
+}
+
+static void an_old_file_is_inferred_from_the_kings_plea(void) {
+    reset();
+    on();
+    in_play = true;
+    plea_in_file = true;                                  /* no field; The King's Plea in quests.given */
+    listener(FAX_SAVE_CONTINUED);
+    CHECK(given);
+    Talk t = talk_to_king();
+    CHECK(said_only(&t, 0x36) && gold_now() == 0);
+    listener(FAX_SAVE_WRITING);                           /* and the field from then on */
+    CHECK(!strcmp(field, "yes"));
+    reset();
+    on();
+    in_play = true;                                       /* neither: not given */
+    listener(FAX_SAVE_CONTINUED);
+    CHECK(!given);
+    t = talk_to_king();
+    CHECK(said_only(&t, 0x35) && gold_now() == 3000);
+    reset();
+    on();
+    in_play = plea_in_file = true;
+    strcpy(field, "maybe");                               /* damaged: as if missing */
+    listener(FAX_SAVE_CONTINUED);
+    CHECK(given);
+    /* With the remaster off nothing is read or written. */
+    reset();
+    off();
+    in_play = plea_in_file = true;
+    listener(FAX_SAVE_CONTINUED);
+    listener(FAX_SAVE_WRITING);
+    CHECK(!given && !field[0]);
+}
+
+static void given_is_kept_in_save_states(void) {
+    uint8_t buf[8];
+    reset();
+    on();
+    CHECK(state_get(buf, sizeof buf) == RECORD && buf[0] == RECORD_VERSION && buf[1] == 0);
+    CHECK(state_get(buf, 1) == -1);
+    talk_to_king();
+    CHECK(state_get(buf, sizeof buf) == RECORD && buf[1] == 1);
+    deactivate();
+    activate();
+    CHECK(!given);
+    CHECK(state_set(buf, RECORD) == 1 && given);
+    fax_gold_loaded();
+    CHECK(given);                                         /* a record: nothing inferred */
+    const uint8_t no[] = { RECORD_VERSION, 0 };
+    plea_given = true;
+    CHECK(state_set(no, RECORD) == 1 && !given);
+    fax_gold_loaded();
+    CHECK(!given);
+    /* Refused before anything is loaded: another version, a bad value, another length. */
+    const uint8_t v2[] = { 2, 1 }, bad[] = { RECORD_VERSION, 2 }, longer[] = { RECORD_VERSION, 1, 0 };
+    CHECK(!state_validate(v2, 2) && !state_validate(bad, 2) && !state_validate(longer, 3) && !state_validate(buf, 1));
+    CHECK(state_validate(NULL, 0) && state_validate(buf, RECORD));
+    CHECK(state_set(bad, 2) == 0 && !given);
+    /* A state from before the record: once every record is in, the quest
+     * log says. */
+    plea_given = true;
+    CHECK(state_set(NULL, 0) == 1);
+    fax_gold_loaded();
+    CHECK(given);
+    plea_given = false;
+    CHECK(state_set(NULL, 0) == 1);
+    fax_gold_loaded();
+    CHECK(!given);
+    plea_given = true;
+    fax_gold_loaded();                                    /* asked once, at the load */
+    CHECK(!given);
+    off();
+    plea_given = true;
+    CHECK(state_set(NULL, 0) == 1);
+    fax_gold_loaded();
+    CHECK(!given);                                        /* the original: never given */
 }
 
 static void the_plea_names_the_gift(void) {
@@ -370,13 +638,13 @@ static void the_typed_digits(void) {
 }
 
 static void registers(void) {
-    CHECK(nes_mod_register_function_entry_plugin(king_id, ADD_GOLD_PAY, king_hook));
-    CHECK(nes_mod_register_function_entry_plugin(coin_id, TOUCH_COIN_ADD, coin_hook));
-    CHECK(nes_mod_register_function_entry_plugin(line_id, LOAD_MESSAGE_CHAR, line_hook));
+    register_gold();                                      /* aborts if any registration is refused */
+    CHECK(listener == on_save);
     activate();
     seen.coins = 3;
+    given = true;
     deactivate();
-    CHECK(!enabled && seen.coins == 0);
+    CHECK(!enabled && seen.coins == 0 && !given);         /* a reset: a new game's */
 }
 
 int main(void) {
@@ -387,8 +655,13 @@ int main(void) {
     coins_stop_at_the_cap();
     the_original_pays_the_value_and_wraps();
     isolated_coins_double_but_do_not_count();
-    the_king_pays_3000();
+    the_king_pays_3000_in_150_frames();
     only_the_kings_step();
+    the_king_gives_once();
+    the_original_gives_again_and_again();
+    given_is_kept_in_the_file();
+    an_old_file_is_inferred_from_the_kings_plea();
+    given_is_kept_in_save_states();
     the_plea_names_the_gift();
     only_the_plea();
     the_typed_digits();
