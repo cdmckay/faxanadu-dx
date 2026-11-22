@@ -137,8 +137,10 @@ the connected map. It is still a preview, for local play only. See
   between buying and selling, and you stay in the list after each sale. Any
   shop buys what you carry, except what you own for good, like a key or the
   Wing Boots: it says OWNED and isn't for sale.
-- **Double gold.** The King gives you 3000 Golds instead of 1500, and every
-  coin a monster drops is worth twice as much. Selling pays what it did.
+- **Double gold.** The King gives you 3000 Golds instead of 1500, counted out
+  in the same 2.5 seconds, but only once: come back broke and he has nothing
+  more for you. Every coin a monster drops is worth twice as much. Selling
+  pays what it did.
 
 ### Text and the title
 

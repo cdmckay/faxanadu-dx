@@ -560,6 +560,13 @@ static void on_save(FaxSaveEvent event) {
     if (d && get_set(d, &set)) done = set;
 }
 
+bool fax_quests_given(unsigned quest) { return enabled && quest < FAX_QUESTS && (given >> quest & 1); }
+bool fax_quests_given_in_file(unsigned quest) {
+    const char *g = fax_save_get("quests.given");
+    uint32_t set;
+    return quest < FAX_QUESTS && g && get_set(g, &set) && (set >> quest & 1);
+}
+
 /* ---- drawing ---- */
 
 enum { HUD = 32, BLACK = 0x0F, MARK_INK = 0x27, NAME_INK = 0x37, DONE_INK = 0x10 };   /* gold, pale gold, grey */
