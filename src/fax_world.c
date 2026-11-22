@@ -548,14 +548,17 @@ static int state_get(uint8_t *buf,int cap){
     buf[16]=(uint8_t)pre_x;buf[17]=(uint8_t)pre_y;memcpy(buf+20,&ticks,4);memcpy(buf+24,&last_tick,4);buf[28]=fighting;
     memcpy(buf+STATE_HEADER,rooms,sizeof rooms);return len;
 }
+/* A record is checked whether Seamless is on or not: with the remaster off
+ * (the original game) a state saved with it on still loads, and Seamless's
+ * record is set aside (state_set), as the other features' are. */
 static int state_validate(const uint8_t *buf,int len){
-    if(!len)return 1;if(!enabled||!buf||len!=STATE_HEADER+sizeof rooms||memcmp(buf,"FAXWORLD",8)||buf[8]!=4||buf[9]>8||buf[10]>MAX_ROOMS||buf[11]>MAX_ROOMS||buf[12]>3||buf[13]>1||buf[14]>1||buf[18]>1||buf[19]>1||buf[28]>1)return 0;
+    if(!len)return 1;if(!buf||len!=STATE_HEADER+sizeof rooms||memcmp(buf,"FAXWORLD",8)||buf[8]!=4||buf[9]>8||buf[10]>MAX_ROOMS||buf[11]>MAX_ROOMS||buf[12]>3||buf[13]>1||buf[14]>1||buf[18]>1||buf[19]>1||buf[28]>1)return 0;
     if(!buf[9]&&(buf[10]||buf[11]))return 0;
     if(buf[9]&&(buf[10]>counts[buf[9]-1]||buf[11]>counts[buf[9]-1]))return 0;
     for(unsigned i=0;i<MAX_ROOMS;i++){Room r;memcpy(&r,buf+STATE_HEADER+i*sizeof r,sizeof r);if(r.live>1||r.valid>1||r.owned>1||r.x< -83||r.x>83||r.y< -83||r.y>83)return 0;for(unsigned j=0;j<4;j++)if(r.edges[j]!=255&&r.edges[j]>=MAX_ROOMS)return 0;}return 1;
 }
 static int state_set(const uint8_t *buf,int len){
-    if(!state_validate(buf,len))return 0;if(!len){fax_world_reset();return 1;}
+    if(!state_validate(buf,len))return 0;if(!len||!enabled){fax_world_reset();return 1;}
     area=buf[9]-1;active=buf[10]-1;pending=buf[11]-1;direction=buf[12];player_tick=buf[13]!=0;collision_active=buf[14]!=0;death_mode=buf[18]!=0;script_mode=buf[19]!=0;pending_y=buf[15];pre_x=buf[16];pre_y=buf[17];fighting=buf[28]!=0;
     memcpy(&ticks,buf+20,4);memcpy(&last_tick,buf+24,4);memcpy(rooms,buf+STATE_HEADER,sizeof rooms);fax_world_loaded();return 1;
 }
@@ -564,9 +567,9 @@ static int hud_get(uint8_t *buf,int cap){
     int n=4+(int)sizeof frozen_hud;if(cap<n)return -1;
     memcpy(buf,"HUD1",4);memcpy(buf+4,frozen_hud,sizeof frozen_hud);return n;
 }
-static int hud_validate(const uint8_t *buf,int len){return !len||(enabled&&buf&&len==4+(int)sizeof frozen_hud&&!memcmp(buf,"HUD1",4));}
+static int hud_validate(const uint8_t *buf,int len){return !len||(buf&&len==4+(int)sizeof frozen_hud&&!memcmp(buf,"HUD1",4));}
 static int hud_set(const uint8_t *buf,int len){
-    if(!hud_validate(buf,len))return 0;hud_valid=len!=0;
+    if(!hud_validate(buf,len))return 0;hud_valid=len!=0&&enabled;
     if(hud_valid)memcpy(frozen_hud,buf+4,sizeof frozen_hud);return 1;
 }
 static void hooks(bool on){const char *ids[]={"player","seam","draw","queue","wait","pause","inventory","death","script"};char id[64];for(unsigned i=0;i<sizeof ids/sizeof ids[0];i++){snprintf(id,sizeof id,"faxanadu.world.%s",ids[i]);nes_mod_set_function_hook_enabled(id,on);}}
