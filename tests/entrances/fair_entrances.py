@@ -102,7 +102,7 @@ SPOTS = [
     ("Trunk $06, building $20's way out", (TRUNK, 0x06, 0x06), ("building", 0x5A), (ZOMBIE, 0x5B, 0x5C), 16),
     ("Branch $0E, the door from $0F", (BRANCH, 0x0E, 0x08), ("door", 0x0F, 0x09, 0x60, None), (LAMPREY, 0x6D, 0x6A),
      16),
-    ("Branch $13, the door from $14", (BRANCH, 0x13, 0x09), ("door", 0x14, 0x08, 0x80, KEY_K), (MASKMAN, 0x8C, 0x9A),
+    ("Branch $13, the door from $14", (BRANCH, 0x13, 0x09), ("door", 0x14, 0x08, 0x80, KEY_K), (MASKMAN, 0x8C, 0x9D),
      16),
     ("Dartmoor $02, building $22's way out", (DARTMOOR, 0x02, 0x0C), ("building", 0x4A),
      (GIANT_STRIDER, 0x49, 0xA9), 16),
@@ -110,42 +110,47 @@ SPOTS = [
     ("Dartmoor $08, building $25's way out", (DARTMOOR, 0x08, 0x0C), ("building", 0x41), (GAWAINE, 0x42, 0x46), 16),
     ("the Castle of Fraternal's way out", (DARTMOOR, 0x0C, 0x0C), ("door", 0x10, 0x0D, 0x90, None),
      (WOLFMAN, 0xAB, 0xAD), 16),
-    # Screen edges, ladders and drops: each move at its earliest stock hit.
-    ("Trunk $0D, walking left in from $0E", (TRUNK, 0x0D, 0x06), ("edge", "left", 0x0E, 0x06, 0, 4), (ZOZURA, 0x5E, 0x7E), 10),
-    ("Trunk $17, walking right in from $16", (TRUNK, 0x17, 0x06), ("edge", "right", 0x16, 0x06, 15, 4), (YUINARU, 0x5F, 0x5E), 10),
-    ("Trunk $1D, dropping in from $26 at column 10", (TRUNK, 0x1D, 0x06), ("edge", "drop", 0x26, 0x06, 10, 9), (YUINARU, 0xCC, 0xBA), 29),
-    ("Trunk $1E, dropping in from $1D at column 10", (TRUNK, 0x1E, 0x06), ("edge", "drop", 0x1D, 0x06, 10, 9), (YUINARU, 0x3B, 0x2C), 12),
-    ("Trunk $1E, dropping in from $1D at column 7", (TRUNK, 0x1E, 0x06), ("edge", "drop", 0x1D, 0x06, 7, 9), (CHARRON, 0x99, 0x9B), 24),
-    ("Trunk $21, dropping in from $22 at column 7", (TRUNK, 0x21, 0x06), ("edge", "drop", 0x22, 0x06, 7, 9), (CHARRON, 0x88, 0x9B), 22),
-    ("Trunk $23, dropping in from $24 at column 4", (TRUNK, 0x23, 0x06), ("edge", "drop", 0x24, 0x06, 4, 9), (YUINARU, 0x35, 0x33), 12),
-    ("Trunk $24, dropping in from $25 at column 5", (TRUNK, 0x24, 0x06), ("edge", "drop", 0x25, 0x06, 5, 9), (CHARRON, 0x35, 0x45), 12),
-    ("Trunk $30, dropping in from $36 at column 4", (TRUNK, 0x30, 0x06), ("edge", "drop", 0x36, 0x06, 4, 9), (CHARRON, 0x45, 0x46), 14),
-    ("Trunk $32, dropping in from $38 at column 3", (TRUNK, 0x32, 0x06), ("edge", "drop", 0x38, 0x06, 3, 9), (SNOWMAN, 0x23, 0x33), 10),
-    ("Trunk $32, dropping in from $38 at column 8", (TRUNK, 0x32, 0x06), ("edge", "drop", 0x38, 0x06, 8, 9), (CHARRON, 0x99, 0xA8), 24),
-    ("Trunk $37, dropping in from $3C at column 5", (TRUNK, 0x37, 0x06), ("edge", "drop", 0x3C, 0x06, 5, 9), (CHARRON, 0x95, 0x94), 24),
-    ("Mist $04, climbing down from $2A", (MIST, 0x04, 0x0A), ("edge", "down", 0x2A, 0x0A, 2, 9), (IKEDA, 0x22, 0x34), 12),
-    ("Mist $07, dropping in from $01 at column 9", (MIST, 0x07, 0x0A), ("edge", "drop", 0x01, 0x0A, 9, 9), (HORNET, 0x3B, 0x2B), 13),
-    ("Mist $08, dropping in from $02 at column 8", (MIST, 0x08, 0x0A), ("edge", "drop", 0x02, 0x0A, 8, 9), (HORNET, 0x28, 0x46), 10),
-    ("Mist $08, dropping in from $02 at column 10", (MIST, 0x08, 0x0A), ("edge", "drop", 0x02, 0x0A, 10, 9), (HORNET, 0x4B, 0x49), 13),
-    ("Mist $08, dropping in from $02 at column 6", (MIST, 0x08, 0x0A), ("edge", "drop", 0x02, 0x0A, 6, 9), (SIR_GAWAINE, 0x98, 0xAA), 24),
-    ("Mist $09, dropping in from $03 at column 3", (MIST, 0x09, 0x0A), ("edge", "drop", 0x03, 0x0A, 3, 9), (HORNET, 0x38, 0x28), 39),
-    ("Mist $0F, dropping in from $05 at column 11", (MIST, 0x0F, 0x0A), ("edge", "drop", 0x05, 0x0A, 11, 9), (BIHORUDA, 0x4C, 0x4A), 13),
-    ("Mist $12, dropping in from $0C at column 6", (MIST, 0x12, 0x0A), ("edge", "drop", 0x0C, 0x0A, 6, 9), (HORNET, 0x68, 0x66), 17),
-    ("Mist $1A, dropping in from $19 at column 4", (MIST, 0x1A, 0x0A), ("edge", "drop", 0x19, 0x0A, 4, 9), (RAIDEN, 0x25, 0x35), 10),
-    ("Mist $25, dropping in from $1D at column 8", (MIST, 0x25, 0x0A), ("edge", "drop", 0x1D, 0x0A, 8, 9), (YAREEKA, 0x29, 0x2A), 18),
-    ("Mist $27, dropping in from $20 at column 10", (MIST, 0x27, 0x0A), ("edge", "drop", 0x20, 0x0A, 10, 9), (LAMPREY, 0x3A, 0x39), 12),
-    ("Mist $48, dropping in from $3F at column 10", (MIST, 0x48, 0x0A), ("edge", "drop", 0x3F, 0x0A, 10, 9), (RIPASHEIKU, 0x3A, 0x37), 12),
-    ("Mist $49, dropping in from $40 at column 10", (MIST, 0x49, 0x0A), ("edge", "drop", 0x40, 0x0A, 10, 9), (ROKUSUTAHN, 0x9C, 0xAC), 24),
-    ("Branch $04, dropping in from $06 at column 12", (BRANCH, 0x04, 0x08), ("edge", "drop", 0x06, 0x08, 12, 9), (MASKMAN, 0x5A, 0x59), 35),
-    ("Branch $19, dropping in from $14 at column 11", (BRANCH, 0x19, 0x08), ("edge", "drop", 0x14, 0x08, 11, 9), (GIANT_STRIDER, 0x29, 0x28), 36),
-    ("Branch $19, dropping in from $14 at column 4", (BRANCH, 0x19, 0x08), ("edge", "drop", 0x14, 0x08, 4, 9), (GIANT_STRIDER, 0x56, 0x54), 21),
-    ("Dartmoor $03, dropping in from $01 at column 8", (DARTMOOR, 0x03, 0x0C), ("edge", "drop", 0x01, 0x0C, 8, 9), (YUINARU, 0x58, 0x56), 16),
-    ("Zenis $03, dropping in from $10 at column 2", (ZENIS, 0x03, 0x0F), ("edge", "drop", 0x10, 0x0F, 2, 9), (GERIBUTA, 0xA5, 0xB5), 26),
-    ("Zenis $03, dropping in from $10 at column 12", (ZENIS, 0x03, 0x0F), ("edge", "drop", 0x10, 0x0F, 12, 9), (GERIBUTA, 0xAA, 0xBA), 28),
-    ("Zenis $0E, dropping in from $09 at column 7", (ZENIS, 0x0E, 0x0F), ("edge", "drop", 0x09, 0x0F, 7, 9), (SIR_GAWAINE, 0x29, 0x38), 11),
-    ("Zenis $10, dropping in from $0B at column 6", (ZENIS, 0x10, 0x0F), ("edge", "drop", 0x0B, 0x0F, 6, 9), (ZOZURA, 0xA8, 0x96), 26),
-    ("Zenis $10, dropping in from $0B at column 8", (ZENIS, 0x10, 0x0F), ("edge", "drop", 0x0B, 0x0F, 8, 9), (ZOZURA, 0xAA, 0x9A), 26),
-    ("Zenis $12, dropping in from $0D at column 7", (ZENIS, 0x12, 0x0F), ("edge", "drop", 0x0D, 0x0F, 7, 9), (ROKUSUTAHN, 0x48, 0x58), 17),
+    # Screen edges, ladders and drops: each move at its earliest stock hit that the
+    # moves leave clear.
+    ("Trunk $0D, walking left in from $0E: Zozura $5E", (TRUNK, 0x0D, 0x06), ("edge", "left", 0x0E, 0x06, 0, 4), (ZOZURA, 0x5E, 0x7E), 10),
+    ("Trunk $17, walking right in from $16: Yuinaru $5F", (TRUNK, 0x17, 0x06), ("edge", "right", 0x16, 0x06, 15, 4), (YUINARU, 0x5F, 0x5E), 10),
+    ("Trunk $1D, dropping in from $26 at column 10: Yuinaru $CC", (TRUNK, 0x1D, 0x06), ("edge", "drop", 0x26, 0x06, 10, 9), (YUINARU, 0xCC, 0xBA), 29),
+    ("Trunk $1E, dropping in from $1D at column 10: Yuinaru $3B", (TRUNK, 0x1E, 0x06), ("edge", "drop", 0x1D, 0x06, 10, 9), (YUINARU, 0x3B, 0x2C), 12),
+    ("Trunk $1E, dropping in from $1D at column 7: Charron $99", (TRUNK, 0x1E, 0x06), ("edge", "drop", 0x1D, 0x06, 7, 9), (CHARRON, 0x99, 0x9B), 24),
+    ("Trunk $20, dropping in from $23 at column 3: Ikeda $95", (TRUNK, 0x20, 0x06), ("edge", "drop", 0x23, 0x06, 3, 9), (IKEDA, 0x95, 0x7F), 20),
+    ("Trunk $20, dropping in from $23 at column 7: Ikeda $99", (TRUNK, 0x20, 0x06), ("edge", "drop", 0x23, 0x06, 7, 9), (IKEDA, 0x99, 0x8F), 20),
+    ("Trunk $21, dropping in from $22 at column 7: Charron $88", (TRUNK, 0x21, 0x06), ("edge", "drop", 0x22, 0x06, 7, 9), (CHARRON, 0x88, 0x9B), 22),
+    ("Trunk $23, dropping in from $24 at column 4: Yuinaru $35", (TRUNK, 0x23, 0x06), ("edge", "drop", 0x24, 0x06, 4, 9), (YUINARU, 0x35, 0x33), 12),
+    ("Trunk $24, dropping in from $25 at column 5: Charron $35", (TRUNK, 0x24, 0x06), ("edge", "drop", 0x25, 0x06, 5, 9), (CHARRON, 0x35, 0x45), 12),
+    ("Trunk $30, dropping in from $36 at column 4: Charron $45", (TRUNK, 0x30, 0x06), ("edge", "drop", 0x36, 0x06, 4, 9), (CHARRON, 0x45, 0x46), 14),
+    ("Trunk $32, dropping in from $38 at column 3: Snowman $23", (TRUNK, 0x32, 0x06), ("edge", "drop", 0x38, 0x06, 3, 9), (SNOWMAN, 0x23, 0x33), 10),
+    ("Trunk $32, dropping in from $38 at column 8: Charron $99", (TRUNK, 0x32, 0x06), ("edge", "drop", 0x38, 0x06, 8, 9), (CHARRON, 0x99, 0xA8), 24),
+    ("Trunk $37, dropping in from $3C at column 5: Charron $95", (TRUNK, 0x37, 0x06), ("edge", "drop", 0x3C, 0x06, 5, 9), (CHARRON, 0x95, 0x94), 24),
+    ("Mist $04, climbing down from $2A: Ikeda $22", (MIST, 0x04, 0x0A), ("edge", "down", 0x2A, 0x0A, 2, 9), (IKEDA, 0x22, 0x34), 12),
+    ("Mist $07, dropping in from $01 at column 9: Gawaine $38", (MIST, 0x07, 0x0A), ("edge", "drop", 0x01, 0x0A, 9, 9), (SIR_GAWAINE, 0x38, 0x48), 13),
+    ("Mist $08, dropping in from $02 at column 8: Hornet $28", (MIST, 0x08, 0x0A), ("edge", "drop", 0x02, 0x0A, 8, 9), (HORNET, 0x28, 0x46), 10),
+    ("Mist $08, dropping in from $02 at column 10: Hornet $4B", (MIST, 0x08, 0x0A), ("edge", "drop", 0x02, 0x0A, 10, 9), (HORNET, 0x4B, 0x3D), 13),
+    ("Mist $08, dropping in from $02 at column 8: Gawaine $98", (MIST, 0x08, 0x0A), ("edge", "drop", 0x02, 0x0A, 8, 9), (SIR_GAWAINE, 0x98, 0xA5), 10),
+    ("Mist $09, dropping in from $03 at column 3: Hornet $38", (MIST, 0x09, 0x0A), ("edge", "drop", 0x03, 0x0A, 3, 9), (HORNET, 0x38, 0x28), 39),
+    ("Mist $0F, dropping in from $05 at column 11: Bihoruda $4C", (MIST, 0x0F, 0x0A), ("edge", "drop", 0x05, 0x0A, 11, 9), (BIHORUDA, 0x4C, 0x4A), 13),
+    ("Mist $12, dropping in from $0C at column 6: Hornet $68", (MIST, 0x12, 0x0A), ("edge", "drop", 0x0C, 0x0A, 6, 9), (HORNET, 0x68, 0x66), 17),
+    ("Mist $1A, dropping in from $19 at column 4: Raiden $25", (MIST, 0x1A, 0x0A), ("edge", "drop", 0x19, 0x0A, 4, 9), (RAIDEN, 0x25, 0x35), 10),
+    ("Mist $25, dropping in from $1D at column 8: Yareeka $29", (MIST, 0x25, 0x0A), ("edge", "drop", 0x1D, 0x0A, 8, 9), (YAREEKA, 0x29, 0x2A), 18),
+    ("Mist $27, dropping in from $20 at column 10: Lamprey $3A", (MIST, 0x27, 0x0A), ("edge", "drop", 0x20, 0x0A, 10, 9), (LAMPREY, 0x3A, 0x39), 12),
+    ("Mist $48, dropping in from $3F at column 10: Ripasheiku $3A", (MIST, 0x48, 0x0A), ("edge", "drop", 0x3F, 0x0A, 10, 9), (RIPASHEIKU, 0x3A, 0x37), 12),
+    ("Mist $49, dropping in from $40 at column 10: Rokusutahn $9C", (MIST, 0x49, 0x0A), ("edge", "drop", 0x40, 0x0A, 10, 9), (ROKUSUTAHN, 0x9C, 0xAC), 24),
+    ("Mist $49, dropping in from $40 at column 10: Raiden $A8", (MIST, 0x49, 0x0A), ("edge", "drop", 0x40, 0x0A, 10, 9), (RAIDEN, 0xA8, 0xB7), 24),
+    ("Branch $04, dropping in from $06 at column 12: Maskman $5A", (BRANCH, 0x04, 0x08), ("edge", "drop", 0x06, 0x08, 12, 9), (MASKMAN, 0x5A, 0x6A), 35),
+    ("Branch $19, dropping in from $14 at column 11: Giant Strider $29", (BRANCH, 0x19, 0x08), ("edge", "drop", 0x14, 0x08, 11, 9), (GIANT_STRIDER, 0x29, 0x39), 36),
+    ("Branch $19, dropping in from $14 at column 4: Giant Strider $56", (BRANCH, 0x19, 0x08), ("edge", "drop", 0x14, 0x08, 4, 9), (GIANT_STRIDER, 0x56, 0x54), 21),
+    ("Dartmoor $03, dropping in from $01 at column 8: Yuinaru $58", (DARTMOOR, 0x03, 0x0C), ("edge", "drop", 0x01, 0x0C, 8, 9), (YUINARU, 0x58, 0x56), 16),
+    ("Zenis $03, dropping in from $10 at column 2: Geributa $A5", (ZENIS, 0x03, 0x0F), ("edge", "drop", 0x10, 0x0F, 2, 9), (GERIBUTA, 0xA5, 0xB5), 26),
+    ("Zenis $03, dropping in from $10 at column 12: Geributa $AA", (ZENIS, 0x03, 0x0F), ("edge", "drop", 0x10, 0x0F, 12, 9), (GERIBUTA, 0xAA, 0xBA), 28),
+    ("Zenis $0E, dropping in from $09 at column 7: Gawaine $29", (ZENIS, 0x0E, 0x0F), ("edge", "drop", 0x09, 0x0F, 7, 9), (SIR_GAWAINE, 0x29, 0x38), 11),
+    ("Zenis $10, dropping in from $0B at column 6: Zozura $A6", (ZENIS, 0x10, 0x0F), ("edge", "drop", 0x0B, 0x0F, 6, 9), (ZOZURA, 0xA6, 0xA4), 26),
+    ("Zenis $10, dropping in from $0B at column 6: Zozura $A8", (ZENIS, 0x10, 0x0F), ("edge", "drop", 0x0B, 0x0F, 6, 9), (ZOZURA, 0xA8, 0xA5), 26),
+    ("Zenis $10, dropping in from $0B at column 8: Zozura $AA", (ZENIS, 0x10, 0x0F), ("edge", "drop", 0x0B, 0x0F, 8, 9), (ZOZURA, 0xAA, 0xAE), 26),
+    ("Zenis $12, dropping in from $0D at column 7: Rokusutahn $48", (ZENIS, 0x12, 0x0F), ("edge", "drop", 0x0D, 0x0F, 7, 9), (ROKUSUTAHN, 0x48, 0x58), 17),
 ]
 
 
@@ -471,10 +476,10 @@ def main():
             walk_out(game, mist5, None, lambda: (ram(AREA), ram(SCREEN)) == (MIST, 0x05))
             until("Seamless's room for the Mist's screen 6", gawaine_live, 400)
             after = game.tcp("entrances_state")
-            assert after["seamless"] > before["seamless"], (before, after)
-            last = after.get("last_room", {})
-            assert (last.get("area"), last.get("screen"), last.get("entity"), last.get("from"), last.get("to")) == \
-                (MIST, 0x06, GAWAINE, 0x89, 0x9E), after
+            # Seamless loads each neighbour so (the Mist's $0F below too): the
+            # move on $06 is the one counted.
+            i = table.index((MIST, 0x06, GAWAINE, 0x89, 0x9E))
+            assert after["seamless"] > before["seamless"] and after["uses"][i] > before["uses"][i], (before, after)
             # Where he is now: he started at the new block and has moved at
             # most a pixel a tick since (or the stock one, 80 pixels off).
             xs = [x for e, x in zip(room["entities"], room["x"]) if e == GAWAINE]

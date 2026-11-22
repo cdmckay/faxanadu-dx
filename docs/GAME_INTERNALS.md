@@ -2200,7 +2200,9 @@ entity, placement) before the routine copies them; for Seamless's rooms,
 in the slots, right after `initialize` loads them. No ROM is changed and no
 read override is used. Each new block is the nearest tried where, from every
 way onto the screen, nothing hits the hero within 30 frames of the first
-update (or ever, within 240). Zone respawn replays a zone's way in after a
+update (or ever, within 240), and where a hit within 60 frames has an escape
+from k = 13 (see the checks under "Screen edges, ladders and drops", which
+every move passed). Zone respawn replays a zone's way in after a
 death, so two of these came back at every death: leaving the Tower of Mist
 enters the Mist (onto the Raiden), and leaving the Castle of Fraternal enters
 Dartmoor (above the wolfmen).
@@ -2208,13 +2210,13 @@ Dartmoor (above the wolfmen).
 | Screen | Way in (hero) | Enemy | Stock: hit, latest escape | Moved to | Then |
 |---|---|---|---|---|---|
 | Mist `$06` | Mascon's temple (144,128); building `$22` (112,128) | Sir Gawaine `$89` | 0, none; 0, none | `$9E` (224,144), the floor's right end | No hit from any way in |
-| Mist `$17` | The Tower of Mist's way out (80,160) | Raiden `$A5`, on the spot | 0, none | `$A9` (144,160) | First hit 36 |
+| Mist `$17` | The Tower of Mist's way out (80,160) | Raiden `$A5`, on the spot | 0, none | `$A9` (144,160) | 36, which a swing at 13 escapes |
 | Mist `$1F` | Building `$26` (64,144); (48,144) | Sugata `$95` | 4, Up at 4; 20, Left at 16 | `$97` (112,144) | 66, 82 |
 | Mist `$20` | The way out of the tower on `$50-$52` (96,144) | Sir Gawaine `$96`, in the same closet | 0, none | `$46` (96,64), on the closet's roof | No hit |
-| Mist `$29` | Building `$20` (192,112) | Ikeda `$7D` | 4, Up at 4 | `$7E` (224,112) | 104 (and 56 from (176,112), stock 162) |
-| Trunk `$06` | Building `$20` (160,80) | Zombie `$5B` | 8, Up at 8 | `$5C` (192,80) | 50 |
+| Mist `$29` | Building `$20` (192,112) | Ikeda `$7D` | 4, Up at 4 | `$7E` (224,112) | 104 (and 56 from (176,112), stock 162, which walking right at 13 escapes) |
+| Trunk `$06` | Building `$20` (160,80) | Zombie `$5B` | 8, Up at 8 | `$5C` (192,80) | 50, which a swing at 13 escapes |
 | Branch `$0E` | The door from `$0F` (224,96) | Lamprey `$6D` | 3, none | `$6A` (160,96) | No hit |
-| Branch `$13` | The door from `$14` (224,128) | Maskman `$8C` | 16, none | `$9A` (160,144) | 57 |
+| Branch `$13` | The door from `$14` (224,128) | Maskman `$8C` | 16, none | `$9D` (208,144), beside the door | No hit |
 | Dartmoor `$02` | Building `$22` (160,64); (176,64) | Giant Strider `$49` | 0, none; 16, Up at 16 | `$A9` (144,160), the lower floor | No hit from any door |
 | Dartmoor `$03` | Building `$24` (176,160) | Lamprey `$AA` | 3, Right at 3 | `$A8` (128,160) | 105 |
 | Dartmoor `$08` | Building `$25` (16,64), (32,64) | Sir Gawaine `$42`, on the door | 0, none | `$46` (96,64) | No hit |
@@ -2235,9 +2237,13 @@ Why those blocks and not nearer ones, where nearer ones were tried:
   `$22`'s at 16).
 - Dartmoor `$0C`: the floor's left blocks (`$A1`, `$A2`, `$A4`-`$A6`) hit the
   walk in from `$0D` at 12-28; `$AC` still hits the landing at 10.
+- Branch `$13`: `$9A` (160,144) is hit at 57 with nothing that escapes it, as
+  are `$8B` and `$9B`; `$9C` at 41. `$9D`, a block from the door, is not
+  hit within 240 frames.
 
 **Near misses left alone** (fair: something pressed after k = 13 avoids the
-hit):
+hit, measured as the door survey did: nothing hits him for 90 frames after
+the first update):
 
 | Screen | Way in (hero) | First hit, latest escape |
 |---|---|---|
@@ -2271,16 +2277,109 @@ player who lets go as the screen changes can stand still and see what is
 there, so an edge that hits only a hero still walking is a near miss. A drop
 has no such choice: once he falls, he lands where the hole is.
 
-Each move was then checked with every move on its screen made at once,
-against every way onto the screen (its doors and every edge, held and let
-go): a hit within 60 frames that the moves caused or made earlier fails it
-unless a move started at k = 13 or later escapes it. The table gives the
-earliest stock hit of each way in it fixes (held / let go; a drop has one),
-by the hero's column for a drop.
+The enemy to move for an unfair way in is the one whose removal clears the
+hit, not the one nearest the hero when it lands: dropping into the Mist's
+`$07` at column 9 lands between a hornet and Sir Gawaine, and it is Sir
+Gawaine. Each new block is the nearest where, from every way onto the screen,
+the moved enemy makes no hit within 30 frames that the screen without it
+would not have. Where a screen has two moves, the second was searched with
+the first made: on the Mist's `$08` the hornet at `$28` sits under the drop
+and hits first, hiding that the one at `$4B` would be next. Then every move
+was checked with all of its screen's moves made at once, against every way
+onto the screen (its doors and every edge, held and let go): a hit within 60
+frames that the moves caused or made earlier fails it unless a move started
+at k = 13 or later escapes it; every unfair way in had to come out clear of
+it; and each move had to be needed, its way's hit coming back without it.
 
-[TABLE]
+**The frame counters.** Enemy scripts time themselves by
+`SpriteUpdateCounter` (`$0383`, counted up on each frame that sprites update,
+and read by 63 sites for animation and behavior phases) and, in one behavior,
+`InterruptCounter` (`$1A`). So a way in's first hit depends on the moment the
+hero arrives as well as on where the enemy starts: dropping into the Mist's
+`$07` at column 9, Sir Gawaine hits on frame 3 with the counters at one
+phase and on frame 18 at another. Every measurement here was taken with the
+counters as the temple's state had them (`InterruptCounter` `$F3`,
+`SpriteUpdateCounter` `$3E`, 21 frames before he walks out), which the
+end-to-end test sets too.
 
-[WHY]
+The fixed ways in were also played at seven more phases (the counters
+shifted by 1, 2, 3, 4, 7, 16 and 37 frames on the frame before the first
+update), stock and with the moves, and so were the near misses below and
+every door way onto a screen with a door move. The stock first hit moves in
+a few (Mist `$07`: 3 to 19; Zenis `$0E`: 1 to 17; Zenis `$12`: 6 to 12; the
+Castle of Fraternal's way out: 10 to 26), but with the moves each stays clear
+or keeps its escape at every phase, and each near miss stays one: where
+holding the way in is hit at another frame (Branch `$20`: 0 to 7, Dartmoor
+`$04`: 4 to 10, Mist `$4E`: 4 or 19), letting go still is not.
+
+An escape here means nothing hits him for 120 frames after his first
+update, as the edges were measured; the door survey's near misses below used
+90.
+
+The table gives the earliest stock hit of each way in a move fixes (held and
+let go for an edge; a drop has one), by the hero's column for a drop, and the
+first hit once the screen's moves are made.
+
+| Screen | Enemy (stock block) | Ways in it fixes: first stock hit | Moved to | Then: first hit |
+|---|---|---|---|---|
+| Trunk `$0D` | Zozura `$5E` (224,80) | walking left from `$0E` (row 4): 0 held, 1 let go | `$7E` (224,112) | 72, none |
+| Trunk `$17` | Yuinaru `$5F` (240,80) | walking right from `$16` (row 4): 0 held, 0 let go | `$5E` (224,80) | 78, none |
+| Trunk `$1D` | Yuinaru `$CC` (192,192) | dropping from `$26` (columns 10, 11): 19, 19 | `$BA` (160,176) | none, none |
+| Trunk `$1E` | Yuinaru `$3B` (176,48) | dropping from `$1D` (column 10): 2 | `$2C` (192,32) | none |
+| Trunk `$1E` | Charron `$99` (144,144) | dropping from `$1D` (columns 7, 8): 14, 14 | `$9B` (176,144) | 67, 32 |
+| Trunk `$20` | Ikeda `$95` (80,144) | dropping from `$23` (columns 2, 3, 4, 5): 15, 10, 10, 10 | `$7F` (240,112) | none, none, none, none |
+| Trunk `$20` | Ikeda `$99` (144,144) | dropping from `$23` (columns 6, 7, 8, 9): 15, 10, 10, 10 | `$8F` (240,128) | none, none, none, 70 |
+| Trunk `$21` | Charron `$88` (128,128) | dropping from `$22` (columns 7, 8, 9): 12, 12, 38 | `$9B` (176,144) | 141, 149, 157 |
+| Trunk `$23` | Yuinaru `$35` (80,48) | dropping from `$24` (columns 4, 5): 2, 2 | `$33` (48,48) | none, none |
+| Trunk `$24` | Charron `$35` (80,48) | dropping from `$25` (columns 4, 5): 4, 2 | `$45` (80,64) | none, none |
+| Trunk `$30` | Charron `$45` (80,64) | dropping from `$36` (column 4): 4 | `$46` (96,64) | 30 |
+| Trunk `$32` | Snowman `$23` (48,32) | dropping from `$38` (columns 3, 4): 0, 32 | `$33` (48,48) | none, none |
+| Trunk `$32` | Charron `$99` (144,144) | dropping from `$38` (column 8): 14 | `$A8` (128,160) | 101 |
+| Trunk `$37` | Charron `$95` (80,144) | dropping from `$3C` (column 5): 14 | `$94` (64,144) | 41 |
+| Mist `$04` | Ikeda `$22` (32,32) | climbing down from `$2A` (column 2): 2 held, 3 let go | `$34` (64,48) | 32, 32 |
+| Mist `$07` | Sir Gawaine `$38` (128,48) | dropping from `$01` (column 9): 3 | `$48` (128,64) | none |
+| Mist `$08` | Hornet `$28` (128,32) | dropping from `$02` (columns 7, 8): 1, 0 | `$46` (96,64) | none, none |
+| Mist `$08` | Hornet `$4B` (176,64) | dropping from `$02` (columns 9, 10, 11): 4, 3, 3 | `$3D` (208,48) | none, none, none |
+| Mist `$08` | Sir Gawaine `$98` (128,144) | dropping from `$02` (columns 6, 7, 8): 14, 1, 0 | `$A5` (80,160) | none, none, none |
+| Mist `$09` | Hornet `$38` (128,48) | dropping from `$03` (column 3): 29 | `$28` (128,32) | 86 |
+| Mist `$0F` | Bihoruda `$4C` (192,64) | dropping from `$05` (columns 11, 12): 3, 3 | `$4A` (160,64) | 111, 111 |
+| Mist `$12` | Hornet `$68` (128,96) | dropping from `$0C` (column 6): 7 | `$66` (96,96) | 102 |
+| Mist `$1A` | Raiden `$25` (80,32) | dropping from `$19` (columns 3, 4, 5): 10, 0, 0 | `$35` (80,48) | none, none, none |
+| Mist `$25` | Yareeka `$29` (144,32) | dropping from `$1D` (column 8): 8 | `$2A` (160,32) | 33 |
+| Mist `$27` | Lamprey `$3A` (160,48) | dropping from `$20` (column 10): 2 | `$39` (144,48) | 110 |
+| Mist `$48` | Ripasheiku `$3A` (160,48) | dropping from `$3F` (column 10): 2 | `$37` (112,48) | 83 |
+| Mist `$49` | Rokusutahn `$9C` (192,144) | dropping from `$40` (column 10): 14 | `$AC` (192,160) | 176 |
+| Mist `$49` | Raiden `$A8` (128,160) | dropping from `$40` (column 10): 14 | `$B7` (112,176) | 176 |
+| Branch `$04` | Maskman `$5A` (160,80) | dropping from `$06` (column 12): 25 | `$6A` (160,96) | 96 |
+| Branch `$19` | Giant Strider `$29` (144,32) | dropping from `$14` (columns 11, 12): 26, 32 | `$39` (144,48) | 91, 97 |
+| Branch `$19` | Giant Strider `$56` (96,80) | dropping from `$14` (column 4): 11 | `$54` (64,80) | 124 |
+| Dartmoor `$03` | Yuinaru `$58` (128,80) | dropping from `$01` (column 8): 6 | `$56` (96,80) | none |
+| Zenis `$03` | Geributa `$A5` (80,160) | dropping from `$10` (column 2): 16 | `$B5` (80,176) | none |
+| Zenis `$03` | Geributa `$AA` (160,160) | dropping from `$10` (column 12): 18 | `$BA` (160,176) | none |
+| Zenis `$0E` | Sir Gawaine `$29` (144,32) | dropping from `$09` (columns 7, 8): 1, 1 | `$38` (128,48) | none, none |
+| Zenis `$10` | Zozura `$A6` (96,160) | dropping from `$0B` (column 6): 16 | `$A4` (64,160) | 66 |
+| Zenis `$10` | Zozura `$A8` (128,160) | dropping from `$0B` (columns 6, 7, 8, 9): 16, 16, 16, 16 | `$A5` (80,160) | 66, 109, 161, 161 |
+| Zenis `$10` | Zozura `$AA` (160,160) | dropping from `$0B` (columns 8, 9): 16, 16 | `$AE` (224,160) | 161, 161 |
+| Zenis `$12` | Rokusutahn `$48` (128,64) | dropping from `$0D` (columns 6, 7): 12, 7 | `$58` (128,80) | none, none |
+
+Why some blocks are further off:
+
+- Trunk `$20` is one room 16 blocks wide, and the drop from `$23` lands
+  anywhere in columns 2 to 12, so both Ikedas, which leap at the hero, go to
+  the right wall (`$7F`, `$8F`): every nearer block is hit from some column
+  within 15 frames.
+- Zenis `$10` is a pit: the shaft from `$0B` comes down columns 6 to 9 onto a
+  floor eight blocks wide, with its three Zozuras under it. They go to its
+  ends (`$A4`, `$A5`, `$AE`); with any of them nearer, some column is hit
+  within 25 frames with nothing that escapes it.
+- Mist `$48` is Ripasheiku's room, and the drop from `$3F` lands on him at
+  column 10; three blocks left (`$37`) the first hit is 83 frames in.
+- Mist `$49`: the drop from `$40` lands between Rokusutahn and a Raiden. With
+  Rokusutahn moved alone, the Raiden hits at 28 with no escape, so both move.
+- Branch `$04`, Branch `$19`'s upper Giant Strider, Mist `$08`'s Sir Gawaine
+  (and Branch `$13`'s Maskman at its door): the nearest blocks clear for 30
+  frames still left a hit before 60 that nothing escapes, so these went to
+  the nearest block with no hit within 60 frames.
 
 **Near misses left alone at edges.** Hit only while still holding the way
 in, before any reaction; letting go on the first update avoids it, or leaves

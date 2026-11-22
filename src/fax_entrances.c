@@ -69,7 +69,7 @@ static const FaxEntranceMove moves[] = {
     { MIST,     0x20, SIR_GAWAINE,   0x96, 0x46 },   /* the tower on $50-$52's way out (96,144): 0 */
     { MIST,     0x29, IKEDA,         0x7D, 0x7E },   /* building $20's way out (192,112): 4 */
     { BRANCH,   0x0E, LAMPREY,       0x6D, 0x6A },   /* the door from $0F (224,96): 3 */
-    { BRANCH,   0x13, MASKMAN,       0x8C, 0x9A },   /* the door from $14 (224,128): 16, no escape */
+    { BRANCH,   0x13, MASKMAN,       0x8C, 0x9D },   /* the door from $14 (224,128): 16, no escape */
     { DARTMOOR, 0x02, GIANT_STRIDER, 0x49, 0xA9 },   /* building $22's way out (160,64): 0 */
     { DARTMOOR, 0x03, LAMPREY,       0xAA, 0xA8 },   /* building $24's way out (176,160): 3 */
     { DARTMOOR, 0x08, SIR_GAWAINE,   0x42, 0x46 },   /* building $25's way out (16,64), (32,64): 0 */
@@ -80,6 +80,8 @@ static const FaxEntranceMove moves[] = {
     { TRUNK,    0x1D, YUINARU,       0xCC, 0xBA },   /* dropping from $26: 19 */
     { TRUNK,    0x1E, YUINARU,       0x3B, 0x2C },   /* dropping from $1D: 2 */
     { TRUNK,    0x1E, CHARRON,       0x99, 0x9B },   /* dropping from $1D: 14 */
+    { TRUNK,    0x20, IKEDA,         0x95, 0x7F },   /* dropping from $23: 10 */
+    { TRUNK,    0x20, IKEDA,         0x99, 0x8F },   /* dropping from $23: 10 */
     { TRUNK,    0x21, CHARRON,       0x88, 0x9B },   /* dropping from $22: 12 */
     { TRUNK,    0x23, YUINARU,       0x35, 0x33 },   /* dropping from $24: 2 */
     { TRUNK,    0x24, CHARRON,       0x35, 0x45 },   /* dropping from $25: 2 */
@@ -88,10 +90,10 @@ static const FaxEntranceMove moves[] = {
     { TRUNK,    0x32, CHARRON,       0x99, 0xA8 },   /* dropping from $38: 14 */
     { TRUNK,    0x37, CHARRON,       0x95, 0x94 },   /* dropping from $3C: 14 */
     { MIST,     0x04, IKEDA,         0x22, 0x34 },   /* climbing down from $2A: 2 */
-    { MIST,     0x07, HORNET,        0x3B, 0x2B },   /* dropping from $01: 3 */
+    { MIST,     0x07, SIR_GAWAINE,   0x38, 0x48 },   /* dropping from $01: 3 */
     { MIST,     0x08, HORNET,        0x28, 0x46 },   /* dropping from $02: 0 */
-    { MIST,     0x08, HORNET,        0x4B, 0x49 },   /* dropping from $02: 3 */
-    { MIST,     0x08, SIR_GAWAINE,   0x98, 0xAA },   /* dropping from $02: 14 */
+    { MIST,     0x08, HORNET,        0x4B, 0x3D },   /* dropping from $02: 3 */
+    { MIST,     0x08, SIR_GAWAINE,   0x98, 0xA5 },   /* dropping from $02: 0 */
     { MIST,     0x09, HORNET,        0x38, 0x28 },   /* dropping from $03: 29 */
     { MIST,     0x0F, BIHORUDA,      0x4C, 0x4A },   /* dropping from $05: 3 */
     { MIST,     0x12, HORNET,        0x68, 0x66 },   /* dropping from $0C: 7 */
@@ -100,15 +102,17 @@ static const FaxEntranceMove moves[] = {
     { MIST,     0x27, LAMPREY,       0x3A, 0x39 },   /* dropping from $20: 2 */
     { MIST,     0x48, RIPASHEIKU,    0x3A, 0x37 },   /* dropping from $3F: 2 */
     { MIST,     0x49, ROKUSUTAHN,    0x9C, 0xAC },   /* dropping from $40: 14 */
-    { BRANCH,   0x04, MASKMAN,       0x5A, 0x59 },   /* dropping from $06: 25 */
-    { BRANCH,   0x19, GIANT_STRIDER, 0x29, 0x28 },   /* dropping from $14: 26 */
+    { MIST,     0x49, RAIDEN,        0xA8, 0xB7 },   /* dropping from $40: 14 */
+    { BRANCH,   0x04, MASKMAN,       0x5A, 0x6A },   /* dropping from $06: 25 */
+    { BRANCH,   0x19, GIANT_STRIDER, 0x29, 0x39 },   /* dropping from $14: 26 */
     { BRANCH,   0x19, GIANT_STRIDER, 0x56, 0x54 },   /* dropping from $14: 11 */
     { DARTMOOR, 0x03, YUINARU,       0x58, 0x56 },   /* dropping from $01: 6 */
     { ZENIS,    0x03, GERIBUTA,      0xA5, 0xB5 },   /* dropping from $10: 16 */
     { ZENIS,    0x03, GERIBUTA,      0xAA, 0xBA },   /* dropping from $10: 18 */
     { ZENIS,    0x0E, SIR_GAWAINE,   0x29, 0x38 },   /* dropping from $09: 1 */
-    { ZENIS,    0x10, ZOZURA,        0xA8, 0x96 },   /* dropping from $0B: 16 */
-    { ZENIS,    0x10, ZOZURA,        0xAA, 0x9A },   /* dropping from $0B: 16 */
+    { ZENIS,    0x10, ZOZURA,        0xA6, 0xA4 },   /* dropping from $0B: 16 */
+    { ZENIS,    0x10, ZOZURA,        0xA8, 0xA5 },   /* dropping from $0B: 16 */
+    { ZENIS,    0x10, ZOZURA,        0xAA, 0xAE },   /* dropping from $0B: 16 */
     { ZENIS,    0x12, ROKUSUTAHN,    0x48, 0x58 },   /* dropping from $0D: 7 */
 };
 enum { MOVES = sizeof moves / sizeof moves[0] };
