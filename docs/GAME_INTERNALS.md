@@ -675,10 +675,13 @@ What a feature can rely on, and the traps:
 - In Seamless a neighboring room's actors keep moving before the hero walks
   in, chasing a copy of him held at that room's edge, so where they are when
   he arrives depends on how long he took (Eolis $04's Zozuras gather at its
-  right edge and knock him about as he crosses). A test that walks in should
+  right edge and knock him about as he crosses). Eolis $08's Monodron waits at
+  its left edge, the seam with the town: a hero who crosses and stops there is
+  knocked back onto $01, at x 239-255 (#130), so a walk that stops at an X,
+  reading no screen, can stop on the wrong one. A test that walks in should
   put them in place in its save state, as `tests/damage/damage_numbers.py`
   does, or come in by a door, whose load spawns them fresh, as the
-  `eolis-zozuras` fixture does. In Seamless the walk itself has no scroll: a
+  `eolis-zozuras` and the keys test's `keys-eolis-exit` fixtures do. In Seamless the walk itself has no scroll: a
   headless schedule that holds a direction through the original's scroll
   carries the hero rooms further.
 - In Seamless, a neighboring room's actors live in `fax_world.c`'s copy of
@@ -1151,7 +1154,9 @@ block `$9C`); Up from x=195 goes into the town, screen 1, at x=144. The
 screens run 7-6-5-4-3-2-1-8 from left to right (`EOLIS_SCROLL_DATA`, bank 3;
 screen 0 has no neighbours). Screens 4 and 5 each have two Zozura (`$47`,
 9 HP) crawling right along the ground, and screen 8 a Monodron (`$2A`,
-10 HP). Walking left from the town, the hero comes onto screen 4 at x=240.
+10 HP), which loads on the exit door's own block, `$9C` (x 192): a door
+load that stands the hero at the exit door puts him on it, and it hits him
+within a few frames. Walking left from the town, the hero comes onto screen 4 at x=240.
 The stock Hand Dagger passes over a Zozura (see *Weapon reach*); facing it,
 the swords hit one from up to 31 pixels left of the hero (his x minus its x),
 and it hurts him from 15. A Zozura that reaches a hero at the screen's right
