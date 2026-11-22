@@ -54,7 +54,9 @@ static int origin_x,origin_y;static bool origin_valid;
 static int hud_x=-1,hud_w; /* where the status bar's column 0 went in the last picture, and its width */
 static uint32_t *canvas;
 static size_t capacity;
-static uint32_t frozen_hud[RW*HUD];
+/* The status bar band (the native picture's top 32 lines) of the last frame
+ * that showed it, live in play and through conversations (fax_world_step). */
+static uint32_t hud_band[RW*HUD];
 static bool hud_valid;
 static Room *transfer;
 /* Each screen's special event (CurrentScreen_SpecialEventID, $042E, as
@@ -353,8 +355,15 @@ void fax_world_step(void){
     if(!enabled||!supported())return;
     if(!trace){const char *path=getenv("NESRECOMP_WORLD_TRACE");if(path&&*path){trace=fopen(path,"w");if(trace)fprintf(trace,"cycles,area,room,x,y,scroll,ready,handoffs,failures,simulation_ms\n");}}
     if(trace)fprintf(trace,"%llu,%u,%u,%u,%u,%u,%u,%u,%u,%.4f\n",(unsigned long long)cyc_cycle_count(),q(0x24),q(0x63),q(0x9e),q(0xa1),q(0x54),q(0xe),handoffs,failures,sim_ms);
+    /* The status bar band is the game's own picture's, taken every frame
+     * that picture shows it (fax_text_hud_showing), not only in play: in a
+     * conversation, a shop or a script the world keeps its pose, but gold
+     * counts down as a purchase is paid and up as the King gives it, and HP,
+     * MP and T: change, as in the original. Pausing and the Select menu take
+     * it too; the game changes nothing on it then. A frame without it (the
+     * screen off while one loads) keeps the last band shown (#132). */
+    if(fax_text_hud_showing()){memcpy(hud_band,cyc_frame_argb(),sizeof hud_band);hud_valid=true;}
     if(!playing())return;
-    memcpy(frozen_hud,cyc_frame_argb(),sizeof frozen_hud);hud_valid=true;
     uint64_t start=SDL_GetPerformanceCounter();refresh(true);if(active<0)return;
     if(ticks==last_tick)return;last_tick=ticks;
     int w=VIEW_W,h=VIEW_H;Room *a=&rooms[active];
@@ -519,7 +528,9 @@ const uint32_t *fax_world_present(int *w,int *h,const uint32_t *native){
         if(q(0x3c7)<128)menu_rect(width,native,16,112,64,80);
         menu_rect(width,native,x,y,q(0x20a)*8,q(0x20b)*8);
     }
-    const uint32_t *hud=hud_valid&&!original_scene?frozen_hud:native;
+    /* The rooms and actors may hold a pose, but the band is this frame's
+     * whenever the game shows it (hud_band, fax_world_step). */
+    const uint32_t *hud=hud_valid&&!original_scene?hud_band:native;
     for(int y=0;y<HUD;y++)memcpy(canvas+(size_t)y*width+hud_x,hud+y*RW,RW*sizeof *canvas);
 finished:
     picture_w=width;picture_h=height;render_ms=(SDL_GetPerformanceCounter()-start)*1000.0/SDL_GetPerformanceFrequency();return canvas;
@@ -585,13 +596,13 @@ static int state_set(const uint8_t *buf,int len){
 }
 static int hud_get(uint8_t *buf,int cap){
     if(!enabled||!hud_valid)return 0;
-    int n=4+(int)sizeof frozen_hud;if(cap<n)return -1;
-    memcpy(buf,"HUD1",4);memcpy(buf+4,frozen_hud,sizeof frozen_hud);return n;
+    int n=4+(int)sizeof hud_band;if(cap<n)return -1;
+    memcpy(buf,"HUD1",4);memcpy(buf+4,hud_band,sizeof hud_band);return n;
 }
-static int hud_validate(const uint8_t *buf,int len){return !len||(buf&&len==4+(int)sizeof frozen_hud&&!memcmp(buf,"HUD1",4));}
+static int hud_validate(const uint8_t *buf,int len){return !len||(buf&&len==4+(int)sizeof hud_band&&!memcmp(buf,"HUD1",4));}
 static int hud_set(const uint8_t *buf,int len){
     if(!hud_validate(buf,len))return 0;hud_valid=len!=0&&enabled;
-    if(hud_valid)memcpy(frozen_hud,buf+4,sizeof frozen_hud);return 1;
+    if(hud_valid)memcpy(hud_band,buf+4,sizeof hud_band);return 1;
 }
 static void hooks(bool on){const char *ids[]={"player","seam","draw","queue","wait","pause","inventory","death","script"};char id[64];for(unsigned i=0;i<sizeof ids/sizeof ids[0];i++){snprintf(id,sizeof id,"faxanadu.world.%s",ids[i]);nes_mod_set_function_hook_enabled(id,on);}}
 static void deactivate(void){enabled=atlas=false;cyc_mod_set_ram_read_hook(NULL);hooks(false);}

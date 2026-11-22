@@ -61,6 +61,18 @@ aspect ratio. The native inventory appears over the frozen expanded world;
 only its text boxes cover the scene, so actors remain visible both inside and
 outside the original NES bounds. Dialogue retains a completed world pose and camera throughout the
 opening, text, and closing; native text and portrait panels cover that scene.
+**The status bar is not part of that pose** (#132): its band is the game's own
+picture's, taken at every frame's end that shows it (`fax_text_hud_showing`),
+in play, conversations, shops and scripts alike, so a purchase's gold counts
+down as it is paid, the King's gift counts up, and HP, MP and `T:` follow the
+game, as in the original; the Elixir (`fax_charges.c`) and the spell cost
+(`fax_spell_cost.c`) are drawn over it from the game's state as before. The
+band is live in a Start pause and the Select menu too: a pause changes
+nothing on it, so it looks as frozen as the world, and the map and the quest
+log cover the whole picture. A frame without the status bar (the screen off while
+one loads) keeps the last band shown, and that band is the
+`faxanadu.world.hud` save-state record. Until #132 the band was copied only
+on frames of play, so a conversation showed the one before it throughout.
 Death retains its native animation inside the fixed canvas.
 Neighboring terrain uses the current region background palette, including
 native fades. All visible actors use the active world scene's sprite palette;
@@ -124,6 +136,7 @@ All automated launches were hidden and muted with native saves disabled.
 | Current-build restore | Supported right seam: complete final state and rendered picture reproduce exactly after save/load; native/interpreter state and rolling trace match |
 | Fixed view (#107) | `tests/world/fixed_view.py`, in the suite: the canvas and picture are 424x240 at 424x240, 1920x1080 and 300x600 windows; at 1920x1080 the window shows them at 4x (1696x960) with black around; F4's overview grows to the region and F4 again restores 424x240. The adaptive Fit it replaced was checked at 1536x720, 600x1200 and 3840x720 |
 | Boss arenas (#110) | `tests/world/boss_arenas.py`, in the suite, a part per boss's screen: beside it, it is on no map; in by the original's scroll (or a door, for walled King Grieve and the final boss), the room alone with the boss handler running; the boss's slot emptied, the handler ends and the room joins its neighbour; out again by a handoff. The final boss's kill begins the ending, which reaches the King's room |
+| Live status bar (#132) | `tests/world/live_status_bar.py`, in the suite, read off the presented picture's pixels (the band's gold digits, and its bars' fill): buying the Elixir at Eolis's tool shop, every frame of the count-down shows the gold the game had a frame before, every amount from 700 down to 380, and every frame's band is the game's own picture's; the King's gift counts 0 up to 3000 the same way; at Eolis's Guru the bars read 32 HP and 5 MP, and 80 and 80 during his first line. Without the fix all three fail. A probe through the shop's opening, a Start pause and the Select menu found the band equal to the game's own on every frame |
 | Shared CIRAM API | Invalid bounds/NULL and isolated upload refused; upload/restore succeeds; serialized complete machine unchanged after the probe |
 | Catalog / prepared helper | Feature activation without CLI override; hidden helper loads and pauses all prepared states; owner configuration restored to normal audio |
 
