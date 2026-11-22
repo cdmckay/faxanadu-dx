@@ -105,6 +105,10 @@ the connected map. It is still a preview, for local play only. See
 - **Weapons indoors.** In shops, houses and temples the Select menu equips
   what you choose and you keep your weapon in hand, and your sword hurts the
   few enemies indoors, in the Mist and Dartmoor.
+- **Fair entrances.** Some enemies stood right where a door, a ladder, a
+  screen's edge or the bottom of a drop puts you, and hit you before you could
+  react. They start a little way off now; every other enemy is where the
+  original puts it.
 
 ### Getting around
 

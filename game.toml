@@ -812,3 +812,13 @@ id = "faxanadu.quests.loop"
 addr = 0xe040
 bank = 15
 bytes = "f0 f4 a9 00 8d 20 01 60 a5 18 85 16"
+
+# Fair entrances (fax_entrances.c): Sprites_PopulateNextAvailableSprite, called
+# by Screen_LoadSpriteInfo for each (entity, YX) pair of the screen's bank 11
+# placement list, with the pair already in CurrentSprite_Entity/_XPos/_YPos.
+
+[[mod_function_hook]]
+id = "faxanadu.fair-entrances.populate"
+addr = 0xc205
+bank = 15
+bytes = "a2 07 8e 78 03 bd cc 02 c9 ff d0 41"   # LDX #$07, STX CurrentSpriteIndex, LDA CurrentSprites_Entities,X

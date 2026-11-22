@@ -32,3 +32,4 @@ faxanadu_auto_entries.csv
 # Nix devShell (direnv)
 .direnv/
 build-tests/
+__pycache__/
