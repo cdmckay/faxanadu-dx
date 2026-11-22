@@ -46,6 +46,7 @@ STATES = {
     "sugata-flash": ("sugata_state", "enabled"), "quick-shops": ("shops_state", "enabled"),
     "auto-keys": ("keys_state", "auto"), "reusable-tools": ("keys_state", "reuse"),
     "recharging-items": ("recharge_state", "enabled"), "mana-refill": ("mana_state", "enabled"),
+    "magician-lesson": ("lesson_state", "enabled"),
     "double-gold": ("gold_state", "enabled"),
     "forgiving-jumps": ("forgiving_jumps_state", "enabled"), "falling-pose": ("falling_pose_state", "enabled"),
     "ladder-fixes": ("ladders_state", "enabled"), "ladder-hold": ("ladder_hold_state", "enabled"),

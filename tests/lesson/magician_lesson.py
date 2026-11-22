@@ -8,12 +8,13 @@ the clock, on a reserved TCP port (tests/e2e/fax_e2e.py). It uses Block's test
 harness (tests/block/harness.py) and the movement tests' headless runs
 (tests/movement/play.py).
 
-Every part starts beside Eolis's Magician (building $05), in a new game in
-file 1 (the fixture "lesson-magician": from Eolis's meat shop, its door edited
+Every part starts at Eolis's Magician's door (building $05), in a new game in
+file 1 (the fixture "lesson-door": out of Eolis's meat shop, its door edited
 to lead to his, with the Ring of Elf, as tests/gold/double_gold.py walks to
 the King). Save-state edits then give the hero what a part needs (external
 prerequisites, not coverage): his gold, and for the file part the lesson
-learned (the feature's own record).
+learned (the feature's own record). The hero goes in, which draws that gold
+on the HUD, and jumps onto the Magician's step beside him.
 
 buy       With 3000 Golds, he offers "Learn to recover magic faster for 2000
           Golds." as a question. A: the game takes 2000, 10 a frame, and he
@@ -55,6 +56,7 @@ LEARNED = 1                                                         # mana's [1]
 ZONE_NAMES = "faxanadu.zone-names"                                  # its save-state record
 AREA_SAVED_AREA, AREA_SAVED_SCREEN, PLAYER_SAVED_POS = 0x3D5, 0x3D6, 0x3D8
 MP, SPECIAL_ITEMS, PORTRAIT, PLAYER_IS_DEAD = 0x39A, 0x42C, 0x3C7, 0x438
+INTERRUPT_COUNTER, LIT = 0x1A, 0x14                                 # a box's "?" or arrow shows while it has $10
 SELECTED_MAGIC, MAGIC_INVENTORY, NUMBER_OF_MAGIC_SPELLS = 0x3C0, 0x3A9, 0x3C5
 RING_OF_ELF, NO_PORTRAIT, DELUGE, DELUGE_COST = 0x80, 0xFF, 0, 2
 EOLIS, MAGICIANS_SCREEN, MAGICIANS_DOOR = 0, 6, 0x9C                # EOLIS_DOOR_LOCATIONS: building $05
@@ -72,11 +74,11 @@ class Game(harness.Game, play.Game):
     """Block's harness (walks, warps) and the movement tests' headless runs."""
 
 
-@fax_e2e.recipe("lesson-magician", parent="eolis-meat-shop")
-def _magician(g):
+@fax_e2e.recipe("lesson-door", parent="eolis-meat-shop")
+def _door(g):
     """From Eolis's meat shop, out of a door edited to be the Magician's
-    (Eolis screen 6, block $9C), with the Ring of Elf, in, and left to him:
-    he stands on a step at the left wall (x 16), so a jump left onto it."""
+    (Eolis screen 6, block $9C), with the Ring of Elf, onto his door: the
+    street cleared of people, who would knock the hero back."""
     path = g.out / "to-magician.cycstate"
     g.tcp("save_state", path=str(path))
     fixture(path, path, {AREA_SAVED_AREA: EOLIS, AREA_SAVED_SCREEN: MAGICIANS_SCREEN, PLAYER_SAVED_POS: MAGICIANS_DOOR,
@@ -84,12 +86,18 @@ def _magician(g):
     g.load(path)
     g.walk_out()
     assert g.where() == (EOLIS, MAGICIANS_SCREEN), g.where()
-    g.poke({ENTITIES + i: 0xFF for i in range(8)})                  # nothing on the street knocks him back
+    g.poke({ENTITIES + i: 0xFF for i in range(8)})
     column = (MAGICIANS_DOOR & 15) * 16
     g.walk_to(column - 6, column + 4)
+    g.settle()
+
+
+def go_in(g):
+    """Through his door, and left to him: he stands on a step at the left
+    wall (x 16), so a jump left onto it. Going in draws the HUD, so it shows
+    gold a fixture set."""
     g.act("up", 4, 10)
     g.until("the Magician's room", lambda: g.ram(AREA) == BUILDINGS and g.settled(), 600)
-    g.wait(30)
     walk("left")
     for _ in range(10):
         if g.ram(POS_X) <= MAGICIANS_STEP:
@@ -116,16 +124,25 @@ def main():
     def lesson():
         return g.tcp("lesson_state")
 
+    def shot_lit(name):
+        """A screenshot with the box's blinking mark lit: the game draws its
+        "?" or arrow only while InterruptCounter has bit 4 ($10) set, so a few
+        frames into such a run."""
+        g.wait(((LIT - g.ram(INTERRUPT_COUNTER) - 1) & 0x1F) + 1)
+        return g.shot(name)
+
     def done_talking():
         return g.ram(PORTRAIT) == NO_PORTRAIT and not g.box_open()
 
-    def start(name, writes, records=None):
-        """Load the Magician fixture with `writes` (and records): beside him."""
+    def start(name, writes, records=None, enter=True):
+        """Load the fixture at his door with `writes` (and records), and go in to him."""
         target = out / f"{name}.cycstate"
-        fixture(magician, target, {SPECIAL_ITEMS: RING_OF_ELF, **writes}, records)
+        fixture(door, target, {SPECIAL_ITEMS: RING_OF_ELF, **writes}, records)
         g.load(target)
         g.wait(4)
-        assert g.ram(AREA) == BUILDINGS and not g.box_open(), "beside the Magician"
+        assert g.where() == (EOLIS, MAGICIANS_SCREEN) and not g.box_open(), "at the Magician's door"
+        if enter:
+            go_in(g)
 
     def talk(first):
         """Up at him (again, if a press lands as a script winds down), until
@@ -149,9 +166,7 @@ def main():
         type_out(f"his line {which}", 900, pauses=False)
         s = lesson()
         assert s["line"] == which and s["phase"] == (ASKING if which == OFFER else SAYING), s
-        g.wait(2)
-        g.shot(name)
-        return s
+        return shot_lit(name)
 
     def taught_refill():
         """Outside his door, a few steps along the street: headless runs with
@@ -183,7 +198,7 @@ def main():
                   f"every {step} frames (on {', '.join(map(str, want[:4]))}, ...)")
 
     try:
-        magician = g.state("lesson-magician")
+        door = g.state("lesson-door")
         for part in PARTS:
             if not args.wants(part):
                 continue
@@ -196,7 +211,8 @@ def main():
                 s = lesson()
                 assert s["enabled"] and not s["learned"] and s["price"] == PRICE, s
                 talk(SLOT_ID)
-                his_line(OFFER, "offer")
+                typing = g.save("offer-typing")                     # his offer as it types, for the record's check
+                offer = his_line(OFFER, "offer")
                 act("a", 2, 0)                                      # yes: a new press on the question
                 until("the lesson to be paid", lambda: lesson()["learned"], 600)
                 his_line(TAUGHT, "taught")
@@ -214,6 +230,18 @@ def main():
                 assert gold() == 3000 - PRICE and s["nothing_more"] == 1 and s["offers"] == 1, s
                 print("ok: asked again, he has nothing more to teach, and takes nothing")
                 taught_refill()
+                # A save state from while his offer typed, loaded after his other lines took the slot: the
+                # record puts the conversation back (not learned, asking) and the offer in the slot.
+                g.load(typing)
+                type_out("his offer, again", 900, pauses=False)
+                s = lesson()
+                assert not s["learned"] and (s["phase"], s["line"]) == (ASKING, OFFER), s
+                again = shot_lit("offer-reloaded")
+                assert again.read_bytes() == offer.read_bytes(), "the reloaded offer is not the same picture"
+                act("b", 2, 0)
+                until("the box to close", done_talking, 300)
+                print("ok: a save state from while his offer typed, loaded after his other lines, shows the offer "
+                      "again, picture for picture, not learned")
 
             if part == "refuse":
                 start("refuse", gold_bytes(3000))
@@ -230,8 +258,7 @@ def main():
                 act("a", 2, 0)
                 until("\"This is not enough Golds.\"", lambda: g.ram(MESSAGE_ID) == NOT_ENOUGH, 300)
                 type_out("the game's refusal")
-                g.wait(2)
-                g.shot("not-enough")
+                shot_lit("not-enough")
                 page_through("the refusal", done_talking, 1200)
                 s = lesson()
                 assert gold() == PRICE - 1 and not s["learned"] and s["short"] == 1 and s["taught"] == 0, s
@@ -239,7 +266,7 @@ def main():
                       "nothing taken, nothing learned")
 
             if part == "file":
-                start("file", {PLAYER_IS_DEAD: 1}, {RECORD: {LEARNED: 1}})
+                start("file", {PLAYER_IS_DEAD: 1}, {RECORD: {LEARNED: 1}}, enter=False)
                 assert lesson()["learned"]
                 saves = tcp("files_state")["saves"]
                 dissolve()
@@ -267,13 +294,11 @@ def main():
                 assert not lesson()["enabled"]
                 talk(MAGIC_200G)
                 type_out("his sale")
-                g.wait(2)
-                g.shot("original-sale")
+                shot_lit("original-sale")
                 act("a", 2, 0)
                 until("\"Watch your remaining power level.\"", lambda: g.ram(MESSAGE_ID) == WATCH_POWER, 900)
                 type_out("his last word")
-                g.wait(2)
-                g.shot("original-watch")
+                shot_lit("original-watch")
                 page_through("his last word", done_talking, 1200)
                 assert gold() == 3000 - STOCK_PRICE and g.ram(MP) == 20 + STOCK_MP, (gold(), g.ram(MP))
                 print(f"ok: with the remaster off, he sells {STOCK_MP} MP for {STOCK_PRICE} Golds, as the original")
