@@ -27,6 +27,7 @@
 #include "fax_shops.h"
 #include "fax_respawn.h"
 #include "fax_recharge.h"
+#include "fax_mana.h"
 #include "fax_slain.h"
 #include "fax_indoor.h"
 #include "fax_damage.h"
@@ -144,6 +145,7 @@ static void frame_end(void *ctx) {
     fax_world_step();
     fax_travel_step();
     fax_magic_frame_end();
+    fax_mana_frame_end();
     fax_banner_step();
     fax_slain_frame_end();
     fax_files_frame_end();
@@ -193,6 +195,7 @@ static void tcp_setup(void *ctx) {
     fax_shops_tcp_setup();
     fax_respawn_tcp_setup();
     fax_recharge_tcp_setup();
+    fax_mana_tcp_setup();
     fax_slain_tcp_setup();
     fax_indoor_tcp_setup();
     fax_damage_tcp_setup();

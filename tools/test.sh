@@ -99,6 +99,9 @@ cmake --build "$OUT/respawn" -j"$JOBS" >/dev/null
 cmake -S tests/recharge -B "$OUT/recharge" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/recharge" -j"$JOBS" >/dev/null
 "$OUT/recharge/recharge_test"
+cmake -S tests/mana -B "$OUT/mana" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/mana" -j"$JOBS" >/dev/null
+"$OUT/mana/mana_test"
 cmake -S tests/slain -B "$OUT/slain" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/slain" -j"$JOBS" >/dev/null
 "$OUT/slain/slain_test"
@@ -195,6 +198,7 @@ E2E=(
   "respawn+sw   tests/respawn/zone_respawn.py --parts $SW"
   "recharge     tests/recharge/recharging_items.py --parts"
   "elixir-lines tests/recharge/guru_lines.py --parts"
+  "mana         tests/mana/mana_refill.py"
   "switch       tests/remastered/one_switch.py"
   "title        tests/title/title_remastered.py"
   "title+sw     tests/title/title_remastered.py $SW"

@@ -433,6 +433,22 @@ rom = [
 # one.
 
 [[feature]]
+id = "mana-refill"
+package = "faxanadu.remastered"
+plugin = "faxanadu.mana-refill"
+source = "src/fax_mana.c"
+hooks = "faxanadu.mana-refill."
+rom = []
+# No hooks and no ROM: it reads RAM and the stack at the end of each frame.
+# When Game_MainLoop is waiting in WaitForNextFrame from its top, it may give
+# 1 MP through Player_AddMP ($C0D9) in a committed call, which writes
+# Player_MP, the MP bar's two commands in the PPU buffer (with
+# PPUBuffer_WriteOffset) and Player_SetMP's temporaries (PPU_TargetAddr,
+# Temp_Int24, Temp_0xEF), and the stack below S; the CPU's registers are put
+# back. Nothing else runs then, so nothing else is using them. No read
+# overrides. Not in save files: continuing fills MP.
+
+[[feature]]
 id = "fair-entrances"
 package = "faxanadu.remastered"
 plugin = "faxanadu.fair-entrances"
