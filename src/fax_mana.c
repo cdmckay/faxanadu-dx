@@ -71,8 +71,9 @@ enum { PPU_ROOM = 0x24, COMMAND = 3 };
  * (Deluge), 4, 6, 10 and 16 (Tilte) of the 80 (MAGIC_COSTS, $B7A9, bank 14).
  * Every cast restarts the wait, and spells fly a second or so, one at a time,
  * so a fight is fought on the bar the hero brought to it; between fights a
- * spell's cost comes back in 1 (Deluge) to 8 s (Tilte) after the wait, and an
- * empty bar fills in 40 s. Retuning means changing these and nothing else. */
+ * spell's cost is back 4.5 s (Deluge) to 11.5 s (Tilte) after the cast, and
+ * an empty bar is full after 43.5 s. Retuning means changing these and
+ * nothing else. */
 enum { WAIT = 240, STEP = 30 };
 
 /* The state: what a save state must keep. */
