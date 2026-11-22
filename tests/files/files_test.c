@@ -84,6 +84,21 @@ uint8_t cyc_render_chr(uint16_t addr) {
 }
 uint8_t cyc_render_nametable(uint16_t addr) { return addr == 0x23C0 + (TITLE_ROW / 4) * 8 + START_COL / 4 ||
                                                      addr == 0x23C0 + (TITLE_ROW / 4) * 8 + CONTINUE_COL / 4 ? 0x55 : 0; }
+/* The frame's sprites: one 8x8, the arrow, its first line at (sprite_x,
+ * sprite_y) of the native picture (none if sprite_y < 0), drawn in SPRITE
+ * where place() takes it. */
+enum { SPRITE = 0xFF00FF00u };
+bool cyc_render_line_sprite16(int y) { (void)y; return false; }
+static int sprite_x, sprite_y = -1;
+void cyc_render_sprites(uint32_t *out, int width, int height, int native_x0, const uint8_t *bg_opaque,
+                        CycSpritePlaceFn place, void *user) {
+    (void)bg_opaque;
+    int ox = native_x0 + sprite_x;
+    if (sprite_y < 0 || (place && !place(0, sprite_x, sprite_y, &ox, user))) return;
+    for (int r = 0; r < 8; ++r)
+        for (int c = 0; c < 8; ++c)
+            if (ox + c < width && sprite_y + r < height) out[(sprite_y + r) * width + ox + c] = SPRITE;
+}
 
 /* Guru travel, as Save files sees it. */
 #define TRAVEL_SAY 0xAE00u
@@ -433,9 +448,11 @@ static void menu_presses(void) {
     remove_files();
 }
 
-/* Where the menu goes: the two choices on the title's row (y 160), NEW GAME
- * ending where START did; a pick over them and the notices (rows 160-239),
- * clear of the logo (to 143) and of DX (148-155, fax_title.c). */
+/* Where the menu goes: NEW GAME over CONTINUE, from x 96 on rows 151 and 165,
+ * in the band between the logo (to 143) and the notices (from 184), the
+ * original's START and CONTINUE (row 160) hidden but for the arrow; a pick
+ * over the original's choices and the notices (rows 160-239), the band above
+ * it black. */
 static uint32_t at(const uint32_t *px, int w, int x, int y) { return px[y * w + x]; }
 static void placement(void) {
     stock(); remove_files();
@@ -447,34 +464,51 @@ static void placement(void) {
     CHECK(fax_files_present(picture, &w, &h) == picture);   /* the title's loop did not run */
     seen = 0;
     drawn.lines = 0;
+    sprite_x = ARROW_X; sprite_y = NEW_GAME_Y;              /* the arrow beside NEW GAME: clear of row 160 */
     const uint32_t *got = fax_files_present(picture, &w, &h);
     CHECK(got != picture && drawn.lines == 0);              /* no box on the two choices */
     memcpy(out, got, sizeof out);
-    /* NEW GAME in columns 5-12, in the palette START's column has (1): its
-     * letters' pixel value 3 is palette entry 7, a space's cell black. */
-    CHECK(at(out, w, 5 * 8, TITLE_Y) == cyc_render_color(7) && at(out, w, 12 * 8 + 7, TITLE_Y + 7) == cyc_render_color(7));
-    CHECK(at(out, w, 8 * 8, TITLE_Y) == cyc_render_color(0));             /* the space, over START's S */
-    CHECK(at(out, w, 4 * 8 + 7, TITLE_Y) == 0x12345678 && at(out, w, 13 * 8, TITLE_Y) == 0x12345678);
-    CHECK(at(out, w, 40, TITLE_Y - 1) == 0x12345678 && at(out, w, 40, TITLE_Y + 8) == 0x12345678);
-    /* CONTINUE, with nothing to continue: grey over the game's own. */
-    CHECK(at(out, w, 16 * 8, TITLE_Y) == cyc_render_color(MENU_DIM_COLOR) &&
-          at(out, w, 23 * 8 + 7, TITLE_Y + 7) == cyc_render_color(MENU_DIM_COLOR));
+    CHECK(MENU_X == 96 && NEW_GAME_Y == 151 && CONTINUE_Y == 165 && ARROW_X == 84);
+    /* NEW GAME, in the palette START's column has (1): its letters' pixel
+     * value 3 is palette entry 7; the space between its words is left. */
+    CHECK(at(out, w, 96, 151) == cyc_render_color(7) && at(out, w, 96 + 23, 151 + 7) == cyc_render_color(7));
+    CHECK(at(out, w, 96 + 24, 151) == 0x12345678 && at(out, w, 96 + 31, 158) == 0x12345678);   /* the space */
+    CHECK(at(out, w, 96 + 32, 151) == cyc_render_color(7) && at(out, w, 159, 158) == cyc_render_color(7));
+    CHECK(at(out, w, 95, 151) == 0x12345678 && at(out, w, 160, 151) == 0x12345678);
+    CHECK(at(out, w, 96, 150) == 0x12345678 && at(out, w, 96, 159) == 0x12345678);
+    /* CONTINUE, with nothing to continue: grey, below it, left-aligned. */
+    CHECK(at(out, w, 96, 165) == cyc_render_color(MENU_DIM_COLOR) && at(out, w, 159, 172) == cyc_render_color(MENU_DIM_COLOR));
+    CHECK(at(out, w, 95, 168) == 0x12345678 && at(out, w, 160, 172) == 0x12345678 && at(out, w, 96, 173) == 0x12345678);
+    /* The original's START and CONTINUE (columns 8-23 of row 160) are black. */
+    CHECK(at(out, w, 64, 160) == cyc_render_color(0) && at(out, w, 191, 164) == cyc_render_color(0));
+    CHECK(at(out, w, 95, 167) == cyc_render_color(0) && at(out, w, 160, 167) == cyc_render_color(0));
+    CHECK(at(out, w, 63, 160) == 0x12345678 && at(out, w, 192, 167) == 0x12345678 && at(out, w, 64, 168) == 0x12345678);
+    CHECK(at(out, w, ARROW_X, NEW_GAME_Y) == 0x12345678);   /* the game's own arrow, not drawn again */
+    /* With the arrow beside CONTINUE, it crosses row 160: drawn again over the
+     * black. With a file to continue, CONTINUE is white. */
     write_sample(1);
     scan();
+    sprite_y = CONTINUE_Y - 1;
     memcpy(out, fax_files_present(picture, &w, &h), sizeof out);
-    CHECK(at(out, w, 16 * 8, TITLE_Y) == 0x12345678);                    /* the game's own CONTINUE */
-    /* A pick. */
+    CHECK(at(out, w, 96, 165) == cyc_render_color(7) && at(out, w, 159, 172) == cyc_render_color(7));
+    CHECK(at(out, w, ARROW_X, CONTINUE_Y - 1) == SPRITE && at(out, w, ARROW_X + 7, 167) == SPRITE);
+    CHECK(at(out, w, ARROW_X - 1, 164) == cyc_render_color(0) && at(out, w, ARROW_X + 8, 164) == cyc_render_color(0));
+    sprite_y = -1;
+    /* A pick: the box, and the band between it and the logo black. */
     menu.mode = NEW_PICK;
-    CHECK(fax_files_present(picture, &w, &h) != picture);
+    memcpy(out, fax_files_present(picture, &w, &h), sizeof out);
     CHECK(drawn.x == 16 && drawn.y == 160 && drawn.cols == MENU_COLS && drawn.rows == MENU_ROWS);
     CHECK(drawn.y + (drawn.rows + 2) * FAX_TEXT_CELL == 240);   /* the frame's bottom on the last row */
     CHECK(drawn.lines == MENU_ROWS && drawn.first_line_y == 168 && drawn.last_line_y == 224);
+    CHECK(at(out, w, 0, 144) == cyc_render_color(0) && at(out, w, 255, 159) == cyc_render_color(0));
+    CHECK(at(out, w, 96, 151) == cyc_render_color(0) && at(out, w, 0, 143) == 0x12345678);
     static uint32_t wide[512 * 240];
     w = 512;
     CHECK(fax_files_present(wide, &w, &h) != wide && drawn.x == 128 + 16 && drawn.y == 160);
     menu.mode = TOP;
     memcpy(wide, fax_files_present(wide, &w, &h), sizeof wide);
-    CHECK(wide[TITLE_Y * 512 + 128 + 5 * 8] == cyc_render_color(7));       /* NEW GAME, in the native picture */
+    CHECK(wide[NEW_GAME_Y * 512 + 128 + MENU_X] == cyc_render_color(7));   /* NEW GAME, in the native picture */
+    CHECK(wide[CONTINUE_Y * 512 + 128 + MENU_X] == cyc_render_color(7));
     remove_files();
 }
 
@@ -490,21 +524,24 @@ static void title(void) {
     CHECK(fax_save_file_write(3, &r));
     title_up = false;
     /* The two choices: the routine runs on, without Select or Start, and draws
-     * its arrow where the hook puts it. */
+     * its arrow where the hook puts it: 12 pixels before the chosen line, its
+     * lit rows (34 below the Y it is given, as the stock $7E lights 160) on
+     * the line's. */
     press(BUTTON_SELECT);                                          /* from CONTINUE, where it opens */
     CHECK(title_hook(START_SCREEN_INPUT) == 0 && title_up && menu.mode == TOP && menu.cursor == 0);
     CHECK(ram[JOY1_CHANGED] == 0 && ram[START_SCREEN_CHOICE] == 0);
-    cpu.x = 0x34;
-    CHECK(arrow_hook(ARROW_X_LOADED) == 0 && cpu.x == ARROW_NEW_GAME_X && ARROW_NEW_GAME_X == 28);
-    press(BUTTON_RIGHT);
+    cpu.x = 0x34; cpu.y = 0x7E;
+    CHECK(arrow_hook(ARROW_LOADED) == 0 && cpu.x == 84 && cpu.y == NEW_GAME_Y - 34 && cpu.y == 117);
+    press(BUTTON_DOWN);                                            /* the routine has no use for Down */
     CHECK(title_hook(START_SCREEN_INPUT) == 0 && menu.cursor == 1 && ram[START_SCREEN_CHOICE] == 1);
-    cpu.x = 0x74;
-    CHECK(arrow_hook(ARROW_X_LOADED) == 0 && cpu.x == 0x74);
+    CHECK(ram[JOY1_CHANGED] == BUTTON_DOWN);
+    cpu.x = 0x74; cpu.y = 0x7E;
+    CHECK(arrow_hook(ARROW_LOADED) == 0 && cpu.x == 84 && cpu.y == CONTINUE_Y - 34 && cpu.y == 131);
     /* CONTINUE's pick: handled, no arrow; Start stays hidden until a file. */
     press(BUTTON_START);
     CHECK(title_hook(START_SCREEN_INPUT) == 1 && ram[JOY1_CHANGED] == 0 && menu.mode == CONTINUE_PICK && menu.cursor == 2);
-    cpu.x = 0x74;
-    CHECK(arrow_hook(ARROW_X_LOADED) == 0 && cpu.x == 0x74);       /* not on the choices: left alone */
+    cpu.x = 0x74; cpu.y = 0x7E;
+    CHECK(arrow_hook(ARROW_LOADED) == 0 && cpu.x == 0x74 && cpu.y == 0x7E);   /* not on the choices: left alone */
     press(BUTTON_A);
     CHECK(title_hook(START_SCREEN_INPUT) == 1 && ram[JOY1_CHANGED] == (BUTTON_A | BUTTON_START));
     CHECK(ram[START_SCREEN_CHOICE] == 1 && continuing == 3 && fax_save_file() == 3 && !title_up && furthest == 5);
@@ -557,8 +594,8 @@ static void title(void) {
     deactivate();
     press(BUTTON_START);
     CHECK(title_hook(START_SCREEN_INPUT) == 0 && ram[JOY1_CHANGED] == BUTTON_START);
-    cpu.x = 0x34;
-    CHECK(arrow_hook(ARROW_X_LOADED) == 0 && cpu.x == 0x34);
+    cpu.x = 0x34; cpu.y = 0x7E;
+    CHECK(arrow_hook(ARROW_LOADED) == 0 && cpu.x == 0x34 && cpu.y == 0x7E);
     remove_files();
 }
 

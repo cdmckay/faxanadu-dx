@@ -1,4 +1,5 @@
-"""Play DX on the title end to end in a hidden window and check it.
+"""Play the title end to end in a hidden window and check it: DX on the logo,
+and NEW GAME over CONTINUE.
 
     python3 tests/title/title_dx.py --build build-cycle --rom "Faxanadu (USA).nes" --out /tmp/title
 
@@ -7,25 +8,33 @@ speed) and the script waits on the game's own frames, never on the clock, on a
 reserved TCP port (tests/e2e/fax_e2e.py), so any number can go in parallel.
 
 Copies the build to OUT/game, then:
-  1. Screenshots the title with the remaster on (DX over NEW GAME
-     and CONTINUE) and, on the same frame, with the whole remaster off (the
-     original title, START / CONTINUE and the notices), and compares them. The
-     logo is the same to the pixel, but for the tile with the tip of its F
-     (x 48-55, y 40-47), which the graphics fixes draw in the logo's palette
-     instead of the stars' grey (tests/graphics/graphics_fixes.py checks its
-     colors). Between it and what is below (y 144-159),
-     the original is black and the remaster differs only by the word: pixel
-     for pixel the title's own letter tiles (CHR_LETTERS, read from the ROM),
-     in the light yellow of the logo's palette, centered under the logo, with at least 4
-     black rows above it and below it, down to NEW GAME and CONTINUE in the
-     one picture and to START / CONTINUE in the other, both from y 160.
-  2. Opens NEW GAME's file pick, and moves its cursor: the word stays as it
-     was.
+  1. With no saved file, screenshots the title with the remaster on and, on
+     the same frame, with the whole remaster off (the original), and compares
+     them pixel for pixel. The original is the stock title: START and CONTINUE
+     side by side on row 160, in the title's letters (CHR_LETTERS, read from
+     the ROM), the game's arrow before START, black between them and the
+     logo, and no DX. The remaster's is the original's but for:
+       - DX on the logo, just under FAXANADU's letters (lit on rows 116-122),
+         centred on it: pixel for pixel the title's letters, in the light
+         yellow of the logo's palette, with a black outline a pixel wide all
+         round (the 8 neighbours); the logo shows everywhere else;
+       - the tile with the tip of the logo's F (x 48-55, y 40-47), which the
+         graphics fixes draw in the logo's palette (tests/graphics/
+         graphics_fixes.py checks it);
+       - the band between the logo and the notices (y 144-183): black, the
+         original's START and CONTINUE hidden, but for NEW GAME over CONTINUE
+         from x 96 on rows 151 and 165, in the title's letters and the
+         original's white, CONTINUE grey with nothing to continue, and the
+         game's own arrow, the original's pixel for pixel, 12 pixels before
+         the chosen line.
+     Down, Up, Select and Right leave the cursor and the arrow on NEW GAME:
+     the grey CONTINUE is skipped.
+  2. Opens NEW GAME's pick and moves its cursor: DX stays as it was, and the
+     band above the pick is black (no arrow left beside NEW GAME).
   3. Starts a new game in file 1: the word goes at once and stays gone.
-With the remaster on, Save files is always on, so the word never shows over
-START / CONTINUE. To show where it would sit, the run also writes the original
-title with the word's pixels painted in from the remaster's picture
-(start-continue-composite.png): a composite, not a screenshot.
+  4. With a saved file, the title opens on CONTINUE, now white, with the arrow
+     beside it (across the original's hidden row); Up moves it to NEW GAME and
+     Down back, each picture the expected one.
 --shots DIR copies the pictures worth showing there, named after
 --shot-prefix.
 """
@@ -36,19 +45,27 @@ import sys
 import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import FILES_NEW, Game, act, choose_file, frame, parser, tcp, until, wait  # noqa: E402
+from fax_e2e import FILES_NEW, FILES_TOP, Game, act, choose_file, frame, parser, tcp, until, wait  # noqa: E402
 
 WORD = "DX"
 LETTERS = 16 + 10 * 16384 + 0x0240                                  # CHR_LETTERS: bank 10, $8240, A to Z (StartScreen_Draw)
+NATIVE = 256
 LOGO_ROWS, LOGO_LEFT, LOGO_RIGHT = (16, 144), 16, 240               # the logo and its border, natively
 F_TIP = (48, 40)                                                    # the tile with the F's tip (graphics fixes)
-BAND = (144, 160)                                                   # black between the logo and the title's choices
-CLEAR = 4                                                           # rows of black the word keeps from the art
+WORD_AT = (120, 116)                                                # DX's top-left, natively
+BAND = (144, 184)                                                   # between the logo and the notices
+START_AT, CONTINUE_AT, ARROW_AT = (64, 160), (128, 160), (52, 160)  # the original's choices and its arrow, lit from 160
+MENU_X, NEW_GAME_Y, CONTINUE_Y, ARROW_GAP = 96, 151, 165, 12        # the remaster's
+BLACK = (0, 0, 0)
 DX = ("faxanadu.dx", "dx")
 
 
 def title():
     return tcp("title_state")
+
+
+def files():
+    return tcp("files_state")
 
 
 def png(path):
@@ -81,90 +98,93 @@ def png(path):
     return width, height, rows
 
 
-def write_png(path, rows):
-    """Rows of (r, g, b) tuples as an RGB PNG."""
-    def chunk(kind, body):
-        return struct.pack(">I", len(body)) + kind + body + struct.pack(">I", zlib.crc32(kind + body))
-    raw = b"".join(b"\0" + bytes(c for px in row for c in px) for row in rows)
-    path.write_bytes(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", len(rows[0]), len(rows), 8, 2, 0, 0, 0))
-                     + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b""))
-
-
-def word_mask(rom):
-    """The pixels of WORD in the title's own letters, the tiles StartScreen_Draw
-    puts at $E0-$F9 of its pattern table: {(dx, dy)} from its top left. They
-    are drawn in one color, 3, the one the word takes from the logo's palette."""
-    lit = set()
-    for i, ch in enumerate(WORD):
+def text_mask(rom, text):
+    """The pixels of `text` (A-Z and spaces) in the title's own letters, the
+    tiles StartScreen_Draw puts at $E0-$F9 of its pattern table: {(dx, dy)}
+    from its top left. They are drawn in one color, 3."""
+    lit_ = set()
+    for i, ch in enumerate(text):
+        if ch == " ":
+            continue
         tile = rom[LETTERS + (ord(ch) - ord("A")) * 16:LETTERS + (ord(ch) - ord("A")) * 16 + 16]
         for dy in range(8):
             for dx in range(8):
                 value = (tile[dy] >> (7 - dx) & 1) | (tile[dy + 8] >> (7 - dx) & 1) << 1
                 assert value in (0, 3), f"{ch}'s tile has color {value}"
                 if value:
-                    lit.add((i * 8 + dx, dy))
-    return lit
+                    lit_.add((i * 8 + dx, dy))
+    return lit_
+
+
+def outline(mask):
+    """The pixels next to `mask`'s, the diagonals too, that are not its own."""
+    return {(x + dx, y + dy) for x, y in mask for dx in (-1, 0, 1) for dy in (-1, 0, 1)} - mask
 
 
 def rgb(argb):
     return (argb >> 16 & 255, argb >> 8 & 255, argb & 255)
 
 
-def first_below(px, origin, row):
-    """The first row from `row` down with anything but black in the native picture."""
-    return min(y for y in range(row, len(px)) for x in range(origin, origin + 256) if px[y][x] != (0, 0, 0))
+def lit(px, origin, x0, y0, x1, y1):
+    """The pixels that are not black in native [x0, x1) x [y0, y1): {(x, y): color}, natively."""
+    return {(x, y): px[y][origin + x] for y in range(y0, y1) for x in range(x0, x1) if px[y][origin + x] != BLACK}
 
 
-def compare(remaster, original, state, mask):
-    """The remaster's title against the original's on the same frame: the same
-    logo, and between it and what is below, only the word, where it should be."""
-    w, h, on = png(remaster)
-    w2, h2, off = png(original)
-    # The remaster plays in Seamless, whose picture is 424x240 with the title,
-    # as every scene it does not lay out, at the native picture's place:
-    # centred. The original's is the NES's 256x240: centred the same here.
-    pad = (w - w2) // 2
-    off = [[(0, 0, 0)] * pad + row + [(0, 0, 0)] * (w - w2 - pad) for row in off]
-    assert (w, h) == (424, h2) and w2 == 256 and w == state["width"], ((w, h), (w2, h2), state)
-    color = rgb(state["argb"])
-    x0, y0 = state["x"], state["y"]
-    # The logo, and everything above the band, untouched but for the F's tip.
-    origin = next(x for x in range(w) if any(off[y][x] != (0, 0, 0) for y in range(*LOGO_ROWS))) - LOGO_LEFT
-    tip = {(origin + F_TIP[0] + dx, F_TIP[1] + dy) for dy in range(8) for dx in range(8)}
-    above = [(x, y) for y in range(BAND[0]) for x in range(w) if on[y][x] != off[y][x] and (x, y) not in tip]
-    assert not above, f"{remaster.name}: {len(above)} pixels above y {BAND[0]} differ from the original, first {above[0]}"
-    # In the band: the original is black, and the remaster only adds the word.
-    lit = [(x, y) for y in range(*BAND) for x in range(w) if off[y][x] != (0, 0, 0)]
-    assert not lit, f"{original.name}: the original draws in y {BAND[0]}-{BAND[1] - 1}, at {lit[0]}"
-    diff = {(x, y) for y in range(*BAND) for x in range(w) if on[y][x] != off[y][x]}
-    expect = {(x0 + dx, y0 + dy) for dx, dy in mask}
-    assert diff == expect, f"{remaster.name}: {len(diff ^ expect)} pixels differ from the word in the title's letters"
-    assert all(on[y][x] == color for x, y in diff), f"{remaster.name}: the word is not all {color}"
-    top, bottom = min(y for _, y in diff), max(y for _, y in diff)
-    left, right = min(x for x, _ in diff), max(x for x, _ in diff)
-    # Where the logo ends, and what is below it in each picture.
-    logo_bottom = max(y for y in range(BAND[0]) for x in range(origin + LOGO_LEFT, origin + LOGO_RIGHT)
-                      if off[y][x] != (0, 0, 0))
-    menu_top, start_top = first_below(on, origin, bottom + 1), first_below(off, origin, BAND[0])
-    assert logo_bottom == 143 and start_top == 160 and menu_top == 160, (logo_bottom, start_top, menu_top)
-    assert top - logo_bottom > CLEAR and menu_top - bottom > CLEAR, (logo_bottom, top, bottom, menu_top)
-    # Centered under the logo, to a pixel, in the logo's own color.
-    centre = (left + right) / 2 - origin
-    assert abs(centre - (LOGO_LEFT + LOGO_RIGHT - 1) / 2) <= 1, (left, right, origin)
-    assert any(off[y][x] == color for y in range(*LOGO_ROWS) for x in range(w)), f"{color} is not in the logo"
-    print(f"ok: {remaster.name}: DX at ({x0}, {y0}) in {color}, rows {top}-{bottom}; the logo is the "
-          f"original's but for its F's tip; {top - logo_bottom - 1} black rows under the logo, {menu_top - bottom - 1} above "
-          f"NEW GAME and CONTINUE, as above the original's START / CONTINUE")
-    return [[on[y][x] if (x, y) in diff else off[y][x] for x in range(w)] for y in range(h)]
-
-
-def absent(path, state, mask):
-    """The word is not drawn where it would be."""
+def original_title(path, rom):
+    """The original's title, checked to be the stock one; its pixels padded to
+    Seamless's 424 columns (the native picture centred, as the remaster's
+    title is), its white and its arrow ({(dx, dy) from ARROW_AT: color})."""
     w, h, px = png(path)
-    color = rgb(state["argb"])
+    assert (w, h) == (NATIVE, 240), (w, h)
+    # START and CONTINUE side by side on row 160, the arrow before START, and
+    # black from the logo down to them: the stock layout.
+    choices = lit(px, 0, 60, BAND[0], NATIVE, 176)
+    want = {(START_AT[0] + dx, START_AT[1] + dy) for dx, dy in text_mask(rom, "START")} | \
+        {(CONTINUE_AT[0] + dx, CONTINUE_AT[1] + dy) for dx, dy in text_mask(rom, "CONTINUE")}
+    assert set(choices) == want, f"{path.name}: START / CONTINUE are not the stock ones ({len(set(choices) ^ want)} pixels)"
+    white = {choices[p] for p in want}
+    assert len(white) == 1, white
+    arrow = {(x - ARROW_AT[0], y - ARROW_AT[1]): c for (x, y), c in lit(px, 0, 0, BAND[0], 60, 176).items()}
+    assert arrow and all(0 <= dx < 8 and 0 <= dy < 8 for dx, dy in arrow), f"{path.name}: no arrow before START: {arrow}"
+    assert not lit(px, 0, 0, BAND[0], NATIVE, START_AT[1]), f"{path.name}: the original draws between the logo and START"
+    pad = (424 - NATIVE) // 2
+    padded = [[BLACK] * pad + row + [BLACK] * (424 - NATIVE - pad) for row in px]
+    print(f"ok: {path.name}: the original's title: START / CONTINUE side by side on row 160, the arrow at "
+          f"x {ARROW_AT[0]}, black between them and the logo, no DX")
+    return padded, white.pop(), arrow
+
+
+def expected(original, origin, rom, state, white, arrow, cursor, grey):
+    """The remaster's title, from the original's: DX and its outline on the
+    logo, the band black but for NEW GAME over CONTINUE (`grey` its color, or
+    None for white) and the arrow beside line `cursor`."""
+    px = [row[:] for row in original]
+    for y in range(*BAND):
+        for x in range(NATIVE):
+            px[y][origin + x] = BLACK
+    for text, y, color in (("NEW GAME", NEW_GAME_Y, white), ("CONTINUE", CONTINUE_Y, grey or white)):
+        for dx, dy in text_mask(rom, text):
+            px[y + dy][origin + MENU_X + dx] = color
+    row = CONTINUE_Y if cursor else NEW_GAME_Y
+    for (dx, dy), color in arrow.items():
+        px[row + dy][origin + MENU_X - ARROW_GAP + dx] = color
+    mask = text_mask(rom, WORD)
     x0, y0 = state["x"], state["y"]
-    assert not all(px[y0 + dy][x0 + dx] == color for dx, dy in mask if y0 + dy < h and x0 + dx < w), \
-        f"{path.name}: DX is drawn"
+    for dx, dy in outline(mask):
+        px[y0 + dy][x0 + dx] = rgb(state["outline_argb"])
+    for dx, dy in mask:
+        px[y0 + dy][x0 + dx] = rgb(state["argb"])
+    return px
+
+
+def compare(path, want, origin):
+    """The screenshot at `path` is `want`, but for the F's tip."""
+    w, h, px = png(path)
+    assert (w, h) == (len(want[0]), len(want)), (w, h)
+    tip = {(origin + F_TIP[0] + dx, F_TIP[1] + dy) for dy in range(8) for dx in range(8)}
+    diff = [(x - origin, y) for y in range(h) for x in range(w) if px[y][x] != want[y][x] and (x, y) not in tip]
+    assert not diff, f"{path.name}: {len(diff)} native pixels differ from the expected title, first {diff[:6]}"
+    return px
 
 
 def main():
@@ -173,7 +193,8 @@ def main():
     ap.add_argument("--shot-prefix", default="", help="prefix for the copied pictures' names")
     args = ap.parse_args()
     g = Game.from_args(args)
-    mask = word_mask(g.image)
+    rom = g.image
+    mask = text_mask(rom, WORD)
     assert len(mask) > 40, "no letters where the title's tiles should be"
     worth = {}
 
@@ -181,7 +202,7 @@ def main():
         """Start the game with the whole remaster on or off."""
         g.set_features({DX: remaster})
         g.launch()
-        assert title()["enabled"] == remaster and tcp("files_state")["enabled"] == remaster, title()
+        assert title()["enabled"] == remaster and files()["enabled"] == remaster, title()
 
     def shot(name, keep=None):
         path = g.shot(name)
@@ -193,55 +214,94 @@ def main():
         """With the remaster on: wait for the title, then a little; the frame."""
         until("the title", lambda: title()["shown"], 2000)
         wait(10)
-        assert title()["shown"] and tcp("files_state")["shown"], "the title's menu is not up"
+        assert title()["shown"] and files()["shown"], "the title's menu is not up"
         return frame()
 
+    def press(button, cursor):
+        act(button)
+        state = files()
+        assert (state["mode"], state["cursor"]) == (FILES_TOP, cursor), (button, state)
+        wait(2)                                                     # the arrow shows a frame after it is drawn
+
     try:
-        # 1. The remaster's title against the original's, on the same frame
-        # (the title is still from the frame it is drawn, and drawn on the
-        # same frame in every run).
+        # 1. The remaster's title, with nothing to continue (checked against
+        # the original's below, on the same frame: the title is still from the
+        # frame it is drawn, and drawn on the same frame in every run).
         launch(True)
         at = title_at()
         state = title()
-        assert state["word"] == WORD, state
-        remaster = shot("new-game-continue", "new-game-continue")
-        # 2. NEW GAME's pick, and its cursor moving; the word stays as it was.
-        _, _, a = png(remaster)
+        origin = (state["width"] - NATIVE) // 2
+        assert state["word"] == WORD and (state["x"] - origin, state["y"]) == WORD_AT, state
+        assert (files()["cursor"], files()["can_continue"]) == (0, False), files()
+        no_file = shot("title-no-file", "title-no-file")
+        for button in ("down", "up", "select", "right"):
+            press(button, 0)
+        skipped = shot("title-no-file-pressed")
+        # 2. NEW GAME's pick, and its cursor moving: the word stays as it was.
+        _, _, before = png(no_file)
         for button, want in (("start", 0), ("down", 1)):
             act(button)
             until(f"the pick's cursor on file {want + 1}",
-                  lambda: (lambda s: s["mode"] == FILES_NEW and s["cursor"] == want)(tcp("files_state")), 120)
-            wait(10)
+                  lambda: (lambda s: s["mode"] == FILES_NEW and s["cursor"] == want)(files()), 120)
+            wait(2)
             assert title()["shown"]
-            _, _, b = png(shot(f"pick-{button}"))
-            assert a != b, f"{button} changed nothing"
-            assert all(a[y][x] == b[y][x] for y in range(*BAND) for x in range(len(a[0]))), "the word changed"
-            a = b
-        print("ok: opening NEW GAME's pick and moving its cursor leave the word as it was")
-        g.close()
-        launch(False)
-        until(f"frame {at}", lambda: frame() >= at, at + 600)
-        assert not title()["shown"]
-        original = shot("original-title", "original-title")
-        g.close()
-        composite = compare(remaster, original, state, mask)
-        write_png(g.out / "start-continue-composite.png", composite)
-        worth["start-continue-composite"] = g.out / "start-continue-composite.png"
-
+            _, _, px = png(shot(f"pick-{button}"))
+            assert all(px[y][x] == before[y][x] for y in range(BAND[0]) for x in range(len(px[0]))), "the word changed"
+            assert not lit(px, origin, 0, BAND[0], NATIVE, 160), "the band above the pick is not black"
+        print("ok: opening NEW GAME's pick and moving its cursor leave the word as it was; the band above it is black")
         # 3. A new game in file 1: the word goes at once, and stays gone.
-        launch(True)
-        title_at()
-        assert tcp("files_state")["cursor"] == 0
         choose_file(True, 1)
         until("the title to go", lambda: not title()["shown"], 10)
         wait(20)
         assert not title()["shown"]
-        absent(shot("intro"), state, mask)
         wait(1500)
         assert not title()["shown"] and title()["seen"] == 255
-        absent(shot("eolis"), state, mask)
+        _, _, px = png(shot("eolis"))
+        assert not all(px[state["y"] + dy][state["x"] + dx] == rgb(state["argb"]) for dx, dy in mask), "DX is drawn"
         print("ok: starting a game takes the word away; it does not come back in the game")
-        print("screenshots:", ", ".join(g.shots), "and start-continue-composite.png (a composite)")
+        g.close()
+
+        # The original, on the same frame.
+        launch(False)
+        until(f"frame {at}", lambda: frame() >= at, at + 600)
+        assert not title()["shown"] and not files()["shown"]
+        original, white, arrow = original_title(shot("original-title", "original-title"), rom)
+        g.close()
+        _, _, px = png(no_file)
+        grey = next(px[CONTINUE_Y + dy][origin + MENU_X + dx] for dx, dy in sorted(text_mask(rom, "C")))
+        assert grey not in (BLACK, white), f"CONTINUE is {grey}, not grey"
+        assert any(original[y][x] == grey for y in range(*LOGO_ROWS) for x in range(len(original[0]))), \
+            f"{grey} is not the stars' grey"
+        want = expected(original, origin, rom, state, white, arrow, 0, grey)
+        compare(no_file, want, origin)
+        compare(skipped, want, origin)
+        x0, y0 = state["x"] - origin, state["y"]
+        rows = sorted({y0 + dy for _, dy in mask})
+        left, right = min(x0 + dx for dx, _ in mask), max(x0 + dx for dx, _ in mask)
+        assert (rows[0], rows[-1]) == (116, 122) and abs((left + right) / 2 - (LOGO_LEFT + LOGO_RIGHT - 1) / 2) <= 1
+        assert rgb(state["outline_argb"]) == BLACK
+        assert any(original[y][x] == rgb(state["argb"]) for y in range(*LOGO_ROWS) for x in range(len(original[0])))
+        print(f"ok: {no_file.name}: DX at ({x0}, {y0}) on the logo, lit on rows {rows[0]}-{rows[-1]}, x {left}-{right}, "
+              f"in the logo's {rgb(state['argb'])}, outlined in black; the logo is the original's elsewhere, but for "
+              f"its F's tip")
+        print(f"ok: {no_file.name}: NEW GAME (white) over CONTINUE (grey, {grey}) from x {MENU_X} on rows "
+              f"{NEW_GAME_Y} and {CONTINUE_Y}, the original's START / CONTINUE hidden, its arrow at x "
+              f"{MENU_X - ARROW_GAP} beside NEW GAME; the notices are the original's")
+        print("ok: Down, Up, Select and Right skip the grey CONTINUE: the cursor and the arrow stay on NEW GAME")
+
+        # 4. A saved file: the title opens on CONTINUE; Up and Down move.
+        (g.out / "game" / "faxanadu_file1.txt").write_text("version = 1\ntitle = 3\ngold = 1234\nspawn = 2\nfurthest = 2\n")
+        launch(True)
+        title_at()
+        assert (files()["cursor"], files()["can_continue"]) == (1, True), files()
+        compare(shot("title-file", "title-file"), expected(original, origin, rom, state, white, arrow, 1, None), origin)
+        press("up", 0)
+        compare(shot("title-file-up"), expected(original, origin, rom, state, white, arrow, 0, None), origin)
+        press("down", 1)
+        compare(shot("title-file-down"), expected(original, origin, rom, state, white, arrow, 1, None), origin)
+        print("ok: with a saved file the title opens on CONTINUE, white, the arrow beside it across the original's "
+              "hidden row; Up moves it to NEW GAME and Down back")
+        print("screenshots:", ", ".join(g.shots))
         if args.shots:
             args.shots.mkdir(parents=True, exist_ok=True)
             for name, path in worth.items():

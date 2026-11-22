@@ -1,14 +1,15 @@
 /* Save files: three files instead of mantras, as in Zelda. USA 57dd23d1,
  * chipx86 byte-exact disassembly.
  *
- * The title keeps its two choices, NEW GAME where START was and CONTINUE,
- * drawn over its picture in its own letters. Its loop far-calls
+ * The title's two choices are NEW GAME over CONTINUE, a centred column drawn
+ * over its picture in its own letters, in place of the original's START and
+ * CONTINUE side by side, which are hidden. Its loop far-calls
  * StartScreen_CheckHandleInput once a frame; the hook there reads the pad
  * instead, and hides Select and Start from the routine and the loop's own
  * check until a file is chosen. On the two choices the routine still draws
- * its arrow, at NEW GAME's X through a hook on its LDY #$7E. Either choice
- * opens a pick of the three files, drawn in the game's dialogue font and text
- * box frame:
+ * its arrow, beside the chosen line through a hook after it loads the
+ * arrow's place. Either choice opens a pick of the three files, drawn in the
+ * game's dialogue font and text box frame:
  *   - NEW GAME: an empty file starts a new game at once, through the stock
  *     Start path; a used one asks "Erase file N? A yes B no" first, and is
  *     erased before the new game starts in it;
@@ -73,8 +74,9 @@
 #define START_SCREEN_CHOICE 0x0687u   /* DAT_0687: 0 Start, 1 Continue */
 /* Bank 12 */
 #define START_SCREEN_INPUT   0x9F44u  /* StartScreen_CheckHandleInput: Select toggles the choice, draws the arrow */
-#define ARROW_X_LOADED       0x9F62u  /* its LDY #$7E, after LDX BYTE_ARRAY_PRG12__9f69,Y: the arrow's X,
-                                         $34 (START) or $74 (CONTINUE), for UI_DrawPromptInputSymbol */
+#define ARROW_LOADED         0x9F64u  /* its LDA #$AD, after LDX BYTE_ARRAY_PRG12__9f69,Y and LDY #$7E: the
+                                         arrow's place for UI_DrawPromptInputSymbol, X $34 (START) or $74
+                                         (CONTINUE), Y $7E */
 #define PASSWORD_SCREEN_SHOW 0x909Du  /* PasswordScreen_Show: the mantra screen, then Password_Load */
 #define BUY_SELL_MESSAGE     0x8631u  /* IScriptAction_ShowBuySellMenu: LDA #$10 (this byte), JSR IScripts_LoadAndShowMessage */
 #define GURU_MANTRA          0xA5FEu  /* ISCRIPT_COMMON_GURU_PASSWORD ($A5FC): 03 22, here 14, 00 */
@@ -95,13 +97,20 @@
 /* Joypad bits */
 enum { BUTTON_A = 0x80, BUTTON_B = 0x40, BUTTON_SELECT = 0x20, BUTTON_START = 0x10, BUTTON_UP = 0x08, BUTTON_DOWN = 0x04,
        BUTTON_LEFT = 0x02, BUTTON_RIGHT = 0x01 };
-/* The title's choices, on tile row 20 (y 160) of the first nametable, as
- * StartScreen_Draw lays them out: START in columns 8-12, CONTINUE in 16-23,
- * each 12 pixels after its arrow. NEW GAME ends where START did. The letters
- * A-Z are tiles $E0-$F9 of the row's pattern table (the text overrides'
+/* The original's choices, on tile row 20 (y 160, lit 160-166) of the first
+ * nametable, as StartScreen_Draw lays them out: START in columns 8-12,
+ * CONTINUE in 16-23, each 12 pixels after its arrow, whose lit rows are 34
+ * below the Y UI_DrawPromptInputSymbol is given ($7E). The letters A-Z are
+ * tiles $E0-$F9 of the row's pattern table (the text overrides'
  * FAXANADU_1). */
-enum { TITLE_Y = 160, TITLE_ROW = 20, NEW_GAME_COL = 5, START_COL = 8, CONTINUE_COL = 16, TITLE_LETTERS = 0xE0,
-       ARROW_NEW_GAME_X = NEW_GAME_COL * 8 - 12, ARROW_CONTINUE_X = 0x74 };
+enum { TITLE_Y = 160, TITLE_ROW = 20, START_COL = 8, CONTINUE_COL = 16, CHOICES_END_COL = 24, TITLE_LETTERS = 0xE0,
+       ARROW_GAP = 12, ARROW_BELOW = TITLE_Y - 0x7E };
+/* The remaster's: NEW GAME over CONTINUE, 8 letters each, left-aligned and
+ * centred in the native picture (x 96-159), in the band between the logo (to
+ * y 143) and the notices (from 184): 7 black rows under the logo and 7
+ * between the lines, so they read as one menu, set apart from the notices
+ * (12 rows above the first; the notices have 9 between them). */
+enum { BAND_Y = 144, MENU_X = 96, NEW_GAME_Y = 151, CONTINUE_Y = 165, ARROW_X = MENU_X - ARROW_GAP };
 enum { SLOT_LEN = 48, BUILDINGS = 4, SOUND_CURSOR = 0x0B };
 /* IScript actions */
 enum { END = 0x00, UNSKIPPABLE_MESSAGE = 0x01, SHOW_MESSAGE = 0x03, SET_SPAWN_POINT = 0x06, BUY_SELL_MENU = 0x0F,
@@ -337,14 +346,15 @@ static int title_hook(uint16_t addr) {
     return 1;
 }
 
-/* StartScreen_CheckHandleInput's LDY #$7E, with the arrow's X loaded: before
- * NEW GAME, which starts further left than START. CONTINUE's is the stock. */
+/* StartScreen_CheckHandleInput's LDA #$AD, with the arrow's X and Y loaded:
+ * beside the chosen line, 12 pixels before it as the stock arrows are. */
 static int arrow_hook(uint16_t addr) {
     (void)addr;
     if (!enabled || !title_up || menu.mode != TOP) return 0;
     CycModRegs regs;
     cyc_mod_regs(&regs);
-    regs.x = menu.cursor ? ARROW_CONTINUE_X : ARROW_NEW_GAME_X;
+    regs.x = ARROW_X;
+    regs.y = (uint8_t)((menu.cursor ? CONTINUE_Y : NEW_GAME_Y) - ARROW_BELOW);
     cyc_mod_set_regs(&regs);
     return 0;
 }
@@ -603,30 +613,44 @@ static void plot(uint32_t *px, int w, int h, int x, int y, uint32_t color) {
     if (x >= 0 && y >= 0 && x < w && y < h) px[(size_t)y * (size_t)w + (size_t)x] = color;
 }
 /* The background palette the title's attribute table gives tile column `col`
- * of the choices' row. */
+ * of the original's choices' row. */
 static int title_palette(int col) {
     uint8_t attr = cyc_render_nametable((uint16_t)(0x23C0 + (TITLE_ROW / 4) * 8 + col / 4));
     return attr >> (((TITLE_ROW & 2) << 1) | (col & 2)) & 3;
 }
-/* `s` (A-Z and spaces) in the title's own letters from tile column `col` of
- * the choices' row, each cell drawn whole (black behind the letter), in the
- * palette of column `palette_col`, or grey. */
-static void title_text(uint32_t *px, int w, int h, int x0, int col, const char *s, int palette_col, bool dim) {
+/* `s` (A-Z and spaces) in the title's own letters with its top-left at (x, y),
+ * only the letters' pixels, in the palette START's column has (the white the
+ * original's choices are in), or grey. */
+static void title_text(uint32_t *px, int w, int h, int x, int y, const char *s, bool dim) {
     uint16_t table = cyc_render_line_bg_table(TITLE_Y);
-    int palette = title_palette(palette_col);
+    int palette = title_palette(START_COL);
     for (int i = 0; s[i]; ++i) {
-        bool letter = s[i] >= 'A' && s[i] <= 'Z';
-        uint16_t pattern = (uint16_t)(table + (TITLE_LETTERS + (letter ? s[i] - 'A' : 0)) * 16);
+        if (s[i] < 'A' || s[i] > 'Z') continue;
+        uint16_t pattern = (uint16_t)(table + (TITLE_LETTERS + s[i] - 'A') * 16);
         for (int r = 0; r < 8; ++r) {
-            uint8_t lo = letter ? cyc_render_chr((uint16_t)(pattern + r)) : 0;
-            uint8_t hi = letter ? cyc_render_chr((uint16_t)(pattern + r + 8)) : 0;
+            uint8_t lo = cyc_render_chr((uint16_t)(pattern + r)), hi = cyc_render_chr((uint16_t)(pattern + r + 8));
             for (int c = 0; c < 8; ++c) {
                 int v = (lo >> (7 - c) & 1) | (hi >> (7 - c) & 1) << 1;
-                plot(px, w, h, x0 + (col + i) * FAX_TEXT_CELL + c, TITLE_Y + r,
-                     cyc_render_color(!v ? 0 : dim ? MENU_DIM_COLOR : palette * 4 + v));
+                if (v) plot(px, w, h, x + i * FAX_TEXT_CELL + c, y + r,
+                            cyc_render_color(dim ? MENU_DIM_COLOR : palette * 4 + v));
             }
         }
     }
+}
+/* Sprites in the original's choices' row: the arrow, when it is beside a line
+ * that crosses it. */
+static int in_choices_row(int slot, int x, int y, int *out_x, void *user) {
+    (void)slot; (void)x; (void)out_x; (void)user;
+    int height = cyc_render_line_sprite16(y < 240 ? y : 239) ? 16 : 8;
+    return y < TITLE_Y + FAX_TEXT_CELL && y + height > TITLE_Y;
+}
+/* The original's START and CONTINUE go: their cells are black, as the rest of
+ * the band is, and the frame's sprites there are drawn again over them. */
+static void hide_choices(uint32_t *px, int w, int h, int x0) {
+    uint32_t black = cyc_render_color(0);
+    for (int y = TITLE_Y; y < TITLE_Y + FAX_TEXT_CELL; ++y)
+        for (int x = START_COL * FAX_TEXT_CELL; x < CHOICES_END_COL * FAX_TEXT_CELL; ++x) plot(px, w, h, x0 + x, y, black);
+    cyc_render_sprites(px, w, h, x0, NULL, in_choices_row, NULL);
 }
 
 const uint32_t *fax_files_present(const uint32_t *picture, int *w, int *h) {
@@ -646,15 +670,21 @@ const uint32_t *fax_files_present(const uint32_t *picture, int *w, int *h) {
     memcpy(canvas, from, n * sizeof *canvas);
     int x0 = cyc_render_native_origin(width);
     if (menu.mode == TOP) {
-        /* NEW GAME over START, ending where it did; CONTINUE stays the
-         * game's, or grey. The arrow is the game's sprite (arrow_hook). */
-        title_text(canvas, width, height, x0, NEW_GAME_COL, "NEW GAME", START_COL, false);
-        if (!can_continue()) title_text(canvas, width, height, x0, CONTINUE_COL, "CONTINUE", CONTINUE_COL, true);
+        /* NEW GAME over CONTINUE (grey with nothing to continue), in place of
+         * the original's START and CONTINUE. The arrow is the game's sprite
+         * (arrow_hook). */
+        hide_choices(canvas, width, height, x0);
+        title_text(canvas, width, height, x0 + MENU_X, NEW_GAME_Y, "NEW GAME", false);
+        title_text(canvas, width, height, x0 + MENU_X, CONTINUE_Y, "CONTINUE", !can_continue());
         *w = width; *h = height;
         return canvas;
     }
-    /* A pick: over the choices and the notices (y 160-239), leaving the rows
-     * between them and the logo to DX (fax_title.c). */
+    /* A pick: over the original's choices and the notices (y 160-239). The
+     * band above it is black: the sprites the game shows come from the
+     * frame before, so on a pick's first frame the arrow is still beside NEW
+     * GAME. */
+    for (int by = BAND_Y; by < TITLE_Y; ++by)
+        for (int bx = 0; bx < 256; ++bx) plot(canvas, width, height, x0 + bx, by, cyc_render_color(0));
     int x = x0 + 16, y = TITLE_Y;
     uint32_t colors[4];
     for (int v = 0; v < 4; ++v) colors[v] = cyc_render_color(menu_palette[v]);
@@ -809,7 +839,7 @@ static void activate(void) {
 
 NES_MOD_CONSTRUCTOR(register_files) {
     if (!nes_mod_register_function_entry_plugin("faxanadu.files.title", START_SCREEN_INPUT, title_hook) ||
-        !nes_mod_register_function_entry_plugin("faxanadu.files.arrow", ARROW_X_LOADED, arrow_hook) ||
+        !nes_mod_register_function_entry_plugin("faxanadu.files.arrow", ARROW_LOADED, arrow_hook) ||
         !nes_mod_register_function_entry_plugin("faxanadu.files.mantra-screen", PASSWORD_SCREEN_SHOW, mantra_screen_hook) ||
         !nes_mod_register_function_entry_plugin("faxanadu.files.start-spawn", START_SPAWN, start_spawn_hook) ||
         !nes_mod_register_function_entry_plugin("faxanadu.files.spawned", SPAWNED, spawned_hook) ||

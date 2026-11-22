@@ -1,8 +1,8 @@
 #pragma once
-/* DX on the title (fax_title.c): the word under the FAXANADU logo, drawn
- * over the presented picture while the title screen's loop runs, in the
- * title's own letters and the logo's own palette. It registers itself; the
- * host calls these. */
+/* DX on the title (fax_title.c): the word on the logo, just under the
+ * FAXANADU letters, drawn over the presented picture while the title screen's
+ * loop runs, in the title's own letters and the logo's own palette, outlined
+ * in black. It registers itself; the host calls these. */
 #include <stdbool.h>
 #include <stdint.h>
 
