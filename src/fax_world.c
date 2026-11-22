@@ -6,6 +6,8 @@
  * Boss screens are arenas: while a boss lives, its room joins no neighbour. */
 #include "fax_world.h"
 #include "fax_entrances.h"
+#include "fax_charges.h"
+#include "fax_text.h"
 #include "cyc_mod.h"
 #include "cyc_core.h"
 #include "cyc_render.h"
@@ -49,6 +51,7 @@ static bool collision_active;
 static bool death_mode,script_mode;
 static int camera_x,camera_y,picture_w,picture_h;
 static int origin_x,origin_y;static bool origin_valid;
+static int hud_x=-1,hud_w; /* where the status bar's column 0 went in the last picture, and its width */
 static uint32_t *canvas;
 static size_t capacity;
 static uint32_t frozen_hud[RW*HUD];
@@ -442,6 +445,19 @@ static bool ui_pixel(int x,int y){
     if(bx==32&&by==64&&x>=16&&x<96&&y>=48&&y<160)return true;
     return x>=bx&&x<bx+q(0x20a)*8&&y>=by&&y<by+q(0x20b)*8;
 }
+/* The status bar band (its 32 lines) and the recharging items' row past it
+ * are centred as one group while the status bar shows; with no row (the
+ * remaster off) or no status bar (the title), the band is centred like the
+ * rest. Only the band moves: rooms, the native picture below the band, and
+ * its text boxes and menus stay centred in the view. */
+static int layout_x(int width,bool hud){
+    int row=fax_charges_row();
+    return hud&&row&&width>=RW+row?(width-RW-row)/2:(width-RW)/2;
+}
+int fax_world_hud_x(int width){
+    if(enabled&&hud_x>=0&&width==hud_w)return hud_x;
+    return cyc_render_native_origin(width);
+}
 const uint32_t *fax_world_present(int *w,int *h,const uint32_t *native){
     /* Start pauses native simulation, not the expanded picture. Select's
      * native inventory is composited over the frozen world at the same scale.
@@ -458,10 +474,12 @@ const uint32_t *fax_world_present(int *w,int *h,const uint32_t *native){
     if(n>capacity){uint32_t *v=realloc(canvas,n*sizeof *v);if(!v)return NULL;canvas=v;capacity=n;}
     for(size_t i=0;i<n;i++)canvas[i]=0xff000000;
     /* Native scripts and region loaders keep their original image, centred
-     * in the same fixed canvas. No frame may change the viewport to 4:3. */
+     * in the same fixed canvas, with its status bar band where play has it.
+     * No frame may change the viewport to 4:3. */
+    hud_w=width;hud_x=layout_x(width,same||fax_text_hud_showing());
     if(!same){
         int nx=(width-RW)/2;
-        for(int y=0;y<240;y++)memcpy(canvas+(size_t)y*width+nx,native+y*RW,RW*sizeof *canvas);
+        for(int y=0;y<240;y++)memcpy(canvas+(size_t)y*width+(y<HUD?hud_x:nx),native+y*RW,RW*sizeof *canvas);
         goto finished;
     }
     camera_x=atlas?l*RW:a->x*RW+a->ram[0x9e]+8-width/2;
@@ -500,13 +518,12 @@ const uint32_t *fax_world_present(int *w,int *h,const uint32_t *native){
         if(q(0x3c7)<128)menu_rect(width,native,16,112,64,80);
         menu_rect(width,native,x,y,q(0x20a)*8,q(0x20b)*8);
     }
-    int hx=(width-RW)/2;
     const uint32_t *hud=hud_valid&&!original_scene?frozen_hud:native;
-    for(int y=0;y<HUD;y++)memcpy(canvas+(size_t)y*width+hx,hud+y*RW,RW*sizeof *canvas);
+    for(int y=0;y<HUD;y++)memcpy(canvas+(size_t)y*width+hud_x,hud+y*RW,RW*sizeof *canvas);
 finished:
     picture_w=width;picture_h=height;render_ms=(SDL_GetPerformanceCounter()-start)*1000.0/SDL_GetPerformanceFrequency();return canvas;
 }
-void fax_world_reset(void){make_mask();memset(rooms,0,sizeof rooms);memset(raster_valid,0,sizeof raster_valid);area=active=-1;pending=-1;events_area=-1;fighting=false;rom_ok=false;hud_valid=death_mode=script_mode=false;ticks=last_tick=handoffs=failures=portals=0;player_tick=collision_active=false;cyc_mod_set_ram_read_hook(NULL);}
+void fax_world_reset(void){hud_x=-1;hud_w=0;make_mask();memset(rooms,0,sizeof rooms);memset(raster_valid,0,sizeof raster_valid);area=active=-1;pending=-1;events_area=-1;fighting=false;rom_ok=false;hud_valid=death_mode=script_mode=false;ticks=last_tick=handoffs=failures=portals=0;player_tick=collision_active=false;cyc_mod_set_ram_read_hook(NULL);}
 bool fax_world_origin(int *x,int *y){if(!origin_valid)return false;*x=origin_x;*y=origin_y;return true;}
 bool fax_world_room_origin(int a,int id,int *x,int *y){if(!origin_valid||a!=area||id<0||id>=(int)counts[area]||!rooms[id].owned)return false;*x=rooms[id].x*RW-camera_x;*y=HUD+rooms[id].y*RH-camera_y;return true;}
 const uint8_t *fax_world_room_ram(int a,int id){if(!enabled||!origin_valid||a!=area||id<0||id>=(int)counts[area]||id==active||!rooms[id].owned||!rooms[id].live)return NULL;return rooms[id].ram;}
@@ -526,7 +543,7 @@ void fax_world_event(const void *ev){
 static void status(int id,const char *line){
     (void)line;char out[850];unsigned live=0,owned=0,actors_count=0;uint64_t sum=0;
     for(unsigned i=0;i<MAX_ROOMS;i++){Room *r=&rooms[i];owned+=r->owned;live+=r->live;sum+=r->ticks;if(r->live)for(unsigned j=0;j<8;j++)actors_count+=r->ram[0x2cc+j]<128;}
-    snprintf(out,sizeof out,"\"enabled\":%s,\"area\":%d,\"room\":%d,\"owned\":%u,\"live\":%u,\"actors\":%u,\"neighbor_ticks\":%llu,\"handoffs\":%u,\"portals\":%u,\"failures\":%u,\"camera\":[%d,%d],\"size\":[%d,%d],\"simulation_ms\":%.3f,\"render_ms\":%.3f,\"max_seam_ms\":%.3f,\"playing\":%s,\"arena\":%s",enabled?"true":"false",area,active,owned,live,actors_count,(unsigned long long)sum,handoffs,portals,failures,camera_x,camera_y,picture_w,picture_h,sim_ms,render_ms,max_seam_ms,playing()?"true":"false",fighting?"true":"false");cyc_tcp_ok(id,out);
+    snprintf(out,sizeof out,"\"enabled\":%s,\"area\":%d,\"room\":%d,\"owned\":%u,\"live\":%u,\"actors\":%u,\"neighbor_ticks\":%llu,\"handoffs\":%u,\"portals\":%u,\"failures\":%u,\"camera\":[%d,%d],\"size\":[%d,%d],\"simulation_ms\":%.3f,\"render_ms\":%.3f,\"max_seam_ms\":%.3f,\"playing\":%s,\"arena\":%s,\"hud_x\":%d",enabled?"true":"false",area,active,owned,live,actors_count,(unsigned long long)sum,handoffs,portals,failures,camera_x,camera_y,picture_w,picture_h,sim_ms,render_ms,max_seam_ms,playing()?"true":"false",fighting?"true":"false",fax_world_hud_x(picture_w));cyc_tcp_ok(id,out);
 }
 static void room_status(int id,const char *line){long n=active;cyc_tcp_long(line,"room",&n);if(n<0||n>=MAX_ROOMS){cyc_tcp_err(id,"invalid room");return;}Room *r=&rooms[n];char out[600];snprintf(out,sizeof out,"\"room\":%ld,\"owned\":%u,\"event\":%u,\"xy\":[%d,%d],\"edges\":[%u,%u,%u,%u],\"live\":%u,\"ticks\":%llu,\"entities\":[%u,%u,%u,%u,%u,%u,%u,%u],\"x\":[%u,%u,%u,%u,%u,%u,%u,%u]",n,r->owned,events_area==area&&n<MAX_ROOMS?events[n]:255u,r->x,r->y,r->edges[0],r->edges[1],r->edges[2],r->edges[3],r->live,(unsigned long long)r->ticks,r->ram[0x2cc],r->ram[0x2cd],r->ram[0x2ce],r->ram[0x2cf],r->ram[0x2d0],r->ram[0x2d1],r->ram[0x2d2],r->ram[0x2d3],r->ram[0xba],r->ram[0xbb],r->ram[0xbc],r->ram[0xbd],r->ram[0xbe],r->ram[0xbf],r->ram[0xc0],r->ram[0xc1]);cyc_tcp_ok(id,out);}
 static void probe(int id,const char *line){

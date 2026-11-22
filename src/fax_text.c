@@ -38,6 +38,9 @@ enum { TILE_INSIDE = 0, TILE_TOP_LEFT = 1, TILE_TOP = 2, TILE_TOP_RIGHT = 3, TIL
        TILE_BOTTOM_LEFT = 5, TILE_BOTTOM_RIGHT = 6 };
 #define TEXT_BOX_LINE 64   /* a playfield line, to find the background pattern table boxes are drawn from */
 enum { TEXT_COLS = 32, TEXT_ROWS = 30, TEXT_HUD_ROWS = 4 };   /* the picture in cells; the HUD's rows */
+/* UI_DrawHUDSprites' "P:" at PPU $2061 (UI_STATUS_SYMBOL_PPU_ADDR_L), from UI_STATUS_TILES */
+enum { HUD_P_COL = 1, HUD_P_ROW = 3, TILE_HUD_P = 0x1F, TILE_HUD_COLON = 0x0A };
+#define PPUMASK_BACKGROUND 0x08u
 
 static uint8_t glyphs[GLYPHS][8];
 static bool loaded;
@@ -197,4 +200,10 @@ bool fax_text_box_showing(void) {
             if (next == TILE_TOP || next == TILE_TOP_RIGHT) return true;
         }
     return false;
+}
+
+bool fax_text_hud_showing(void) {
+    int line = HUD_P_ROW * FAX_TEXT_CELL + FAX_TEXT_CELL / 2;
+    return (cyc_render_line_mask(line) & PPUMASK_BACKGROUND) && fax_text_shown_tile(HUD_P_COL, HUD_P_ROW) == TILE_HUD_P &&
+           fax_text_shown_tile(HUD_P_COL + 1, HUD_P_ROW) == TILE_HUD_COLON;
 }

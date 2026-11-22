@@ -23,9 +23,12 @@ original's full 240 lines, its HUD and a room's 208, so exactly as much shows
 above and below the hero as on the NES, and 53 of its 8-pixel tiles across,
 the width Sonic Mania widens to for the same idea. Nothing changes it: there
 is no zoom and no option. The camera follows the hero and clamps to the
-connected region's edges, centring a region narrower than the view. The HUD,
-the inventory, text boxes and the original's own pictures (death, scripts,
-region loads) sit where the native picture would, centred under the HUD.
+connected region's edges, centring a region narrower than the view. The
+inventory, text boxes and the original's own pictures (death, scripts, region
+loads) sit where the native picture would, centred. The status bar band, its
+top 32 lines, is the one exception (#113): it and the row of recharging items
+past its item box (`fax_charges.c`) are centred together, so the band's
+columns start at x 52, 32 pixels left of the room's (`fax_world_hud_x`).
 The host scales the view to the window, keeping its shape, as its Display
 settings say: with IntegerScale (the default), the largest whole multiple
 that fits, so 3x, 6x and 9x fill 720p, 1440p and 4K, and 1080p shows 4x,

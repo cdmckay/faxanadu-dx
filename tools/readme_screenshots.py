@@ -238,12 +238,15 @@ class Game(harness.Game):
 
     # Pictures
     def shot_lit(self, box, name, tries=40):
-        """Screenshot, retaken until something is drawn in `box`: a blinking
-        mark (a text box's arrow or prompt, the status bar's T:), so every
-        run catches it lit. Its path."""
+        """Screenshot, retaken until something is drawn in `box`, in the
+        native picture (centred in Seamless's view, as picture() crops it): a
+        blinking mark (a text box's arrow or prompt), so every run catches it
+        lit. Its path."""
         for attempt in range(tries):
             path = self.shot(f"{name}-{attempt}")
-            if lit(read_png(path)[1], box):
+            width, rows = read_png(path)
+            ox = (width - 256) // 2
+            if lit(rows, (box[0] + ox, box[1], box[2] + ox, box[3])):
                 return path
             self.wait(3)
         raise AssertionError(f"{name}: nothing ever showed in {box}")
@@ -375,7 +378,8 @@ DIALOGUE = (8, 96, 248, 200)
 QUEST_RECORD, QUEST_GIVEN, QUEST_DONE = "faxanadu.quests", 1, 5
 QUEST_BIT = {"elf": 0, "king": 1, "mattock": 2, "wall": 3, "trunk": 4, "sky": 6, "meteorite": 10}
 KING_BOX, MIST_MAN_BOX = (0, 96, 112, 208), (24, 112, 136, 208)   # around the King and his stairs; the man on Mist $1F
-LAST_MARK = (216, 170, 240, 186)            # the flashing mark at the dialogue box's corner, after its last line
+LAST_MARK = (216, 168, 232, 184)            # the flashing mark at the dialogue box's corner, after its last line,
+#                                             inside its frame (columns 10-29, rows 16-23 of the native picture)
 BLACK_ONYX = 0x01                           # a SpecialItems bit
 
 

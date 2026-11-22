@@ -449,6 +449,20 @@ rom = [
 # one.
 
 [[feature]]
+id = "charges"
+package = "faxanadu.remastered"
+plugin = "faxanadu.charges"
+source = "src/fax_charges.c"
+hooks = "faxanadu.charges."
+rom = []
+# No hooks and no ROM: it reads RAM, Recharging items' state
+# (fax_recharge_charge) and the last frame's nametable at the end of each
+# frame, and draws the recharging items' row over the presented picture, past
+# the status bar, after Seamless has composed it (Seamless lays the status bar
+# out with the row: fax_world_native_x). Its pictures are bank 10's, read from
+# the cart image. Writes nothing.
+
+[[feature]]
 id = "mana-refill"
 package = "faxanadu.remastered"
 plugin = "faxanadu.mana-refill"

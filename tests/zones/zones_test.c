@@ -32,6 +32,7 @@ size_t cyc_mod_copy_cart_payload(uint8_t *out, size_t capacity) {
     return sizeof cart;
 }
 uint16_t cyc_render_line_bg_table(int y) { (void)y; return bg_table; }
+uint8_t cyc_render_line_mask(int y) { (void)y; return 0x1E; }   /* fax_text.c's HUD test: rendering on */
 uint8_t cyc_render_chr(uint16_t a) { return chr[a & 0x1FFF]; }
 int cyc_render_line_scroll_x(int y) { (void)y; return 0; }
 int cyc_render_line_scroll_y(int y) { return y; }

@@ -674,6 +674,64 @@ static void elixir_found_not_bought(void) {
     CHECK(!fax_recharge_on() && !fax_recharge_elixir_spent() && !(ram[SPECIAL_ITEMS] & BIT_ELIXIR));
 }
 
+/* What the status bar shows of each (fax_charges.c): not his, ready, or used. */
+static FaxCharge boots_c(void) { return fax_recharge_charge(FAX_RECHARGE_BOOTS); }
+static FaxCharge glass_c(void) { return fax_recharge_charge(FAX_RECHARGE_GLASS); }
+static FaxCharge elixir_c(void) { return fax_recharge_charge(FAX_RECHARGE_ELIXIR); }
+static bool boots_shown_ready(void) { return boots_c() == FAX_CHARGE_READY; }
+static void charges_on_the_status_bar(void) {
+    play(true);
+    CHECK(boots_c() == FAX_CHARGE_NONE && glass_c() == FAX_CHARGE_NONE && elixir_c() == FAX_CHARGE_NONE);
+    CHECK(fax_recharge_charge(-1) == FAX_CHARGE_NONE && fax_recharge_charge(FAX_RECHARGE_ITEMS) == FAX_CHARGE_NONE);
+    /* His: selected, or in the list's first NumberOfItems slots, not past them. */
+    const uint8_t items[] = { RED_POTION, HOUR_GLASS };
+    give(items, 1, WING_BOOTS);
+    ram[ITEM_INVENTORY + 1] = HOUR_GLASS;   /* a stale byte past the count */
+    CHECK(boots_c() == FAX_CHARGE_READY && glass_c() == FAX_CHARGE_NONE);
+    give(items, 2, WING_BOOTS);
+    CHECK(boots_c() == FAX_CHARGE_READY && glass_c() == FAX_CHARGE_READY);
+    /* Used: flying, then recharging, then ready again. */
+    use();
+    CHECK(boots_c() == FAX_CHARGE_USED && glass_c() == FAX_CHARGE_READY);
+    CHECK(frames_until(boots_down, 32 * 64) > 0);
+    frames(1);
+    CHECK(charge.cooldown[BOOTS] == 60 && boots_c() == FAX_CHARGE_USED);
+    int waited = frames_until(boots_shown_ready, 62 * 64);
+    CHECK(waited >= 58 * 64 && boots_ready());
+    /* The Hour Glass: freezing, then recharging. */
+    give((const uint8_t[]){ WING_BOOTS }, 1, HOUR_GLASS);
+    use();
+    CHECK(glass_c() == FAX_CHARGE_USED && boots_c() == FAX_CHARGE_READY);
+    CHECK(frames_until(glass_down, 17 * 64) > 0);
+    frames(1);
+    CHECK(charge.cooldown[GLASS] == 60 && glass_c() == FAX_CHARGE_USED);
+    /* Dying makes both ready. */
+    respawn();
+    CHECK(glass_c() == FAX_CHARGE_READY && boots_c() == FAX_CHARGE_READY);
+    /* The Elixir: charged, spent by a revive, charged by a Guru, gone to the Spring of Trunk. */
+    ram[SPECIAL_ITEMS] = BIT_ELIXIR;
+    CHECK(elixir_c() == FAX_CHARGE_READY);
+    hurt();
+    CHECK(elixir_c() == FAX_CHARGE_USED);
+    respawn();
+    CHECK(elixir_c() == FAX_CHARGE_USED);
+    meet_guru(0);
+    CHECK(elixir_c() == FAX_CHARGE_READY);
+    hurt();
+    pick_up_elixir();                       /* found while spent: ready at once, before tick_hook forgets it was spent */
+    CHECK(charge.elixir_spent && elixir_c() == FAX_CHARGE_READY);
+    frames(1);
+    CHECK(!charge.elixir_spent && elixir_c() == FAX_CHARGE_READY);
+    ram[SPECIAL_ITEMS] &= (uint8_t)~BIT_ELIXIR;   /* the Spring of Trunk's CONSUME_ITEM */
+    frames(1);
+    CHECK(elixir_c() == FAX_CHARGE_NONE);
+    /* Turned off: nothing, whatever he holds. */
+    play(false);
+    give(items, 2, WING_BOOTS);
+    ram[SPECIAL_ITEMS] = BIT_ELIXIR;
+    CHECK(boots_c() == FAX_CHARGE_NONE && glass_c() == FAX_CHARGE_NONE && elixir_c() == FAX_CHARGE_NONE);
+}
+
 static void finds_recharge(void) {
     play(true);
     const uint8_t items[] = { RED_POTION, HOUR_GLASS };
@@ -1129,6 +1187,7 @@ int main(void) {
     guru_travel_keeps_them();
     elixir();
     elixir_found_not_bought();
+    charges_on_the_status_bar();
     finds_recharge();
     other_items_untouched();
     new_game_and_mantra();

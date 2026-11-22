@@ -60,6 +60,7 @@ int cyc_render_line_scroll_x(int y) { (void)y; return 0; }
 int cyc_render_line_scroll_y(int y) { return y; }
 uint8_t cyc_render_nametable(uint16_t a) { return ciram[(a & 0x3FF) | (a & 0x400)]; }
 uint16_t cyc_render_line_bg_table(int y) { (void)y; return 0x1000; }
+uint8_t cyc_render_line_mask(int y) { (void)y; return 0x1E; }   /* fax_text.c's HUD test: rendering on */
 uint8_t cyc_render_chr(uint16_t a) { return chr[a & 0x1FFF]; }
 /* Palette entry e as a color whose blue byte is e + 1, so a pixel tells its entry. */
 uint32_t cyc_render_color(int e) { return 0xFF000000u | (uint32_t)((e & 31) + 1); }
