@@ -55,7 +55,8 @@ import sys
 import threading
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import Game, features_toml, fixture, parser  # noqa: E402
+import fax_e2e  # noqa: E402
+from fax_e2e import Game, act, chosen, chunks, features_toml, fixture, hold, parser, ram, typed, until, wait  # noqa: E402
 
 # RAM
 AREA, SCREEN, SCREEN_READY, SCROLL_DIRECTION = 0x24, 0x63, 0x0E, 0x54
@@ -303,62 +304,69 @@ class Spots:
                 + f" ({SAFE} frames watched)")
 
 
+PARTS = ("doors", "edges", "seamless-room")
+
+
+@fax_e2e.recipe("entrances-mascon-temple", parent="gate")
+def _mascon_temple(g):
+    """Died at Eolis's gate with Mascon as his furthest temple, a Long Sword,
+    Leather Armor and a Small Shield: at Mascon's Guru, facing left, once the
+    Guru's words are paged."""
+    g.poke({SPRITE_ENTITY + 7: 0xFF, TEMPLE_SPAWN_POINT: MASCON, PLAYER_IS_DEAD: 1, HP: 0x50,
+            SELECTED_WEAPON: LONG_SWORD, PLAYER_CUR_WEAPON: LONG_SWORD,
+            SELECTED_ARMOR: LEATHER_ARMOR, SELECTED_SHIELD: SMALL_SHIELD})
+    until("the Guru's words", lambda: ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 600)
+    for _ in range(200):
+        if ram(AREA) == BUILDINGS and not ram(PLAYER_IS_DEAD) and ram(MESSAGE_ID) != NEGATIVE_THOUGHTS:
+            break
+        if ram(MESSAGE_ID) == 0 or typed():
+            act("a", 6, 14)
+        else:
+            wait(10)
+    else:
+        raise AssertionError("the hero did not wake in Mascon's temple")
+    wait(60)
+
+
+def state_ram(path):
+    """A save state's CPU RAM (its HW chunk, from offset 23)."""
+    data = Path(path).read_bytes()
+    pos = next(p for tag, p, _ in chunks(data) if tag == b"HW  ")
+    return data[pos + 23:pos + 23 + 0x800]
+
+
 def walk_out(game, there, key, test):
     """Load `there` in the window, walk out of the temple, then hold `key`
-    (nothing, for a drop) until `test()`, counting frames."""
-    game.tcp("load_state", path=str(there))
-    for _ in range(200):
-        if game.ram(AREA) != BUILDINGS:
-            break
-        game.tcp("action", name="right", frames=2)
-        game.wait(2)
-    for _ in range(60):
-        if test():
-            return True
-        if key:
-            game.tcp("action", name=key.lower(), frames=8)
-        game.wait(8)
-    return test()
+    (nothing, for a drop) until `test()`: whether it came true."""
+    game.load(there)
+    hold("right", lambda: ram(AREA) != BUILDINGS, 300)
+    if key:
+        return hold(key.lower(), test, 480)
+    try:
+        until("the drop", test, 480)
+        return True
+    except AssertionError:
+        return False
 
 
 def main():
-    ap = parser(__doc__)
+    ap = parser(__doc__, PARTS)
     ap.add_argument("--only", action="append", default=[], help="only the spots whose name contains this")
     ap.add_argument("--jobs", type=int, default=3, help="spots played at once (headless runs)")
-    args = ap.parse_args()
+    args = chosen(ap.parse_args(), PARTS)
     seamless = any("seamless" in a for a in args.game_arg)
     game = Game.from_args(args)
-    out = game.out
     runs = Runs(game, args.game_arg)
     try:
+        temple = game.state("entrances-mascon-temple")
         game.launch()
-        assert game.tcp("entrances_state")["enabled"], "Fair entrances is on in the remaster"
-        # A new game, then a death with Mascon as the furthest temple.
-        game.until("the title", lambda: game.frame() > 700)
-        game.tcp("pad", buttons="start", frames=10)
-        game.until("the Eolis gate", lambda: game.frame() > 1900)
-        gate = out / "gate.cycstate"
-        game.tcp("save_state", path=str(gate))
-        dying = out / "dying.cycstate"
-        fixture(gate, dying, {SPRITE_ENTITY + 7: 0xFF, TEMPLE_SPAWN_POINT: MASCON, PLAYER_IS_DEAD: 1, HP: 0x50,
-                              SELECTED_WEAPON: LONG_SWORD, PLAYER_CUR_WEAPON: LONG_SWORD,
-                              SELECTED_ARMOR: LEATHER_ARMOR, SELECTED_SHIELD: SMALL_SHIELD})
-        game.tcp("load_state", path=str(dying))
-        game.until("the Guru's words", lambda: game.ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 600)
-        for _ in range(60):
-            if game.ram(AREA) == BUILDINGS and not game.ram(PLAYER_IS_DEAD) and \
-                    game.ram(MESSAGE_ID) != NEGATIVE_THOUGHTS:
-                break
-            message, _, paused = game.ram(MESSAGE_ID, 3)
-            if message == 0 or paused:
-                game.tcp("action", name="a", frames=6)
-                game.wait(14)
-            else:
-                game.wait(10)
-        game.wait(60)
-        temple = out / "temple.cycstate"                    # at Mascon's Guru, facing left
-        game.tcp("save_state", path=str(temple))
-        assert (game.ram(AREA), game.ram(SAVED_AREA), game.ram(SAVED_SCREEN), game.ram(SAVED_POS)) == \
+        state = game.tcp("entrances_state")
+        assert state["enabled"], "Fair entrances is on in the remaster"
+        table = [tuple(m) for m in state["table"]]
+        if not (seamless and (args.wants("edges") or args.wants("seamless-room"))):
+            game.close()                                   # the rest is headless
+        ram0 = state_ram(temple)
+        assert (ram0[AREA], ram0[SAVED_AREA], ram0[SAVED_SCREEN], ram0[SAVED_POS]) == \
             (BUILDINGS, MIST, 0x06, 0x89), "Mascon's temple opens on the Mist's screen 6, at block $89"
 
         # How long the walk out of the temple takes, holding Right: the same
@@ -366,20 +374,26 @@ def main():
         rams = runs.run(temple, [(0, "RIGHT")], 120, False)
         exit_frame = next(i for i, r in enumerate(rams) if r[AREA] != BUILDINGS)
         spots = Spots(runs, temple, exit_frame)
-        chosen = [s for s in SPOTS if not args.only or any(o in s[0] for o in args.only)]
+        chosen_spots = [s for s in SPOTS if not args.only or any(o in s[0] for o in args.only)]
+        for name, (area, screen, _), _, (entity, stock, moved), _ in chosen_spots:
+            assert (area, screen, entity, stock, moved) in table, f"{name}: not in the feature's table"
+
+        played = []
+        if args.wants("doors"):
+            played += [s for s in chosen_spots if s[2][0] != "edge"]
         # With Seamless, an edge's room is on screen before he crosses: those
         # are checked in the window, below.
-        played = [s for s in chosen if not (seamless and s[2][0] == "edge")]
+        if args.wants("edges") and not seamless:
+            played += [s for s in chosen_spots if s[2][0] == "edge"]
         with ThreadPoolExecutor(max(1, args.jobs)) as pool:
             for line in pool.map(spots.check, played):
                 print(line, flush=True)
 
-        if seamless:
+        if seamless and args.wants("edges"):
             # The enemy starts at its new block whichever machine loads the
             # room: Seamless's isolated one, or the game's own scroll where a
             # seam is not joined. The move's use count says it was made.
-            table = [tuple(m) for m in game.tcp("entrances_state")["table"]]
-            for name, (area, screen, _), way, (entity, stock, moved), _ in chosen:
+            for name, (area, screen, _), way, (entity, stock, moved), _ in chosen_spots:
                 if way[0] != "edge":
                     continue
                 there = spots.source(slug(name), area, way)
@@ -390,6 +404,7 @@ def main():
                 print(f"ok: {name}: with Seamless, the room beyond is loaded with {entity:#04x} at {moved:#04x}",
                       flush=True)
 
+        if seamless and args.wants("seamless-room"):
             # Seamless's neighbouring room, loaded on an isolated machine.
             mist5 = spots.leading_to("mist5", MIST, 0x05, 0x0A, 0x9C)
             before = game.tcp("entrances_state")
@@ -399,8 +414,8 @@ def main():
                 room.update(game.tcp("fax_world_room", room=6))
                 return room["live"] and GAWAINE in room["entities"]
 
-            walk_out(game, mist5, None, lambda: (game.ram(AREA), game.ram(SCREEN)) == (MIST, 0x05))
-            game.until("Seamless's room for the Mist's screen 6", gawaine_live, 400)
+            walk_out(game, mist5, None, lambda: (ram(AREA), ram(SCREEN)) == (MIST, 0x05))
+            until("Seamless's room for the Mist's screen 6", gawaine_live, 400)
             after = game.tcp("entrances_state")
             assert after["seamless"] > before["seamless"], (before, after)
             last = after.get("last_room", {})

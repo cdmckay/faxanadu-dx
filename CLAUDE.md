@@ -34,14 +34,15 @@ cmake --build build-cycle -j"$(nproc)"
 build-cycle/FaxanaduRecomp "Faxanadu (USA).nes"     # the launcher, then the game
 tools/test.sh                                        # every check; --quick skips the game runs
 tools/disassembly.sh                                 # chipx86's disassembly, verified, with labels
+tools/readme_screenshots.py --only NAME             # the README's screenshot of a feature
 ```
 
 There is no CI: nothing builds without the ROM, which cannot be distributed.
 `tools/test.sh` is the gate, so run it before every PR.
 
-Its end-to-end runs start every game at once, a core each, so they take a
-machine-wide lock: a second checkout's suite prints that it is waiting, then
-runs. Several workers share this machine, so while developing run
+Its end-to-end runs play a game a hardware thread at once, longest first, so
+they take a machine-wide lock: a second checkout's suite prints that it is
+waiting, then runs. Several workers share this machine, so while developing run
 `tools/test.sh --quick` plus your own feature's end-to-end test directly, and
 the full suite once before the PR.
 
@@ -56,9 +57,10 @@ the full suite once before the PR.
 - `mods/`: the mod packages (`preloaded/`) and `allocations.toml`.
 - `tests/<feature>/`: a feature's unit test (with its `CMakeLists.txt`) and
   end-to-end test; `tests/e2e/` is the shared helper.
-- `tools/`: `test.sh`, the allocation checker, the disassembly, ROM checks.
-- `docs/`: GAME_INTERNALS.md and the other notes. `assets/`: the launcher's
-  box art.
+- `tools/`: `test.sh`, the allocation checker, the disassembly, ROM checks,
+  and `readme_screenshots.py`.
+- `docs/`: GAME_INTERNALS.md and the other notes; `docs/screenshots/` holds
+  the README's pictures. `assets/`: the launcher's box art.
 
 ## Building features
 
@@ -80,7 +82,16 @@ recompiler produced it; features observe and steer it.
   model of the machine (`tests/travel/travel_test.c`). An end-to-end test plays
   it in a hidden window over TCP (`tests/travel/guru_travel.py`). Add both to
   `tools/test.sh`. Give each end-to-end run its own output folder: several
-  sessions may run the suite at once.
+  sessions may run the suite at once. Run it in Seamless too (`+sw`) only if
+  the feature draws or places something on screen or moves the hero between
+  rooms.
+- **Show every feature in the README.** A new feature's PR adds its
+  paragraph to the README's "What's new" and a screenshot right after it,
+  made by `tools/readme_screenshots.py`: add a `@scene` that plays the
+  feature to its moment (reuse your end-to-end test's setup), run it with
+  `--only <scene>`, look at `docs/screenshots/<scene>.png`, and commit the PNG.
+  Never commit a save state. A PR that changes how a feature looks reruns its
+  scene; rerun only the scenes you changed, so the others don't churn.
 - **End-to-end tests use the shared helper,
   [tests/e2e/fax_e2e.py](tests/e2e/fax_e2e.py)**, for the port, launching the
   game, the TCP client, save-state fixtures and screenshots. Never write your
@@ -93,7 +104,15 @@ recompiler produced it; features observe and steer it.
   on a given frame goes in with the save state it starts from, in one
   `batch()` (a `load_state`, then the `action`), or runs headless from that
   state with `--input`. Never count on two TCP commands being a few frames
-  apart.
+  apart, nor on reads taking a frame each: bound a loop by frames, and read
+  what a press depends on in one batch (`page_to()` for a conversation).
+- **End-to-end tests start from saved games.** `game.launch(at=...)` loads a
+  fixture, made from your ROM by a recipe and cached in `build-tests/fixtures`;
+  boot from power-on only where the boot is what is checked. **Never commit a
+  save state:** it holds CHR RAM copied from the ROM. A test much longer than
+  the rest splits into parts that run at once. The suite's time is the frames
+  its games play, so walk, read and wait no longer than the check needs
+  ([tests/README.md](tests/README.md)).
 - **Everything the remaster adds goes into the one Faxanadu Remastered mod**
   (`mods/preloaded/packages/faxanadu.remastered`), never a new package: add a
   `[[plugin]]` under its `remastered` feature. The launcher has one switch for

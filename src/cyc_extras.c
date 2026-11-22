@@ -15,6 +15,8 @@
 #include "fax_keys.h"
 #include "fax_falling.h"
 #include "fax_jumps.h"
+#include "fax_ladders.h"
+#include "fax_ladder_hold.h"
 #include "fax_text_speed.h"
 #include "fax_save.h"
 #include "fax_files.h"
@@ -28,6 +30,11 @@
 #include "fax_slain.h"
 #include "fax_indoor.h"
 #include "fax_damage.h"
+#include "fax_inventory.h"
+#include "fax_fixes.h"
+#include "fax_map.h"
+#include "fax_quests.h"
+#include "fax_graphics.h"
 #include "fax_entrances.h"
 #ifdef CYC_WITH_SDL
 #include "cyc_tcp.h"
@@ -236,8 +243,32 @@ static void frame_begin(void *ctx) {
     if (tiles_enabled) chr_override_reload_if_changed();
     inject_password();
 }
+#ifdef CYC_WITH_SDL
+/* The end-to-end tests' frame-exact wait (tests/e2e/fax_e2e.py's wait()):
+ * `wait` answers once `frames` more frames have run, at the end of the last
+ * one, so a test waits on the game without polling it and without a frame
+ * more than it asked for. One at a time: the tests' client is one line. */
+static int wait_id = -1;
+static long wait_left;
+static void tcp_wait(int id, const char *line) {
+    long n = 1;
+    cyc_tcp_long(line, "frames", &n);
+    if (wait_id >= 0) { cyc_tcp_err(id, "wait: another wait is running"); return; }
+    if (n < 1 || n > 36000) { cyc_tcp_err(id, "wait: frames is 1-36000"); return; }
+    wait_id = id; wait_left = n;
+}
+static void wait_frame_end(void) {
+    if (wait_id < 0 || --wait_left > 0) return;
+    int id = wait_id;
+    wait_id = -1;
+    cyc_tcp_ok(id, NULL);
+}
+#endif
 static void frame_end(void *ctx) {
     (void)ctx; ++frame;
+#ifdef CYC_WITH_SDL
+    wait_frame_end();
+#endif
     fax_world_step();
     fax_travel_step();
     fax_magic_frame_end();
@@ -249,6 +280,8 @@ static void frame_end(void *ctx) {
     fax_block_frame_end();
     fax_sugata_frame_end();
     fax_damage_frame_end();
+    fax_map_frame_end();
+    fax_quests_frame_end();
     if (tiles_enabled || tile_dump) chr_override_frame_end();
     /* Save files replace the mantra; faxanadu.srm is then only for importing. */
     if (!cyc_host_saves_enabled() || frame % 900 || fax_save_enabled()) return;
@@ -288,6 +321,7 @@ static void tcp_setup(void *ctx) {
     (void)ctx;
     cyc_tcp_register("mantra_now", "Read current progress without changing the machine", mantra_now);
     cyc_tcp_register("mantra_save", "Persist the current progress mantra", mantra_save);
+    cyc_tcp_register("wait", "Answer once `frames` more frames have run (default 1): a frame-exact wait", tcp_wait);
     fax_world_tcp_setup();
     fax_travel_tcp_setup();
     fax_death_tcp_setup();
@@ -298,6 +332,8 @@ static void tcp_setup(void *ctx) {
     fax_keys_tcp_setup();
     fax_falling_tcp_setup();
     fax_jumps_tcp_setup();
+    fax_ladders_tcp_setup();
+    fax_ladder_hold_tcp_setup();
     fax_text_speed_tcp_setup();
     fax_files_tcp_setup();
     fax_title_tcp_setup();
@@ -310,39 +346,54 @@ static void tcp_setup(void *ctx) {
     fax_slain_tcp_setup();
     fax_indoor_tcp_setup();
     fax_damage_tcp_setup();
+    fax_inventory_tcp_setup();
+    fax_fixes_tcp_setup();
+    fax_map_tcp_setup();
+    fax_quests_tcp_setup();
+    fax_graphics_tcp_setup();
     fax_entrances_tcp_setup();
 }
 #endif
 static const uint32_t *present(void *ctx,int *w,int *h) {
     (void)ctx;
-    const uint32_t *picture=fax_files_present(fax_title_present(fax_speaker_present(fax_slain_present(fax_banner_present(fax_damage_present(fax_sugata_present(fax_world_present(w,h,cyc_frame_argb()),w,h),w,h),w,h),w,h),w,h),w,h),w,h);
-    return fax_shops_present(picture,w,h);
+    const uint32_t *picture=fax_quests_marks_present(fax_damage_present(fax_sugata_present(fax_world_present(w,h,cyc_frame_argb()),w,h),w,h),w,h);
+    picture=fax_files_present(fax_title_present(fax_speaker_present(fax_quests_banner_present(fax_slain_present(fax_banner_present(picture,w,h),w,h),w,h),w,h),w,h),w,h);
+    return fax_quests_log_present(fax_map_present(fax_shops_present(picture,w,h),w,h),w,h);
 }
 static void event(void *ctx,const void *e,int player) {
     (void)ctx;(void)player;
     fax_world_event(e);
     fax_magic_event(e);
     fax_block_event(e);
+    fax_map_event(e);
+    fax_quests_event(e);
 }
 static void input(void *ctx, uint8_t buttons[2]) { (void)ctx; fax_block_input(buttons); }
 static void load_setting(void *ctx, const char *key, const char *value) {
     (void)ctx;
-    if (!fax_magic_load_setting(key, value)) fax_block_load_setting(key, value);
+    if (!fax_magic_load_setting(key, value) && !fax_block_load_setting(key, value) && !fax_map_load_setting(key, value))
+        fax_quests_load_setting(key, value);
 }
-static void save_settings(void *ctx, FILE *f) { (void)ctx; fax_magic_save_settings(f); fax_block_save_settings(f); }
+static void save_settings(void *ctx, FILE *f) {
+    (void)ctx; fax_magic_save_settings(f); fax_block_save_settings(f); fax_map_save_settings(f); fax_quests_save_settings(f);
+}
 #ifdef CYC_WITH_RECOMP_UI
-/* The runtime menu's Controls section: the Magic and Block buttons' bindings,
+/* The runtime menu's Controls section: the Magic, Block, Map and Quest log buttons' bindings,
  * information rows like the host's own shortcuts. */
 static RecompRuntimeUiItem menu_rows[] = {
     { "faxanadu.magic", "Controls", "Magic", "Casts like Up+B. Rebind it in config.ini [Game].",
       RECOMP_RUNTIME_UI_ACTION, 0, 0, 0, NULL, 0, NULL },
     { "faxanadu.block", "Controls", "Block", "Hold with a shield to stop magic. Rebind it in config.ini [Game].",
       RECOMP_RUNTIME_UI_ACTION, 0, 0, 0, NULL, 0, NULL },
+    { "faxanadu.map", "Controls", "Map", "Shows the screens you've been to. Rebind it in config.ini [Game].",
+      RECOMP_RUNTIME_UI_ACTION, 0, 0, 0, NULL, 0, NULL },
+    { "faxanadu.quests", "Controls", "Quest log", "Lists your quests. Rebind it in config.ini [Game].",
+      RECOMP_RUNTIME_UI_ACTION, 0, 0, 0, NULL, 0, NULL },
 };
 static int menu_row_enabled(void *ctx, const RecompRuntimeUiItem *it) { (void)ctx; (void)it; return 0; }
 static const RecompRuntimeUiCallbacks menu_callbacks = { .is_enabled = menu_row_enabled };
 #endif
-static void state_loaded(void *ctx) {(void)ctx;fax_world_loaded();fax_block_loaded();fax_files_state_loaded();}
+static void state_loaded(void *ctx) {(void)ctx;fax_world_loaded();fax_block_loaded();fax_files_state_loaded();fax_quests_loaded();}
 const CycHostExtras *cyc_host_extras(void) {
     static const CycHostOption options[] = {
         { "--password", true, "Prefill a 1..24 character mantra (spaces allowed)" },
@@ -356,6 +407,8 @@ const CycHostExtras *cyc_host_extras(void) {
 #ifdef CYC_WITH_RECOMP_UI
     menu_rows[0].label = fax_magic_controls_label();
     menu_rows[1].label = fax_block_controls_label();
+    menu_rows[2].label = fax_map_controls_label();
+    menu_rows[3].label = fax_quests_controls_label();
 #endif
     static const CycHostExtras extras = {
         .present=present,.event=event,.input=input,

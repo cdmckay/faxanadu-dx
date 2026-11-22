@@ -44,7 +44,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import Game, fixture, frame, parse_args, ram, tcp, until, wait  # noqa: E402
+from fax_e2e import Game, fixture, frame, parse_args, ram, tcp  # noqa: E402
 
 AREA, SCREEN, HERO_X, HERO_Y = 0x24, 0x63, 0x9E, 0xA1               # Player_PosX_Block, Player_PosY
 PLAYER_FLAGS, ATTACKING, FACING_RIGHT = 0xA4, 0x80, 0x40
@@ -98,7 +98,8 @@ def main():
         assert not m[PLAYER_FLAGS] & FACING_RIGHT, "the hero faces the Zozura"
         got = dict(hit=False, hurt=False, swings=0, reaches=set(), phase1=[])
         jumped = pressed = attacking = False
-        for _ in range(900):                                        # one read a sample, a frame or two apart
+        end = frame() + 1600                                        # one read a sample, a frame or less apart
+        while frame() < end:
             m = ram(0, MACHINE)
             d = m[HERO_X] - m[SPRITE_X + TARGET]
             got["reaches"].add((m[REACH_X], m[REACH_Y]))
@@ -133,33 +134,13 @@ def main():
         return f"{ds[0]}-{ds[-1]}" if len(ds) > 1 else f"{ds[0]}"
 
     try:
-        game.launch()
-        until("the title", lambda: frame() > 700)
-        tcp("pad", buttons="start", frames=10)
-        until("the Eolis gate", lambda: frame() > 1900)
+        zozura = game.state("eolis-zozuras")
+        game.launch(at="eolis-zozuras")
         state = tcp("dagger_state")
         assert state["enabled"] and state["served"] and not state["failed"], f"on by default: {state}"
-        assert (ram(AREA), ram(SCREEN), ram(SPRITE_ENTITY + 7)) == (EOLIS, GATE, INTRO_TRIGGER)
-        gate = out / "gate.cycstate"
-        tcp("save_state", path=str(gate))
-        door = out / "door.cycstate"
-        fixture(gate, door, {SPRITE_ENTITY + 7: 0xFF, HERO_X: GATE_DOOR_X})
-        tcp("load_state", path=str(door))
-        wait(10)
-        tcp("action", name="up", frames=6)
-        until("the town", lambda: ram(SCREEN) == TOWN, 600)
-        wait(30)
-        for _ in range(60):
-            if ram(SCREEN) == ZOZURA_SCREEN:
-                break
-            tcp("action", name="left", frames=30)
-            wait(31)
-        until("the Zozura", lambda: ram(SCREEN) == ZOZURA_SCREEN and
-              (ram(SPRITE_ENTITY + OTHER), ram(SPRITE_ENTITY + TARGET)) == (ZOZURA, ZOZURA), 300)
+        assert ram(SCREEN) == ZOZURA_SCREEN and (ram(SPRITE_ENTITY + OTHER), ram(SPRITE_ENTITY + TARGET)) == (ZOZURA, ZOZURA)
         assert ram(SPRITE_X + TARGET) > ram(SPRITE_X + OTHER), "the target is the nearer Zozura"
         assert (ram(HERO_Y), ram(SPRITE_Y + TARGET)) == (GROUND, GROUND + 16), "both on the ground"
-        zozura = out / "zozura.cycstate"
-        tcp("save_state", path=str(zozura))
 
         # 1. On: the dagger hits from close in, and keeps its short reach.
         got = swing(zozura, DAGGER, CLOSE, name="taller-dagger-hits")

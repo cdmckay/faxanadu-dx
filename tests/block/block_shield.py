@@ -30,9 +30,7 @@ game fills each frame and the picture (or Seamless world's) is drawn from.
 
 Screenshots of each, in OUT.
 """
-import json
 from pathlib import Path
-import socket
 import struct
 import sys
 import zlib
@@ -40,6 +38,7 @@ import zlib
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from harness import (Game, fixture, parse_args, POS_X, POS_Y, PLAYER_FLAGS, FACING_RIGHT, SELECTED_SHIELD,  # noqa: E402
                      ENTITIES, SMALL, LARGE, MAGIC, HELMET, NO_SHIELD)
+import fax_e2e  # noqa: E402  (on the path through harness)
 
 SHADOW_OAM, SHIELD_BOX = 0x700, 0x39B         # Player_ShieldPositionX/Y
 INTERRUPT_COUNTER = 0x1A                       # counts every NMI: one a frame
@@ -53,34 +52,6 @@ NAMES = {SMALL: "small", LARGE: "large", MAGIC: "magic", HELMET: "helmet"}
 def glinting(shown):
     """The glint's frame `shown` (0 = its first) is in the shield's palette."""
     return 0 <= shown < GLINT and shown // GLINT_BEAT % 2 == 0
-
-
-class Line:
-    """One TCP connection kept open, so a command is served at the game's
-    next frame boundary rather than a new connection's, and commands sent
-    together at the same one. A reply still takes about 3 frames to arrive:
-    the game sends each line and its newline apart, and Nagle's algorithm
-    holds the newline until the first part is acknowledged, which the
-    client's delayed ACK puts off by up to 40 ms. The game takes no other
-    connection while this one is open."""
-
-    def __init__(self, port):
-        self.sock = socket.create_connection(("127.0.0.1", port), 5)
-        self.sock.settimeout(30)
-        self.replies = self.sock.makefile("rb")            # buffered: a byte a read is slow for 4 KB
-
-    def batch(self, *cmds):
-        """Send (cmd, args) pairs together; their replies, in order."""
-        self.sock.sendall(b"".join((json.dumps(dict(id=i, cmd=cmd, **kw)) + "\n").encode()
-                                   for i, (cmd, kw) in enumerate(cmds)))
-        replies = [json.loads(self.replies.readline()) for _ in cmds]
-        for (cmd, _), reply in zip(cmds, replies):
-            if not reply.get("ok"):
-                raise RuntimeError(f"{cmd}: {reply}")
-        return replies
-
-    def close(self):
-        self.sock.close()
 
 
 def png(path):
@@ -119,8 +90,32 @@ def changed(before, after, box):
     return (min(xs), min(ys), max(xs) + 1, max(ys) + 1) if ys else None
 
 
+def _into_eolis(shield):
+    def how(g):
+        """From the gate, with this shield in the shield slot, into Eolis (its
+        tiles load on the way), facing right, once the zone's banner has
+        gone; the townsfolk sent away, for clear pictures."""
+        g.poke({SELECTED_SHIELD: shield})
+        g.act("up", 4, 10)
+        g.until("Eolis", lambda: g.where() == (0, 1), 300)
+        g.until("the screen to settle", g.settled, 300)
+        g.wait(30)
+        g.act("right", 20, 10)
+        assert g.ram(SELECTED_SHIELD) == shield and g.ram(PLAYER_FLAGS) & FACING_RIGHT
+        g.until("Eolis's banner to go", lambda: g.tcp("zone_state")["showing"] is None, 1200)
+        g.poke({ENTITIES + i: 0xFF for i in range(8)})
+        g.wait(4)
+    return how
+
+
+for _shield, _name in NAMES.items():
+    fax_e2e.recipe(f"glint-eolis-{_name}", parent="gate-door")(_into_eolis(_shield))
+PARTS = ("drawn", *(f"glint-{name}" for name in NAMES.values()), "jump")   # each its own game
+
+
 def main():
-    g = Game.from_args(parse_args(__doc__))
+    args = parse_args(__doc__, parts=PARTS)
+    g = Game.from_args(args)
 
     def block():
         return g.tcp("block_state")
@@ -160,26 +155,6 @@ def main():
             y += room[1] * ROOM_H - world["camera"][1]
         return x - margin, y - margin, x + 16 + margin, y + 32 + margin
 
-    def into_eolis(shield, name):
-        """From the gate, with `shield` in the shield slot, into Eolis: its
-        tiles load on the way. Returns a save state there, facing right, once
-        the zone's banner has gone."""
-        start = g.out / f"gate-{name}.cycstate"
-        fixture(gate, start, {SELECTED_SHIELD: shield})
-        g.load(start)
-        g.act("up", 4, 10)
-        g.until("Eolis", lambda: g.where() == (0, 1), 300)
-        g.until("the screen to settle", g.settled, 300)
-        g.wait(30)
-        g.act("right", 20, 10)
-        assert g.ram(SELECTED_SHIELD) == shield and g.ram(PLAYER_FLAGS) & FACING_RIGHT
-        g.until("Eolis's banner to go", lambda: g.tcp("zone_state")["showing"] is None, 1200)
-        alone = g.out / f"eolis-{name}.cycstate"           # the townsfolk sent away, for clear pictures
-        fixture(g.save(f"eolis-{name}-townsfolk"), alone, {ENTITIES + i: 0xFF for i in range(8)})
-        g.load(alone)
-        g.wait(4)
-        return alone
-
     def hold(frames=90):
         g.tcp("key", name="V", frames=frames)
         g.until("Block to be up", lambda: block()["raised"], 30)
@@ -204,111 +179,110 @@ def main():
         frame read after V was sent. Gives up 60 frames after V if no read
         has shown the glint."""
         at = g.ram(POS_X), g.ram(POS_Y)
-        line = Line(g.port)
         seen, counts, befores, shots, first, pressed = {}, {}, {}, {}, None, None
         frame = last = None
-        try:
-            for _ in range(240):
-                shoot = pressed is None or first is not None
-                cmds = [("read_ram", dict(addr=INTERRUPT_COUNTER, len=SHADOW_OAM + 256 - INTERRUPT_COUNTER))]
-                if pressed is not None:
-                    cmds.append(("block_state", {}))
-                if shoot:
-                    path = g.out / f"{len(g.shots):02d}-{name}-{'glint' if pressed else 'before'}.png"
-                    cmds.append(("screenshot", dict(layer="picture", path=str(path))))
-                replies = line.batch(*cmds)
-                ram = bytes.fromhex(replies[0]["hex"])
-                frame = 0 if frame is None else frame + (ram[0] - last & 0xFF)
-                last = ram[0]
-                seen[frame] = parse(ram[SHADOW_OAM - INTERRUPT_COUNTER:], at)
-                if shoot:
-                    (shots if pressed else befores)[frame] = path
-                    g.shots.append(path.name)
-                if pressed is None:
-                    if len({f % 2 for f in befores}) == 2:
-                        line.batch(("key", dict(name="V", frames=120)))
-                        pressed = frame + 1
-                    continue
-                counts[frame] = replies[1]["glint"]
-                body = seen[frame][1]
-                if first is None and body and all(p == 1 for _, _, p in body):
-                    first = frame
-                if first is not None and frame - first > 2 * GLINT or first is None and frame - pressed > 60:
-                    break
-        finally:
-            line.close()
+        for _ in range(240):
+            shoot = pressed is None or first is not None
+            cmds = [("read_ram", dict(addr=INTERRUPT_COUNTER, len=SHADOW_OAM + 256 - INTERRUPT_COUNTER))]
+            if pressed is not None:
+                cmds.append(("block_state", {}))
+            if shoot:
+                path = g.out / f"{len(g.shots):02d}-{name}-{'glint' if pressed else 'before'}.png"
+                cmds.append(("screenshot", dict(layer="picture", path=str(path))))
+            replies = g.batch(*cmds)
+            ram = bytes.fromhex(replies[0]["hex"])
+            frame = 0 if frame is None else frame + (ram[0] - last & 0xFF)
+            last = ram[0]
+            seen[frame] = parse(ram[SHADOW_OAM - INTERRUPT_COUNTER:], at)
+            if shoot:
+                (shots if pressed else befores)[frame] = path
+                g.shots.append(path.name)
+            if pressed is None:
+                if len({f % 2 for f in befores}) == 2:
+                    g.batch(("key", dict(name="V", frames=120)))
+                    pressed = frame + 1
+                continue
+            counts[frame] = replies[1]["glint"]
+            body = seen[frame][1]
+            if first is None and body and all(p == 1 for _, _, p in body):
+                first = frame
+            if first is not None and frame - first > 2 * GLINT or first is None and frame - pressed > 60:
+                break
         assert pressed is not None, f"{name}: every picture before V had the same frame parity"
         return seen, counts, befores, shots, pressed
 
     try:
-        g.launch()
-        g.new_game_at_gate()
-        gate = g.save("gate")
-        states = {}
+        states = {shield: g.state(f"glint-eolis-{name}") for shield, name in NAMES.items()}
+        glinted = {}
 
-        # 1. The shield is drawn where the game draws it.
-        for shield in (SMALL, LARGE, MAGIC):
-            states[shield] = into_eolis(shield, NAMES[shield])
-            for facing in ("right", "left"):
-                if facing == "left":
-                    g.act("left", 2, 10)
-                right = facing == "right"
-                assert bool(g.ram(PLAYER_FLAGS) & FACING_RIGHT) == right
-                where = g.ram(POS_X), g.ram(POS_Y)
-                down, body = sprites()
-                box = g.ram(SHIELD_BOX, 2)
-                front = 8 if right else 0
-                assert down == [(front, 8, 1), (front, 16, 1)], down
-                assert box == bytes([where[0] + front, where[1] + 8]), (box, where)
-                g.shot(f"{NAMES[shield]}-{facing}-down")
-                before = block()["glints"]
-                hold()
-                up, held_body = sprites()
-                assert up == down, (up, down)
-                assert [(dx, dy) for dx, dy, _ in held_body] == [(dx, dy) for dx, dy, _ in body], (held_body, body)
-                assert (g.ram(POS_X), g.ram(POS_Y)) == where and g.ram(SHIELD_BOX, 2) == box
-                assert block()["glints"] == before + 1, block()
-                g.shot(f"{NAMES[shield]}-{facing}-held")
-                let_go()
-                again, after = sprites()
-                assert again == down and after == body, (again, down, after, body)
-            print(f"ok: the {NAMES[shield]} shield, facing right and left: drawn where the game draws it while "
-                  f"Block is held, its box where the game puts it, and a glint as Block goes up")
+        if args.wants("drawn"):
+            g.launch()
+            # 1. The shield is drawn where the game draws it.
+            for shield in (SMALL, LARGE, MAGIC):
+                g.load(states[shield])
+                g.wait(4)
+                for facing in ("right", "left"):
+                    if facing == "left":
+                        g.act("left", 2, 10)
+                    right = facing == "right"
+                    assert bool(g.ram(PLAYER_FLAGS) & FACING_RIGHT) == right
+                    where = g.ram(POS_X), g.ram(POS_Y)
+                    down, body = sprites()
+                    box = g.ram(SHIELD_BOX, 2)
+                    front = 8 if right else 0
+                    assert down == [(front, 8, 1), (front, 16, 1)], down
+                    assert box == bytes([where[0] + front, where[1] + 8]), (box, where)
+                    g.shot(f"{NAMES[shield]}-{facing}-down")
+                    before = block()["glints"]
+                    hold()
+                    up, held_body = sprites()
+                    assert up == down, (up, down)
+                    assert [(dx, dy) for dx, dy, _ in held_body] == [(dx, dy) for dx, dy, _ in body], (held_body, body)
+                    assert (g.ram(POS_X), g.ram(POS_Y)) == where and g.ram(SHIELD_BOX, 2) == box
+                    assert block()["glints"] == before + 1, block()
+                    g.shot(f"{NAMES[shield]}-{facing}-held")
+                    let_go()
+                    again, after = sprites()
+                    assert again == down and after == body, (again, down, after, body)
+                print(f"ok: the {NAMES[shield]} shield, facing right and left: drawn where the game draws it while "
+                      f"Block is held, its box where the game puts it, and a glint as Block goes up")
 
-        # 2. No shield, and the Battle Helmet: no shield sprites.
-        target = g.out / "eolis-none.cycstate"
-        fixture(states[SMALL], target, {SELECTED_SHIELD: NO_SHIELD})
-        g.load(target)
-        g.wait(4)
-        before = block()["glints"]
-        g.tcp("key", name="V", frames=30)
-        g.until("V to be held", lambda: block()["held"], 30)
-        g.wait(4)
-        shield, body = sprites()
-        assert not block()["raised"] and shield == [] and all(p == 0 for _, _, p in body)
-        assert block()["glints"] == before
-        let_go()
-        states[HELMET] = into_eolis(HELMET, "helmet")
-        before = block()["glints"]
-        hold(30)
-        assert block()["raised"] and sprites()[0] == [] and block()["glints"] == before + 1
-        let_go()
-        print("ok: without a shield Block does nothing; the Battle Helmet has no shield to draw, and glints")
-        g.close()
+            # 2. No shield, and the Battle Helmet: no shield sprites.
+            target = g.out / "eolis-none.cycstate"
+            fixture(states[SMALL], target, {SELECTED_SHIELD: NO_SHIELD})
+            g.load(target)
+            g.wait(4)
+            before = block()["glints"]
+            g.tcp("key", name="V", frames=30)
+            g.until("V to be held", lambda: block()["held"], 30)
+            g.wait(4)
+            shield, body = sprites()
+            assert not block()["raised"] and shield == [] and all(p == 0 for _, _, p in body)
+            assert block()["glints"] == before
+            let_go()
+            g.load(states[HELMET])
+            g.wait(4)
+            before = block()["glints"]
+            hold(30)
+            assert block()["raised"] and sprites()[0] == [] and block()["glints"] == before + 1
+            let_go()
+            print("ok: without a shield Block does nothing; the Battle Helmet has no shield to draw, and glints")
+            g.close()
 
         # 3. The glint, at normal speed: 4 frames on, 4 off, 4 on. A picture
         # shows the shadow OAM the PPU took at the frame's start, the frame
         # before's; Seamless world's shows the frame's own, as it captures
         # the room when the main loop's pass ends.
-        g.realtime = True
-        glinted = {}
-        g.launch()
-        lag = 0 if g.tcp("fax_world")["enabled"] else 1
-        for shield in (SMALL, LARGE, MAGIC, HELMET):
+        shields = [shield for shield, name in NAMES.items() if args.wants(f"glint-{name}")]
+        if shields or args.wants("jump"):
+            g.realtime = True
+            g.launch()
+            lag = 0 if g.tcp("fax_world")["enabled"] else 1
+        for shield in shields:
             for facing in ("right", "left"):
                 name = f"{NAMES[shield]}-{facing}"
-                # A read takes about 3 frames, and on a loaded machine the
-                # script can lag past a whole beat: an attempt whose reads or
+                # A read takes a frame, and on a loaded machine the script
+                # can lag past a whole beat: an attempt whose reads or
                 # pictures miss one lets go and holds Block again from the
                 # same state. What the reads do show must be right every time.
                 for attempt in range(5):
@@ -372,35 +346,37 @@ def main():
                 else:
                     raise AssertionError(f"{name}: the reads or pictures missed a beat of the glint in 5 tries")
 
-        # 4. The jump buffer, at normal speed, with the Small Shield. A goes in
-        # within the jump's last 6 frames, then V at once; an attempt counts
-        # when forgiving jumps had kept the press and dropped it as Block went
-        # up (it was not used first: he had not landed).
-        floor = states[SMALL]
-        for attempt in range(8):
-            g.load(floor)
-            g.wait(4)
-            ground, before = g.ram(POS_Y), g.tcp("forgiving_jumps_state")
-            g.tcp("action", name="a", frames=2)
-            g.until("the jump", lambda: g.ram(PLAYER_FLAGS) & JUMPING, 60)
-            g.until("the jump's last frames", lambda: g.ram(JUMP_CURVE) >= 26, 120)
-            g.tcp("action", name="a", frames=2)
-            g.tcp("key", name="V", frames=60)
-            g.until("Block to be up", lambda: block()["raised"], 30)
-            g.wait(30)
-            state = g.tcp("forgiving_jumps_state")
-            if state["blocked"] == before["blocked"]:
+        if args.wants("jump"):
+            # 4. The jump buffer, at normal speed, with the Small Shield. A goes in
+            # within the jump's last 6 frames, then V at once; an attempt counts
+            # when forgiving jumps had kept the press and dropped it as Block went
+            # up (it was not used first: he had not landed).
+            floor = states[SMALL]
+            for attempt in range(8):
+                g.load(floor)
+                g.wait(4)
+                ground, before = g.ram(POS_Y), g.tcp("forgiving_jumps_state")
+                g.tcp("action", name="a", frames=2)
+                g.until("the jump", lambda: g.ram(PLAYER_FLAGS) & JUMPING, 60)
+                g.until("the jump's last frames", lambda: g.ram(JUMP_CURVE) >= 26, 120)
+                g.tcp("action", name="a", frames=2)
+                g.wait(1)                                      # A goes in first: on its frame, Block would take it
+                g.tcp("key", name="V", frames=60)
+                g.until("Block to be up", lambda: block()["raised"], 30)
+                g.wait(30)
+                state = g.tcp("forgiving_jumps_state")
+                if state["blocked"] == before["blocked"]:
+                    let_go()
+                    continue                                   # he landed first, or Block took the A itself: again
+                assert not state["pending"] and state["buffered"] == before["buffered"], (state, before)
+                assert g.ram(POS_Y) == ground and not g.ram(PLAYER_FLAGS) & JUMPING, (g.ram(POS_Y), ground)
+                g.shot("jump-kept-then-blocked")
                 let_go()
-                continue                                   # he landed first, or Block took the A itself: again
-            assert not state["pending"] and state["buffered"] == before["buffered"], (state, before)
-            assert g.ram(POS_Y) == ground and not g.ram(PLAYER_FLAGS) & JUMPING, (g.ram(POS_Y), ground)
-            g.shot("jump-kept-then-blocked")
-            let_go()
-            print(f"ok: A kept from the air, then Block up before landing: the press is dropped and he does not "
-                  f"jump on landing (try {attempt + 1})")
-            break
-        else:
-            raise AssertionError("could not press A and raise Block within a jump's last frames")
+                print(f"ok: A kept from the air, then Block up before landing: the press is dropped and he does not "
+                      f"jump on landing (try {attempt + 1})")
+                break
+            else:
+                raise AssertionError("could not press A and raise Block within a jump's last frames")
         for name, (glint, before, (left, top, right, bottom)) in glinted.items():
             print(f"the glint pictured: {name}: {glint.name}, before it {before.name}, the hero at "
                   f"{left + 8},{top + 8} to {right - 8},{bottom - 8}")

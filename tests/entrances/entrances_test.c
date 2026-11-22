@@ -42,7 +42,7 @@ int nes_mod_register_activation_plugin(const char *id, NESModActivationCallback 
 void nes_mod_set_local_only(const char *name, int required) { (void)name; (void)required; }
 
 /* ---- bank 11: the stock placement lists of the screens with a move ---- */
-enum { HORNET = 0x07, YUINARU = 0x0B, ROKUSUTAHN = 0x11, YAREEKA = 0x22, POISON = 0x5E };
+enum { HORNET = 0x07, ROKUSUTAHN = 0x11, YAREEKA = 0x22, MONODRON = 0x2A, POISON = 0x5E };
 typedef struct { uint8_t area, screen, n, pairs[8][2]; } Screen;
 static const Screen screens[] = {
     { TRUNK,    0x06, 2, {{ZOMBIE, 0xA6}, {ZOMBIE, 0x5B}} },
@@ -57,6 +57,9 @@ static const Screen screens[] = {
     { DARTMOOR, 0x03, 3, {{LAMPREY, 0xAA}, {SIR_GAWAINE, 0xA4}, {YUINARU, 0x58}} },
     { DARTMOOR, 0x08, 3, {{ROKUSUTAHN, 0x98}, {SIR_GAWAINE, 0x42}, {HORNET, 0x78}} },
     { DARTMOOR, 0x0C, 2, {{WOLFMAN, 0xAB}, {WOLFMAN, 0xAE}} },
+    { TRUNK,    0x0D, 3, {{MONODRON, 0x9A}, {ZOZURA, 0x52}, {ZOZURA, 0x5E}} },
+    { TRUNK,    0x17, 3, {{MONODRON, 0x9A}, {YUINARU, 0x35}, {YUINARU, 0x5F}} },
+    { MIST,     0x04, 2, {{SIR_GAWAINE, 0x96}, {IKEDA, 0x22}} },
 };
 enum { SCREENS = sizeof screens / sizeof screens[0] };
 
@@ -136,7 +139,7 @@ static void test_table(void) {
         CHECK(found == 1);
         CHECK(a->to != a->from);
         CHECK((a->to >> 4) <= 11);
-        CHECK(a->entity < 0x34);                          /* an enemy, not an NPC or an item */
+        CHECK(a->entity < 0x34 || a->entity == ZOZURA);   /* an enemy, not an NPC or an item */
         for (unsigned n = 0; n < MOVES; ++n) {
             if (n == m) continue;
             const FaxEntranceMove *b = &moves[n];

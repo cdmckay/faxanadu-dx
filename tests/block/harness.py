@@ -8,7 +8,6 @@ coverage) to set up fixtures: a shield, gold, or where a building's door leads
 """
 from pathlib import Path
 import sys
-import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 import fax_e2e  # noqa: E402
@@ -27,30 +26,35 @@ BUILDINGS, TOWNS = 4, 3
 SMALL, LARGE, MAGIC, HELMET, NO_SHIELD = 0, 1, 2, 3, 0xFF
 
 
+@fax_e2e.recipe("gate-door", parent="gate")
+def _gate_door(g):
+    """From outside Eolis's gate, right through the hero's thoughts at the
+    opening, to the gate (a door)."""
+    def act(name, frames=6, after=8):
+        g.tcp("action", name=name, frames=frames)
+        g.wait(frames + after)
+    act("right", 60, 10)
+    for _ in range(60):
+        if g.ram(POS_X) > 54:
+            break
+        if fax_e2e.typed():
+            act("a", 4, 8)
+        else:
+            fax_e2e.hurry(10)
+        act("right", 6, 2)
+    for _ in range(200):
+        if g.ram(POS_X) >= 192:
+            break
+        act("right", 6, 2)
+    assert (g.ram(AREA), g.ram(SCREEN)) == (0, 0) and 188 <= g.ram(POS_X) < 200, (g.ram(AREA), g.ram(POS_X))
+
+
 class Game(fax_e2e.Game):
-    """fax_e2e.Game, polling a little faster, with what Block's and Sugata's
-    flash's tests add."""
+    """fax_e2e.Game, with what Block's and Sugata's flash's tests add."""
 
     def __init__(self, build, rom, out, game_args=(), realtime=False, port=0):
         super().__init__(build, rom, out, game_args, realtime, port)
         self.config = self.out / "game" / "config.ini"
-
-    def wait(self, frames):
-        end = self.frame() + frames
-        while self.frame() < end:
-            time.sleep(0.003)
-
-    def until(self, what, test, frames=1200):
-        end = self.frame() + frames
-        while self.frame() < end:
-            if test():
-                return
-            time.sleep(0.003)
-        raise AssertionError(f"timed out waiting for {what}")
-
-    def act(self, name, frames=6, after=8):
-        self.tcp("action", name=name, frames=frames)
-        self.wait(frames + after)
 
     def save(self, name):
         path = self.out / f"{name}.cycstate"
@@ -81,24 +85,9 @@ class Game(fax_e2e.Game):
         return self.ram(0x0E) == 0 and self.ram(0x54) == 0xFF and self.ram(0x13) != 0
 
     def new_game_at_gate(self):
-        """A new game, through the opening, to the gate of Eolis (a door)."""
-        self.until("the title", lambda: self.frame() > 700)
-        self.tcp("pad", buttons="start", frames=10)
-        self.until("the opening", lambda: self.frame() > 1900)
-        self.act("right", 60, 10)
-        for _ in range(60):
-            if self.ram(POS_X) > 54:
-                break
-            if self.typed():
-                self.act("a", 4, 8)
-            else:
-                self.wait(10)
-            self.act("right", 6, 2)
-        for _ in range(200):
-            if self.ram(POS_X) >= 192:
-                break
-            self.act("right", 6, 2)
-        assert self.where() == (0, 0) and 188 <= self.ram(POS_X) < 200, (self.where(), self.ram(POS_X))
+        """A new game, through the opening, to the gate of Eolis (a door):
+        the gate-door fixture."""
+        self.load(self.state("gate-door"))
 
     def walk_to(self, x_min, x_max):
         """Walk until the hero's X is in [x_min, x_max], paging through any text."""
@@ -107,12 +96,12 @@ class Game(fax_e2e.Game):
                 if self.typed():
                     self.act("a", 6, 14)
                 else:
-                    self.wait(4)
+                    fax_e2e.hurry(4)
                 continue
             x = self.ram(POS_X)
             if x_min <= x <= x_max:
                 return
-            self.act("right" if x < x_min else "left", 2, 0)
+            fax_e2e.step_toward(x_min, x_max, self.box_open, POS_X)
         raise AssertionError(f"could not reach x {x_min}-{x_max}")
 
     def walk_out(self):
@@ -121,7 +110,7 @@ class Game(fax_e2e.Game):
             if self.ram(AREA) != BUILDINGS:
                 self.until("the screen to load", self.settled, 600)
                 return
-            self.act("right", 2, 0)
+            fax_e2e.hold("right", lambda: self.ram(AREA) != BUILDINGS)
         raise AssertionError("could not walk out")
 
     def warp(self, inside, name, area, screen, palette, pos, region, writes=None):

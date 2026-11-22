@@ -56,7 +56,7 @@ import sys
 import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import Game, act, fixture, frame, parse_args, ram, tcp, until, wait  # noqa: E402
+from fax_e2e import Game, act, fixture, hold, parse_args, ram, step_toward, tcp, until, wait, walk  # noqa: E402
 
 AREA, SCREEN, PLAYER_X = 0x24, 0x63, 0x9E
 TEXTBOX_CLOSED, MESSAGE_ID = 0x20C, 0x213
@@ -124,6 +124,12 @@ def carrying(gold_amount, weapon_list, item_list, weapon=HAND_DAGGER):
     w.update({WEAPONS + i: v for i, v in enumerate(weapon_list)})
     w.update({ITEMS + i: v for i, v in enumerate(item_list)})
     return w
+
+
+
+TOOL_KIT = carrying(700, [DRAGON_SLAYER, LONG_SWORD], [KEY_J, KEY_A])
+PARTS = ("tool-shop", "key-shop", "two-pages", "last-one", "owned-forepaw", "owned-found", "owned-key",
+         "original")                                                 # each its own game
 
 
 def png(path):
@@ -214,13 +220,18 @@ def check_priced(path, entry, price):
 
 
 def main():
-    args = parse_args(__doc__)
+    args = parse_args(__doc__, parts=PARTS)
     game = Game.from_args(args)
     out = game.out
 
-    def launch(on=True):
+    def game_up():
+        """The game with the remaster on: the one running, if it is."""
+        if not game.running():
+            launch()
+
+    def launch(on=True, at=None):
         game.set_features({PACKAGE: on})
-        game.launch()
+        game.launch(at=at)
         assert shops()["enabled"] == on, shops()
 
     def walk_to(x_min, x_max):
@@ -234,14 +245,14 @@ def main():
             x = ram(PLAYER_X)
             if x_min <= x <= x_max:
                 return
-            act("right" if x < x_min else "left", 2, 0)
+            step_toward(x_min, x_max, lambda: ram(TEXTBOX_CLOSED) == 0)
         raise AssertionError(f"could not reach x {x_min}-{x_max}")
 
     def walk_out():
         for _ in range(300):
             if ram(AREA) != BUILDINGS:
                 return
-            act("right", 2, 0)
+            hold("right", lambda: ram(AREA) != BUILDINGS)
         raise AssertionError("could not walk out")
 
     def go_in(source, name, screen, door, writes):
@@ -261,14 +272,7 @@ def main():
 
     def to_counter(stop=0):
         """Walk left to the counter, or to x `stop`."""
-        for _ in range(60):
-            before = ram(PLAYER_X)
-            if before <= stop:
-                return
-            act("left", 8, 2)
-            if ram(PLAYER_X) == before:
-                return
-        raise AssertionError("no counter")
+        walk("left", lambda: ram(PLAYER_X) <= stop)
 
     def list_up(mode, what=None):
         """Wait until the `mode` list is on screen, with its hint, and has stopped redrawing."""
@@ -344,278 +348,282 @@ def main():
         assert state["shown"] and (state["col"], state["row"]) == (10, 5), state
 
     try:
-        launch()
-        until("the title", lambda: frame() > 700)
-        tcp("pad", buttons="start", frames=10)
-        until("the Eolis gate", lambda: ram(AREA) == 0 and frame() > 1900)
-        walk_to(186, 196)                                   # the gate, column 12
-        act("up", 4, 10)
-        until("Eolis", lambda: (ram(AREA), ram(SCREEN)) == (0, 1))
-        wait(30)
-        walk_to(41, 56)                                     # the meat shop, column 3
-        act("up", 4, 10)
-        until("the meat shop", lambda: ram(AREA) == BUILDINGS)
-        wait(30)
-        start = out / "eolis-meat-shop.cycstate"
-        tcp("save_state", path=str(start))
+        start = game.state("eolis-meat-shop")
 
-        # 1. Eolis's tool shop (building 4: screen 3, block $9A).
-        go_in(start, "tool-shop", 3, 0x9A, carrying(700, [DRAGON_SLAYER, LONG_SWORD], [KEY_J, KEY_A]))
-        to_counter()
-        message_before = ram(MESSAGE_ID)
-        act("up", 4, 6)
-        state = list_up("buy", "the buy list, straight away")
-        assert state["list"] == [HAND_DAGGER, ITEM | RED_POTION, ELIXIR, DELUGE], state
-        assert state["prices"] == [400, 160, 320, 400] and state["cursor"] == 0, state
-        assert state["hint"] == "Select to sell" and state["page_label"] is None, state
-        assert ram(MESSAGE_ID) == message_before, "a line was loaded before the list"
-        speaker_on_list()
-        check_hint(game.shot("buy-list"), "Select to sell")
-        print("ok: Up opens the buy list at once, with its hint, under the Tool Seller's name")
+        if args.wants("tool-shop"):
+            game_up()
+            # 1. Eolis's tool shop (building 4: screen 3, block $9A).
+            go_in(start, "tool-shop", 3, 0x9A, TOOL_KIT)
+            to_counter()
+            message_before = ram(MESSAGE_ID)
+            act("up", 4, 6)
+            state = list_up("buy", "the buy list, straight away")
+            assert state["list"] == [HAND_DAGGER, ITEM | RED_POTION, ELIXIR, DELUGE], state
+            assert state["prices"] == [400, 160, 320, 400] and state["cursor"] == 0, state
+            assert state["hint"] == "Select to sell" and state["page_label"] is None, state
+            assert ram(MESSAGE_ID) == message_before, "a line was loaded before the list"
+            speaker_on_list()
+            check_hint(game.shot("buy-list"), "Select to sell")
+            print("ok: Up opens the buy list at once, with its hint, under the Tool Seller's name")
 
-        press("down")
-        for _ in range(3):
-            buy(1)
-        assert gold() == 700 - 3 * 160, gold()
-        assert items() == [KEY_J, KEY_A, RED_POTION, RED_POTION, RED_POTION], items()
-        print("ok: A three times buys three Red Potions, the list staying up and the cursor on them")
-
-        press("down")
-        press("down")
-        assert shops()["cursor"] == 3, shops()
-        act("a", 4, 6)
-        until("This is not enough Golds.", lambda: ram(MESSAGE_ID) == NOT_ENOUGH_GOLDS, 600)
-        until("the line to type out", typed, 600)
-        game.shot("not-enough-golds")
-        assert gold() == 220 and not shops()["list_up"], (gold(), shops())
-        act("a", 4, 6)
-        state = list_up("buy", "the buy list, after the message")
-        assert state["cursor"] == 3 and state["messages"] == 1, state
-        print("ok: the Deluge is not enough Golds, in the game's words, and A goes back to the list")
-
-        state = press("select", "sell")
-        assert state["list"] == [ITEM | RED_POTION] * 3 + [ITEM | KEY_A, ITEM | KEY_J, LONG_SWORD, DRAGON_SLAYER], state
-        assert state["prices"] == [80, 80, 80, 100, 50, 800, 0], state
-        assert state["hint"] == "Select to buy" and state["pages"] == 1 and state["page_label"] is None, state
-        speaker_on_list()
-        check_hint(game.shot("sell-list"), "Select to buy")
-        print("ok: Select opens the sell list: everything carried, at half a shop's price, 100 for the A key")
-
-        for _ in range(4):
             press("down")
-        assert shops()["cursor"] == 4, shops()
-        game.shot("sell-a-key-shops-item")
-        state = sell()
-        assert gold() == 220 + 50, gold()
-        assert items() == [KEY_A, RED_POTION, RED_POTION, RED_POTION], items()
-        assert state["list"] == [ITEM | RED_POTION] * 3 + [ITEM | KEY_A, LONG_SWORD, DRAGON_SLAYER], state
-        assert state["cursor"] == 4, state
-        print("ok: the J key, which only key shops sell, sells here for 50, and the list stays up")
+            for _ in range(3):
+                buy(1)
+            assert gold() == 700 - 3 * 160, gold()
+            assert items() == [KEY_J, KEY_A, RED_POTION, RED_POTION, RED_POTION], items()
+            print("ok: A three times buys three Red Potions, the list staying up and the cursor on them")
 
-        press("down")
-        state = shops()
-        assert state["cursor"] == 5 and state["hint"] == "Not for sale", state
-        path = game.shot("dragon-slayer-not-for-sale")
-        check_hint(path, "Not for sale")
-        check_no_price(path, 5)
-        act("a", 4, 30)
-        state = shops()
-        assert state["refused"] == 1 and state["list_up"] and state["shown"] == "sell", state
-        assert gold() == 270 and weapons() == [DRAGON_SLAYER, LONG_SWORD], (gold(), weapons())
-        game.shot("dragon-slayer-kept")
-        print("ok: the Dragon Slayer is not for sale, and A on it keeps it")
+            press("down")
+            press("down")
+            assert shops()["cursor"] == 3, shops()
+            act("a", 4, 6)
+            until("This is not enough Golds.", lambda: ram(MESSAGE_ID) == NOT_ENOUGH_GOLDS, 600)
+            until("the line to type out", typed, 600)
+            game.shot("not-enough-golds")
+            assert gold() == 220 and not shops()["list_up"], (gold(), shops())
+            act("a", 4, 6)
+            state = list_up("buy", "the buy list, after the message")
+            assert state["cursor"] == 3 and state["messages"] == 1, state
+            print("ok: the Deluge is not enough Golds, in the game's words, and A goes back to the list")
 
-        for _ in range(5):
+            state = press("select", "sell")
+            assert state["list"] == [ITEM | RED_POTION] * 3 + [ITEM | KEY_A, ITEM | KEY_J, LONG_SWORD, DRAGON_SLAYER], state
+            assert state["prices"] == [80, 80, 80, 100, 50, 800, 0], state
+            assert state["hint"] == "Select to buy" and state["pages"] == 1 and state["page_label"] is None, state
+            speaker_on_list()
+            check_hint(game.shot("sell-list"), "Select to buy")
+            print("ok: Select opens the sell list: everything carried, at half a shop's price, 100 for the A key")
+
+            for _ in range(4):
+                press("down")
+            assert shops()["cursor"] == 4, shops()
+            game.shot("sell-a-key-shops-item")
+            state = sell()
+            assert gold() == 220 + 50, gold()
+            assert items() == [KEY_A, RED_POTION, RED_POTION, RED_POTION], items()
+            assert state["list"] == [ITEM | RED_POTION] * 3 + [ITEM | KEY_A, LONG_SWORD, DRAGON_SLAYER], state
+            assert state["cursor"] == 4, state
+            print("ok: the J key, which only key shops sell, sells here for 50, and the list stays up")
+
+            press("down")
+            state = shops()
+            assert state["cursor"] == 5 and state["hint"] == "Not for sale", state
+            path = game.shot("dragon-slayer-not-for-sale")
+            check_hint(path, "Not for sale")
+            check_no_price(path, 5)
+            act("a", 4, 30)
+            state = shops()
+            assert state["refused"] == 1 and state["list_up"] and state["shown"] == "sell", state
+            assert gold() == 270 and weapons() == [DRAGON_SLAYER, LONG_SWORD], (gold(), weapons())
+            game.shot("dragon-slayer-kept")
+            print("ok: the Dragon Slayer is not for sale, and A on it keeps it")
+
+            for _ in range(5):
+                press("up")
+            assert shops()["cursor"] == 0, shops()
+            sell()
+            assert gold() == 270 + 80, gold()
+            assert items() == [KEY_A, RED_POTION, RED_POTION], items()
+            print("ok: a Red Potion sells for 80, half this shop's price")
+
+            act("b", 4, 6)
+            until("the conversation's end", lambda: ram(PORTRAIT) == NO_PORTRAIT and ram(TEXTBOX_CLOSED) != 0, 300)
+            assert ram(MESSAGE_ID) == 0, "a closing line"
+            game.shot("left")
+            print("ok: B leaves at once, with no closing line")
+
+        if args.wants("key-shop"):
+            game_up()
+            # The key shop next door (building 3: screen 3, block $9D): the same.
+            go_in(start, "key-shop", 3, 0x9D, carrying(0, [], [RED_POTION]))
+            to_counter(stop=80)                                 # he stands at block $84, x 64
+            act("up", 4, 6)
+            state = list_up("buy", "the Key Seller's list, straight away")
+            assert state["list"] == [ITEM | KEY_J] and state["prices"] == [100], state
+            state = press("select", "sell")
+            assert state["list"] == [ITEM | RED_POTION] and state["prices"] == [80], state
+            game.shot("key-shop-sell-list")
+            act("b", 4, 6)
+            until("the conversation's end", lambda: ram(PORTRAIT) == NO_PORTRAIT, 300)
+            print("ok: the Key Seller's list opens at once, and he buys a Red Potion for 80, a tool shop's half")
+
+        if args.wants("two-pages"):
+            game_up()
+            # 2. Two pages: 8 items, and the Long Sword, the Giant Blade and the Dragon Slayer.
+            many = [KEY_J, KEY_Q, KEY_K, MATTOCK, RED_POTION, RED_POTION, KEY_A, RED_POTION]
+            go_in(start, "two-pages", 3, 0x9A, carrying(100, [LONG_SWORD, GIANT_BLADE, DRAGON_SLAYER], many))
+            to_counter()
+            act("up", 4, 6)
+            list_up("buy")
+            state = press("select", "sell")
+            assert state["pages"] == 2 and state["page"] == 0 and len(state["list"]) == 8, state
+            assert state["list"] == [ITEM | v for v in reversed(many)], state
+            assert state["hint"] == "Select to buy" and state["page_label"] == "1 of 2", state
+            check_hint(game.shot("sell-page-1"), "Select to buy", "1 of 2")
+            for _ in range(7):
+                press("down")
+            state = press("down", "sell")
+            until("the second page", lambda: shops()["page"] == 1, 300)
+            state = list_up("sell")
+            assert state["list"] == [DRAGON_SLAYER, GIANT_BLADE, LONG_SWORD] and state["cursor"] == 0, state
+            assert state["prices"] == [0, 4250, 800] and state["hint"] == "Not for sale", state
+            assert state["page_label"] == "2 of 2", state
+            path = game.shot("sell-page-2")
+            check_hint(path, "Not for sale", "2 of 2")
+            check_no_price(path, 0)
+            press("down")
+            state = sell()
+            assert gold() == 100 + 4250 and weapons() == [LONG_SWORD, DRAGON_SLAYER], (gold(), weapons())
+            assert state["page"] == 1 and state["list"] == [DRAGON_SLAYER, LONG_SWORD], state
+            state = press("select", "buy")
+            assert state["cursor"] == 0, state
+            print("ok: eleven things are two pages, Down from the bottom turns the page, and Select buys again")
+            act("b", 4, 6)
+            until("the conversation's end", lambda: ram(PORTRAIT) == NO_PORTRAIT, 300)
+
+        if args.wants("last-one"):
+            game_up()
+            # The last thing to sell: then the list is empty, and the shop says so.
+            go_in(start, "last-one", 3, 0x9A, carrying(0, [], [KEY_J]))
+            to_counter()
+            act("up", 4, 6)
+            list_up("buy")
+            state = press("select", "sell")
+            assert state["list"] == [ITEM | KEY_J], state
+            before = state["sold"]
+            act("a", 4, 6)
+            until("the sale", lambda: shops()["sold"] == before + 1, 1200)
+            until("You have nothing to buy.", lambda: ram(MESSAGE_ID) == NOTHING_TO_SELL, 600)
+            until("the line to type out", typed, 600)
+            assert gold() == 50 and items() == [], (gold(), items())
+            game.shot("nothing-to-sell")
+            act("a", 4, 6)
+            list_up("buy", "the buy list, with nothing to sell")
+            print("ok: selling the last thing gives the game's own line, and back to buying")
+            act("b", 4, 6)
+            until("the conversation's end", lambda: ram(PORTRAIT) == NO_PORTRAIT, 300)
+
+        if args.wants("owned-forepaw"):
+            game_up()
+            # 3. Owned: Forepaw's tool shop. Buy the Wing Boots.
+            to_forepaw(start, "forepaw", carrying(9000, [], [RED_POTION]))
+            act("up", 4, 6)
+            state = list_up("buy", "Forepaw's buy list")
+            assert state["list"] == FOREPAW_LIST and state["prices"] == FOREPAW_PRICES, state
+            assert state["owned"] == [False] * 5, state
+            for _ in range(BOOTS_ROW):
+                press("down")
+            state = shops()
+            assert state["cursor"] == BOOTS_ROW and state["hint"] == "Select to sell", state
+            path = game.shot("owned-before")
+            check_hint(path, "Select to sell")
+            check_priced(path, BOOTS_ROW, 2800)
+            state = buy(BOOTS_ROW)
+            assert gold() == 9000 - 2800 and items() == [RED_POTION, WING_BOOTS], (gold(), items())
+            assert state["owned"] == [False] * 4 + [True] and state["hint"] == "Already owned", state
+            print("ok: Forepaw sells the Wing Boots, and once bought they are owned at once")
+
+            # Leave, and come back: the row says OWNED, A does nothing, and the Red Potion still buys.
+            leave()
+            walk_out()
+            into_forepaws_shop()
+            act("up", 4, 6)
+            state = list_up("buy", "Forepaw's buy list, again")
+            assert state["list"] == FOREPAW_LIST and state["prices"] == FOREPAW_PRICES, state
+            assert state["owned"] == [False] * 4 + [True] and state["cursor"] == 0, state
+            assert state["hint"] == "Select to sell", state
+            path = game.shot("owned-after")
+            check_hint(path, "Select to sell")
+            check_owned(path, BOOTS_ROW)
+            check_priced(path, POTION_ROW, 400)
+            for _ in range(BOOTS_ROW):
+                press("down")
+            assert shops()["hint"] == "Already owned", shops()
+            path = game.shot("owned-hint")
+            check_hint(path, "Already owned")
+            check_owned(path, BOOTS_ROW)
+            a_does_nothing(BOOTS_ROW)
+            check_owned(game.shot("owned-a-does-nothing"), BOOTS_ROW)
             press("up")
-        assert shops()["cursor"] == 0, shops()
-        sell()
-        assert gold() == 270 + 80, gold()
-        assert items() == [KEY_A, RED_POTION, RED_POTION], items()
-        print("ok: a Red Potion sells for 80, half this shop's price")
+            buy(POTION_ROW)
+            assert gold() == 9000 - 2800 - 400 and items() == [RED_POTION, WING_BOOTS, RED_POTION], (gold(), items())
+            print("ok: back again, the Wing Boots say OWNED and \"Already owned\", A on them does nothing, "
+                  "and the Red Potion still buys")
+            leave()
 
-        act("b", 4, 6)
-        until("the conversation's end", lambda: ram(PORTRAIT) == NO_PORTRAIT and ram(TEXTBOX_CLOSED) != 0, 300)
-        assert ram(MESSAGE_ID) == 0, "a closing line"
-        game.shot("left")
-        print("ok: B leaves at once, with no closing line")
+        if args.wants("owned-found"):
+            game_up()
+            # A pair found in the world, Trunk $2D's (one visit in four), is owned the same.
+            target = out / "find-boots.cycstate"
+            fixture(start, target, {AREA_SAVED_AREA: TRUNK, AREA_SAVED_SCREEN: 0x2D, AREA_SAVED_PALETTE: PALETTE_TOWER,
+                                    PLAYER_SAVED_POS: 0x31, AREA_REGION: TRUNK, VISIT_COUNT: 3,
+                                    **carrying(9000, [], [RED_POTION])})
+            tcp("load_state", path=str(target))
+            walk_out()
+            until("Trunk $2D", lambda: (ram(AREA), ram(SCREEN)) == (TRUNK, 0x2D) and ram(SCREEN_READY) == 0, 600)
+            wait(30)
+            slots = ram(SPRITE_ENTITIES, 8)
+            game.poke({SPRITE_ENTITIES + i: 0xFF for i in range(8) if slots[i] == HORNET})   # it shows once they are gone
+            for _ in range(60):                                         # it lies by the wall on the left
+                if ram(MESSAGE_ID) == GOT_WING_BOOTS:
+                    break
+                act("left", 2, 2)
+            until("the find", lambda: ram(MESSAGE_ID) == GOT_WING_BOOTS, 600)
+            for _ in range(20):
+                if ram(TEXTBOX_CLOSED) != 0:
+                    break
+                until("the line to type out", waiting, 900)
+                act("a", 6, 14)
+            wait(10)
+            found = items()
+            assert found == [RED_POTION, WING_BOOTS], found
+            to_forepaw(start, "forepaw-found", carrying(9000, [], found))
+            act("up", 4, 6)
+            state = list_up("buy", "Forepaw's buy list, with found boots")
+            assert state["owned"] == [False] * 4 + [True], state
+            for _ in range(BOOTS_ROW):
+                press("down")
+            check_owned(game.shot("owned-found"), BOOTS_ROW)
+            a_does_nothing(BOOTS_ROW)
+            print("ok: a pair found in the world is owned the same: OWNED, and A does nothing")
+            leave()
 
-        # The key shop next door (building 3: screen 3, block $9D): the same.
-        go_in(start, "key-shop", 3, 0x9D, carrying(0, [], [RED_POTION]))
-        to_counter(stop=80)                                 # he stands at block $84, x 64
-        act("up", 4, 6)
-        state = list_up("buy", "the Key Seller's list, straight away")
-        assert state["list"] == [ITEM | KEY_J] and state["prices"] == [100], state
-        state = press("select", "sell")
-        assert state["list"] == [ITEM | RED_POTION] and state["prices"] == [80], state
-        game.shot("key-shop-sell-list")
-        act("b", 4, 6)
-        until("the conversation's end", lambda: ram(PORTRAIT) == NO_PORTRAIT, 300)
-        print("ok: the Key Seller's list opens at once, and he buys a Red Potion for 80, a tool shop's half")
+        if args.wants("owned-key"):
+            game_up()
+            # A J key held, at Eolis's key shop.
+            go_in(start, "key-owned", 3, 0x9D, carrying(1000, [], [KEY_J]))
+            to_counter(stop=80)
+            act("up", 4, 6)
+            state = list_up("buy", "the Key Seller's list, the J key owned")
+            assert state["list"] == [ITEM | KEY_J] and state["owned"] == [True], state
+            assert state["hint"] == "Already owned", state
+            check_owned(game.shot("owned-key"), 0)
+            a_does_nothing(0)
+            print("ok: a J key held is owned at the key shop, and A does nothing")
+            leave()
 
-        # 2. Two pages: 8 items, and the Long Sword, the Giant Blade and the Dragon Slayer.
-        many = [KEY_J, KEY_Q, KEY_K, MATTOCK, RED_POTION, RED_POTION, KEY_A, RED_POTION]
-        go_in(start, "two-pages", 3, 0x9A, carrying(100, [LONG_SWORD, GIANT_BLADE, DRAGON_SLAYER], many))
-        to_counter()
-        act("up", 4, 6)
-        list_up("buy")
-        state = press("select", "sell")
-        assert state["pages"] == 2 and state["page"] == 0 and len(state["list"]) == 8, state
-        assert state["list"] == [ITEM | v for v in reversed(many)], state
-        assert state["hint"] == "Select to buy" and state["page_label"] == "1 of 2", state
-        check_hint(game.shot("sell-page-1"), "Select to buy", "1 of 2")
-        for _ in range(7):
-            press("down")
-        state = press("down", "sell")
-        until("the second page", lambda: shops()["page"] == 1, 300)
-        state = list_up("sell")
-        assert state["list"] == [DRAGON_SLAYER, GIANT_BLADE, LONG_SWORD] and state["cursor"] == 0, state
-        assert state["prices"] == [0, 4250, 800] and state["hint"] == "Not for sale", state
-        assert state["page_label"] == "2 of 2", state
-        path = game.shot("sell-page-2")
-        check_hint(path, "Not for sale", "2 of 2")
-        check_no_price(path, 0)
-        press("down")
-        state = sell()
-        assert gold() == 100 + 4250 and weapons() == [LONG_SWORD, DRAGON_SLAYER], (gold(), weapons())
-        assert state["page"] == 1 and state["list"] == [DRAGON_SLAYER, LONG_SWORD], state
-        state = press("select", "buy")
-        assert state["cursor"] == 0, state
-        print("ok: eleven things are two pages, Down from the bottom turns the page, and Select buys again")
-        act("b", 4, 6)
-        until("the conversation's end", lambda: ram(PORTRAIT) == NO_PORTRAIT, 300)
-
-        # The last thing to sell: then the list is empty, and the shop says so.
-        go_in(start, "last-one", 3, 0x9A, carrying(0, [], [KEY_J]))
-        to_counter()
-        act("up", 4, 6)
-        list_up("buy")
-        state = press("select", "sell")
-        assert state["list"] == [ITEM | KEY_J], state
-        before = state["sold"]
-        act("a", 4, 6)
-        until("the sale", lambda: shops()["sold"] == before + 1, 1200)
-        until("You have nothing to buy.", lambda: ram(MESSAGE_ID) == NOTHING_TO_SELL, 600)
-        until("the line to type out", typed, 600)
-        assert gold() == 50 and items() == [], (gold(), items())
-        game.shot("nothing-to-sell")
-        act("a", 4, 6)
-        list_up("buy", "the buy list, with nothing to sell")
-        print("ok: selling the last thing gives the game's own line, and back to buying")
-        act("b", 4, 6)
-        until("the conversation's end", lambda: ram(PORTRAIT) == NO_PORTRAIT, 300)
-
-        # 3. Owned: Forepaw's tool shop. Buy the Wing Boots.
-        to_forepaw(start, "forepaw", carrying(9000, [], [RED_POTION]))
-        act("up", 4, 6)
-        state = list_up("buy", "Forepaw's buy list")
-        assert state["list"] == FOREPAW_LIST and state["prices"] == FOREPAW_PRICES, state
-        assert state["owned"] == [False] * 5, state
-        for _ in range(BOOTS_ROW):
-            press("down")
-        state = shops()
-        assert state["cursor"] == BOOTS_ROW and state["hint"] == "Select to sell", state
-        path = game.shot("owned-before")
-        check_hint(path, "Select to sell")
-        check_priced(path, BOOTS_ROW, 2800)
-        state = buy(BOOTS_ROW)
-        assert gold() == 9000 - 2800 and items() == [RED_POTION, WING_BOOTS], (gold(), items())
-        assert state["owned"] == [False] * 4 + [True] and state["hint"] == "Already owned", state
-        print("ok: Forepaw sells the Wing Boots, and once bought they are owned at once")
-
-        # Leave, and come back: the row says OWNED, A does nothing, and the Red Potion still buys.
-        leave()
-        walk_out()
-        into_forepaws_shop()
-        act("up", 4, 6)
-        state = list_up("buy", "Forepaw's buy list, again")
-        assert state["list"] == FOREPAW_LIST and state["prices"] == FOREPAW_PRICES, state
-        assert state["owned"] == [False] * 4 + [True] and state["cursor"] == 0, state
-        assert state["hint"] == "Select to sell", state
-        path = game.shot("owned-after")
-        check_hint(path, "Select to sell")
-        check_owned(path, BOOTS_ROW)
-        check_priced(path, POTION_ROW, 400)
-        for _ in range(BOOTS_ROW):
-            press("down")
-        assert shops()["hint"] == "Already owned", shops()
-        path = game.shot("owned-hint")
-        check_hint(path, "Already owned")
-        check_owned(path, BOOTS_ROW)
-        a_does_nothing(BOOTS_ROW)
-        check_owned(game.shot("owned-a-does-nothing"), BOOTS_ROW)
-        press("up")
-        buy(POTION_ROW)
-        assert gold() == 9000 - 2800 - 400 and items() == [RED_POTION, WING_BOOTS, RED_POTION], (gold(), items())
-        print("ok: back again, the Wing Boots say OWNED and \"Already owned\", A on them does nothing, "
-              "and the Red Potion still buys")
-        leave()
-
-        # A pair found in the world, Trunk $2D's (one visit in four), is owned the same.
-        target = out / "find-boots.cycstate"
-        fixture(start, target, {AREA_SAVED_AREA: TRUNK, AREA_SAVED_SCREEN: 0x2D, AREA_SAVED_PALETTE: PALETTE_TOWER,
-                                PLAYER_SAVED_POS: 0x31, AREA_REGION: TRUNK, VISIT_COUNT: 3,
-                                **carrying(9000, [], [RED_POTION])})
-        tcp("load_state", path=str(target))
-        walk_out()
-        until("Trunk $2D", lambda: (ram(AREA), ram(SCREEN)) == (TRUNK, 0x2D) and ram(SCREEN_READY) == 0, 600)
-        wait(30)
-        slots = ram(SPRITE_ENTITIES, 8)
-        game.poke({SPRITE_ENTITIES + i: 0xFF for i in range(8) if slots[i] == HORNET})   # it shows once they are gone
-        for _ in range(60):                                         # it lies by the wall on the left
-            if ram(MESSAGE_ID) == GOT_WING_BOOTS:
-                break
-            act("left", 2, 2)
-        until("the find", lambda: ram(MESSAGE_ID) == GOT_WING_BOOTS, 600)
-        for _ in range(20):
-            if ram(TEXTBOX_CLOSED) != 0:
-                break
-            until("the line to type out", waiting, 900)
-            act("a", 6, 14)
-        wait(10)
-        found = items()
-        assert found == [RED_POTION, WING_BOOTS], found
-        to_forepaw(start, "forepaw-found", carrying(9000, [], found))
-        act("up", 4, 6)
-        state = list_up("buy", "Forepaw's buy list, with found boots")
-        assert state["owned"] == [False] * 4 + [True], state
-        for _ in range(BOOTS_ROW):
-            press("down")
-        check_owned(game.shot("owned-found"), BOOTS_ROW)
-        a_does_nothing(BOOTS_ROW)
-        print("ok: a pair found in the world is owned the same: OWNED, and A does nothing")
-        leave()
-
-        # A J key held, at Eolis's key shop.
-        go_in(start, "key-owned", 3, 0x9D, carrying(1000, [], [KEY_J]))
-        to_counter(stop=80)
-        act("up", 4, 6)
-        state = list_up("buy", "the Key Seller's list, the J key owned")
-        assert state["list"] == [ITEM | KEY_J] and state["owned"] == [True], state
-        assert state["hint"] == "Already owned", state
-        check_owned(game.shot("owned-key"), 0)
-        a_does_nothing(0)
-        print("ok: a J key held is owned at the key shop, and A does nothing")
-        leave()
-        game.close()
-
-        # 4. The remaster off: the shop is the original's.
-        launch(on=False)
-        tcp("load_state", path=str(out / "tool-shop.cycstate"))
-        walk_out()
-        until("Eolis screen 3", lambda: (ram(AREA), ram(SCREEN)) == (0, 3))
-        wait(30)
-        walk_to(154, 164)
-        act("up", 4, 10)
-        until("the building", lambda: ram(AREA) == BUILDINGS)
-        wait(40)
-        to_counter()
-        act("up", 4, 6)
-        until("the greeting", lambda: ram(MESSAGE_ID) == GREETING, 600)
-        assert not shops()["active"], shops()
-        until("the greeting to type out", typed, 600)
-        act("a", 4, 6)
-        until("the Buy/Sell menu's own line", lambda: ram(MESSAGE_ID) == BUY_OR_SELL, 600)
-        print("ok: with the remaster off, the Tool Seller greets you and asks Buy or Sell, as the original does")
+        if args.wants("original"):
+            game.close()
+            # 4. The remaster off: the shop is the original's.
+            launch(on=False)
+            tool_shop = out / "tool-shop.cycstate"                     # as the tool-shop part walks out of
+            fixture(start, tool_shop, {AREA_SAVED_AREA: 0, AREA_SAVED_SCREEN: 3, PLAYER_SAVED_POS: 0x9A, **TOOL_KIT})
+            tcp("load_state", path=str(tool_shop))
+            walk_out()
+            until("Eolis screen 3", lambda: (ram(AREA), ram(SCREEN)) == (0, 3))
+            wait(30)
+            walk_to(154, 164)
+            act("up", 4, 10)
+            until("the building", lambda: ram(AREA) == BUILDINGS)
+            wait(40)
+            to_counter()
+            act("up", 4, 6)
+            until("the greeting", lambda: ram(MESSAGE_ID) == GREETING, 600)
+            assert not shops()["active"], shops()
+            until("the greeting to type out", typed, 600)
+            act("a", 4, 6)
+            until("the Buy/Sell menu's own line", lambda: ram(MESSAGE_ID) == BUY_OR_SELL, 600)
+            print("ok: with the remaster off, the Tool Seller greets you and asks Buy or Sell, as the original does")
         print("screenshots:", ", ".join(game.shots))
     except BaseException:
         game.shot("failure")

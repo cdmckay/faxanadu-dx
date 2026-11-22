@@ -134,10 +134,13 @@ static void load(unsigned id){
     Room *r=&rooms[id];for(unsigned i=0;i<2048;i++)if(local[i])p(i,r->ram[i]);
     p(0x63,id);p(0x64,id);
 }
+static void (*room_fixup)(uint8_t,uint8_t,uint8_t*);
+void fax_world_set_room_fixup(void (*fixup)(uint8_t area,uint8_t screen,uint8_t *ram)){room_fixup=fixup;}
+static void fixup_room(unsigned id){if(room_fixup)room_fixup(rooms[id].ram[0x24],(uint8_t)id,rooms[id].ram);}
 static bool decode(unsigned id){
     if(!cyc_mod_isolate_begin())return false;
     bool ok=bank(q(0x8c))&&call(0xd1f6,id,0);
-    if(ok){memcpy(rooms[id].ram,cyc_cpu_ram(),2048);rooms[id].valid=1;}
+    if(ok){memcpy(rooms[id].ram,cyc_cpu_ram(),2048);fixup_room(id);rooms[id].valid=1;}
     cyc_mod_isolate_end();if(!ok)failures++;return ok;
 }
 static void topology(unsigned current){
@@ -217,7 +220,7 @@ static bool initialize(unsigned id){
     transfer=r;speculative=true;cyc_mod_allow_isolated_hooks(true);
     if(ok)ok=call(0xc28d,0,0);
     drain();speculative=false;transfer=NULL;
-    if(ok){capture(id,false);r->ticks=0;}
+    if(ok){capture(id,false);fixup_room(id);r->ticks=0;}
     cyc_mod_isolate_end();if(!ok)failures++;return ok;
 }
 static void tick_room(unsigned id){
@@ -471,6 +474,7 @@ finished:
 void fax_world_reset(void){make_mask();memset(rooms,0,sizeof rooms);memset(raster_valid,0,sizeof raster_valid);area=active=-1;pending=-1;rom_ok=false;hud_valid=death_mode=script_mode=false;ticks=last_tick=handoffs=failures=portals=0;player_tick=collision_active=false;cyc_mod_set_ram_read_hook(NULL);}
 bool fax_world_origin(int *x,int *y){if(!origin_valid)return false;*x=origin_x;*y=origin_y;return true;}
 bool fax_world_room_origin(int a,int id,int *x,int *y){if(!origin_valid||a!=area||id<0||id>=(int)counts[area]||!rooms[id].owned)return false;*x=rooms[id].x*RW-camera_x;*y=HUD+rooms[id].y*RH-camera_y;return true;}
+const uint8_t *fax_world_room_ram(int a,int id){if(!enabled||!origin_valid||a!=area||id<0||id>=(int)counts[area]||id==active||!rooms[id].owned||!rooms[id].live)return NULL;return rooms[id].ram;}
 void fax_world_loaded(void){memset(raster_valid,0,sizeof raster_valid);cyc_mod_set_ram_read_hook(collision_active?collision_read:NULL);}
 bool fax_world_option(const char *name,const char *value){
     if(!strcmp(name,"--world-view")){if(strcmp(value,"off")&&strcmp(value,"seamless")&&strcmp(value,"atlas"))return false;enabled=strcmp(value,"off")!=0;hooks(enabled);atlas=!strcmp(value,"atlas");if(enabled)nes_mod_set_local_only("Seamless world",1);return true;}

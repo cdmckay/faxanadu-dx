@@ -1,6 +1,6 @@
 /* A model of the machine for the movement features' unit tests (falling pose,
- * forgiving jumps), without the emulator or a ROM. Include it after the
- * feature's .c file.
+ * forgiving jumps, the ladder fixes and holding on to ladders), without the
+ * emulator or a ROM. Include it after the feature's .c file.
  *
  * It holds CPU RAM, the registers and one screen of blocks, and plays the
  * hero's update as bank 15 has it (chipx86's disassembly), instruction by
@@ -72,9 +72,15 @@ void cyc_mod_isolate_end(void) {
     isolated = false;
 }
 static uint8_t passable(uint8_t dir);
+static void check_if_on_ladder(void);
+/* Player_CheckIfPassable and Player_CheckIfOnLadder are modelled. */
 bool cyc_mod_call(uint16_t routine, CycModRegs *regs) {
-    if (!isolated || routine != 0xE6C8) return false;   /* only Player_CheckIfPassable is modelled */
+    if (!isolated || (routine != 0xE6C8 && routine != 0xE752)) return false;
     ++isolated_calls;
+    if (routine == 0xE752) {
+        check_if_on_ladder();
+        return true;
+    }
     regs->a = passable(regs->x);
     regs->p = (uint8_t)((regs->p & ~(FLAG_Z | FLAG_N)) | (regs->a ? 0 : FLAG_Z));
     return true;
@@ -177,7 +183,11 @@ static void check_if_on_ladder(void) {                          /* Player_CheckI
 }
 static void climb_up(void) {                                    /* Player_CheckHandleClimbUp ($E301) */
     ram[M_FLAGS] &= 0xDA;
-    if (passable(2)) return;
+    cpu.x = 2;                                                  /* LDX #$02, JSR Player_CheckIfPassable */
+    cpu.a = passable(2);
+    set_nz(cpu.a);
+    site(0xE30C);                                               /* BNE @_return */
+    if (!(cpu.p & FLAG_Z)) return;
     ram[M_TICK]++;
     if (ram[M_STATUS] & S_WING_BOOTS) ram[M_Y]--;               /* flying: a pixel an update */
     else {                                                      /* climbing: $A0/256 of a pixel */
@@ -286,7 +296,8 @@ static void move(bool right) {                                  /* Player_TryMov
 }
 static void horizontal(void) {                                  /* Player_CheckHandleJump ($E174) */
     uint8_t f = ram[M_FLAGS];
-    if (ram[M_STATUS] & S_KNOCKBACK) {                          /* Player_HandleKnockback */
+    if (ram[M_STATUS] & S_KNOCKBACK) {                          /* Player_HandleKnockback ($E153) */
+        if (site(0xE153)) return;
         uint8_t facing = f & F_RIGHT;
         ram[M_FLAGS] = facing ^ F_RIGHT;                        /* every other flag is dropped here */
         move(!facing);

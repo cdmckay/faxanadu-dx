@@ -10,7 +10,10 @@ Copies the build to OUT/game, then:
   1. Screenshots the title with the remaster on (REMASTERED over Save files'
      file select) and, on the same frame, with the whole remaster off (the
      original title, START / CONTINUE and the notices), and compares them. The
-     logo is the same to the pixel. Between it and what is below (y 144-159),
+     logo is the same to the pixel, but for the tile with the tip of its F
+     (x 48-55, y 40-47), which the graphics fixes draw in the logo's palette
+     instead of the stars' grey (tests/graphics/graphics_fixes.py checks its
+     colors). Between it and what is below (y 144-159),
      the original is black and the remaster differs only by the word: pixel
      for pixel the glyphs of the game's font (read from the ROM), in the light
      yellow of the logo's palette, centered under the logo, with at least 4
@@ -37,6 +40,7 @@ from fax_e2e import Game, frame, parser, tcp, until, wait  # noqa: E402
 WORD = "REMASTERED"
 GLYPHS = 16 + 13 * 16384                                            # TILE_GLYPHS_START: bank 13, $8000, from $20
 LOGO_ROWS, LOGO_LEFT, LOGO_RIGHT = (16, 144), 16, 240               # the logo and its border, natively
+F_TIP = (48, 40)                                                    # the tile with the F's tip (graphics fixes)
 BAND = (144, 160)                                                   # black between the logo and START / CONTINUE
 CLEAR = 4                                                           # rows of black the word keeps from the art
 REMASTER = ("faxanadu.remastered", "remastered")
@@ -114,8 +118,10 @@ def compare(remaster, original, state, mask):
     assert (w, h) == (w2, h2) and w == state["width"], ((w, h), (w2, h2), state)
     color = rgb(state["argb"])
     x0, y0 = state["x"], state["y"]
-    # The logo, and everything above the band, untouched.
-    above = [(x, y) for y in range(BAND[0]) for x in range(w) if on[y][x] != off[y][x]]
+    # The logo, and everything above the band, untouched but for the F's tip.
+    origin = next(x for x in range(w) if any(off[y][x] != (0, 0, 0) for y in range(*LOGO_ROWS))) - LOGO_LEFT
+    tip = {(origin + F_TIP[0] + dx, F_TIP[1] + dy) for dy in range(8) for dx in range(8)}
+    above = [(x, y) for y in range(BAND[0]) for x in range(w) if on[y][x] != off[y][x] and (x, y) not in tip]
     assert not above, f"{remaster.name}: {len(above)} pixels above y {BAND[0]} differ from the original, first {above[0]}"
     # In the band: the original is black, and the remaster only adds the word.
     lit = [(x, y) for y in range(*BAND) for x in range(w) if off[y][x] != (0, 0, 0)]
@@ -127,7 +133,6 @@ def compare(remaster, original, state, mask):
     top, bottom = min(y for _, y in diff), max(y for _, y in diff)
     left, right = min(x for x, _ in diff), max(x for x, _ in diff)
     # Where the logo ends, and what is below it in each picture.
-    origin = next(x for x in range(w) if any(off[y][x] != (0, 0, 0) for y in range(*LOGO_ROWS))) - LOGO_LEFT
     logo_bottom = max(y for y in range(BAND[0]) for x in range(origin + LOGO_LEFT, origin + LOGO_RIGHT)
                       if off[y][x] != (0, 0, 0))
     files_top, start_top = first_below(on, origin, bottom + 1), first_below(off, origin, BAND[0])
@@ -140,7 +145,7 @@ def compare(remaster, original, state, mask):
     assert abs(centre - (LOGO_LEFT + LOGO_RIGHT - 1) / 2) <= 1, (left, right, origin)
     assert any(off[y][x] == color for y in range(*LOGO_ROWS) for x in range(w)), f"{color} is not in the logo"
     print(f"ok: {remaster.name}: REMASTERED at ({x0}, {y0}) in {color}, rows {top}-{bottom}; the logo is the "
-          f"original's; {top - logo_bottom - 1} black rows under the logo, {files_top - bottom - 1} above the "
+          f"original's but for its F's tip; {top - logo_bottom - 1} black rows under the logo, {files_top - bottom - 1} above the "
           f"file select, and {start_top - bottom - 1} above the original's START / CONTINUE")
     return [[on[y][x] if (x, y) in diff else off[y][x] for x in range(w)] for y in range(h)]
 

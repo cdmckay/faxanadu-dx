@@ -16,3 +16,14 @@ bool fax_world_origin(int *x,int *y);
  * where its top-left sat in that picture. False when the picture showed no
  * world, or showed another area, or the room is not on its map. */
 bool fax_world_room_origin(int area,int room,int *x,int *y);
+/* The CPU RAM of a neighbouring room of `area` whose actors Seamless keeps
+ * running (its sprite slots, as CurrentSprites_* hold them): NULL for the
+ * active room, a room not on the map around it, or one not running. For the
+ * quest log's marks over the people next door. */
+const uint8_t *fax_world_room_ram(int area,int room);
+/* A correction for each room Seamless decodes itself, in isolated calls where
+ * no hooks run: called with the room's area, its screen and its RAM (2 KiB,
+ * ScreenBuffer at $600) once Area_LoadBlocks or Area_LoadScrollData has
+ * filled it, before the room is drawn, collided with or adopted. NULL for
+ * none. The graphics fixes (fax_graphics.c) set it. */
+void fax_world_set_room_fixup(void (*fixup)(uint8_t area,uint8_t screen,uint8_t *ram));

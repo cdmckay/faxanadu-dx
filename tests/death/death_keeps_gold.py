@@ -26,7 +26,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import Game, act, fixture, frame, parse_args, ram, tcp, typed, until, wait  # noqa: E402
+from fax_e2e import Game, act, fixture, hurry, parse_args, ram, tcp, typed, until, wait  # noqa: E402
 
 EXPERIENCE, GOLD, PLAYER_TITLE, NEXT_PLAYER_TITLE = 0x390, 0x392, 0x437, 0x4ED
 HP, MP, QUESTS, DURATION_WING_BOOTS = 0x431, 0x39A, 0x42D, 0x429
@@ -68,13 +68,13 @@ def main():
     def die_and_respawn():
         """Page through the death message until the hero is back in Mascon's temple."""
         until("the death message", lambda: ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 600)
-        for _ in range(40):
+        for _ in range(120):
             if in_mascon_temple():
                 break
             if typed():
                 act("a")
             else:
-                wait(10)
+                hurry(10)
         until("Mascon's temple", in_mascon_temple)
         wait(60)
 
@@ -83,10 +83,7 @@ def main():
                     next_title=ram(NEXT_PLAYER_TITLE))
 
     try:
-        game.launch()
-        until("the title", lambda: frame() > 700)
-        tcp("pad", buttons="start", frames=10)
-        until("the Eolis gate", lambda: frame() > 1900)
+        game.launch(at="gate")
         assert tcp("death_state")["enabled"], "the feature is on by default"
         gate = out / "gate.cycstate"
         tcp("save_state", path=str(gate))

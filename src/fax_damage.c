@@ -43,6 +43,7 @@
  * The numbers live in this feature's save-state record. See
  * docs/GAME_INTERNALS.md, "Damage numbers". */
 #include "fax_damage.h"
+#include "fax_text.h"
 #include "fax_world.h"
 #include "cyc_mod.h"
 #include "cyc_render.h"
@@ -73,7 +74,6 @@ extern uint32_t hw_palette_argb[512];   /* the host's NES colors, emphasis in bi
 #define CURRENT_SPRITES_YPOS     0x00C2u   /* its top */
 #define CURRENT_ROM_BANK         0x0100u
 #define GAME_PAUSED_STATE        0x0120u   /* 1 while Start has the game paused */
-#define TEXTBOX_CLOSED           0x020Cu   /* 0 while a text box or the menu is open */
 #define CURRENT_SPRITES_ENTITIES 0x02CCu
 #define PLAYER_HP_U              0x0431u
 #define HEALTH_DELTA_L           0x04BCu   /* Arg_PlayerHealthDelta_L: 256ths of HP */
@@ -220,12 +220,14 @@ static int hero_hook(uint16_t addr) {
 
 /* ---- each frame ---- */
 
-/* Held while a box or menu is open or the game is paused; gone at the end of
- * its life or once the hero is in another area (a building, a region's door). */
+/* Held while a box or menu is open (fax_text_box_showing: TextBox_Closed
+ * alone reads 0 with no box up on some screens) or the game is paused; gone
+ * at the end of its life or once the hero is in another area (a building, a
+ * region's door). */
 void fax_damage_frame_end(void) {
     if (!enabled || !count) return;
     unsigned area = q(AREA_CURRENT_AREA), kept = 0;
-    bool held = !q(TEXTBOX_CLOSED) || q(GAME_PAUSED_STATE);
+    bool held = fax_text_box_showing() || q(GAME_PAUSED_STATE);
     for (unsigned i = 0; i < count; ++i) {
         Number n = numbers[i];
         if (n.area != area) continue;
@@ -304,7 +306,7 @@ static void draw_number(const Canvas *c, int x, int y, unsigned amount, uint32_t
 
 const uint32_t *fax_damage_present(const uint32_t *picture, int *w, int *h) {
     memset(drawn, 0, sizeof drawn);
-    if (!enabled || failed || !count || !q(TEXTBOX_CLOSED)) return picture;
+    if (!enabled || failed || !count || fax_text_box_showing()) return picture;
     if (!loaded && !(loaded = load_digits())) {
         FAX_DAMAGE_LOG("[damage numbers] cannot read the HUD's digits; damage numbers are off\n");
         failed = true;

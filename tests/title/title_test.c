@@ -26,6 +26,10 @@ size_t cyc_mod_copy_cart_payload(uint8_t *out, size_t capacity) {
 }
 uint16_t cyc_render_line_bg_table(int y) { (void)y; return 0x1000; }
 uint8_t cyc_render_chr(uint16_t a) { (void)a; return 0; }
+/* fax_text.c's nametable reads, which the title does not use. */
+int cyc_render_line_scroll_x(int y) { (void)y; return 0; }
+int cyc_render_line_scroll_y(int y) { return y; }
+uint8_t cyc_render_nametable(uint16_t a) { (void)a; return 0; }
 /* Palette entry e as a color whose blue byte is e, so a pixel tells its entry. */
 uint32_t cyc_render_color(int e) { return 0xFF000000u | 0x00400000u | (uint32_t)(e & 31); }
 const uint32_t *cyc_render_present(int *w, int *h) { ++presents; *w = 256; *h = 240; return native; }
