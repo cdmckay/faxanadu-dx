@@ -15,25 +15,31 @@ Room handoffs keep those actor instances rather than respawning them.
 Horizontal movement and climbing continue through supported seams without
 the original stop-and-scroll sequence.
 
-**Fit to screen is adaptive.** Window width and height determine the actual
-world viewport at the selected pixel zoom. Wide windows show more horizontal
-terrain; portrait windows show more vertical terrain. The camera clamps to
-the connected region's edges, keeping the floor at the viewport bottom when
-the region is shorter than the view. The HUD stays centered
-and scales down when the viewport is narrower than 256 pixels. Mouse wheel
-changes pixel zoom; F4 toggles a connected-map overview, capped at the
-preview's 4096x2048 presentation limit. Empty space outside the connected
-geometry remains empty; terrain is not stretched or repeated to fill it.
+**One fixed view: 424x240** (#107), whatever the window. That is the
+original's full 240 lines, its HUD and a room's 208, so exactly as much shows
+above and below the hero as on the NES, and 53 of its 8-pixel tiles across,
+the width Sonic Mania widens to for the same idea. Nothing changes it: there
+is no zoom and no option. The camera follows the hero and clamps to the
+connected region's edges, centring a region narrower than the view. The HUD,
+the inventory, text boxes and the original's own pictures (death, scripts,
+region loads) sit where the native picture would, centred under the HUD.
+The host scales the view to the window, keeping its shape, as its Display
+settings say: with IntegerScale (the default), the largest whole multiple
+that fits, so 3x, 6x and 9x fill 720p, 1440p and 4K, and 1080p shows 4x,
+1696x960, with bars. #107's sharp 4.5x at 1080p (nearest-neighbour up to 5x,
+then a smooth scale down) needs a hook in the host, which has none for it.
+F4 toggles a connected-map overview, capped at the preview's 4096x2048
+presentation limit. Empty space outside the connected geometry remains
+empty; terrain is not stretched or repeated to fill it.
 
 Doors, region changes and connections that cannot be embedded consistently
 retain native portal transitions. Original key checks, scripts and progress
 remain in charge. Start pause freezes the expanded world without changing its
 aspect ratio. The native inventory appears over the frozen expanded world;
 only its text boxes cover the scene, so actors remain visible both inside and
-outside the original NES bounds. Its complete panel scales down in narrow
-windows. Dialogue retains a completed world pose and camera throughout the
+outside the original NES bounds. Dialogue retains a completed world pose and camera throughout the
 opening, text, and closing; native text and portrait panels cover that scene.
-Death retains its native animation inside the adaptive canvas.
+Death retains its native animation inside the fixed canvas.
 Neighboring terrain uses the current region background palette, including
 native fades. All visible actors use the active world scene's sprite palette;
 cached building or portrait palettes cannot recolor neighboring NPCs/enemies.
@@ -90,11 +96,11 @@ All automated launches were hidden and muted with native saves disabled.
 | Native door rules | Trunk 13->11 normal door; Trunk 11->13 refuses without J key, opens after a granted key and native use dialogue; native/interpreter state agreement |
 | Inventory / native terrain | Native Select inventory and B close after a seamless handoff; native background remains the destination room |
 | Pause / inventory aspect | Original Start and Select inputs retain the expanded picture and frozen room records, with native/interpreter agreement; host-paused wide/portrait resizes preserve the paused frame and neighboring ticks |
-| Camera / scripts | Camera bounds checked at real wide/portrait drawable sizes; death/animation/message frames retain the adaptive canvas. Real NPC and locked-door dialogue retain completed actors and stable pixels throughout the message, preserve guest execution against the original, and reproduce exactly through save/load; shop portrait panels and closing also checked |
+| Camera / scripts | Camera bounds checked at real wide/portrait drawable sizes (then adaptive); death/animation/message frames retain the canvas. Real NPC and locked-door dialogue retain completed actors and stable pixels throughout the message, preserve guest execution against the original, and reproduce exactly through save/load; shop portrait panels and closing also checked |
 | Town palette | Eight connected Eolis rooms match native terrain samples; stale white instance palettes cannot recolor terrain. Static setup probes were neutral; the actual death/retry route reproduces stale neighboring NPC-room palettes in the old build, and the candidate corrects them with an identical complete guest core state |
 | Sprite palette | Actual death/retry A/B preserves actor OAM, CHR and complete guest core state. All 357 changed sprite pixels in two affected NPC rooms map from stale building colors to the native outdoor palette; poisoning neighboring sprite palettes no longer changes NPC or enemy colors |
 | Current-build restore | Supported right seam: complete final state and rendered picture reproduce exactly after save/load; native/interpreter state and rolling trace match |
-| Adaptive Fit | Actual SDL 1536x720 -> 512x240, 600x1200 -> 200x400, 3840x720 -> 1280x240; complete HUD remains visible in portrait |
+| Fixed view (#107) | `tests/world/fixed_view.py`, in the suite: the canvas and picture are 424x240 at 424x240, 1920x1080 and 300x600 windows; at 1920x1080 the window shows them at 4x (1696x960) with black around; F4's overview grows to the region and F4 again restores 424x240. The adaptive Fit it replaced was checked at 1536x720, 600x1200 and 3840x720 |
 | Shared CIRAM API | Invalid bounds/NULL and isolated upload refused; upload/restore succeeds; serialized complete machine unchanged after the probe |
 | Catalog / prepared helper | Feature activation without CLI override; hidden helper loads and pauses all prepared states; owner configuration restored to normal audio |
 
@@ -121,8 +127,7 @@ playtesting. No full playthrough, netplay, legacy-host or non-USA claim is made.
 ## Reproduction and prepared playtest
 
 Build with the pinned engine and normal `tools/build.ps1` pipeline. The engine
-includes the previously qualified adaptive drawable-size getter and this
-preview's bounded CIRAM upload. SDL-free builds retain a portable timing fallback
+includes this preview's bounded CIRAM upload. SDL-free builds retain a portable timing fallback
 and omit SDL/TCP event integration; the standalone SDL-free object compile
 also passes. Only Windows x64 has been built for this preview so far.
 
@@ -150,8 +155,9 @@ the preceding and current builds with the x=3 NPC fixture; it is retained in
 the raw logs and is not evidence of a new regression or a fully audited edge
 renderer. The normal seam regression reports no failures.
 
-Developer CLI: `--world-view off|seamless|atlas`; `--world-size WxH` fixes the
-viewport for reproducibility, so omit it for adaptive Fit. TCP: `fax_world`,
+Developer CLI: `--world-view off|seamless|atlas`. There is no size option:
+tests play the 424x240 view a player sees. TCP: `fax_world` (its `size` is the
+canvas's),
 `fax_world_room` and `fax_world_probe`. `NESRECOMP_WORLD_TRACE=<path>` explicitly
 enables the per-frame CSV; ordinary launches create no world journal.
 
