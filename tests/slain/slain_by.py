@@ -20,7 +20,7 @@ hit and every death is the game's own:
    with the Small Shield stops it, and with the Magic Shield sends it back:
    neither kills, and nothing is named.
 5. A boss, through the Tower of Trunk's top screen ($15): Ripasheiku.
-6. With Faxanadu Remastered off (the original game), the same death names
+6. With Faxanadu DX off (the original game), the same death names
    nothing.
 
 The line is chosen at the killing hit and fades on its own clock, whoever
@@ -47,7 +47,7 @@ HERO = dict(experience=4660, gold=12345)
 # Block and Sugata tests reach them, and the Tower of Trunk's last screen.
 PLACES = dict(trunk=(TRUNK, 0x00, 0x06, 0xA1, 1), zenis=(ZENIS, 0x10, 0x0F, 0x91, 5),
               mist=(MIST, 30, 0x0A, 0x92, 2), boss=(TRUNK, 0x15, 0x07, 0x91, 1))
-PACKAGE, FEATURE = "faxanadu.remastered", "remastered"          # the one switch: off is the original game
+PACKAGE, FEATURE = "faxanadu.dx", "dx"                          # the one switch: off is the original game
 
 
 def main():
@@ -213,7 +213,7 @@ def main():
         g.until("the Guru's words", lambda: g.ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 600)
         s = slain()
         assert (s["deaths"], s["unnamed"]) == (0, 0), s
-        print("ok: with Faxanadu Remastered off, the Monodron's touch kills him and nothing is named")
+        print("ok: with Faxanadu DX off, the Monodron's touch kills him and nothing is named")
         print("screenshots:", ", ".join(g.shots))
     except BaseException:
         if g.running():

@@ -1,4 +1,4 @@
-/* Unit tests for REMASTERED on the title (fax_title.c, with fax_text.c),
+/* Unit tests for DX on the title (fax_title.c, with fax_text.c),
  * without the emulator or a ROM. The feature runs against a model of the
  * machine: a cart image holding glyphs, a palette, the title's picture as the
  * game draws it (the logo on rows 16-143, START and CONTINUE from row 160),
@@ -97,7 +97,7 @@ static void registration(void) {
     CHECK(hook_on == 1);
 }
 
-/* The word: REMASTERED in the font, centered under the logo, in palette entry
+/* The word: DX in the font, centered under the logo, in palette entry
  * 3, and nothing else of the picture changed. */
 static void the_word(void) {
     font(); power_on(); title_picture(native, 256, 240, 0);
@@ -106,13 +106,13 @@ static void the_word(void) {
     presents = 0;
     const uint32_t *out = fax_title_present(NULL, &w, &h);
     CHECK(out && out != native && presents == 1 && w == 256 && h == 240);
-    int x0 = 88, y0 = 148;   /* 80 wide, centered on the logo (16-239); between rows 143 and 160 */
-    CHECK(fax_text_width(WORD) == 80 && !strcmp(WORD, "REMASTERED"));
+    int x0 = 120, y0 = 148;   /* 16 wide, centered on the logo (16-239); between rows 143 and 160 */
+    CHECK(fax_text_width(WORD) == 16 && !strcmp(WORD, "DX"));
     int top = 240, bottom = -1, left = 256, right = -1;
     for (int y = 0; y < 240; ++y)
         for (int x = 0; x < 256; ++x) {
             uint32_t was = native[y * 256 + x], is = out[y * 256 + x];
-            bool inside = x >= x0 && x < x0 + 80 && y >= y0 && y < y0 + 8;
+            bool inside = x >= x0 && x < x0 + 16 && y >= y0 && y < y0 + 8;
             if (!inside) { CHECK(is == was); continue; }
             uint8_t bits = cart[13 * 16384 + (WORD[(x - x0) / 8] - 0x20) * 8 + (y - y0)];
             bool on = bits >> (7 - (x - x0) % 8) & 1;
@@ -129,7 +129,7 @@ static void the_word(void) {
      * NEW GAME and CONTINUE, or a file pick, all from y 160) below, by 4 rows
      * or more. */
     CHECK(top >= 148 && bottom <= 155 && top - 143 > 4 && 160 - bottom > 4);
-    CHECK(left >= 88 && right <= 167 && (left - 16) - (239 - right) <= 8 && (239 - right) - (left - 16) <= 8);
+    CHECK(left >= 120 && right <= 135 && (left - 16) - (239 - right) <= 8 && (239 - right) - (left - 16) <= 8);
     CHECK(fax_title_present(native, &w, &h) != native);   /* a composed picture is drawn over too */
 }
 
@@ -172,13 +172,13 @@ static void wider_pictures(void) {
     int changed = 0, minx = 512;
     for (int i = 0; i < 512 * 320; ++i)
         if (out[i] != wide[i]) { ++changed; if (i % 512 < minx) minx = i % 512; CHECK(i / 512 >= 148 && i / 512 < 156); }
-    CHECK(changed > 0 && minx >= 128 + 88 && minx < 128 + 96);
+    CHECK(changed > 0 && minx >= 128 + 120 && minx < 128 + 128);
     origin = 40;   /* a compositor that put the native picture elsewhere */
     title_picture(wide, 512, 320, 40);
     out = fax_title_present(wide, &w, &h);
     minx = 512;
     for (int i = 0; i < 512 * 320; ++i) if (out[i] != wide[i] && i % 512 < minx) minx = i % 512;
-    CHECK(minx >= 40 + 88 && minx < 40 + 96);
+    CHECK(minx >= 40 + 120 && minx < 40 + 128);
     origin = -1;
     w = 200; h = 188;   /* scaled down into a small window */
     CHECK(fax_title_present(wide, &w, &h) == wide && w == 200 && h == 188);

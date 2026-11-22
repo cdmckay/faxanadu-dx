@@ -59,7 +59,7 @@ SLOT, NONE, MAX = 7, 0xFF, 4
 # Armor, Studded Mail, Full Plate, Battle Suit.
 DAGGER, LONG_SWORD, GIANT_BLADE, DRAGON_SLAYER = 0, 1, 2, 3
 LEATHER, STUDDED, FULL_PLATE, BATTLE_SUIT = 0, 1, 2, 3
-PACKAGE = ("faxanadu.remastered", "remastered")                  # the one switch: off is the original game
+PACKAGE = ("faxanadu.dx", "dx")                                  # the one switch: off is the original game
 
 # name, the item, (worn, listed, after the count) for the weapons, then the
 # armor; the item's own list with the fix, and with the original's bug. The

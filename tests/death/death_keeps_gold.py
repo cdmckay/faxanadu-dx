@@ -42,7 +42,7 @@ NEGATIVE_THOUGHTS = 0x24                                            # the death 
 PLAYER_TITLE_EXP_NEEDED, PLAYER_TITLE_GOLD = 0xF749, 0xF767         # fixed bank, a word per title
 SOLDIER = 3
 HERO = dict(experience=5000, gold=12345)
-PACKAGE, FEATURE = "faxanadu.remastered", "remastered"          # the one switch: off is the original game
+PACKAGE, FEATURE = "faxanadu.dx", "dx"                          # the one switch: off is the original game
 
 
 def number(addr, n):

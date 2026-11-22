@@ -1,9 +1,9 @@
 # What each feature takes from the game, so features cannot quietly collide.
 #
-# Every feature of the remaster is a trusted plugin of the one Faxanadu
-# Remastered switch (package faxanadu.remastered, feature `remastered`), so
-# they are always on together, and may rely on each other. Seamless, the view
-# inherited from upstream, is one of them (#110).
+# Every feature of the remaster is a trusted plugin of the one Faxanadu DX
+# switch (package faxanadu.dx, feature `dx`), so they are always on together,
+# and may rely on each other. Seamless, the view inherited from upstream, is
+# one of them (#110).
 # tools/check_allocations.py treats every two features below as enabled
 # together, unless their manifest features share an exclusive group, and fails
 # when:
@@ -29,7 +29,7 @@
 
 [[feature]]
 id = "guru-travel"
-package = "faxanadu.remastered"
+package = "faxanadu.dx"
 plugin = "faxanadu.guru-travel"
 source = "src/fax_travel.c"
 hooks = "faxanadu.travel."
@@ -43,7 +43,7 @@ rom = [
 
 [[feature]]
 id = "seamless-world"
-package = "faxanadu.remastered"
+package = "faxanadu.dx"
 plugin = "faxanadu.seamless-world"
 source = "src/fax_world.c"
 hooks = "faxanadu.world."
@@ -58,7 +58,7 @@ the last at this address."""
 
 [[feature]]
 id = "death-keeps-gold"
-package = "faxanadu.remastered"
+package = "faxanadu.dx"
 plugin = "faxanadu.death-keeps-gold"
 source = "src/fax_death.c"
 hooks = "faxanadu.death-keeps-gold."
@@ -72,7 +72,7 @@ rom = []
 
 [[feature]]
 id = "pendant-fix"
-package = "faxanadu.remastered"
+package = "faxanadu.dx"
 plugin = "faxanadu.pendant-fix"
 source = "src/fax_pendant.c"
 hooks = "faxanadu.pendant-fix."
@@ -82,7 +82,7 @@ rom = []
 
 [[feature]]
 id = "magic-button"
-package = "faxanadu.remastered"
+package = "faxanadu.dx"
 plugin = "faxanadu.magic-button"
 source = "src/fax_magic.c"
 hooks = "faxanadu.magic-button."
@@ -95,7 +95,7 @@ rom = []
 
 [[feature]]
 id = "zone-names"
-package = "faxanadu.remastered"
+package = "faxanadu.dx"
 plugin = "faxanadu.zone-names"
 source = "src/fax_banner.c"
 hooks = "faxanadu.zone-names."
@@ -106,7 +106,7 @@ rom = []
 
 [[feature]]
 id = "speaker-names"
-package = "faxanadu.remastered"
+package = "faxanadu.dx"
 plugin = "faxanadu.speaker-names"
 source = "src/fax_speaker.c"
 hooks = "faxanadu.speaker-names."
@@ -116,7 +116,7 @@ rom = []
 
 [[feature]]
 id = "auto-keys"
-package = "faxanadu.remastered"
+package = "faxanadu.dx"
 plugin = "faxanadu.auto-keys"
 source = "src/fax_keys.c"
 hooks = "faxanadu.auto-keys."
@@ -126,7 +126,7 @@ rom = []
 
 [[feature]]
 id = "reusable-tools"
-package = "faxanadu.remastered"
+package = "faxanadu.dx"
 plugin = "faxanadu.reusable-tools"
 source = "src/fax_keys.c"
 hooks = "faxanadu.reusable-tools."
@@ -144,7 +144,7 @@ Game_UnlockDoorWithUsableItem is the caller."""
 
 [[feature]]
 id = "falling-pose"
-package = "faxanadu.remastered"
+package = "faxanadu.dx"
 plugin = "faxanadu.falling-pose"
 source = "src/fax_falling.c"
 hooks = "faxanadu.falling-pose."
@@ -156,7 +156,7 @@ rom = []
 
 [[feature]]
 id = "forgiving-jumps"
-package = "faxanadu.remastered"
+package = "faxanadu.dx"
 plugin = "faxanadu.forgiving-jumps"
 source = "src/fax_jumps.c"
 hooks = "faxanadu.forgiving-jumps."
@@ -169,7 +169,7 @@ rom = []
 
 [[feature]]
 id = "ladder-fixes"
-package = "faxanadu.remastered"
+package = "faxanadu.dx"
 plugin = "faxanadu.ladder-fixes"
 source = "src/fax_ladders.c"
 hooks = "faxanadu.ladder-fixes."
@@ -183,7 +183,7 @@ rom = []
 
 [[feature]]
 id = "ladder-hold"
-package = "faxanadu.remastered"
+package = "faxanadu.dx"
 plugin = "faxanadu.ladder-hold"
 source = "src/fax_ladder_hold.c"
 hooks = "faxanadu.ladder-hold."
@@ -194,7 +194,7 @@ rom = []
 
 [[feature]]
 id = "text-speed"
-package = "faxanadu.remastered"
+package = "faxanadu.dx"
 plugin = "faxanadu.text-speed"
 source = "src/fax_text_speed.c"
 hooks = "faxanadu.text-speed."
@@ -207,7 +207,7 @@ rom = []
 
 [[feature]]
 id = "taller-dagger"
-package = "faxanadu.remastered"
+package = "faxanadu.dx"
 plugin = "faxanadu.taller-dagger"
 source = "src/fax_dagger.c"
 hooks = "faxanadu.taller-dagger."
@@ -219,7 +219,7 @@ overrides = [
 
 [[feature]]
 id = "save-files"
-package = "faxanadu.remastered"
+package = "faxanadu.dx"
 plugin = "faxanadu.save-files"
 source = "src/fax_files.c"
 hooks = "faxanadu.files."
@@ -326,7 +326,7 @@ order."""
 
 [[feature]]
 id = "block"
-package = "faxanadu.remastered"
+package = "faxanadu.dx"
 plugin = "faxanadu.block"
 source = "src/fax_block.c"
 hooks = "faxanadu.block."
@@ -358,7 +358,7 @@ rom = [
 
 [[feature]]
 id = "sugata-flash"
-package = "faxanadu.remastered"
+package = "faxanadu.dx"
 plugin = "faxanadu.sugata-flash"
 source = "src/fax_sugata.c"
 hooks = "faxanadu.sugata."
@@ -385,7 +385,7 @@ site first would stop a flash the Magic Shield should turn back."""
 
 [[feature]]
 id = "quick-shops"
-package = "faxanadu.remastered"
+package = "faxanadu.dx"
 plugin = "faxanadu.shops"
 source = "src/fax_shops.c"
 hooks = "faxanadu.shops."
@@ -405,7 +405,7 @@ rom = []
 
 [[feature]]
 id = "zone-respawn"
-package = "faxanadu.remastered"
+package = "faxanadu.dx"
 plugin = "faxanadu.zone-respawn"
 source = "src/fax_respawn.c"
 hooks = "faxanadu.zone-respawn."
@@ -427,7 +427,7 @@ rom = []
 
 [[feature]]
 id = "recharging-items"
-package = "faxanadu.remastered"
+package = "faxanadu.dx"
 plugin = "faxanadu.recharge"
 source = "src/fax_recharge.c"
 hooks = "faxanadu.recharge."
@@ -450,7 +450,7 @@ rom = [
 
 [[feature]]
 id = "charges"
-package = "faxanadu.remastered"
+package = "faxanadu.dx"
 plugin = "faxanadu.charges"
 source = "src/fax_charges.c"
 hooks = "faxanadu.charges."
@@ -464,7 +464,7 @@ rom = []
 
 [[feature]]
 id = "mana-refill"
-package = "faxanadu.remastered"
+package = "faxanadu.dx"
 plugin = "faxanadu.mana-refill"
 source = "src/fax_mana.c"
 hooks = "faxanadu.mana-refill."
@@ -480,7 +480,7 @@ rom = []
 
 [[feature]]
 id = "magician-lesson"
-package = "faxanadu.remastered"
+package = "faxanadu.dx"
 plugin = "faxanadu.magician-lesson"
 source = "src/fax_lesson.c"
 hooks = "faxanadu.lesson."
@@ -511,7 +511,7 @@ rom = [
 
 [[feature]]
 id = "double-gold"
-package = "faxanadu.remastered"
+package = "faxanadu.dx"
 plugin = "faxanadu.double-gold"
 source = "src/fax_gold.c"
 hooks = "faxanadu.double-gold."
@@ -537,7 +537,7 @@ rom = []
 
 [[feature]]
 id = "fair-entrances"
-package = "faxanadu.remastered"
+package = "faxanadu.dx"
 plugin = "faxanadu.fair-entrances"
 source = "src/fax_entrances.c"
 hooks = "faxanadu.fair-entrances."
@@ -567,7 +567,7 @@ neither changes."""
 
 [[feature]]
 id = "slain-by"
-package = "faxanadu.remastered"
+package = "faxanadu.dx"
 plugin = "faxanadu.slain-by"
 source = "src/fax_slain.c"
 hooks = "faxanadu.slain-by."
@@ -582,11 +582,14 @@ rom = []
 
 [[feature]]
 id = "title-remastered"
-package = "faxanadu.remastered"
+package = "faxanadu.dx"
 plugin = "faxanadu.title-remastered"
 source = "src/fax_title.c"
 hooks = "faxanadu.title-remastered."
 rom = []
+# DX on the title. Its plugin, hook sites and save-state record keep their
+# names from before the project was Faxanadu DX (#116): save states know
+# the record by its name.
 # Hooks only Game_ShowStartScreen's @_afterCheckHandleInputFarJump ($FC7A),
 # which no other feature hooks, and returns 0 there: it notes that the title's
 # loop ran this frame and writes nothing. StartScreen_CheckHandleInput, run or
@@ -597,7 +600,7 @@ rom = []
 
 [[feature]]
 id = "indoor-equip"
-package = "faxanadu.remastered"
+package = "faxanadu.dx"
 plugin = "faxanadu.indoor-equip"
 source = "src/fax_indoor.c"
 hooks = "faxanadu.indoor-equip."
@@ -612,7 +615,7 @@ rom = []
 
 [[feature]]
 id = "damage-numbers"
-package = "faxanadu.remastered"
+package = "faxanadu.dx"
 plugin = "faxanadu.damage-numbers"
 source = "src/fax_damage.c"
 hooks = "faxanadu.damage-numbers."
@@ -629,7 +632,7 @@ rom = []
 
 [[feature]]
 id = "inventory-fix"
-package = "faxanadu.remastered"
+package = "faxanadu.dx"
 plugin = "faxanadu.inventory-fix"
 source = "src/fax_inventory.c"
 hooks = "faxanadu.inventory-fix."
@@ -643,7 +646,7 @@ rom = []
 
 [[feature]]
 id = "map"
-package = "faxanadu.remastered"
+package = "faxanadu.dx"
 plugin = "faxanadu.map"
 source = "src/fax_map.c"
 hooks = "faxanadu.map."
@@ -662,7 +665,7 @@ rom = []
 
 [[feature]]
 id = "small-fixes"
-package = "faxanadu.remastered"
+package = "faxanadu.dx"
 plugin = "faxanadu.small-fixes"
 source = "src/fax_fixes.c"
 hooks = "faxanadu.small-fixes."
@@ -685,7 +688,7 @@ removes the shot with the shield's sound."""
 
 [[feature]]
 id = "graphics-fix"
-package = "faxanadu.remastered"
+package = "faxanadu.dx"
 plugin = "faxanadu.graphics-fix"
 source = "src/fax_graphics.c"
 hooks = "faxanadu.graphics-fix."
@@ -703,7 +706,7 @@ rom = []
 
 [[feature]]
 id = "quest-log"
-package = "faxanadu.remastered"
+package = "faxanadu.dx"
 plugin = "faxanadu.quest-log"
 source = "src/fax_quests.c"
 hooks = "faxanadu.quests."
@@ -771,7 +774,7 @@ the map observes X as the game picks the item up."""
 
 [[feature]]
 id = "kept-finds"
-package = "faxanadu.remastered"
+package = "faxanadu.dx"
 plugin = "faxanadu.kept-finds"
 source = "src/fax_finds.c"
 hooks = "faxanadu.kept-finds."

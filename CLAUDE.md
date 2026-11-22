@@ -1,4 +1,4 @@
-# Faxanadu Remastered
+# Faxanadu DX
 
 Faxanadu (NES) statically recompiled to native code with
 [nesrecomp](https://github.com/mstan/nesrecomp), plus quality-of-life features.
@@ -136,9 +136,9 @@ recompiler produced it; features observe and steer it.
   (`type_out()`, `page_to()`, `page_through()`, which never turn a page
   they should not), and start a death after its dissolve, from a fixture,
   unless the death is what is checked.
-- **Everything the remaster adds goes into the one Faxanadu Remastered mod**
-  (`mods/preloaded/packages/faxanadu.remastered`), never a new package: add a
-  `[[plugin]]` under its `remastered` feature. The launcher has one switch for
+- **Everything the remaster adds goes into the one Faxanadu DX mod**
+  (`mods/preloaded/packages/faxanadu.dx`), never a new package: add a
+  `[[plugin]]` under its `dx` feature. The launcher has one switch for
   it: on is the remaster, off is the original game. Seamless, the continuous
   world inherited from upstream (`src/fax_world.c`), is one of its plugins
   (#110): the remaster always plays in it.

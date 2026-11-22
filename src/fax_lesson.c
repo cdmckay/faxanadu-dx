@@ -14,7 +14,7 @@
  * enough Golds." and the script ends), add 40 MP, "Watch your remaining power
  * level.", end. It is steered at IScripts_InvokeNextAction, through Guru
  * travel's SAY and ASK steps and message $C3's slot (fax_travel.h), as the
- * Gurus' remastered lines are:
+ * remaster's Guru lines are:
  *   - His first action, the question: what he teaches, "I can teach you to
  *     recover magic faster.", at the SAY step (B on it ends the script). Once
  *     the hero has learned, "I have nothing more to teach you." there

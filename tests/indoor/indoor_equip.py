@@ -68,7 +68,7 @@ RING_OF_ELF, NEGATIVE_THOUGHTS = 0x80, 0x24
 WEAPON_TILES = range(0x38, 0x40)                  # PLAYER_WEAPON_TILE_PPU_ADDRS: $0380 on, but the Dragon Slayer's
 MENU_WIDTH, WEAPONS_WIDTH = 0x0A, 0x14            # PlayerMenu_Show's box, PlayerMenu_ShowSubmenu's
 SPRITE_EXTENTS = 0xB407                           # MAYBE_SPRITE_EXTENTS, bank 14: (EX, EY) by entity
-PACKAGE = ("faxanadu.remastered", "remastered")                  # the one switch: off is the original game
+PACKAGE = ("faxanadu.dx", "dx")                                  # the one switch: off is the original game
 ROM = b""
 
 

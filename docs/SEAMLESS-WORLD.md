@@ -4,7 +4,7 @@ Owner request: 2026-10-27. Tracking: `beads-2dw.17.2`; shared CIRAM upload:
 `beads-2dw.1.108`. Isolated branch: `feat/seamless-world-20261027`, based on
 released Faxanadu `6a297c2`. It began as an experimental local-play preview,
 a package of its own. **Since #110 (2026-11-22) it is part of the remaster:**
-a `[[plugin]]` (`faxanadu.seamless-world`) of the one Faxanadu Remastered
+a `[[plugin]]` (`faxanadu.seamless-world`) of the one Faxanadu DX
 feature, so the remaster always plays in it, and with the remaster off the
 game is the original in its stock 256x240 view. Every remaster end-to-end
 test plays in it. What only a full playthrough would show is under "Still

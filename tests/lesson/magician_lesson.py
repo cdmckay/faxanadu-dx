@@ -46,7 +46,7 @@ file       Studied and learned, the hero dies; the respawn writes
            and continuing file 1, he has both: MP refill runs 120 and 15. File
            1 edited as a file from before lesson.studied, with Fire among its
            spells: continued, he has studied. A new game in file 2 has neither.
-original   With Faxanadu Remastered off: "I shall give magic for 200 Golds.";
+original   With Faxanadu DX off: "I shall give magic for 200 Golds.";
            A takes 200 and gives 40 MP, then "Watch your remaining power
            level.", as the original does.
 
@@ -67,7 +67,7 @@ from fax_e2e import (act, choose_file, dissolve, page_through, tcp, title_menu, 
 import play  # noqa: E402
 
 PARTS = ("unstudied", "buy", "refuse", "hall", "file", "original")
-PACKAGE = ("faxanadu.remastered", "remastered")
+PACKAGE = ("faxanadu.dx", "dx")
 RECORD, MANA = "faxanadu.magician-lesson", "faxanadu.mana-refill"   # save-state records: [1] learned, [4] studied;
 LEARNED, STUDIED = 1, 4                                             # mana's [1] seen, [2] MP seen, [3] left
 ZONE_NAMES = "faxanadu.zone-names"                                  # its save-state record
@@ -267,8 +267,8 @@ def main():
         for part in PARTS:
             if not args.wants(part):
                 continue
-            remastered = part != "original"
-            g.set_features({PACKAGE: remastered})
+            dx = part != "original"
+            g.set_features({PACKAGE: dx})
             g.launch()
 
             if part == "unstudied":

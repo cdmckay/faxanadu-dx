@@ -73,7 +73,7 @@ TOWNS = 3
 MEDITATE_WITH_YOU = 0x22                                            # the Guru's greeting
 OFFER, DEPART, TO_GURU = 1, 3, 4                                    # fax_travel.c's lines (TO_GURU + temple)
 PPU_MASK, DURATION_OINTMENT, SUGATA = 0x0B, 0x427, 0x18             # greyscale is bit 0; $FF: no Ointment
-PACKAGE, FEATURE = "faxanadu.remastered", "remastered"          # the one switch: off is the original game
+PACKAGE, FEATURE = "faxanadu.dx", "dx"                          # the one switch: off is the original game
 
 # Each entrance: the zone, where its door is (area, screen, palette, block YX,
 # region: what the temple's door is edited to lead to), what opens it, where

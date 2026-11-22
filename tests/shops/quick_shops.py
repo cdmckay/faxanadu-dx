@@ -96,7 +96,7 @@ ZONE_NAMES = "faxanadu.zone-names"                                  # its record
 LIST_FRAME = (80, 64)                                               # the list's top-left frame tile, tile 10,8
 HINT = (96, 208)                                                    # its hint line: tile 12,26
 PAGE_ROW, LINE_END = 72, 224                                        # the page: row 9, ending at column 27
-PACKAGE = ("faxanadu.remastered", "remastered")                  # the one switch: off is the original game
+PACKAGE = ("faxanadu.dx", "dx")                                  # the one switch: off is the original game
 
 
 def shops():

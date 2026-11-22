@@ -102,7 +102,7 @@ void fax_save_record_clear(FaxSaveRecord *r) {
 
 int fax_save_record_format(const FaxSaveRecord *r, char *out, size_t cap) {
     size_t n = 0;
-    int k = snprintf(out, cap, "# Faxanadu Remastered save file: named fields, one a line.\n");
+    int k = snprintf(out, cap, "# Faxanadu DX save file: named fields, one a line.\n");
     if (k < 0 || (size_t)k >= cap) return -1;
     n = (size_t)k;
     for (int i = 0; i < r->count; ++i) {

@@ -45,7 +45,7 @@ SPRITE_ENTITIES_HP = 0xB5A9                                         # bank 14, b
 LONG_SWORD, GIANT_BLADE, DRAGON_SLAYER = 1, 2, 3
 NAMES = {LONG_SWORD: "Long Sword", GIANT_BLADE: "Giant Blade", DRAGON_SLAYER: "Dragon Slayer"}
 KNOWN_HP = 60
-PACKAGE, FEATURE = "faxanadu.remastered", "remastered"          # the one switch: off is the original game
+PACKAGE, FEATURE = "faxanadu.dx", "dx"                          # the one switch: off is the original game
 
 
 def bank14(image, addr, n):

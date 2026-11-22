@@ -33,7 +33,7 @@ coin      The Trunk's first screen: the Monodron dies to one swing and drops
           its coin, worth 59 (SPRITE_DROP_VALUES); walking onto it pays 118.
           The same coin 50 short of the cap ($FFFFFF) fills gold to the cap,
           not past it.
-original  With Faxanadu Remastered off: the plea says 1500 and he pays 1500, 10
+original  With Faxanadu DX off: the plea says 1500 and he pays 1500, 10
           a frame over 150 frames, and again each time the gold is spent to
           0; the coin pays its 59, and 50 short of the cap the original's add
           wraps around past it.
@@ -55,7 +55,7 @@ import fax_e2e  # noqa: E402  (on the path through harness)
 from fax_e2e import batch, choose_file, dissolve, page_through, page_to, title_menu  # noqa: E402
 
 PARTS = ("king", "file", "old-file", "coin", "original")
-PACKAGE = ("faxanadu.remastered", "remastered")
+PACKAGE = ("faxanadu.dx", "dx")
 ZONE_NAMES, GOLD_RECORD, QUESTS = "faxanadu.zone-names", "faxanadu.double-gold", "faxanadu.quests"   # records
 GIVEN = 1                          # both records: Double gold's given (0 or 1); the quest log's given set, from here
 KINGS_PLEA = 1 << 1                # The King's Plea's bit in the quest log's set (fax_quest_table.h's order)
@@ -170,14 +170,14 @@ def main():
         assert s["kings"] == before["kings"] and s["nothing_more"] == before["nothing_more"] + 1, (before, s)
         print(f"ok: {what}, the King has nothing more for a hero with no gold")
 
-    def counted(plea_end, remastered, amount):
+    def counted(plea_end, dx, amount):
         """Headless from the plea's end, A on its second frame: each frame's
         gold climbs by the same pay, on frames in a row, to the amount."""
-        mods = g.mods("headless-mods", original=not remastered)
+        mods = g.mods("headless-mods", original=not dx)
         rams = g.headless(plea_end, [(0, "-"), (2, "A"), (6, "-")], COUNT_FRAMES, mods)
         golds = [int.from_bytes(r[GOLD:GOLD + 3], "little") for r in rams]
         steps = [(i, golds[i] - golds[i - 1]) for i in range(1, len(golds)) if golds[i] != golds[i - 1]]
-        pay = 20 if remastered else 10
+        pay = 20 if dx else 10
         assert golds[0] == 0 and golds[-1] == amount, (golds[0], golds[-1])
         assert steps and all(paid == pay for _, paid in steps), steps
         first = steps[0][0]
@@ -185,31 +185,31 @@ def main():
         print(f"ok: the King's {amount} counts up {pay} a frame, in 150 frames in a row (frames {first}-{first + 149} "
               "of the headless run)")
 
-    def the_king(remastered):
+    def the_king(dx):
         """His plea and his gift, to a hero with no gold; spent to 0 and asked
         again, nothing with the remaster, the gift again without."""
         shop = g.state("eolis-meat-shop")
         g.launch(at="eolis-meat-shop")
         s = state()
-        assert s["enabled"] == remastered and not s["given"], s
+        assert s["enabled"] == dx and not s["given"], s
         to_the_king(shop, "kings-room")
         talk_to_king(PLEA)
         s = page_to(lambda s: s["plea_digits"] == 4, "the plea's amount", "gold_state")
         g.shot("plea-amount")
-        amount = 3000 if remastered else 1500
-        assert s["line"] == (2 if remastered else 0), s             # "15" served as "30"; "00" is the same
+        amount = 3000 if dx else 1500
+        assert s["line"] == (2 if dx else 0), s                     # "15" served as "30"; "00" is the same
         page_to(lambda s: g.ram(MESSAGE_ID) == 0, "the plea's end", "gold_state")
         assert gold() == 0, "nothing is paid until the plea is let go"
-        counted(g.save("plea-end"), remastered, amount)
+        counted(g.save("plea-end"), dx, amount)
         page_through("the gift", done_talking, 3000)
         assert gold() == amount, f"the King gives {amount} Golds, not {gold()}"
         g.shot("gift")
         s = state()
-        assert (s["kings"], s["king_pays"], s["given"]) == ((1, 150, True) if remastered else (0, 0, False)), s
+        assert (s["kings"], s["king_pays"], s["given"]) == ((1, 150, True) if dx else (0, 0, False)), s
         print(f"ok: the King's plea says {amount} Golds and he gives {amount}"
-              + (" (1500 doubled)" if remastered else " (the original)"))
+              + (" (1500 doubled)" if dx else " (the original)"))
         g.poke(gold_bytes(0))                                       # spent to 0, through a save state
-        if remastered:
+        if dx:
             nothing_more("spent to 0 and asked again (his record kept through a save state)")
         else:
             talk_to_king(PLEA)
@@ -249,7 +249,7 @@ def main():
             nothing_more(f"continuing file 1 with {FIELD} = yes", "nothing-more")
         g.close()
 
-    def the_coin(remastered):
+    def the_coin(dx):
         """The Monodron on the Trunk's first screen: one swing, its coin, the pickup."""
         shop = g.state("eolis-meat-shop")
         g.launch(at="eolis-meat-shop")
@@ -282,17 +282,17 @@ def main():
             return gold()
 
         paid = kill_and_pick_up("coin", 0)
-        want = 2 * MONODRON_COIN if remastered else MONODRON_COIN
+        want = 2 * MONODRON_COIN if dx else MONODRON_COIN
         assert paid == want, f"the coin pays {want}, not {paid}"
-        if remastered:
+        if dx:
             s = state()
             assert (s["coins"], s["coin_gold"], s["last_coin"], s["capped"]) == (1, want, MONODRON_COIN, 0), s
         print(f"ok: the Monodron's coin, worth {MONODRON_COIN}, pays {paid}"
-              + (" (doubled)" if remastered else " (the original)"))
+              + (" (doubled)" if dx else " (the original)"))
 
         start = CAP - SHORT
         capped = kill_and_pick_up("cap", start)
-        if remastered:
+        if dx:
             assert capped == CAP, f"gold stops at the cap, {CAP:#x}, not {capped:#x}"
             assert state()["capped"] == 1, state()
             print(f"ok: {SHORT} short of the cap, the coin's {2 * MONODRON_COIN} fills gold to {CAP:#x} and no further")
@@ -305,14 +305,14 @@ def main():
         for part in PARTS:
             if not args.wants(part):
                 continue
-            remastered = part != "original"
-            g.set_features({PACKAGE: remastered})
+            dx = part != "original"
+            g.set_features({PACKAGE: dx})
             if part in ("king", "original"):
-                the_king(remastered)
+                the_king(dx)
             if part in ("file", "old-file"):
                 the_file(part == "old-file")
             if part in ("coin", "original"):
-                the_coin(remastered)
+                the_coin(dx)
         print("screenshots:", ", ".join(g.shots))
     except BaseException:
         if g.running():
