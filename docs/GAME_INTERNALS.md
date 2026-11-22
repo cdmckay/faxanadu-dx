@@ -1946,8 +1946,8 @@ jump a few updates after stepping off, as A from the hang itself would.
   value 2 where the Power bar's is 1, as in `$09` and `$08`. So the MP bar's
   fill is color 2 of the status bar's palette (`UI_AttributeDataIndex` × 4
   + 2): `$19`, a middle green, in 25 of bank 11's 31 screen palettes, and
-  `$1A` in one (14). The other five are the title's and screens without the
-  status bar (`$0F`, `$1C`, `$25`, `$27`).
+  `$1A` in one (14). The other five have `$0F` (4, loaded only by dead
+  code), `$27` (16, the title's, and 28), `$25` (29) and `$1C` (30).
 - **A spell goes off with MP equal to its cost.** `Player_ReduceMP`
   subtracts `MAGIC_COSTS` (`$B7A9`, bank 14: 2, 4, 6, 10, 16, by
   `SelectedMagic`) from `Player_MP` and refuses only on a borrow, so a spell
