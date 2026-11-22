@@ -441,8 +441,11 @@ const uint32_t *fax_world_present(int *w,int *h,const uint32_t *native){
     camera_x=atlas?l*RW:a->x*RW+a->ram[0x9e]+8-width/2;
     camera_y=atlas?t*RH:a->y*RH+a->ram[0xa1]+16-(height-HUD)/2;
     if(!atlas){
+        /* An area narrower than the view (a building, one screen wide) sits
+         * under the status bar, as in the original, so its text boxes line up
+         * with it and a native picture of it does not move. */
         int xmax=(r+1)*RW-width,ymax=(b+1)*RH-(height-HUD);
-        camera_x=xmax<l*RW?(l*RW+xmax)/2:clamp(camera_x,l*RW,xmax);
+        camera_x=xmax<l*RW?l*RW-native_x:clamp(camera_x,l*RW,xmax);
         camera_y=ymax<t*RH?ymax:clamp(camera_y,t*RH,ymax);
     }
     for(unsigned id=0;id<counts[area];id++)if(rooms[id].owned&&rooms[id].valid){

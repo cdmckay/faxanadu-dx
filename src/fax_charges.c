@@ -79,11 +79,17 @@ int fax_charges_row(void) { return enabled ? FAX_CHARGES_ROW : 0; }
 
 /* ---- the rules ---- */
 
+/* The NES's greys, darkest first; a color's place among them is its
+ * brightness (its row of the palette), and the grey it takes is one place
+ * darker, but never black. */
 uint8_t fax_charges_grey(uint8_t c) {
-    static const uint8_t DIMMER[4] = { 0x2D, 0x2D, 0x00, 0x10 };   /* by brightness row: dark grey to light grey */
-    unsigned hue = c & 0x0Fu, row = (c >> 4) & 3u;
-    if (hue >= 0x0E || (hue == 0x0D && row < 2)) return 0x0F;     /* the blacks stay black */
-    return DIMMER[row];
+    static const uint8_t GREYS[] = { 0x0F, 0x2D, 0x00, 0x10, 0x20 };
+    unsigned hue = c & 0x0Fu, row = (c >> 4) & 3u, level;
+    if (hue >= 0x0E || c == 0x0D || c == 0x1D) return 0x0F;      /* the blacks stay black */
+    if (hue == 0x0D) level = row == 2 ? 1 : 3;                    /* $2D dark grey, $3D light grey */
+    else if (hue == 0x00) level = row < 2 ? row + 2 : 4;          /* $00 grey, $10 light grey, $20 and $30 white */
+    else level = row + 1;                                         /* a color: dark, middle, light, pale */
+    return GREYS[level > 1 ? level - 1 : 1];
 }
 
 /* One frame: an item that went from ready to used starts blinking; the blink

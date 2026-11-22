@@ -99,6 +99,9 @@ cmake --build "$OUT/respawn" -j"$JOBS" >/dev/null
 cmake -S tests/recharge -B "$OUT/recharge" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/recharge" -j"$JOBS" >/dev/null
 "$OUT/recharge/recharge_test"
+cmake -S tests/charges -B "$OUT/charges" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/charges" -j"$JOBS" >/dev/null
+"$OUT/charges/charges_test"
 cmake -S tests/mana -B "$OUT/mana" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/mana" -j"$JOBS" >/dev/null
 "$OUT/mana/mana_test"
