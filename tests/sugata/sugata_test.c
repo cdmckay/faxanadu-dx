@@ -84,6 +84,11 @@ void fax_damage_enemy_hit(unsigned slot, unsigned amount) {
     numbered_entity = ram[CURRENT_SPRITES_ENTITIES + slot];
 }
 
+/* MP from kills (fax_mana.c): a kill the committed call made, which runs no
+ * hooks, reported after it. */
+static unsigned killed_reported, killed_entity;
+void fax_mana_killed(uint8_t entity) { ++killed_reported; killed_entity = entity; }
+
 /* SpriteBehavior_FlashScreenHitPlayer ($AB26), X the sprite. */
 static void flash_behavior(void) {
     unsigned x = SLOT;
@@ -236,6 +241,7 @@ static void the_magic_shield_reflects_it(void) {
     to_the_flash();
     CHECK(ram[HP_U] == 80 && ram[SPRITE_HP + SLOT] == SUGATA_HP - SUGATA_REFLECTED && reflected == 1);
     CHECK(sound_count == 1 && last_sound() == 0x02 && finished == 1 && test_block_flashes() == 0);
+    CHECK(killed_reported == 0);                          /* a hit, no kill: no kill's MP */
     CHECK(numbered == 1 && numbered_amount == SUGATA_REFLECTED && numbered_slot == SLOT && numbered_entity == SUGATA);
     CHECK(ram[CURRENT_SPRITES_HIT_BY_MAGIC + SLOT] == 0 && ram[CURRENT_SPRITES_HIT_BY_MAGIC_IFRAMES + SLOT] == 4);
     for (int f = 0; f < 4; ++f) frame();                  /* knocked back, as a Deluge would, away from him */
@@ -255,6 +261,7 @@ static void the_magic_shield_reflects_it(void) {
     to_the_flash();
     CHECK(ram[CURRENT_SPRITES_ENTITIES + SLOT] == DEATH && kills == 1 && reflected == 2 && ram[HP_U] == 80);
     CHECK(numbered == 2 && numbered_amount == SUGATA_REFLECTED && numbered_entity == SUGATA);   /* the kill's too */
+    CHECK(killed_reported == 1 && killed_entity == SUGATA);   /* and its MP, which no hook gave */
     CHECK(!(ram[PPU_MASK] & 1) && band.kind == NO_BAND);  /* its death ends the band, as the game's ends greyscale */
     CHECK(sounds[sound_count - 2] == 0x02 && last_sound() == 0x03);
     /* Out of reach, the Magic Shield has nothing to send back. */

@@ -1,11 +1,18 @@
 #pragma once
-/* MP refill (fax_mana.c): once the hero has spent no MP for 4 seconds,
- * Player_MP climbs back toward full, 1 MP every 30 frames, while the game is
- * playing; after the Magician's lesson (fax_lesson.c), 2 seconds and 15
- * frames. Nothing comes back while the Wing Boots or the Hour Glass take MP
- * (fax_recharge_draining), and the wait runs from their end. It registers itself and keeps its
- * countdown in its save-state record; the host calls it at the end of each
- * frame and adds its TCP command. */
+/* MP from kills (fax_mana.c): every kill the game gives experience for, by
+ * weapon or magic, gives MP, from the enemy's experience (a boss 40), up to
+ * the cap of 80; the Magician's lesson (fax_lesson.c) doubles it. Nothing
+ * comes back over time. Talking to a Guru fills HP and MP. It registers
+ * itself and keeps the bars it has still to draw in its save-state record;
+ * the host calls it at the end of each frame and adds its TCP command. */
+#include <stdint.h>
 
 void fax_mana_frame_end(void);
 void fax_mana_tcp_setup(void);
+/* A kill of `entity` that the game gave experience for in a committed call,
+ * which runs no hooks (Sugata turned back on itself: fax_sugata.c). Bank 14
+ * must be mapped, as it is in that code. Nothing when off. */
+void fax_mana_killed(uint8_t entity);
+/* A Guru's conversation begins (Recharging items' guru_hook, at his first
+ * script action): HP and MP to 80, and their bars. Nothing when off. */
+void fax_mana_guru(void);

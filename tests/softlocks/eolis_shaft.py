@@ -23,10 +23,12 @@ over the wall (Up, then Right with A held) and lets go: he falls down column
    there: a softlock, which only a reset ends.
 2. dx: the same flight, which runs on MP, ends when it runs out (MP poked to
    0, as recharging_items.py plays a whole flight), and Recharging items
-   keeps the pair, with no cooldown. Down+B at 0 MP does nothing; once MP has
-   come back (poked to 80: MP refill brings it back, mana_refill.py's), Down+B
-   flies again, up the shaft and left over the wall, and he lands on Eolis's
-   floor.
+   keeps the pair, with no cooldown. Down+B at 0 MP does nothing. With MP
+   (poked to 80), Down+B flies again, up the shaft and left over the wall,
+   and he lands on Eolis's floor. Since #125 MP comes only from kills and
+   Gurus, and none is down there: a flight that ends in the shaft at 0 MP
+   leaves him stuck, as in the original; one ended early with MP left (Down+B)
+   flies him out.
 """
 from pathlib import Path
 import sys
@@ -208,7 +210,7 @@ def main():
                 until("the refusal", lambda: tcp("recharge_state")["refused"] == refused + 1, 120)
                 wait(20)
                 assert ram(TEXTBOX_CLOSED) != 0 and not ram(STATUS) & FLYING, "Down+B at 0 MP flew"
-                game.poke({MP: 80})                                        # MP refill brought it back
+                game.poke({MP: 80})                                        # MP left: nothing there gives it back
                 use_wing_boots()
                 fly([({"a", "dpup"}, "the sky", lambda: ram(HERO_Y) <= 8),
                      ({"a", "dpup", "dpleft"}, "over the wall", lambda: ram(HERO_X) <= WALL_X - 40)])
@@ -216,7 +218,7 @@ def main():
                 assert ram(SCREEN) == GATE_SCREEN and ram(HERO_X) < WALL_X, hero()
                 game.shot("dx-out")
                 print("ok: with the remaster the Wing Boots are kept and run on MP: at 0 MP Down+B does nothing, "
-                      "and once MP is back it flies him up the shaft and over the wall, back onto Eolis's floor")
+                      "and with MP it flies him up the shaft and over the wall, back onto Eolis's floor")
             game.close()
         print("screenshots:", ", ".join(game.shots))
     except BaseException:

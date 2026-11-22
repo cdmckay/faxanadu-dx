@@ -231,7 +231,7 @@ static void tracks_mp(void) {
     CHECK(px[19 * W + BAR + 36] == color(0x19));
     set_mp(34);
     CHECK(shows(present(&w, &h), 28, 34, 0x29));
-    /* MP back (refill, a shop) before the bar is redrawn: pixel 34 is not
+    /* MP back (a kill, a shop) before the bar is redrawn: pixel 34 is not
      * fill yet, so it stays empty, and the span is 29-34. */
     poke_mp(35);
     px = present(&w, &h);

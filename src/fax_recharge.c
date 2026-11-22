@@ -19,9 +19,8 @@
  *   still cuts it (LimitItemDurations): the drain stops there, and the
  *   game's own second ends it, as in the original.
  * With 0 MP, Down+B on either does nothing but play the game's "invalid
- * choice" sound, as a spell he can't afford does nothing. MP refill
- * (fax_mana.c) holds while either drains, so the Magician's lesson
- * (fax_lesson.c), a faster refill, means using them again sooner. Both at
+ * choice" sound, as a spell he can't afford does nothing. MP comes from
+ * kills (fax_mana.c), while either drains too, and a Guru fills it. Both at
  * once drain together, and each ends when MP runs out.
  * T: shows the selected item's seconds left while it runs: the flight's or
  * the freeze's, at the MP there is and what drains it, rounded up (a full
@@ -87,8 +86,8 @@
  *   countdowns: T: as above, queued through the PPU buffer as
  *   UI_DrawTimeValue writes it, and a bar still to draw.
  * - Player_UseElixir: the Elixir is spent. IScripts_InvokeNextAction, at the
- *   first action of a Guru's script: a spent Elixir is charged again, and his
- *   line is chosen. It is shown before his next action that no other feature
+ *   first action of a Guru's script: a spent Elixir is charged again, HP and
+ *   MP are filled (fax_mana_guru, MP from kills'), and his line is chosen. It is shown before his next action that no other feature
  *   steers (a temple Guru's CHECK_UPDATE_PLAYER_TITLE, right after
  *   SET_SPAWN_POINT; Eolis's Guru's first, CHECK_FOR_ITEM): the script goes
  *   to the SAY step, and at its END comes back where it was.
@@ -105,6 +104,7 @@
  * docs/GAME_INTERNALS.md. */
 #include "fax_recharge.h"
 #include "fax_items.h"
+#include "fax_mana.h"
 #include "fax_save.h"
 #include "fax_travel.h"
 #include "cyc_mod.h"
@@ -398,7 +398,7 @@ static void draw_hud(bool refresh) {
 
 /* The MP bar. Player_SetMP draws it as two PPU buffer commands that wait
  * for room first, which a committed call cannot do (no NMI runs): so only
- * when the buffer has room for both at once, the test MP refill makes
+ * when the buffer has room for both at once, the test MP from kills makes
  * (fax_mana.c): empty, or the room PPUBuffer_HasCapacity asks for after the
  * first command. */
 static bool bar_fits(void) {
@@ -650,8 +650,8 @@ static void say(int which) {
     ++lines_said[which];
 }
 
-/* IScripts_InvokeNextAction: a Guru's conversation begins, so charge a spent
- * Elixir before he speaks, whatever he goes on to offer (the mantra, Save
+/* IScripts_InvokeNextAction: a Guru's conversation begins, so fill HP and MP
+ * (MP from kills, fax_mana.c) and charge a spent Elixir before he speaks, whatever he goes on to offer (the mantra, Save
  * files' choice, Guru travel) and however it ends, and choose his line. The
  * line goes before an action no other hook here steers (line_goes_before),
  * and the script comes back to it at the SAY step's END ($AE02), where Guru
@@ -675,6 +675,7 @@ static int guru_hook(uint16_t addr) {
         return 0;
     }
     if (guru_begins(at) < 0) return 0;
+    fax_mana_guru();
     int line = guru_says(&charge, q(SPECIAL_ITEMS) & BIT_ELIXIR);
     if (charge.elixir_spent) {
         cyc_mod_poke(SPECIAL_ITEMS, (uint8_t)(q(SPECIAL_ITEMS) | BIT_ELIXIR));
@@ -691,8 +692,6 @@ static int guru_hook(uint16_t addr) {
 /* For Quick shops (fax_shops.c), which lists what the hero owns. */
 bool fax_recharge_on(void) { return enabled; }
 bool fax_recharge_elixir_spent(void) { return enabled && charge.elixir_spent; }
-/* For MP refill (fax_mana.c), which holds while they take MP. */
-bool fax_recharge_draining(void) { return enabled && (charge.flight.running || charge.freeze.running); }
 
 /* For the status bar (fax_charges.c). A spent Elixir found again has its bit
  * set before tick_hook forgets that it was spent, so the bit decides first. */
