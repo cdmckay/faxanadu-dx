@@ -107,11 +107,13 @@ keeps the map, and the items you have taken.
 - **Magic button.** C, or Y on a controller, casts your selected spell, as
   Up+B does, but without going through a door, talking to anyone or swinging
   your sword.
-- **MP that refills.** Four seconds after your last spell, your MP starts to
-  climb back toward full, a point every half second. Eolis's Magician no
-  longer sells MP: once you have learned Fire at the magic hall in the Mist,
-  he teaches you, once, for 30000 Golds, to recover it twice as fast, which
-  gets the Wing Boots and the Hour Glass going again sooner too.
+- **MP from kills.** As hearts do in Castlevania, every enemy you kill, by
+  sword or spell, gives MP back: a little for the weak ones, more for the
+  tough, 40 for a boss. It no longer comes back by waiting, and talking to
+  any Guru fills your HP and MP. Eolis's Magician no longer sells MP: once
+  you have learned Fire at the magic hall in the Mist, he teaches you, once,
+  for 30000 Golds, to draw twice as much from every kill, which keeps the
+  Wing Boots and the Hour Glass going longer too.
 - **Damage numbers.** Every hit that takes HP shows how much, floating up from
   where it landed: white for the damage you deal, pink for the damage you take.
 - **A taller dagger.** The Hand Dagger's swing reaches as low as the swords',

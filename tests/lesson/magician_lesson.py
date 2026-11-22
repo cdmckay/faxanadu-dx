@@ -23,15 +23,13 @@ buy        Studied, with 30000 Golds: what he teaches, then "It will cost
            30000 Golds." as a question. A: the game takes the 30000, 150 a
            frame in 200 frames (a headless run from the question counts each
            frame), then its 60; he says "Your magic will now return faster."
-           and the hero has learned. Asked again, "I have nothing more to
-           teach you.", and nothing is taken. Then, outside on the street,
-           headless runs from the same spot with Deluge cast on a frame: MP
-           comes back 120 frames after the cast, then 1 every 15; without the
-           lesson (its record cleared), 240 and 30 as before. Last, a save
-           state from while his price typed, loaded after his other lines
-           took message $C3's slot: the feature's record puts the conversation
-           back (not learned, his price up) and serves the price again, the
-           same picture as before.
+           and the hero has learned: MP from kills now gives twice a kill's MP
+           (tests/mana/mp_from_kills.py plays such a kill). Asked again, "I
+           have nothing more to teach you.", and nothing is taken. Last, a
+           save state from while his price typed, loaded after his other
+           lines took message $C3's slot: the feature's record puts the
+           conversation back (not learned, his price up) and serves the price
+           again, the same picture as before.
 refuse     Studied: B on his price closes the box, nothing taken, nothing
            learned. With 29999 Golds, A gets the game's own "This is not
            enough Golds." and the script ends: nothing taken, nothing learned.
@@ -43,7 +41,7 @@ hall       The magic hall in the Mist (screen $29, building $1C), from Eolis's
            Magician's) and in to Eolis's Magician, he asks his price.
 file       Studied and learned, the hero dies; the respawn writes
            lesson.studied = yes and lesson.learned = yes to file 1. Quitting
-           and continuing file 1, he has both: MP refill runs 120 and 15. File
+           and continuing file 1, he has both: a kill's MP is doubled. File
            1 edited as a file from before lesson.studied, with Fire among its
            spells: continued, he has studied. A new game in file 2 has neither.
 original   With Faxanadu DX off: "I shall give magic for 200 Golds.";
@@ -68,14 +66,14 @@ import play  # noqa: E402
 
 PARTS = ("unstudied", "buy", "refuse", "hall", "file", "original")
 PACKAGE = ("faxanadu.dx", "dx")
-RECORD, MANA = "faxanadu.magician-lesson", "faxanadu.mana-refill"   # save-state records: [1] learned, [4] studied;
-LEARNED, STUDIED = 1, 4                                             # mana's [1] seen, [2] MP seen, [3] left
+RECORD = "faxanadu.magician-lesson"                                 # its save-state record: [1] learned, [4] studied
+LEARNED, STUDIED = 1, 4
 ZONE_NAMES = "faxanadu.zone-names"                                  # its save-state record
 AREA_SAVED_AREA, AREA_SAVED_SCREEN, PLAYER_SAVED_POS, AREA_REGION = 0x3D5, 0x3D6, 0x3D8, 0x435
 MP, SPECIAL_ITEMS, PORTRAIT, PLAYER_IS_DEAD = 0x39A, 0x42C, 0x3C7, 0x438
 INTERRUPT_COUNTER, LIT = 0x1A, 0x14                                 # a box's "?" or arrow shows while it has $10
 SELECTED_MAGIC, MAGIC_INVENTORY, NUMBER_OF_MAGIC_SPELLS = 0x3C0, 0x3A9, 0x3C5
-RING_OF_ELF, NO_PORTRAIT, DELUGE, FIRE, DELUGE_COST = 0x80, 0xFF, 0, 2, 2
+RING_OF_ELF, NO_PORTRAIT, DELUGE, FIRE = 0x80, 0xFF, 0, 2
 EOLIS, MAGICIANS_SCREEN, MAGICIANS_DOOR = 0, 6, 0x9C                # EOLIS_DOOR_LOCATIONS: building $05
 MAGICIANS_STEP = 32                                                 # x on his step, beside him (he is at 16)
 MIST, HALL_SCREEN, HALL_DOOR, HALL = 2, 0x29, 0x7C, 0x1C            # MIST_DOOR_LOCATIONS: building $1C
@@ -86,9 +84,8 @@ PRICE, PAY, STOCK_PRICE, STOCK_MP, FIRE_PRICE, STOCK_PAY = 30000, 150, 200, 40, 
 PAUSE = 60                                                          # IScripts_ProgressivelySubtractGold's closing wait
 ASKING, SAYING, TELLING = 1, 3, 4                                   # fax_lesson.c's phases
 PRICE_LINE, TAUGHT, NOTHING_MORE, TEACHES, NOT_READY = 1, 2, 3, 4, 5   # and lines
-WAIT, STEP, TAUGHT_WAIT, TAUGHT_STEP = 240, 30, 120, 15             # fax_mana.c's schedules
+TAUGHT = 2                                                          # fax_mana.c: what the lesson multiplies a kill's MP by
 FILE = "faxanadu_file1.txt"                                         # the gate's new game is file 1
-CAST_AT = 10                                                        # the frame of a headless run Up+B goes down on
 PRESS_AT = 10                                                       # the frame of a headless run A goes down on
 
 
@@ -229,35 +226,6 @@ def main():
               f"({last - first + 1} frames), the next step on frame {after}, {after - last} frames after")
         return first, last, after
 
-    def taught_refill():
-        """Outside his door, a few steps along the street: headless runs with
-        Deluge cast, the lesson learned and (its record cleared) not."""
-        g.walk_out()
-        assert g.where() == (EOLIS, MAGICIANS_SCREEN), g.where()
-        g.poke({ENTITIES + i: 0xFF for i in range(8)})
-        column = (MAGICIANS_DOOR & 15) * 16
-        g.walk_to(column + 24, column + 34)                          # off the door: Up+B there would go in
-        g.settle()
-        street = g.save("street")
-        spells = {SELECTED_MAGIC: DELUGE, MAGIC_INVENTORY: DELUGE, NUMBER_OF_MAGIC_SPELLS: 1, MP: 60}
-        taught_state, untaught_state = out / "street-taught.cycstate", out / "street-untaught.cycstate"
-        fixture(street, taught_state, spells, {MANA: {1: 1, 2: 60, 3: TAUGHT_WAIT}})
-        fixture(street, untaught_state, spells, {MANA: {1: 1, 2: 60, 3: WAIT}, RECORD: {LEARNED: 0}})
-        on = g.mods("on")
-        cast = [(CAST_AT, "UP+B"), (CAST_AT + 4, "UP"), (CAST_AT + 10, "-")]
-        frames = CAST_AT + WAIT + 4 * STEP
-        taught, untaught = g.headless_all([(taught_state, cast, frames, on), (untaught_state, cast, frames, on)])
-        for run, wait_, step, what in ((taught, TAUGHT_WAIT, TAUGHT_STEP, "taught"), (untaught, WAIT, STEP, "untaught")):
-            mps = [r[MP] for r in run]
-            drops = [i for i in range(1, frames) if mps[i] < mps[i - 1]]
-            gains = [i for i in range(1, frames) if mps[i] > mps[i - 1]]
-            want = [CAST_AT + wait_ + k * step for k in range(frames) if CAST_AT + wait_ + k * step < frames]
-            assert drops == [CAST_AT] and mps[CAST_AT] == 60 - DELUGE_COST, (what, drops, mps)
-            assert gains == want, f"{what}: MP came back at {gains}, not {want}"
-            assert [mps[i] for i in want] == list(range(59, 59 + len(want))), (what, mps)
-            print(f"ok: {what}, Deluge on frame {CAST_AT} takes MP to 58; it holds {wait_} frames, then climbs 1 MP "
-                  f"every {step} frames (on {', '.join(map(str, want[:4]))}, ...)")
-
     def spells():
         n, listed = g.ram(NUMBER_OF_MAGIC_SPELLS), g.ram(MAGIC_INVENTORY, 4)
         return g.ram(SELECTED_MAGIC), list(listed[:n])
@@ -305,17 +273,16 @@ def main():
                 page_through("his last line", done_talking, 1200)
                 s, mana = lesson(), tcp("mana_state")
                 assert gold() == 0 and s["learned"] and (s["offers"], s["taught"], s["pays"]) == (1, 1, 200), s
-                assert (mana["wait"], mana["step"]) == (TAUGHT_WAIT, TAUGHT_STEP), mana
+                assert mana["taught"] and mana["factor"] == TAUGHT, mana
                 print(f"ok: studied, with {PRICE} Golds he asks \"It will cost {PRICE} Golds.\"; A takes it all, in "
-                      f"{s['pays']} turns of {PAY}, and he says it is learned; MP refill now waits 120 frames and "
-                      "steps 15")
+                      f"{s['pays']} turns of {PAY}, and he says it is learned; MP from kills now gives twice a kill's "
+                      "MP")
                 talk(SLOT_ID)
                 his_line(NOTHING_MORE, "nothing-more")
                 page_through("his word", done_talking, 1200)
                 s = lesson()
                 assert gold() == 0 and s["nothing_more"] == 1 and s["offers"] == 1 and s["told"] == 1, s
                 print("ok: asked again, he has nothing more to teach, and takes nothing")
-                taught_refill()
                 # A save state from while his price typed, loaded after his other lines took the slot: the
                 # record puts the conversation back (not learned, asking) and the price in the slot.
                 g.load(typing)
@@ -431,8 +398,8 @@ def main():
                 choose_file(False, 1)                               # CONTINUE, file 1
                 s, mana = lesson(), tcp("mana_state")
                 assert s["learned"] and s["studied"], s
-                assert (mana["wait"], mana["step"]) == (TAUGHT_WAIT, TAUGHT_STEP), mana
-                print("ok: quitting and continuing file 1, he has studied and learned: MP refill waits 120, steps 15")
+                assert mana["taught"] and mana["factor"] == TAUGHT, mana
+                print("ok: quitting and continuing file 1, he has studied and learned: a kill's MP is doubled")
                 g.close()
                 assert FIRE not in [int(v) for v in saved.get("spells", "").split()], saved
                 write_file(path, {"lesson.studied": None, "lesson.learned": None, "spells": f"{DELUGE} {FIRE}"})
@@ -448,8 +415,7 @@ def main():
                 title_menu()
                 choose_file(True, 2)                                # NEW GAME, file 2
                 s, mana = lesson(), tcp("mana_state")
-                assert not s["learned"] and not s["studied"] and (mana["wait"], mana["step"]) == (WAIT, STEP), \
-                    (s, mana)
+                assert not s["learned"] and not s["studied"] and not mana["taught"] and mana["factor"] == 1, (s, mana)
                 print("ok: a new game in file 2 has neither")
 
             if part == "original":

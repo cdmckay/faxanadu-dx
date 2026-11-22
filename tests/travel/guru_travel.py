@@ -157,11 +157,13 @@ def main():
         if args.wants("journey"):
             if not game.running():
                 with_gurus()
-            # 3. Travel to Mascon: everything but the place is kept.
+            # 3. Travel to Mascon: everything but the place is kept. Talking to the Guru fills HP and MP (MP
+            # from kills, fax_mana.c), so they are set again once he has, to see the journey keep them.
             tcp("load_state", path=str(temple))
             before = progress()
-            refilled = tcp("mana_state")["refills"]                     # MP refill's, from here on
             talk_to_guru()
+            assert (ram(HP), ram(MP)) == (0x50, 0x50), "the Guru fills HP and MP"
+            game.poke({HP: 0x2A, MP: 0x11})
             advance(TO_GURU + 0)
             answer("b", TO_GURU + 1)
             answer("b", TO_GURU + MASCON)
@@ -173,9 +175,7 @@ def main():
             wait(90)
             game.shot("arrived")
             assert ram(TEMPLE_SPAWN_POINT) == CONFLATE, "the furthest temple stays the spawn point"
-            mana = tcp("mana_state")                                    # MP and what MP refill gave, one frame's
-            kept = mana["mp"] - (mana["refills"] - refilled)
-            assert (ram(HP), kept, ram(GOLD, 3)) == (0x2A, 0x11, bytes([0xE8, 0x03, 0x00])), (ram(HP), mana)
+            assert (ram(HP), ram(MP), ram(GOLD, 3)) == (0x2A, 0x11, bytes([0xE8, 0x03, 0x00])), (ram(HP), ram(MP))
             assert progress() == before, "what a mantra would hold is unchanged by travel"
             print("ok: travelled to Mascon keeping HP, MP, gold, spawn point, title, items and quests")
 

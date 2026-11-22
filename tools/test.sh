@@ -200,7 +200,7 @@ E2E=(
   "recharge     tests/recharge/recharging_items.py --parts"
   "elixir-lines tests/recharge/guru_lines.py --parts"
   "charges      tests/charges/status_bar.py --parts"
-  "mana         tests/mana/mana_refill.py"
+  "mana         tests/mana/mp_from_kills.py --parts"
   "lesson       tests/lesson/magician_lesson.py --parts"
   "gold         tests/gold/double_gold.py --parts"
   "switch       tests/dx/one_switch.py"
