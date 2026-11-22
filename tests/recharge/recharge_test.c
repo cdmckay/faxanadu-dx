@@ -365,6 +365,7 @@ static void next_action(uint16_t at) {
 /* The interpreter, for whole conversations: what the box showed, in order
  * ("msg 22", the slot's text, "mantra", "end", or "B" for a line B ended). */
 enum { NEXT_PLAYER_TITLE = 0x04ED };
+enum { SPRING = 0xA1AB, QUESTS = 0x042D, QUEST_SPRING_OF_TRUNK = 0x01 };   /* the Spring of Trunk's script, Quests */
 static char said[12][64];
 static unsigned said_n;
 static void note(const char *text) { CHECK(said_n < 12); snprintf(said[said_n++], sizeof said[0], "%s", text); }
@@ -405,11 +406,31 @@ static void run_from(uint16_t script, uint8_t offset, unsigned b_on) {
             if (ram[NEXT_PLAYER_TITLE] != ram[PLAYER_TITLE]) { ram[PLAYER_TITLE] = ram[NEXT_PLAYER_TITLE]; jump = true; }
             else len = 3;
             break;
+        case 0x02: {                                            /* a question: A goes on (no B here) */
+            char text[16];
+            snprintf(text, sizeof text, "ask %02X", arg);
+            note(text);
+            len = 2;
+            break; }
         case 0x06: if (arg > ram[0x0439]) ram[0x0439] = arg; len = 2; break;   /* only raises TempleSpawnPoint */
         case 0x07: ram[SPECIAL_ITEMS] |= arg; len = 2; break;  /* ADD_ITEM: the Ring of Elf ($80) here */
-        case 0x12:                                              /* CHECK_FOR_ITEM: the ring; nothing else is held */
-            if (arg == 0x80 && (ram[SPECIAL_ITEMS] & 0x80)) { to = if_held; jump = true; }
+        case 0x0B:                                              /* IF_QUEST: ISCRIPTS_QUEST_BITS[arg - 1] */
+            if (ram[QUESTS] & (1u << (arg - 1))) { to = if_held; jump = true; }
             else len = 4;
+            break;
+        case 0x0E: ram[QUESTS] |= (uint8_t)(1u << (arg - 1)); len = 2; break;   /* SET_QUEST */
+        case 0x10:                                              /* CONSUME_ITEM: Player_RemoveItem; the Elixir's bit */
+            CHECK(arg == 0x92);
+            ram[SPECIAL_ITEMS] &= (uint8_t)~BIT_ELIXIR;
+            len = 2;
+            break;
+        case 0x12:                                              /* CHECK_FOR_ITEM: the ring, or the Elixir, by bit */
+            if ((arg == 0x80 && (ram[SPECIAL_ITEMS] & 0x80)) || (arg == 0x92 && (ram[SPECIAL_ITEMS] & BIT_ELIXIR))) {
+                to = if_held;
+                jump = true;
+            } else {
+                len = 4;
+            }
             break;
         case 0x14: note("mantra"); len = 1; break;
         case 0x17: jump = true; break;
@@ -436,6 +457,16 @@ static void expect(const char *const *lines) {
 #define SAID(...) do { static const char *const lines_[] = { __VA_ARGS__, NULL }; expect(lines_); } while (0)
 #define RESTORED "Your Elixir is/restored. Come/back when used."
 #define CAN "If your Elixir/is used, a Guru/will restore it."
+
+/* The Spring of Trunk's old man (ISCRIPT_SPRING_OF_TRUNK, $A1AB), as the ROM
+ * has it: done, "find the poison in Mascon" ($5C); else his question ($59),
+ * then with the Elixir "2 more springs" ($5A, unskippable), CONSUME_ITEM it and
+ * SET_QUEST 1, and without it "Come back with the medicine." ($5B). */
+static void spring_script(void) {
+    static const uint8_t bytes[] = { 0x00, 0x0B, 0x01, 0xC0, 0xA1, 0x02, 0x59, 0x12, 0x92, 0xB9, 0xA1, 0x03, 0x5B,
+                                     0x00, 0x01, 0x5A, 0x10, 0x92, 0x0E, 0x01, 0x00, 0x03, 0x5C, 0x00 };
+    memcpy(bank12 + (SPRING - 0x8000), bytes, sizeof bytes);
+}
 
 /* The stock Gurus' scripts (bank 12), as the ROM has them. */
 enum { EOLIS_GURU = 0xA0BC, APOLUNE_GURU = 0xA603, CONFLATE_GURU = 0xA627, OTHER_GURU = 0xA200, FRATERNAL_GURU = 0xA33C };
@@ -1163,17 +1194,81 @@ static void elixir_found_not_bought(void) {
     CHECK(fax_recharge_elixir_spent());
     meet_guru(0);
     CHECK(!fax_recharge_elixir_spent() && (ram[SPECIAL_ITEMS] & BIT_ELIXIR));
-    /* The Spring of Trunk's CONSUME_ITEM takes a charged one for good: neither
-     * charged nor spent, it is no longer his, and a Guru gives none. */
-    ram[SPECIAL_ITEMS] &= (uint8_t)~BIT_ELIXIR;
+    /* The Spring of Trunk spends a charged one: still his, and a Guru
+     * charges it again (the_spring_spends_it has the rest). */
+    spring_script();
+    run_script(SPRING, 0);
     frames(1);
+    CHECK(!(ram[SPECIAL_ITEMS] & BIT_ELIXIR) && charge.elixir_spent && fax_recharge_elixir_spent());
     meet_guru(0);
-    CHECK(!(ram[SPECIAL_ITEMS] & BIT_ELIXIR) && !charge.elixir_spent && !fax_recharge_elixir_spent());
+    CHECK((ram[SPECIAL_ITEMS] & BIT_ELIXIR) && !fax_recharge_elixir_spent());
     /* Turned off, the original: its revive uses it up, and none is spent. */
     play(false);
     ram[SPECIAL_ITEMS] = BIT_ELIXIR;
     hurt();
     CHECK(!fax_recharge_on() && !fax_recharge_elixir_spent() && !(ram[SPECIAL_ITEMS] & BIT_ELIXIR));
+}
+
+/* The Spring of Trunk (#138): with a charged Elixir his quest is done as the
+ * original's, with the same lines, and the Elixir is spent, not taken: the
+ * status bar's mark goes grey, and a Guru or a find charges it again. With a
+ * spent one, or none, he says to come back with the medicine. Off, the
+ * original: he takes it for good. */
+static void the_spring_spends_it(void) {
+    play(true);
+    spring_script();
+    ram[SPECIAL_ITEMS] = BIT_ELIXIR;
+    CHECK(fax_recharge_charge(FAX_RECHARGE_ELIXIR) == FAX_CHARGE_READY);
+    run_script(SPRING, 0);
+    SAID("ask 59", "msg 5A", "end");
+    CHECK((ram[QUESTS] & QUEST_SPRING_OF_TRUNK) && !(ram[SPECIAL_ITEMS] & BIT_ELIXIR) && springs == 1);
+    frames(1);
+    CHECK(fax_recharge_elixir_spent() && fax_recharge_charge(FAX_RECHARGE_ELIXIR) == FAX_CHARGE_USED);
+    /* Done, he only sends the hero on, the Elixir as it was. */
+    run_script(SPRING, 0);
+    SAID("msg 5C", "end");
+    CHECK(fax_recharge_elixir_spent() && springs == 1);
+    /* Spent: the quest not done, he refuses, as without one, and it stays spent. */
+    ram[QUESTS] = 0;
+    run_script(SPRING, 0);
+    SAID("ask 59", "msg 5B", "end");
+    frames(1);
+    CHECK(!(ram[QUESTS] & QUEST_SPRING_OF_TRUNK) && fax_recharge_elixir_spent() && springs == 1);
+    CHECK(fax_recharge_charge(FAX_RECHARGE_ELIXIR) == FAX_CHARGE_USED);
+    /* A find charges it, and the spring spends it again. */
+    pick_up_elixir();
+    frames(1);
+    CHECK(!fax_recharge_elixir_spent() && fax_recharge_charge(FAX_RECHARGE_ELIXIR) == FAX_CHARGE_READY);
+    run_script(SPRING, 0);
+    SAID("ask 59", "msg 5A", "end");
+    CHECK(fax_recharge_elixir_spent() && springs == 2);
+    /* None: he refuses, and nothing is spent. */
+    play(true);
+    spring_script();
+    run_script(SPRING, 0);
+    SAID("ask 59", "msg 5B", "end");
+    CHECK(!ram[QUESTS] && !fax_recharge_elixir_spent() && springs == 0 &&
+          fax_recharge_charge(FAX_RECHARGE_ELIXIR) == FAX_CHARGE_NONE);
+    /* Only the spring's step, as the ROM has it, with the Elixir charged. */
+    CHECK(spring_spends(0xA1BB, 0x10, 0x92, BIT_ELIXIR));
+    CHECK(!spring_spends(0xA1BB, 0x10, 0x92, 0));                    /* spent: the bit is clear */
+    CHECK(!spring_spends(0xA1B9, 0x01, 0x5A, BIT_ELIXIR));
+    CHECK(!spring_spends(0xA1BB, 0x10, 0x94, BIT_ELIXIR));           /* not this ROM's step */
+    CHECK(!spring_spends(0xA200, 0x10, 0x92, BIT_ELIXIR));
+    /* In Seamless's isolated scope, nothing. */
+    ram[SPECIAL_ITEMS] = BIT_ELIXIR;
+    isolated = true;
+    run_script(SPRING, 0);
+    isolated = false;
+    CHECK(!charge.elixir_spent && springs == 0);
+    /* Off, the original: it takes the Elixir for good, none spent. */
+    play(false);
+    spring_script();
+    ram[SPECIAL_ITEMS] = BIT_ELIXIR;
+    run_script(SPRING, 0);
+    SAID("ask 59", "msg 5A", "end");
+    CHECK((ram[QUESTS] & QUEST_SPRING_OF_TRUNK) && !(ram[SPECIAL_ITEMS] & BIT_ELIXIR));
+    CHECK(!fax_recharge_elixir_spent() && fax_recharge_charge(FAX_RECHARGE_ELIXIR) == FAX_CHARGE_NONE);
 }
 
 /* Each Guru's conversation fills HP and MP (MP from kills) at his first
@@ -1450,6 +1545,7 @@ int main(void) {
     guru_travel_keeps_them();
     elixir();
     elixir_found_not_bought();
+    the_spring_spends_it();
     gurus_fill_hp_and_mp();
     charges_on_the_status_bar();
     finds_add_nothing();

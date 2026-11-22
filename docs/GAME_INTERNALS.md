@@ -325,7 +325,8 @@ faxanatools' `messages.py` decodes and encodes them; `fax_travel.c`'s
   `TextBox_Timer`. Opening a box and loading a message set them again, so the
   game is none the worse. `TextBox_Closed` is then row 16's tile: usually one
   of the area's ($80 and up), but on Forepaw's screen 2 (area 3) it is tile 0,
-  so there it reads 0 with no box up (Eolis's gate leaves `$9F`, its town
+  so there it reads 0 with no box up (and on Trunk `$3B` and `$3D`, walked out
+  onto from a building, checked in `tests/found/found_items.py`) (Eolis's gate leaves `$9F`, its town
   `$94`). Measured from save states: after walking out of a building there,
   and in the gate, town, meat shop and Zozura fixtures, `$0200-$0219` equal
   nametable column 31, rows 4-29. **Never take 0 alone for an open box.**
@@ -2468,6 +2469,10 @@ the game would have it there:
   the like, as its behavior checks); Ripasheiku's Mattock comes back after a
   death, as the game brings it back. One shown on one counted visit in four
   (`Screen_Is3Of4Visits`), never: it is there only while it is.
+- With Found items on: a Wing Boots or Hour Glass find it removes, never, even
+  with its sprite in a slot (a state from before it); Mist `$30`'s Hour Glass,
+  elsewhere, while it lies there (`fax_found_glass_there`: not taken, and the
+  hero holds none). On its screen it is the sprite, as any item.
 - The touch: a hook at `Player_HandleTouchItem` (`$88FB`, bank 14: `LDA
   CurrentSprites_Entities,X`, `JSR Player_PickUp`, then the slot emptied),
   which only observes X, the slot. The game keeps nothing for the items that
@@ -2651,6 +2656,12 @@ for a box too.)
 After a message of more than four lines (the King's) the box's rows are
 rotated (*The text box*); while a quest line loads, the hook at `$F439`
 (after Save files') puts back the line scroll the box was left with.
+
+With the remaster the Spring of Trunk's next step needs a charged Elixir:
+the old man's `CHECK_FOR_ITEM` reads `SpecialItems`' bit, which a spent one
+has clear, so the walk reaches "2 more springs" (and a "?" goes over him)
+only while it is charged, and the quest completes as the original's when he
+spends it (*Wing Boots, the Hour Glass and the Elixir*).
 
 **The marks.** Each frame's picture walks the script of each person on
 screen as the game would now (and in Seamless, those in the rooms around it,
@@ -3038,7 +3049,19 @@ frame:
   `Screen_Is3Of4Visits` counts `Screen_TrackedVisitCount` (`$043A`), the
   counter only these calls move, and removes the sprite on 3 of 4 counts, so
   each shows on one counted visit in four. No state: one taken can show
-  again.
+  again. Each is the same 19 bytes: `JSR Sprite_IsBehaviorNotReady`, `BNE`
+  past the next three on every frame but the first, `JSR
+  Screen_Is3Of4Visits` (`$A529`, X the slot), `BCC`, `JMP Sprites_Remove`
+  (C set: 3 visits of 4), `JSR Sprites_MaybeResetPhaseAndEnable`, then `JMP
+  Sprite_ShowIfNoEnemies` (`$A510`). A find that stays is hidden while any
+  enemy is in a slot: `Sprites_HasAnyEnemyOnScreen` sets C with one, and the
+  `BCC` (none) goes to chipx86's `Sprites_HideSprite`, which clears
+  `CurrentSprites_Flags`' `$10`, the other way to `Sprite_SetVisible`, which
+  sets it. The names are the wrong way round: `$10` set hides the sprite
+  (checked in the game: Mist `$30`'s Hour Glass has flags `$50` and no OAM
+  entry while its two Sir Gawaines are on the screen, `$40` and two OAM
+  entries once they are gone). So a find there shows once its screen's
+  enemies are dead, and the hero cannot pick up one he cannot see.
 - Held state: `$49` Black Onyx (`SpecialItems` `$01`), `$4A` Pendant (`$02`),
   `$57` Magical Rod (`$04`) and `$5C` Zorugeriru's Wing Boots (`Quests` `$08`)
   remove themselves once set; `$5B` Ripasheiku's Mattock too (`Quests` `$10`),
@@ -3085,6 +3108,47 @@ rooms each hold an enemy with their item (a Giant Strider, a Grimlock, a
 Wolfman). No ring and no key lies anywhere (the rings and keys come from
 shops and people; see *Doors and keys*).
 
+**With the remaster, the Wing Boots, the Hour Glass and the Elixir are found,
+not bought** (Found items, `fax_found.c`, #138). Recharging items keeps each
+for good, and the boots and the glass run on MP, so one is all the hero ever
+needs; no shop sells them (*Shops*), and in the world:
+
+| Item | With the remaster |
+|---|---|
+| Wing Boots | Only Zorugeriru's (`$5C`, Trunk `$3B`, until `Quests` `$08`): the seven `$55` are gone |
+| Hour Glass | Only Mist `$30`'s (`$56`, block `$32`), at every visit until taken (kept in the file): the other four `$56` are gone |
+| Elixir | As it is: Trunk `$3C`, Mist `$41`, at every visit |
+
+- **How.** A hook at `Screen_Is3Of4Visits`' entry (`$A529`) answers for the
+  sprite in slot X when it is a `$55` or a `$56`: C set (removed) for one that
+  is gone, and for Mist `$30`'s Hour Glass C clear while it lies there, else
+  set; then it returns as the routine's RTS would, so
+  `Screen_TrackedVisitCount` does not move for them, and the Mattock, the Red
+  Potion, the Glove, the Ointment and the Poison that still show one visit in
+  four count their visits among themselves. It keeps no state, so it runs in
+  Seamless's isolated rooms too, where a neighbour's actors, the finds' first
+  frame among them, run before the hero walks in. The Hour Glass is taken when
+  `Player_HandleTouchItem` (`$88FB`) reaches Found items' site after Kept
+  finds' and the map's: Kept finds handles (and so ends) a touch the full
+  Items list would lose, leaving it lying. It lies there while it is not taken
+  in the file in play (`found.hourglass`) and the hero holds no Hour Glass.
+- **Where the Hour Glass is.** Mist `$30` is the Tower of Suffer's first room,
+  behind the Q key's door on Mist `$00`, where the Hour Glass lay one visit in
+  four: mid-game, the reach of the shop after Mascon that sold it, and of
+  Mascon's nurse, who talks of it. It sits on a small ledge at the room's top
+  left, beside a short ladder up from the long ledge across the room (its top
+  at y 128); in Seamless's view the room's top is under the status bar band
+  while the hero stands on the floor.
+- **The Elixir before the Spring of Trunk.** Trunk `$3C`'s Elixir (`$32`) lies
+  on the ledge at the top of `$3B` and `$3C`, the ledge Zorugeriru's Wing
+  Boots lie on (`$3D` of `$3B`), a room left of the spring's old man on
+  `$3D`: walking right from the boots reaches it (checked in the game,
+  `tests/found/found_items.py`). Walking left from the old man's ledge into
+  `$3C` instead drops into its shaft at x 183, down to `$37`. So an Elixir is
+  found on the way from Zorugeriru to the spring, which needs a charged one,
+  and lies there at every visit to charge a spent one again. Eolis's sale is
+  not needed.
+
 ## Shops (bank 12)
 
 There are 17 shops: 10 tool shops (which also sell the weapons, armor,
@@ -3124,7 +3188,12 @@ are `ISCRIPT_ADDRS_L/U` (`$9F6B`/`$A003`, 152 entries) 12, 13, 25, 26, 29, 40,
 No shop sells the Leather Armor, the Fire magic (the Magician's, 3000 by
 script), the A and Jo keys (gifts), the Poison, or the last fight's gear.
 With the remaster, the Red Potion lines are gone from the buy lists: the meat
-shops sell them (*The meat shops*, below).
+shops sell them (*The meat shops*, below). So are the Wing Boots, the Hour
+Glass and the Elixir, which are found, not bought (*Items in the world*):
+Eolis's tools are the Hand Dagger and Deluge, Forepaw's the Long Sword,
+Studded Mail and Small Shield, the shop after Mascon's (Mist `$0D`, door
+`$7C`, building `$20`) Death alone, and Conflate's the Giant Blade and Magic
+Shield. A list of nothing else would be kept; none is.
 
 **The meat shops** are scripts, not shops: the Meat Salesman (portrait 8),
 in seven towns (Apolune has none), each 13 bytes in bank 12 from `$A4A1`:
@@ -3248,7 +3317,7 @@ Poison), as the 40th Anniversary Edition pays. Never:
 | Battle Suit, Battle Helmet | Worn for the last fight, only with the Dragon Slayer (`$8B`); Zoradohna drops them, likewise |
 | The rings of Elf, Ruby, Dworf, the Demon's Ring | Doors, the fountain's rock, Dartmoor and the fortress |
 | Black Onyx | The man by the gate to Branch gives the A key only to its holder |
-| Elixir | The Spring of Trunk takes it (`ISCRIPT_SPRING_OF_TRUNK` consumes it) |
+| Elixir | The Spring of Trunk asks for it (`ISCRIPT_SPRING_OF_TRUNK` consumes it; with the remaster, spends its charge) |
 | Pendant, Magical Rod | One of a kind |
 
 The SpecialItems ones are bits, in no list, so no sell list could show them;
@@ -3289,7 +3358,9 @@ by return, so no gold is taken and no refusal shows. Owned
 | The A, K, Q, J and Jo keys, the Mattock | Reusable tools | He has it |
 | Elixir | Recharging items | Charged (its `SpecialItems` bit) or spent |
 
-The rule asks each keeper whether it is on (`fax_recharge_on`,
+With the remaster no shop lists the Wing Boots, the Hour Glass or the Elixir
+(Found items), so the rule marks only the keys and the Mattock there; it
+still holds for the three. The rule asks each keeper whether it is on (`fax_recharge_on`,
 `fax_reusable_tools_on`), so an item counts only while it is kept; in the one
 mod they always are. A charged Elixir counts either way, since the game refuses
 a second. Shops sell only the J, Q and K keys; the A and Jo keys are in the
@@ -3473,6 +3544,10 @@ jumping or falling, `Player_Flags & $05`):
   shops lists a pair or an Hour Glass he has as owned, and won't buy it (see
   *Shops*).
 
+With the remaster no shop sells these, the Wing Boots are only Zorugeriru's
+and the Hour Glass only Mist `$30`'s, there until taken (*Items in the
+world*); the original's:
+
 | Item | Shops | In the world (bank 11's lists: area, screen, block `YX`) |
 |---|---|---|
 | Wing Boots | Forepaw 2,800, Conflate 5,500 | Sprite `$55`: Trunk `$2D` (`$41`), Mist `$11` (`$5E`), `$1B` (`$35`), `$32` (`$48`), the room off Mist `$06` (building `$1F`, `$A3`), Branch `$1C` (`$A9`), `$22` (`$92`). Sprite `$5C`: Trunk `$3B` (`$3D`), Zorugeriru's |
@@ -3499,7 +3574,22 @@ jumping or falling, `Player_Flags & $05`):
 - **The Spring of Trunk takes the Elixir, it does not give it.**
   `ISCRIPT_SPRING_OF_TRUNK` asks for "your medicine"; with the Elixir it
   `CONSUME_ITEM`s it and completes `QUEST_SPRING_OF_TRUNK`, without one it
-  says "Come back with the medicine."
+  says "Come back with the medicine.". Byte for byte (`$A1AB`, bank 12):
+  `00`, `0B 01 A1C0` (done: "find the poison in Mascon", `$5C`), `02 59` (the
+  question), `12 92 A1B9` (the Elixir's bit: on), `03 5B, 00`; at `$A1B9`
+  (`@_ISCRIPT_SPRING_OF_TRUNK_HAS_ELIXIR`), `01 5A` ("2 more springs", B
+  cannot skip it), `10 92` (`CONSUME_ITEM`), `0E 01` (`SET_QUEST`), `00`. A
+  jump (`IScripts_JumpToNextAddr`) makes its target `IScriptOrCHRAddr` with
+  `IScriptOffset` 0, so at the `CONSUME_ITEM` the script stands at `$A1B9` +
+  2, not `$A1AB` + `$10`: a hook that knows a step by its script's first byte
+  misses it after a jump; know it by `IScriptOrCHRAddr` + `IScriptOffset`.
+  With the remaster the spring spends the Elixir's charge instead of taking
+  it (Recharging items, #138): at `IScripts_InvokeNextAction` with that sum
+  `$A1BB` and the bit set, the Elixir is marked spent, and the game's own
+  `CONSUME_ITEM` then clears the bit, as `Player_UseElixir` does after a
+  revive. The quest is done as the original's, and the hero keeps the Elixir,
+  spent, the status bar's mark grey, until a Guru or a found one charges it.
+  A spent one he refuses, as he refuses a hero with none: the bit is clear.
 
 **The Hour Glass and bosses.** While `DurationHourGlass` runs,
 `Sprites_UpdateBehavior` (`$A66B`, bank 14) skips every sprite whose
@@ -3566,7 +3656,11 @@ flights on MP):
 - It gives no item, so the first moment you can own Wing Boots is unchanged.
   The earliest sources (table above) are around Forepaw: its shop, and the
   Tower of Fortress (Trunk `$2D`, one visit in four), whose entrance is "right
-  above this town".
+  above this town". With Found items (#138) the only pair is Zorugeriru's, at
+  the top of the same tower, as Forepaw's nurse says ("Defeat the Dwarf who
+  lives in the tower for his Wing Boots"), and the Spring of Sky still comes
+  after it. Mascon's "Look for them in the Tower of Suffer" (`$67`) points at
+  a pair that no longer lies there; by Mascon the hero has Zorugeriru's.
 - Flying again is not new reach. The original sells pairs in two shops and
   lets found pairs stack, so it gave any number of flights for gold. A kept
   pair flies again as soon as there is MP, which kills and Gurus give.
@@ -4488,8 +4582,16 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   - `Player_UseElixir`: the Elixir is spent. `SpecialItems`' bit stays the
     game's own "a revive is in reserve", so `Player_ReduceHP`, the Player page
     and the Spring of Trunk go by whether it is charged.
-  - No shop charges a spent Elixir: Quick shops lists it as owned
-    (`fax_recharge_elixir_spent`) and ignores A on it.
+  - The Spring of Trunk (#138): at `IScripts_InvokeNextAction` with the
+    script at its `CONSUME_ITEM` Elixir (`IScriptOrCHRAddr` + `IScriptOffset`
+    `$A1BB`, the step after "2 more springs", which it reaches only with the
+    bit set), the Elixir is spent; the game's own step then clears the bit.
+    So the spring spends a charged one, as a revive does, instead of taking
+    it: the quest is done as the original's, and the hero keeps it, spent. A
+    spent one, or none, it refuses ("Come back with the medicine.").
+  - No shop charges a spent Elixir: with Found items no shop sells one, and
+    Quick shops would list it as owned (`fax_recharge_elixir_spent`) and
+    ignore A on it.
   - `Player_PickUpItem`, with A the Wing Boots or the Hour Glass and the hero
     holding one (selected or listed): nothing added, even with the list
     full; one is all he needs. Found during a run, the run goes on.
@@ -4705,7 +4807,10 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   (`fax_reusable_tools_on`, `fax_recharge_on`, `fax_recharge_elixir_spent`),
   as it does for the sell list's. A ninth site, at `$83F7` (`JSR Shop_Draw`,
   after `Shop_Populate`), only writes the list: while the Potion Sellers sell
-  the Red Potions (`fax_potions_selling`), a tool shop's without it.
+  the Red Potions (`fax_potions_selling`), a tool shop's without it, and while
+  Found items is on (`fax_found_on`), without the Wing Boots, the Hour Glass
+  and the Elixir (`fax_found_unsold`), the entries after each moving up
+  (`fax_shops_without`).
   Presses while a list is drawn, or the gold counts, are lost, as in the
   original: the game reads the pad only in the list's wait. The hint line
   ("Select to sell", "Select to buy", "Not for sale", "Already owned") is drawn
@@ -4770,7 +4875,9 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   `Player_PickUpItem`, runs later, inside `Player_PickUp`). Everything else
   it learns from RAM at the end of each frame and as it draws, at present
   time, after every other feature. Guru travel's visited Gurus
-  (`fax_travel_visited`) count as their temples. Its save-state record
+  (`fax_travel_visited`) count as their temples, and Found items says which
+  finds are gone and whether Mist `$30`'s Hour Glass lies there
+  (`fax_found_spawn`, `fax_found_glass_there`). Its save-state record
   (version 2; it still loads a version 1 record, with no item taken) is what
   the hero has seen (312 bytes), the last place, the map's page and whether it
   is open, and the items taken (8 bytes). No ROM, no read overrides.
@@ -4827,6 +4934,25 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   an item's. No hooks, no ROM, no read overrides, no save-state record,
   nothing written to the machine.
 
+- **Found items** (`fax_found.c`, #138). The Wing Boots, the Hour Glass and
+  the Elixir are found, not bought (*Items in the world*): no tool shop sells
+  them (Quick shops asks `fax_found_on` and drops `fax_found_unsold`'s three
+  from its lists), the Wing Boots are only Zorugeriru's, and the Hour Glass
+  only Mist `$30`'s, which lies there until taken. The Spring of Trunk's
+  spending of the Elixir is Recharging items'. Two hook sites: the entry of
+  `Screen_Is3Of4Visits` (`$A529`, bank 14), which no other feature hooks,
+  where for the sprite in slot X, a `$55` or a `$56`, it sets C and returns
+  as the routine's RTS would (`Screen_TrackedVisitCount` not written), and
+  keeps no state, so it runs in Seamless's isolated rooms too; and
+  `Player_HandleTouchItem` (`$88FB`, bank 14), after Kept finds' and the
+  map's, where it only observes X and notes the Hour Glass taken. The file in
+  play keeps `found.hourglass` (`taken`, or no field), written whenever the
+  file is, read back on `FAX_SAVE_CONTINUED`, reset by `FAX_SAVE_NEW_GAME`;
+  its 2-byte save-state record (a version; taken) is its state. The map asks
+  it which finds show. No ROM, no read overrides. TCP `found_state` counts the
+  finds it removed and the Hour Glass shown and kept away, outside the
+  isolated rooms.
+
 - **Save files** (`fax_save.c`, `fax_files.c`). Three files instead of
   mantras; see "Save files" below.
 
@@ -4862,8 +4988,9 @@ dropped at a file's next write; see its entry in *Features and what they
 use*), the map's
 `map.eolis`, `map.trunk`, `map.mist`, `map.towns`, `map.branch`,
 `map.dartmoor`, `map.zenis` and `map.items` (see *The map*), the quest log's
-`quests.given` and `quests.done` (see *Quests*), and Double gold's
-`gold.king_given` (see its entry). (`imported_mantra`, on a
+`quests.given` and `quests.done` (see *Quests*), Double gold's
+`gold.king_given` (see its entry), and Found items' `found.hourglass` (see
+its entry). (`imported_mantra`, on a
 file imported from a mantra before mantras went from the remaster, is kept
 like any field no feature knows.) Missing core fields take a new game's
 values. HP, MP and the timed items are not

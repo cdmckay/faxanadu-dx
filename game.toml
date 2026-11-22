@@ -966,3 +966,22 @@ id = "faxanadu.double-gold.coin"
 addr = 0x8b9f
 bank = 14
 bytes = "ad 92 03 18 7d 6c 03 8d 92 03 ad 93"   # LDA Gold, CLC, ADC CurrentSprites_Values,X, STA Gold
+
+# Found items (fax_found.c): Screen_Is3Of4Visits, called by each random-show
+# item's behavior on its first frame with X its slot, answers for the Wing
+# Boots ($55, gone) and the Hour Glass ($56: Mist $30's lies there until
+# taken, the rest gone) and returns, the visit counter not moved; and
+# Player_HandleTouchItem, after Kept finds and the map, notes the fixed Hour
+# Glass taken.
+
+[[mod_function_hook]]
+id = "faxanadu.found-items.visits"
+addr = 0xa529
+bank = 14
+bytes = "ee 3a 04 ad 3a 04 c9 04 90 07 a9 00"   # INC Screen_TrackedVisitCount, LDA, CMP #$04, BCC, LDA #$00
+
+[[mod_function_hook]]
+id = "faxanadu.found-items.touch"
+addr = 0x88fb
+bank = 14
+bytes = "bd cc 02 20 64 c7 ae 78 03 a9 ff 9d"   # Player_HandleTouchItem: LDA CurrentSprites_Entities,X, JSR Player_PickUp

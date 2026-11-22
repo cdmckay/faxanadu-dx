@@ -17,10 +17,10 @@ NMI sends it). The setup edits save-state RAM (external prerequisites, not
 coverage): where a shop's door leads, the gold, HP and MP.
 
 tool-shop  Eolis's tool shop with 700 Golds: Up opens the buy list (Quick
-           shops), Down to the Elixir (320), a save state there. A buys it:
+           shops), Down to Deluge (400), a save state there. A buys it:
            on every frame of the count-down the band's digits are the gold
            the game had that frame or the one before, so they read every
-           amount from 700 down to 380, 10 a frame, on frames in a row, all
+           amount from 700 down to 300, 10 a frame, on frames in a row, all
            with the Tool Seller's portrait up; and on every frame the band is
            the game's picture's top 32 lines, pixel for pixel. One picture
            mid-count is kept.
@@ -60,7 +60,7 @@ TOOL_SHOP_SCREEN, TOOL_SHOP_DOOR = 3, 0x9A                       # EOLIS_DOOR_LO
 KINGS_SCREEN, KINGS_DOOR, KINGS_STAIRS, RING_OF_ELF = 7, 0x98, 48, 0x80
 PLEA = 0x35                                                       # the King's message
 ZONE_NAMES = "faxanadu.zone-names"                                # its record: the area and screen, at 5 and 6
-START_GOLD, ELIXIR_PRICE, ELIXIR_ROW, GIFT = 700, 320, 1, 3000
+START_GOLD, DELUGE_PRICE, DELUGE_ROW, GIFT = 700, 400, 1, 3000                 # Eolis's tools: dagger, Deluge
 FULL = 80
 HUD, NATIVE_W, VIEW_W, ITEM = 32, 256, 424, 16
 HUD_X = (VIEW_W - NATIVE_W - ITEM) // 2 + ITEM                    # the band's column 0 (fax_world_hud_x): 92
@@ -104,10 +104,10 @@ def go_in(g, name, screen, door, writes):
     g.wait(30)
 
 
-@fax_e2e.recipe("live-hud-elixir", parent="eolis-meat-shop")
-def _elixir(g):
+@fax_e2e.recipe("live-hud-deluge", parent="eolis-meat-shop")
+def _deluge(g):
     """At Eolis's tool shop's counter with 700 Golds: Up opened the buy list
-    and Down put the cursor on the Elixir, and the list waits for a button."""
+    and Down put the cursor on Deluge, and the list waits for a button."""
     def waiting(what):
         """The buy list up, drawn, and waiting for a button (as Quick shops' test waits on it)."""
         g.until(what, lambda: (lambda s: s["shown"] == "buy" and s["list_up"] and s["hint"] is not None)(
@@ -123,8 +123,8 @@ def _elixir(g):
     g.act("down", 4, 6)
     waiting("the buy list again")
     s = g.tcp("shops_state")
-    assert s["cursor"] == ELIXIR_ROW, s
-    assert s["list"][ELIXIR_ROW] == 0x92 and s["prices"][ELIXIR_ROW] == ELIXIR_PRICE, s
+    assert s["cursor"] == DELUGE_ROW, s
+    assert s["list"][DELUGE_ROW] == 0x60 and s["prices"][DELUGE_ROW] == DELUGE_PRICE, s
 
 
 @fax_e2e.recipe("live-hud-plea-end", parent="eolis-meat-shop")
@@ -276,19 +276,19 @@ def main():
 
     try:
         if args.wants("tool-shop"):
-            run, start, rams, bands = headless("tool-shop", g.state("live-hud-elixir"), 45, 1)
+            run, start, rams, bands = headless("tool-shop", g.state("live-hud-deluge"), DELUGE_PRICE // 10 + 13, 1)
             shown, paying = counted("tool-shop", rams, bands, TOOLS_SALESMAN, START_GOLD,
-                                    START_GOLD - ELIXIR_PRICE, -10)
-            every = list(range(START_GOLD, START_GOLD - ELIXIR_PRICE - 1, -10))
+                                    START_GOLD - DELUGE_PRICE, -10)
+            every = list(range(START_GOLD, START_GOLD - DELUGE_PRICE - 1, -10))
             assert sorted(shown, reverse=True) == every, sorted(shown, reverse=True)
             frames = [shown[v] for v in every[1:]]
             assert frames == list(range(frames[0], frames[0] + len(frames))), frames
-            assert len(paying) == ELIXIR_PRICE // 10 and frames[0] == paying[0] + 1, (paying, frames)
-            mid = START_GOLD - ELIXIR_PRICE // 2
+            assert len(paying) == DELUGE_PRICE // 10 and frames[0] == paying[0] + 1, (paying, frames)
+            mid = START_GOLD - DELUGE_PRICE // 2
             keep(run, start, shown[mid], "tool-shop-mid-count")
             shutil.rmtree(run)
-            print(f"ok: buying the Elixir at Eolis's tool shop, the status bar's gold counts {START_GOLD} down to "
-                  f"{START_GOLD - ELIXIR_PRICE} through the purchase, a frame after the game's, every amount on "
+            print(f"ok: buying Deluge at Eolis's tool shop, the status bar's gold counts {START_GOLD} down to "
+                  f"{START_GOLD - DELUGE_PRICE} through the purchase, a frame after the game's, every amount on "
                   f"frames in a row ({frames[0]}-{frames[-1]} of the run), the game's own band on every frame, "
                   "the Tool Seller's portrait up")
 

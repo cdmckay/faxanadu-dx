@@ -155,6 +155,13 @@ keeps the map, and the items you have taken.
   as you have MP, and T: on the status bar counts the selected one down. The
   Elixir stays with you after it revives you, and a Guru recharges it and
   tells you so; the first Guru you bring it to tells you he can.
+- **Found, not bought.** Since the Wing Boots, the Hour Glass and the Elixir
+  stay with you, no shop sells them any more: they're upgrades you find. The
+  Wing Boots come only from the Dwarf at the top of the Tower of Fortress,
+  the Hour Glass lies in the Tower of Suffer until you take it, and the
+  Elixirs lie where they always did, one beside the Dwarf's Wing Boots. The
+  Spring of Trunk needs a charged Elixir and uses up its charge, and a Guru
+  restores it.
 - **Ready at a glance.** The status bar shows your Elixir beside the M: and
   P: bars it refills, as Super Metroid shows a reserve tank beside Energy: in
   color when it is charged, grey while it waits for a Guru, and not at all
@@ -163,7 +170,7 @@ keeps the map, and the items you have taken.
 - **Quick shops.** Up on a shopkeeper opens his list at once, Select switches
   between buying and selling, and you stay in the list after each sale. Any
   shop buys what you carry, except what you own for good, like a key or the
-  Wing Boots: it says OWNED and isn't for sale.
+  Mattock: it says OWNED and isn't for sale.
 - **Potion Sellers.** The meat shops sell Red Potions instead of dried meat,
   each at the price its town's tool shop charged, and the tool shops no longer
   stock them. They still buy one back.

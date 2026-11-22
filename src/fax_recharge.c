@@ -41,7 +41,11 @@
  * is still the hero's, as a charged one is, so buying one never recharges it:
  * Quick shops lists it as owned and ignores A on it (fax_recharge_elixir_spent),
  * where the game's shop would have sold one to a spent Elixir, its bit being
- * clear. The Spring of Trunk still takes a charged one for good.
+ * clear (with Found items no shop sells one any more, fax_found.h). The Spring
+ * of Trunk spends a charged one instead of taking it (#138): the spring's quest
+ * goes as the original's, and the hero keeps the Elixir, spent, as after a
+ * revive, until a Guru or a find charges it. A spent one it refuses, as it
+ * refuses a hero with none: its CHECK_FOR_ITEM reads the bit.
  *
  * The status bar shows whether the Elixir is charged, left of its M: and P:
  * bars (fax_charges.c, through fax_recharge_charge).
@@ -86,6 +90,10 @@
  *   countdowns: T: as above, queued through the PPU buffer as
  *   UI_DrawTimeValue writes it, and a bar still to draw.
  * - Player_UseElixir: the Elixir is spent. IScripts_InvokeNextAction, at the
+ *   Spring of Trunk's CONSUME_ITEM Elixir ($A1BB, ISCRIPT_SPRING_OF_TRUNK's
+ *   step after "2 more springs", which the script reaches only with the bit
+ *   set): the Elixir is spent, and the game's own step then clears its bit,
+ *   as Player_UseElixir does. At the
  *   first action of a Guru's script: a spent Elixir is charged again, HP and
  *   MP are filled (fax_mana_guru, MP from kills'), and his line is chosen. It is shown before his next action that no other feature
  *   steers (a temple Guru's CHECK_UPDATE_PLAYER_TITLE, right after
@@ -145,6 +153,10 @@
 /* Bank 12 */
 #define ISCRIPTS_INVOKE_NEXT_ACTION 0x826Eu  /* JSR IScripts_LoadByte: the action at IScriptOrCHRAddr + IScriptOffset */
 #define EOLIS_GURU_FIRST        0xA0BDu  /* ISCRIPT_EOLIS_GURU's first action: CHECK_FOR_ITEM Ring of Elf */
+/* ISCRIPT_SPRING_OF_TRUNK ($A1AB): 00, 0B 01 A1C0 (done: on), 02 59, 12 92 A1B9 (the Elixir: on), 03 5B, 00. Its
+ * CHECK_FOR_ITEM jumps (IScripts_JumpToNextAddr: IScriptOrCHRAddr $A1B9, IScriptOffset 0) to
+ * @_ISCRIPT_SPRING_OF_TRUNK_HAS_ELIXIR: 01 5A ("2 more springs"), then this: */
+#define SPRING_CONSUME          0xA1BBu  /* 10 92, CONSUME_ITEM the Elixir; then 0E 01, SET_QUEST 1, and 00 */
 #define SAY                     FAX_TRAVEL_SAY      /* $AE00, Guru travel's step: 03 C3 00, show the slot, then END */
 /* Bank 13 */
 #define SLOT                    FAX_TRAVEL_SLOT     /* $B45B: message $C3, the line slot */
@@ -175,6 +187,8 @@
                                             CHECK_FOR_ITEM); CHECK_UPDATE_PLAYER_TITLE follows it */
 #define ISCRIPT_SHOW_MESSAGE    0x03u
 #define ISCRIPT_END             0x00u
+#define ISCRIPT_CONSUME_ITEM    0x10u
+#define SPECIAL_ELIXIR          0x92u    /* the Elixir's full item ID */
 #define TEMPLES                 8
 enum { SLOT_LEN = FAX_TRAVEL_SLOT_LEN, SLOT_ID = FAX_TRAVEL_SLOT_ID };
 
@@ -252,7 +266,7 @@ static bool drawn_valid;
 static Talk talk;
 static bool lines_failed;          /* the line could not be supplied: the Gurus charge it silently */
 static bool legacy;                /* the record loaded was from before #124: adopt its runs once RAM is in */
-static unsigned flights, freezes, refused, kept, pickups, revives, guru_recharges, spawns, cuts;   /* for TCP */
+static unsigned flights, freezes, refused, kept, pickups, revives, guru_recharges, spawns, cuts, springs;   /* TCP */
 static unsigned landings[TIMED], lines_said[LINES];
 
 /* ---- the rules, on plain values ---- */
@@ -337,6 +351,14 @@ static unsigned hud_value(const Charge *c, uint8_t selected, uint8_t mp, uint8_t
 static int guru_says(const Charge *c, bool charged) {
     if (c->elixir_spent) return LINE_RESTORED;
     return charged && !c->elixir_told ? LINE_CAN : LINE_NONE;
+}
+
+/* The Spring of Trunk is about to take the Elixir: the script's next action,
+ * at `at`, is its CONSUME_ITEM Elixir, and the Elixir is charged
+ * (SpecialItems' bit, which its CHECK_FOR_ITEM asked for). Then it spends it
+ * instead. No other script takes the Elixir. */
+static bool spring_spends(uint16_t at, uint8_t action, uint8_t item, uint8_t special) {
+    return at == SPRING_CONSUME && action == ISCRIPT_CONSUME_ITEM && item == SPECIAL_ELIXIR && (special & BIT_ELIXIR);
 }
 
 /* A line in the dialogue font ($FD a space, $FE a new line), $FF-terminated
@@ -664,6 +686,10 @@ static int guru_hook(uint16_t addr) {
     (void)addr;
     if (cyc_mod_isolated()) return 0;
     uint16_t at = (uint16_t)(word(ISCRIPT_ADDR) + q(ISCRIPT_OFFSET));
+    if (spring_spends(at, q(at), q((uint16_t)(at + 1)), q(SPECIAL_ITEMS))) {
+        charge.elixir_spent = 1;                /* the step clears the bit: spent, as after a revive */
+        ++springs;
+    }
     Talk was = talk;
     talk = (Talk){ 0 };
     if (was.phase == TALK_SAYING && at == SAY + 2) {        /* his line has been read: back to his script */
@@ -850,7 +876,7 @@ static void deactivate(void) {
     talk = (Talk){ 0 };
     lines_failed = legacy = false;
     drawn_valid = false;
-    flights = freezes = refused = kept = pickups = revives = guru_recharges = spawns = cuts = 0;
+    flights = freezes = refused = kept = pickups = revives = guru_recharges = spawns = cuts = springs = 0;
     memset(landings, 0, sizeof landings);
     memset(lines_said, 0, sizeof lines_said);
     hooks(false);
@@ -883,13 +909,13 @@ static void recharge_state(int id, const char *line) {
              hud_value(&charge, q(SELECTED_ITEM), mp, title), drawn_valid ? (int)drawn : -1);
     /* The Elixir: spent, charged; the Guru's line: told, talk (0 none, 1 waiting, 2 showing), line (0 none, 1
      * restored, 2 can), how many of each he has said, and whether the lines are off (their overrides could not
-     * be set). */
+     * be set); the Elixirs the Spring of Trunk has spent. */
     snprintf(fields + n, sizeof fields - (size_t)n,
              ",\"elixir_spent\":%s,\"elixir_charged\":%s,\"elixir_told\":%s,\"talk\":%u,\"line\":%u,"
-             "\"restored_lines\":%u,\"can_lines\":%u,\"lines_failed\":%s",
+             "\"restored_lines\":%u,\"can_lines\":%u,\"lines_failed\":%s,\"springs\":%u",
              charge.elixir_spent ? "true" : "false", q(SPECIAL_ITEMS) & BIT_ELIXIR ? "true" : "false",
              charge.elixir_told ? "true" : "false", talk.phase, talk.line, lines_said[LINE_RESTORED],
-             lines_said[LINE_CAN], lines_failed ? "true" : "false");
+             lines_said[LINE_CAN], lines_failed ? "true" : "false", springs);
     cyc_tcp_ok(id, fields);
 }
 void fax_recharge_tcp_setup(void) {

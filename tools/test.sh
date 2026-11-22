@@ -132,6 +132,9 @@ cmake --build "$OUT/fixes" -j"$JOBS" >/dev/null
 cmake -S tests/finds -B "$OUT/finds" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/finds" -j"$JOBS" >/dev/null
 "$OUT/finds/finds_test"
+cmake -S tests/found -B "$OUT/found" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/found" -j"$JOBS" >/dev/null
+"$OUT/found/found_test"
 cmake -S tests/shaft -B "$OUT/shaft" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/shaft" -j"$JOBS" >/dev/null
 "$OUT/shaft/shaft_test"
@@ -227,6 +230,7 @@ E2E=(
   "arenas       tests/world/boss_arenas.py --parts"
   "live-hud     tests/world/live_status_bar.py --parts"
   "spell-cost   tests/spell_cost/spell_cost.py --parts"
+  "found        tests/found/found_items.py --parts"
 )
 # At most E2E_JOBS runs play at once (default: one a hardware thread; 0: all
 # at once): a game is uncapped and takes a whole thread, and more of them
