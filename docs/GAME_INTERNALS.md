@@ -3387,8 +3387,10 @@ rest of the way to Victim, were not checked.
   (below); Mist `$34` to `$33` and `$39` (below); `$4C` to `$4B` and `$43`
   (above); Branch `$07` to `$08` (right); `$1D` to `$1C`; Dartmoor `$15` to
   `$16` (right). Dartmoor `$15`, King Grieve's room, is walled on all four
-  sides (columns 0 and 15 and rows 0, 11 and 12 solid), so the hero comes in
-  by a door, and `$16` beyond its right wall holds a second King Grieve
+  sides (columns 0 and 15 and rows 0, 11 and 12 solid): the hero comes in
+  by the door on `$14` (block `$9E`, palette `$0E`, `DARTMOOR_DOOR_LOCATIONS`
+  entry 2) at block `$91`, and its own door there leads back to `$14`; `$16`
+  beyond its right wall holds a second King Grieve
   (`$32` at `$41`) with no screen event. Zenis `$00`, the final boss's, is
   joined to nothing. Boss-category entities stand on other screens with no
   event, so with no boss music and no handler: Borabohra (`$2F`) on Trunk
@@ -3677,7 +3679,10 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   `$FF`) joins nothing, so the scroll into it, and out while the boss lives,
   is the original's. When the active room is such an arena and its event
   turns `$FF` (`ScreenEvents_HandleBoss` found no boss), Seamless lays the
-  map out again from it. The flag is kept in its record (byte 28).
+  map out again from it, and so it does when the original's own load (a
+  door in the same area) brings a boss back into a room whose copy had none:
+  it captures the live room before it decides. The flag is kept in its record
+  (byte 28).
 
 - **Guru travel** (`fax_travel.c`). After the mantra or a new title, the Guru
   says "All Gurus / meditate as one." and offers "Shall I send / you to

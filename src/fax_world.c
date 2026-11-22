@@ -204,14 +204,17 @@ static void topology(unsigned current){
 static void refresh(bool completed){
     int a=q(0x24),id=q(0x63);if(a<0||a>7||id>=(int)counts[a])return;
     if(area!=a){memset(rooms,0,sizeof rooms);memset(raster_valid,0,sizeof raster_valid);area=a;active=-1;fighting=false;}
-    if(!rooms[id].owned)topology(id);
     bool changed=active!=id;
     if(changed){if(active>=0)portals++;active=id;}
     /* Player entry runs after the ROM clears OAM. Keep the last completed
      * scene until this tick actually finishes drawing, including when an
      * actor interrupts the tick to start a conversation. */
     if(completed||changed||!rooms[id].live)capture(id,true);
-    if(fighting&&!arena(id))topology(id); /* its boss is dead: join it again */
+    /* Lay the map out from here when this room is not on it, and again when
+     * its boss has died (join it) or when the original's own load has
+     * brought a boss back into a room whose old copy had none (seal it).
+     * The live room is captured first, so the arena test reads it. */
+    if(!rooms[id].owned||arena(id)!=fighting)topology(id);
     for(unsigned i=0;i<counts[area];i++)if(rooms[i].owned&&!rooms[i].valid)decode(i);
 }
 static int script_hook(uint16_t pc){

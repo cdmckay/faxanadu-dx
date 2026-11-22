@@ -27,9 +27,12 @@ share:
 4. He walks back out: a Seamless handoff, no scroll.
 
 dartmoor-15: King Grieve's room is walled on every side: the hero comes in
-by a door (the shop's, edited to lead there, as the castle's own does), its
-neighbour $16 (another King Grieve) is not on the map while he lives, and
-joins once he is dead, beyond the wall.
+by a door (the shop's, edited to lead where the castle's own on $14 does),
+its neighbour $16 (another King Grieve) is not on the map while he lives,
+and joins once he is dead, beyond the wall. Then he goes out by the room's
+own door to $14 and back in by $14's, both the original's loads in the same
+area: the load brings King Grieve back, though Seamless's copy of the room
+had none, and the room is an arena again.
 
 zenis-00: the final boss, Shadow Eura, behind a door on Zenis $01. The hero
 walks out of the shop into the room itself, the door's own load: Seamless
@@ -62,7 +65,7 @@ LEFT, RIGHT = 0, 1                                         # Seamless's edges: l
 # them: docs/GAME_INTERNALS.md, "The way into each tower, castle and region").
 # The boss's room's own place for a door (Player_SavedPos), where the hero
 # comes in by one instead.
-DOORS = {"dartmoor-15": 0x91}
+DOORS = {"dartmoor-15": 0x91}                               # where $14's door (DARTMOOR_DOOR_LOCATIONS) brings him
 ARENAS = {
     "trunk-15": (TRUNK, 0x15, 0x2D, 0x14, RIGHT, 0x07, 1),       # Ripasheiku, the Tower of Trunk's top
     "trunk-3b": (TRUNK, 0x3B, 0x31, 0x3A, RIGHT, 0x07, 1),       # Zorugeriru, the Tower of Fortress
@@ -70,8 +73,9 @@ ARENAS = {
     "mist-4c": (MIST, 0x4C, 0x2E, 0x4B, RIGHT, 0x0B, 2),         # Zoradohna, the Tower of Mist
     "branch-07": (BRANCH, 0x07, 0x2E, 0x08, LEFT, 0x08, 3),      # Zoradohna
     "branch-1d": (BRANCH, 0x1D, 0x2E, 0x1C, RIGHT, 0x08, 3),     # Zoradohna
-    "dartmoor-15": (DARTMOOR, 0x15, 0x32, 0x16, LEFT, 0x0D, 4),  # King Grieve, the Castle of Fraternal
+    "dartmoor-15": (DARTMOOR, 0x15, 0x32, 0x16, LEFT, 0x0E, 4),  # King Grieve, the Castle of Fraternal (its door's palette)
 }
+DOOR_OUT, DOOR_X = 0x14, 0xE0                              # where King Grieve's room's door leads; $14's door, block $9E
 SHADOW_EURA = 0x33
 FINAL = (ZENIS, 0x00, 0x0F, 0x91, 5)                       # Zenis $00 from the door on $01: palette, position, region
 PARTS = tuple(ARENAS) + ("zenis-00",)
@@ -169,7 +173,23 @@ def main():
 
             # 4. Out again, seamlessly.
             if door is not None:
-                continue                                         # walled in: no way out but the door
+                # Walled in: out by its door to $14, and back in by $14's.
+                g.act("up", 4, 10)
+                g.until("$14", lambda: g.where() == (area, DOOR_OUT) and g.settled(), 600)
+                g.poke({**{ENTITIES + i: 0xFF for i in range(8)}, HP: 0x50})   # $14's enemies, away from its door
+                g.walk_to(DOOR_X - 6, DOOR_X + 4)
+                for _ in range(5):
+                    if g.where() != (area, DOOR_OUT):
+                        break
+                    g.act("up", 4, 20)
+                g.until("the boss's room again", lambda: g.where() == (area, boss_screen) and g.settled(), 600)
+                again = world()
+                assert again["owned"] == 1 and again["arena"] and boss in g.ram(ENTITIES, 8), again
+                g.wait(30)
+                g.shot(f"{part}-again")
+                print(f"ok: {part}: out by its door and back in by {DOOR_OUT:#04x}'s, the original's load brings "
+                      f"the boss back, and the room is an arena again")
+                continue
             walk("left" if side == RIGHT else "right", lambda: g.where() == (area, screen), "the room beside")
             out = world()
             assert out["handoffs"] == joined["handoffs"] + 1 and out["portals"] == joined["portals"], (joined, out)
