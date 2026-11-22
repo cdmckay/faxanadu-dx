@@ -44,7 +44,7 @@ enum { TEMPLES = 8, SLOT_LEN = FAX_TRAVEL_SLOT_LEN };
 #define GURU_NEW_RANK_END   0xA602u   /* ISCRIPT_COMMON_GURU_NEW_RANK: 01 23, here 00 */
 #define EOLIS_GURU_HAS_RING 0xA0C6u   /* Eolis's Guru, who sets no spawn point: 03 2D, 00 */
 #define SAY FAX_TRAVEL_SAY            /* $AE00: 03 C3 00: show the slot, then END */
-#define ASK 0xAE03u                   /* 16 C3 SAY: ask; A jumps to SAY, B goes on to ASK + 4 */
+#define ASK FAX_TRAVEL_ASK            /* $AE03: 16 C3 SAY: ask; A jumps to SAY, B goes on to ASK + 4 */
 /* Bank 13: Messages_Load counts $FF terminators from $8300. Message 193 is
  * followed by glyph data whose run ends at the $FF at $B45A, so message $C3
  * starts at $B45B, in unused ROM. */

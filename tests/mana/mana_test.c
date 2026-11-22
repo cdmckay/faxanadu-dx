@@ -5,7 +5,9 @@
  * Player_AddMP as the committed call runs it: the cap, Player_SetMP's two
  * PPU buffer commands, and PPUBuffer_WaitForCapacity, which spins for ever
  * (the call fails, nothing committed) when the buffer has no room. So the
- * tests check what the hero's MP and its bar do, frame by frame. */
+ * tests check what the hero's MP and its bar do, frame by frame. The
+ * Magician's lesson (fax_lesson.c) is one flag here, whether he has taught
+ * the hero. */
 #include "fax_mana.c"
 
 static unsigned checks;
@@ -34,6 +36,8 @@ bool cyc_mod_poke(uint16_t addr, uint8_t value) {
 void cyc_mod_regs(CycModRegs *out) { *out = cpu; }
 void cyc_mod_set_regs(const CycModRegs *in) { uint16_t pc = cpu.pc; cpu = *in; cpu.pc = pc; }
 bool cyc_mod_isolated(void) { return isolated; }
+static bool taught;                          /* the Magician's lesson, learned */
+bool fax_lesson_learned(void) { return taught; }
 
 /* PPUBuffer_HasCapacity: ReadOffset - WriteOffset is 0 (empty) or at least $24. */
 static bool has_capacity(uint8_t write) { uint8_t room = (uint8_t)(READ - write); return room == 0 || room >= 0x24; }
@@ -121,7 +125,7 @@ static void cast(uint8_t cost) { if (MP >= cost) MP = (uint8_t)(MP - cost); }
 static void nmi(void) { READ = WRITE; }
 static void frames(Where where, unsigned n) { for (unsigned i = 0; i < n; ++i) { nmi(); frame_ends(where); } }
 
-static void fresh(uint8_t mp) {
+static void fresh_as(uint8_t mp, bool learned) {
     reset_cb();
     plugin_cb();
     memset(ram, 0, sizeof ram);
@@ -130,9 +134,11 @@ static void fresh(uint8_t mp) {
     calls = drawn = 0;
     bar_mp = -1;
     isolated = refuse = false;
+    taught = learned;
     cpu = (CycModRegs){ .a = 0x00, .x = 0x22, .y = 0x33, .s = 0xFD, .p = 0x02 };
     frames(PLAYING, 1);                      /* the MP it starts from */
 }
+static void fresh(uint8_t mp) { fresh_as(mp, false); }
 
 /* The frame (counted from the spend's) MP comes back on, playing throughout. */
 static unsigned frames_until_more(Where where) {
@@ -179,6 +185,48 @@ static void empty_to_full(void) {
     unsigned n = 1;                          /* fresh() played the first frame */
     while (MP < 80 && n < 10000) { nmi(); frame_ends(PLAYING); ++n; }
     CHECK(MP == 80 && n == WAIT + 79 * STEP);   /* 2,610 frames: the wait, then 40 s */
+}
+
+/* Taught by the Magician: 120 frames, then 1 MP every 15. */
+static void the_lesson_halves_both(void) {
+    fresh_as(80, true);
+    frames(PLAYING, 50);
+    nmi(); cast(16); frame_ends(PLAYING);
+    CHECK(MP == 64 && r.left == TAUGHT_WAIT);
+    CHECK(frames_until_more(PLAYING) == TAUGHT_WAIT && MP == 65);
+    for (int k = 66; k <= 80; ++k) CHECK(frames_until_more(PLAYING) == TAUGHT_STEP && MP == k && bar_mp == k);
+    fresh_as(0, true);
+    unsigned n = 1;
+    while (MP < 80 && n < 10000) { nmi(); frame_ends(PLAYING); ++n; }
+    CHECK(MP == 80 && n == TAUGHT_WAIT + 79 * TAUGHT_STEP);   /* 1,305 frames: 21.75 s */
+    CHECK(TAUGHT_WAIT * 2 == WAIT && TAUGHT_STEP * 2 == STEP);
+}
+
+/* Learned while a wait runs (in his conversation, which no frame counts):
+ * what is left of it is cut to the taught wait, and a wait already shorter
+ * runs on; the next MP is a taught step after. */
+static void learned_during_the_wait(void) {
+    fresh(60);
+    nmi(); cast(2); frame_ends(PLAYING);
+    frames(PLAYING, 20);
+    CHECK(r.left == WAIT - 20);
+    frames(TEXT, 300);                       /* his offer, the gold counted out, his line */
+    taught = true;
+    nmi(); frame_ends(PLAYING);
+    CHECK(r.left == TAUGHT_WAIT - 1);
+    CHECK(frames_until_more(PLAYING) == TAUGHT_WAIT - 1 && MP == 59);
+    CHECK(frames_until_more(PLAYING) == TAUGHT_STEP && MP == 60);
+    fresh(60);
+    nmi(); cast(2); frame_ends(PLAYING);
+    frames(PLAYING, 200);                    /* 40 left, under the taught wait */
+    taught = true;
+    CHECK(frames_until_more(PLAYING) == WAIT - 200 && MP == 59);
+    CHECK(frames_until_more(PLAYING) == TAUGHT_STEP);
+    /* A save state taken untaught, with its whole wait to run, loaded taught. */
+    uint8_t rec[RECORD] = { RECORD_VERSION, 1, 50, WAIT };
+    CHECK(save_set(rec, RECORD) == 1);
+    MP = 50;
+    CHECK(frames_until_more(PLAYING) == TAUGHT_WAIT);
 }
 
 static void the_cpu_gets_its_registers_back(void) {
@@ -310,6 +358,8 @@ int main(void) {
     full_mp_stays_put();
     the_wait_then_one_mp_a_step();
     empty_to_full();
+    the_lesson_halves_both();
+    learned_during_the_wait();
     the_cpu_gets_its_registers_back();
     a_spend_starts_the_wait_again();
     only_played_frames_count();

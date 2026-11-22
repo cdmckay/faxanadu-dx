@@ -51,7 +51,7 @@ if(NESRECOMP_BACKEND STREQUAL "cycle")
             src/fax_shops.c
             src/fax_respawn.c
             src/fax_recharge.c
-            src/fax_mana.c
+            src/fax_mana.c src/fax_lesson.c
             src/fax_gold.c
             src/fax_slain.c
             src/fax_indoor.c

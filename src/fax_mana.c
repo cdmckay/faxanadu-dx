@@ -2,7 +2,9 @@
  *
  * Once the hero has spent no MP for 4 seconds (WAIT, 240 frames), Player_MP
  * climbs back toward its cap of 80, 1 MP every 30 frames (STEP), so an empty
- * bar is full 40 s after the wait. Any spend of MP starts the wait again. Only
+ * bar is full 40 s after the wait. Eolis's Magician teaches the hero, once,
+ * to recover faster (fax_lesson.c): then 2 seconds and 15 frames
+ * (TAUGHT_WAIT, TAUGHT_STEP). Any spend of MP starts the wait again. Only
  * frames the game plays count: not while it is paused (Start, the map, the
  * quest log), in a text box, a conversation, a shop or the menu, while a
  * screen loads or scrolls, while the hero is dead, on the title or in the
@@ -34,6 +36,7 @@
  * happens inside Seamless's isolated simulation of other rooms. See
  * docs/GAME_INTERNALS.md, "MP and its bar". */
 #include "fax_mana.h"
+#include "fax_lesson.h"
 #include "cyc_mod.h"
 #include "mod_runtime.h"
 #include "mod_savestate.h"
@@ -72,9 +75,15 @@ enum { PPU_ROOM = 0x24, COMMAND = 3 };
  * Every cast restarts the wait, and spells fly a second or so, one at a time,
  * so a fight is fought on the bar the hero brought to it; between fights a
  * spell's cost is back 4.5 s (Deluge) to 11.5 s (Tilte) after the cast, and
- * an empty bar is full after 43.5 s. Retuning means changing these and
- * nothing else. */
-enum { WAIT = 240, STEP = 30 };
+ * an empty bar is full after 43.5 s. The Magician's lesson halves both: a
+ * spell's cost back 2.25 s to 5.75 s after it, an empty bar full after 21.75
+ * s, and still nothing back while the hero casts once a second or more.
+ * Retuning means changing these and nothing else. */
+enum { WAIT = 240, STEP = 30, TAUGHT_WAIT = 120, TAUGHT_STEP = 15 };
+typedef struct { uint8_t wait, step; } Schedule;
+static Schedule schedule(void) {
+    return fax_lesson_learned() ? (Schedule){ TAUGHT_WAIT, TAUGHT_STEP } : (Schedule){ WAIT, STEP };
+}
 
 /* The state: what a save state must keep. */
 typedef struct {
@@ -92,19 +101,21 @@ static unsigned spends, refills, deferred, played;   /* for TCP */
 
 /* What one frame's end does: see `mp`; then, if the game played the frame
  * and MP is not full, count down, unless MP was spent in it, which starts
- * the wait again, so the first MP comes back WAIT frames after the frame of
- * the spend. True when 1 MP is due now; the caller gives it, or calls hold()
- * if it cannot this frame. */
-static bool step(Refill *s, uint8_t mp, bool played_frame) {
+ * the wait again, so the first MP comes back sch.wait frames after the frame
+ * of the spend. A wait longer than the schedule's (the lesson, learned while
+ * it ran) is cut to it. True when 1 MP is due now; the caller gives it, or
+ * calls hold() if it cannot this frame. */
+static bool step(Refill *s, uint8_t mp, bool played_frame, Schedule sch) {
     bool spent = s->seen && mp < s->last_mp;
     s->seen = 1;
     s->last_mp = mp;
-    if (spent) { s->left = WAIT; ++spends; return false; }
+    if (spent) { s->left = sch.wait; ++spends; return false; }
+    if (s->left > sch.wait) s->left = sch.wait;
     if (!played_frame || mp >= MP_MAX) return false;
     if (s->left > 1) { --s->left; return false; }
     return true;
 }
-static void gave(Refill *s, uint8_t mp) { s->last_mp = mp; s->left = STEP; }
+static void gave(Refill *s, uint8_t mp, Schedule sch) { s->last_mp = mp; s->left = sch.step; }
 static void hold(Refill *s) { s->left = 1; }   /* due, the next frame that can */
 
 /* ---- the machine ---- */
@@ -145,9 +156,10 @@ void fax_mana_frame_end(void) {
     cyc_mod_regs(&regs);
     idle_now = playing(&regs);
     if (idle_now) ++played;
-    if (!step(&r, q(PLAYER_MP), idle_now)) return;
+    Schedule sch = schedule();
+    if (!step(&r, q(PLAYER_MP), idle_now, sch)) return;
     if (!bar_fits() || !give()) { hold(&r); ++deferred; return; }
-    gave(&r, q(PLAYER_MP));
+    gave(&r, q(PLAYER_MP), sch);
     ++refills;
 }
 
@@ -191,12 +203,12 @@ static void mana_state(int id, const char *line) {
              "\"enabled\":%s,\"mp\":%u,\"left\":%u,\"playing\":%s,\"played\":%u,\"spends\":%u,\"refills\":%u,"
              "\"deferred\":%u,\"wait\":%d,\"step\":%d",
              enabled ? "true" : "false", q(PLAYER_MP), r.left, idle_now ? "true" : "false", played, spends, refills,
-             deferred, WAIT, STEP);
+             deferred, schedule().wait, schedule().step);
     cyc_tcp_ok(id, fields);
 }
 void fax_mana_tcp_setup(void) {
     cyc_tcp_register("mana_state",
-                     "MP refill: MP, played frames until the next MP, whether the last frame was played, counts",
+                     "MP refill: MP, played frames until the next MP, whether the last frame was played, counts, the schedule",
                      mana_state);
 }
 #else

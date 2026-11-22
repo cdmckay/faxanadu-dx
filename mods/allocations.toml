@@ -252,7 +252,7 @@ overrides = [
 bank = 13
 start = 0xB45B
 end = 0xB48B
-features = ["guru-travel", "save-files", "block", "quest-log", "recharging-items"]
+features = ["guru-travel", "save-files", "block", "quest-log", "recharging-items", "magician-lesson"]
 why = """Message $C3, one line slot for the lines the remaster adds to \
 scripts. Each feature writes its line there just before the step that shows \
 it, and none shows a line while another's is up: Recharging items' Elixir \
@@ -263,26 +263,31 @@ of a shop's script or the Battle Helmet's pickup, never a Guru's. The quest \
 log's lines follow a script's end too, after Block's (its hook at \
 IScriptAction_EndScript comes second), and come only at the end of a script \
 that gave or completed a quest, which no temple Guru's does, so never with \
-Save files' or Guru travel's. Every feature writes its own line again before \
-each one it says. After a save state loads, Save files puts its line back in \
-state_loaded, after Guru travel's record has restored its own, and Block, \
-the quest log and Recharging items put back theirs, after it, if they were \
+Save files' or Guru travel's. The Magician's lesson speaks only in Eolis's \
+Magician's script, where no other feature speaks until it ends (it gives \
+no shield and no quest), and its last line is read before that end. Every \
+feature writes its own line again before each one it says. After a save \
+state loads, Save files puts its line back in state_loaded, after Guru \
+travel's record has restored its own, and Block, the quest log, Recharging \
+items and the Magician's lesson put back theirs, after it, if they were \
 saying them."""
 
 [[shared_rom]]
 bank = 12
 start = 0xAE00
 end = 0xAE07
-features = ["guru-travel", "block", "quest-log", "recharging-items"]
+features = ["guru-travel", "block", "quest-log", "recharging-items", "magician-lesson"]
 why = """Guru travel's SAY step, $AE00-$AE02: SHOW_MESSAGE $C3, END. Block, \
 the quest log and Recharging items serve the same three bytes there to show \
 their lines from message $C3, so whichever served them last, the step is the \
-same. None touches Guru travel's ASK step ($AE03-$AE06)."""
+same. The Magician's lesson serves all seven, the SAY step and Guru travel's \
+ASK step ($AE03-$AE06: QUESTION_JUMP_IF_ACCEPTED $C3 to SAY), with the same \
+bytes as Guru travel; no one else touches ASK."""
 
 [[shared_site]]
 addr = 0x826E   # IScripts_InvokeNextAction
 hooks = ["faxanadu.travel.next-action", "faxanadu.files.next-action", "faxanadu.shops.next-action",
-         "faxanadu.recharge.guru"]
+         "faxanadu.lesson.next-action", "faxanadu.recharge.guru"]
 why = """None handles the call; Save files, Guru travel and Quick shops only \
 steer the interpreter by writing IScriptOrCHRAddr. None redirects to an \
 address another acts on: with a file in play Guru travel leaves the script's \
@@ -306,7 +311,16 @@ conversation in this script has not begun (meet() at SET_SPAWN_POINT, or the \
 reset above, left it idle), does nothing, and Save files acts at $AE02 only \
 after its saved line, which comes later in a conversation. Its site is the \
 last here, so the others always see the Guru's own action and the step's \
-END, never the SAY step it points at. So the four may run in this order."""
+END, never the SAY step it points at. The Magician's lesson acts on Eolis's \
+Magician's script ($A35D), which has neither a Guru's actions nor the shops' \
+layout, so none of the others acts in it: at his first action it points the \
+script at Guru travel's ASK or SAY step, then at his own pay step ($A360), \
+or the SAY step's END. At those steps it acts only in a conversation of his \
+it began, which it forgets when any script begins (IScriptOffset 1, which it \
+sees before Recharging items moves anything), and Guru travel's \
+conversation, Save files' choice and Recharging items' line are never under \
+way in his script, so they do nothing there. So the five may run in this \
+order."""
 
 [[feature]]
 id = "block"
@@ -447,6 +461,29 @@ rom = []
 # Temp_Int24, Temp_0xEF), and the stack below S; the CPU's registers are put
 # back. Nothing else runs then, so nothing else is using them. No read
 # overrides. Not in save files: continuing fills MP.
+
+[[feature]]
+id = "magician-lesson"
+package = "faxanadu.remastered"
+plugin = "faxanadu.magician-lesson"
+source = "src/fax_lesson.c"
+hooks = "faxanadu.lesson."
+# Borrowed from Guru travel (fax_travel.h) and served through the same read
+# overrides, with the same bytes, rather than ROM of its own: the override
+# budget is full.
+rom = [
+    { bank = 12, start = 0xAE00, end = 0xAE07, use = "Guru travel's SAY and ASK steps, to show and ask its lines" },
+    { bank = 13, start = 0xB45B, end = 0xB48B, use = "message $C3, the line slot, for its lines" },
+]
+# Its site at IScripts_InvokeNextAction ($826E, shared, above) acts only in
+# Eolis's Magician's script and the steps it sends it to, and writes
+# IScriptOrCHRAddr and IScriptOffset. Its site in IScriptAction_SpendGold
+# ($8367, bank 12), which no other feature hooks and which returns 0, writes
+# Temp_0202/3, the amount the next instructions copy to Temp_Int24 to check
+# and take: on his pay step, while his lesson is being bought, 200 becomes
+# the lesson's price. Keeps the field lesson.learned in the file in play
+# (fax_save.h), when Save files has one. MP refill reads it
+# (fax_lesson_learned) for its schedule.
 
 [[feature]]
 id = "double-gold"

@@ -114,12 +114,14 @@ between actions.
 | `$02` | msg | Question: A continues, B ends the script |
 | `$03` | msg | Message. B, at any point, ends the script (`IScriptAction_ShowMessage` jumps to `IScriptAction_EndScript`) |
 | `$04` | addr | `CHECK_UPDATE_PLAYER_TITLE`: if `NextPlayerTitle` differs, take it and jump; else go on |
+| `$05` | amount (16-bit) | Pay (`IScriptAction_SpendGold`, `$835B`): reads the amount into `Temp_0202/3`, copies it to `Temp_Int24`/`_M` (`$8367`) for `IScripts_CheckEnoughMoney`; too little, "This is not enough Golds." (message 3) and the script ends; else `IScripts_ProgressivelySubtractGold` takes it, 10 Golds a frame, then holds 60 frames |
 | `$06` | temple | Set spawn point. **Only raises** `TempleSpawnPoint` |
 | `$08` | items | A shop's buy list (see *Shops*) |
 | `$0F` | addr | The shops' Buy/Sell menu: message `$10`, then a cursor on its lines 1 and 3. A on the first choice jumps to addr, A on the second goes on to the next action, B ends the script |
+| `$0A` | MP | Add MP (`IScriptAction_AddMP`, `$8580`), 1 at a time with its sound |
 | `$11` | items | A shop's sell list |
 | `$14` | | Show the mantra (`IScriptAction_ShowPassword`): encodes it, types it a character a frame, waits for A |
-| `$16` | msg, addr | Question: A jumps to addr, B goes on to the next action. Unused by the game, works |
+| `$16` | msg, addr | Question: A jumps to addr, B goes on to the next action. Unused by the game, works: Guru travel's ASK step and the Magician's lesson ask with it |
 | `$17` | addr | Jump |
 
 The full table is in chipx86's notes. The Gurus' scripts:
@@ -221,7 +223,7 @@ from the Magician ($15, $17), "Our doctor can help." ($45), "I sell keys." and
 | `$02` | Temple | screen 2, `$95` | Guru `$82` |
 | `$03` | Key shop | screen 3, `$9D` | `$84` |
 | `$04` | Tool shop | screen 3, `$9A` | `$73`, behind the counter (stops at x=80) |
-| `$05` | Magic shop | screen 6, `$9C`, Ring of Elf | `$71` |
+| `$05` | Magic shop | screen 6, `$9C`, Ring of Elf | `$71`, on a step at the left wall: walk left, then jump left onto it (Left and A); beside him x is at most 32 |
 | `$06` | Martial arts | screen 6, `$9A`, Ring of Elf | `$87`, mid-room: stop at x 124 |
 | `$07` | King's room | screen 7, `$98`, Ring of Elf | `$72`, atop stairs: jump up them (Left and A) |
 
@@ -466,8 +468,9 @@ What a feature can rely on, and the traps:
   (its 48-byte line slot and 7 step bytes), the Taller dagger 1, and Save
   files shares the slot and adds 5 (4 step bytes and the menu's operand), or
   8 if Guru travel's steps are not served (its own 3-byte SAY): 61 to 64 of
-  64. Block, the quest log and Recharging items' Elixir lines borrow Guru
-  travel's SAY step and slot, and Quick shops takes none. `tools/check_allocations.py` counts every byte claimed in
+  64. Block, the quest log, Recharging items' Elixir lines and the
+  Magician's lesson borrow Guru travel's SAY step and slot (the lesson its
+  ASK step too), and Quick shops and Double gold take none. `tools/check_allocations.py` counts every byte claimed in
   `mods/allocations.toml` once and fails past 64, so the claims, now 64, are
   the budget. A new message for the text box should share the slot, and
   anything more needs the table made larger or Guru travel's slot cut to its
@@ -1788,7 +1791,8 @@ jump a few updates after stepping off, as A from the hang itself would.
   MP for 200 G, `ISCRIPT_EOLIS_MARTIAL_ARTS_MAGIC_SHOP`; both through
   `IScriptAction_AddMP`, `$8580`, bank 12, 1 MP at a time with its sound) and
   the Elixir's fill (`Player_FillHPAndMP`, `$C4DA`, 4 at a time). It never
-  comes back on its own.
+  comes back on its own. With the remaster, MP refill brings it back, and the
+  Magician teaches a faster refill instead of selling MP (*Features*).
 - **Only a cast takes MP.** The stores to `Player_MP` are `Game_Start`'s,
   `Player_Spawn`'s, `Player_ReduceMP` (`$C0C3`, from `Player_CastMagic`, the
   only one that lowers it), `Player_AddMP` (`$C0D9`: `CLC`, `ADC Player_MP`,
@@ -2858,6 +2862,19 @@ are `ISCRIPT_ADDRS_L/U` (`$9F6B`/`$A003`, 152 entries) 12, 13, 25, 26, 29, 40,
 No shop sells the Leather Armor, the Fire magic (the Magician's, 3000 by
 script), the A and Jo keys (gifts), the Poison, or the last fight's gear.
 
+**The two Magicians** are scripts, not shops. Eolis's
+(`ISCRIPT_EOLIS_MARTIAL_ARTS_MAGIC_SHOP`, `$A35D`, building `$05`; despite
+the name, the Martial Artist has his own) is `83, 02 15, 05 C8 00, 0A 28, 01
+16, 00`: the question "I shall give magic for 200 Golds." (B on it ends the
+script), pay 200, add 40 MP, "Watch your remaining power level." (`01`, B
+cannot skip it), end. The magic hall's (`ISCRIPT_AFTER_VICTIM_MAGIC_SHOP`,
+`$A368`, building `$1C`) is `83, 12 62 A377, 02 17, 05 B8 0B, 07 62, 01 79,
+00`, and with Fire, `03 18, 00` at `$A377` ("Don't rely too much on magic.").
+The pay steps in the game ask 50, 150, 180, 200 (twice), 250 (twice), 350,
+500 (twice), 800, 1000, 1800, 2500 and 3000 (twice): a price none of them asks
+has to be served, which the Magician's lesson does in
+`IScriptAction_SpendGold` (*Features*).
+
 | Address | Name | Notes |
 |---|---|---|
 | `$0202-$0203` | `Temp_0202/3` | The price being paid or earned, as the gold counts |
@@ -3628,6 +3645,44 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
   buffer has less than 50 bytes of room (not empty), the MP waits for the
   next frame that has it. A new game's MP climbs from 0 like any other. The
   wait and the MP last seen are its save-state record; MP is in no save file.
+  Once the Magician's lesson is learned (`fax_lesson_learned()`), the wait is
+  120 frames and the step 15; a wait running when it is learned is cut to
+  120.
+- **The Magician's lesson** (`fax_lesson.c`, #105). Eolis's Magician no
+  longer sells 40 MP for 200: he teaches the hero, once, for 2000 Golds, to
+  recover MP twice as fast (MP refill's 120 and 15). His script (*The two
+  Magicians*) is steered at `IScripts_InvokeNextAction`, through Guru
+  travel's steps and message `$C3`'s slot, served with the same bytes:
+  - at his first action (`$A35E`, the question), his offer, "Learn to
+    recover / magic faster / for 2000 Golds.", at Guru travel's ASK step
+    (`16 C3 00 AE`, `$AE03`): A jumps to the SAY step (`$AE00`), B goes on to
+    `$AE07`. Learned, "I have nothing / more to teach / you." at the SAY step
+    instead, then its END.
+  - A (the script at `$AE00`): back to his own pay step (`IScriptOrCHRAddr`
+    `$A35D`, `IScriptOffset` 3). A hook in `IScriptAction_SpendGold` at
+    `$8367` (`LDA Temp_0202`, after the two `IScripts_LoadByte`), while the
+    script stands past that step (`$A363`) with 200 read, writes 2000 to
+    `Temp_0202/3`, which the next instructions copy to `Temp_Int24` and
+    check. So the game takes it (200 frames of counting, then its 60) or
+    says "This is not enough Golds." and ends the script, as at any counter.
+  - Paid (the script at his `ADD_MP`, `$A363`): learned, and "Your magic
+    will / now return / faster." at the SAY step instead of the 40 MP and
+    "Watch your remaining power level.".
+  - B on the offer (`$AE07`): the SAY step's END (`$AE02`), so the box
+    closes, as B on his question did.
+
+  It acts only in his script and at those steps in a conversation of his,
+  which it forgets when any script begins (`IScriptOffset` 1), so a
+  conversation that B or a lack of gold ended leaves nothing behind. Its
+  site at `$826E` comes before Recharging items', which stays last. The magic
+  hall's Magician is untouched. The file in play keeps `lesson.learned`
+  (`yes`, or no field); its save-state record keeps it and the conversation,
+  and after a load his line is served again (`fax_lesson_loaded`, after
+  Recharging items'). If the overrides cannot be set, he sells his MP as
+  before for the session. `lesson_state` over TCP. The price is set against
+  Double gold's economy: with the King's 3000, the dagger (400) and Deluge
+  (400, the lesson does nothing without a spell), 200 is left, so the Elixir
+  and Apolune's Small Shield (800) wait for coins.
 - **Double gold** (`fax_gold.c`, #102, #104). The King gives 3000 instead of
   1500, counted in the original's 150 frames, and once a game; every coin a
   monster leaves pays twice its value. Five hooks, each returning 0, with no
@@ -3881,7 +3936,7 @@ unexpected ROM layout. Seamless (`fax_world.c`) is its own package.
     waits one action (`PENDING`). At `$AE02` Guru travel has no conversation
     of its own going (`meet()` at `SET_SPAWN_POINT`, or its reset when a
     script begins) and Save files acts there only after its saved line; this
-    site is the last of the four at the address, so each of them sees the
+    site is the last of the five at the address, so each of them sees the
     Guru's own actions and the step's END, never the SAY step it points at.
     B on the line ends the conversation, as on the Guru's greeting
     (`IScriptAction_ShowMessage`); the next action seen is then another
