@@ -132,6 +132,9 @@ cmake --build "$OUT/fixes" -j"$JOBS" >/dev/null
 cmake -S tests/finds -B "$OUT/finds" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/finds" -j"$JOBS" >/dev/null
 "$OUT/finds/finds_test"
+cmake -S tests/shaft -B "$OUT/shaft" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/shaft" -j"$JOBS" >/dev/null
+"$OUT/shaft/shaft_test"
 cmake -S tests/map -B "$OUT/map" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/map" -j"$JOBS" >/dev/null
 "$OUT/map/map_test" "$ROM"

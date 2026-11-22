@@ -63,6 +63,7 @@ if(NESRECOMP_BACKEND STREQUAL "cycle")
             src/fax_quest_table.c src/fax_quests.c
             src/fax_graphics.c
             src/fax_finds.c
+            src/fax_shaft.c
             src/fax_entrances.c
             src/fax_spell_cost.c
         MODS GAME_ID "faxanadu-usa"

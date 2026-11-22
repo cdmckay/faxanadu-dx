@@ -3599,6 +3599,19 @@ flights on MP):
   right edge to reach any screen of the same area the game's own way.
   `CurrentSprites_Entities` (`$02CC`, 8 slots) set to `$FF` clears a screen's
   enemies (see *Eolis, for tests*).
+- **What collides with a screen's blocks.** `ScreenBuffer_IsBlockImpassable`
+  (`$E87C`: `LDY ScreenBuffer,X`, then `Area_GetBlockProperty` and
+  `BLOCK_PROPERTY_IMPASSABLE_MAP`, A 1 or 0, Y the property) is the one
+  check of the screen's own blocks: the hero's sideways moves
+  (`Area_CanPlayerMoveAtY`), his ground and head checks
+  (`Area_CanMoveImmediatelyRight`, `Player_CheckIfPassable` down and up), a
+  climb's sideways check (`Area_CheckClimbAdjacentImpassable`), and the
+  sprites' and spells' moves (bank 14). Checks past the screen's edge
+  (`FirstRowBelowScreen`, `LastRowAboveScreen`, `LastColumnLeftScreen`,
+  `FirstColumnInRightScreen`) enter at `Area_IsBlockImpassable` (`$E87F`),
+  past its `LDY`. `Player_CheckIfOnLadder` and
+  `Sprites_CheckPlacementInvalidAtY` read properties without it. A hook at
+  `$E87C` makes any block solid by where it is (Eolis's edge does).
 - **Eolis screen 4's tower** (about x 160-208) is drawn in front of sprites:
   a hero or a Zozura behind it disappears. Stage a fight there left of x 150.
 - `Area_LoadScrollData` (`$D127`) decompresses the four neighbours first,
@@ -3857,7 +3870,7 @@ played in the game. Two engine rules it has to follow:
 
 | | Trigger | The original | With the remaster |
 |---|---|---|---|
-| Eolis's edge shafts | Wing Boots in Eolis, over the right wall of `$00` or `$08` | Stuck below the floor (reproduced) | Avoided while MP lasts: the Wing Boots are kept; at 0 MP stuck again (#125) |
+| Eolis's edge shafts | Wing Boots in Eolis, over the right wall of `$00` or `$08` | Stuck below the floor (reproduced) | Fixed: Eolis's edge (#134) |
 | A find with a full Items list | A Mattock, Wing Boots, Hour Glass or Red Potion touched with 8 listed | Said and lost (reproduced) | Fixed: Kept finds |
 | The fountain's ladder in `$27` | Leaving Trunk `$28` on its first pass | No trap | Fixed already: Ladder fixes |
 | The Tower of Fortress's floor | The Mattock on Trunk `$2D`'s block `$63` | No trap | The block is floor: Graphics fixes |
@@ -3865,25 +3878,35 @@ played in the game. Two engine rules it has to follow:
 | The Evil One's room | Zenis `$01`'s door into `$00` | By design | |
 
 - **Eolis's edge shafts.** Eolis `$00` and `$08` have no screen to their
-  right, and their right wall (column 14, rows 3-11) stops a block short of
-  the edge: column 15 is open from the sky through the floor (row 11) to the
-  bottom. Flying up over the wall and letting go drops the hero down it to Y
-  `$C0`. There A, Up and Right do nothing, and Left walks him along the open
-  row under the floor into the town's screen (`$01`), whose edge stops him,
-  still at `$C0`; no enemy is on either screen. A reset is the only way out.
-  To have the Wing Boots in Eolis, the hero must die before any temple Guru
-  has set his spawn point (it starts at 0, Eolis), after buying them in
-  Forepaw or finding them: obscure. With the remaster the pair is kept, and
-  with MP Down+B flies him up the shaft and out
-  (`tests/softlocks/eolis_shaft.py`). Guru travel reaches Eolis's Guru too,
-  so the Wing Boots come to Eolis easily. Since #125 MP comes only from
-  kills and Gurus, and neither is down there: a flight that ends in the
-  shaft at 0 MP (run out, not ended with Down+B) leaves him stuck as in the
-  original, which only a reset (back to the last save) ends. Open. Eolis is the one place found where a
-  flight ends in a trap: Branch's open row under `$10`'s floor, reached by
-  flying left out of `$11`'s floorless bottom, holds him at Y `$C0` too, but
-  walking right takes him back into `$11`, which drops him into `$16`
-  (checked in the game).
+  right, and their right wall (column 14, rows 3-11, block `$0E`) stops a
+  block short of the edge: column 15 is open from the sky (`$01`) down the
+  back of the town wall (`$5A`, `$54`) and through the floor (`$5F`, row 11)
+  to the bottom. Flying up over the wall and letting go drops the hero down
+  it to Y `$C0`. There A, Up and Right do nothing, and Left walks him along
+  the open row under the floor into the town's screen (`$01`), whose edge
+  stops him, still at `$C0`; no enemy is on either screen. A reset is the
+  only way out. To have the Wing Boots in Eolis, the hero must die before
+  any temple Guru has set his spawn point (it starts at 0, Eolis), after
+  buying them in Forepaw or finding them: obscure. With the remaster, Guru
+  travel reaches Eolis's Guru and the Wing Boots are kept, so they come to
+  Eolis easily, and since #125 MP comes only from kills and Gurus, neither of
+  them down there: a flight that ran out over the shaft left him stuck as in
+  the original (#134). Eolis's edge fixes it at the root (*Features and what
+  they use*): column 15 of both screens stands solid from the top down to
+  the floor, so flying he stops at the wall's edge (X 224) and lands on its
+  top, and a hero an old save state holds in the column or under the floor
+  is put back on it (`tests/softlocks/eolis_shaft.py`).
+  - **Under the floor in Seamless** the open row goes further: from `$08`
+    Left walks him at Y `$C0` through `$01` as far as `$06` (X 23), where the
+    original stops him at `$01`'s edge (checked in the game). The floor (row
+    11) is solid on every Eolis screen but for that column, so Y past 144
+    (standing on it) happens in Eolis only under it, and rows 9 and 10 above
+    it are clear on every screen the row reaches, but for column 14 of `$00`
+    and `$08`, the wall.
+  - Eolis is the one place found where a flight ends in a trap: Branch's
+    open row under `$10`'s floor, reached by flying left out of `$11`'s
+    floorless bottom, holds him at Y `$C0` too, but walking right takes him
+    back into `$11`, which drops him into `$16` (checked in the game).
 - **A find with a full Items list** (minirevver's Mattock). See *Items and
   the inventory*. Ripasheiku's Mattock (`$5B`) and Zorugeriru's Wing Boots
   (`$5C`) set their `Quests` bit before the line, and their sprites remove
@@ -4018,6 +4041,30 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   lists, the Poison only hurts, and the Glove and Ointment are timed: none is
   touched. Nothing in Seamless's isolated rooms. No ROM, no save-state record
   (a stale latch costs one sound at most). See *Softlocks*.
+- **Eolis's edge** (`fax_shaft.c`, #134). Column 15 of Eolis `$00` and
+  `$08`, open from the sky through the floor, stands solid down to the floor
+  (*Softlocks*, Eolis's edge shafts):
+  - A hook at `ScreenBuffer_IsBlockImpassable`'s entry (`$E87C`, `LDY
+    ScreenBuffer,X`) answers for column 15, rows 0-11 (indexes `$0F` to
+    `$BF` by 16), on those two screens of area 0: A = 1, Y = 1 (the solid
+    property, which the routine's `TAY` would leave), N and Z clear as its
+    `LDA` would set them (callers `STA Blocks_Result` and `BNE`), X and C
+    kept, and returns as its RTS. The blocks themselves stay, so nothing is
+    drawn differently: `$5A`, `$54` and `$5F` are the back of the town wall
+    that other Eolis screens show as background, and block properties are
+    the area's, so the column is made solid by its place, not its blocks.
+    It keeps no state and also runs in Seamless's isolated rooms.
+  - A hook at `Game_MainLoop`'s `JSR GameLoop_UpdatePlayer` (`$DB53`), once a
+    playing frame before the hero moves (and before Seamless's site at
+    `GameLoop_UpdatePlayer`'s entry, `$E0CA`, which then reads where he was
+    put), puts a hero in that column (X past 224) or under Eolis's floor (Y
+    145 to `$C0`) on the floor: Y 144, at his X, or at X 208 (column 13,
+    next to the wall) on `$00` and `$08`. Only an old save state has him
+    there. Not in isolated machines; it returns 0, so the loop goes on.
+  TCP `eolis_shaft_state`: whether on, checks answered solid and heroes put
+  back (outside isolation), and where the last one was. No ROM, no read
+  overrides, no save-state record. With the remaster off the shafts trap as
+  in the original.
 - **Magic button** (`fax_magic.c`). A bindable button (C, or Y on a
   controller) casts the selected spell. On a press, it ORs Up held and B new
   into the joypad masks at `Player_CastMagic`'s entry, when `Game_MainLoop`

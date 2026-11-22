@@ -202,6 +202,9 @@ The remaster also fixes these bugs in the original game:
   items listed said you got it, then lost it, and Ripasheiku's Mattock stayed
   gone until you died. Now the find stays where it lies, with a buzz, until
   you have room.
+- Flying with the Wing Boots over the wall at Eolis's right edge, in the town
+  or outside its gate, and letting go dropped you down a gap under the floor,
+  stuck until a reset. Now the gap is as solid as the wall beside it.
 - Holding Up at the top of a ladder bobbed you a pixel past its end and back
   for as long as you held it. Now you stop at the top, and A jumps from there.
 - Stepping onto the dried fountain's screen and straight back off dropped the
