@@ -1319,7 +1319,10 @@ callers store a new entity at `CurrentSprites_Entities,Y` and `JMP` there:
   death decides comes after the words (the gold and experience, the place,
   the respawn's save), so a save state taken as the Guru speaks (`MessageID`
   `$24`) carries the death on without the dissolve; the end-to-end tests
-  start most deaths there (`fax_e2e.dissolve()`).
+  start most deaths there (`fax_e2e.dissolve()`). Poking the counter near
+  its wrap is not the same: `Screen_NextTransitionState` starts the fade to
+  black when it reaches `$50` (`Screen_FadeOutStage` set to 0), so a death
+  skipped past it never runs that fade before the Guru's words.
 - **The NES manual names no enemy.** The USA instruction booklet (27 pages,
   archive.org's `NESManuals` scan) names places, items and titles: of what
   hurts, only the Poison ("The hero's power will decrease by a fixed
@@ -1468,7 +1471,15 @@ frame the other way.
 
 **Doors.** Up at Apolune's temple door in mid-jump does nothing; on the
 ground it goes in. Jumping out of the temple's right edge carries the jump
-into the town, where he lands on his first update.
+into the town, where he lands on his first update. Walking out with the
+direction still down as the next screen comes up leaves him walking there:
+`Player_Flags` keeps `$20` (moving) at the door's spot after the screen is
+set up, and a jump from that state carries him sideways. A save state for a
+frame-exact run is taken once he stands still (`$25` clear at the same X and
+Y some frames apart, `tests/movement/play.py`'s `settle()`): a state taken 10
+frames after the scroll had `$20` set in 24 of 24 made at once, and
+`tests/ladders/ladders.py`'s climb onto column 14's ladder failed from 16 of
+them.
 
 **The pose.** `Player_GetBodySpriteFrameOffset` (`$ECAC`, for the body) and
 `Maybe_Player_CalcAnimFrame` (`$B927`, bank 14, for the weapon, the shield and

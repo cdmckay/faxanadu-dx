@@ -68,10 +68,10 @@ class Game(fax_e2e.Game):
         still be down as the next screen comes up. So it holds when two reads
         STAND_FRAMES apart, each of one frame, find the screen set up and him
         on the ground and not moving (Player_Flags & $25 clear) at the same X
-        and Y. The fixed 10 frames after the scroll this replaces once saved
-        Trunk $0C's state with him still moving ($20) from the walk out of
-        Apolune's temple: ladders.py's climb, from that state, then carried
-        him past column 14's ladder, and every later run reused the state."""
+        and Y. The fixed 10 frames after the scroll this replaces saved Trunk
+        $0C's state with him still moving ($20) from the walk out of
+        Apolune's temple (24 of 24 made at once), and ladders.py's climb
+        failed from 16 of those, then in every run that reused the state."""
         def standing():
             reads = self.batch(*(("read_ram", dict(addr=a, len=n))
                                  for a, n in ((SCREEN_READY, 1), (INTERRUPTS_ON, 1), (SCROLL_DIRECTION, 1), (X, 7))))
