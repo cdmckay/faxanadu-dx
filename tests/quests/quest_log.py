@@ -1,7 +1,6 @@
 """Play the quest log end to end in a hidden window.
 
     python3 tests/quests/quest_log.py --build build-cycle --rom "Faxanadu (USA).nes" --out /tmp/quests
-    python3 tests/quests/quest_log.py ... --game-arg=--world-view=seamless
     python3 tests/quests/quest_log.py ... --part king
 
 The game runs uncapped and the script waits on the game's own state, never on
@@ -34,7 +33,7 @@ file      The King's Plea given (set in the record): dying writes it to the
           starts as the Guru speaks, from a saved game of it. Quit,
           continue file 1: the log shows it again. Continuing from the title
           is the check, so this part boots.
-original  With the remaster off (the default view only): no quest log, no
+original  With the remaster off (the stock view): no quest log, no
           marks, and L does nothing.
 """
 from pathlib import Path
@@ -160,8 +159,6 @@ def main():
     args = parse_args(__doc__, parts=PARTS)
     game = Game.from_args(args)
     out = game.out
-    seamless = any("seamless" in a for a in args.game_arg)
-    view = "Seamless" if seamless else "the original view"
 
     def shot_marks(name, script):
         """A screenshot and the marks over `script`'s person in that same picture:
@@ -318,10 +315,10 @@ def main():
             game.launch(at="eolis-town")
             s = state()
             assert s["enabled"] and s["given"] == [] and place() == (EOLIS, 1), (s, place())
-            if seamless:   # she is in view from screen 1 already, in Seamless's copy of screen 2
-                until("her mark next door", lambda: any(m["room"] == 2 for m in marks(WOMAN)), 300)
-                assert place() == (EOLIS, 1) and marks(WOMAN)[0]["mark"] == "!", (place(), marks(WOMAN))
-                print("ok: Seamless shows her \"!\" in the room next door")
+            # She is in view from screen 1 already, in Seamless's copy of screen 2.
+            until("her mark next door", lambda: any(m["room"] == 2 for m in marks(WOMAN)), 300)
+            assert place() == (EOLIS, 1) and marks(WOMAN)[0]["mark"] == "!", (place(), marks(WOMAN))
+            print("ok: Seamless shows her \"!\" in the room next door")
             walk("left", (EOLIS, 2))
             until("her mark", lambda: marks(WOMAN), 120)
             shot, [m] = shot_marks("woman-mark", WOMAN)
@@ -343,7 +340,7 @@ def main():
             assert said == ["New quest|The Ring of Elf"], said
             s = state()
             assert s["given"] == ["elf"] and s["active"] == ["elf"] and not marks(WOMAN), s
-            print(f"ok: the woman on Eolis screen 2 has a \"!\"; she gives The Ring of Elf, said in her box ({view})")
+            print(f"ok: the woman on Eolis screen 2 has a \"!\"; she gives The Ring of Elf, said in her box")
 
             s = open_log()
             assert ram(PAUSED) and rows(s)[:4] == ["The Ring of Elf", "See the Guru of", "Eolis before you",
@@ -376,7 +373,7 @@ def main():
             game.shot("log-completed")
             close_log("start")                                      # Start closes it too
             print(f"ok: a \"?\" over Eolis's Guru; his ring completes The Ring of Elf, which the log lists "
-                  f"under Completed ({view})")
+                  f"under Completed")
             game.close()
 
         if args.wants("king"):
@@ -404,7 +401,7 @@ def main():
             game.shot("log-kings-plea")
             close_log()
             print(f"ok: a \"!\" over the King until he gives The King's Plea, none after; the log shows it with "
-                  f"its springs ({view})")
+                  f"its springs")
             game.close()
 
         if args.wants("meteorite"):
@@ -428,7 +425,7 @@ def main():
             assert said == ["Quest complete|The Meteorite"], said
             assert "meteorite" in state()["done"] and not marks(MIST_HOUSE_MAN)
             print(f"ok: a \"?\" over the man on Mist $1F, waiting on the meteorite the hero holds; his Ace key "
-                  f"completes The Meteorite ({view})")
+                  f"completes The Meteorite")
             game.close()
 
         if args.wants("wall"):
@@ -456,7 +453,7 @@ def main():
             until("the banner to go", lambda: state()["banner"] is None, 600)
             assert state()["banners"] == 1, state()
             print(f"ok: walking into Forepaw completes The Wall, said below the HUD once Forepaw's name has "
-                  f"gone; the Mattock, never given, is done but not said ({view})")
+                  f"gone; the Mattock, never given, is done but not said")
             game.close()
 
         if args.wants("file"):
@@ -484,7 +481,7 @@ def main():
             print("ok: continuing file 1 puts The King's Plea back in the log")
             game.close()
 
-        if args.wants("original") and not seamless:
+        if args.wants("original"):
             game.set_features({PACKAGE: False})
             shop = game.state("eolis-meat-shop")
             game.launch(at="eolis-meat-shop")

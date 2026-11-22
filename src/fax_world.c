@@ -2,7 +2,8 @@
  * The ROM owns terrain decoding, collision, actors, combat and progression.
  * Adjacent rooms execute original actor routines on isolated machines. Only
  * room-local state travels at a seam; inventory, player, stack and audio do not.
- * Door/region/script transitions retain their original ownership. */
+ * Door/region/script transitions retain their original ownership.
+ * Boss screens are arenas: while a boss lives, its room joins no neighbour. */
 #include "fax_world.h"
 #include "fax_entrances.h"
 #include "cyc_mod.h"
@@ -53,6 +54,14 @@ static size_t capacity;
 static uint32_t frozen_hud[RW*HUD];
 static bool hud_valid;
 static Room *transfer;
+/* Each screen's special event (CurrentScreen_SpecialEventID, $042E, as
+ * Screen_LoadAllScreenInfo reads it from its sprite list in bank 11) for the
+ * area in events_area: $FF none, 0 the path to Mascon, 1 a boss
+ * (SCREEN_EVENT_BOSS), 2 the final boss. fighting: the active room was an
+ * arena when the map around it was laid out. */
+static uint8_t events[MAX_ROOMS];
+static int events_area=-1;
+static bool fighting;
 static void hooks(bool on);
 static uint8_t q(unsigned a);
 static uint8_t collision_read(uint16_t pc,uint16_t addr,uint8_t value){
@@ -145,16 +154,44 @@ static bool decode(unsigned id){
     if(ok){memcpy(rooms[id].ram,cyc_cpu_ram(),2048);fixup_room(id);rooms[id].valid=1;}
     cyc_mod_isolate_end();if(!ok)failures++;return ok;
 }
+/* Every screen's event for the current area, read once per area with the
+ * game's own Screen_LoadAllScreenInfo ($C154, bank 11), which sets
+ * CurrentScreen_SpecialEventID from the screen's sprite list. It leaves the
+ * variable alone for an area with no lists, so it starts at $FF. */
+static void load_events(void){
+    if(events_area==area)return;
+    memset(events,255,sizeof events);events_area=area;
+    if(!cyc_mod_isolate_begin()){failures++;return;}
+    for(unsigned id=0;id<counts[area];id++){
+        p(0x63,id);p(0x42e,255);
+        if(bank(11)&&call(0xc154,0,0))events[id]=q(0x42e);else failures++;
+    }
+    cyc_mod_isolate_end();
+}
+/* A boss's screen (event 1, or the final boss's, 2) is an arena while its
+ * boss lives: it joins no neighbour, so the hero comes in through the
+ * original's own screen change and fights on one screen, as in the
+ * original. ScreenEvents_HandleBoss ($EF9E) sets the event to $FF once
+ * Sprites_HasBoss finds no boss in the room's slots: from then on the room
+ * joins the world again. A room not entered since its area loaded has its
+ * boss, as the original reloads it. */
+static bool arena(unsigned id){
+    load_events();
+    if(events[id]!=1&&events[id]!=2)return false;
+    return !(rooms[id].live&&rooms[id].ram[0x42e]==255);
+}
 static void topology(unsigned current){
     unsigned n=counts[area],queue[MAX_ROOMS],head=0,tail=0;
     int dx[4]={-1,1,0,0},dy[4]={0,0,-1,1};unsigned reverse[4]={1,0,3,2};
     for(unsigned i=0;i<n;i++){rooms[i].owned=0;memset(rooms[i].edges,255,4);}
     rooms[current].owned=1;rooms[current].x=rooms[current].y=0;queue[tail++]=current;
+    fighting=arena(current);
     unsigned scroll=word(0x8a);
     while(head<tail){unsigned id=queue[head++];Room *r=&rooms[id];
+        if(arena(id))continue;
         for(unsigned d=0;d<4;d++){
             unsigned next=data(3,scroll+id*4+d);
-            if(next>=n||data(3,scroll+next*4+reverse[d])!=id)continue;
+            if(next>=n||data(3,scroll+next*4+reverse[d])!=id||arena(next))continue;
             int x=r->x+dx[d],y=r->y+dy[d];bool occupied=false;
             for(unsigned j=0;j<n;j++)if(rooms[j].owned&&rooms[j].x==x&&rooms[j].y==y&&j!=next)occupied=true;
             if(occupied)continue;
@@ -166,14 +203,18 @@ static void topology(unsigned current){
 }
 static void refresh(bool completed){
     int a=q(0x24),id=q(0x63);if(a<0||a>7||id>=(int)counts[a])return;
-    if(area!=a){memset(rooms,0,sizeof rooms);memset(raster_valid,0,sizeof raster_valid);area=a;active=-1;}
-    if(!rooms[id].owned)topology(id);
+    if(area!=a){memset(rooms,0,sizeof rooms);memset(raster_valid,0,sizeof raster_valid);area=a;active=-1;fighting=false;}
     bool changed=active!=id;
     if(changed){if(active>=0)portals++;active=id;}
     /* Player entry runs after the ROM clears OAM. Keep the last completed
      * scene until this tick actually finishes drawing, including when an
      * actor interrupts the tick to start a conversation. */
     if(completed||changed||!rooms[id].live)capture(id,true);
+    /* Lay the map out from here when this room is not on it, and again when
+     * its boss has died (join it) or when the original's own load has
+     * brought a boss back into a room whose old copy had none (seal it).
+     * The live room is captured first, so the arena test reads it. */
+    if(!rooms[id].owned||arena(id)!=fighting)topology(id);
     for(unsigned i=0;i<counts[area];i++)if(rooms[i].owned&&!rooms[i].valid)decode(i);
 }
 static int script_hook(uint16_t pc){
@@ -465,7 +506,7 @@ const uint32_t *fax_world_present(int *w,int *h,const uint32_t *native){
 finished:
     picture_w=width;picture_h=height;render_ms=(SDL_GetPerformanceCounter()-start)*1000.0/SDL_GetPerformanceFrequency();return canvas;
 }
-void fax_world_reset(void){make_mask();memset(rooms,0,sizeof rooms);memset(raster_valid,0,sizeof raster_valid);area=active=-1;pending=-1;rom_ok=false;hud_valid=death_mode=script_mode=false;ticks=last_tick=handoffs=failures=portals=0;player_tick=collision_active=false;cyc_mod_set_ram_read_hook(NULL);}
+void fax_world_reset(void){make_mask();memset(rooms,0,sizeof rooms);memset(raster_valid,0,sizeof raster_valid);area=active=-1;pending=-1;events_area=-1;fighting=false;rom_ok=false;hud_valid=death_mode=script_mode=false;ticks=last_tick=handoffs=failures=portals=0;player_tick=collision_active=false;cyc_mod_set_ram_read_hook(NULL);}
 bool fax_world_origin(int *x,int *y){if(!origin_valid)return false;*x=origin_x;*y=origin_y;return true;}
 bool fax_world_room_origin(int a,int id,int *x,int *y){if(!origin_valid||a!=area||id<0||id>=(int)counts[area]||!rooms[id].owned)return false;*x=rooms[id].x*RW-camera_x;*y=HUD+rooms[id].y*RH-camera_y;return true;}
 const uint8_t *fax_world_room_ram(int a,int id){if(!enabled||!origin_valid||a!=area||id<0||id>=(int)counts[area]||id==active||!rooms[id].owned||!rooms[id].live)return NULL;return rooms[id].ram;}
@@ -485,9 +526,9 @@ void fax_world_event(const void *ev){
 static void status(int id,const char *line){
     (void)line;char out[850];unsigned live=0,owned=0,actors_count=0;uint64_t sum=0;
     for(unsigned i=0;i<MAX_ROOMS;i++){Room *r=&rooms[i];owned+=r->owned;live+=r->live;sum+=r->ticks;if(r->live)for(unsigned j=0;j<8;j++)actors_count+=r->ram[0x2cc+j]<128;}
-    snprintf(out,sizeof out,"\"enabled\":%s,\"area\":%d,\"room\":%d,\"owned\":%u,\"live\":%u,\"actors\":%u,\"neighbor_ticks\":%llu,\"handoffs\":%u,\"portals\":%u,\"failures\":%u,\"camera\":[%d,%d],\"size\":[%d,%d],\"simulation_ms\":%.3f,\"render_ms\":%.3f,\"max_seam_ms\":%.3f,\"playing\":%s",enabled?"true":"false",area,active,owned,live,actors_count,(unsigned long long)sum,handoffs,portals,failures,camera_x,camera_y,picture_w,picture_h,sim_ms,render_ms,max_seam_ms,playing()?"true":"false");cyc_tcp_ok(id,out);
+    snprintf(out,sizeof out,"\"enabled\":%s,\"area\":%d,\"room\":%d,\"owned\":%u,\"live\":%u,\"actors\":%u,\"neighbor_ticks\":%llu,\"handoffs\":%u,\"portals\":%u,\"failures\":%u,\"camera\":[%d,%d],\"size\":[%d,%d],\"simulation_ms\":%.3f,\"render_ms\":%.3f,\"max_seam_ms\":%.3f,\"playing\":%s,\"arena\":%s",enabled?"true":"false",area,active,owned,live,actors_count,(unsigned long long)sum,handoffs,portals,failures,camera_x,camera_y,picture_w,picture_h,sim_ms,render_ms,max_seam_ms,playing()?"true":"false",fighting?"true":"false");cyc_tcp_ok(id,out);
 }
-static void room_status(int id,const char *line){long n=active;cyc_tcp_long(line,"room",&n);if(n<0||n>=MAX_ROOMS){cyc_tcp_err(id,"invalid room");return;}Room *r=&rooms[n];char out[512];snprintf(out,sizeof out,"\"room\":%ld,\"xy\":[%d,%d],\"edges\":[%u,%u,%u,%u],\"live\":%u,\"ticks\":%llu,\"entities\":[%u,%u,%u,%u,%u,%u,%u,%u],\"x\":[%u,%u,%u,%u,%u,%u,%u,%u]",n,r->x,r->y,r->edges[0],r->edges[1],r->edges[2],r->edges[3],r->live,(unsigned long long)r->ticks,r->ram[0x2cc],r->ram[0x2cd],r->ram[0x2ce],r->ram[0x2cf],r->ram[0x2d0],r->ram[0x2d1],r->ram[0x2d2],r->ram[0x2d3],r->ram[0xba],r->ram[0xbb],r->ram[0xbc],r->ram[0xbd],r->ram[0xbe],r->ram[0xbf],r->ram[0xc0],r->ram[0xc1]);cyc_tcp_ok(id,out);}
+static void room_status(int id,const char *line){long n=active;cyc_tcp_long(line,"room",&n);if(n<0||n>=MAX_ROOMS){cyc_tcp_err(id,"invalid room");return;}Room *r=&rooms[n];char out[600];snprintf(out,sizeof out,"\"room\":%ld,\"owned\":%u,\"event\":%u,\"xy\":[%d,%d],\"edges\":[%u,%u,%u,%u],\"live\":%u,\"ticks\":%llu,\"entities\":[%u,%u,%u,%u,%u,%u,%u,%u],\"x\":[%u,%u,%u,%u,%u,%u,%u,%u]",n,r->owned,events_area==area&&n<MAX_ROOMS?events[n]:255u,r->x,r->y,r->edges[0],r->edges[1],r->edges[2],r->edges[3],r->live,(unsigned long long)r->ticks,r->ram[0x2cc],r->ram[0x2cd],r->ram[0x2ce],r->ram[0x2cf],r->ram[0x2d0],r->ram[0x2d1],r->ram[0x2d2],r->ram[0x2d3],r->ram[0xba],r->ram[0xbb],r->ram[0xbc],r->ram[0xbd],r->ram[0xbe],r->ram[0xbf],r->ram[0xc0],r->ram[0xc1]);cyc_tcp_ok(id,out);}
 static void probe(int id,const char *line){
     (void)line;uint8_t *before=NULL,*after=NULL;size_t nb=0,na=0,n=0;char err[256];
     bool saved=cyc_state_save(&before,&nb,err,sizeof err);
@@ -507,18 +548,21 @@ static int state_get(uint8_t *buf,int cap){
     if(!enabled)return 0;int len=STATE_HEADER+(int)sizeof rooms;if(len>cap)return -1;
     memset(buf,0,STATE_HEADER);memcpy(buf,"FAXWORLD",8);buf[8]=4;buf[9]=(uint8_t)(area+1);buf[10]=(uint8_t)(active+1);buf[18]=death_mode;buf[19]=script_mode;
     buf[11]=(uint8_t)(pending+1);buf[12]=(uint8_t)direction;buf[13]=player_tick;buf[14]=collision_active;buf[15]=(uint8_t)pending_y;
-    buf[16]=(uint8_t)pre_x;buf[17]=(uint8_t)pre_y;memcpy(buf+20,&ticks,4);memcpy(buf+24,&last_tick,4);
+    buf[16]=(uint8_t)pre_x;buf[17]=(uint8_t)pre_y;memcpy(buf+20,&ticks,4);memcpy(buf+24,&last_tick,4);buf[28]=fighting;
     memcpy(buf+STATE_HEADER,rooms,sizeof rooms);return len;
 }
+/* A record is checked whether Seamless is on or not: with the remaster off
+ * (the original game) a state saved with it on still loads, and Seamless's
+ * record is set aside (state_set), as the other features' are. */
 static int state_validate(const uint8_t *buf,int len){
-    if(!len)return 1;if(!enabled||!buf||len!=STATE_HEADER+sizeof rooms||memcmp(buf,"FAXWORLD",8)||buf[8]!=4||buf[9]>8||buf[10]>MAX_ROOMS||buf[11]>MAX_ROOMS||buf[12]>3||buf[13]>1||buf[14]>1||buf[18]>1||buf[19]>1)return 0;
+    if(!len)return 1;if(!buf||len!=STATE_HEADER+sizeof rooms||memcmp(buf,"FAXWORLD",8)||buf[8]!=4||buf[9]>8||buf[10]>MAX_ROOMS||buf[11]>MAX_ROOMS||buf[12]>3||buf[13]>1||buf[14]>1||buf[18]>1||buf[19]>1||buf[28]>1)return 0;
     if(!buf[9]&&(buf[10]||buf[11]))return 0;
     if(buf[9]&&(buf[10]>counts[buf[9]-1]||buf[11]>counts[buf[9]-1]))return 0;
     for(unsigned i=0;i<MAX_ROOMS;i++){Room r;memcpy(&r,buf+STATE_HEADER+i*sizeof r,sizeof r);if(r.live>1||r.valid>1||r.owned>1||r.x< -83||r.x>83||r.y< -83||r.y>83)return 0;for(unsigned j=0;j<4;j++)if(r.edges[j]!=255&&r.edges[j]>=MAX_ROOMS)return 0;}return 1;
 }
 static int state_set(const uint8_t *buf,int len){
-    if(!state_validate(buf,len))return 0;if(!len){fax_world_reset();return 1;}
-    area=buf[9]-1;active=buf[10]-1;pending=buf[11]-1;direction=buf[12];player_tick=buf[13]!=0;collision_active=buf[14]!=0;death_mode=buf[18]!=0;script_mode=buf[19]!=0;pending_y=buf[15];pre_x=buf[16];pre_y=buf[17];
+    if(!state_validate(buf,len))return 0;if(!len||!enabled){fax_world_reset();return 1;}
+    area=buf[9]-1;active=buf[10]-1;pending=buf[11]-1;direction=buf[12];player_tick=buf[13]!=0;collision_active=buf[14]!=0;death_mode=buf[18]!=0;script_mode=buf[19]!=0;pending_y=buf[15];pre_x=buf[16];pre_y=buf[17];fighting=buf[28]!=0;
     memcpy(&ticks,buf+20,4);memcpy(&last_tick,buf+24,4);memcpy(rooms,buf+STATE_HEADER,sizeof rooms);fax_world_loaded();return 1;
 }
 static int hud_get(uint8_t *buf,int cap){
@@ -526,9 +570,9 @@ static int hud_get(uint8_t *buf,int cap){
     int n=4+(int)sizeof frozen_hud;if(cap<n)return -1;
     memcpy(buf,"HUD1",4);memcpy(buf+4,frozen_hud,sizeof frozen_hud);return n;
 }
-static int hud_validate(const uint8_t *buf,int len){return !len||(enabled&&buf&&len==4+(int)sizeof frozen_hud&&!memcmp(buf,"HUD1",4));}
+static int hud_validate(const uint8_t *buf,int len){return !len||(buf&&len==4+(int)sizeof frozen_hud&&!memcmp(buf,"HUD1",4));}
 static int hud_set(const uint8_t *buf,int len){
-    if(!hud_validate(buf,len))return 0;hud_valid=len!=0;
+    if(!hud_validate(buf,len))return 0;hud_valid=len!=0&&enabled;
     if(hud_valid)memcpy(frozen_hud,buf+4,sizeof frozen_hud);return 1;
 }
 static void hooks(bool on){const char *ids[]={"player","seam","draw","queue","wait","pause","inventory","death","script"};char id[64];for(unsigned i=0;i<sizeof ids/sizeof ids[0];i++){snprintf(id,sizeof id,"faxanadu.world.%s",ids[i]);nes_mod_set_function_hook_enabled(id,on);}}

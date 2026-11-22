@@ -4,7 +4,7 @@
 
 The game runs uncapped and the script waits on the game's own state, never on
 the clock, on a reserved TCP port (tests/e2e/fax_e2e.py), so any number can
-run in parallel, in either view (--game-arg=--world-view=seamless).
+run in parallel. The remaster plays in Seamless, the original in the stock view.
 
 Each look is a screenshot and a save state taken at the same frame boundary:
 the state gives the sprites the picture shows (the PPU's OAM, or with Seamless
@@ -30,8 +30,9 @@ starts from a fixture (an external prerequisite, not coverage):
 4. fortress: the Tower of Fortress's $2D (palette 7), out of a building's
    door. The floor block under the left pillar (row 11, column 3) is block
    $08, drawn as the floor's $08 blocks beside it; the original has the
-   Mattock wall's brown block $63. With Seamless, also from $2E next door,
-   where $2D is a room Seamless decodes itself.
+   Mattock wall's brown block $63. With the remaster, also from $2E next
+   door, where $2D is a room Seamless decodes itself (the original, in the
+   stock view, does not show it from there).
 5. title: the title's F: the tile with its tip (column 6, row 5) is in the
    logo's palette like the F's other tiles; the original draws it in the
    stars' grey.
@@ -484,9 +485,8 @@ def title(game, fixed):
 def main():
     args = parse_args(__doc__, parts=PARTS)
     game = Game.from_args(args)
-    seamless = any("seamless" in a for a in getattr(args, "game_arg", ()))
     fixtures = {"studded": ["trunk-studded"], "fire": ["trunk-ladder"], "myconid": ["door-myconid"],
-                "fortress": ["door-fortress"] + (["door-fortress-east"] if seamless else []), "title": []}
+                "fortress": ["door-fortress", "door-fortress-east"], "title": []}
     counters = {"studded": "studded_climb", "fire": "fire", "myconid": "myconid", "fortress": "fortress",
                 "title": "title"}
     try:
@@ -503,7 +503,7 @@ def main():
                 state = tcp("graphics_fix_state")
                 assert state["enabled"] == fixed, state
                 assert (state[counters[part]] > 0) == fixed, state
-                if part == "fortress" and seamless:
+                if part == "fortress" and fixed:                    # $2D beside $2E: only Seamless shows it
                     game.close()
                     fortress(game, fixed, east=True)
                 game.close()

@@ -4,7 +4,7 @@
 
 The game runs uncapped and the script waits on the game's own state, never on
 the clock, on a reserved TCP port (tests/e2e/fax_e2e.py), so any number can
-run in parallel, in either view (--game-arg=--world-view=seamless).
+run in parallel.
 
 Copies the build to OUT and starts from the fixture `eolis-town`
 (tests/e2e/fax_e2e.py): the hero in Eolis's town, where the Select menu opens

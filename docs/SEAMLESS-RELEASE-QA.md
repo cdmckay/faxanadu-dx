@@ -1,5 +1,10 @@
 # Seamless v2.5.0 release qualification
 
+A record of Seamless's release as a separate, experimental package. Since
+#110 it is part of the remaster and always on with it; see
+[SEAMLESS-WORLD.md](SEAMLESS-WORLD.md) for what is covered now and what is
+left for a playtest.
+
 The owner accepted `2cc7cb4` as a **preliminary** playtest pass on 2026-10-27
 and explicitly authorized merging and releasing the experimental mod. This
 does not establish full progression or cross-room combat coverage.

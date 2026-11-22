@@ -73,12 +73,14 @@ if(NESRECOMP_BACKEND STREQUAL "cycle")
         "${NESRECOMP_ROOT}/runner/include" "${NESRECOMP_ROOT}/runner/src")
     target_compile_definitions(FaxanaduRecomp PRIVATE CYC_CONTENT_TOOLS)
     # The remaster's features were packages of their own before they became
-    # the one Faxanadu Remastered package (#56). A build folder from then
-    # still holds them, and they would claim its plugins a second time.
+    # the one Faxanadu Remastered package (#56), and so was Seamless until it
+    # joined it (#110). A build folder from then still holds them, and they
+    # would claim its plugins a second time.
     set(FAX_OLD_PACKAGES)
     foreach(old auto-keys block death-keeps-gold falling-pose forgiving-jumps guru-travel magic-button
             pendant-fix quick-shops recharging-items reusable-tools save-files slain-by speaker-names
-            sugata-flash taller-dagger text-speed title-remastered zone-names zone-respawn indoor-equip)
+            sugata-flash taller-dagger text-speed title-remastered zone-names zone-respawn indoor-equip
+            seamless-world)
         list(APPEND FAX_OLD_PACKAGES "$<TARGET_FILE_DIR:FaxanaduRecomp>/mods/packages/faxanadu.enhancement.${old}")
     endforeach()
     add_custom_command(TARGET FaxanaduRecomp POST_BUILD

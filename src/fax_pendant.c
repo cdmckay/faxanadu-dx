@@ -58,6 +58,7 @@ static int check_glove_hook(uint16_t addr) {
     uint8_t special = cyc_mod_peek(SPECIAL_ITEMS);
     uint8_t damage = pendant_damage(strength, special);
     cyc_mod_poke(TEMP_00, damage);
+    if (cyc_mod_isolated()) return 0;   /* Seamless's neighbouring rooms: the same rule, not counted */
     ++hits;
     last_weapon = regs.y;
     last_strength = strength;

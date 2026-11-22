@@ -3,7 +3,7 @@
 # Every feature of the remaster is a trusted plugin of the one Faxanadu
 # Remastered switch (package faxanadu.remastered, feature `remastered`), so
 # they are always on together, and may rely on each other. Seamless, the view
-# inherited from upstream, is its own package and can be on with them.
+# inherited from upstream, is one of them (#110).
 # tools/check_allocations.py treats every two features below as enabled
 # together, unless their manifest features share an exclusive group, and fails
 # when:
@@ -43,7 +43,7 @@ rom = [
 
 [[feature]]
 id = "seamless-world"
-package = "faxanadu.enhancement.seamless-world"
+package = "faxanadu.remastered"
 plugin = "faxanadu.seamless-world"
 source = "src/fax_world.c"
 hooks = "faxanadu.world."

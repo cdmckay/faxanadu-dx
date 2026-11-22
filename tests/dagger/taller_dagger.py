@@ -5,11 +5,10 @@
 The game runs uncapped and the script waits on the game's own state, never on
 the clock, and takes a free TCP port, so any number can run in parallel.
 
-Copies the build to OUT and starts a new game over TCP. To skip the walk-in
-(an external prerequisite, not coverage), a save-state RAM fixture drops the
-intro's trigger and stands the hero at Eolis's gate. He goes in, walks left
-out of town to the first enemies, two Zozura crawling right along the ground
-on Eolis screen 4, and the game is saved there, the hero facing them. Each
+Copies the build to OUT and starts from the fixture eolis-zozuras (an
+external prerequisite, not coverage, tests/e2e/fax_e2e.py): the first
+enemies, two Zozura crawling right along the ground on Eolis screen 4, fresh
+as the screen loads, the hero at its right facing them. Each
 case loads that save with a weapon in hand, full HP and a Zozura that no hit
 here kills, and swings once as it crawls in, when it is a set distance away
 (his x minus its x). Every case's load also checks that the dagger's reach is

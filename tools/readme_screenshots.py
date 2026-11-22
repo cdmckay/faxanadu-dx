@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Make the README's screenshots: docs/screenshots/<scene>.png, for the
-features the README shows in pictures, the quest log, the map and Seamless
-(CLAUDE.md says which features get one).
+features the README shows in pictures, Seamless, the quest log and the map
+(CLAUDE.md says which features get one). The remaster plays in Seamless, so
+its pictures are its 424x240 view; the original's are the stock 256x240.
 
     python3 tools/readme_screenshots.py                         # every scene
     python3 tools/readme_screenshots.py --only map,quest-log    # just these
@@ -306,12 +307,19 @@ class Scene:
 
     def shot(self, caption=None, box=(0, 0, 256, 240), name=None):
         """Screenshot the game's picture (what the window shows, with the
-        remaster's drawing on it), cropped to `box` (x0, y0, x1, y1)."""
+        remaster's drawing on it), cropped to `box` (x0, y0, x1, y1), in the
+        native picture's place (picture())."""
         return self.picture(self.game.shot(name or (caption or self.name).lower().replace(" ", "-")), caption, box)
 
-    def picture(self, path, caption=None, box=None):
-        """A picture from a file: a screenshot, or a headless run's."""
+    def picture(self, path, caption=None, box=None, native=True):
+        """A picture from a file: a screenshot, or a headless run's, cropped
+        to `box`. With `native`, the box is in the NES's 256x240 picture,
+        where the remaster's Seamless shows it in its wider view: centred, as
+        it shows buildings, text boxes and the remaster's own screens."""
         width, rows = read_png(path)
+        if box and native:
+            ox = (width - 256) // 2
+            box = (box[0] + ox, box[1], box[2] + ox, box[3])
         self.panels.append((crop(rows, box or (0, 0, width, len(rows))), caption))
         self.sources.append(Path(path).name)
         return path
@@ -335,6 +343,28 @@ def scene(name, game=Game):
 
 
 # ---- the scenes, in the README's order ----
+
+@scene("seamless")
+def seamless(s):
+    """Seamless: in Eolis's town, near the right edge of its first screen,
+    the original (the remaster off, its stock 256x240 view) and the remaster,
+    which plays in Seamless and joins the next screen on, with its actors.
+    Those keep moving (Seamless runs them in their own room), so this picture
+    differs a little from run to run: where they are, or whether one is in
+    view. Seamless's view is 424x240, whatever the window."""
+    g = s.game
+    for caption, on in (("Original", False), ("Remastered", True)):
+        g.set_features({} if on else {REMASTER: False})
+        g.launch(at="eolis-town")
+        assert g.tcp("fax_world")["enabled"] == on
+        g.walk("right", lambda: g.ram(POS_X) >= 196, "x 196")
+        g.clear_actors()                                        # this screen's walker, so the original's picture is the same
+        g.wait(30)
+        path = g.shot(caption.lower())
+        width, _ = read_png(path)
+        s.picture(path, caption, (0, 8, width, 232), native=False)
+        g.close()
+
 
 # Conversations: the name tab, the portrait and the text box.
 DIALOGUE = (8, 96, 248, 200)
@@ -533,27 +563,7 @@ def map_(s):
         g.wait(8)
     else:
         raise AssertionError("the hero's box never lit")
-    s.picture(path)
-
-
-@scene("seamless")
-def seamless(s):
-    """Seamless: in Eolis's town, near the right edge of its first screen,
-    the stock view and the Seamless one, which joins the next screen on, with
-    its actors. Those keep moving (Seamless runs them in their own room), so
-    this picture differs a little from run to run: where they are, or
-    whether one is in view. Seamless's view is 424x240, whatever the window."""
-    g = s.game
-    for caption, options in (("Stock", []), ("Seamless", ["--world-view=seamless"])):
-        g.game_args = options                                   # Seamless has fixtures of its own
-        g.launch(at="eolis-town")
-        g.walk("right", lambda: g.ram(POS_X) >= 196, "x 196")
-        g.clear_actors()                                        # this screen's walker, so the stock picture is the same
-        g.wait(30)
-        path = g.shot(caption.lower())
-        width, _ = read_png(path)
-        s.picture(path, caption, (0, 8, width, 232))
-        g.close()
+    s.picture(path, box=(0, 0, 256, 240))                        # the map's own screen, where Seamless centres it
 
 
 # ---- running them ----
