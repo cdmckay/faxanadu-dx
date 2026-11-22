@@ -14,24 +14,24 @@ building), the gold, and what the hero carries.
 
 1. Eolis's tool shop (Hand Dagger 400, Red Potion 160, Elixir 320, Deluge
    400), with 700 Golds, the Hand Dagger in hand and, unequipped, the Long
-   Sword and the Dragon Slayer, and the J and A keys. Up opens the buy list at
-   once, and every later press is a choice: Down to the Red Potion and A three
-   times buys three (the list stays up, the cursor on the potion), Down twice
-   and A on the Deluge says "This is not enough Golds." and A goes back to the
-   list. Select opens the sell list: everything carried, the Items first, at
-   half a shop's price (a Red Potion 80, this shop's; the J key 50, a key
-   shop's; the Long Sword 800, Forepaw's), the A key at 100 (no shop sells it)
-   and the Dragon Slayer with no price. A sells the J key, which this shop does
-   not sell; on the Dragon Slayer the hint says "Not for sale" and A does
-   nothing; a Red Potion sells. B leaves at once, with no closing line. Gold
-   and inventory are checked after each step. Next door, the Key Seller's
-   list opens the same way, and he buys a Red Potion for 80 (half the lowest
-   tool shop's price).
-2. A full inventory (8 items and 3 more weapons) is two pages: Down from the
-   bottom of the first turns to the second, a sale there keeps the page, and
-   Select goes back to buying; selling the last item empties the list ("You
-   have nothing to buy.", the game's own line) and the list goes back to
-   buying.
+   Sword and the Dragon Slayer, and the J and A keys and the Wing Boots. Up
+   opens the buy list at once, and every later press is a choice: Down to the
+   Red Potion and A three times buys three (the list stays up, the cursor on
+   the potion), Down twice and A on the Deluge says "This is not enough
+   Golds." and A goes back to the list. Select opens the sell list:
+   everything carried, the Items first, at half a shop's price (a Red Potion
+   80, this shop's; the Long Sword 800, Forepaw's), and with no price the
+   Wing Boots and the keys, his for good, and the Dragon Slayer. On the Wing
+   Boots, the J key and the Dragon Slayer the hint says "Not for sale" and A
+   does nothing; Down from the bottom wraps to the top, and a Red Potion
+   sells. B leaves at once, with no closing line. Gold and inventory are
+   checked after each step. Next door, the Key Seller's list opens the same
+   way, and he buys a Red Potion for 80 (half the lowest tool shop's price).
+2. A full inventory (8 items and 3 more weapons) is two pages, the keys and
+   the Mattock on the first with no price: Down from the bottom of the first
+   turns to the second, a sale there keeps the page, and Select goes back to
+   buying; selling the last item (a Red Potion) empties the list ("You have
+   nothing to buy.", the game's own line) and the list goes back to buying.
 3. Owned, at Forepaw's tool shop (Long Sword 1600, Studded Mail 2500, Small
    Shield 1100, Red Potion 400, Wing Boots 2800), with 9000 Golds and a Red
    Potion: the Wing Boots are priced, and buying them marks them OWNED at once.
@@ -41,8 +41,12 @@ building), the gold, and what the hero carries.
    pair found in the world (Trunk $2D, where one lies on one visit in four:
    the visit counter set to show it, its hornets cleared) is owned the same,
    carried into the shop. And at Eolis's key shop, a J key held: OWNED, and A
-   does nothing.
-4. With the remaster off, the original: the same Up shows the shop's
+   does nothing; in the sell list it is not for sale, and A keeps it.
+4. The A key farm is gone: the man in the house on Mist $1F gives the A key
+   to a hero with the Black Onyx and none (each time he is asked), and from
+   his house straight to Forepaw's tool shop, with all he has, the key is not
+   for sale and A keeps it, while a Red Potion sells for 200.
+5. With the remaster off, the original: the same Up shows the shop's
    greeting and then the Buy/Sell menu's own line. (With it on, a shop never
    runs that menu, so Save files' line for it, served at a Guru's, never
    reaches a shop.)
@@ -82,6 +86,12 @@ HORNET = 0x07
 FOREPAW_LIST = [LONG_SWORD, STUDDED_MAIL, SMALL_SHIELD, ITEM | RED_POTION, ITEM | WING_BOOTS]
 FOREPAW_PRICES = [1600, 2500, 1100, 400, 2800]
 POTION_ROW, BOOTS_ROW = 3, 4
+# The tool shop's sell list: three Red Potions, then the kit's Items from the last, then its weapons.
+BOOTS_SELL_ROW, KEY_A_ROW, KEY_J_ROW, LONG_SWORD_ROW, SLAYER_ROW = 3, 4, 5, 6, 7
+SPECIAL_ITEMS, BLACK_ONYX = 0x42C, 0x01                             # SpecialItems, its Black Onyx bit
+MIST, MIST_SCREEN, MIST_HOUSE, MIST_HOUSE_DOOR = 2, 0x1F, 0x22, 0x94  # the A key's giver: Buildings $22
+PALETTE_MIST, REGION_MIST = 0x0A, 2
+ZONE_NAMES = "faxanadu.zone-names"                                  # its record: the area and screen, at 5 and 6
 LIST_FRAME = (80, 64)                                               # the list's top-left frame tile, tile 10,8
 HINT = (96, 208)                                                    # its hint line: tile 12,26
 PAGE_ROW, LINE_END = 72, 224                                        # the page: row 9, ending at column 27
@@ -127,9 +137,9 @@ def carrying(gold_amount, weapon_list, item_list, weapon=HAND_DAGGER):
 
 
 
-TOOL_KIT = carrying(700, [DRAGON_SLAYER, LONG_SWORD], [KEY_J, KEY_A])
+TOOL_KIT = carrying(700, [DRAGON_SLAYER, LONG_SWORD], [KEY_J, KEY_A, WING_BOOTS])
 PARTS = ("tool-shop", "key-shop", "two-pages", "last-one", "owned-forepaw", "owned-found", "owned-key",
-         "original")                                                 # each its own game
+         "a-key", "original")                                        # each its own game
 
 
 def png(path):
@@ -370,7 +380,7 @@ def main():
             for _ in range(3):
                 buy(1)
             assert gold() == 700 - 3 * 160, gold()
-            assert items() == [KEY_J, KEY_A, RED_POTION, RED_POTION, RED_POTION], items()
+            assert items() == [KEY_J, KEY_A, WING_BOOTS] + [RED_POTION] * 3, items()
             print("ok: A three times buys three Red Potions, the list staying up and the cursor on them")
 
             press("down")
@@ -387,43 +397,49 @@ def main():
             print("ok: the Deluge is not enough Golds, in the game's words, and A goes back to the list")
 
             state = press("select", "sell")
-            assert state["list"] == [ITEM | RED_POTION] * 3 + [ITEM | KEY_A, ITEM | KEY_J, LONG_SWORD, DRAGON_SLAYER], state
-            assert state["prices"] == [80, 80, 80, 100, 50, 800, 0], state
+            assert state["list"] == [ITEM | RED_POTION] * 3 + [ITEM | WING_BOOTS, ITEM | KEY_A, ITEM | KEY_J,
+                                                                LONG_SWORD, DRAGON_SLAYER], state
+            assert state["prices"] == [80, 80, 80, 0, 0, 0, 800, 0], state
             assert state["hint"] == "Select to buy" and state["pages"] == 1 and state["page_label"] is None, state
             speaker_on_list()
-            check_hint(game.shot("sell-list"), "Select to buy")
-            print("ok: Select opens the sell list: everything carried, at half a shop's price, 100 for the A key")
+            path = game.shot("sell-list")
+            check_hint(path, "Select to buy")
+            check_priced(path, 0, 80)
+            check_priced(path, LONG_SWORD_ROW, 800)
+            for row in (BOOTS_SELL_ROW, KEY_A_ROW, KEY_J_ROW, SLAYER_ROW):
+                check_no_price(path, row)
+            print("ok: Select opens the sell list: everything carried, at half a shop's price; the Wing Boots, "
+                  "the keys and the Dragon Slayer with no price")
 
-            for _ in range(4):
-                press("down")
-            assert shops()["cursor"] == 4, shops()
-            game.shot("sell-a-key-shops-item")
-            state = sell()
-            assert gold() == 220 + 50, gold()
-            assert items() == [KEY_A, RED_POTION, RED_POTION, RED_POTION], items()
-            assert state["list"] == [ITEM | RED_POTION] * 3 + [ITEM | KEY_A, LONG_SWORD, DRAGON_SLAYER], state
-            assert state["cursor"] == 4, state
-            print("ok: the J key, which only key shops sell, sells here for 50, and the list stays up")
+            def not_for_sale(row, name):
+                """The cursor on `row`: "Not for sale", and A there sells nothing."""
+                while shops()["cursor"] != row:
+                    press("down")
+                state = shops()
+                assert state["hint"] == "Not for sale", state
+                path = game.shot(f"{name}-not-for-sale")
+                check_hint(path, "Not for sale")
+                check_no_price(path, row)
+                before, money, carried, kit = state, gold(), items(), weapons()
+                act("a", 4, 30)
+                state = shops()
+                assert state["refused"] == before["refused"] + 1 and state["sold"] == before["sold"], state
+                assert state["list_up"] and state["shown"] == "sell" and state["cursor"] == row, state
+                assert state["list"] == before["list"] and state["hint"] == "Not for sale", state
+                assert (gold(), items(), weapons()) == (money, carried, kit), (gold(), items(), weapons())
 
-            press("down")
-            state = shops()
-            assert state["cursor"] == 5 and state["hint"] == "Not for sale", state
-            path = game.shot("dragon-slayer-not-for-sale")
-            check_hint(path, "Not for sale")
-            check_no_price(path, 5)
-            act("a", 4, 30)
-            state = shops()
-            assert state["refused"] == 1 and state["list_up"] and state["shown"] == "sell", state
-            assert gold() == 270 and weapons() == [DRAGON_SLAYER, LONG_SWORD], (gold(), weapons())
+            not_for_sale(BOOTS_SELL_ROW, "wing-boots")
+            not_for_sale(KEY_J_ROW, "j-key")
+            print("ok: the Wing Boots and the J key, his for good, are not for sale, and A on them keeps them")
+            not_for_sale(SLAYER_ROW, "dragon-slayer")
             game.shot("dragon-slayer-kept")
             print("ok: the Dragon Slayer is not for sale, and A on it keeps it")
 
-            for _ in range(5):
-                press("up")
+            press("down")                                       # one page: Down from the bottom wraps to the top
             assert shops()["cursor"] == 0, shops()
             sell()
-            assert gold() == 270 + 80, gold()
-            assert items() == [KEY_A, RED_POTION, RED_POTION], items()
+            assert gold() == 220 + 80, gold()
+            assert items() == [KEY_J, KEY_A, WING_BOOTS, RED_POTION, RED_POTION], items()
             print("ok: a Red Potion sells for 80, half this shop's price")
 
             act("b", 4, 6)
@@ -458,6 +474,7 @@ def main():
             state = press("select", "sell")
             assert state["pages"] == 2 and state["page"] == 0 and len(state["list"]) == 8, state
             assert state["list"] == [ITEM | v for v in reversed(many)], state
+            assert state["prices"] == [80, 0, 80, 80, 0, 0, 0, 0], state       # the keys and the Mattock: his for good
             assert state["hint"] == "Select to buy" and state["page_label"] == "1 of 2", state
             check_hint(game.shot("sell-page-1"), "Select to buy", "1 of 2")
             for _ in range(7):
@@ -484,18 +501,18 @@ def main():
         if args.wants("last-one"):
             game_up()
             # The last thing to sell: then the list is empty, and the shop says so.
-            go_in(start, "last-one", 3, 0x9A, carrying(0, [], [KEY_J]))
+            go_in(start, "last-one", 3, 0x9A, carrying(0, [], [RED_POTION]))
             to_counter()
             act("up", 4, 6)
             list_up("buy")
             state = press("select", "sell")
-            assert state["list"] == [ITEM | KEY_J], state
+            assert state["list"] == [ITEM | RED_POTION], state
             before = state["sold"]
             act("a", 4, 6)
             until("the sale", lambda: shops()["sold"] == before + 1, 1200)
             until("You have nothing to buy.", lambda: ram(MESSAGE_ID) == NOTHING_TO_SELL, 600)
             until("the line to type out", typed, 600)
-            assert gold() == 50 and items() == [], (gold(), items())
+            assert gold() == 80 and items() == [], (gold(), items())
             game.shot("nothing-to-sell")
             act("a", 4, 6)
             list_up("buy", "the buy list, with nothing to sell")
@@ -600,11 +617,87 @@ def main():
             check_owned(game.shot("owned-key"), 0)
             a_does_nothing(0)
             print("ok: a J key held is owned at the key shop, and A does nothing")
+            state = press("select", "sell")
+            assert state["list"] == [ITEM | KEY_J] and state["prices"] == [0], state
+            assert state["hint"] == "Not for sale", state
+            path = game.shot("key-not-for-sale")
+            check_hint(path, "Not for sale")
+            check_no_price(path, 0)
+            before = shops()
+            act("a", 4, 30)
+            state = shops()
+            assert (state["refused"], state["sold"]) == (before["refused"] + 1, before["sold"]), state
+            assert state["shown"] == "sell" and state["list_up"], state
+            assert gold() == 1000 and items() == [KEY_J], (gold(), items())
+            print("ok: nor does the key shop buy it back: not for sale, and A keeps it")
+            leave()
+
+        if args.wants("a-key"):
+            game_up()
+            # 4. The A key from its giver, the man in the house on Mist $1F, who gives one
+            # to a hero with the Black Onyx and none, each time he is asked.
+            target = out / "mist-house.cycstate"
+            fixture(start, target, {AREA_SAVED_AREA: MIST, AREA_SAVED_SCREEN: MIST_SCREEN,
+                                    AREA_SAVED_PALETTE: PALETTE_MIST, PLAYER_SAVED_POS: MIST_HOUSE_DOOR,
+                                    AREA_REGION: REGION_MIST, SPECIAL_ITEMS: BLACK_ONYX,
+                                    **carrying(0, [], [RED_POTION])},
+                    records={ZONE_NAMES: {5: MIST, 6: MIST_SCREEN}})
+            tcp("load_state", path=str(target))
+            walk_out()
+            until("Mist $1F", lambda: (ram(AREA), ram(SCREEN)) == (MIST, MIST_SCREEN) and ram(SCREEN_READY) == 0, 600)
+            wait(30)
+            game.poke({SPRITE_ENTITIES + i: 0xFF for i in range(8)})     # nothing knocks him off the door
+            wait(4)
+            column = (MIST_HOUSE_DOOR & 15) * 16
+            walk_to(column - 6, column + 4)
+            act("up", 4, 10)
+            until("the house", lambda: (ram(AREA), ram(SCREEN)) == (BUILDINGS, MIST_HOUSE), 600)
+            wait(40)
+            to_counter()
+            for _ in range(5):
+                act("up", 4, 10)
+                try:
+                    until("his words", lambda: ram(TEXTBOX_CLOSED) == 0, 120)
+                    break
+                except AssertionError:
+                    pass
+            else:
+                raise AssertionError("the man on Mist $1F did not answer")
+            for _ in range(20):
+                if ram(TEXTBOX_CLOSED) != 0:
+                    break
+                until("the line to type out", waiting, 900)
+                act("a", 6, 14)
+            wait(10)
+            assert items() == [RED_POTION, KEY_A], items()
+            print("ok: the man on Mist $1F gives the A key to a hero with the Black Onyx")
+
+            # Straight from his house to Forepaw's tool shop, with all he has.
+            to_forepaw(game.save("a-key-given"), "forepaw-a-key", {})
+            act("up", 4, 6)
+            list_up("buy", "Forepaw's buy list")
+            state = press("select", "sell")
+            assert state["list"] == [ITEM | KEY_A, ITEM | RED_POTION] and state["prices"] == [0, 200], state
+            assert state["cursor"] == 0 and state["hint"] == "Not for sale", state
+            path = game.shot("a-key-not-for-sale")
+            check_hint(path, "Not for sale")
+            check_no_price(path, 0)
+            check_priced(path, 1, 200)
+            before = shops()
+            act("a", 4, 30)
+            state = shops()
+            assert (state["refused"], state["sold"]) == (before["refused"] + 1, before["sold"]), state
+            assert state["shown"] == "sell" and state["list_up"], state
+            assert gold() == 0 and items() == [RED_POTION, KEY_A], (gold(), items())
+            press("down")
+            sell()
+            assert gold() == 200 and items() == [KEY_A], (gold(), items())
+            print("ok: a shop won't buy the A key his giver hands out, so he can't be farmed; a Red Potion sells")
             leave()
 
         if args.wants("original"):
             game.close()
-            # 4. The remaster off: the shop is the original's.
+            # 5. The remaster off: the shop is the original's.
             launch(on=False)
             tool_shop = out / "tool-shop.cycstate"                     # as the tool-shop part walks out of
             fixture(start, tool_shop, {AREA_SAVED_AREA: 0, AREA_SAVED_SCREEN: 3, PLAYER_SAVED_POS: 0x9A, **TOOL_KIT})

@@ -125,7 +125,8 @@ the connected map. It is still a preview, for local play only. See
   recharges it.
 - **Quick shops.** Up on a shopkeeper opens his list at once, Select switches
   between buying and selling, and you stay in the list after each sale. Any
-  shop buys anything you carry, and what you own for good says OWNED.
+  shop buys what you carry, except what you own for good, like a key or the
+  Wing Boots: it says OWNED and isn't for sale.
 
 ### Text and the title
 
