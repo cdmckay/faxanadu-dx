@@ -7,7 +7,8 @@ the clock, on a free TCP port, so any number of runs can go in parallel. It
 uses Guru travel's test helpers (tests/travel/guru_travel.py).
 
 Starts a new game, then edits save-state RAM so the hero dies with Conflate as
-the furthest temple (an external prerequisite, not coverage). Then:
+the furthest temple (an external prerequisite, not coverage), and starts as
+the Guru speaks, from a saved game of that death after its dissolve. Then:
 
 1. Holds A through the death message: it types to its $FC page break and
    waits there, and at its end, until A is pressed again.
@@ -30,7 +31,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "travel"))
-from fax_e2e import Game, act, chunks, conversation, fixture, frame, parse_args, ram, tcp, typed, until, wait  # noqa: E402
+from fax_e2e import Game, act, chunks, conversation, frame, parse_args, ram, tcp, typed, until, wait  # noqa: E402
 import guru_travel as gt  # noqa: E402
 
 MESSAGE_ID, PROCESSED, PAUSED = 0x213, 0x214, 0x215   # MessageID, Message_ProcessedLength, TextBox_MessagePaused
@@ -156,12 +157,9 @@ def main():
         raise AssertionError(f"never reached line {expect}: {got['state']}")
 
     try:
+        dead = game.state("conflate-words")                         # fax_e2e's: dead, as the Guru speaks
         game.launch(at="gate")
         assert tcp("text_speed_state")["enabled"], "Hold A to speed up text is on by default"
-        gate = out / "gate.cycstate"
-        tcp("save_state", path=str(gate))
-        dead = out / "conflate-death.cycstate"
-        fixture(gate, dead, {gt.TEMPLE_SPAWN_POINT: gt.CONFLATE, gt.PLAYER_IS_DEAD: 1})
 
         # 1. The death message: "Don't have/negative/thoughts." $FC "Remember/your mantra."
         tcp("load_state", path=str(dead))

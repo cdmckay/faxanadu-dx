@@ -57,7 +57,7 @@ import threading
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 import fax_e2e  # noqa: E402
-from fax_e2e import Game, act, chosen, chunks, features_toml, fixture, hold, parser, ram, typed, until, wait  # noqa: E402
+from fax_e2e import Game, chosen, chunks, features_toml, fixture, hold, parser, ram, until, wait  # noqa: E402
 
 # RAM
 AREA, SCREEN, SCREEN_READY, SCROLL_DIRECTION = 0x24, 0x63, 0x0E, 0x54
@@ -380,15 +380,8 @@ def _mascon_temple(g):
             SELECTED_WEAPON: LONG_SWORD, PLAYER_CUR_WEAPON: LONG_SWORD,
             SELECTED_ARMOR: LEATHER_ARMOR, SELECTED_SHIELD: SMALL_SHIELD})
     until("the Guru's words", lambda: ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 600)
-    for _ in range(200):
-        if ram(AREA) == BUILDINGS and not ram(PLAYER_IS_DEAD) and ram(MESSAGE_ID) != NEGATIVE_THOUGHTS:
-            break
-        if ram(MESSAGE_ID) == 0 or typed():
-            act("a", 6, 14)
-        else:
-            wait(10)
-    else:
-        raise AssertionError("the hero did not wake in Mascon's temple")
+    fax_e2e.page_through("Mascon's temple", lambda: ram(AREA) == BUILDINGS and not ram(PLAYER_IS_DEAD) and
+                         ram(MESSAGE_ID) != NEGATIVE_THOUGHTS)
     wait(60)
 
 

@@ -37,10 +37,8 @@ def _gate_door(g):
     for _ in range(60):
         if g.ram(POS_X) > 54:
             break
-        if fax_e2e.typed():
-            act("a", 4, 8)
-        else:
-            fax_e2e.hurry(10)
+        if fax_e2e.box_open():
+            fax_e2e.page_through("the hero's thoughts", lambda: not fax_e2e.box_open(), 1200)
         act("right", 6, 2)
     for _ in range(200):
         if g.ram(POS_X) >= 192:
@@ -93,10 +91,7 @@ class Game(fax_e2e.Game):
         """Walk until the hero's X is in [x_min, x_max], paging through any text."""
         for _ in range(600):
             if self.box_open():
-                if self.typed():
-                    self.act("a", 6, 14)
-                else:
-                    fax_e2e.hurry(4)
+                fax_e2e.page_through("the box to close", lambda: not self.box_open())
                 continue
             x = self.ram(POS_X)
             if x_min <= x <= x_max:

@@ -365,6 +365,20 @@ faxanatools' `messages.py` decodes and encodes them; `fax_travel.c`'s
   dismisses a skippable one, only on the frame the button goes down. A held
   button never acts again. Shop menus (`IScripts_WaitForMenuInput`) and the
   mantra's ▲ work the same way.
+- **So a new A turns a page on the frame the page ends, and only then or
+  after.** The continue check runs after that frame's character, so A first
+  pressed on the frame that types the `$FC` or the end goes straight on. A
+  frame that types a character leaves `TextBox_Timer` a multiple of 4, and
+  the next three type none at the game's pace (the remaster's Hold A leaves
+  the frame A goes down at that pace): A first pressed on one of them is
+  held from the next, and the page types to its end and waits.
+  `fax_e2e.hurry_page()` saves a state on such a frame and loads it with A
+  down, which then goes down on the very next frame. Measured on the Guru's
+  greeting: A pressed so is new on that frame (`Joy1_ChangedButtonMask`
+  `$80`, the timer at the game's pace), then a character every frame to the
+  end. While the box opens (the lag frames after `Messages_Load`, timer 0)
+  the pad is not read, so A pressed then is first seen with the first
+  character's timer at 1, safe the same way.
 - The typing sound (sound effect 1, noise) lasts 4 ticks: 2 of a soft hiss,
   then 2 of a sharp clack. At the game's pace each character starts it just
   as the last one ends. Started every frame, it never gets past the hiss.
@@ -1318,7 +1332,14 @@ callers store a new entity at `CurrentSprites_Entities,Y` and `JMP` there:
 - **The death plays out over 256 frames.** `Player_HandleDeath` (`$D8EC`)
   plays sound `$16` and loops once a frame until `Screen_TransitionCounter`
   (`$03DB`) wraps, dissolving the hero (`Player_DrawDeathAnimation`), then
-  runs the Guru's words. Nothing reads the pad in between.
+  runs the Guru's words. Nothing reads the pad in between. Everything a
+  death decides comes after the words (the gold and experience, the place,
+  the respawn's save), so a save state taken as the Guru speaks (`MessageID`
+  `$24`) carries the death on without the dissolve; the end-to-end tests
+  start most deaths there (`fax_e2e.dissolve()`). Poking the counter near
+  its wrap is not the same: `Screen_NextTransitionState` starts the fade to
+  black when it reaches `$50` (`Screen_FadeOutStage` set to 0), so a death
+  skipped past it never runs that fade before the Guru's words.
 - **The NES manual names no enemy.** The USA instruction booklet (27 pages,
   archive.org's `NESManuals` scan) names places, items and titles: of what
   hurts, only the Poison ("The hero's power will decrease by a fixed
@@ -1467,7 +1488,15 @@ frame the other way.
 
 **Doors.** Up at Apolune's temple door in mid-jump does nothing; on the
 ground it goes in. Jumping out of the temple's right edge carries the jump
-into the town, where he lands on his first update.
+into the town, where he lands on his first update. Walking out with the
+direction still down as the next screen comes up leaves him walking there:
+`Player_Flags` keeps `$20` (moving) at the door's spot after the screen is
+set up, and a jump from that state carries him sideways. A save state for a
+frame-exact run is taken once he stands still (`$25` clear at the same X and
+Y some frames apart, `tests/movement/play.py`'s `settle()`): a state taken 10
+frames after the scroll had `$20` set in 24 of 24 made at once, and
+`tests/ladders/ladders.py`'s climb onto column 14's ladder failed from 16 of
+them.
 
 **The pose.** `Player_GetBodySpriteFrameOffset` (`$ECAC`, for the body) and
 `Maybe_Player_CalcAnimFrame` (`$B927`, bank 14, for the weapon, the shield and

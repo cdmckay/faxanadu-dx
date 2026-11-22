@@ -60,7 +60,8 @@ import sys
 import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import Game, act, fixture, hold, parse_args, ram, step_toward, tcp, until, wait, walk  # noqa: E402
+import fax_e2e  # noqa: E402
+from fax_e2e import Game, act, fixture, hold, parse_args, ram, step_toward, tcp, type_out, until, wait, walk  # noqa: E402
 
 AREA, SCREEN, PLAYER_X = 0x24, 0x63, 0x9E
 TEXTBOX_CLOSED, MESSAGE_ID = 0x20C, 0x213
@@ -118,12 +119,6 @@ def weapons():
 def typed():
     """A message has typed out (MessageID clears)."""
     return ram(MESSAGE_ID) == 0
-
-
-def waiting():
-    """The text box waits for a button: typed out, or at a pause."""
-    message, _, paused = ram(MESSAGE_ID, 3)
-    return message == 0 or paused != 0
 
 
 def carrying(gold_amount, weapon_list, item_list, weapon=HAND_DAGGER):
@@ -247,10 +242,7 @@ def main():
     def walk_to(x_min, x_max):
         for _ in range(600):
             if ram(TEXTBOX_CLOSED) == 0:
-                if waiting():
-                    act("a", 6, 14)
-                else:
-                    wait(4)
+                fax_e2e.page_through("the box to close", lambda: ram(TEXTBOX_CLOSED) != 0)
                 continue
             x = ram(PLAYER_X)
             if x_min <= x <= x_max:
@@ -388,7 +380,7 @@ def main():
             assert shops()["cursor"] == 3, shops()
             act("a", 4, 6)
             until("This is not enough Golds.", lambda: ram(MESSAGE_ID) == NOT_ENOUGH_GOLDS, 600)
-            until("the line to type out", typed, 600)
+            type_out("the line to type out", 600, pauses=False)
             game.shot("not-enough-golds")
             assert gold() == 220 and not shops()["list_up"], (gold(), shops())
             act("a", 4, 6)
@@ -511,7 +503,7 @@ def main():
             act("a", 4, 6)
             until("the sale", lambda: shops()["sold"] == before + 1, 1200)
             until("You have nothing to buy.", lambda: ram(MESSAGE_ID) == NOTHING_TO_SELL, 600)
-            until("the line to type out", typed, 600)
+            type_out("the line to type out", 600, pauses=False)
             assert gold() == 80 and items() == [], (gold(), items())
             game.shot("nothing-to-sell")
             act("a", 4, 6)
@@ -586,11 +578,7 @@ def main():
                     break
                 act("left", 2, 2)
             until("the find", lambda: ram(MESSAGE_ID) == GOT_WING_BOOTS, 600)
-            for _ in range(20):
-                if ram(TEXTBOX_CLOSED) != 0:
-                    break
-                until("the line to type out", waiting, 900)
-                act("a", 6, 14)
+            fax_e2e.page_through("the box to close", lambda: ram(TEXTBOX_CLOSED) != 0)
             wait(10)
             found = items()
             assert found == [RED_POTION, WING_BOOTS], found
@@ -663,11 +651,7 @@ def main():
                     pass
             else:
                 raise AssertionError("the man on Mist $1F did not answer")
-            for _ in range(20):
-                if ram(TEXTBOX_CLOSED) != 0:
-                    break
-                until("the line to type out", waiting, 900)
-                act("a", 6, 14)
+            fax_e2e.page_through("the box to close", lambda: ram(TEXTBOX_CLOSED) != 0)
             wait(10)
             assert items() == [RED_POTION, KEY_A], items()
             print("ok: the man on Mist $1F gives the A key to a hero with the Black Onyx")

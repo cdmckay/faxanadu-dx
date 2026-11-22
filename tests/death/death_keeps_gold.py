@@ -21,13 +21,16 @@ temple. Then he dies:
    this feature lets that call through, and Save files puts the file's own
    values back after it.
 3. With the remaster off in the mod selection, the same death resets them to
-   his title's, as the original does.
+   his title's, as the original does. That death starts as the Guru speaks,
+   from a saved game of the first after its dissolve: the reset comes after
+   the Guru's words, and the first death plays the dissolve.
 """
 from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import Game, act, choose_file, fixture, hurry, parse_args, ram, tcp, title_menu, typed, until, wait  # noqa: E402
+import fax_e2e  # noqa: E402
+from fax_e2e import Game, choose_file, dissolve, fixture, page_through, parse_args, ram, tcp, title_menu, until, wait  # noqa: E402
 
 EXPERIENCE, GOLD, PLAYER_TITLE, NEXT_PLAYER_TITLE = 0x390, 0x392, 0x437, 0x4ED
 HP, MP, QUESTS, DURATION_WING_BOOTS = 0x431, 0x39A, 0x42D, 0x429
@@ -50,6 +53,25 @@ def in_mascon_temple():
     return (ram(AREA), ram(SCREEN)) == (BUILDINGS, MASCON_TEMPLE)
 
 
+def dying_writes():
+    """The hero of the scenario, dead: a Soldier with the next title earned,
+    HERO's experience and gold, the Mattock bit, Wing Boots running, low HP and
+    MP, Mascon his temple."""
+    return {PLAYER_TITLE: SOLDIER, NEXT_PLAYER_TITLE: SOLDIER + 1,
+            EXPERIENCE: HERO["experience"] & 0xFF, EXPERIENCE + 1: HERO["experience"] >> 8,
+            GOLD: HERO["gold"] & 0xFF, GOLD + 1: HERO["gold"] >> 8 & 0xFF, GOLD + 2: HERO["gold"] >> 16,
+            QUESTS: MATTOCK_BARRIER, DURATION_WING_BOOTS: 0x40, HP: 0x10, MP: 0x08,
+            TEMPLE_SPAWN_POINT: MASCON, PLAYER_IS_DEAD: 1}
+
+
+@fax_e2e.recipe("death-soldier-words", parent="gate")
+def _soldier_words(g):
+    """The scenario's death, outside Eolis's gate: as the Guru speaks, the
+    dissolve over."""
+    g.poke(dying_writes())
+    dissolve()
+
+
 def title_start(image, title):
     """Player_SetInitialExpAndGold's experience and gold for a title."""
     if title == 0:
@@ -69,14 +91,7 @@ def main():
     def die_and_respawn():
         """Page through the death message until the hero is back in Mascon's temple."""
         until("the death message", lambda: ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 600)
-        for _ in range(120):
-            if in_mascon_temple():
-                break
-            if typed():
-                act("a")
-            else:
-                hurry(10)
-        until("Mascon's temple", in_mascon_temple)
+        page_through("Mascon's temple", in_mascon_temple)
         wait(60)
 
     def hero():
@@ -84,17 +99,13 @@ def main():
                     next_title=ram(NEXT_PLAYER_TITLE))
 
     try:
+        words = game.state("death-soldier-words")
         game.launch(at="gate")
         assert tcp("death_state")["enabled"], "the feature is on by default"
         gate = out / "gate.cycstate"
         tcp("save_state", path=str(gate))
         dying = out / "dying.cycstate"
-        fixture(gate, dying, {
-            PLAYER_TITLE: SOLDIER, NEXT_PLAYER_TITLE: SOLDIER + 1,
-            EXPERIENCE: HERO["experience"] & 0xFF, EXPERIENCE + 1: HERO["experience"] >> 8,
-            GOLD: HERO["gold"] & 0xFF, GOLD + 1: HERO["gold"] >> 8 & 0xFF, GOLD + 2: HERO["gold"] >> 16,
-            QUESTS: MATTOCK_BARRIER, DURATION_WING_BOOTS: 0x40, HP: 0x10, MP: 0x08,
-            TEMPLE_SPAWN_POINT: MASCON, PLAYER_IS_DEAD: 1})
+        fixture(gate, dying, dying_writes())
 
         # 1. Death keeps gold, experience and the earned title; the rest is the game's.
         tcp("load_state", path=str(dying))
@@ -133,7 +144,7 @@ def main():
         game.set_features({(PACKAGE, FEATURE): False})
         game.launch()
         assert not tcp("death_state")["enabled"], "the remaster is off"
-        tcp("load_state", path=str(dying))
+        tcp("load_state", path=str(words))                          # the same death, as the Guru speaks
         die_and_respawn()
         game.shot("respawned-off")
         assert hero() == dict(experience=stock_exp, gold=stock_gold, title=SOLDIER, next_title=SOLDIER), hero()

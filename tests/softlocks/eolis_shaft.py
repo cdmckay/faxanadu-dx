@@ -31,7 +31,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 import fax_e2e  # noqa: E402
-from fax_e2e import Game, parse_args, ram, tcp, until, until_typed, wait  # noqa: E402
+from fax_e2e import Game, parse_args, ram, tcp, type_out, until, wait  # noqa: E402
 
 PARTS = ("original", "remastered")
 PACKAGE = ("faxanadu.remastered", "remastered")               # the one switch: off is the original game
@@ -91,7 +91,7 @@ def use_wing_boots():
             break
         except AssertionError:
             pass
-    until_typed("the line to type out", 600)
+    type_out("the line to type out", 600)
     press_until("a", "the box to close", lambda: ram(TEXTBOX_CLOSED) != 0)
     until("flying", lambda: ram(STATUS) & FLYING, 60)
 
@@ -152,7 +152,7 @@ def end_flight():
     """The flight's last second, then "The power of the Wing Boots is gone.", closed with A."""
     fax_e2e._current().poke({DURATION_WING_BOOTS: 0})
     until("the power gone", lambda: ram(TEXTBOX_CLOSED) == 0, 200)
-    until_typed("the line to type out", 600)
+    type_out("the line to type out", 600)
     press_until("a", "the box to close", lambda: ram(TEXTBOX_CLOSED) != 0)
     until("not flying", lambda: not ram(STATUS) & FLYING, 60)
 

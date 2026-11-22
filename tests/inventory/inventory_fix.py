@@ -38,7 +38,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import Game, chunks, fixture, parse_args, ram, tcp, until, until_typed, wait  # noqa: E402
+from fax_e2e import Game, chunks, fixture, parse_args, ram, tcp, type_out, until, wait  # noqa: E402
 
 AREA, SCREEN, HERO_X, HERO_Y = 0x24, 0x63, 0x9E, 0xA1
 TEXTBOX_X, TEXTBOX_CLOSED, MESSAGE_ID, MENU_CURSOR = 0x208, 0x20C, 0x213, 0x21E
@@ -164,7 +164,7 @@ def main():
         message = GOT_BATTLE_SUIT if entity == BATTLE_SUIT_ITEM else GOT_DRAGON_SLAYER
         until(f"{name}: the pickup's line", lambda: ram(MESSAGE_ID) == message, 300)
         assert ram(ENTITIES + SLOT) == entity, "touched before the line"
-        until_typed(f"{name}: the line to type out", 600)
+        type_out(f"{name}: the line to type out", 600)
         press_until("a", f"{name}: the box to close", lambda: ram(TEXTBOX_CLOSED) != 0)
         wait(4)
         assert ram(ENTITIES + SLOT) == NONE, "Player_HandleTouchItem removes the item"

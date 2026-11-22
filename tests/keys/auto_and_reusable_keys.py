@@ -27,7 +27,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import Game, act, fixture, hold, parse_args, ram, tcp, until, wait  # noqa: E402
+from fax_e2e import Game, act, fixture, hold, parse_args, ram, tcp, type_out, until, wait  # noqa: E402
 
 AREA, SCREEN, SCREEN_TO_THE_RIGHT, PLAYER_X = 0x24, 0x63, 0x67, 0x9E
 MESSAGE_ID, HP = 0x213, 0x431
@@ -112,7 +112,7 @@ def main():
             seen.append(ram(MESSAGE_ID))
             return seen[-1] in expect
         until(f"one of messages {[hex(m) for m in expect]}", shown, 300)
-        until("the message to type out", typed, 600)
+        type_out("the message to type out", 600, pauses=False)
         return seen[-1]
 
     def dismiss_into(area, screen):
@@ -153,7 +153,7 @@ def main():
         wait(6)
         tcp("action", name="b", frames=4)
         until("I've used Mattock.", lambda: ram(MESSAGE_ID) == USED_MATTOCK, 300)
-        until("the message to type out", typed, 600)
+        type_out("the message to type out", 600, pauses=False)
         act("a", 6, 10)
         until("the wall to crumble", lambda: ram(SCREEN_BUFFER + WALL_BLOCKS[0]) != WALL_BLOCK, 300)
         wait(30)

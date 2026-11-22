@@ -30,7 +30,8 @@ wall      The Wall given (set in the record), the hero walks out into Forepaw:
           0 with no box up; the name still goes in its time.) The Mattock, done
           too but never given, is not said.
 file      The King's Plea given (set in the record): dying writes it to the
-          file (Save files saves at every respawn), quests.given. Quit,
+          file (Save files saves at every respawn), quests.given; the death
+          starts as the Guru speaks, from a saved game of it. Quit,
           continue file 1: the log shows it again. Continuing from the title
           is the check, so this part boots.
 original  With the remaster off (the default view only): no quest log, no
@@ -42,8 +43,10 @@ import sys
 import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import (Game, act, batch, choose_file, fixture, frame, hold, hurry, parse_args, ram, step_toward,  # noqa: E402
-                     tcp, title_menu, typed, until, until_typed, wait)
+import fax_e2e  # noqa: E402
+from fax_e2e import (PAGE_FRAMES, Game, act, batch, choose_file, dissolve, fixture, frame, hold, hold_a,  # noqa: E402
+                     hurry_page, let_go, page_through, parse_args, ram, step_toward, tcp, title_menu, type_out,
+                     typed, until, wait)
 
 AREA, SCREEN, PLAYER_X = 0x24, 0x63, 0x9E
 SCREEN_READY, SCROLL, PAUSED = 0x0E, 0x54, 0x120
@@ -145,6 +148,14 @@ def read_file(path):
     return dict(line.split(" = ", 1) for line in path.read_text().splitlines() if " = " in line and not line.startswith("#"))
 
 
+@fax_e2e.recipe("quests-file-words", parent="eolis-town")
+def _file_words(g):
+    """In Eolis's town with The King's Plea given (the record), dead: as the
+    Guru speaks, the dissolve over (the respawn's save is what is checked)."""
+    g.poke({PLAYER_IS_DEAD: 1}, {QUESTS: {GIVEN: 1 << QUEST_BIT["king"]}})
+    dissolve(1800)
+
+
 def main():
     args = parse_args(__doc__, parts=PARTS)
     game = Game.from_args(args)
@@ -243,22 +254,44 @@ def main():
         ("New quest|..." and "Quest complete|...") in the order said, each
         screenshot (as `label`-N) once it has typed out."""
         said, end = [], frame() + 9000
-        while frame() < end:
-            s = state()
-            if s["saying"] and s["lines"] > lines_before + len(said):
-                until("the quest log's line to type out", typed, 300)   # no A: it would turn the page
+        held = False                # A held: since the press that turned the last page, or from hurry_page()
+
+        def turn():
+            """A new press turns the page, and A stays down while the next types."""
+            nonlocal held
+            if held:
+                let_go()
+            hold_a()
+            held = True
+            wait(PAGE_FRAMES)
+        try:
+            while frame() < end:
                 s = state()
-                said.append(s["saying"])
-                if label:
-                    game.shot(f"{label}-{len(said)}")
-                act("a", 6, 14)
-                continue
-            if not box_open() and s["in_play"]:
-                return said
-            if box_open() and typed():
-                act("a", 6, 14)
-            else:
-                hurry(6)
+                if s["saying"] and s["lines"] > lines_before + len(said):
+                    if held:                                # never a new A on it: it would turn the page
+                        until("the quest log's line to type out", typed, 300)
+                    else:
+                        type_out("the quest log's line to type out", 300)
+                    s = state()
+                    said.append(s["saying"])
+                    if label:
+                        game.shot(f"{label}-{len(said)}")
+                    turn()
+                    continue
+                if not box_open() and s["in_play"]:
+                    return said
+                if box_open() and typed():
+                    turn()
+                elif not box_open():
+                    if held:
+                        let_go()
+                        held = False
+                    act("a", 4, 2)                          # a new press, between boxes
+                elif not held:
+                    held = hurry_page()
+        finally:
+            if held:
+                let_go()
         raise AssertionError(f"the conversation did not end; said {said}")
 
     def open_log():
@@ -428,16 +461,11 @@ def main():
 
         if args.wants("file"):
             game.set_features({PACKAGE: True})
-            game.launch(at="eolis-town")
+            game.launch(at="quests-file-words")                 # dead, as the Guru speaks
             saves = tcp("files_state")["saves"]
-            game.poke({PLAYER_IS_DEAD: 1}, {QUESTS: {GIVEN: 1 << QUEST_BIT["king"]}})
             assert state()["given"] == ["king"], state()
             until("the Guru's words", lambda: ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 1800)
-            for _ in range(20):
-                if not box_open():
-                    break
-                until_typed()
-                act("a", 6, 14)
+            page_through("the box to close", lambda: not box_open())
             until("the respawn's save", lambda: tcp("files_state")["saves"] > saves, 1800)
             saved = read_file(out / "game" / FILE)
             assert saved.get("quests.given") == "20000" and saved.get("quests.done") == "00000", saved

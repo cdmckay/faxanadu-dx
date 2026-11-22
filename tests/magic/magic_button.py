@@ -18,7 +18,8 @@ and walks the hero to the gate of Eolis, a door. Then it edits save-state RAM
 4. With 1 MP, Magic casts nothing.
 5. Away from the gate, Up+B still casts.
 6. Next to Conflate's Guru (reached by dying with Conflate as the furthest
-   temple), Magic casts without starting a conversation; Up talks.
+   temple, from a saved game of that death as the Guru speaks), Magic casts
+   without starting a conversation; Up talks.
 7. config.ini rebinds it (MagicKey = V, MagicButton = b), and the window
    writes the bindings back.
 8. With the remaster off in the mod selection, as the original, C does nothing.
@@ -28,7 +29,9 @@ import re
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import Game, act, batch, fixture, frame, hurry, parse_args, ram, tcp, typed, until, wait  # noqa: E402
+import fax_e2e  # noqa: E402
+from fax_e2e import (Game, act, batch, box_open, dissolve, fixture, frame, page_through, parse_args, ram, tcp,  # noqa: E402
+                     type_out, until, wait)
 
 AREA, SCREEN, POS_X = 0x24, 0x63, 0x9E
 PLAYER_FLAGS, ATTACKING = 0xA4, 0x80
@@ -57,6 +60,18 @@ def up_b():
 
 def where():
     return ram(AREA), ram(SCREEN)
+
+
+SPELLS = {SELECTED_MAGIC: DELUGE, MAGIC_INVENTORY: DELUGE, NUMBER_OF_MAGIC_SPELLS: 1}   # Deluge, his only spell
+
+
+@fax_e2e.recipe("magic-conflate-words", parent="gate")
+def _conflate_words(g):
+    """With Deluge, dead outside Eolis's gate with Conflate the furthest
+    temple: as the Guru speaks, the dissolve over (the way to Conflate's
+    Guru, not what is checked)."""
+    g.poke({**SPELLS, TEMPLE_SPAWN_POINT: CONFLATE, PLAYER_IS_DEAD: 1})
+    dissolve()
 
 
 def spell():
@@ -99,6 +114,7 @@ def main():
         until("the spell to end", lambda: spell() == NO_SPELL, 600)
 
     try:
+        words = game.state("magic-conflate-words")
         game.launch(at="gate")
         state = tcp("magic_state")
         assert state["enabled"] and state["binding"] == "C / Y", state
@@ -107,10 +123,8 @@ def main():
         for _ in range(60):
             if ram(POS_X) > 54:
                 break
-            if typed():
-                act("a", 4, 8)
-            else:
-                hurry(10)
+            if box_open():
+                page_through("the hero's thoughts", lambda: not box_open(), 1200)
             act("right", 6, 2)
         assert ram(POS_X) > 54, "the opening is over"
         for _ in range(200):
@@ -121,13 +135,10 @@ def main():
         assert ram(POS_X) in GATE and where() == OUTSIDE_EOLIS, (ram(POS_X), where())
         raw = out / "gate-raw.cycstate"
         tcp("save_state", path=str(raw))
-        spells = {SELECTED_MAGIC: DELUGE, MAGIC_INVENTORY: DELUGE, NUMBER_OF_MAGIC_SPELLS: 1}
         gate = out / "gate.cycstate"
-        fixture(raw, gate, {**spells, MP: 80})
+        fixture(raw, gate, {**SPELLS, MP: 80})
         broke = out / "gate-1mp.cycstate"
-        fixture(raw, broke, {**spells, MP: 1})
-        dying = out / "dying.cycstate"
-        fixture(raw, dying, {**spells, TEMPLE_SPAWN_POINT: CONFLATE, PLAYER_IS_DEAD: 1})
+        fixture(raw, broke, {**SPELLS, MP: 1})
 
         # 1. The gate is a door: Up goes through it, and so does Up+B.
         tcp("load_state", path=str(gate))
@@ -176,16 +187,8 @@ def main():
         wait(10)                                                        # Up's hold ends before the next state loads
 
         # 6. Next to the Guru: Magic casts, Up talks.
-        tcp("load_state", path=str(dying))
-        until("the death message", lambda: ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 600)
-        for _ in range(120):
-            if where() == (BUILDINGS, CONFLATE_TEMPLE):
-                break
-            if typed():
-                act("a")
-            else:
-                hurry(10)
-        until("Conflate's temple", lambda: where() == (BUILDINGS, CONFLATE_TEMPLE))
+        tcp("load_state", path=str(words))                          # dead, as the Guru speaks
+        page_through("Conflate's temple", lambda: where() == (BUILDINGS, CONFLATE_TEMPLE))
         wait(60)
         act("left", 170, 10)
         act("right", 2, 4)                                              # turn round, for a spell that flies far
@@ -200,7 +203,7 @@ def main():
         tcp("load_state", path=str(guru))
         act("up", 4, 4)
         until("the Guru's greeting", lambda: ram(MESSAGE_ID) == MEDITATE_WITH_YOU, 120)
-        until("the greeting to type out", typed)
+        type_out("the greeting to type out")
         game.shot("up-at-guru")
         print("ok: next to the Guru, Magic casts without a word from him; Up talks to him")
         game.close()

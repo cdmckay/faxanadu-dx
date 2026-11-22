@@ -27,7 +27,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import Game, chunks, fixture, parse_args, ram, tcp, until, until_typed, wait  # noqa: E402
+from fax_e2e import Game, chunks, fixture, parse_args, ram, tcp, type_out, until, wait  # noqa: E402
 
 PARTS = ("original", "remastered")
 PACKAGE = ("faxanadu.remastered", "remastered")               # the one switch: off is the original game
@@ -103,7 +103,7 @@ def main():
     def picked_up(what):
         """The find's own pickup: its line, closed with A; then its sprite gone."""
         until(f"{what}: its line", lambda: ram(TEXTBOX_CLOSED) == 0 and ram(MESSAGE_ID) != 0, 300)
-        until_typed(f"{what}: the line to type out", 600)
+        type_out(f"{what}: the line to type out", 600)
         press_until("a", f"{what}: the box to close", lambda: ram(TEXTBOX_CLOSED) != 0)
         until(f"{what}: the sprite removed", lambda: ram(ENTITIES + SLOT) == NONE, 60)
 

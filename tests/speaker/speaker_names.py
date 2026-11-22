@@ -26,7 +26,8 @@ import sys
 import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import Game, act, fixture, frame, hold, hurry, parse_args, ram, step_toward, tcp, typed, until, wait, walk  # noqa: E402
+from fax_e2e import (PAGE_FRAMES, Game, act, fixture, frame, hold, hold_a, hurry_page, let_go, page_through,  # noqa: E402
+                     page_to, parse_args, ram, step_toward, tcp, type_out, typed, until, wait, walk)
 
 AREA, SCREEN, PLAYER_X = 0x24, 0x63, 0x9E
 TEXTBOX_CLOSED, MESSAGE_ID, TEXTBOX_PAUSED = 0x20C, 0x213, 0x215
@@ -110,10 +111,7 @@ def main():
         """Walk until the hero's X is in [x_min, x_max], paging through any text."""
         for _ in range(600):
             if box_open():
-                if typed():
-                    act("a", 6, 14)
-                else:
-                    hurry(4)
+                page_through("the box to close", lambda: not box_open())
                 continue
             x = ram(PLAYER_X)
             if x_min <= x <= x_max:
@@ -176,7 +174,7 @@ def main():
         on screen, screenshot it."""
         until(f"the {name} tab", lambda: speaker()["shown"], 600)
         if line:
-            until("the line to type out", typed)
+            type_out("the line to type out")
         state = speaker()
         assert state["name"] == name and state["shown"] and state["box"], state
         assert (state["col"], state["row"]) == (10, row), state
@@ -186,22 +184,36 @@ def main():
         return path
 
     def finish(button="a"):
-        """Page through to the end of the conversation; the tab goes with the portrait."""
+        """Page through to the end of the conversation, `button` on each
+        typed-out page and A held while each types: with A, the press that
+        turns a page is held through the next; with another button, A is held
+        from a frame where a new press cannot turn the page, which may be a
+        question (hurry_page()). The tab goes with the portrait."""
         end = frame() + 6000
-        while frame() < end:
-            state = speaker()
-            if ram(TEXTBOX_CLOSED) and state["portrait"] == NO_PORTRAIT:
-                break
-            if state["portrait"] != NO_PORTRAIT and not state["shown"]:
-                assert not state["box"], state                  # only while the boxes open or clear
-            if box_open() and typed():
-                act(button, 6, 14)
-            elif button == "a":
-                hurry(6)
+        held = False
+        try:
+            while frame() < end:
+                state = speaker()
+                if ram(TEXTBOX_CLOSED) and state["portrait"] == NO_PORTRAIT:
+                    break
+                if state["portrait"] != NO_PORTRAIT and not state["shown"]:
+                    assert not state["box"], state                  # only while the boxes open or clear
+                if box_open() and typed():
+                    if button == "a":                       # a new press, held while the next page types
+                        if held:
+                            let_go()
+                        hold_a()
+                        held = True
+                        wait(PAGE_FRAMES)
+                    else:
+                        act(button, 2, 4)
+                elif box_open() and not held:
+                    held = hurry_page()
             else:
-                wait(6)
-        else:
-            raise AssertionError("the conversation did not end")
+                raise AssertionError("the conversation did not end")
+        finally:
+            if held:
+                let_go()
         state = speaker()
         assert not state["shown"] and state["name"] is None, state
 
@@ -240,14 +252,7 @@ def main():
                     pass
             else:
                 raise AssertionError("timed out waiting for the Guru again")
-            for _ in range(20):
-                if tcp("travel_state")["text"] == OFFER:
-                    break
-                until("a page to type out", typed)
-                if tcp("travel_state")["text"] == OFFER:
-                    break
-                act("a", 6, 14)
-            assert tcp("travel_state")["text"] == OFFER, tcp("travel_state")
+            page_to(lambda s: s["text"] == OFFER, "Guru travel's offer", tries=20)
             wait(20)                                            # the box is refilled with the offer
             tab("Guru of Eolis", label="guru-travel-offer")
             finish("b")
@@ -273,7 +278,8 @@ def main():
                     act("up", 4, 10)
                 if not box_open():
                     act("right", 3, 2)
-            until("the guard's line", lambda: box_open() and typed())
+            until("the guard's box", box_open)
+            type_out("the guard's line")
             state = speaker()
             assert state["portrait"] == NO_PORTRAIT and state["name"] is None and not state["shown"], state
             game.shot("kings-guard")

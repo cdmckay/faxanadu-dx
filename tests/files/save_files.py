@@ -11,10 +11,11 @@ Copies the build to OUT/game (the save files are written beside it), then:
      nothing to continue and the cursor kept off it; NEW GAME's pick shows
      three empty files, and file 2 starts a new game at once;
   2. edits save-state RAM to give the hero progress worth keeping (an external
-     prerequisite, not coverage) and dies, to come back in a temple: Eolis's
-     Guru, with nowhere to send the hero, asks "Shall I remember your
-     journey?"; Conflate's, after granting a title, offers the menu, and
-     saving there makes Conflate the spawn point;
+     prerequisite, not coverage) and dies, to come back in a temple (from a
+     saved game of that death as the Guru speaks: the dissolve is not what
+     is checked): Eolis's Guru, with nowhere to send the hero, asks "Shall I
+     remember your journey?"; Conflate's, after granting a title, offers the
+     menu, and saving there makes Conflate the spawn point;
   3. quits and relaunches: the title opens on CONTINUE, whose pick greys the
      empty files and skips them; continuing file 2 restores the game, which
      is compared with the file and with what was saved;
@@ -32,7 +33,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 import fax_e2e  # noqa: E402
 from fax_e2e import (FILES_CONFIRM, FILES_CONTINUE, FILES_NEW, FILES_TOP, Game, act, choose_file,  # noqa: E402
-                     fixture, frame, hurry, page_to, parser, ram, tcp, title_menu, typed, wait)
+                     dissolve, fixture, frame, page_through, page_to, parser, ram, tcp, title_menu, type_out, wait)
 
 JOY_CHANGED, AREA, SCREEN, START_SCREEN_CHOICE = 0x19, 0x24, 0x63, 0x687
 MESSAGE_ID, TEXTBOX_PAUSED = 0x213, 0x215
@@ -130,14 +131,7 @@ def write_file(path, p, spawn):
 def die_and_respawn(temple):
     """Page through the death message until the hero is back in `temple`."""
     until("the death message", lambda: ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 600)
-    for _ in range(120):
-        if in_temple(temple):
-            break
-        if typed():
-            act("a")
-        else:
-            hurry(10)
-    until(f"temple {temple}", lambda: in_temple(temple))
+    page_through(f"temple {temple}", lambda: in_temple(temple))
     wait(60)
 
 def talk_until(phase, tries=12):
@@ -149,12 +143,12 @@ def talk_until(phase, tries=12):
     wait(20)
 
 def close_box(button="a"):
-    until("the line to type out", typed)
+    type_out("the line to type out")
     act(button, 6, 60)
     until("the box to close", lambda: ram(0x20C) != 0, 300)
 
 def answer_travel(button, expect):
-    until("the question to type out", typed)
+    type_out("the question to type out")
     act(button)
     until(f"travel line {expect}", lambda: travel()["text"] == expect, 600)
 
@@ -168,6 +162,22 @@ def _gate_in_file_2(g):
     wait(10)
     choose_file(True, 2)
     until("the Eolis gate", lambda: frame() > 1900, 3000)
+
+
+@fax_e2e.recipe("files-eolis-words", parent="files-gate-2")
+def _eolis_words(g):
+    """With PROGRESS but the next title not yet earned, dead with Eolis his
+    temple: as the Guru speaks, the dissolve over."""
+    g.poke({**progress_writes(dict(PROGRESS, next_title=3)), TEMPLE_SPAWN_POINT: EOLIS, PLAYER_IS_DEAD: 1})
+    dissolve()
+
+
+@fax_e2e.recipe("files-conflate-words", parent="files-gate-2")
+def _conflate_words(g):
+    """With PROGRESS, dead with Conflate his temple: as the Guru speaks, the
+    dissolve over."""
+    g.poke({**progress_writes(PROGRESS), TEMPLE_SPAWN_POINT: CONFLATE, PLAYER_IS_DEAD: 1})
+    dissolve()
 
 
 PARTS = ("new-game", "eolis-guru", "conflate", "overwrite")         # each its own game
@@ -206,7 +216,9 @@ def main():
             game.exe = gamedir / "FaxanaduRecomp"
             game.launch(at=fixture_name)
 
-        gate = game.state("files-gate-2")                           # a new game in file 2, at Eolis's gate
+        game.state("files-gate-2")                                  # a new game in file 2, at Eolis's gate
+        words = {temple: game.state(f"files-{temple}-words")        # dead there, as the Guru speaks
+                 for temple, part in (("eolis", "eolis-guru"), ("conflate", "conflate")) if args.wants(part)}
         expect = dict(PROGRESS, title=4)                            # what Conflate's Guru saves
 
         if args.wants("new-game"):
@@ -241,9 +253,7 @@ def main():
         if args.wants("eolis-guru"):
             at("files-gate-2")
             # 2a. Eolis's Guru, with the Ring and nowhere to send the hero, asks.
-            fixture(gate, out / "eolis-death.cycstate",
-                    {**progress_writes(dict(PROGRESS, next_title=3)), TEMPLE_SPAWN_POINT: EOLIS, PLAYER_IS_DEAD: 1})
-            tcp("load_state", path=str(out / "eolis-death.cycstate"))
+            tcp("load_state", path=str(words["eolis"]))
             die_and_respawn(EOLIS)
             saved = read_file(gamedir / "faxanadu_file2.txt")
             assert saved["spawn"] == "0" and int(saved["gold"]) == PROGRESS["gold"], saved
@@ -254,7 +264,7 @@ def main():
             saves = files()["saves"]
             act("a")
             until("the saved line", lambda: files()["guru"] == GURU_SAVED, 300)
-            until("the saved line to type out", typed)
+            type_out("the saved line to type out")
             shot("eolis-saved")
             close_box()
             assert files()["saves"] == saves + 1 and ram(TEMPLE_SPAWN_POINT) == EOLIS
@@ -265,9 +275,7 @@ def main():
             at("files-gate-2")
             # 2b. Conflate's Guru grants a title, then offers the menu; saving there
             # makes Conflate the spawn point, and Guru travel still offers.
-            fixture(gate, out / "conflate-death.cycstate",
-                    {**progress_writes(PROGRESS), TEMPLE_SPAWN_POINT: CONFLATE, PLAYER_IS_DEAD: 1})
-            tcp("load_state", path=str(out / "conflate-death.cycstate"))
+            tcp("load_state", path=str(words["conflate"]))
             die_and_respawn(CONFLATE)
             temple = out / "conflate-temple.cycstate"
             tcp("save_state", path=str(temple))
@@ -277,15 +285,15 @@ def main():
             shot("conflate-menu", "guru-menu")
             act("a")
             until("the saved line", lambda: files()["guru"] == GURU_SAVED, 300)
-            until("the saved line to type out", typed)
+            type_out("the saved line to type out")
             shot("conflate-saved", "guru-saved")
-            until("the line to type out", typed)
+            type_out("the line to type out")
             act("a")
             until("Guru travel's intro", lambda: travel()["text"] == INTRO and travel()["phase"] in (1, 2), 600)
-            until("the intro to type out", typed)
+            type_out("the intro to type out")
             act("a")
             until("Guru travel's offer", lambda: travel()["text"] == OFFER, 600)
-            until("the offer to type out", typed)
+            type_out("the offer to type out")
             shot("travel-offer")
             close_box("b")
             saved = read_file(gamedir / "faxanadu_file2.txt")
@@ -338,10 +346,10 @@ def main():
             act("down")
             act("a")
             until("Guru travel's intro", lambda: travel()["phase"] == 6, 600)
-            until("the intro to type out", typed)
+            type_out("the intro to type out")
             act("a")
             until("the towns", lambda: travel()["text"] == TO_GURU + EOLIS, 600)
-            until("the town to type out", typed)
+            type_out("the town to type out")
             shot("travel-towns")
             answer_travel("b", FAREWELL)
             close_box()

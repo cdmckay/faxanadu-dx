@@ -119,7 +119,10 @@ recompiler produced it; features observe and steer it.
   save state:** it holds CHR RAM copied from the ROM. A test much longer than
   the rest splits into parts that run at once. The suite's time is the frames
   its games play, so walk, read and wait no longer than the check needs
-  ([tests/README.md](tests/README.md)).
+  ([tests/README.md](tests/README.md)): hold A while text types
+  (`type_out()`, `page_to()`, `page_through()`, which never turn a page
+  they should not), and start a death after its dissolve, from a fixture,
+  unless the death is what is checked.
 - **Everything the remaster adds goes into the one Faxanadu Remastered mod**
   (`mods/preloaded/packages/faxanadu.remastered`), never a new package: add a
   `[[plugin]]` under its `remastered` feature. The launcher has one switch for
