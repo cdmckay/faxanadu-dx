@@ -43,13 +43,15 @@
  *   not enough Golds.", or the empty sell list's "You have nothing to buy.")
  *   goes back to the list instead of ending the conversation, to buying if
  *   there is nothing left to sell.
- * - An item no shop buys is listed without a price, the hint says "Not for
- *   sale" while the cursor is on it, and A on it is ignored.
  * - An item the hero already has for good (fax_shops_owned: the Wing Boots,
  *   the Hour Glass, the Elixir, the keys and the Mattock, as the features that
  *   keep them are on) keeps its row in the buy list, with OWNED where its price
  *   was; the hint says "Already owned" while the cursor is on it, and A on it
  *   is ignored, before the game's own checks: no gold, no refusal.
+ * - An item not for sale (fax_shops_not_for_sale: one no shop buys, and one
+ *   the hero has for good, so a key's giver can't be farmed for gold) is listed
+ *   without a price, the hint says "Not for sale" while the cursor is on it,
+ *   and A on it is ignored.
  *
  * A step is entered "by return": a hook writes the address it wants on the
  * stack where the routine's RTS will pull it, or pushes a chain of them, and
@@ -236,6 +238,18 @@ static bool owned_entry(unsigned i) {
     return shop.shown == BUY && i < q(ARG_STRINGS_COUNT) && i < PAGE && owned(q((uint16_t)(DATA_ARRAY + i)));
 }
 
+bool fax_shops_not_for_sale(uint8_t id, const FaxShopsHero *h) {
+    return fax_shops_never_buys(id) || fax_shops_owned(id, h);
+}
+static bool unsold(uint8_t id) {
+    FaxShopsHero h = hero_now();
+    return fax_shops_not_for_sale(id, &h);
+}
+/* The list on screen is the sell list, and its entry `i` is not for sale. */
+static bool unsold_entry(unsigned i) {
+    return shop.shown == SELL && i < q(ARG_STRINGS_COUNT) && i < PAGE && unsold(q((uint16_t)(DATA_ARRAY + i)));
+}
+
 /* The layout every shop's script has, from its first byte. */
 static bool shop_script(uint16_t base, Script *s) {
     if (base < 0x8000 || base > 0xBFF0) return false;
@@ -286,15 +300,17 @@ static uint16_t price_here(uint8_t id) {
 
 /* Everything carried, as the sell list shows it: each inventory list from
  * its last entry, as ShowSellMenu reads the Items. What is equipped or
- * selected is in no list, so it is not offered, as in the original. */
+ * selected is in no list, so it is not offered, as in the original. What is
+ * not for sale is listed at 0. */
 static int sell_list(Offer out[MOST]) {
+    FaxShopsHero h = hero_now();
     int n = 0;
     for (int k = 0; k < CATEGORIES; ++k) {
         unsigned c = sell_order[k], count = q((uint16_t)(NUMBER_OF_WEAPONS + c));
         if (count > list_max[c]) count = list_max[c];
         for (int i = (int)count - 1; i >= 0; --i) {
             uint8_t id = (uint8_t)((q((uint16_t)(list_at[c] + i)) & 0x1F) | c << 5);
-            out[n++] = (Offer){ id, price_here(id) };
+            out[n++] = (Offer){ id, fax_shops_not_for_sale(id, &h) ? 0 : price_here(id) };
         }
     }
     return n;
@@ -440,12 +456,12 @@ static int sell_list_hook(uint16_t addr) {
     return 0;
 }
 
-/* ShowSellMenu's A: an item no shop buys stays, and the list waits again. */
+/* ShowSellMenu's A: an item not for sale stays, and the list waits again. */
 static int sell_pick_hook(uint16_t addr) {
     (void)addr;
     if (!here() || !in_step(SELL, 3)) return 0;
     unsigned cursor = q(MENU_CURSOR_POS);
-    if (cursor >= PAGE || !fax_shops_never_buys(q((uint16_t)(DATA_ARRAY + cursor)))) return 0;
+    if (cursor >= PAGE || !unsold(q((uint16_t)(DATA_ARRAY + cursor)))) return 0;
     ++refused;
     return go(false, SELL_WAIT, 0, 0, -1);
 }
@@ -515,8 +531,7 @@ static bool hint(char out[HINT_COLS + 1]) {
     if (!shop.active || shop.shown == NONE || q(ISCRIPT_PORTRAIT_ID) == 0xFF) return false;
     const char *say = shop.shown == BUY ? "Select to sell" : "Select to buy";
     unsigned cursor = q(MENU_CURSOR_POS);
-    if (shop.shown == SELL && cursor < q(ARG_STRINGS_COUNT) && cursor < PAGE &&
-        fax_shops_never_buys(q((uint16_t)(DATA_ARRAY + cursor))))
+    if (unsold_entry(cursor))
         say = "Not for sale";
     else if (owned_entry(cursor))
         say = "Already owned";
@@ -558,7 +573,7 @@ static void to_picture(int w, int h, int *x, int *y) {
 }
 
 /* Shop_Draw writes a price's last digit even for 0 (UI_DrawDigitsNoLeadingZeroes
- * blanks all but the units), so an item no shop buys would read "0". Its
+ * blanks all but the units), so an item not for sale would read "0". Its
  * price cells are painted the box's inside again: tile 0, all color 0. An
  * owned item's are too, and OWNED is written in them, in the text's color:
  * five letters where five digits go, so it ends where the prices end. */
@@ -569,9 +584,8 @@ static void cover_prices(uint32_t *px, int w, int h) {
     unsigned count = q(ARG_STRINGS_COUNT);
     uint32_t inside = cyc_render_color(0);
     for (unsigned i = 0; i < count && i < PAGE; ++i) {
-        bool unsold = shop.shown == SELL && fax_shops_never_buys(q((uint16_t)(DATA_ARRAY + i)));
         bool mine = owned_entry(i);
-        if (!unsold && !mine) continue;
+        if (!unsold_entry(i) && !mine) continue;
         int x0 = PRICE_COL * FAX_TEXT_CELL, y0 = (LIST_Y + 3 + 2 * (int)i) * FAX_TEXT_CELL;
         int x1 = x0 + PRICE_COLS * FAX_TEXT_CELL, y1 = y0 + FAX_TEXT_CELL, x = x0, y = y0;
         to_picture(w, h, &x0, &y0);

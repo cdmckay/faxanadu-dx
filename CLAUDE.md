@@ -85,13 +85,20 @@ recompiler produced it; features observe and steer it.
   sessions may run the suite at once. Run it in Seamless too (`+sw`) only if
   the feature draws or places something on screen or moves the hero between
   rooms.
-- **Show every feature in the README.** A new feature's PR adds its
-  paragraph to the README's "What's new" and a screenshot right after it,
-  made by `tools/readme_screenshots.py`: add a `@scene` that plays the
-  feature to its moment (reuse your end-to-end test's setup), run it with
-  `--only <scene>`, look at `docs/screenshots/<scene>.png`, and commit the PNG.
-  Never commit a save state. A PR that changes how a feature looks reruns its
-  scene; rerun only the scenes you changed, so the others don't churn.
+- **Put every feature in the README, with a screenshot only when there is
+  something new to see.** A plain quality-of-life feature gets a bullet, a
+  line or two, under "Also new"; a fix for one of the original's bugs gets a
+  sentence in "Bugs fixed". Add a screenshot only for something visually
+  interesting: a new screen, overlay or visual, as the quest log, the map and
+  Seamless have. Never for behavior you can't see (experience that doesn't
+  reset, say), nor to show that a glitch no longer happens. A feature that
+  earns one gets its own section in "What's new" and a picture made by
+  `tools/readme_screenshots.py`: add a `@scene` that plays the feature to its
+  moment (reuse your end-to-end test's setup), run it with `--only <scene>`,
+  look at `docs/screenshots/<scene>.png`, and commit the PNG. Never commit a
+  save state. A PR that changes how a shown feature looks reruns its scene;
+  rerun only the scenes you changed, so the others don't churn. This is about
+  the README: a PR's test plan can still carry screenshots as evidence.
 - **End-to-end tests use the shared helper,
   [tests/e2e/fax_e2e.py](tests/e2e/fax_e2e.py)**, for the port, launching the
   game, the TCP client, save-state fixtures and screenshots. Never write your
