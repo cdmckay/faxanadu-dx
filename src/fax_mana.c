@@ -4,16 +4,21 @@
  * climbs back toward its cap of 80, 1 MP every 30 frames (STEP), so an empty
  * bar is full 40 s after the wait. Eolis's Magician teaches the hero, once,
  * to recover faster (fax_lesson.c): then 2 seconds and 15 frames
- * (TAUGHT_WAIT, TAUGHT_STEP). Any spend of MP starts the wait again. Only
- * frames the game plays count: not while it is paused (Start, the map, the
- * quest log), in a text box, a conversation, a shop or the menu, while a
- * screen loads or scrolls, while the hero is dead, on the title or in the
- * ending.
+ * (TAUGHT_WAIT, TAUGHT_STEP). Any spend of MP starts the wait again, and so
+ * does every frame the Wing Boots fly or the Hour Glass freezes
+ * (fax_recharge.c), which spend MP as they go: no MP comes back while they
+ * run, and the wait runs from their end, so the lesson means using them again
+ * sooner. Only frames the game plays count: not
+ * while it is paused (Start, the map, the quest log), in a text box, a
+ * conversation, a shop or the menu, while a screen loads or scrolls, while
+ * the hero is dead, on the title or in the ending.
  *
  * How, with no hook and no ROM: it watches RAM at the end of each frame.
  * - A spend is Player_MP lower than at the last frame's end: every cast
  *   (Player_ReduceMP, from Player_CastMagic, which Up+B and the Magic button
- *   both reach) and anything else that takes MP. It is seen on any frame.
+ *   both reach), the Wing Boots' flight, and anything else that takes MP. It
+ *   is seen on any frame. A frame either item runs through
+ *   (fax_recharge_draining) holds the wait at its start the same way.
  * - The game played a frame when the frame ends with Game_MainLoop waiting
  *   for the next one: in WaitForNextFrame, called from the loop's top (the
  *   JSR at $DB4D pushes $DB4F, and the loop has just set S to $FF, so S is
@@ -37,6 +42,7 @@
  * docs/GAME_INTERNALS.md, "MP and its bar". */
 #include "fax_mana.h"
 #include "fax_lesson.h"
+#include "fax_recharge.h"
 #include "cyc_mod.h"
 #include "mod_runtime.h"
 #include "mod_savestate.h"
@@ -100,16 +106,19 @@ static unsigned spends, refills, deferred, played;   /* for TCP */
 /* ---- the rules, on plain values ---- */
 
 /* What one frame's end does: see `mp`; then, if the game played the frame
- * and MP is not full, count down, unless MP was spent in it, which starts
- * the wait again, so the first MP comes back sch.wait frames after the frame
- * of the spend. A wait longer than the schedule's (the lesson, learned while
- * it ran) is cut to it. True when 1 MP is due now; the caller gives it, or
- * calls hold() if it cannot this frame. */
-static bool step(Refill *s, uint8_t mp, bool played_frame, Schedule sch) {
+ * and MP is not full, count down, unless MP was spent in it or the hero is
+ * an item is `draining` it, either of which starts the wait again, so the
+ * first MP comes back sch.wait frames after the frame of the spend or the
+ * item's end. A wait longer
+ * than the schedule's (the lesson, learned while it ran) is cut to it. True
+ * when 1 MP is due now; the caller gives it, or calls hold() if it cannot
+ * this frame. */
+static bool step(Refill *s, uint8_t mp, bool played_frame, bool draining, Schedule sch) {
     bool spent = s->seen && mp < s->last_mp;
     s->seen = 1;
     s->last_mp = mp;
-    if (spent) { s->left = sch.wait; ++spends; return false; }
+    if (spent) ++spends;
+    if (spent || draining) { s->left = sch.wait; return false; }
     if (s->left > sch.wait) s->left = sch.wait;
     if (!played_frame || mp >= MP_MAX) return false;
     if (s->left > 1) { --s->left; return false; }
@@ -157,7 +166,7 @@ void fax_mana_frame_end(void) {
     idle_now = playing(&regs);
     if (idle_now) ++played;
     Schedule sch = schedule();
-    if (!step(&r, q(PLAYER_MP), idle_now, sch)) return;
+    if (!step(&r, q(PLAYER_MP), idle_now, fax_recharge_draining(), sch)) return;
     if (!bar_fits() || !give()) { hold(&r); ++deferred; return; }
     gave(&r, q(PLAYER_MP), sch);
     ++refills;

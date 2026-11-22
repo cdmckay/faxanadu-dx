@@ -1,10 +1,13 @@
 /* Unit tests for recharging items (fax_recharge.c), without the emulator or a
  * ROM. The module runs against a model of the machine: CPU RAM, the
- * registers, the hook sites as the engine dispatches them, the PPU buffer as
- * the NMI drains it into the HUD's T:, and the item, countdown, death and
- * pickup code played step by step as the disassembly has them (the JSRs push
- * their real return addresses). So the tests check what the player holds,
- * sees and hears rather than restate the module's constants. */
+ * registers, the hook sites as the engine dispatches them (a handled site
+ * returns as an RTS from S would, so a pushed address is a jump), the PPU
+ * buffer as the NMI drains it into the HUD's T: and the MP bar, the
+ * committed calls it makes (Sound_PlayEffect, Player_SetMP, which waits for
+ * room in the buffer), and the item, countdown, death and pickup code
+ * played step by step as the disassembly has them (the JSRs push their real
+ * return addresses). So the tests check what the player holds, sees and
+ * hears rather than restate the module's constants. */
 #include "fax_recharge.c"
 
 static unsigned checks;
@@ -15,6 +18,8 @@ static uint8_t ram[0x800];
 static CycModRegs cpu;
 static bool isolated;
 static int sound = -1;                        /* the last effect Sound_PlayEffect queued */
+static int bar_mp = -1;                       /* the MP the HUD's bar was last queued with */
+static unsigned bar_calls, bars_queued;       /* Player_SetMP called; and it queued its bar */
 
 static uint8_t bank12[0x4000];               /* $8000-$BFFF as bank 12 maps it: the Gurus' scripts */
 /* Read overrides (cyc_mod_set_prg_read_override), in banks 12 and 13: what a
@@ -60,9 +65,38 @@ bool cyc_mod_poke(uint16_t addr, uint8_t value) {
 void cyc_mod_regs(CycModRegs *out) { *out = cpu; }
 void cyc_mod_set_regs(const CycModRegs *in) { cpu = *in; }
 bool cyc_mod_isolated(void) { return isolated; }
+
+/* PPUBuffer_HasCapacity: ReadOffset - WriteOffset is 0 (empty) or at least $24. */
+static bool has_capacity(uint8_t write) { uint8_t room = (uint8_t)(ram[PPU_BUFFER_READ] - write); return room == 0 || room >= 0x24; }
+/* One PPU buffer command: [length][address][length tiles]. */
+static void put(uint8_t *w, uint8_t len, uint16_t ppu) {
+    ram[PPU_BUFFER + *w] = len;
+    ram[PPU_BUFFER + (uint8_t)(*w + 1)] = (uint8_t)(ppu >> 8);
+    ram[PPU_BUFFER + (uint8_t)(*w + 2)] = (uint8_t)ppu;
+    for (unsigned k = 0; k < len; ++k) ram[PPU_BUFFER + (uint8_t)(*w + 3 + k)] = 0x09;
+    *w = (uint8_t)(*w + 3 + len);
+}
+/* The routines it commits. Player_SetMP ($FA85), A the MP: capped at 80,
+ * stored, then UI_SetHUDBarValue's two commands, the bar (3 + width + 1
+ * bytes) and the partial tile's pattern (3 + 16), each after
+ * PPUBuffer_WaitForCapacity, which spins for ever in a committed call (the
+ * call fails, nothing committed) when the buffer has no room. The registers
+ * it returns with become the CPU's. */
 bool cyc_mod_call_commit(uint16_t routine, CycModRegs *regs) {
-    CHECK(routine == SOUND_PLAY_EFFECT);      /* the only routine it runs */
-    sound = regs->a;
+    if (routine == SOUND_PLAY_EFFECT) { sound = regs->a; return true; }
+    CHECK(routine == PLAYER_SET_MP);
+    ++bar_calls;
+    uint8_t w = ram[PPU_BUFFER_WRITE];
+    if (!has_capacity(w)) return false;
+    if (!has_capacity((uint8_t)(w + 3 + ram[BAR_WIDTH] + 1))) return false;
+    ram[PLAYER_MP] = regs->a > 80 ? 80 : regs->a;
+    put(&w, (uint8_t)(ram[BAR_WIDTH] + 1), 0x2043);
+    put(&w, 16, 0x10D0);
+    ram[PPU_BUFFER_WRITE] = w;
+    bar_mp = ram[PLAYER_MP];
+    ++bars_queued;
+    regs->a = 0x10; regs->x = w; regs->y = 0x08; regs->p = 0x26;   /* what the routine leaves */
+    cpu = *regs;
     return true;
 }
 
@@ -119,7 +153,6 @@ static void field_set(const char *key, const char *value) {
     if (i == field_count) { CHECK(field_count < 8); snprintf(fields[field_count++].key, FAX_SAVE_KEY, "%s", key); }
     snprintf(fields[i].value, FAX_SAVE_VALUE, "%s", value);
 }
-static long field_int(const char *key) { const char *v = field(key); return v ? strtol(v, NULL, 10) : -1; }
 const char *fax_save_get(const char *key) { return file_in_play ? field(key) : NULL; }
 bool fax_save_set(const char *key, const char *value) {
     if (!file_in_play) return false;
@@ -148,16 +181,22 @@ static void push(uint8_t v) { ram[0x100 | cpu.s] = v; cpu.s = (uint8_t)(cpu.s - 
 static uint8_t pull(void) { cpu.s = (uint8_t)(cpu.s + 1); return ram[0x100 | cpu.s]; }
 static void jsr(uint16_t at) { uint16_t last = (uint16_t)(at + 2); push((uint8_t)(last >> 8)); push((uint8_t)last); }
 static uint16_t rts(void) { uint8_t lo = pull(); return (uint16_t)((lo | pull() << 8) + 1); }
+/* The site at `addr`, mid-routine: where the CPU goes on. `addr` itself if
+ * nothing handled it; else where the RTS the engine does lands (the routine's
+ * caller, or an address a hook pushed). */
+static uint16_t site(uint16_t addr) { return fire(addr) ? rts() : addr; }
 
 /* ---- the game, as the disassembly has it ---- */
 enum { WING_BOOTS = 0x0F, HOUR_GLASS = 0x0D, RED_POTION = 0x10, MATTOCK = 0x09, NO_ITEM = 0xFF };
-enum { HP_U = 0x0431, HP_L = 0x0432, PLAYER_IS_DEAD = 0x0438, DURATION_GLOVE = 0x0428 };
+enum { HP_U = 0x0431, HP_L = 0x0432, PLAYER_IS_DEAD = 0x0438, DURATION_GLOVE = 0x0428, PLAYER_STATUS = 0x00A5,
+       MUSIC = 0x00FA, AREA_MUSIC = 0x03D1 };
 enum { SCRIPT_USED_HOUR_GLASS = 0x82, SCRIPT_USED_WING_BOOTS = 0x83, SCRIPT_USED_ELIXIR = 0x85,
        SCRIPT_GOT_ELIXIR = 0x86, SCRIPT_GOT_WING_BOOTS = 0x89, SCRIPT_GOT_HOUR_GLASS = 0x8A };
 static const uint8_t STOCK_FLIGHT[BANDS] = { 40, 30, 20, 10 };    /* TITLE_TO_WINGBOOTS_DURATION ($C599) */
 static int picture;                         /* the item the HUD's picture tiles show */
 static int script;                          /* the last item script run */
-static int gone;                            /* the last timed item that ran out ("... are gone") */
+static int gone;                            /* the last timed item that ran out ("... is gone") */
+static unsigned gones;                      /* how many "... is gone" lines */
 static char t_shown[3];                     /* T:'s two tiles, as the PPU has them */
 
 static uint8_t selected(void) { return ram[SELECTED_ITEM]; }
@@ -170,6 +209,7 @@ static void give(const uint8_t *items, unsigned n, uint8_t selection) {
     picture = selection;
 }
 static unsigned hp(void) { return ram[HP_U]; }
+static unsigned mp(void) { return ram[PLAYER_MP]; }
 
 /* The NMI: InterruptCounter, then PPUBuffer_Draw empties the buffer. */
 static void nmi(void) {
@@ -193,24 +233,46 @@ static void draw_time(uint8_t v) {
     for (unsigned k = 0; k < 5; ++k) ram[PPU_BUFFER + (uint8_t)(w + k)] = bytes[k];
     ram[PPU_BUFFER_WRITE] = (uint8_t)(w + 5);
 }
-static bool t_blank(void) { return t_shown[0] == TILE_BLANK && t_shown[1] == TILE_BLANK; }
 static int t_value(void) {
     if (t_shown[0] < '0' || t_shown[0] > '9' || t_shown[1] < '0' || t_shown[1] > '9') return -1;
     return (t_shown[0] - '0') * 10 + t_shown[1] - '0';
 }
 
-/* GameLoop_CountdownItems: Game_DecHourGlassDuration, Game_DecWingBootsDuration, ... */
+/* The "... is gone" line: IScripts_Begin's text box, which plays its own frames. */
+static void is_gone(int item) { gone = item; ++gones; }
+/* GameLoop_CountdownItems, JSR'd from Game_MainLoop at $DB6B: its hook, then
+ * Game_DecHourGlassDuration (JSR at $C88F), Game_DecWingBootsDuration ($C892), ... */
 static void countdown(void) {
+    cpu.s = 0xF8;
+    jsr(0xDB6B);
     CHECK(!fire(GAME_LOOP_COUNTDOWN));      /* it only observes */
     bool second = (ram[INTERRUPT_COUNTER] & 0x3F) == 0;
-    if (ram[DURATION_HOUR_GLASS] < 0x80 && second && --ram[DURATION_HOUR_GLASS] >= 0x80) gone = HOUR_GLASS;
-    if (ram[DURATION_WING_BOOTS] < 0x80 && second) {
-        if (--ram[DURATION_WING_BOOTS] >= 0x80) gone = WING_BOOTS;
-        else draw_time(ram[DURATION_WING_BOOTS]);
+    if (ram[DURATION_HOUR_GLASS] < 0x80) {  /* LDA DurationHourGlass, BMI @_return */
+        jsr(0xC88F);
+        uint16_t at = site(GLASS_SECOND);
+        if (at == GLASS_SECOND) at = second ? GLASS_SECOND_DEC : rts();   /* AND #$3F, BNE @_return */
+        if (at == GLASS_SECOND_DEC) {
+            if (--ram[DURATION_HOUR_GLASS] >= 0x80) { is_gone(HOUR_GLASS); ram[MUSIC] = ram[AREA_MUSIC]; }
+            at = rts();
+        }
+        CHECK(at == 0xC892);
     }
+    if (ram[DURATION_WING_BOOTS] < 0x80) {
+        ram[PLAYER_STATUS] |= 0x80;         /* ORA #$80: flying */
+        jsr(0xC892);
+        uint16_t at = site(BOOTS_SECOND);
+        if (at == BOOTS_SECOND) at = second ? BOOTS_SECOND_DEC : rts();
+        if (at == BOOTS_SECOND_DEC) {
+            if (--ram[DURATION_WING_BOOTS] >= 0x80) { ram[PLAYER_STATUS] &= 0x7F; is_gone(WING_BOOTS); }
+            else draw_time(ram[DURATION_WING_BOOTS]);
+            at = rts();
+        }
+        CHECK(at == 0xC895);
+    }
+    CHECK(rts() == 0xDB6E && cpu.s == 0xF8);
 }
 static void frames(unsigned n) { while (n--) { nmi(); countdown(); } }
-static void seconds(unsigned n) { frames(n * 64); }
+static void game_seconds(unsigned n) { frames(n * 64); }
 /* Frames until `test` holds, at most `limit`; the count, or -1. */
 static int frames_until(bool (*test)(void), int limit) {
     for (int n = 0; n <= limit; ++n) { if (test()) return n; frames(1); }
@@ -242,15 +304,21 @@ static void use(void) {
         ram[DURATION_WING_BOOTS] = cpu.a;   /* STA DurationWingBoots */
         draw_time(cpu.a);                   /* JSR UI_DrawTimeValue */
         break;
-    case HOUR_GLASS:                        /* Player_UseHourGlass */
+    case HOUR_GLASS: {                      /* Player_UseHourGlass */
         if (fire(PLAYER_USE_HOUR_GLASS)) break;
         script = SCRIPT_USED_HOUR_GLASS;
         clear_selected(0xC5D0);
         sound = 0x1A;
-        ram[HP_L] = (uint8_t)(ram[HP_L] >> 1 | (ram[HP_U] & 1) << 7);   /* LSR Player_HP_U, ROR Player_HP_L */
-        ram[HP_U] >>= 1;
-        ram[DURATION_HOUR_GLASS] = 0x0F;
-        break;
+        uint16_t at = site(HOUR_GLASS_COST);
+        if (at == HOUR_GLASS_COST) {        /* LSR Player_HP_U, ROR Player_HP_L */
+            ram[HP_L] = (uint8_t)(ram[HP_L] >> 1 | (ram[HP_U] & 1) << 7);
+            ram[HP_U] >>= 1;
+        } else {
+            CHECK(at == HOUR_GLASS_DRAW_HP);
+        }
+        ram[DURATION_HOUR_GLASS] = 0x0F;    /* JSR UI_DrawPlayerHP, LDA #$0F, STA DurationHourGlass */
+        ram[MUSIC] = 0x0B;
+        break; }
     case RED_POTION:                        /* Player_UseRedPotion */
         clear_selected(0xC53B);
         ram[HP_U] = 0x50;
@@ -261,6 +329,8 @@ static void use(void) {
     }
     CHECK(rts() == 0xDB65 && cpu.s == 0xF8);
 }
+/* Player_CastMagic's Player_ReduceMP: the spell's cost, if MP covers it, and the bar. */
+static void cast(uint8_t cost) { if (mp() >= cost) { ram[PLAYER_MP] = (uint8_t)(mp() - cost); bar_mp = mp(); } }
 /* Player_ReduceHP taking the last of the hero's HP. */
 static void hurt(void) {
     ram[HP_U] = 0; ram[HP_L] = 0;
@@ -269,6 +339,7 @@ static void hurt(void) {
         ram[SPECIAL_ITEMS] &= (uint8_t)~BIT_ELIXIR;
         script = SCRIPT_USED_ELIXIR;
         ram[HP_U] = 0x50;                   /* Player_FillHPAndMP */
+        ram[PLAYER_MP] = 0x50;
     } else {
         ram[PLAYER_IS_DEAD] = 1;
     }
@@ -277,6 +348,8 @@ static void hurt(void) {
 static void respawn(void) {
     ram[PLAYER_IS_DEAD] = 0;
     ram[HP_U] = 0x50;
+    ram[PLAYER_MP] = 0x50;
+    ram[PLAYER_STATUS] = 0;                 /* Game_InitStateForSpawn */
     CHECK(!fire(GAME_CLEAR_TIMED_ITEMS));
     for (uint16_t a = 0x0427; a <= DURATION_HOUR_GLASS; ++a) ram[a] = 0xFF;
 }
@@ -412,9 +485,15 @@ static void play(bool on) {                 /* a launch with the toggle */
     memset(ram, 0, sizeof ram);
     for (uint16_t a = 0x0427; a <= DURATION_HOUR_GLASS; ++a) ram[a] = 0xFF;
     ram[HP_U] = 0x50;
+    ram[PLAYER_MP] = 0x50;
+    ram[BAR_WIDTH] = 10;                    /* UI_MPAndHPBarWidth, as UI_DrawHUDSprites sets it */
+    ram[AREA_MUSIC] = 0x02;
     ram[INTERRUPT_COUNTER] = 1;
     give(NULL, 0, NO_ITEM);
     memcpy(t_shown, "00", 3);
+    bar_mp = 0x50;
+    bar_calls = bars_queued = gones = 0;
+    gone = 0;
     isolated = false;
     overrides_lost();                       /* a launch: the engine's table starts empty */
     table_full = false;
@@ -428,22 +507,14 @@ static bool boots_down(void) { return ram[DURATION_WING_BOOTS] >= 0x80; }
 static bool glass_down(void) { return ram[DURATION_HOUR_GLASS] >= 0x80; }
 static bool boots_ready(void) { return ready(&charge, BOOTS); }
 static bool glass_ready(void) { return ready(&charge, GLASS); }
-
-/* Over one game second, T: shows `v` and blinks: the digits, then blanks. */
-static void check_t_blinks(int v) {
-    bool digits = false, blank = false;
-    for (int n = 0; n < 64; ++n) {
-        frames(1);
-        if (t_blank()) blank = true;
-        else if (t_value() == v || t_value() == v - 1) digits = true;
-        else CHECK(!"T: shows something else");
-    }
-    CHECK(digits && blank);
-}
+static bool flying(void) { return ram[PLAYER_STATUS] & 0x80; }
+/* The frames a flight's MP takes: one every FRAMES_PER_MP at the band. */
+static const unsigned STEP[BANDS] = { 32, 40, 48, 64 };     /* 2, 1.6, 1.33 and 1 MP a second (#124) */
+enum { GLASS_STEP = 24 };                                    /* 40 MP for the whole 15 s freeze */
 
 /* ---- tests ---- */
 static void registers(void) {
-    CHECK(site_count == 10 && !strcmp(plugin_id, "faxanadu.recharge") && reset_cb == deactivate);
+    CHECK(site_count == 13 && !strcmp(plugin_id, "faxanadu.recharge") && reset_cb == deactivate);
     CHECK(save_get && save_set && save_validate);
     play(true);
     for (int i = 0; i < site_count; ++i) CHECK(sites[i].on);
@@ -451,22 +522,36 @@ static void registers(void) {
     for (int i = 0; i < site_count; ++i) CHECK(!sites[i].on);
 }
 
-static void flight_grows_with_title(void) {
-    static const uint8_t flight[BANDS] = { 30, 40, 50, 60 };          /* decided in #27 */
+/* A full bar flies 40, 50, 60 and 80 s by title band, an MP every 32, 40,
+ * 48 and 64 frames to the frame, T: counting the seconds left (rounded up)
+ * and the bar drawn at each MP. At 0 MP the game's own line ends it. */
+static void flight_by_title_band(void) {
+    static const unsigned flight[BANDS] = { 40, 50, 60, 80 };
     for (int title = 0; title < 16; ++title) {
         play(true);
+        unsigned band = (unsigned)title / 4, step = STEP[band];
         ram[PLAYER_TITLE] = (uint8_t)title;
         give(NULL, 0, WING_BOOTS);
         use();
-        CHECK(script == SCRIPT_USED_WING_BOOTS && sound == 0x1A);
-        CHECK(ram[DURATION_WING_BOOTS] == flight[title / 4]);
+        CHECK(script == SCRIPT_USED_WING_BOOTS && sound == 0x1A && charge.flight.running && flights == 1);
+        CHECK(ram[DURATION_WING_BOOTS] == flight[band]);
         nmi();
-        CHECK(t_value() == flight[title / 4]);   /* the game's own draw shows it */
+        CHECK(t_value() == (int)flight[band]);   /* the game's own draw shows it */
         CHECK(selected() == WING_BOOTS && picture == WING_BOOTS && count() == 0);
-        /* The cooldown is 60 s at every title. */
-        CHECK(frames_until(boots_down, (flight[title / 4] + 1) * 64) > 0);
-        frames(1);
-        CHECK(charge.cooldown[BOOTS] == 60);
+        countdown();                        /* the flight's first frame */
+        unsigned flown = 1;
+        for (unsigned want = 79; want > 0; --want) {
+            while (mp() > want) { frames(1); ++flown; CHECK(flown <= 80 * step); }
+            CHECK(flown == (80 - want) * step && bar_mp == (int)want);    /* on schedule, the bar with it */
+            CHECK(flying() && !boots_down());
+            nmi(); countdown(); ++flown;    /* drawn at the next NMI */
+            CHECK(t_value() == (int)((want * step - (flown - (80 - want) * step) + 63) / 64));
+        }
+        CHECK(frames_until(boots_down, (int)step) >= 0);
+        CHECK(mp() == 0 && gone == WING_BOOTS && gones == 1 && !flying() && !charge.flight.running);
+        nmi();
+        CHECK(t_value() == 0);              /* T: back to the idle 00 */
+        CHECK(charge.flight.next == 0);
     }
     /* Turned off: the original table, and the pair is used up. */
     for (int title = 0; title < 16; ++title) {
@@ -475,160 +560,545 @@ static void flight_grows_with_title(void) {
         give(NULL, 0, WING_BOOTS);
         use();
         CHECK(ram[DURATION_WING_BOOTS] == STOCK_FLIGHT[title / 4] && selected() == NO_ITEM && picture == NO_ITEM);
+        uint8_t was = ram[PLAYER_MP];
+        game_seconds(5);
+        CHECK(mp() == was);                 /* no MP taken */
     }
 }
 
-static void wing_boots_cycle(void) {
+/* The exact length, from frames the game plays. */
+static void a_flight_lasts_its_mp(void) {
     play(true);
-    const uint8_t items[] = { RED_POTION };
-    give(items, 1, WING_BOOTS);
+    give(NULL, 0, WING_BOOTS);
+    ram[PLAYER_MP] = 20;                    /* 20 MP: 20 * 32 = 640 frames, 10 s */
     use();
-    CHECK(charge.running[BOOTS] && !boots_ready() && flights == 1 && kept == 1);
-    CHECK(selected() == WING_BOOTS && picture == WING_BOOTS && count() == 1);
-    /* Down-B mid-flight does nothing but the "invalid choice" sound. */
-    frames(100);
-    uint8_t left = ram[DURATION_WING_BOOTS];
+    CHECK(ram[DURATION_WING_BOOTS] == 10 && charge.flight.next == 32);
+    int n = frames_until(boots_down, 1000);
+    CHECK(n == 640 && mp() == 0 && gone == WING_BOOTS);
+    /* With no MP: refused, the game's "invalid choice" sound, no line, nothing flies. */
+    frames(10);
     use();
-    CHECK(script == 0 && sound == SOUND_INVALID_CHOICE && refused == 1 && ram[DURATION_WING_BOOTS] == left);
-    /* The flight runs out as in the original: 30 decrements, the last to $FF. */
-    int flown = frames_until(boots_down, 32 * 64);
-    CHECK(flown > 0 && gone == WING_BOOTS);
-    CHECK(t_value() == 0);                  /* the game's last draw */
-    /* The next frame the cooldown starts, and T: blinks it. */
+    CHECK(script == 0 && sound == SOUND_INVALID_CHOICE && refused == 1 && boots_down() && !charge.flight.running);
+    CHECK(selected() == WING_BOOTS && flights == 1);
+    /* No cooldown: with MP again, they fly at once. */
+    ram[PLAYER_MP] = 1;
+    use();
+    CHECK(script == SCRIPT_USED_WING_BOOTS && ram[DURATION_WING_BOOTS] == 1 && flights == 2);
+    CHECK(frames_until(boots_down, 100) == 32 && mp() == 0);
+    /* An odd MP and band: 7 MP at 1.6 a second, 280 frames: 5 s, rounded up. */
+    play(true);
+    ram[PLAYER_TITLE] = 5;
+    ram[PLAYER_MP] = 7;
+    give(NULL, 0, WING_BOOTS);
+    use();
+    CHECK(ram[DURATION_WING_BOOTS] == 5);
+    frames(41);                             /* 239 left: 4 s */
+    CHECK(ram[DURATION_WING_BOOTS] == 4 && mp() == 6);
+    nmi();
+    CHECK(t_value() == 4);
+    CHECK(frames_until(boots_down, 400) == 239);
+}
+
+/* MP that changes in the air changes the flight: a spell, the Elixir. */
+static void the_flight_follows_mp(void) {
+    play(true);
+    give(NULL, 0, WING_BOOTS);
+    use();
+    frames(100);                            /* 3 MP gone: 77, next in 28 */
+    CHECK(mp() == 77 && charge.flight.next == 28 && ram[DURATION_WING_BOOTS] == 39);
+    cast(16);                               /* Tilte: 61 MP, 60 * 32 + 28 frames */
     frames(1);
-    CHECK(charge.cooldown[BOOTS] == 60 && !charge.running[BOOTS]);
-    check_t_blinks(60);
-    use();
-    CHECK(script == 0 && sound == SOUND_INVALID_CHOICE && refused == 2 && boots_down());
-    CHECK(selected() == WING_BOOTS && picture == WING_BOOTS);
-    /* Ready after 60 of the game's seconds, to the frame. */
-    int waited = frames_until(boots_ready, 62 * 64);
-    CHECK(waited >= 58 * 64 && waited <= 60 * 64);
+    CHECK(ram[DURATION_WING_BOOTS] == (60 * 32 + 27 + 63) / 64);
+    nmi();
+    CHECK(t_value() == 31);
+    ram[SPECIAL_ITEMS] = BIT_ELIXIR;
+    hurt();                                 /* revived: MP full again */
     frames(1);
-    CHECK(t_value() == 0 && !t_blank());    /* T: back to the idle 00 */
-    frames(200);
+    CHECK(ram[DURATION_WING_BOOTS] == 40 && charge.flight.running);
+    /* A title won mid-flight: the next MP at the new band's step. */
+    ram[PLAYER_MP] = 3;
+    ram[PLAYER_TITLE] = 4;
+    unsigned next = charge.flight.next;
+    frames(next);
+    CHECK(mp() == 2 && charge.flight.next == 40);
+}
+
+/* Down+B mid-flight ends it at this frame's countdown with the game's own
+ * line, no MP more; and again at once, it flies again (no cooldown). */
+static void using_them_again_lands(void) {
+    play(true);
+    give(NULL, 0, WING_BOOTS);
+    use();
+    frames(70);
+    uint8_t left = ram[PLAYER_MP];
+    use();
+    CHECK(script == 0 && sound == -1 && charge.flight.land && !boots_down());   /* no line yet: the countdown's */
+    frames(1);
+    CHECK(boots_down() && gone == WING_BOOTS && !flying() && mp() == left && landings[BOOTS] == 1);
+    CHECK(!charge.flight.running && boots_ready());
+    nmi();
     CHECK(t_value() == 0);
     use();
-    CHECK(script == SCRIPT_USED_WING_BOOTS && ram[DURATION_WING_BOOTS] == 30 && flights == 2);
+    CHECK(script == SCRIPT_USED_WING_BOOTS && ram[DURATION_WING_BOOTS] == (left * 32 + 63) / 64 && flights == 2);
+    frames(64);
+    CHECK(mp() == left - 2u);
 }
 
-static void hour_glass_cycle(void) {
-    play(true);
-    give(NULL, 0, HOUR_GLASS);
-    use();
-    CHECK(script == SCRIPT_USED_HOUR_GLASS && ram[DURATION_HOUR_GLASS] == 15 && hp() == 40);   /* half of 80 */
-    CHECK(selected() == HOUR_GLASS && picture == HOUR_GLASS && freezes == 1);
-    use();                                  /* not while it runs */
-    CHECK(script == 0 && sound == SOUND_INVALID_CHOICE && hp() == 40);
-    CHECK(frames_until(glass_down, 17 * 64) > 0 && gone == HOUR_GLASS);
-    frames(1);
-    CHECK(charge.cooldown[GLASS] == 60);
-    check_t_blinks(60);                     /* T: blinks it too: it is selected */
-    use();
-    CHECK(script == 0 && sound == SOUND_INVALID_CHOICE && hp() == 40 && glass_down());
-    CHECK(frames_until(glass_ready, 61 * 64) > 0);
-    use();
-    CHECK(script == SCRIPT_USED_HOUR_GLASS && hp() == 20 && ram[DURATION_HOUR_GLASS] == 15);   /* the cost again */
-}
-
-/* T: shows the selected item's cooldown, and only its: with anything else
- * selected, or nothing, it is what the original shows, never the other
- * item's cooldown (#117). */
-static void hud_shows_only_the_selected_item(void) {
-    play(true);
-    charge.cooldown[BOOTS] = 50; charge.cooldown[GLASS] = 20;
-    give(NULL, 0, HOUR_GLASS);
-    Show s = hud_show(&charge, 0xFF, HOUR_GLASS, 0);
-    CHECK(s.value == 20 && !s.blank);
-    CHECK(hud_show(&charge, 0xFF, WING_BOOTS, 0).value == 50);
-    s = hud_show(&charge, 0xFF, RED_POTION, 0);
-    CHECK(s.value == 0 && !s.blank);        /* another item: the idle 00, not the Wing Boots' 50 */
-    s = hud_show(&charge, 0xFF, NO_ITEM, 0x30);
-    CHECK(s.value == 0 && !s.blank);        /* nothing selected: the same */
-    CHECK(hud_show(&charge, 0xFF, WING_BOOTS, 0x30).blank && !hud_show(&charge, 0xFF, WING_BOOTS, 0x2F).blank);
-    CHECK(hud_show(&charge, 12, HOUR_GLASS, 0).value == SHOW_GAME);   /* flying: the game's count */
-    CHECK(hud_show(&charge, 12, RED_POTION, 0).value == SHOW_GAME);
-    charge.cooldown[GLASS] = 0;
-    CHECK(hud_show(&charge, 0xFF, HOUR_GLASS, 0).value == 0);         /* it is ready: 00, though the boots recharge */
-    charge.cooldown[BOOTS] = 0;
-    CHECK(hud_show(&charge, 0xFF, WING_BOOTS, 0x30).value == 0 && !hud_show(&charge, 0xFF, WING_BOOTS, 0x30).blank);
-    /* On the screen: the recharging Wing Boots selected, T: blinks their
-     * seconds; another item selected, it goes back to 00 and stays; the
-     * boots again, their seconds again. */
+/* Each MP's bar is Player_SetMP's, in a committed call: a full PPU buffer
+ * holds the bar, never the MP, and the CPU gets its registers back. */
+static void the_bar_waits_for_room(void) {
     play(true);
     give(NULL, 0, WING_BOOTS);
-    charge.cooldown[BOOTS] = 40;
-    frames(1);                              /* queued, then drawn at the next NMI */
-    check_t_blinks(40);
+    use();
+    frames(31);
+    CHECK(mp() == 80 && bar_calls == 0);
+    nmi();
+    ram[PPU_BUFFER_READ] = 0x30; ram[PPU_BUFFER_WRITE] = 0x00;    /* 48 bytes free: T: fits, the bar does not */
+    cpu.a = 0x11; cpu.x = 0x22; cpu.y = 0x33; cpu.p = 0x04;
+    countdown();
+    CHECK(mp() == 79 && bar_mp == 80 && charge.bar && bar_calls == 0);   /* not even tried */
+    CHECK(cpu.a == 0x11 && cpu.x == 0x22 && cpu.y == 0x33 && cpu.p == 0x04);
+    ram[PPU_BUFFER_READ] = ram[PPU_BUFFER_WRITE];                  /* drained */
+    countdown();
+    CHECK(bar_mp == 79 && !charge.bar && bars_queued == 1);
+    frames(31);
+    CHECK(mp() == 78 && bar_mp == 78);
+}
+
+/* The Hour Glass: the game's 15 s freeze, no HP, and an MP every 24 frames:
+ * 40 for the whole freeze. */
+static void the_freeze_runs_on_mp(void) {
+    play(true);
+    give(NULL, 0, HOUR_GLASS);
+    ram[HP_L] = 0x80;                       /* 80.5 HP: the original took half */
+    use();
+    CHECK(script == SCRIPT_USED_HOUR_GLASS && ram[DURATION_HOUR_GLASS] == 15 && hp() == 80 && ram[HP_L] == 0x80);
+    CHECK(selected() == HOUR_GLASS && picture == HOUR_GLASS && freezes == 1 && ram[MUSIC] == 0x0B);
+    frames(1);
+    nmi();
+    CHECK(t_value() == 15);                 /* selected: its seconds */
+    unsigned played = 1;
+    for (unsigned want = 79; want >= 41; --want) {
+        while (mp() > want) { frames(1); ++played; CHECK(played <= FREEZE); }
+        CHECK(played == (80 - want) * GLASS_STEP && bar_mp == (int)want && !glass_down());
+    }
+    CHECK(frames_until(glass_down, 30) == 24);
+    played += 24;
+    CHECK(played == 960 && mp() == 40 && gone == HOUR_GLASS && gones == 1 && ram[MUSIC] == 0x02);
+    CHECK(hp() == 80 && ram[HP_L] == 0x80 && !charge.freeze.running && glass_ready());
+    nmi();
+    CHECK(t_value() == 0);
+    /* No cooldown: again at once. */
+    use();
+    CHECK(script == SCRIPT_USED_HOUR_GLASS && ram[DURATION_HOUR_GLASS] == 15 && freezes == 2);
+    CHECK(frames_until(glass_down, 1000) == 960 && mp() == 0);
+    /* With no MP: refused with the sound. */
+    use();
+    CHECK(script == 0 && sound == SOUND_INVALID_CHOICE && glass_down() && refused == 1);
+    /* Less MP than the freeze costs: it ends at 0 MP, 10 MP in 240 frames, T: 4 s. */
+    ram[PLAYER_MP] = 10;
+    use();
+    frames(1);
+    nmi();
+    CHECK(t_value() == 4 && ram[DURATION_HOUR_GLASS] == 4);
+    CHECK(frames_until(glass_down, 1000) == 239 && mp() == 0 && gones == 3);
+    /* Turned off: the original's half of HP, and the glass used up, no MP. */
+    play(false);
+    give(NULL, 0, HOUR_GLASS);
+    use();
+    CHECK(hp() == 40 && selected() == NO_ITEM && ram[DURATION_HOUR_GLASS] == 15);
+    game_seconds(5);
+    CHECK(mp() == 80);
+}
+
+/* Down+B on it again ends the freeze at once; and on a boss's screen
+ * LimitItemDurations cuts it: no more MP, and the game's second ends it. */
+static void the_freeze_ends_early(void) {
+    play(true);
+    give(NULL, 0, HOUR_GLASS);
+    use();
+    frames(100);
+    uint8_t left = ram[PLAYER_MP];
+    CHECK(left == 80 - 4);
+    use();
+    CHECK(script == 0 && sound == -1 && !glass_down());
+    frames(1);
+    CHECK(glass_down() && gone == HOUR_GLASS && mp() == left && landings[GLASS] == 1 && ram[MUSIC] == 0x02);
+    frames(200);
+    CHECK(mp() == left);
+    use();
+    CHECK(script == SCRIPT_USED_HOUR_GLASS && freezes == 2);
+    /* LimitItemDurations, the first frame on a boss's screen. */
+    frames(200);
+    left = ram[PLAYER_MP];
+    ram[DURATION_HOUR_GLASS] = 0;
+    gones = 0;
+    int n = frames_until(glass_down, 70);
+    CHECK(n >= 1 && n <= 65 && gone == HOUR_GLASS && gones == 1 && cuts == 1 && mp() == left);
+}
+
+/* Both at once drain together; each ends when MP runs out. */
+static void both_at_once(void) {
+    play(true);
+    const uint8_t items[] = { HOUR_GLASS };
+    give(items, 1, WING_BOOTS);
+    ram[PLAYER_MP] = 30;
+    use();
+    frames(10);
+    ram[SELECTED_ITEM] = HOUR_GLASS; ram[ITEM_INVENTORY] = WING_BOOTS;
+    use();
+    CHECK(charge.flight.running && charge.freeze.running);
+    /* From here the flight's MP go at 22, 54, ... 406 (13 of them) and the
+     * glass's at 24, 48, ... 408 (17): the 30th, the glass's, at 408. */
+    unsigned left = to_empty(&charge, mp(), 0);
+    CHECK(left == 408 && left == freeze_left(&charge, mp(), 0) && left == flight_left(&charge, mp(), 0));
+    frames(1);
+    nmi();
+    CHECK(t_value() == (int)((left - 1 + 63) / 64));   /* the glass is selected: its seconds */
     ram[SELECTED_ITEM] = RED_POTION;
     frames(1);
-    for (int n = 0; n < 128; ++n) { frames(1); CHECK(t_value() == 0 && !t_blank()); }
-    ram[SELECTED_ITEM] = NO_ITEM;
-    for (int n = 0; n < 64; ++n) { frames(1); CHECK(t_value() == 0 && !t_blank()); }
-    ram[SELECTED_ITEM] = WING_BOOTS;
+    nmi();
+    CHECK(t_value() == (int)((left - 2 + 63) / 64));   /* the flight's */
+    int n = frames_until(boots_down, 1000);
+    CHECK(n == (int)left - 2 && mp() == 0);
     frames(1);
-    check_t_blinks(charge.cooldown[BOOTS]);
-    /* A full PPU buffer: T: waits for room, as the game's own draws do. */
+    CHECK(glass_down() && gones == 2);
+}
+
+/* T: shows the selected item's seconds while it runs; else the original's:
+ * the flight's while the boots fly, else 00 (#119). */
+static void hud_shows_the_selected_item(void) {
     play(true);
+    Charge c = { 0 };
+    CHECK(hud_value(&c, WING_BOOTS, 80, 0) == 0 && hud_value(&c, HOUR_GLASS, 80, 0) == 0);
+    c.freeze = freeze_begin();
+    CHECK(hud_value(&c, HOUR_GLASS, 80, 0) == 15 && hud_value(&c, WING_BOOTS, 80, 0) == 0);
+    CHECK(hud_value(&c, RED_POTION, 80, 0) == 0 && hud_value(&c, NO_ITEM, 80, 0) == 0);
+    c.flight = take_off(0);
+    c.freeze = (Freeze){ 0 };
+    CHECK(hud_value(&c, WING_BOOTS, 80, 0) == 40 && hud_value(&c, RED_POTION, 80, 0) == 40);
+    CHECK(hud_value(&c, HOUR_GLASS, 80, 0) == 40);   /* the glass not running: the flight's, as the original */
+    CHECK(hud_value(&c, WING_BOOTS, 80, 12) == 80 && hud_value(&c, WING_BOOTS, 1, 0) == 1);
+    CHECK(hud_value(&c, WING_BOOTS, 0, 0) == 0);
+    /* On the screen: the game draws 00 over T: (UI_DrawHUD after a box or a
+     * screen); within 16 frames it shows the flight's seconds again. */
     give(NULL, 0, WING_BOOTS);
-    charge.cooldown[BOOTS] = 30;
+    use();
+    frames(2);
+    draw_time(0);
+    nmi();
+    CHECK(t_value() == 0);
+    for (int k = 0; k < 17 && t_value() != 40; ++k) frames(1);
+    CHECK(t_value() == 40);
+    /* A full PPU buffer: T: waits for room, as the game's own draws do. */
     ram[PPU_BUFFER_READ] = 0x10; ram[PPU_BUFFER_WRITE] = 0x00;        /* 16 bytes free: too few */
+    drawn_valid = false;
     tick_hook(GAME_LOOP_COUNTDOWN);
     CHECK(ram[PPU_BUFFER_WRITE] == 0x00);
     ram[PPU_BUFFER_READ] = 0x00;                                       /* drained */
     tick_hook(GAME_LOOP_COUNTDOWN);
     CHECK(ram[PPU_BUFFER_WRITE] == 5);
     /* Wrapping round the 256-byte ring. */
-    play(true);
-    give(NULL, 0, HOUR_GLASS);
-    charge.cooldown[GLASS] = 42;
+    nmi();
     ram[PPU_BUFFER_READ] = ram[PPU_BUFFER_WRITE] = 0xFE;
-    nmi(); countdown(); nmi();
-    CHECK(ram[PPU_BUFFER_WRITE] == 0x03 && (t_value() == 42 || t_blank()));
+    drawn_valid = false;
+    countdown(); nmi();
+    CHECK(ram[PPU_BUFFER_WRITE] == 0x03 && t_value() == (int)seconds(flight_left(&charge, mp(), 0)));
 }
 
-static void dying_makes_both_ready(void) {
+static void dying_ends_both(void) {
     play(true);
     const uint8_t items[] = { HOUR_GLASS };
     give(items, 1, WING_BOOTS);
     use();
-    seconds(5);
+    game_seconds(5);
     respawn();                              /* dies mid-flight */
     frames(2);
-    CHECK(boots_ready() && boots_down() && !charge.running[BOOTS] && charge.cooldown[BOOTS] == 0);
-    CHECK(t_value() == 0 && !t_blank());
+    CHECK(boots_ready() && boots_down() && !charge.flight.running && mp() == 80);
+    nmi();
+    CHECK(t_value() == 0);
     use();
     CHECK(script == SCRIPT_USED_WING_BOOTS);
-    CHECK(frames_until(boots_down, 32 * 64) > 0);
-    frames(64 * 10);
-    CHECK(charge.cooldown[BOOTS] > 0);
     ram[SELECTED_ITEM] = HOUR_GLASS;
     use();
-    CHECK(frames_until(glass_down, 17 * 64) > 0);
-    frames(2);
-    CHECK(charge.cooldown[GLASS] > 0);
-    respawn();                              /* dies with both cooling */
+    frames(10);
+    respawn();                              /* dies with both running */
     CHECK(boots_ready() && glass_ready() && spawns >= 2);
+    frames(64);
+    CHECK(mp() == 80);
 }
 
 static void guru_travel_keeps_them(void) {
     play(true);
     give(NULL, 0, WING_BOOTS);
     use();
-    seconds(3);
-    uint8_t flying = ram[DURATION_WING_BOOTS];
+    game_seconds(3);
+    uint8_t flying_left = ram[DURATION_WING_BOOTS], had = ram[PLAYER_MP];
     journey();
-    CHECK(charge.running[BOOTS] && ram[DURATION_WING_BOOTS] == flying);
-    CHECK(frames_until(boots_down, 32 * 64) > 0);
+    meet_guru(3);                           /* talking to a Guru changes nothing */
+    CHECK(charge.flight.running && ram[DURATION_WING_BOOTS] == flying_left && mp() == had);
+    game_seconds(1);
+    CHECK(mp() == had - 2u && charge.flight.running);
+}
+
+/* What the status bar is told (fax_charges.c draws the Elixir's): not his,
+ * ready, or used. */
+static FaxCharge boots_c(void) { return fax_recharge_charge(FAX_RECHARGE_BOOTS); }
+static FaxCharge glass_c(void) { return fax_recharge_charge(FAX_RECHARGE_GLASS); }
+static FaxCharge elixir_c(void) { return fax_recharge_charge(FAX_RECHARGE_ELIXIR); }
+static void charges_on_the_status_bar(void) {
+    play(true);
+    CHECK(boots_c() == FAX_CHARGE_NONE && glass_c() == FAX_CHARGE_NONE && elixir_c() == FAX_CHARGE_NONE);
+    CHECK(fax_recharge_charge(-1) == FAX_CHARGE_NONE && fax_recharge_charge(FAX_RECHARGE_ITEMS) == FAX_CHARGE_NONE);
+    /* His: selected, or in the list's first NumberOfItems slots, not past them. */
+    const uint8_t items[] = { RED_POTION, HOUR_GLASS };
+    give(items, 1, WING_BOOTS);
+    ram[ITEM_INVENTORY + 1] = HOUR_GLASS;   /* a stale byte past the count */
+    CHECK(boots_c() == FAX_CHARGE_READY && glass_c() == FAX_CHARGE_NONE);
+    give(items, 2, WING_BOOTS);
+    CHECK(boots_c() == FAX_CHARGE_READY && glass_c() == FAX_CHARGE_READY);
+    /* Used while it runs, ready the moment it ends. */
+    use();
+    CHECK(boots_c() == FAX_CHARGE_USED && glass_c() == FAX_CHARGE_READY);
+    use();
     frames(1);
-    CHECK(charge.cooldown[BOOTS] == 60);
-    seconds(10);
-    uint8_t cooling = charge.cooldown[BOOTS];
-    journey();
-    meet_guru(3);                           /* talking to a Guru changes neither */
-    CHECK(charge.cooldown[BOOTS] == cooling && !boots_ready());
-    seconds(5);
-    CHECK(charge.cooldown[BOOTS] < cooling);
+    CHECK(boots_c() == FAX_CHARGE_READY);
+    give((const uint8_t[]){ WING_BOOTS }, 1, HOUR_GLASS);
+    use();
+    CHECK(glass_c() == FAX_CHARGE_USED && boots_c() == FAX_CHARGE_READY);
+    respawn();
+    CHECK(glass_c() == FAX_CHARGE_READY);
+    /* The Elixir: charged, spent by a revive, charged by a Guru, gone to the Spring of Trunk. */
+    ram[SPECIAL_ITEMS] = BIT_ELIXIR;
+    CHECK(elixir_c() == FAX_CHARGE_READY);
+    hurt();
+    CHECK(elixir_c() == FAX_CHARGE_USED);
+    respawn();
+    CHECK(elixir_c() == FAX_CHARGE_USED);
+    meet_guru(0);
+    CHECK(elixir_c() == FAX_CHARGE_READY);
+    hurt();
+    pick_up_elixir();                       /* found while spent: ready at once, before tick_hook forgets it was spent */
+    CHECK(charge.elixir_spent && elixir_c() == FAX_CHARGE_READY);
+    frames(1);
+    CHECK(!charge.elixir_spent && elixir_c() == FAX_CHARGE_READY);
+    ram[SPECIAL_ITEMS] &= (uint8_t)~BIT_ELIXIR;   /* the Spring of Trunk's CONSUME_ITEM */
+    frames(1);
+    CHECK(elixir_c() == FAX_CHARGE_NONE);
+    /* Turned off: nothing, whatever he holds. */
+    play(false);
+    give(items, 2, WING_BOOTS);
+    ram[SPECIAL_ITEMS] = BIT_ELIXIR;
+    CHECK(boots_c() == FAX_CHARGE_NONE && glass_c() == FAX_CHARGE_NONE && elixir_c() == FAX_CHARGE_NONE);
+}
+
+/* A pair or an Hour Glass he owns already is not added again. */
+static void finds_add_nothing(void) {
+    play(true);
+    const uint8_t items[] = { RED_POTION, HOUR_GLASS };
+    give(items, 2, WING_BOOTS);
+    pick_up(WING_BOOTS);                    /* a pair in the world */
+    CHECK(count() == 2 && pickups == 1 && script == SCRIPT_GOT_WING_BOOTS);
+    pick_up(HOUR_GLASS);                    /* in the list, unselected */
+    CHECK(count() == 2 && pickups == 2);
+    /* Found while flying: the flight goes on. */
+    use();
+    frames(10);
+    pick_up(WING_BOOTS);
+    CHECK(charge.flight.running && !boots_down() && count() == 2);
+    /* Not owned: the original pickup, into the list. */
+    give(NULL, 0, RED_POTION);
+    pick_up(WING_BOOTS);
+    CHECK(count() == 1 && ram[ITEM_INVENTORY] == WING_BOOTS && pickups == 3);
+    /* A full list holding one: nothing added, nothing lost. */
+    const uint8_t full[] = { WING_BOOTS, 1, 2, 3, 4, 5, 6, 7 };
+    give(full, 8, RED_POTION);
+    pick_up(WING_BOOTS);
+    CHECK(count() == 8 && pickups == 4);
+    /* Turned off: the original, a second copy. */
+    play(false);
+    const uint8_t one[] = { WING_BOOTS };
+    give(one, 1, NO_ITEM);
+    pick_up(WING_BOOTS);
+    CHECK(count() == 2);
+}
+
+static void other_items_untouched(void) {
+    play(true);
+    const uint8_t items[] = { WING_BOOTS };
+    give(items, 1, RED_POTION);
+    ram[HP_U] = 10;
+    use();
+    CHECK(selected() == NO_ITEM && picture == NO_ITEM && hp() == 80);   /* the Red Potion is used up */
+    give(items, 1, MATTOCK);
+    use();
+    CHECK(selected() == NO_ITEM);           /* reusable tools keeps the Mattock, not this feature */
+    CHECK(kept == 0);
+    /* Player_ClearSelectedItem from any other caller. */
+    give(items, 1, WING_BOOTS);
+    cpu.s = 0xF0;
+    clear_selected(0xE123);
+    CHECK(selected() == NO_ITEM);
+}
+
+static void new_game_and_mantra(void) {
+    play(true);
+    ram[SPECIAL_ITEMS] = BIT_ELIXIR;
+    hurt();
+    give(NULL, 0, WING_BOOTS);
+    use();
+    title_screen();                         /* a reset, then a new game or a mantra */
+    respawn();
+    CHECK(boots_ready() && glass_ready() && !charge.elixir_spent);
+    meet_guru(0);                           /* a mantra holds only a charged Elixir */
+    CHECK(!(ram[SPECIAL_ITEMS] & BIT_ELIXIR));
+}
+
+static void isolated_runs_change_nothing(void) {
+    play(true);
+    give(NULL, 0, WING_BOOTS);
+    use();
+    frames(31);
+    isolated = true;                        /* Seamless simulating another room */
+    uint8_t had = ram[PLAYER_MP], next = charge.flight.next;
+    tick_hook(GAME_LOOP_COUNTDOWN);
+    CHECK(!boots_second_hook(BOOTS_SECOND) && !glass_second_hook(GLASS_SECOND));
+    CHECK(mp() == had && charge.flight.next == next);
+    respawn();
+    pick_up(WING_BOOTS);
+    CHECK(charge.flight.running && count() == 1);
+    ram[SPECIAL_ITEMS] = BIT_ELIXIR;
+    hurt();
+    meet_guru(0);
+    CHECK(!charge.elixir_spent);
+    isolated = false;
+}
+
+static void save_states(void) {
+    play(true);
+    ram[SPECIAL_ITEMS] = BIT_ELIXIR;
+    hurt();
+    const uint8_t items[] = { HOUR_GLASS };
+    give(items, 1, WING_BOOTS);
+    use();
+    frames(45);
+    ram[SELECTED_ITEM] = HOUR_GLASS; ram[ITEM_INVENTORY] = WING_BOOTS;
+    use();
+    frames(30);
+    uint8_t buf[32];
+    int n = save_get(buf, sizeof buf);
+    CHECK(n == RECORD && save_validate(buf, n));
+    CHECK(buf[0] == 3 && buf[1] == 1 && buf[2] == charge.flight.next && buf[3] == 0 && buf[4] == 1 && buf[5] == 0);
+    CHECK((buf[6] | buf[7] << 8) == 30 && buf[8] == charge.freeze.next && buf[9] == 15 && buf[11] == 1);
+    CHECK(buf[12] == 0 && buf[13] == TALK_IDLE && buf[14] == LINE_NONE);
+    CHECK(save_get(buf, RECORD - 1) == -1);
+    Charge saved = charge;
+    uint8_t machine[0x800];
+    memcpy(machine, ram, sizeof ram);
+    int boots_end = frames_until(boots_down, 4000), had = (int)mp();
+    /* Loaded into a new launch: the same, frame for frame. */
+    play(true);
+    memcpy(ram, machine, sizeof ram);
+    CHECK(save_set(buf, n) == 1 && !memcmp(&charge, &saved, sizeof charge));
+    fax_recharge_loaded();
+    CHECK(!memcmp(&charge, &saved, sizeof charge));
+    CHECK(frames_until(boots_down, 4000) == boots_end && (int)mp() == had);
+    /* A state from before the feature: nothing running, nothing spent. */
+    CHECK(save_validate(buf, 0) && save_set(buf, 0) == 1 && boots_ready() && glass_ready() && !charge.elixir_spent);
+    /* Records it does not accept change nothing. */
+    CHECK(save_set(buf, n) == 1);
+    static const struct { int at; uint8_t value; } bad[] = {
+        { 0, 4 }, { 0, 2 }, { 1, 2 }, { 2, 0 }, { 2, 65 }, { 3, 2 }, { 4, 2 }, { 5, 2 }, { 7, 4 }, { 8, 0 },
+        { 8, 25 }, { 9, 16 }, { 10, 2 }, { 11, 2 }, { 12, 2 }, { 13, TALK_PHASES }, { 14, LINES },
+        { 14, LINE_CAN } };                 /* the last: a line with no talk */
+    for (unsigned i = 0; i < sizeof bad / sizeof bad[0]; ++i) {
+        uint8_t b[RECORD];
+        memcpy(b, buf, sizeof b);
+        b[bad[i].at] = bad[i].value;
+        CHECK(!save_validate(b, sizeof b) && !save_set(b, sizeof b));
+        CHECK(!memcmp(&charge, &saved, sizeof charge));
+    }
+    CHECK(!save_validate(buf, RECORD - 1) && !save_validate(buf, RECORD + 1));
+}
+
+/* Records from before #124 (version 2, and version 1 before the Guru's
+ * lines): their cooldowns are dropped, and a run on the game's timer goes on
+ * on MP, the freeze for the seconds it had left. */
+static void old_records_load(void) {
+    play(true);
+    give(NULL, 0, WING_BOOTS);
+    ram[DURATION_WING_BOOTS] = 25; ram[DURATION_HOUR_GLASS] = 7;   /* both running, as the game timed them */
+    ram[PLAYER_STATUS] = 0x80;
+    /* Version 2: boots running, 0 cooldown; glass running; the Elixir spent; no continued file; told; no line. */
+    const uint8_t v2[RECORD_V2] = { 2, 1, 0, 1, 0, 1, 0, 0, 0, 1, TALK_IDLE, LINE_NONE, 0, 0, 0, 0, 0 };
+    CHECK(save_validate(v2, RECORD_V2) && save_set(v2, RECORD_V2) == 1);
+    fax_recharge_loaded();
+    CHECK(charge.flight.running && charge.flight.next == 32 && charge.freeze.running && charge.elixir_spent);
+    CHECK(charge.elixir_told && charge.freeze.played == FREEZE - 7 * 64 && charge.freeze.shown == 7);
+    CHECK(frames_until(glass_down, 1000) == 7 * 64 && gone == HOUR_GLASS && charge.flight.running);
+    CHECK(mp() == 80 - 7 * 64 / 32 - 7 * 64 / 24);
+    /* Version 1, the glass's last partial second, the boots' cooldown: no flight. */
+    play(true);
+    ram[DURATION_HOUR_GLASS] = 0;
+    const uint8_t v1[RECORD_V1] = { 1, 0, 40, 1, 0, 0, 1, 30, 30 };
+    CHECK(save_validate(v1, RECORD_V1) && save_set(v1, RECORD_V1) == 1);
+    fax_recharge_loaded();
+    CHECK(!charge.flight.running && boots_ready() && charge.freeze.running && !charge.elixir_told);
+    CHECK(frames_until(glass_down, 10) == 1 && gone == HOUR_GLASS);
+    /* One the game had already ended is over. */
+    play(true);
+    const uint8_t done[RECORD_V2] = { 2, 1, 0, 1, 0, 0, 0, 0, 0, 0, TALK_IDLE, LINE_NONE, 0, 0, 0, 0, 0 };
+    CHECK(save_set(done, RECORD_V2) == 1);
+    fax_recharge_loaded();
+    CHECK(boots_ready() && glass_ready());
+    /* Old records it never accepted, it still does not. */
+    uint8_t b[RECORD_V2];
+    memcpy(b, v2, sizeof b); b[2] = 100; CHECK(!save_validate(b, RECORD_V2));
+    memcpy(b, v2, sizeof b); b[0] = 1;   CHECK(!save_validate(b, RECORD_V2));
+    memcpy(b, v2, sizeof b); b[11] = LINE_CAN; CHECK(!save_validate(b, RECORD_V2));
+    CHECK(!save_validate(v1, RECORD_V2) && !save_validate(v2, RECORD_V1));
+}
+
+/* Save files: the file in play keeps the Elixir's charge; nothing of the
+ * timed items, and #27's cooldown fields are dropped. */
+static void save_files(void) {
+    CHECK(save_listener == on_save);
+    play(true);
+    file_in_play = true;
+    fields_clear();
+    field_set("recharge.wingboots", "45");  /* a file from #27 */
+    field_set("recharge.hourglass", "30");
+    ram[SPECIAL_ITEMS] = BIT_ELIXIR;
+    hurt();
+    give(NULL, 0, WING_BOOTS);
+    use();
+    frames(100);
+    save_listener(FAX_SAVE_WRITING);        /* a Guru's save, mid-flight */
+    CHECK(!field("recharge.wingboots") && !field("recharge.hourglass") && !strcmp(field("recharge.elixir"), "spent"));
+    /* Quit, then continue the file: nothing runs, the Elixir is spent. */
+    field_set("recharge.wingboots", "45");  /* read no more */
+    title_screen();
+    CHECK(boots_ready() && !charge.elixir_spent);
+    save_listener(FAX_SAVE_CONTINUED);
+    respawn();
+    CHECK(boots_ready() && glass_ready() && charge.elixir_spent && !(ram[SPECIAL_ITEMS] & BIT_ELIXIR));
+    use();
+    CHECK(script == SCRIPT_USED_WING_BOOTS);   /* no cooldown came back with the file */
+    meet_guru(0);
+    CHECK(!charge.elixir_spent && (ram[SPECIAL_ITEMS] & BIT_ELIXIR));
+    save_listener(FAX_SAVE_WRITING);
+    CHECK(field("recharge.elixir") == NULL && !field("recharge.wingboots"));   /* charged: special items say so */
+    /* A new game resets it. */
+    charge.elixir_spent = 1;
+    save_listener(FAX_SAVE_NEW_GAME);
+    CHECK(!charge.elixir_spent);
+    /* Turned off, it writes nothing and reads nothing. */
+    play(false);
+    fields_clear();
+    field_set("recharge.wingboots", "45");
+    save_listener(FAX_SAVE_WRITING);
+    CHECK(!strcmp(field("recharge.wingboots"), "45") && field("recharge.elixir") == NULL);
+    file_in_play = false;
 }
 
 static void elixir(void) {
@@ -643,7 +1113,7 @@ static void elixir(void) {
     hurt();
     CHECK(ram[PLAYER_IS_DEAD] == 1);
     respawn();
-    seconds(400);                           /* no timer, and no recharge on death */
+    game_seconds(400);                         /* no timer, and no recharge on death */
     CHECK(charge.elixir_spent && !(ram[SPECIAL_ITEMS] & BIT_ELIXIR));
     /* Anyone else's script, a Guru's later actions, or a bad spawn point: nothing. */
     static const uint8_t npc[] = { 0x03, 0x40, 0x00, 0x06, 0x09, 0x00 };
@@ -699,278 +1169,6 @@ static void elixir_found_not_bought(void) {
     ram[SPECIAL_ITEMS] = BIT_ELIXIR;
     hurt();
     CHECK(!fax_recharge_on() && !fax_recharge_elixir_spent() && !(ram[SPECIAL_ITEMS] & BIT_ELIXIR));
-}
-
-/* What the status bar shows of each (fax_charges.c): not his, ready, or used. */
-static FaxCharge boots_c(void) { return fax_recharge_charge(FAX_RECHARGE_BOOTS); }
-static FaxCharge glass_c(void) { return fax_recharge_charge(FAX_RECHARGE_GLASS); }
-static FaxCharge elixir_c(void) { return fax_recharge_charge(FAX_RECHARGE_ELIXIR); }
-static bool boots_shown_ready(void) { return boots_c() == FAX_CHARGE_READY; }
-static void charges_on_the_status_bar(void) {
-    play(true);
-    CHECK(boots_c() == FAX_CHARGE_NONE && glass_c() == FAX_CHARGE_NONE && elixir_c() == FAX_CHARGE_NONE);
-    CHECK(fax_recharge_charge(-1) == FAX_CHARGE_NONE && fax_recharge_charge(FAX_RECHARGE_ITEMS) == FAX_CHARGE_NONE);
-    /* His: selected, or in the list's first NumberOfItems slots, not past them. */
-    const uint8_t items[] = { RED_POTION, HOUR_GLASS };
-    give(items, 1, WING_BOOTS);
-    ram[ITEM_INVENTORY + 1] = HOUR_GLASS;   /* a stale byte past the count */
-    CHECK(boots_c() == FAX_CHARGE_READY && glass_c() == FAX_CHARGE_NONE);
-    give(items, 2, WING_BOOTS);
-    CHECK(boots_c() == FAX_CHARGE_READY && glass_c() == FAX_CHARGE_READY);
-    /* Used: flying, then recharging, then ready again. */
-    use();
-    CHECK(boots_c() == FAX_CHARGE_USED && glass_c() == FAX_CHARGE_READY);
-    CHECK(frames_until(boots_down, 32 * 64) > 0);
-    frames(1);
-    CHECK(charge.cooldown[BOOTS] == 60 && boots_c() == FAX_CHARGE_USED);
-    int waited = frames_until(boots_shown_ready, 62 * 64);
-    CHECK(waited >= 58 * 64 && boots_ready());
-    /* The Hour Glass: freezing, then recharging. */
-    give((const uint8_t[]){ WING_BOOTS }, 1, HOUR_GLASS);
-    use();
-    CHECK(glass_c() == FAX_CHARGE_USED && boots_c() == FAX_CHARGE_READY);
-    CHECK(frames_until(glass_down, 17 * 64) > 0);
-    frames(1);
-    CHECK(charge.cooldown[GLASS] == 60 && glass_c() == FAX_CHARGE_USED);
-    /* Dying makes both ready. */
-    respawn();
-    CHECK(glass_c() == FAX_CHARGE_READY && boots_c() == FAX_CHARGE_READY);
-    /* The Elixir: charged, spent by a revive, charged by a Guru, gone to the Spring of Trunk. */
-    ram[SPECIAL_ITEMS] = BIT_ELIXIR;
-    CHECK(elixir_c() == FAX_CHARGE_READY);
-    hurt();
-    CHECK(elixir_c() == FAX_CHARGE_USED);
-    respawn();
-    CHECK(elixir_c() == FAX_CHARGE_USED);
-    meet_guru(0);
-    CHECK(elixir_c() == FAX_CHARGE_READY);
-    hurt();
-    pick_up_elixir();                       /* found while spent: ready at once, before tick_hook forgets it was spent */
-    CHECK(charge.elixir_spent && elixir_c() == FAX_CHARGE_READY);
-    frames(1);
-    CHECK(!charge.elixir_spent && elixir_c() == FAX_CHARGE_READY);
-    ram[SPECIAL_ITEMS] &= (uint8_t)~BIT_ELIXIR;   /* the Spring of Trunk's CONSUME_ITEM */
-    frames(1);
-    CHECK(elixir_c() == FAX_CHARGE_NONE);
-    /* Turned off: nothing, whatever he holds. */
-    play(false);
-    give(items, 2, WING_BOOTS);
-    ram[SPECIAL_ITEMS] = BIT_ELIXIR;
-    CHECK(boots_c() == FAX_CHARGE_NONE && glass_c() == FAX_CHARGE_NONE && elixir_c() == FAX_CHARGE_NONE);
-}
-
-static void finds_recharge(void) {
-    play(true);
-    const uint8_t items[] = { RED_POTION, HOUR_GLASS };
-    give(items, 2, WING_BOOTS);
-    use();
-    CHECK(frames_until(boots_down, 32 * 64) > 0);
-    frames(64);
-    CHECK(charge.cooldown[BOOTS] > 50);
-    pick_up(WING_BOOTS);                    /* a pair in the world */
-    CHECK(boots_ready() && count() == 2 && pickups == 1 && script == SCRIPT_GOT_WING_BOOTS);
-    frames(2);
-    CHECK(t_value() == 0 && !t_blank());
-    /* The Hour Glass in the list, unselected, while it cools down. */
-    ram[SELECTED_ITEM] = HOUR_GLASS;
-    ram[ITEM_INVENTORY + 1] = WING_BOOTS;
-    use();
-    CHECK(frames_until(glass_down, 17 * 64) > 0);
-    frames(2);
-    ram[SELECTED_ITEM] = RED_POTION; ram[ITEM_INVENTORY] = HOUR_GLASS;
-    CHECK(!glass_ready());
-    pick_up(HOUR_GLASS);
-    CHECK(glass_ready() && count() == 2 && pickups == 2);
-    /* Found while flying: this flight goes on, and no cooldown follows it. */
-    ram[SELECTED_ITEM] = WING_BOOTS; ram[ITEM_INVENTORY + 1] = RED_POTION;
-    use();
-    seconds(4);
-    pick_up(WING_BOOTS);
-    CHECK(ram[DURATION_WING_BOOTS] < 0x80 && boots_ready());
-    CHECK(frames_until(boots_down, 32 * 64) > 0);
-    frames(2);
-    CHECK(boots_ready());
-    /* Not owned: the original pickup, into the list. */
-    give(NULL, 0, RED_POTION);
-    pick_up(WING_BOOTS);
-    CHECK(count() == 1 && ram[ITEM_INVENTORY] == WING_BOOTS && pickups == 3);
-    /* A full list still recharges a pair you own. */
-    const uint8_t full[] = { WING_BOOTS, 1, 2, 3, 4, 5, 6, 7 };
-    give(full, 8, RED_POTION);
-    charge.cooldown[BOOTS] = 33;
-    pick_up(WING_BOOTS);
-    CHECK(boots_ready() && count() == 8);
-    /* Turned off: the original, a second copy. */
-    play(false);
-    const uint8_t one[] = { WING_BOOTS };
-    give(one, 1, NO_ITEM);
-    pick_up(WING_BOOTS);
-    CHECK(count() == 2);
-}
-
-static void other_items_untouched(void) {
-    play(true);
-    const uint8_t items[] = { WING_BOOTS };
-    give(items, 1, RED_POTION);
-    use();
-    CHECK(selected() == NO_ITEM && picture == NO_ITEM && hp() == 80);   /* the Red Potion is used up */
-    give(items, 1, MATTOCK);
-    use();
-    CHECK(selected() == NO_ITEM);           /* reusable tools keeps the Mattock, not this feature */
-    CHECK(kept == 0);
-    /* Player_ClearSelectedItem from any other caller. */
-    give(items, 1, WING_BOOTS);
-    cpu.s = 0xF0;
-    clear_selected(0xE123);
-    CHECK(selected() == NO_ITEM);
-}
-
-static void new_game_and_mantra(void) {
-    play(true);
-    ram[SPECIAL_ITEMS] = BIT_ELIXIR;
-    hurt();
-    give(NULL, 0, WING_BOOTS);
-    use();
-    title_screen();                         /* a reset, then a new game or a mantra */
-    respawn();
-    CHECK(boots_ready() && glass_ready() && !charge.elixir_spent);
-    meet_guru(0);                           /* a mantra holds only a charged Elixir */
-    CHECK(!(ram[SPECIAL_ITEMS] & BIT_ELIXIR));
-}
-
-static void isolated_runs_change_nothing(void) {
-    play(true);
-    give(NULL, 0, WING_BOOTS);
-    use();
-    CHECK(frames_until(boots_down, 32 * 64) > 0);
-    isolated = true;                        /* Seamless simulating another room */
-    frames(1);
-    CHECK(charge.running[BOOTS] && charge.cooldown[BOOTS] == 0);
-    respawn();
-    pick_up(WING_BOOTS);
-    CHECK(charge.running[BOOTS] && count() == 1);
-    ram[SPECIAL_ITEMS] = BIT_ELIXIR;
-    hurt();
-    meet_guru(0);
-    CHECK(!charge.elixir_spent);
-    isolated = false;
-    frames(1);
-    CHECK(charge.cooldown[BOOTS] == 60);
-}
-
-static void save_states(void) {
-    play(true);
-    ram[SPECIAL_ITEMS] = BIT_ELIXIR;
-    hurt();
-    give(NULL, 0, WING_BOOTS);
-    use();
-    CHECK(frames_until(boots_down, 32 * 64) > 0);
-    seconds(7);
-    ram[SELECTED_ITEM] = HOUR_GLASS;
-    use();
-    uint8_t buf[32];
-    int n = save_get(buf, sizeof buf);
-    CHECK(n == RECORD && save_validate(buf, n));
-    CHECK(buf[0] == 2 && buf[1] == 0 && buf[2] >= 52 && buf[2] <= 54 && buf[3] == 1 && buf[4] == 0 && buf[5] == 1);
-    CHECK(buf[6] == 0 && buf[7] == 0 && buf[8] == 0 && buf[9] == 0 && buf[10] == TALK_IDLE && buf[11] == LINE_NONE);
-    CHECK(save_get(buf, RECORD - 1) == -1);
-    Charge saved = charge;
-    play(true);
-    CHECK(save_set(buf, n) == 1 && !memcmp(&charge, &saved, sizeof charge));
-    /* A state from before the feature: everything ready, nothing spent. */
-    CHECK(save_validate(buf, 0) && save_set(buf, 0) == 1 && boots_ready() && glass_ready() && !charge.elixir_spent);
-    /* A version 1 record (before the Guru's lines): the same, with nothing told. */
-    uint8_t v1[RECORD_V1];
-    memcpy(v1, buf, sizeof v1);
-    v1[0] = 1;
-    CHECK(save_validate(v1, RECORD_V1) && save_set(v1, RECORD_V1) == 1 && charge.elixir_spent && !charge.elixir_told);
-    CHECK(charge.cooldown[BOOTS] == saved.cooldown[BOOTS] && talk.phase == TALK_IDLE);
-    v1[0] = 2;
-    CHECK(!save_validate(v1, RECORD_V1));    /* a version 2 record is whole */
-    /* Records it does not accept change nothing. */
-    CHECK(save_set(buf, n) == 1);
-    static const struct { int at; uint8_t value; } bad[] = {
-        { 0, 3 }, { 0, 1 }, { 1, 2 }, { 2, 100 }, { 3, 7 }, { 4, 0xFF }, { 5, 2 }, { 6, 2 }, { 7, 100 }, { 8, 200 },
-        { 9, 2 }, { 10, TALK_PHASES }, { 11, LINES }, { 11, LINE_CAN } };   /* the last: a line with no talk */
-    for (unsigned i = 0; i < sizeof bad / sizeof bad[0]; ++i) {
-        uint8_t b[RECORD];
-        memcpy(b, buf, sizeof b);
-        b[bad[i].at] = bad[i].value;
-        CHECK(!save_validate(b, sizeof b) && !save_set(b, sizeof b));
-        CHECK(!memcmp(&charge, &saved, sizeof charge));
-    }
-    CHECK(!save_validate(buf, RECORD - 1) && !save_validate(buf, RECORD + 1));
-}
-
-/* Save files: the file in play keeps the cooldowns and the Elixir's charge. */
-static void save_files(void) {
-    CHECK(save_listener == on_save);
-    /* Written whenever the file is: at a Guru, mid-cooldown, with the Elixir spent. */
-    play(true);
-    file_in_play = true;
-    ram[SPECIAL_ITEMS] = BIT_ELIXIR;
-    hurt();
-    give(NULL, 0, WING_BOOTS);
-    use();
-    CHECK(frames_until(boots_down, 32 * 64) > 0);
-    seconds(12);
-    ram[SELECTED_ITEM] = HOUR_GLASS;
-    use();                                  /* still freezing when the file is written */
-    save_listener(FAX_SAVE_WRITING);
-    long boots = field_int("recharge.wingboots"), glass = field_int("recharge.hourglass");
-    CHECK(boots >= 47 && boots <= 49 && glass == 60 && !strcmp(field("recharge.elixir"), "spent"));
-    /* Quit, then continue the file: Game_ShowStartScreen forgets, the file is
-     * read back, and the spawn that follows keeps the cooldowns. */
-    title_screen();
-    CHECK(boots_ready() && !charge.elixir_spent);
-    save_listener(FAX_SAVE_CONTINUED);
-    respawn();                              /* Player_Spawn: Game_ClearTimedItems */
-    CHECK(charge.cooldown[BOOTS] == boots && charge.cooldown[GLASS] == 60 && !charge.running[BOOTS]);
-    CHECK(charge.elixir_spent && !(ram[SPECIAL_ITEMS] & BIT_ELIXIR));
-    frames(2);
-    CHECK(t_value() == 60 || t_blank());     /* the selected Hour Glass's */
-    meet_guru(0);
-    CHECK(!charge.elixir_spent && (ram[SPECIAL_ITEMS] & BIT_ELIXIR));
-    save_listener(FAX_SAVE_WRITING);
-    CHECK(field("recharge.elixir") == NULL);          /* charged: the file's special items say so */
-    /* A later death makes them ready, and the file says so at its next write. */
-    respawn();
-    CHECK(boots_ready() && glass_ready());
-    save_listener(FAX_SAVE_WRITING);
-    CHECK(field_int("recharge.wingboots") == 0 && field_int("recharge.hourglass") == 0);
-    /* A file from before the feature: no fields, everything ready. */
-    fields_clear();
-    title_screen();
-    save_listener(FAX_SAVE_CONTINUED);
-    respawn();
-    CHECK(boots_ready() && glass_ready() && !charge.elixir_spent);
-    /* A value out of range is clamped. */
-    field_set("recharge.wingboots", "500");
-    title_screen();
-    save_listener(FAX_SAVE_CONTINUED);
-    respawn();
-    CHECK(charge.cooldown[BOOTS] == MOST_SECONDS);
-    /* A new game resets them. */
-    charge.elixir_spent = 1;
-    save_listener(FAX_SAVE_NEW_GAME);
-    respawn();
-    CHECK(boots_ready() && glass_ready() && !charge.elixir_spent);
-    /* A save state keeps a continued file's cooldowns until the spawn. */
-    field_set("recharge.wingboots", "33");
-    title_screen();
-    save_listener(FAX_SAVE_CONTINUED);
-    uint8_t buf[RECORD];
-    CHECK(save_get(buf, sizeof buf) == RECORD && buf[6] == 1 && buf[7] == 33);
-    play(true);
-    CHECK(save_set(buf, RECORD) == 1);
-    respawn();
-    CHECK(charge.cooldown[BOOTS] == 33);
-    /* Turned off, it writes nothing and reads nothing. */
-    play(false);
-    fields_clear();
-    save_listener(FAX_SAVE_WRITING);
-    CHECK(field("recharge.wingboots") == NULL && field("recharge.elixir") == NULL && field("recharge.elixir_told") == NULL);
-    file_in_play = false;
 }
 
 /* ---- what a Guru says about the Elixir ---- */
@@ -1118,7 +1316,7 @@ static void b_on_the_line(void) {
 static uint8_t mid_line[32];
 static void save_and_relaunch(void) {
     if (said_n != 1) return;
-    CHECK(save_get(mid_line, sizeof mid_line) == RECORD && mid_line[10] == TALK_SAYING && mid_line[11] == LINE_RESTORED);
+    CHECK(save_get(mid_line, sizeof mid_line) == RECORD && mid_line[13] == TALK_SAYING && mid_line[14] == LINE_RESTORED);
     overrides_lost();                       /* a new launch, with this machine's RAM loaded */
     reset_cb();
     plugin_cb();
@@ -1145,7 +1343,7 @@ static void line_in_a_save_state(void) {
     ram[ISCRIPT_ADDR] = (uint8_t)OTHER_GURU; ram[ISCRIPT_ADDR + 1] = (uint8_t)(OTHER_GURU >> 8); ram[ISCRIPT_OFFSET] = 1;
     CHECK(!fire(ISCRIPTS_INVOKE_NEXT_ACTION));   /* at SET_SPAWN_POINT */
     uint8_t buf[RECORD];
-    CHECK(save_get(buf, sizeof buf) == RECORD && buf[10] == TALK_PENDING && (buf[12] | buf[13] << 8) == OTHER_GURU + 3);
+    CHECK(save_get(buf, sizeof buf) == RECORD && buf[13] == TALK_PENDING && (buf[15] | buf[16] << 8) == OTHER_GURU + 3);
     reset_cb(); plugin_cb();
     CHECK(save_set(buf, RECORD) == 1 && talk.phase == TALK_PENDING);
     run_from(OTHER_GURU, 3, 0);
@@ -1206,20 +1404,26 @@ static void told_in_the_file(void) {
 
 int main(void) {
     registers();
-    flight_grows_with_title();
-    wing_boots_cycle();
-    hour_glass_cycle();
-    hud_shows_only_the_selected_item();
-    dying_makes_both_ready();
+    flight_by_title_band();
+    a_flight_lasts_its_mp();
+    the_flight_follows_mp();
+    using_them_again_lands();
+    the_bar_waits_for_room();
+    the_freeze_runs_on_mp();
+    the_freeze_ends_early();
+    both_at_once();
+    hud_shows_the_selected_item();
+    dying_ends_both();
     guru_travel_keeps_them();
     elixir();
     elixir_found_not_bought();
     charges_on_the_status_bar();
-    finds_recharge();
+    finds_add_nothing();
     other_items_untouched();
     new_game_and_mantra();
     isolated_runs_change_nothing();
     save_states();
+    old_records_load();
     save_files();
     guru_lines_fit();
     the_restored_line();

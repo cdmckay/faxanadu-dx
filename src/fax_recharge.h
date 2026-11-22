@@ -1,11 +1,11 @@
 #pragma once
 /* Recharging items (fax_recharge.c): the Wing Boots, the Hour Glass and the
- * Elixir are kept after use and come back, and a Guru says when he restores
- * the Elixir, and once that he can. It registers itself and keeps its state
- * in its save-state record and in the file in play (Save files' named fields
- * recharge.wingboots, recharge.hourglass, recharge.elixir and
- * recharge.elixir_told); the host adds its TCP command and calls
- * fax_recharge_loaded. */
+ * Elixir are kept after use. The Wing Boots and the Hour Glass both run on
+ * MP, with no cooldown; a Guru restores the Elixir, says when
+ * he does, and once that he can. It registers itself and keeps its state in
+ * its save-state record and in the file in play (Save files' named fields
+ * recharge.elixir and recharge.elixir_told); the host adds its TCP command
+ * and calls fax_recharge_loaded. */
 #include <stdbool.h>
 
 void fax_recharge_tcp_setup(void);
@@ -16,14 +16,17 @@ bool fax_recharge_on(void);
 /* The Elixir revived the hero and waits, spent, for a Guru to charge it: it
  * is still his, as a charged one is (SpecialItems' bit). False when off. */
 bool fax_recharge_elixir_spent(void);
+/* The Wing Boots fly or the Hour Glass freezes, on MP: MP refill (fax_mana.c)
+ * holds. False when off. */
+bool fax_recharge_draining(void);
 /* After a save state has loaded: a Guru's line about the Elixir that was
  * showing is put back in message $C3's slot (read overrides are not saved). */
 void fax_recharge_loaded(void);
 
 /* Where each recharging item stands (the status bar shows the Elixir's:
  * fax_charges.c): not the hero's (NONE), ready to use (READY), or his but not
- * ready (USED): the Wing Boots or the Hour Glass running or recharging, the
- * Elixir spent. NONE for all three when Recharging items is off. */
+ * ready (USED): the Wing Boots or the Hour Glass running, the Elixir spent.
+ * NONE for all three when Recharging items is off. */
 enum { FAX_RECHARGE_BOOTS, FAX_RECHARGE_GLASS, FAX_RECHARGE_ELIXIR, FAX_RECHARGE_ITEMS };
 typedef enum { FAX_CHARGE_NONE, FAX_CHARGE_READY, FAX_CHARGE_USED } FaxCharge;
 FaxCharge fax_recharge_charge(int item);
