@@ -23,8 +23,8 @@ is checked against the frame counter on a quiet screen.
 2. A whole Novice flight from a full bar, in Eolis: T: counts its seconds,
    MP falls on schedule and never comes back while he flies, and at 0 MP,
    2,560 frames on, "The power of the Wing Boots is gone.". Then T: is 00,
-   Down+B at 0 MP does nothing but the refusal sound, MP refill waits its
-   whole 4 s from the landing, and with MP the same pair flies again at once.
+   Down+B at 0 MP does nothing but the refusal sound, and with MP (a kill's
+   or a Guru's, poked here) the same pair flies again at once.
 3. Landing early: Down+B in the air (A held, so the game takes Down as a
    climb and allows the item) ends the flight with the game's line, and no
    more MP goes; standing, the same. Then it flies again at once.
@@ -103,7 +103,6 @@ FULL = 80                                                           # a full bar
 STEPS, FLIGHTS = (32, 40, 48, 64), (40, 50, 60, 80)                 # frames an MP, and a full bar's seconds, by band
 GLASS_STEP, FREEZE = 24, 15                                         # the Hour Glass: frames an MP, its seconds
 FLIGHT, STEP = FLIGHTS[0], STEPS[0]                                 # a Novice's: the lowest band
-REFILL_WAIT = 240                                                   # MP refill's wait after a spend (fax_mana.c)
 ELIXIR_ROW = 1                                                      # Eolis's tools: dagger, Elixir, Deluge
 INTERRUPT_COUNTER = 0x1A                                            # counts NMIs
 PACKAGE = ("faxanadu.dx", "dx")                                  # the one switch: off is the original game
@@ -467,7 +466,6 @@ def main():
             assert ram(MP) == 0 and s["boots_landed"] == 0 and not ram(PLAYER_STATUS) & 0x80, s
             assert FULL * STEP <= ended - begun <= FULL * STEP + 2, (ended, begun)
             page_through()
-            closed = frame()
             wait(4)
             s = state()
             assert s["hud_drawn"] == 0 and s["boots_ready"] and items() == ([], WING_BOOTS), s
@@ -476,12 +474,7 @@ def main():
                   f"never rising, T: counting down; at 0 MP the game's own line ends it, and T: is 00")
             refused_at_zero()
             print("ok: Down+B at 0 MP does nothing but the refusal sound")
-            wait(REFILL_WAIT - 15 - (frame() - closed))               # the wait counts from the box's close
-            assert ram(MP) == 0, "MP came back before refill's wait from the landing"
-            until("MP refill", lambda: ram(MP) > 0, 60)
-            assert REFILL_WAIT - 5 <= frame() - closed <= REFILL_WAIT + 15, frame() - closed
-            print("ok: MP refill waits its whole 4 s from the landing")
-            poke({MP: FULL})
+            poke({MP: FULL})                                            # a kill's, or a Guru's
             use()
             dismiss(USED_WING_BOOTS)
             assert state()["boots_running"] and state()["flights"] == 2, state()

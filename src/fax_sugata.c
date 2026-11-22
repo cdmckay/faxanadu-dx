@@ -26,8 +26,9 @@
  *     Shield, the flash goes back to Sugata: the enemy-hit sound and
  *     SUGATA_REFLECTED HP through Player_HitEnemyWithMagic's own HP and death
  *     code (@_reduceEnemyHP, $81FD), and a Deluge's knockback, away from the
- *     hero, with its damage number (fax_damage.c), which that committed call
- *     cannot show itself. With Block up
+ *     hero, with its damage number (fax_damage.c) and, if it kills, its MP
+ *     (fax_mana.c), which that committed call cannot give itself (it runs no
+ *     hooks). With Block up
  *     and anything else in the shield slot, the site is left to Block
  *     (fax_block.c), which stops it.
  *   - Ointment: the original's flash never checks DurationOintment (bit 7
@@ -41,6 +42,7 @@
 #include "fax_sugata.h"
 #include "fax_block.h"
 #include "fax_damage.h"
+#include "fax_mana.h"
 #include "fax_world.h"
 #include "cyc_mod.h"
 #include "cyc_render.h"
@@ -185,6 +187,8 @@ static void reflect(unsigned s) {
     if (peek((uint16_t)(CURRENT_SPRITES_ENTITIES + s)) == SUGATA) {   /* still alive: a spell's knockback */
         cyc_mod_poke((uint16_t)(CURRENT_SPRITES_HIT_BY_MAGIC + s), DELUGE_KNOCKBACK);
         cyc_mod_poke((uint16_t)(CURRENT_SPRITES_HIT_BY_MAGIC_IFRAMES + s), DELUGE_IFRAMES);
+    } else {
+        fax_mana_killed(SUGATA);   /* the kill's experience came through the call: its MP, which no hook gave */
     }
     ++reflected;
 }
