@@ -9,11 +9,13 @@ runs can go in parallel. It uses Block's test harness (tests/block/harness.py).
 Copies the build to OUT and starts it with no mod selection, as a fresh
 install does:
 
-1. The mod runtime writes the selection (mods/state.toml) with one switch,
-   Faxanadu DX, on, and every feature of the remaster (each in
-   mods/allocations.toml), Seamless's view among them, reports itself on over
-   TCP. The title shows NEW GAME and CONTINUE, and NEW GAME in file 1 starts
-   a new game.
+1. The build installs one package, faxanadu.dx, named Faxanadu DX in the
+   launcher, as is its one feature, `dx`; no faxanadu.remastered, its name
+   before #116 (CMake deletes it from build folders). The mod runtime writes
+   the selection (mods/state.toml) with that one switch on, and every feature
+   of the remaster (each in mods/allocations.toml), Seamless's view among
+   them, reports itself on over TCP. The title shows NEW GAME and CONTINUE,
+   and NEW GAME in file 1 starts a new game.
 2. In that selection, the launcher's own file, Faxanadu DX is switched
    off, as the launcher's Mods screen does, and two packages of earlier
    versions are switched on, as an older install left them: the separate
@@ -129,13 +131,18 @@ def main():
 
     try:
         # 1. On by default.
+        packages = g.out / "game" / "mods" / "packages"
+        manifest = tomllib.loads(next((packages / PACKAGE).glob("*/manifest.toml")).read_text())
+        names = (manifest["name"], [f["name"] for f in manifest["feature"] if f["id"] == FEATURE])
+        assert names == ("Faxanadu DX", ["Faxanadu DX"]), names
+        assert not (packages / OLD_REMASTERED[0]).exists(), f"{OLD_REMASTERED[0]} is installed"
         g.launch()
         chosen = selection(state_toml.read_text())
         assert chosen == {(PACKAGE, FEATURE): True}, f"one switch, the remaster on: {chosen}"
         on = features()
         assert all(on.values()), f"every feature is on: {on}"
-        print(f"ok: a fresh install selects Faxanadu DX (on), its one switch, and all {len(on)} "
-              "features of the remaster are on, Seamless among them")
+        print(f"ok: a fresh install has one package, {PACKAGE} (Faxanadu DX), selects its one switch, {FEATURE}, "
+              f"on, and all {len(on)} features of the remaster are on, Seamless among them")
         menu = title_menu()
         assert (menu["mode"], menu["cursor"], menu["can_continue"]) == (0, 0, False), menu
         g.wait(30)
