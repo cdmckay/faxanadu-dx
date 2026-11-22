@@ -5,13 +5,13 @@
 The game runs uncapped and the script waits on the game's own state, never on
 the clock, and takes a free TCP port, so any number can run in parallel.
 
-Copies the build to OUT and starts a new game over TCP. The hero walks through
-the Eolis gate, and save-state RAM edits then set up what the scenarios need
-(external prerequisites, not coverage): full HP, the J key and the Mattock in
-the inventory, the screen's enemies cleared before each walk, and, to reach
-another screen of the same area, Area_ScreenToTheRight pointed at it, so that
-walking off the edge loads it the game's own way. The Mattock is selected in
-the item menu, as a player would.
+Copies the build to OUT and starts each part at Eolis's exit door, from a
+fixture that comes in by a door (keys-eolis-exit), and save-state RAM edits
+then set up what the scenarios need (external prerequisites, not coverage):
+full HP, the J key and the Mattock in the inventory, the screen's enemies
+cleared before each walk, and, to reach another screen of the same area,
+Area_ScreenToTheRight pointed at it, so that walking off the edge loads it the
+game's own way. The Mattock is selected in the item menu, as a player would.
 
 1. The remaster on (the default). Without a J key, Up at Eolis's exit door
    gives the door's own "mark of Jack" and the door stays shut. With the J key
@@ -27,16 +27,20 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
+import fax_e2e  # noqa: E402
 from fax_e2e import Game, act, fixture, hold, parse_args, ram, tcp, type_out, until, wait  # noqa: E402
 
-AREA, SCREEN, SCREEN_TO_THE_RIGHT, PLAYER_X = 0x24, 0x63, 0x67, 0x9E
-MESSAGE_ID, HP = 0x213, 0x431
+AREA, SCREEN, SCREEN_TO_THE_RIGHT, PLAYER_X, PLAYER_X_FRAC = 0x24, 0x63, 0x67, 0x9E, 0x9D
+INVINCIBILITY, SCREEN_READY, SCROLL_DIRECTION, INTERRUPTS = 0xAD, 0x0E, 0x54, 0x13
+MESSAGE_ID, HP, DURATION_OINTMENT = 0x213, 0x431, 0x427
+AREA_SAVED_SCREEN, PLAYER_SAVED_POS = 0x3D6, 0x3D8
 ITEM_INVENTORY, SELECTED_ITEM, NUMBER_OF_ITEMS = 0x3AD, 0x3C1, 0x3C6
 SPRITE_ENTITIES, SCREEN_BUFFER = 0x2CC, 0x600                       # CurrentSprites_Entities, 8 slots
 KEY_J, MATTOCK, NO_ITEM = 0x07, 0x09, 0xFF
 USED_KEY, MARK_OF_JACK, USED_MATTOCK = 0xAE, 0x29, 0xAB              # message IDs
-EOLIS, TRUNK = 0, 1
-EOLIS_TOWN, EOLIS_EXIT = 0x01, 0x08                                 # the exit door: x=12, a J key
+EOLIS, TRUNK, BUILDINGS = 0, 1, 4
+EOLIS_EXIT = 0x08                                                   # the exit door: x=12, a J key
+EXIT_DOOR_POS, EXIT_DOOR_X = 0x9C, 192                              # standing at it: block YX, Player_PosX_Block
 TOWER_DOOR, WALL, TOWER = 0x0B, 0x0C, 0x0D                          # Trunk: a J door; the Mattock wall
 WALL_BLOCKS = (0xA3, 0xB3)                                          # (3,10), (3,11): block $63 in screen $0C
 WALL_BLOCK = 0x63
@@ -59,6 +63,27 @@ def place():
 def items():
     """The unselected items, in order, and the selected one."""
     return list(ram(ITEM_INVENTORY, 8)[:ram(NUMBER_OF_ITEMS)]), ram(SELECTED_ITEM)
+
+
+@fax_e2e.recipe("keys-eolis-exit", parent="eolis-meat-shop")
+def _eolis_exit(g):
+    """At Eolis's exit door (screen 8, x 192), the screen's Monodron cleared.
+    He walks out of the meat shop, its door edited to lead there
+    (Area_SavedScreen 8, Player_SavedPos $9C), so the screen loads the game's
+    own way, with the remaster on or off. The Monodron loads on the door's
+    own block, so he walks out under Ointment, which no touch gets through,
+    until it is cleared. A walk from the town is no way there: in Seamless the
+    Monodron runs before he arrives and waits at the seam, and a touch as he
+    crosses knocks him back into the town (#130)."""
+    g.poke({AREA_SAVED_SCREEN: EOLIS_EXIT, PLAYER_SAVED_POS: EXIT_DOOR_POS, DURATION_OINTMENT: 0x40})
+    hold("right", lambda: g.ram(AREA) != BUILDINGS)
+    g.until("the exit door's screen", lambda: (g.ram(AREA), g.ram(SCREEN)) == (EOLIS, EOLIS_EXIT) and
+            (g.ram(SCREEN_READY), g.ram(SCROLL_DIRECTION)) == (0, 0xFF) and g.ram(INTERRUPTS) != 0, 300)
+    g.poke({DURATION_OINTMENT: 0xFF, PLAYER_X: EXIT_DOOR_X, PLAYER_X_FRAC: 0,
+            **{SPRITE_ENTITIES + slot: 0xFF for slot in range(8)}})
+    g.wait(10)
+    assert (g.ram(AREA), g.ram(SCREEN), g.ram(PLAYER_X), g.ram(INVINCIBILITY)) == (EOLIS, EOLIS_EXIT, EXIT_DOOR_X, 0)
+    assert list(g.ram(SPRITE_ENTITIES, 8)) == [0xFF] * 8, "the Monodron cleared"
 
 
 PARTS = ("no-key", "unselected", "selected", "original")            # each its own game
@@ -103,7 +128,7 @@ def main():
         else:
             walk(direction, lambda: ram(PLAYER_X) <= x, f"x={x}")
 
-    def press_up(expect, frames=300):
+    def press_up(expect):
         """Up at a door; returns the message it shows, once typed out."""
         tcp("action", name="up", frames=4)
         seen = []
@@ -111,7 +136,7 @@ def main():
         def shown():
             seen.append(ram(MESSAGE_ID))
             return seen[-1] in expect
-        until(f"one of messages {[hex(m) for m in expect]}", shown, frames)
+        until(f"one of messages {[hex(m) for m in expect]}", shown, 300)
         type_out("the message to type out", 600, pauses=False)
         return seen[-1]
 
@@ -159,30 +184,18 @@ def main():
         wait(30)
 
     def open_eolis_exit(expect):
-        """From Eolis's first town screen, walk to the exit door and press Up.
-        In Seamless the exit screen's enemies chase him before he crosses,
-        and once in the suite the first Up there opened nothing (an enemy
-        beside him in the picture): then clear them again, walk back, and
-        press Up again."""
-        enter("right", EOLIS, EOLIS_EXIT)
-        for _ in range(2):
-            walk_to(186)
-            try:
-                return press_up(expect, 120)
-            except AssertionError:
-                clear_enemies()
-                game.poke({0xAD: 0})                                  # Player_InvincibilityPhase: hit, and over
-        walk_to(186)
+        """Up at Eolis's exit door, where the part's fixture stands him."""
+        assert (place(), ram(PLAYER_X)) == ((EOLIS, EOLIS_EXIT), EXIT_DOOR_X), (place(), ram(PLAYER_X))
         return press_up(expect)
 
     try:
-        # The hero in Eolis's town, with the J key and the Mattock, or the Mattock alone.
-        town = game.state("eolis-town")
+        # The hero at Eolis's exit door, with the J key and the Mattock, or the Mattock alone.
+        door = game.state("keys-eolis-exit")
         keys = out / "keys.cycstate"
-        fixture(town, keys, {HP: 0x50, ITEM_INVENTORY: KEY_J, ITEM_INVENTORY + 1: MATTOCK,
+        fixture(door, keys, {HP: 0x50, ITEM_INVENTORY: KEY_J, ITEM_INVENTORY + 1: MATTOCK,
                              NUMBER_OF_ITEMS: 2, SELECTED_ITEM: NO_ITEM})
         no_key = out / "no-key.cycstate"
-        fixture(town, no_key, {HP: 0x50, ITEM_INVENTORY: MATTOCK, NUMBER_OF_ITEMS: 1, SELECTED_ITEM: NO_ITEM})
+        fixture(door, no_key, {HP: 0x50, ITEM_INVENTORY: MATTOCK, NUMBER_OF_ITEMS: 1, SELECTED_ITEM: NO_ITEM})
 
         if args.wants("no-key"):
             game_up()
