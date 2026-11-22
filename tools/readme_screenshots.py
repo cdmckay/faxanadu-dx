@@ -305,20 +305,24 @@ class Scene:
     def __init__(self, name, game):
         self.name, self.game, self.panels, self.sources = name, game, [], []
 
-    def shot(self, caption=None, box=(0, 0, 256, 240), name=None):
+    def shot(self, caption=None, box=(0, 0, 256, 240), name=None, overlay=False):
         """Screenshot the game's picture (what the window shows, with the
         remaster's drawing on it), cropped to `box` (x0, y0, x1, y1), in the
         native picture's place (picture())."""
-        return self.picture(self.game.shot(name or (caption or self.name).lower().replace(" ", "-")), caption, box)
+        return self.picture(self.game.shot(name or (caption or self.name).lower().replace(" ", "-")), caption, box,
+                            overlay=overlay)
 
-    def picture(self, path, caption=None, box=None, native=True):
+    def picture(self, path, caption=None, box=None, native=True, overlay=False):
         """A picture from a file: a screenshot, or a headless run's, cropped
         to `box`. With `native`, the box is in the NES's 256x240 picture,
-        where the remaster's Seamless shows it in its wider view: centred, as
-        it shows buildings, text boxes and the remaster's own screens."""
+        where the remaster's Seamless shows it in its wider view: under the
+        status bar, as it shows buildings and text boxes, where the game says
+        it put them (fax_e2e.native_x(), so call this right after the
+        screenshot); with `overlay`, centred, as it shows the remaster's own
+        screens (the map, the quest log)."""
         width, rows = read_png(path)
         if box and native:
-            ox = (width - 256) // 2
+            ox = (width - 256) // 2 if overlay else fax_e2e.native_x(width)
             box = (box[0] + ox, box[1], box[2] + ox, box[3])
         self.panels.append((crop(rows, box or (0, 0, width, len(rows))), caption))
         self.sources.append(Path(path).name)
@@ -441,7 +445,7 @@ def quest_log(s):
     g.wait(4)
     state = g.tcp("quest_state")
     assert state["active"] == ["king", "sky"] and state["pages"] == 1, state
-    s.shot(name="log")
+    s.shot(name="log", overlay=True)
 
 
 @scene("quest-marks")
@@ -563,7 +567,7 @@ def map_(s):
         g.wait(8)
     else:
         raise AssertionError("the hero's box never lit")
-    s.picture(path, box=(0, 0, 256, 240))                        # the map's own screen, where Seamless centres it
+    s.picture(path, box=(0, 0, 256, 240), overlay=True)          # the map's own screen, where Seamless centres it
 
 
 # ---- running them ----

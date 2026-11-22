@@ -1829,6 +1829,54 @@ jump a few updates after stepping off, as A from the hang itself would.
   hero at x=53 for a long monologue that A pages through. Up goes through the
   gate from anywhere in x=188-199.
 
+## The status bar (banks 15 and 10)
+
+- **Its layout.** `UI_DrawHUDSprites` (`$F8EB`) fills PPU `$2000-$207F`,
+  rows 0-3, with tile 0, then writes seven runs of `UI_STATUS_TILES`
+  (`$F8D2`) at the addresses in `UI_STATUS_SYMBOL_PPU_ADDR_L` (`$F8CB`):
+  `M:` at `$2041`, `P:` at `$2061`, `E:` at `$204E`, `G:` at `$206E`, `T:`
+  at `$2056`, and the item box, `[`, two picture tiles and `]`, at `$205B`
+  (tiles `$2C $3C $3D $2E`) over `$207B` (`$2D $3E $3F $2F`). Rows 0 and 1
+  stay blank: everything is in rows 2 and 3, y 16-31 of the picture, with M
+  over P (MP over HP). In pixels: `M` from x 8, `E:` from 112, `T:` from 176,
+  the item box x 216-247 with its picture at 224-239, and column 31 (x
+  248-255) blank. Then it calls `UI_DrawSelectedItem` (`$FBAF`), which
+  writes the selected item's picture into tiles `$3C-$3F` (PPU `$13C0`), and
+  copies the 60 status-bar and text-box tiles from bank 10
+  (`HUD_TILES_START`) to `$1000`.
+- **Its letters are not ASCII**, though its digits are (`$30-$39`): `M` is
+  `$1C`, `P` `$1F`, `E` `$14`, `G` `$16`, `T` `$23`, and the colon after `M`
+  and `P` is `$0A` where the other three have `$3A`.
+- **Whether it shows.** A frame shows the status bar when its nametable has
+  `P:` (`$1F $0A`) at `$2061` and the background is on in that row
+  (`fax_text_hud_showing`, through the line's scroll as
+  `fax_text_shown_tile` reads it): not on the title, the password screen or
+  the ending, nor while the game has the screen off to load one.
+- **Its palette** is the text box's, `UI_AttributeDataIndex` (see *The text
+  box*), so its colors change from place to place: in Eolis's town, palette
+  3, the MP bar is green, the HP bar pink, the text white.
+- **The items' pictures** are four tiles each in bank 10.
+  `ITEM_TILEMAP_INDEXES` (`$B4E4`) gives an item's tile numbers by
+  `ITEMINVENTORY_*` × 4 (top left, top right, bottom left, bottom right), and
+  tile t is the 16 bytes at `$8500` + t × 16 (`UI_Maybe_GetItemSpritePPUTileAddr`,
+  `$FBF0`, which has no label for the table). `UI_DrawSelectedItem` copies them
+  for the item box; `TextBox_LoadItemSourceTiles` (`$FC18`) for the menus,
+  through a table of five lists, one a category (`$B4A0`, `$B4B0`, `$B4C0`,
+  `$B4D0`, and the Items' `$B4E4`). The Wing Boots are tiles `$22-$25`, the
+  Hour Glass `$1A-$1D`, the Elixir `$34-$37` (a bottle with two handles, 16 x
+  15). The Player page's special items are Items-category IDs too
+  (`SPECIAL_ITEM_TILE_START_IDS`, `$8E63`, bank 12): the Elixir's `$92` is
+  `$80` | `ITEMINVENTORY_ELIXIR` (`$12`), so the page shows the same picture.
+- **In Seamless** (`fax_world_native_x`), the status bar is copied from the
+  native picture into the 424-wide view, with the recharging items' row
+  (`fax_charges.c`) 64 pixels past its right edge, and the two are centred
+  as one group: the status bar's column 0 at x 52, not 84. Everything that
+  lines up with the status bar goes there too: the native picture while it
+  shows the status bar, its text boxes and menus, the zone and quest banners,
+  and an area narrower than the view (a building, an arena), which sits under
+  it as on the NES. The title and other screens without the status bar stay
+  centred. With the remaster off there is no row and no Seamless.
+
 ## MP and its bar (bank 15)
 
 - **A new game starts with no MP.** `Game_Start` (`$DB26`) stores 0 in
@@ -4118,6 +4166,32 @@ one of them since #110, so the remaster always plays in its 424x240 view.
     shows gets it back in the slot after the load (`fax_recharge_loaded`,
     after Guru travel's record has put its own last line there). Version 1
     records (9 bytes) load with nothing told.
+  - `fax_recharge_charge` tells the status bar's row (Charges, below) where
+    each item stands: not the hero's, ready, or used (the Wing Boots or the
+    Hour Glass running or recharging, the Elixir spent). The Elixir's bit
+    decides first, so one found while spent is ready the moment it is picked
+    up, a frame before `GameLoop_CountdownItems` forgets it was spent.
+- **Charges** (`fax_charges.c`, #113). The status bar shows the three
+  recharging items in a row past the item box, as Super Metroid shows its
+  reserve tanks: a slot each, 24 pixels apart, the Wing Boots, the Hour
+  Glass, the Elixir, from 8 pixels past the item box's `]` (x 256 of the
+  native columns, rows 16-31, beside the item box's picture). Each is drawn
+  with the item box's own picture (*The status bar*) in the status bar's
+  palette when ready, in greys when used (each color's NES grey by its
+  brightness, a step darker, never black, so the shape stays:
+  `fax_charges_grey`), and not at all when the hero does not have it; an
+  empty slot keeps its place. The moment an item is used it greys and blinks,
+  8 frames on and 8 off (`InterruptCounter & $08`), for 96 frames not
+  counting those a text box shows, so through its "I've used ..." line and
+  1.5 s after. Drawn at present time, after Seamless composes its picture and
+  before every other feature's drawing, only while the frame shows the status
+  bar (`fax_text_hud_showing`), and only where there is room: Seamless lays
+  the status bar out with the row (`fax_charges_row`, `fax_world_native_x`),
+  and the stock 256-wide view, the remaster off, has none. No hooks, no ROM,
+  and nothing written to the machine. Its 7-byte save-state record (a
+  version, each item's state at the last frame's end, each one's blink left)
+  keeps a blink going across a load; a state without it starts with no blink,
+  and an item used in it does not start one.
 - **Block** (`fax_block.c`). A bindable button (V, or B on a controller)
   raises whatever the shield slot holds, the Battle Helmet included. The host
   input callback clears the d-pad, A and B while it is up and a pass of

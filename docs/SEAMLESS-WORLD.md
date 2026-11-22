@@ -23,9 +23,13 @@ original's full 240 lines, its HUD and a room's 208, so exactly as much shows
 above and below the hero as on the NES, and 53 of its 8-pixel tiles across,
 the width Sonic Mania widens to for the same idea. Nothing changes it: there
 is no zoom and no option. The camera follows the hero and clamps to the
-connected region's edges, centring a region narrower than the view. The HUD,
-the inventory, text boxes and the original's own pictures (death, scripts,
-region loads) sit where the native picture would, centred under the HUD.
+connected region's edges. The status bar and the row of recharging items
+past its item box (#113, `fax_charges.c`) are centred together, so the status
+bar's native columns start at x 52, not 84 (`fax_world_native_x`). A region
+narrower than the view (a building, an arena) sits under the status bar, as
+on the NES. The inventory, text boxes, the zone and quest banners and the
+original's own pictures (death, scripts, region loads) sit at those columns
+too; a screen without the status bar (the title) is centred.
 The host scales the view to the window, keeping its shape, as its Display
 settings say: with IntegerScale (the default), the largest whole multiple
 that fits, so 3x, 6x and 9x fill 720p, 1440p and 4K, and 1080p shows 4x,
@@ -42,8 +46,8 @@ retain native portal transitions.
 its sprite list: Trunk `$15` and `$3B`, Mist `$34` and `$4C`, Branch `$07`
 and `$1D`, Dartmoor `$15`) and the final boss's (Zenis `$00`) join no
 neighbour while the boss lives: the hero comes in through the original's own
-screen change (a scroll, or a door) and fights on that one screen, centred in
-the view, as in the original, and none of its actors runs before he enters.
+screen change (a scroll, or a door) and fights on that one screen, under the
+status bar, as in the original, and none of its actors runs before he enters.
 Once the game's own handler (`ScreenEvents_HandleBoss`) finds no boss in the
 room's slots and clears its event, Seamless lays the map out again from that
 room and it joins the world; walking out is then a handoff. A boss's room not

@@ -21,6 +21,9 @@
  * where the game's shop would have sold one to a spent Elixir, its bit being
  * clear. The Spring of Trunk still takes a charged one for good.
  *
+ * The status bar shows where each of the three stands, ready or not, in a
+ * row beside the item box (fax_charges.c, through fax_recharge_charge).
+ *
  * The Guru says so. A Guru who charges a spent Elixir opens the conversation
  * with "Your Elixir is restored. Come back when used.", every time; the
  * first time the hero talks to one while carrying a charged Elixir, he opens
