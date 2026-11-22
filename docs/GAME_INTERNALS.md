@@ -1958,10 +1958,11 @@ has it, only what matters, each where its block is on its screen: a cross
 door used (a shop, a house, the hospital, a tower, a castle, another region),
 and a dot (2 x 2, `$2A`) for an item still there (below). A town's doors are
 3 to 5 blocks apart, so on the smaller boxes their marks run together: the
-Gurus' crosses are drawn over the other doors, and the dots over both. The key under the grid reads "Guru", "Door", "Item", each beside its
-mark at twice the size, the dot rounded. TCP `map_state` gives every box's
-rectangle in the last presented picture, each item with whether it shows and
-whether it is taken, and every dot drawn.
+Gurus' crosses are drawn over the other doors, and the dots over both. The
+key under the grid reads "Guru", "Door", "Item", each beside its mark at
+twice the size, the dot rounded. TCP `map_state` gives every box's rectangle
+in the last presented picture, each item with whether it shows and whether it
+is taken, and every dot drawn.
 
 **Items on the map.** The items are the world pickups in the screens' sprite
 lists (*Items in the world*): 44, read from bank 11 with the rest of the map,
@@ -1999,8 +2000,9 @@ read back on `FAX_SAVE_CONTINUED`, cleared for a new game; a damaged field
 forgets that area only. Every field fits a value (the Mist's, everything set,
 is 71 characters). And `map.items`, when any is taken: the items taken, as a
 set by their place in *Items in the world*'s order (by area, a building's in
-area 4 by its number, then screen, then place in the list); the Elixir on Trunk `$3C`,
-the twelfth, alone reads `00800000000`. A damaged one shows every item again.
+area 4 by its number, then screen, then place in the list); the Elixir on
+Trunk `$3C`, the twelfth, alone reads `00800000000`. A damaged one shows
+every item again.
 
 ## Quests
 
