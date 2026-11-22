@@ -523,7 +523,7 @@ static void hour_glass_cycle(void) {
     CHECK(frames_until(glass_down, 17 * 64) > 0 && gone == HOUR_GLASS);
     frames(1);
     CHECK(charge.cooldown[GLASS] == 60);
-    check_t_blinks(60);                     /* T: blinks it too: the Wing Boots are not cooling */
+    check_t_blinks(60);                     /* T: blinks it too: it is selected */
     use();
     CHECK(script == 0 && sound == SOUND_INVALID_CHOICE && hp() == 40 && glass_down());
     CHECK(frames_until(glass_ready, 61 * 64) > 0);
@@ -531,20 +531,46 @@ static void hour_glass_cycle(void) {
     CHECK(script == SCRIPT_USED_HOUR_GLASS && hp() == 20 && ram[DURATION_HOUR_GLASS] == 15);   /* the cost again */
 }
 
-static void hud_prefers_the_selected_item(void) {
+/* T: shows the selected item's cooldown, and only its: with anything else
+ * selected, or nothing, it is what the original shows, never the other
+ * item's cooldown (#117). */
+static void hud_shows_only_the_selected_item(void) {
     play(true);
     charge.cooldown[BOOTS] = 50; charge.cooldown[GLASS] = 20;
     give(NULL, 0, HOUR_GLASS);
     Show s = hud_show(&charge, 0xFF, HOUR_GLASS, 0);
     CHECK(s.value == 20 && !s.blank);
+    CHECK(hud_show(&charge, 0xFF, WING_BOOTS, 0).value == 50);
     s = hud_show(&charge, 0xFF, RED_POTION, 0);
-    CHECK(s.value == 50);                   /* the Wing Boots first otherwise */
+    CHECK(s.value == 0 && !s.blank);        /* another item: the idle 00, not the Wing Boots' 50 */
+    s = hud_show(&charge, 0xFF, NO_ITEM, 0x30);
+    CHECK(s.value == 0 && !s.blank);        /* nothing selected: the same */
     CHECK(hud_show(&charge, 0xFF, WING_BOOTS, 0x30).blank && !hud_show(&charge, 0xFF, WING_BOOTS, 0x2F).blank);
     CHECK(hud_show(&charge, 12, HOUR_GLASS, 0).value == SHOW_GAME);   /* flying: the game's count */
-    charge.cooldown[BOOTS] = charge.cooldown[GLASS] = 0;
+    CHECK(hud_show(&charge, 12, RED_POTION, 0).value == SHOW_GAME);
+    charge.cooldown[GLASS] = 0;
+    CHECK(hud_show(&charge, 0xFF, HOUR_GLASS, 0).value == 0);         /* it is ready: 00, though the boots recharge */
+    charge.cooldown[BOOTS] = 0;
     CHECK(hud_show(&charge, 0xFF, WING_BOOTS, 0x30).value == 0 && !hud_show(&charge, 0xFF, WING_BOOTS, 0x30).blank);
+    /* On the screen: the recharging Wing Boots selected, T: blinks their
+     * seconds; another item selected, it goes back to 00 and stays; the
+     * boots again, their seconds again. */
+    play(true);
+    give(NULL, 0, WING_BOOTS);
+    charge.cooldown[BOOTS] = 40;
+    frames(1);                              /* queued, then drawn at the next NMI */
+    check_t_blinks(40);
+    ram[SELECTED_ITEM] = RED_POTION;
+    frames(1);
+    for (int n = 0; n < 128; ++n) { frames(1); CHECK(t_value() == 0 && !t_blank()); }
+    ram[SELECTED_ITEM] = NO_ITEM;
+    for (int n = 0; n < 64; ++n) { frames(1); CHECK(t_value() == 0 && !t_blank()); }
+    ram[SELECTED_ITEM] = WING_BOOTS;
+    frames(1);
+    check_t_blinks(charge.cooldown[BOOTS]);
     /* A full PPU buffer: T: waits for room, as the game's own draws do. */
     play(true);
+    give(NULL, 0, WING_BOOTS);
     charge.cooldown[BOOTS] = 30;
     ram[PPU_BUFFER_READ] = 0x10; ram[PPU_BUFFER_WRITE] = 0x00;        /* 16 bytes free: too few */
     tick_hook(GAME_LOOP_COUNTDOWN);
@@ -554,6 +580,7 @@ static void hud_prefers_the_selected_item(void) {
     CHECK(ram[PPU_BUFFER_WRITE] == 5);
     /* Wrapping round the 256-byte ring. */
     play(true);
+    give(NULL, 0, HOUR_GLASS);
     charge.cooldown[GLASS] = 42;
     ram[PPU_BUFFER_READ] = ram[PPU_BUFFER_WRITE] = 0xFE;
     nmi(); countdown(); nmi();
@@ -1182,7 +1209,7 @@ int main(void) {
     flight_grows_with_title();
     wing_boots_cycle();
     hour_glass_cycle();
-    hud_prefers_the_selected_item();
+    hud_shows_only_the_selected_item();
     dying_makes_both_ready();
     guru_travel_keeps_them();
     elixir();

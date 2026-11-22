@@ -21,8 +21,8 @@
  * where the game's shop would have sold one to a spent Elixir, its bit being
  * clear. The Spring of Trunk still takes a charged one for good.
  *
- * The status bar shows where each of the three stands, ready or not, in a
- * row beside the item box (fax_charges.c, through fax_recharge_charge).
+ * The status bar shows whether the Elixir is charged, left of its M: and P:
+ * bars (fax_charges.c, through fax_recharge_charge).
  *
  * The Guru says so. A Guru who charges a spent Elixir opens the conversation
  * with "Your Elixir is restored. Come back when used.", every time; the
@@ -44,8 +44,9 @@
  * - GameLoop_CountdownItems, once a main-loop frame before the game's own
  *   countdowns: a run that has ended starts its cooldown, cooldowns count down
  *   on the game's own second (InterruptCounter & $3F == 0), and the HUD's T:
- *   shows a recharging item's cooldown, blinking, through the PPU buffer as
- *   UI_DrawTimeValue writes it. Flight time stays the game's steady count.
+ *   shows the selected item's cooldown while it recharges, blinking, through
+ *   the PPU buffer as UI_DrawTimeValue writes it. Flight time stays the
+ *   game's steady count.
  * - Player_UseElixir: the Elixir is spent. IScripts_InvokeNextAction, at the
  *   first action of a Guru's script: a spent Elixir is charged again, and his
  *   line is chosen. It is shown before his next action that no other feature
@@ -208,17 +209,16 @@ static void tick(Charge *c, const uint8_t duration[TIMED], uint8_t counter, uint
     }
 }
 
-/* T: shows the selected item's cooldown if it is recharging, else the other
- * recharging item's (the Wing Boots first), blinking: off 16 frames in 64.
- * While the Wing Boots fly, T: is the game's flight count. 0 is the game's
- * idle "00". */
+/* T: shows the selected item's cooldown while it is recharging, blinking:
+ * off 16 frames in 64. Anything else selected, or nothing, T: is what the
+ * original shows: never the other item's cooldown, since nothing on the
+ * status bar would say whose it is (#117). While the Wing Boots fly, T: is
+ * the game's flight count; 0 is the game's idle "00". */
 static Show hud_show(const Charge *c, uint8_t boots_duration, uint8_t selected, uint8_t counter) {
     if (boots_duration < 0x80) return (Show){ SHOW_GAME, false };
-    int i = -1;
-    for (int k = 0; k < TIMED && i < 0; ++k) if (selected == ITEM_ID[k] && cooling(c, k)) i = k;
-    for (int k = 0; k < TIMED && i < 0; ++k) if (cooling(c, k)) i = k;
-    if (i < 0) return (Show){ 0, false };
-    return (Show){ c->cooldown[i], (counter & 0x30) == 0x30 };
+    for (int i = 0; i < TIMED; ++i)
+        if (selected == ITEM_ID[i] && cooling(c, i)) return (Show){ c->cooldown[i], (counter & 0x30) == 0x30 };
+    return (Show){ 0, false };
 }
 
 /* What a Guru says as he greets the hero: that he restored a spent Elixir,

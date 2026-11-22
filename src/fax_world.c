@@ -445,14 +445,15 @@ static bool ui_pixel(int x,int y){
     if(bx==32&&by==64&&x>=16&&x<96&&y>=48&&y<160)return true;
     return x>=bx&&x<bx+q(0x20a)*8&&y>=by&&y<by+q(0x20b)*8;
 }
-/* The status bar band (its 32 lines) and the recharging items' row past it
- * are centred as one group while the status bar shows; with no row (the
- * remaster off) or no status bar (the title), the band is centred like the
- * rest. Only the band moves: rooms, the native picture below the band, and
- * its text boxes and menus stay centred in the view. */
+/* The status bar band (its 32 lines) and the Elixir left of it
+ * (fax_charges.h) are centred as one group while the status bar shows,
+ * whether he has an Elixir or not; with no Elixir's place (the remaster off)
+ * or no status bar (the title), the band is centred like the rest. Only the
+ * band moves: rooms, the native picture below the band, and its text boxes
+ * and menus stay centred in the view. */
 static int layout_x(int width,bool hud){
-    int row=fax_charges_row();
-    return hud&&row&&width>=RW+row?(width-RW-row)/2:(width-RW)/2;
+    int left=fax_charges_width();
+    return hud&&left&&width>=RW+left?(width-RW-left)/2+left:(width-RW)/2;
 }
 int fax_world_hud_x(int width){
     if(enabled&&hud_x>=0&&width==hud_w)return hud_x;
