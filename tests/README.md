@@ -128,6 +128,17 @@ part's start.
   for 2 frames keeps the hero at his slowest speed. `hold()` returns once the
   frame its button is still down has run: Up at a door with Right still down
   goes nowhere.
+- An X that stays put is no stop while the screen scrolls, in the original
+  (the remaster off): the scroll holds the hero still, Left held or not, for
+  as long as it runs. Going left from Eolis `$08` into `$01` he stands at X 0
+  for 18 frames, then at X 240 for 62. A walk that took two equal reads for a
+  stop stopped there, and the old state it saved went on scrolling once
+  loaded (#140: on a loaded machine the reads came close enough to land both
+  at X 0, and the state ended at X 240). Walk to a place, not to a stop, with
+  `Screen_ScrollDirection` (`$54`) `$FF` among its conditions, and save the
+  state with its position read in the same `batch()`
+  (`tests/softlocks/eolis_shaft.py`'s `under_the_floor()`). `walk()`'s stop
+  (an X unchanged for 6 frames) is fooled the same way.
 - Start nearer the check: a countdown the game runs (a flight, a freeze) can
   be poked down to its last seconds, or a run on MP started on less MP, once
   its start is checked, as long as one run still plays the whole of one

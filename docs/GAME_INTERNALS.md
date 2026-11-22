@@ -669,7 +669,12 @@ What a feature can rely on, and the traps:
 - Save a state after a screen has finished scrolling
   (`Screen_ScrollDirection` `$54` is `$FF`): the main loop does not update
   the hero while it scrolls, so a state saved mid-scroll ignores input for a
-  second after loading.
+  second after loading, and goes on scrolling: the X read in it is not where
+  he ends up. The scroll holds him still, so an X that stays put is no stop
+  while it runs: going left from Eolis `$08` into `$01` (Left held or not)
+  his X stays 0 for 18 frames with `Area_CurrentScreen` already `$01`, steps
+  252, 248, 244 to 240, and stays 240 for 62 frames more, until `$54` is
+  `$FF` (#140).
 - The remaster plays in Seamless, so the hero's routines can run in an
   isolated scope where `cyc_mod_isolated()` is true. A hook that keeps state
   must leave it alone there.
@@ -3977,10 +3982,13 @@ played in the game. Two engine rules it has to follow:
   back of the town wall (`$5A`, `$54`) and through the floor (`$5F`, row 11)
   to the bottom. Flying up over the wall and letting go drops the hero down
   it to Y `$C0`. There A, Up and Right do nothing, and Left walks him along
-  the open row under the floor into the town's screen (`$01`), whose edge
-  stops him, still at `$C0`; no enemy is on either screen. A reset is the
-  only way out. To have the Wing Boots in Eolis, the hero must die before
-  any temple Guru has set his spawn point (it starts at 0, Eolis), after
+  the open row under the floor, still at `$C0`, through every town screen to
+  `$07`, whose left edge, the world's, stops him at X 0. A does nothing
+  anywhere along it, and nothing touches him: the Zozuras of `$04` and `$05`
+  crawl on the floor above (his HP the same all the way, checked in the
+  game, #140). A reset is the only way out. To have the Wing Boots in
+  Eolis, the hero must die before any temple Guru has set his spawn point
+  (it starts at 0, Eolis), after
   buying them in Forepaw or finding them: obscure. With the remaster, Guru
   travel reaches Eolis's Guru and the Wing Boots are kept, so they come to
   Eolis easily, and since #125 MP comes only from kills and Gurus, neither of
@@ -3990,13 +3998,18 @@ played in the game. Two engine rules it has to follow:
   the floor, so flying he stops at the wall's edge (X 224) and lands on its
   top, and a hero an old save state holds in the column or under the floor
   is put back on it (`tests/softlocks/eolis_shaft.py`).
-  - **Under the floor in Seamless** the open row goes further: from `$08`
-    Left walks him at Y `$C0` through `$01` as far as `$06` (X 23), where the
-    original stops him at `$01`'s edge (checked in the game). The floor (row
-    11) is solid on every Eolis screen but for that column, so Y past 144
-    (standing on it) happens in Eolis only under it, and rows 9 and 10 above
-    it are clear on every screen the row reaches, but for column 14 of `$00`
-    and `$08`, the wall.
+  - **Under the floor** the open row runs from `$08` to `$07`'s left edge in
+    the original, and as far as `$06` (X 23) in Seamless. #137 had the
+    original stop him at `$01`'s edge: its walk took two equal reads for a
+    stop, and the scroll into `$01` holds him still at X 240 for 62 frames
+    (*The engine*: save a state after a screen has finished scrolling;
+    #140). The floor (row 11) is solid on every Eolis screen but for that
+    column, so Y past 144 (standing on it) happens in Eolis only under it,
+    and rows 9 and 10 above it are clear on every screen the row reaches,
+    but for column 14 of `$00` and `$08`, the wall: an old state from under
+    each of `$01` to `$07`'s floors (X 128, and `$07`'s X 0), loaded with
+    the remaster, is put on the floor where he was and walks from there
+    (checked in the game, #140).
   - Eolis is the one place found where a flight ends in a trap: Branch's
     open row under `$10`'s floor, reached by flying left out of `$11`'s
     floorless bottom, holds him at Y `$C0` too, but walking right takes him
