@@ -4,6 +4,21 @@ Faxanadu (NES) statically recompiled to native code with
 [nesrecomp](https://github.com/mstan/nesrecomp), plus quality-of-life features.
 A fork of mstan/FaxanaduRecomp; compatibility with upstream is not a goal.
 
+## Faxanadu is a Metroidvania: lean into it
+
+Faxanadu is one connected world, opened up by keys, tools and progress, that
+keeps sending you back to places you have been. That is the remaster's design
+direction. When you design a feature or choose between options:
+
+- Make exploring and going back rewarding and easy: the map and its marks,
+  Guru travel, and upgrades in earlier places that later progress opens (Eolis's
+  Magician teaches his lesson only to those who have studied at the magic hall
+  in the Mist).
+- Gate an upgrade on progress that can't be ground out, such as a place
+  reached, an item found or a quest done, rather than on experience or gold
+  alone.
+- Never make the world more linear, and never take away a reason to explore.
+
 ## Write down what you learn about the game
 
 **Anything you learn about the game's structure goes in
