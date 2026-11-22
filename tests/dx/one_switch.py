@@ -60,7 +60,7 @@ STATES = {
     "auto-keys": ("keys_state", "auto"), "reusable-tools": ("keys_state", "reuse"),
     "recharging-items": ("recharge_state", "enabled"), "charges": ("charges_state", "enabled"),
     "mana-refill": ("mana_state", "enabled"),
-    "magician-lesson": ("lesson_state", "enabled"),
+    "magician-lesson": ("lesson_state", "enabled"), "potion-sellers": ("potions_state", "enabled"),
     "double-gold": ("gold_state", "enabled"),
     "forgiving-jumps": ("forgiving_jumps_state", "enabled"), "falling-pose": ("falling_pose_state", "enabled"),
     "ladder-fixes": ("ladders_state", "enabled"), "ladder-hold": ("ladder_hold_state", "enabled"),

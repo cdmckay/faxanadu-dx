@@ -116,9 +116,11 @@ between actions.
 | `$04` | addr | `CHECK_UPDATE_PLAYER_TITLE`: if `NextPlayerTitle` differs, take it and jump; else go on |
 | `$05` | amount (16-bit) | Pay (`IScriptAction_SpendGold`, `$835B`): reads the amount into `Temp_0202/3`, copies it to `Temp_Int24`/`_M` (`$8367`) for `IScripts_CheckEnoughMoney`; too little, "This is not enough Golds." (message 3) and the script ends; else `IScripts_ProgressivelySubtractGold` takes it, 10 Golds a frame, then holds 60 frames (*Gold*, "Taken over time") |
 | `$06` | temple | Set spawn point. **Only raises** `TempleSpawnPoint` |
+| `$07` | item | Add an item (`IScriptAction_AddInventoryItem`, `$839F`): its `IScripts_LoadByte`, then at `$83A2` `PHA`, `PHA`, `Player_AddToInventory` (no room check: a full list loses its last entry), and the item's picture and name in the dialogue box, with the blinking ▲, until A (only A: `BPL` on `Joy1_ChangedButtonMask`); then the next action. Entered at `$83A2` with the item in A, it gives any item: the Potion Sellers do |
 | `$08` | items | A shop's buy list (see *Shops*) |
 | `$0F` | addr | The shops' Buy/Sell menu: message `$10`, then a cursor on its lines 1 and 3. A on the first choice jumps to addr, A on the second goes on to the next action, B ends the script |
 | `$0A` | MP | Add MP (`IScriptAction_AddMP`, `$8580`), 1 at a time with its sound |
+| `$13` | HP | Add HP (`IScriptAction_AddHP`), the same way |
 | `$11` | items | A shop's sell list |
 | `$14` | | Show the mantra (`IScriptAction_ShowPassword`): encodes it, types it a character a frame, waits for A |
 | `$16` | msg, addr | Question: A jumps to addr, B goes on to the next action. Unused by the game, works: Guru travel's ASK step and the Magician's lesson ask with it |
@@ -211,7 +213,9 @@ How the dialogue names them: "the king" / "The King is waiting for you." ($27,
 $33), "The Guru of Conflate" ($94) and "the Guru in the Castle of Fraternal"
 ($9D), "a martial art lesson" ($19), "I shall give magic" and "I'll teach you"
 from the Magician ($15, $17), "Our doctor can help." ($45), "I sell keys." and
-"I sell tools." ($0E, $0F). Nobody names the nurse or the meat salesman.
+"I sell tools." ($0E, $0F). Nobody names the nurse or the meat salesman;
+with the remaster he sells Red Potions, so Speaker names calls him the Potion
+Seller.
 
 **Eolis's buildings, for tests** (`EOLIS_DOOR_LOCATIONS`; a door's block is
 `YX`, so x = (block & 15) × 16):
@@ -468,9 +472,10 @@ What a feature can rely on, and the traps:
   (its 48-byte line slot and 7 step bytes), the Taller dagger 1, and Save
   files shares the slot and adds 5 (4 step bytes and the menu's operand), or
   8 if Guru travel's steps are not served (its own 3-byte SAY): 61 to 64 of
-  64. Block, the quest log, Recharging items' Elixir lines and the
-  Magician's lesson borrow Guru travel's SAY step and slot (the lesson its
-  ASK step too), and Quick shops and Double gold take none. `tools/check_allocations.py` counts every byte claimed in
+  64. Block, the quest log, Recharging items' Elixir lines, the Magician's
+  lesson and the Potion Sellers borrow Guru travel's SAY step and slot (the
+  lesson and the Potion Sellers its ASK step too), and Quick shops and Double
+  gold take none. `tools/check_allocations.py` counts every byte claimed in
   `mods/allocations.toml` once and fails past 64, so the claims, now 64, are
   the budget. A new message for the text box should share the slot, and
   anything more needs the table made larger or Guru travel's slot cut to its
@@ -1906,7 +1911,8 @@ jump a few updates after stepping off, as A from the hang itself would.
   `Player_MP` (`$DB31`); `Player_Spawn` (`$DB0A`: `LDA #$50`, `STA
   Player_HP_U`, `STA Player_MP`) fills HP and MP for a death, a continue or a
   mantra. In the original, MP otherwise comes only from the meat shops (30 HP
-  and 30 MP, for 50 G in Eolis and up to 250 G later), Eolis's Magician (40
+  and 30 MP, for 50 G in Eolis up to 800 G in Dartmoor: see *Shops*; with the
+  remaster they sell Red Potions), Eolis's Magician (40
   MP for 200 G, `ISCRIPT_EOLIS_MARTIAL_ARTS_MAGIC_SHOP`; both through
   `IScriptAction_AddMP`, `$8580`, bank 12, 1 MP at a time with its sound) and
   the Elixir's fill (`Player_FillHPAndMP`, `$C4DA`, 4 at a time). It never
@@ -3010,6 +3016,23 @@ are `ISCRIPT_ADDRS_L/U` (`$9F6B`/`$A003`, 152 entries) 12, 13, 25, 26, 29, 40,
 
 No shop sells the Leather Armor, the Fire magic (the Magician's, 3000 by
 script), the A and Jo keys (gifts), the Poison, or the last fight's gear.
+With the remaster, the Red Potion lines are gone from the buy lists: the meat
+shops sell them (*The meat shops*, below).
+
+**The meat shops** are scripts, not shops: the Meat Salesman (portrait 8),
+in seven towns (Apolune has none), each 13 bytes in bank 12 from `$A4A1`:
+`88, 02 msg, 05 price, 13 1E, 0A 1E, 03 02, 00`, the question "Dried meat to
+/ bring energy / for 50 Golds." (messages `$07`-`$0D`; B on it ends the
+script), pay, add 30 HP, add 30 MP, "Thank you for shopping.", end. Their
+prices, by script: Eolis (`ISCRIPT_EOLIS_MEAT_SHOP`, `$A4A1`, building `$00`)
+50, Forepaw (`$A4AE`, `$0E`) 150, Mascon (`$A4BB`, `$17`) 180, Victim
+(`$A4C8`, `$26`) 250, Conflate (`$A4D5`, `$2A`) 350, Daybreak (`$A4E2`, `$31`)
+500, Dartmoor (`$A4EF`, `$3E`) 800. Each script's pay step is at its base +
+3, so after it the script stands at its `ADD_HP`, base + 6. Daybreak's two
+shops share the towns' screen `$0A`: the tool shop's door is block `$96`, the
+meat shop's `$99` (checked in the game; reading `TOWNS_DOOR_LOCATIONS` and
+`TOWNS_DOOR_DESTINATIONS` entry by entry puts each a door to the left). With
+the remaster they are the Potion Sellers (*Features*).
 
 **The two Magicians** are scripts, not shops. Eolis's
 (`ISCRIPT_EOLIS_MARTIAL_ARTS_MAGIC_SHOP`, `$A35D`, building `$05`; despite
@@ -3032,7 +3055,7 @@ Magician on the same step (`$71`) as Eolis's; Victim's man calls it "a magic
 hall outside town" (`$72`).
 The pay steps in the game ask 50, 150, 180, 200 (twice), 250 (twice), 350,
 500 (twice), 800, 1000, 1800, 2500 and 3000 (twice): a price none of them asks
-has to be served, which the Magician's lesson does in
+has to be served, which the Magician's lesson and the Potion Sellers do in
 `IScriptAction_SpendGold` (*Features*).
 
 | Address | Name | Notes |
@@ -3976,6 +3999,53 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   times the hall's Fire and twice Daybreak's Tilte (15000), the dearest
   thing a shop sells: a late-game purchase, since he teaches only after the
   hall.
+- **Potion Sellers** (`fax_potions.c`, #127). The seven meat shops sell a
+  Red Potion instead of their dried meat, each at the price its town's tool
+  shop asked (Eolis 160, Forepaw 400, Mascon 600, Victim 800, Conflate 1000,
+  Daybreak 1200, Dartmoor 2000), and the tool shops stop selling them. The
+  meat shops' scripts (*The meat shops*) are steered at
+  `IScripts_InvokeNextAction`, as the Magician's lesson steers his, through
+  Guru travel's steps and message `$C3`'s slot, served with the same bytes:
+  - at the first action (base + 1, the question), his line, "A Red Potion
+    to / restore you for / 160 Golds." with his town's price, at Guru
+    travel's ASK step (`$AE03`): the game adds its flashing "?", as to the
+    original's question. B goes on to `$AE07`, which goes to the SAY step's
+    END (`$AE02`): the box closes.
+  - A (the script at the SAY step, `$AE00`): with the Items list full
+    (`NumberOfItems` 8, `MAX_INVENTORY_SLOTS`), the hook handles the call and
+    enters `IScripts_ShowFinalMessage` (`$837E`) by return with A = 6: the
+    game's "You can't carry any more.", then the end, as a tool shop refuses
+    a ninth item. The room is checked before the gold, as a tool shop does.
+    Else his own pay step (base + 3). A hook in `IScriptAction_SpendGold` at
+    `$8367` (after the Magician's lesson's site there) makes his meat's price
+    the potion's in `Temp_0202/3`, so the game takes it 10 a frame, or says
+    "This is not enough Golds." and ends the script.
+  - Paid (the script at base + 6, his `ADD_HP`): the hook points the script
+    at his thanks (base + 10) and handles the call, entering
+    `IScriptAction_AddInventoryItem` after its `IScripts_LoadByte` (`$83A2`)
+    with A = `$90`, the Red Potion: `Player_AddToInventory` adds it, and the
+    game's item box shows it, its picture and "RED POTION", until A, as a
+    gift's does. Then "Thank you for shopping." and the end. No HP, no MP.
+
+  It acts only in a conversation of his, which it forgets when any script
+  begins (`IScriptOffset` 1); its site at `$826E` is after the Magician's
+  lesson's and before Recharging items', which its two handled calls skip
+  (that site acts only at a Guru's first action). It checks each script's
+  bytes before steering it; one that differs, or a line that cannot be
+  served, leaves the dried meat for the session, and then
+  `fax_potions_selling()` is false and the tool shops keep their potions.
+  Quick shops asks it at `OpenShop`'s `JSR Shop_Draw` (`$83F7`, after
+  `Shop_Populate`): while it is true, a buy list loses its Red Potion and the
+  entries after it move up (`fax_shops_without`), so the cursor, OWNED and
+  "Not for sale" work as before. Nine tool shops sold one, "After Mascon"'s
+  (300) among them. Selling a Red Potion is unchanged: half the shop's own
+  price from its list in the ROM (Eolis 80, Dartmoor 1000), or at a key shop
+  half the lowest (80). The save-state record (3 bytes: version, phase,
+  shop) puts his question back in the slot after a load
+  (`fax_potions_loaded`). `potions_state` over TCP. Seamless keeps the
+  status bar it showed when play stopped (`frozen_hud`, `fax_world.c`), so
+  during the conversation the gold does not count down on screen; it shows
+  the new amount once the conversation ends, as after any counter's.
 - **Double gold** (`fax_gold.c`, #102, #104). The King gives 3000 instead of
   1500, counted in the original's 150 frames, and once a game; every coin a
   monster leaves pays twice its value. Five hooks, each returning 0, with no
@@ -4067,7 +4137,8 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   While a portrait's frame is on screen, the speaker's name sits on a tab
   above the dialogue box, at its left edge (tiles 10, 13-15), in the game's
   font and frame; on a shop's list it moves up onto the list (rows 5-7). The
-  King and the Gurus are "of" a place: a temple's town by temple number (so
+  Meat Salesman is the Potion Seller (he sells Red Potions). The King and the
+  Gurus are "of" a place: a temple's town by temple number (so
   the Guru whose door opens on the Mist is Mascon's, as in Guru travel), else
   the zone at the building's door (`Area_SavedArea`, `Area_SavedScreen`),
   a tower or castle by its own name ("Guru of Fraternal"). A name over 16
@@ -4443,7 +4514,9 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   list's A, back to the wait (`$83FA`) for an item the hero owns (see
   *Shops*), which it asks reusable tools and recharging items about
   (`fax_reusable_tools_on`, `fax_recharge_on`, `fax_recharge_elixir_spent`),
-  as it does for the sell list's.
+  as it does for the sell list's. A ninth site, at `$83F7` (`JSR Shop_Draw`,
+  after `Shop_Populate`), only writes the list: while the Potion Sellers sell
+  the Red Potions (`fax_potions_selling`), a tool shop's without it.
   Presses while a list is drawn, or the gold counts, are lost, as in the
   original: the game reads the pad only in the list's wait. The hint line
   ("Select to sell", "Select to buy", "Not for sale", "Already owned") is drawn

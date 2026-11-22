@@ -108,6 +108,9 @@ cmake --build "$OUT/mana" -j"$JOBS" >/dev/null
 cmake -S tests/lesson -B "$OUT/lesson" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/lesson" -j"$JOBS" >/dev/null
 "$OUT/lesson/lesson_test"
+cmake -S tests/potions -B "$OUT/potions" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/potions" -j"$JOBS" >/dev/null
+"$OUT/potions/potions_test"
 cmake -S tests/gold -B "$OUT/gold" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/gold" -j"$JOBS" >/dev/null
 "$OUT/gold/gold_test"
@@ -202,6 +205,7 @@ E2E=(
   "charges      tests/charges/status_bar.py --parts"
   "mana         tests/mana/mana_refill.py"
   "lesson       tests/lesson/magician_lesson.py --parts"
+  "potions      tests/potions/potion_sellers.py --parts"
   "gold         tests/gold/double_gold.py --parts"
   "switch       tests/dx/one_switch.py"
   "title        tests/title/title_dx.py"

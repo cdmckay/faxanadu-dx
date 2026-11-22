@@ -40,3 +40,9 @@ bool fax_shops_owned(uint8_t id, const FaxShopsHero *hero);
  * neither buys nor sells, so the A and Jo keys' givers, who hand out another
  * to a hero without one, can't be farmed for gold. */
 bool fax_shops_not_for_sale(uint8_t id, const FaxShopsHero *hero);
+
+/* A buy list of `n` entries (items[i] at prices[i]) without item `id` (its
+ * full ID): the entries after each one dropped move up, in order. Returns the
+ * entries kept. The tool shops' lists lose the Red Potion this way while the
+ * Potion Sellers sell it (fax_potions.h). */
+unsigned fax_shops_without(uint8_t id, uint8_t items[], uint16_t prices[], unsigned n);
