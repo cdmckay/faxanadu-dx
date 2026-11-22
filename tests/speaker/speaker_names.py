@@ -26,8 +26,8 @@ import sys
 import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import (Game, act, fixture, frame, hold, hurry_page, let_go, page_through, page_to, parse_args, ram,  # noqa: E402
-                     step_toward, tcp, type_out, typed, until, wait, walk)
+from fax_e2e import (PAGE_FRAMES, Game, act, fixture, frame, hold, hold_a, hurry_page, let_go, page_through,  # noqa: E402
+                     page_to, parse_args, ram, step_toward, tcp, type_out, typed, until, wait, walk)
 
 AREA, SCREEN, PLAYER_X = 0x24, 0x63, 0x9E
 TEXTBOX_CLOSED, MESSAGE_ID, TEXTBOX_PAUSED = 0x20C, 0x213, 0x215
@@ -185,9 +185,10 @@ def main():
 
     def finish(button="a"):
         """Page through to the end of the conversation, `button` on each
-        typed-out page and A held while each types (it may be a question, so
-        from a frame where a new press cannot turn it: hurry_page()); the tab
-        goes with the portrait."""
+        typed-out page and A held while each types: with A, the press that
+        turns a page is held through the next; with another button, A is held
+        from a frame where a new press cannot turn the page, which may be a
+        question (hurry_page()). The tab goes with the portrait."""
         end = frame() + 6000
         held = False
         try:
@@ -198,10 +199,14 @@ def main():
                 if state["portrait"] != NO_PORTRAIT and not state["shown"]:
                     assert not state["box"], state                  # only while the boxes open or clear
                 if box_open() and typed():
-                    if held and button == "a":
-                        let_go()
-                        held = False
-                    act(button, 2, 4)
+                    if button == "a":                       # a new press, held while the next page types
+                        if held:
+                            let_go()
+                        hold_a()
+                        held = True
+                        wait(PAGE_FRAMES)
+                    else:
+                        act(button, 2, 4)
                 elif box_open() and not held:
                     held = hurry_page()
             else:

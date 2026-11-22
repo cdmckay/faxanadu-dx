@@ -145,8 +145,10 @@ part's start.
   fax_e2e, `respawn-died-*` in zone respawn, which come in through the same
   door first). Each feature that checks deaths keeps one whole: Death keeps
   gold, zone respawn (Eolis, and after a Guru travel journey), Slain by
-  (every death: its line shows through the dissolve), recharging items'
-  Elixir, and Sugata's flash.
+  (its line shows through the dissolve: the Monodron's, the one with nothing
+  to blame and the original's play it to the Guru's words; the other killers
+  stop once their line is checked at full strength, since it fades on its own
+  clock), recharging items' Elixir, and Sugata's flash.
 - Run independent headless runs at once with `play.py`'s `headless_all()`.
 
 ### Frames, not seconds

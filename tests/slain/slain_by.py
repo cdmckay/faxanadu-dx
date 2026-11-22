@@ -23,6 +23,11 @@ hit and every death is the game's own:
 5. A boss, through the Tower of Trunk's top screen ($15): Ripasheiku.
 6. With Faxanadu Remastered off (the original game), the same death names
    nothing.
+
+The line is chosen at the killing hit and fades on its own clock, whoever
+killed him, so three deaths play the whole dissolve to the Guru's words (the
+one with nothing to blame, the Monodron's and the original's), and the others
+stop once their line has been checked at the hit and at full strength.
 """
 from pathlib import Path
 import sys
@@ -63,10 +68,14 @@ def main():
     def counted(s):
         return s["deaths"] + s["unnamed"]
 
-    def die(state, name, writes, line, how=None, frames=1500, picture=True):
+    def die(state, name, writes, line, how=None, frames=1500, picture=True, whole=False):
         """Load `state` edited with `writes` (his last HP, and whatever kills
-        him), wait for the killing hit, and check the line through the
-        dissolve until the Guru speaks. Returns the line's state at the hit."""
+        him), wait for the killing hit, and check the line at it and at full
+        strength. With `whole`, check it through the dissolve until the Guru
+        speaks too. The line is chosen at the hit and fades on its own clock
+        (SHOWN frames, fax_slain.c), the same whoever killed him, so the
+        Monodron's death plays the whole dissolve and the others stop once
+        the line is checked. Returns the line's state at the hit."""
         dying = g.out / f"{name}-dying.cycstate"
         fixture(state, dying, writes)
         before = slain()
@@ -82,8 +91,9 @@ def main():
         assert s["showing"] == line and s["alpha"] == 255, (name, s)
         if picture:
             g.shot(name)
-        g.until("the Guru's words", lambda: g.ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 600)
-        assert slain()["showing"] is None, "the line is gone before the Guru speaks"
+        if whole:
+            g.until("the Guru's words", lambda: g.ram(MESSAGE_ID) == NEGATIVE_THOUGHTS, 600)
+            assert slain()["showing"] is None, "the line is gone before the Guru speaks"
         return hit
 
     try:
@@ -119,7 +129,8 @@ def main():
         slot = entities().index(MONODRON)
         hero_x = g.ram(POS_X)
         respawns, saves = g.tcp("respawn_state")["respawns"], g.tcp("files_state")["saves"]
-        die(trunk, "monodron", {HP: 1, HP_FRACTION: 0, SPRITE_X + slot: hero_x + 8}, "Slain by a Monodron", "touch")
+        die(trunk, "monodron", {HP: 1, HP_FRACTION: 0, SPRITE_X + slot: hero_x + 8}, "Slain by a Monodron", "touch",
+            whole=True)
         fax_e2e.page_through("the Trunk's entrance", lambda: g.where() == (TRUNK, 0) and g.settled() and not g.box_open())
         assert g.tcp("respawn_state")["respawns"] == respawns + 1, "zone respawn: back at the Trunk's entrance"
         assert g.tcp("files_state")["saves"] == saves + 1, "Save files wrote the file at the respawn"

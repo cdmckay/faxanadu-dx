@@ -1,4 +1,4 @@
-"""Check fax_e2e's port reservation and its relaunch on a taken port.
+"""Check fax_e2e's port reservation, its relaunch on a taken port and its fixture keys.
 
     python3 tests/e2e/fax_e2e_test.py --build build-cycle --rom "Faxanadu (USA).nes" --out /tmp/e2e-helper
 
@@ -6,6 +6,9 @@
 2. A port held by a process that is killed is free again.
 3. A game that cannot listen on its port (here, another socket is listening
    there) is relaunched on another, and no command reaches the other socket.
+4. A fixture's key covers the test modules its recipe uses, not only the
+   recipe's own file: ladders.py's Trunk $0C recipe walks with play.py's
+   Game.settle(), so play.py is among its sources.
 """
 import os
 from pathlib import Path
@@ -88,6 +91,14 @@ def main():
     finally:
         game.close()
         squatter.close()
+
+    # 4. A fixture's key covers the modules its recipe uses (no game needed).
+    tests = Path(__file__).resolve().parents[1]
+    sys.path[:0] = [str(tests / "movement"), str(tests / "ladders")]
+    import ladders                                        # registers "ladders-trunk-0c", with play.py's Game
+    names = {p.relative_to(tests).as_posix() for p in fax_e2e._sources(ladders._trunk_0c)}
+    assert {"ladders/ladders.py", "movement/play.py", "e2e/fax_e2e.py"} <= names, names
+    print("ok: the ladders-trunk-0c fixture's key covers ladders.py, play.py (Game.settle()) and fax_e2e.py")
 
 
 if __name__ == "__main__":

@@ -29,7 +29,7 @@ from fax_e2e import fixture  # noqa: E402  (falling_pose.py and forgiving_jumps.
 # RAM
 JOY, AREA, SCROLL_DIRECTION, SCREEN = 0x16, 0x24, 0x54, 0x63
 SCREEN_READY, INTERRUPTS_ON = 0x0E, 0x13                    # Screen_ReadyState, Game_InterruptHandlersEnabled
-STAND_FRAMES = 20                                          # settle(): the same Y this far apart
+STAND_FRAMES = 20                                          # settle(): standing still this far apart
 X, Y, TICK, FLAGS, STATUS, JC = 0x9E, 0xA1, 0xA3, 0xA4, 0xA5, 0xA6
 IFRAMES, HP, TEMPLE_SPAWN_POINT, PLAYER_IS_DEAD = 0xAD, 0x431, 0x439, 0x438
 DURATION_WING_BOOTS, MESSAGE_ID, SPRITE_ENTITY, SHADOW_OAM = 0x429, 0x213, 0x2CC, 0x700
@@ -60,32 +60,38 @@ class Game(fax_e2e.Game):
         self.set_features(selection(original))
 
     def settle(self):
-        """Until the screen is set up and the hero stands on it: the hero is
-        not updated while a screen loads or scrolls (Screen_ReadyState $0E
-        0, the interrupt handlers on, $13, and Screen_ScrollDirection $FF),
-        and a door can leave him a row above the floor, to drop onto it some
-        frames later. So it holds when two reads STAND_FRAMES apart, each of
-        one frame, find the screen set up and him on the ground (Player_Flags
-        & $05 clear) at the same Y. A fixed wait saved Trunk $0C's state a
-        few frames early: ladders.py's jump on frame 5 never left the floor."""
+        """Until the screen is set up and the hero stands still on it: the
+        hero is not updated while a screen loads or scrolls (Screen_ReadyState
+        $0E 0, the interrupt handlers on, $13, and Screen_ScrollDirection
+        $FF), a door can leave him a row above the floor, to drop onto it some
+        frames later, and the direction held to walk out of a building can
+        still be down as the next screen comes up. So it holds when two reads
+        STAND_FRAMES apart, each of one frame, find the screen set up and him
+        on the ground and not moving (Player_Flags & $25 clear) at the same X
+        and Y. The fixed 10 frames after the scroll this replaces once saved
+        Trunk $0C's state with him still moving ($20) from the walk out of
+        Apolune's temple: ladders.py's climb, from that state, then carried
+        him past column 14's ladder, and every later run reused the state."""
         def standing():
             reads = self.batch(*(("read_ram", dict(addr=a, len=n))
-                                 for a, n in ((SCREEN_READY, 1), (INTERRUPTS_ON, 1), (SCROLL_DIRECTION, 1), (Y, 4))))
-            ready, interrupts, scroll, (y, _, _, flags) = (bytes.fromhex(r["hex"]) for r in reads)
-            return ready[0] == 0 and interrupts[0] and scroll[0] == 0xFF and not flags & (JUMPING | FALLING), y
+                                 for a, n in ((SCREEN_READY, 1), (INTERRUPTS_ON, 1), (SCROLL_DIRECTION, 1), (X, 7))))
+            ready, interrupts, scroll, place = (bytes.fromhex(r["hex"]) for r in reads)
+            x, y, flags = place[0], place[Y - X], place[FLAGS - X]
+            still = not flags & (JUMPING | FALLING | MOVING)
+            return ready[0] == 0 and interrupts[0] and scroll[0] == 0xFF and still, (x, y)
         last = []
 
         def settled():
-            ok, y = standing()
+            ok, at = standing()
             if not ok:
                 last.clear()
                 return False
-            if last and last[0] == y:
+            if last and last[0] == at:
                 return True
-            last[:] = [y]
+            last[:] = [at]
             self.wait(STAND_FRAMES)
             return False
-        self.until("the screen to be set up and the hero to stand", settled, 900)
+        self.until("the screen to be set up and the hero to stand still", settled, 900)
 
     def to_trunk(self):
         """Save states with the hero in Apolune's temple, at its door, and on

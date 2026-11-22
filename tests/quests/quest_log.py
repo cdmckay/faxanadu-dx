@@ -44,8 +44,8 @@ import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 import fax_e2e  # noqa: E402
-from fax_e2e import (Game, act, batch, dissolve, fixture, frame, hold, hurry_page, let_go, page_through,  # noqa: E402
-                     parse_args, ram, step_toward, tcp, type_out, typed, until, wait)
+from fax_e2e import (PAGE_FRAMES, Game, act, batch, dissolve, fixture, frame, hold, hold_a, hurry_page,  # noqa: E402
+                     let_go, page_through, parse_args, ram, step_toward, tcp, type_out, typed, until, wait)
 
 AREA, SCREEN, PLAYER_X = 0x24, 0x63, 0x9E
 SCREEN_READY, SCROLL, PAUSED = 0x0E, 0x54, 0x120
@@ -253,31 +253,39 @@ def main():
         ("New quest|..." and "Quest complete|...") in the order said, each
         screenshot (as `label`-N) once it has typed out."""
         said, end = [], frame() + 9000
-        held = False                                        # A held while a page types (hurry_page())
+        held = False                # A held: since the press that turned the last page, or from hurry_page()
+
+        def turn():
+            """A new press turns the page, and A stays down while the next types."""
+            nonlocal held
+            if held:
+                let_go()
+            hold_a()
+            held = True
+            wait(PAGE_FRAMES)
         try:
             while frame() < end:
                 s = state()
                 if s["saying"] and s["lines"] > lines_before + len(said):
-                    if held:
-                        let_go()
-                        held = False
-                    type_out("the quest log's line to type out", 300)   # never A on it: it would turn the page
+                    if held:                                # never a new A on it: it would turn the page
+                        until("the quest log's line to type out", typed, 300)
+                    else:
+                        type_out("the quest log's line to type out", 300)
                     s = state()
                     said.append(s["saying"])
                     if label:
                         game.shot(f"{label}-{len(said)}")
-                    act("a", 6, 14)
+                    turn()
                     continue
                 if not box_open() and s["in_play"]:
                     return said
                 if box_open() and typed():
+                    turn()
+                elif not box_open():
                     if held:
                         let_go()
                         held = False
-                    act("a", 6, 14)
-                elif not box_open():
-                    act("a", 4, 2)                          # as hurry() pressed it, between boxes
-                    held = False
+                    act("a", 4, 2)                          # a new press, between boxes
                 elif not held:
                     held = hurry_page()
         finally:
