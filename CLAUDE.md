@@ -36,6 +36,9 @@ The next person should never have to rediscover it.
 - Merge with a merge commit once `tools/test.sh` passes and the PR's test plan
   is run.
 - The remote is HTTPS; push with `gh` as the credential helper if git has none.
+- The `nesrecomp` submodule is cdmckay's fork of mstan/nesrecomp (#143). An
+  engine fix goes on its `faxanadu-dx` branch, then the pin moves to it;
+  `recomp-ui` still tracks mstan's.
 
 ## Build, run, test
 
