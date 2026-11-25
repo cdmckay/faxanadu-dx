@@ -63,6 +63,7 @@ and data tables after it shifted). Not supported: the build rejects it.
 | `$009E`, `$00A1` | `Player_PosX_Block`, `Player_PosY` | |
 | `$00BA`, `$00C2` | `CurrentSprites_XPos_Full`, `CurrentSprites_YPos` | Each sprite slot's box: its left, and its top under the HUD |
 | `$00DB-$00DD` | `IScriptOrCHRAddr`, `IScriptOffset` | The interpreter reads the next action at addr + offset |
+| `$00EC-$00EE` | `Temp_Int24` | `UI_DrawString`'s strings' address (low, `_M`), and its count of letters left (`_U`) |
 | `$0100` | `CurrentROMBank` | 14 in the main loop. The stack shares this page |
 | `$0120` | `Game_PausedState` | Nonzero while the game is paused: Start, or the map (see *The map*) |
 | `$0127` | `SoundEffect_State_Counter` | The playing sound effect's tick; the typing sound runs 1-4 |
@@ -74,6 +75,8 @@ and data tables after it shifted). Not supported: the build rejects it.
 | `$0214` | `Message_ProcessedLength` | Bytes of the message read, from an offset, not 0. Wraps with the address |
 | `$0215` | `TextBox_MessagePaused` | Nonzero while a `$FC` pause waits for A; otherwise maybe a screen's tile |
 | `$021D` | `TextBox_Timer` | Characters type when it is a multiple of 4. `Messages_Load` zeroes it |
+| `$021E`, `$021F` | `Menu_CursorPos`, `Arg_StringsCount` | A menu's or a list's cursor, and its rows (see *The Select menu*) |
+| `$0220-$0227` | `DataArray` | A menu's or a list's entries, one a row, 8 at most; a vertical scroll's scratch |
 | `$02CC-$02D3` | `CurrentSprites_Entities` | Each sprite slot's entity, `$FF` empty (see *What killed the hero*) |
 | `$036C-$0373` | `CurrentSprites_Values` | Each slot's value from the screen's sprite list: a person's interaction script (see *Quests*), $FF none |
 | `$0378` | `CurrentSpriteIndex` | The slot whose behavior or collision is running |
@@ -88,6 +91,7 @@ and data tables after it shifted). Not supported: the build rejects it.
 | `$0439` | `TempleSpawnPoint` | Where death respawns and a mantra continues, 0-7. In the original, the furthest temple reached; with Save files, the temple of the Guru last saved with |
 | `$043A` | `Screen_TrackedVisitCount` | The one-visit-in-four items' counter (see *Items in the world*) |
 | `$04BC`, `$04BD` | `Arg_PlayerHealthDelta_L`, `_U` | The HP `Player_ReduceHP` takes: fraction, whole |
+| `$0500-$05FF` | `PPUBuffer` | The ring of queued PPU writes the NMI draws; `PPUBuffer_ReadOffset` `$1F`, `_WriteOffset` `$20` |
 | `$0600-$061F` | `Password_EnteredChars` | The mantra screen's characters, as 6-bit values (shares `ScreenBuffer`) |
 | `$0666` | `Password_EnteredCharsLength` | |
 | `$0687` | `DAT_0687` | The title's choice: 0 Start, 1 Continue |
@@ -1264,6 +1268,80 @@ With the **Taller dagger**, `$B898` is served as `$08` through a read
 override, so the dagger's box is as tall as the swords' and reaches their
 low enemies, from the same short distance as before.
 
+## The Select menu (bank 12)
+
+Select in play reaches `GameLoop_CheckShowPlayerMenu` (`$E016`), which
+refuses only Eolis's screen 0 (outside the gate) and far-calls
+`PlayerMenu_Show` (`$8A93`). `Game_MainLoop` calls it before
+`GameLoop_RunScreenEventHandlers` and `GameLoop_CheckPauseGame`, so whatever
+the menu leaves for the pause check is seen in the same pass, as soon as the
+menu returns. `EndGame_MainLoop` (`$DBEF`) calls it too, but writes the pad's
+masks itself every frame (Left, Up, A), so Select never opens it there.
+
+| Address | Code | Does |
+|---|---|---|
+| `$8A93` | `PlayerMenu_Show`: `LDA #$06`, `STA Arg_StringsCount`, `Menu_CursorPos` 0, the box at (2,6), 10 x 14 (`$8AAC`: `LDA #$0E`, `STA TextBox_Height`) | Six rows, the cursor on the first |
+| `$8AB1` | `LDA #$18`, `JSR Sound_PlayEffect`, `JSR TextBox_Open` (`$8EF1`) | The menu's sound, then its box |
+| `$8AB9` | `Temp_Int24` = `PLAYER_TOP_MENU_ITEM_STRINGS` (`$8873`), `DataArray` 0-5 = 0-5 | Each row's string number |
+| `$8ADA` | `JSR PlayerMenu_DrawStringLines` (`$8E6B`) | The rows |
+| `$8ADD` | `@_inputLoop`: `JSR WaitForNextFrame`, `JSR Screen_ResetSpritesForGamePlay`, `JSR Menu_UpdateAndDraw` (`$9056`), `LDA Joy1_ChangedButtonMask`: A (`BMI`) to `@_loadMenuIDs`, B to `JMP TextBox_Close` (`$8AED`) | Waits for a choice |
+| `$8AF0` | `@_loadMenuIDs`: `LDX Menu_CursorPos`, `CPX #$05`, `BNE PlayerMenu_ShowSubmenu`, `JMP PlayerMenu_ShowStatusMenu` | Row 5 the PLAYER page, the others their list |
+
+- **The strings.** `PLAYER_TOP_MENU_ITEM_STRINGS` (`$8873`): six rows of 16
+  bytes, a length then the text (`$06` `WEAPON`, ...). The PLAYER page's seven
+  (`PLAYER_STATUS_MENU_STRINGS`, all 9 long) follow at `$88D3`, the titles
+  (`PLAYER_STATUS_MENU_TITLES`) at `$8943` and the lists' `NO WEAPON` ...
+  (`NO_INVENTORY_ITEM_STRINGS`) at `$8A43`. A row holds 7 letters: the box is
+  10 wide, its frame at either edge and the text from X + 2.
+- **`PlayerMenu_DrawStringLines`** draws row X at (`TextBox_X` + 2,
+  `TextBox_Y` + 2 + 2X) with `UI_DrawString`, Y = `DataArray[X]` x 16 (8
+  bits, so string numbers 0-15 from `Temp_Int24`), for X up to
+  `Arg_StringsCount`. The last row sits just inside the box's bottom frame.
+- **`UI_DrawString`** (`$8E9B`): `LDA (Temp_Int24),Y` (the length), `$8E9D`
+  `STA Temp_Int24_U`, `INY`, `JSR PPUBuffer_QueueCommandOrLength` (which
+  waits for room in the PPU buffer, so for frames); then for each letter
+  `LDA (Temp_Int24),Y`, `$8EA5` `JSR Strings_ASCIIToIndex` (a space is tile 0,
+  a letter its ASCII less `$31`, anything below `A` as it is), `INY`,
+  `JSR PPUBuffer_Set`, `DEC Temp_Int24_U`, `BNE`. Each row stays in the PPU
+  buffer's ring (`PPUBuffer`, `$0500-$05FF`) after the NMI has drawn it, as
+  length, PPU address (high byte first) and tiles, until the ring comes round:
+  nothing else writes it while the menu waits.
+- **`Menu_UpdateAndDraw`** moves `Menu_CursorPos` with Up and Down, wrapping
+  at `Arg_StringsCount` both ways, and draws the arrow at its row.
+- **`DataArray`** (`$0220-$0227`) is 8 entries, then the shops' costs
+  (`$0228`). The menu, every list (`PlayerMenu_ShowInventoryMenu`, a shop's)
+  and the PLAYER page keep one entry a row there, and a vertical scroll uses
+  it, through `$0240`, as scratch. So the menu holds 8 rows at most: with the
+  remaster's two it is full, and a ninth needs another way in.
+- **A choice.** `PlayerMenu_ShowSubmenu` (`$8AFA`) opens a box at (4,8),
+  20 x 18, and reads `Menu_CursorPos` again as the list
+  (`PlayerMenu_SelectedInventory`, `$020E`) and, for an empty one, its
+  `NO ...` string. Every way out of a list or the PLAYER page goes through
+  `PlayerMenu_Close` (`$8BED`: the box at (2,6), 22 x 20, closed, which covers
+  both), so the menu closes with it, back to play.
+
+**With the remaster** (`fax_menu.c`, #146) the menu is QUESTS, MAP, WEAPON,
+ARMOR, SHIELD, MAGIC, ITEM, PLAYER, 18 tiles tall (rows 6 to 23), and opens
+on QUESTS. The game draws all eight itself: at `$8AB1` `TextBox_Height`
+becomes 18, before `TextBox_Open`; at `$8ADA` `DataArray` becomes 6, 7, 0-5
+and `Arg_StringsCount` 8; and strings 6 and 7 of the table, past its end (the
+PLAYER page's first two), are served at `UI_DrawString`'s two sites, after
+each load, A (with N and Z) becoming QUESTS' or MAP's length, then each
+letter, only while `Temp_Int24` is `$8873` and Y is in `$60-$7F`, which the
+original never draws. No ROM and no read override: the override table is
+full. At `$8AF0`, rows 2-7 put the cursor back by two, so the game's own code
+opens the original's list or the PLAYER page from it. A on QUESTS or MAP
+asks the quest log or the map to open (`fax_quests_request`,
+`fax_map_request`: as their button, the press waiting up to 30 frames for
+`$E02F`) and returns into `TextBox_Close`, as B does. That waits for room in
+the PPU buffer a frame or two, and then the pause check of the same pass
+opens the screen; closing it unpauses, back to play. Refused (the map with no
+page seen, where its button shows nothing), it returns through
+`Sound_PlayEffect` with A `$0D`, the invalid-choice sound a list plays, into
+`@_inputLoop`, the menu up and the cursor where it was. In Seamless the top
+box stays over the world under a list or the PLAYER page (`menu_rect` in
+`fax_world.c`, 18 tall: `fax_menu_height`).
+
 ## Weapons and the menu in buildings
 
 In a building (`Area_CurrentArea` 4) the original keeps the weapon out of the
@@ -1278,7 +1356,8 @@ Nothing else is gated.
 
 - **The menu opens indoors.** `GameLoop_CheckShowPlayerMenu` refuses only
   Eolis's screen 0; in a building only the choice is refused. The menu boxes
-  are `PlayerMenu_Show`'s (2,6, 10 x 14) and, for a list,
+  are `PlayerMenu_Show`'s (2,6, 10 x 14; 10 x 18 with the remaster, see
+  *The Select menu*) and, for a list,
   `PlayerMenu_ShowSubmenu`'s (4,8, 20 x 18); `PlayerMenu_SelectedInventory`
   (`$020E`) is the list, and `DataArray` its entries.
 - **The hero swings indoors, bare-handed.** `Player_CheckHandleAttack` checks
@@ -2444,7 +2523,10 @@ map's press waits up to 30 frames for `$E02F`: there it clears Z, so the game pa
 once a frame, it reads the pad: Left and Right turn the page, and B, Start
 or Map close it, with Z cleared so the game unpauses; otherwise Z is set. A
 press during the game's own pause opens it there. The menu, scrolling and
-conversations never reach `$E02F`, so the map opens only in play.
+conversations never reach `$E02F`, so the map opens only in play. The Select
+menu's MAP row (`fax_map_request`) sets the same press as it closes the menu,
+which returns to the main loop before its pause check; it refuses while no
+page is seen, where the button would open nothing.
 
 **Where it is drawn.** Last in the present chain (`cyc_extras.c`), after
 every feature and after Seamless composes its picture: black over the whole
@@ -2696,7 +2778,8 @@ other. Black over the picture, the text box's frame over the native 256 x 240,
 "Quests" on row 2, and from row 4 the active quests, a block each (the name in
 `$37`, its objective, the King's Plea's springs), kept whole on a page, then
 "Completed" and the names of the quests done, in `$10`. Left and Right turn
-the pages; B, Start or the button close it.
+the pages; B, Start or the button close it. The Select menu's QUESTS row
+opens it the same way (`fax_quests_request`, *The Select menu*).
 
 **In the file**: `quests.given` and `quests.done`, the quests given and those
 seen complete, as hex digits, the first for quests 0-3 (quest 0 its lowest
@@ -4920,6 +5003,23 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   record (31 bytes) holds the quests given and seen done, the lines still to
   say, the banner and the log's page. No ROM of its own and no read override
   of its own.
+
+- **Select menu** (`fax_menu.c`, #146). The menu lists QUESTS and MAP above
+  the original's six rows, so every screen the remaster adds is a row there as
+  well as a button; see *The Select menu*. Five hook sites in bank 12, which
+  no other feature hooks: `PlayerMenu_Show` before `TextBox_Open` (`$8AB1`)
+  and at `JSR PlayerMenu_DrawStringLines` (`$8ADA`), where it writes
+  `TextBox_Height`, `DataArray` and `Arg_StringsCount`; `UI_DrawString`
+  after each of its loads (`$8E9D`, `$8EA5`), where A becomes the added rows'
+  length and letters; and `@_loadMenuIDs` (`$8AF0`), where it moves the
+  cursor back by two for the original's rows, or returns into `TextBox_Close`
+  or through `Sound_PlayEffect` into `@_inputLoop` (pushed RTS addresses, S
+  ending where it was). QUESTS and MAP open through `fax_quests_request` and
+  `fax_map_request`, which set the button's press, or refuse where the
+  button would do nothing; the TCP states of both count them as `requests`,
+  not `presses`. Seamless sizes the top box it keeps under a list by
+  `fax_menu_height`. Magic and Block are actions, not screens, so they stay
+  buttons. No ROM, no read overrides, no state.
 
 - **Fair entrances** (`fax_entrances.c`). The enemies placed where a way onto
   their screen puts the hero, so they hit him before anyone could react, start
