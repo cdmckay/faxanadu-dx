@@ -31,7 +31,8 @@
  * as the map does, at the same two branches of GameLoop_CheckPauseGame
  * ($E02F, $E040), after the map's hooks: the active quests with their
  * objectives, then the completed ones, in pages; Left and Right turn them, B,
- * Start or the button close it.
+ * Start or the button close it. The music plays on under it, as under the
+ * map: the map's hook in the sound engine asks fax_quests_showing (#162).
  *
  * Kept. The quests given, and those seen complete, are fields of the file in
  * play (quests.given, quests.done); everything else is read from the game. A
