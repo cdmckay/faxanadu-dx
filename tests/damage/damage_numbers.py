@@ -25,8 +25,9 @@ before he arrives, so the walk-in leaves them anywhere. A swing or a cast goes i
    hit counter runs, is where it is now plus the knockback so far (2 pixels a
    frame). White, the light color.
 2. A number rises a pixel every 3 frames in the same column, holds while the
-   game is paused, and while the Select menu is open, hidden behind it, and is
-   gone after 60 frames.
+   game is paused (the quest log's pause: with the remaster Start opens the
+   Select menu, #147), and while the Select menu is open, hidden behind it,
+   and is gone after 60 frames.
 3. The Zozura reaches the hero: his HP drops by its 7 and a pink 7 rises over
    him, from where he stood when it touched him.
 4. Deluge through the Magic button (C), 64 pixels from the Zozura: it loses 6
@@ -285,12 +286,12 @@ def main():
         moved = next(n for n in later["numbers"] if n["target"] == first["target"])
         assert moved["x"] == first["x"] and moved["age"] > first["age"], (first, moved)
         assert first["y"] - moved["y"] == moved["age"] // STEP - first["age"] // STEP, (first, moved)
-        act("start", 6, 4)
+        tcp("key", name="L", frames=4)                     # the quest log, through the game's pause
         until("the pause", lambda: ram(PAUSED) != 0, 60)   # 1, then $81 once the sound is muted
         held = [n["age"] for n in state()["numbers"]]
         wait(30)
         assert [n["age"] for n in state()["numbers"]] == held and ram(PAUSED) != 0, "held while paused"
-        act("start", 6, 4)
+        tcp("key", name="L", frames=4)
         until("the game to go on", lambda: ram(PAUSED) == 0, 60)
         act("select", 4, 6)
         until("the menu", lambda: ram(TEXTBOX_CLOSED) == 0 and ram(TEXTBOX_WIDTH) == MENU_WIDTH, 60)

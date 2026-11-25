@@ -20,8 +20,8 @@ and walks the hero to the gate of Eolis, a door. Then it edits save-state RAM
 6. Next to Conflate's Guru (reached by dying with Conflate as the furthest
    temple, from a saved game of that death as the Guru speaks), Magic casts
    without starting a conversation; Up talks.
-7. config.ini rebinds it (MagicKey = V, MagicButton = b), and the window
-   writes the bindings back.
+7. config.ini rebinds it (MagicKey = G, MagicButton = leftstick), and the
+   window writes the bindings back.
 8. With the remaster off in the mod selection, as the original, C does nothing.
 """
 from pathlib import Path
@@ -211,28 +211,28 @@ def main():
         # 7. config.ini rebinds it.
         text = config.read_text()
         assert re.search(r"^MagicKey = C$", text, re.M) and re.search(r"^MagicButton = y$", text, re.M), text
-        config.write_text(re.sub(r"^MagicButton = y$", "MagicButton = b",
-                                 re.sub(r"^MagicKey = C$", "MagicKey = V", text, flags=re.M), flags=re.M))
+        config.write_text(re.sub(r"^MagicButton = y$", "MagicButton = leftstick",
+                                 re.sub(r"^MagicKey = C$", "MagicKey = G", text, flags=re.M), flags=re.M))
         game.launch()
         state = tcp("magic_state")
-        assert state["binding"] == "V / B", state
+        assert state["binding"] == "G / L3", state
         tcp("load_state", path=str(gate))
         nothing_with("key", "C")
-        cast_with("key", "V", 80)
+        cast_with("key", "G", 80)
         spell_ends()
-        cast_with("pad", "b", 78)
+        cast_with("pad", "leftstick", 78)
         game.close()
         text = config.read_text()
-        assert re.search(r"^MagicKey = V$", text, re.M) and re.search(r"^MagicButton = b$", text, re.M), text
-        print("ok: MagicKey = V and MagicButton = b in config.ini move it to V and B, and stay there")
+        assert re.search(r"^MagicKey = G$", text, re.M) and re.search(r"^MagicButton = leftstick$", text, re.M), text
+        print("ok: MagicKey = G and MagicButton = leftstick in config.ini move it to G and L3, and stay there")
 
         # 8. The remaster off: the original.
         game.set_features({(PACKAGE, FEATURE): False})
         game.launch()
         assert not tcp("magic_state")["enabled"], "the remaster is off"
         tcp("load_state", path=str(gate))
-        nothing_with("key", "V")
-        nothing_with("pad", "b")
+        nothing_with("key", "G")
+        nothing_with("pad", "leftstick")
         assert tcp("magic_state")["presses"] == 0
         print("ok: with the remaster off, the Magic button does nothing")
         print("screenshots:", ", ".join(game.shots))
