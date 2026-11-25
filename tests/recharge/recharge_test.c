@@ -15,6 +15,7 @@ static unsigned checks;
 #define CHECK(test) do{++checks;if(!(test)){fprintf(stderr,"FAIL line %u: %s\n",__LINE__,#test);exit(1);}}while(0)
 
 /* ---- the machine ---- */
+uint32_t cyc_ring_frame;                      /* the engine's frames completed: what a freeze's end is noted at */
 static uint8_t ram[0x800];
 static CycModRegs cpu;
 static bool isolated;

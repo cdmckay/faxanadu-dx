@@ -150,14 +150,17 @@ def snapshot():
     return s, int(mp["hex"], 16), ping["frame"]
 
 
-def run_out(key):
-    """Wait out a run ("flight" or "freeze"), reading each frame near its end:
-    the frame of the first read that finds it over."""
-    while True:
-        s, _, f = snapshot()
-        if not s["boots_running" if key == "flight" else "glass_running"]:
-            return f
-        wait(max(1, min(600, s[f"{key}_left"] - 3)))
+def run_out():
+    """Wait out the Hour Glass's freeze: the frame it was over at, as the game
+    noted it (freeze_ended, ping's count), not the frame of the first read to
+    find it over, which can come any number of frames later (#144)."""
+    s, _, f = snapshot()
+    assert s["glass_running"], s
+    while s["glass_running"]:
+        wait(max(1, s["freeze_left"]))
+        s = state()
+    assert s["freeze_ended"] > f, (s["freeze_ended"], f)          # this freeze's end, not an earlier one's
+    return s["freeze_ended"]
 
 
 def drains(first, step, frames):
@@ -549,9 +552,9 @@ def main():
             until("half the freeze", lambda: state()["freeze_left"] <= FREEZE * SECOND // 2, FREEZE * SECOND)
             assert [ram(SPRITE_X + i) for i in zozuras] == before, "the Zozuras still frozen"
             shot("hour-glass-mp-draining")
-            ended = run_out("freeze")
+            ended = run_out()
             until("The power of the Hour Glass is gone.", lambda: ram(MESSAGE_ID) == HOUR_GLASS_GONE, 60)
-            assert FREEZE * SECOND <= ended - begun <= FREEZE * SECOND + 2, (ended, begun)
+            assert ended - begun == FREEZE * SECOND, (ended, begun)
             assert ram(MP) == FULL - FREEZE * SECOND // GLASS_STEP and ram(HP) == 0x50, (ram(MP), ram(HP))
             page_through()
             print(f"ok: after its 15 s ({ended - begun} frames) the freeze is over, {FREEZE * SECOND // GLASS_STEP} MP "
@@ -579,11 +582,13 @@ def main():
             page_through()
             s0, mp0, f0 = snapshot()
             begun = f0 - s0["freeze_played"]
-            assert mp0 == 10 and s0["freeze_left"] == 10 * GLASS_STEP - s0["freeze_played"], s0
+            # MP as the drain left it by this read, which can come a few of its steps in on a loaded machine.
+            assert mp0 == 10 - drains(GLASS_STEP, GLASS_STEP, s0["freeze_played"]), (mp0, s0)
+            assert s0["freeze_left"] == 10 * GLASS_STEP - s0["freeze_played"], s0
             assert s0["hud_drawn"] == -(-s0["freeze_left"] // SECOND), s0
-            ended = run_out("freeze")
+            ended = run_out()
             until("The power of the Hour Glass is gone.", lambda: ram(MESSAGE_ID) == HOUR_GLASS_GONE, 60)
-            assert 10 * GLASS_STEP <= ended - begun <= 10 * GLASS_STEP + 2 and ram(MP) == 0, (ended, begun)
+            assert ended - begun == 10 * GLASS_STEP and ram(MP) == 0, (ended, begun)
             page_through()
             refused_at_zero()
             print(f"ok: on 10 MP the freeze ends at 0 MP, {ended - begun} frames on; then Down+B does nothing but the "

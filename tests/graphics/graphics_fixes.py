@@ -181,6 +181,13 @@ class Look:
             return self.rows[py][px]
         return None
 
+    def shows(self, sprite):
+        """The sprite's whole cell is on the picture. Seamless's view follows
+        the hero, so it need not show the whole room: with him at x 232 its
+        left edge is the room's x 28."""
+        y, _, _, x = sprite
+        return self.at(x, y + 1 - HUD) is not None and self.at(x + 7, y + 8 - HUD) is not None
+
     def sprite_cell(self, sprite):
         """{(dx, dy): (index, color)} for a sprite's opaque pixels: its tile's
         pattern, flipped as its attribute says, and the picture's color there.
@@ -362,8 +369,11 @@ def fire(game, fixed):
                      if s[1] in (0x7C, 0x7D, FIRE_TOP, FIRE_FIRST) and not s[2] & 0x23]
             middle = [s for s in flame if s[1] in (0x7C, 0x7D)]
             # The second frame, whole, away from the room's edges (the NES hides
-            # sprites in the leftmost 8 pixels, and Seamless draws past them).
-            if len(middle) == 4 and len(flame) == 6 and all(16 <= s[3] <= 224 for s in flame):
+            # sprites in the leftmost 8 pixels, and Seamless draws past them),
+            # and on the picture. A loaded machine's looks come further apart,
+            # so later in the flight: past the view's left edge, where only
+            # part of a cell shows (#144).
+            if len(middle) == 4 and len(flame) == 6 and all(16 <= s[3] <= 224 and look.shows(s) for s in flame):
                 break
             look.drop()
         else:

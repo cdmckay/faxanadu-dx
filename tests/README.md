@@ -207,6 +207,30 @@ state's first frame. Anything needing more than one timed press runs headless
 from a state with `--input`. `game.poke(writes)` edits RAM in the running game
 (save, `fixture()`, load), for example to clear a screen's enemies.
 
+A poke takes the game back to its save: the frames that ran while the script
+edited the state play again, a few more the more loaded the machine. RAM
+comes back with the state, but a count a feature keeps outside it (its TCP
+command's) counts what happened in those frames twice. Let what a check
+counts happen before a poke (#144: Found items answers a find on its first
+frame, about ten frames after the screen settles; the found test's warp
+poked in between and counted one visit's answer twice, so it now waits for
+that frame first).
+
+Read when something ended from the game, not from the first read that finds
+it over, which can come any number of frames late: a feature notes the frame
+in its TCP command (#144: Recharging items' `freeze_ended`, the frame
+boundary at which the Hour Glass's freeze was over, as `ping` counts).
+
+A walk of taps goes as far a tap however many frames come between them, so
+one bounded by frames runs out on a loaded machine: hold the direction
+(`hold()`, `walk()`), and he covers the same ground in the same frames (#144).
+
+A check of a picture's pixels needs what it checks on the picture. Seamless's
+view follows the hero, so it need not show the whole room: with him at x 232,
+the view's left edge is the room's x 28. A loaded machine's reads come
+further apart, so a look sampled while something moves comes later in its
+path (#144: the Fire past the view's edge).
+
 ### Ports
 
 Never pick a port in a test. The suite lock keeps two suites apart, but one
