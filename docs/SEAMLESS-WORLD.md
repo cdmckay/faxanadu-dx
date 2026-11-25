@@ -156,11 +156,18 @@ more. Initial region decoding and native portal delays remain separate costs.
 Still open (#110 made Seamless the remaster's only view, so these are the
 risks a playtest must cover):
 
-- **Combat across rooms.** Enemies and shots do not migrate between rooms.
-  A neighbouring room's actors run on an isolated machine against a
-  projected hero, clamped to that room's edge, so they gather at the seam he
-  is nearest, and his swing there can hit them in that room's copy (the
-  Pendant fix counts only the live game's hits). This changes encounter timing compared with stock.
+- **Combat across rooms** (#166; the plan is
+  [SEAMLESS-COMBAT.md](SEAMLESS-COMBAT.md)). Enemies and shots do not
+  migrate between rooms. A neighbouring room's actors run on an isolated
+  machine against a projected hero, clamped to that room's edge, so they
+  gather at the seam he is nearest. They can't hurt him there, and his swing
+  can't hit them: the copy sets his attack phase to 0, so a hit never lands
+  in it, while the live game's own check hits a monster at the far side of
+  his own room instead (the original's wrap-around bug). A spell ends at the
+  seam, and one in flight vanishes when he crosses. A drop at a neighbour's
+  edge is taken by the projected hero and its gold lost, and an item there
+  makes every tick of that room fail, freezing it. This changes encounter
+  timing compared with stock.
 - **Secrets and breakable terrain** (the Mattock's walls, the path to
   Mascon's fountain): the suite covers the fountain's ladder (the ladder
   fixes' test), breaking Trunk `$0C`'s Mattock wall in its own room (the keys

@@ -759,6 +759,28 @@ What a feature can rely on, and the traps:
 - In Seamless, a neighboring room's actors live in `fax_world.c`'s copy of
   that room, not in `CurrentSprites_Entities`: setting those slots to `$FF`
   clears only the hero's room.
+- **The hero a neighbouring room sees** is `shadow()`'s: his position in that
+  room's coordinates clamped to x 0-240 and y 0-176 (so a room to his left
+  sees him at its x 240 wherever he stands in his own), invincible (200),
+  `Player_AttackPhaseAnimFrame` 0, no spell (`CastMagic_Type` `$FF`) and no
+  buttons. So its monsters can't hurt him and his swing never lands there.
+  But `CurrentSprite_CheckHitPlayer` (`$890A`) sends every touch to its
+  category's handler without looking at the invincibility, and
+  `Player_HandleTouchBreadOrCoin` (`$8968`) has no check of its own: a coin
+  or bread at that edge is taken in the copy and its gold or HP thrown away
+  with the copy's RAM (a coin at Eolis `$05`'s x 236, the hero on `$04`: gone
+  within two frames, the gold unchanged; at x 100 it stayed). An item there
+  can't be picked up in an isolated call (`Player_HandleTouchItem`, `$88FB`):
+  the call fails, Seamless drops the room's tick (`fax_world`'s `failures`
+  counts one a frame), and the room stands still for as long as the hero is
+  beside it (the Dragon Slayer, `$5A`, at `$05`'s x 240). See
+  [SEAMLESS-COMBAT.md](SEAMLESS-COMBAT.md).
+- **A test can read a neighbouring room whole** from Seamless's save-state
+  record, `faxanadu.world`: a 32-byte header (byte 9 the area + 1, byte 10
+  the hero's room + 1), then `fax_world.c`'s `Room` for each of 83 rooms,
+  10,296 bytes each with this build's compiler (its 2 KB of RAM first; then
+  CHR, palette, `valid`, `live`, `owned`, the edges, x, y and ticks). A
+  `fixture()` record edit puts anything in a neighbour's slots.
 
 ## Far calls (`MMC1_LoadBankAndJump`)
 
@@ -1318,6 +1340,21 @@ the swords.
 With the **Taller dagger**, `$B898` is served as `$08` through a read
 override, so the dagger's box is as tall as the swords' and reaches their
 low enemies, from the same short distance as before.
+
+**A swing past the screen's edge hits the other edge (the original's bug).**
+`Player_DrawWeapon` adds the pose's offset to `Player_PosX_Block` in 16 bits:
+`PlayerPosXPlus10` (`$CE`) gets the low byte, `Maybe_Something_WeaponPosX`
+(`$CF`) the high one, `Screen_Maybe_ScrollXCounter` (`$9F`) plus the carry.
+When `$CF` is not `$9F`, the weapon is off the screen, and it returns before
+the Y and the reach, which keep their last values. But `$CE` is set, and
+`Sprites_IsSpriteOutOfWeaponRange` compares only `$CE`. So a hero at a
+screen's left edge swinging left, or at its right edge swinging right, hits a
+monster at the other edge, at his height. Checked in the game, with the
+remaster off: the Long Sword from Eolis `$04`'s x 4, facing left (`$CE` 244,
+then 236; `$CF` `$FF`), killed a Zozura at the screen's x 236-239 with its
+first hit, for its 30 experience. Seamless shows the same: there the
+remaster's sword hit it twice in one swing and killed it, off the view
+([SEAMLESS-COMBAT.md](SEAMLESS-COMBAT.md)).
 
 ## The Select menu (bank 12)
 
@@ -2053,6 +2090,23 @@ jump a few updates after stepping off, as A from the hang itself would.
   `Player_ReduceMP` (fixed bank) takes `MAGIC_COSTS` (`$B7A9`, bank 14: 2, 4,
   6, 10, 16) or refuses. The spell starts from the hero and flies the way he
   faces.
+- **Every spell ends at the screen's edge.** Its update handler
+  (`CAST_MAGIC_UPDATE_HANDLERS`) moves it with `CastMagic_UpdateXPosition`
+  (`$BCAF`), whose `CastMagic_CheckDirection` (`$BD8F`) sets
+  `Blocks_Result` to 1 to disperse it: going left
+  (`CastMagic_CheckDirection_Left`, `$BD3C`) once its X is `$F0` or more,
+  wrapped past 0; going right (`CastMagic_CheckDirection_Right`, `$BD4A`)
+  once X plus its width (`CAST_MAGIC_WIDTHS`, `$BD9D`: `$0F`, Fire `$1F`)
+  carries. Otherwise `CastMagic_CheckDirection_CheckImpassable` (`$BD58`)
+  tests the blocks the spell covers in `ScreenBuffer`, never the next
+  screen's edge blocks. Up and down never disperse it. The handler also
+  clears it (`CastMagic_Clear`, `$BB3F`) when `CastMagic_UpdateXPosition`
+  returns C set: X `$F0` or more going left, or X at least
+  `CAST_MAGIC_MAX_SCREEN_WIDTHS` (`$BCF6`: `$F0`, Fire `$E0`) going right.
+  It hits only the screen's own slots: `Sprite_CheckHitByCastMagic` (`$8ADC`)
+  runs for each slot in `Sprites_UpdateAll`. Checked in the game (Seamless):
+  Deluge cast left from x 43 starts at x 40, moves 3 pixels a frame, is last
+  at x 1, and is gone (`CastMagic_Type` `$FF`) the frame after.
 - **Up+B is clumsy by design.** The sword swings on the same new B, so the
   stock combo always swings and casts. At a door the new Up goes through it
   first, in `GameLoop_UpdatePlayer`, and `Game_SetupEnterScreen` waits for the
@@ -3985,6 +4039,24 @@ flights on MP):
   past its `LDY`. `Player_CheckIfOnLadder` and
   `Sprites_CheckPlacementInvalidAtY` read properties without it. A hook at
   `$E87C` makes any block solid by where it is (Eolis's edge does).
+- **A screen's edge is a wall to every sprite.** A sprite's sideways move
+  (`Sprites_Something_SomethingAndMoveHoriz`, `$8494`: `Sprite_MoveForwardX`,
+  then `MoveSpriteHorizIfPossible`, `$84C4`) asks
+  `CurrentSprite_CanMoveInDirection` (`$8710`). Going left,
+  `FUN_PRG14__86bd` (`$86BD`) calls an X of `$F1` or more (wrapped past 0)
+  blocked; going right, `Sprites_MoveRight` (`$86A7`) calls it blocked when X
+  plus `SPRITE_HITBOX_WIDTHS` carries. Both reach
+  `Sprites_SetBlockIsMovingResult` (`$86B5`), whose `Blocks_Result` 1 means
+  blocked, whatever its name; inside the screen they test the blocks.
+  `MoveSpriteHorizIfPossible` then snaps X back to the block's edge and
+  returns C set (its comments' "moved" is "blocked"), and
+  `Sprite_MoveHorizAndTurnAroundIfNeeded` (`$8419`) turns the sprite round.
+  Fliers and shots go through `Sprite_Maybe_TurnAroundIfAtScreenEdgeHoriz`
+  (`$8427`), which snaps and turns one at X `$F0` or more. Up and down, Y
+  `$F0` or more is blocked. So no sprite ever straddles a screen's edge. In
+  Seamless a seam is such an edge: a neighbouring room's chasers press
+  against it and turn (Eolis `$05`'s two Zozuras spent 800 frames between its
+  x 222 and 240 while the hero stood on `$04`; SEAMLESS-COMBAT.md).
 - **Eolis screen 4's tower** (about x 160-208) is drawn in front of sprites:
   a hero or a Zozura behind it disappears. Stage a fight there left of x 150.
 - `Area_LoadScrollData` (`$D127`) decompresses the four neighbours first,
@@ -4127,6 +4199,14 @@ flights on MP):
     `TILES_SHIELDS_START` (`$9104`).
   So a slot no loader of the current gear fills keeps what an earlier one
   left there.
+- **A screen's enemy tiles follow its slots.** `GameLoop_LoadSpriteImages`
+  (`$C28D`) starts at `$0900` (`CurrentSprite_ResetPPUTileOffset`), loads
+  each occupied slot's image in turn from slot 7 down
+  (`Sprites_LoadImageForCurrentSprite`, `$CDB5`), each where the last ended,
+  and keeps the tile it starts at in `CurrentSprites_PPUOffsets` (`$032C`),
+  which `Sprites_PPUOffset` adds when it is drawn. So an entity's tiles start
+  at a place that depends on what else the screen holds: a sprite moved to
+  another screen's slots would draw with that screen's tiles there.
 - The appearances: the hero's are `TILEINFO_PLAYER_ADDRS` (`$A9F1`), 8 poses
   a gear set (0-2 walking, 3 jumping, 7 climbing), in the order of the armor
   lists; then the weapons' (64-98). Entities' are `TILEINFO_ENTITY_ADDRS`
