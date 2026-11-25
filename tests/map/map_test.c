@@ -36,7 +36,8 @@ void fax_text_draw(uint32_t *px, int w, int h, int x, int y, const char *s, unsi
 }
 static uint8_t gurus = 1;   /* Guru travel's visited Gurus: Eolis's from the start */
 uint8_t fax_travel_visited(void) { return gurus; }
-bool fax_quests_showing(void) { return false; }   /* the quest log, closed */
+static bool quests_open;   /* the quest log */
+bool fax_quests_showing(void) { return quests_open; }
 /* Found items (fax_found.c): on or off, and whether the fixed Hour Glass lies
  * there; its rule, fax_found_spawn, is the header's own. */
 static bool found_on, glass_there = true;
@@ -718,6 +719,27 @@ static void test_map(void) {
     press(); CHECK(check() && open);
     press();                                                /* and Map */
     CHECK(closing && pause_frame(0) && !open);
+
+    /* The Select menu's MAP row: as a press, not counted as one, the check
+     * pausing with A (the menu's choice) new. Refused while the map would
+     * show nothing (no page seen), is open, or the quest log is. */
+    unsigned pressed = presses;
+    CHECK(fax_map_request() && want && requests == 1 && presses == pressed);
+    ram[JOY1_CHANGED] = 0x80;
+    CHECK(check() && open && shown == FAX_MAP_PAGE_TRUNK);
+    CHECK(!fax_map_request() && requests == 1);
+    CHECK(pause_frame(BUTTON_B) && !open);
+    quests_open = true;
+    CHECK(!fax_map_request() && !want);
+    quests_open = false;
+    Visits seen = v;
+    uint8_t kept[ITEM_SET];
+    memcpy(kept, picked, sizeof kept);
+    unsigned kept_last = last.valid, kept_gurus = gurus_merged;
+    forget();
+    CHECK(pages_seen() == 0 && !fax_map_request() && !want && requests == 1);
+    v = seen; memcpy(picked, kept, sizeof kept); last.valid = (uint8_t)kept_last; gurus_merged = (uint8_t)kept_gurus;
+    CHECK(pages_seen() == 2);
 
     /* A press waits for the check a while (the menu, a conversation or a scroll may hold it), then goes. */
     press();
