@@ -225,6 +225,12 @@ A walk of taps goes as far a tap however many frames come between them, so
 one bounded by frames runs out on a loaded machine: hold the direction
 (`hold()`, `walk()`), and he covers the same ground in the same frames (#144).
 
+A check of a picture's pixels needs what it checks on the picture. Seamless's
+view follows the hero, so it need not show the whole room: with him at x 232,
+the view's left edge is the room's x 28. A loaded machine's reads come
+further apart, so a look sampled while something moves comes later in its
+path (#144: the Fire past the view's edge).
+
 ### Ports
 
 Never pick a port in a test. The suite lock keeps two suites apart, but one
