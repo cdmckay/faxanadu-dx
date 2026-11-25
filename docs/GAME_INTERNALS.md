@@ -162,7 +162,14 @@ two lines apart, a column left of the text. The message ID is the immediate of
 its first instruction, `LDA #$10`, at `$8631`: a read override there shows any
 message instead, so Save files sets it for its one menu and puts it back at
 the end of the frame, once the menu has read it. Immediates are read at run
-time, so overriding one works.
+time, so overriding one works. The shops run it too, with the remaster on as
+off (#163), and with its own line, since Save files' override is set only
+for the Guru's menu. Its cursor, like the shop lists', is a sprite:
+`Menu_UpdateAndDraw` ends in `UI_DrawPromptInputSymbol` (metasprite `$AD`),
+OAM tile `$72` at x `TextBox_X` * 8 + 8, drawn on every frame the menu waits
+(each wait loop resets the sprites first, through
+`IScripts_UpdatePortraitAnimation`), and on no other: in a frame log, the
+frames a menu or list reads the pad.
 
 ### Portraits
 
@@ -359,6 +366,25 @@ faxanatools' `messages.py` decodes and encodes them; `fax_travel.c`'s
   A shop's list covers the dialogue box and rises above it; picking from it
   (`Maybe_Shop_DrawTextBox`) closes the list and opens the dialogue box again.
   The portrait box stays up throughout.
+- **Seamless shows a script's boxes only while `TextBox_Closed` is 0**
+  (`fax_world_present`, `script_mode`): then it copies the native picture's
+  rectangle of the box last opened (`TextBox_X` to `_Height`) over the world,
+  and the portrait's (2,14, 8 x 10) while `IScript_PortraitID` is below
+  `$80`. So a `TextBox_Close` in the middle of a conversation blanks every box
+  and the portrait at once, for the frames until the next `TextBox_Open`
+  sets it to 0 again: in the stock view the portrait stays and only the box
+  clears, row by row. In the game only the shops close a box mid-script
+  (`Maybe_Shop_DrawTextBox`, and the sale's `TextBox_Close` at `$86F8`), and
+  Quick shops skips both (#163): before, B in a list closed it and opened the
+  dialogue box before the end, and the portrait went for 8 frames, came back
+  for 20, and went (Cameron's "flicker"). A box opened over another without a
+  close shows only its own rectangle in Seamless; the other's rows stay in the
+  nametable until `IScriptAction_EndScript` clears both boxes' area.
+- **A box is drawn when the PPU buffer is empty**: `PPUBuffer_ReadOffset`
+  (`$1F`) equals `PPUBuffer_WriteOffset` (`$20`) once the NMIs have sent what
+  `TextBox_Open`, a list's rows or a line's letters queued. A menu's cursor is
+  drawn the frame its wait starts, while the rows it points at may still be
+  queued: wait for both before a screenshot or a press on what shows.
 - `TextBox_Open` and `TextBox_Close` only queue nametable writes in the PPU
   buffer, top row first, and the queue drains over the next NMIs (waiting when
   it is full), so a box appears and goes over a few frames. `TextBox_Closed`
@@ -2078,7 +2104,8 @@ jump a few updates after stepping off, as A from the hang itself would.
   in `Game_MainLoop` with only `GameLoop_RunScreenEventHandlers` between, which
   reads no button. Elsewhere: the title (`StartScreen_CheckHandleInput`, bank
   12: Select toggles, then the wait loop's own `AND #$10`: Start takes it),
-  a shop's lists (Quick shops: Select switches them) and the mantra screen.
+  and the mantra screen. A shop's lists ignore it, with the remaster too
+  (before #163 Quick shops switched them with it).
   The Select menu's `@_inputLoop` (`$8AE6` `LDA Joy1_ChangedButtonMask`,
   `$8AE8` `BMI` (A) to `@_loadMenuIDs`, `$8AEA` `ASL A`, `$8AEB` `BPL` back to
   the loop, `$8AED` `JMP TextBox_Close` (B)) reads only A and B.
@@ -3619,6 +3646,26 @@ has to be served, which the Magician's lesson and the Potion Sellers do in
 `IScripts_ShowFinalMessage` (`$837E`, A = the message) types a message and,
 at `$838E`, on A or B, `JMP IScriptAction_EndScript`. The shops' refusals and
 the empty sell list end the conversation through it.
+
+Each list action ends in one `JMP IScriptAction_EndScript` that both its B's
+reach: OpenShop's at `$83FF` (B on "What would you like?", the `BCS` at
+`$83E6`, and B in the list, the fall-through after the wait's `BCC` at
+`$83FD`), ShowSellMenu's at `$8701` (B on "Which one would like to sell?" and
+in the list). The original's B there ends the script with no line: no box
+opens first, and `TextBox_ClearForPortraitAndText` clears the list with the
+portrait's box.
+
+**The conversation, with Quick shops** (#163): the original's, step for step
+(the greeting, the Buy/Sell menu, the list's line, the list), with one change:
+after a purchase or a sale the hero stays in that list until B. B there, or
+on a list's line, ends it as the original's B did if nothing was bought or
+sold this visit; otherwise the shopkeeper first says "Thank you for
+shopping.", the list's own thank-you step (BUY + 3 or SELL + 3), as he did
+after each purchase, in the dialogue box opened over the list. A shop's
+message goes back to the list; "You have nothing to buy." (the empty sell
+list, from the menu or after the last sale) goes on to buying, after "What
+would you like?", the buy list's line, which types only the first time the
+buy list opens in a visit. Select does nothing, as in the original.
 
 **The sell list** (`IScriptAction_ShowSellMenu`, `$8660`): after reading the
 list's address it scans **only the Items list** (`LDX #$04` at `$866F`, `CPX
@@ -5308,43 +5355,52 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   Drawn after Sugata's band, so it does not grey them, and before the zone
   banner, which covers them. Its save-state record holds the numbers (16 bytes
   each), and a state loaded with the remaster off restores none.
-- **Quick shops** (`fax_shops.c`). Up on a shopkeeper opens his buy list at
-  once, Select switches to the sell list and back, a purchase or a sale keeps
-  the list up with the cursor where it was, and B leaves. A shop buys
-  anything carried (see *Shops*), 8 to a page: Up from the top or Down from
-  the bottom turns the page. No ROM and no read overrides. It steers the
-  script at `IScripts_InvokeNextAction` (its first action goes to BUY; BUY + 3
-  and SELL + 3 go back to their list) and jumps by return at eight sites of
-  its own: OpenShop's entry, past "What would you like?" to `$83EA`;
-  `$8463`, past the purchase's close; `$86BC`, where it replaces the sell
-  scan's list with a page of everything carried and goes on at `Shop_Draw`
-  (`$86D8`), past "Which one would like to sell?", or, with nothing to sell
-  and a list open, through `Maybe_Shop_DrawTextBox` first; `$86E0`, back to
-  the wait for an item not for sale (one no shop buys, or one the hero owns);
-  `$86F8`, past the sale's close;
-  `$84F0`, in `IScripts_WaitForMenuInput` before the menu update, where it
-  puts the cursor back, Select or a page turn goes through
-  `Sound_PlayEffect` (`$0B`) to the other step, and B goes through
-  `Maybe_Shop_DrawTextBox` to `IScriptAction_EndScript`, so the list is closed
-  when the script ends, as after the original's purchase, and a line Block
-  adds there (its tutorial, after the first shield) shows in the dialogue box;
-  `$838E`, where a shop's message goes back to the list; and `$8402`, the buy
-  list's A, back to the wait (`$83FA`) for an item the hero owns (see
-  *Shops*), which it asks reusable tools and recharging items about
-  (`fax_reusable_tools_on`, `fax_recharge_on`, `fax_recharge_elixir_spent`),
-  as it does for the sell list's. A ninth site, at `$83F7` (`JSR Shop_Draw`,
-  after `Shop_Populate`), only writes the list: while the Potion Sellers sell
-  the Red Potions (`fax_potions_selling`), a tool shop's without it, and while
-  Found items is on (`fax_found_on`), without the Wing Boots, the Hour Glass
-  and the Elixir (`fax_found_unsold`), the entries after each moving up
-  (`fax_shops_without`).
+- **Quick shops** (`fax_shops.c`). A shopkeeper talks as the original's
+  does: his greeting, the Buy/Sell menu, the list's line, the list (#163). A
+  purchase or a sale keeps the list up with the cursor where it was, and B
+  leaves, after "Thank you for shopping." if anything was bought or sold (see
+  *Shops*, "The conversation, with Quick shops"). A shop buys anything carried
+  (see *Shops*), 8 to a page: Up from the top or Down from the bottom turns
+  the page. No ROM and no read overrides. It notes a shop's script at its
+  first action, `IScripts_InvokeNextAction` with `IScriptOffset` 1 (the session
+  starts; nothing is redirected), and there sends BUY + 3 and SELL + 3, the
+  thank-you steps the original took after a purchase or a sale, back to their
+  list (unless B is leaving through them). It jumps by return at these sites
+  of its own: OpenShop's entry, past "What would you like?" to `$83EA` once
+  the line has been said in the visit; `$8463`, past the purchase's close;
+  `$86BC`, where it replaces the sell scan's list with a page of everything
+  carried and goes on at `Shop_Draw` (`$86D8`) once "Which one would like to
+  sell?" has been said, or, with nothing to sell and a list open, through
+  `Maybe_Shop_DrawTextBox` first; `$86E0`, back to the wait for an item not
+  for sale (one no shop buys, or one the hero owns); `$86F8`, past the sale's
+  close; `$84F0`, in `IScripts_WaitForMenuInput` before the menu update, where
+  it puts the cursor back and a page turn goes through `Sound_PlayEffect`
+  (`$0B`) to the sell step again; `$838E`, where a shop's message goes back to
+  the list; `$8402`, the buy list's A, back to the wait (`$83FA`) for an item
+  the hero owns (see *Shops*), which it asks reusable tools and recharging
+  items about (`fax_reusable_tools_on`, `fax_recharge_on`,
+  `fax_recharge_elixir_spent`), as it does for the sell list's; `$83FF` and
+  `$8701`, the list actions' `JMP IScriptAction_EndScript` (B), where with
+  something bought or sold it points the script at the thank-you step and
+  goes there, through `Maybe_Shop_DrawTextBox` if the list is up, so a line
+  Block adds at the end (its tutorial, after the first shield) follows it in
+  the dialogue box; and `$8477`, `Maybe_Shop_DrawTextBox`'s `JSR
+  TextBox_Close`, skipped in a shop (on to its `JMP TextBox_OpenForNPC` at
+  `$847A`), so the dialogue box opens over the list and Seamless never shows
+  a frame without the portrait (*The text box*). A site at `$83F7` (`JSR
+  Shop_Draw`, after `Shop_Populate`) only writes the list: while the Potion
+  Sellers sell the Red Potions (`fax_potions_selling`), a tool shop's without
+  it, and while Found items is on (`fax_found_on`), without the Wing Boots,
+  the Hour Glass and the Elixir (`fax_found_unsold`), the entries after each
+  moving up (`fax_shops_without`).
   Presses while a list is drawn, or the gold counts, are lost, as in the
   original: the game reads the pad only in the list's wait. The hint line
-  ("Select to sell", "Select to buy", "Not for sale", "Already owned") is drawn
-  on the list's row 26 and the page ("1 of 2") on row 9, at present time,
-  while the list's four frame corners show; an unsellable item's price cells
-  are painted the box's inside, and an owned item's too, with OWNED in them.
-  Its save-state record holds the conversation (17 bytes).
+  ("Not for sale", "Already owned", while the cursor is on such an entry) is
+  drawn on the list's row 26 and the page ("1 of 2") on row 9, at present
+  time, while the list is the box last opened and its four frame corners
+  show; an unsellable item's price cells are painted the box's inside, and an
+  owned item's too, with OWNED in them. Its save-state record holds the
+  conversation (20 bytes; the 17 of version 1, before #163, still load).
 - **Zone respawn** (`fax_respawn.c`). Dying comes back at the last entrance
   into the zone (tower, castle, town or region) the hero died in, after the
   Guru's words, instead of at the temple. A hook at `Screen_SetupNew` records

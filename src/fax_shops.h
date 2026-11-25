@@ -1,14 +1,16 @@
 #pragma once
-/* Shops (fax_shops.c): a shopkeeper opens his list at once, Select switches
- * between buying and selling inside it, buying and selling keep you in it,
- * and any shop buys anything you carry. It registers itself; the host adds
- * its TCP command and draws its hint over the presented picture. */
+/* Shops (fax_shops.c): a shopkeeper talks as the original's does (his
+ * greeting, Buy or Sell, the list's line), buying and selling keep you in
+ * the list until B, which thanks you if you traded, and any shop buys
+ * anything you carry. It registers itself; the host adds its TCP command and
+ * draws its hint over the presented picture. */
 #include <stdbool.h>
 #include <stdint.h>
 
 void fax_shops_tcp_setup(void);
-/* Draw the list's hint line ("Select to sell") over the picture, after
- * Seamless, zone names and speaker names; returns the picture to show. */
+/* Draw the list's hint line ("Not for sale", "Already owned"), its page and
+ * the prices it covers over the picture, after Seamless, zone names and
+ * speaker names; returns the picture to show. */
 const uint32_t *fax_shops_present(const uint32_t *picture, int *w, int *h);
 
 /* What a shop pays for an item (its full ID, category in the top 3 bits):
