@@ -490,6 +490,20 @@ rom = []
 # Writes nothing.
 
 [[feature]]
+id = "item-box"
+package = "faxanadu.dx"
+plugin = "faxanadu.item-box"
+source = "src/fax_item_box.c"
+hooks = "faxanadu.item-box."
+rom = []
+# No hooks and no ROM: at present time it reads SelectedItem,
+# Player_StatusFlag, DurationHourGlass, the status bar's palette and the last
+# frame's nametable, and draws the item box's lit frame over the presented
+# picture, after Charges draws the Elixir and before Spell cost, where
+# Seamless put the status bar band (fax_world_hud_x). Writes nothing, no read
+# overrides, no save-state record.
+
+[[feature]]
 id = "mana-refill"
 package = "faxanadu.dx"
 plugin = "faxanadu.mana-refill"

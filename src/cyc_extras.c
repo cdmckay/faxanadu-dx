@@ -28,6 +28,7 @@
 #include "fax_respawn.h"
 #include "fax_recharge.h"
 #include "fax_charges.h"
+#include "fax_item_box.h"
 #include "fax_mana.h"
 #include "fax_lesson.h"
 #include "fax_potions.h"
@@ -205,6 +206,7 @@ static void tcp_setup(void *ctx) {
     fax_respawn_tcp_setup();
     fax_recharge_tcp_setup();
     fax_charges_tcp_setup();
+    fax_item_box_tcp_setup();
     fax_mana_tcp_setup();
     fax_lesson_tcp_setup();
     fax_potions_tcp_setup();
@@ -227,7 +229,7 @@ static void tcp_setup(void *ctx) {
 #endif
 static const uint32_t *present(void *ctx,int *w,int *h) {
     (void)ctx;
-    const uint32_t *picture=fax_quests_marks_present(fax_damage_present(fax_sugata_present(fax_spell_cost_present(fax_charges_present(fax_world_present(w,h,cyc_frame_argb()),w,h),w,h),w,h),w,h),w,h);
+    const uint32_t *picture=fax_quests_marks_present(fax_damage_present(fax_sugata_present(fax_spell_cost_present(fax_item_box_present(fax_charges_present(fax_world_present(w,h,cyc_frame_argb()),w,h),w,h),w,h),w,h),w,h),w,h);
     picture=fax_files_present(fax_title_present(fax_speaker_present(fax_quests_banner_present(fax_slain_present(fax_banner_present(picture,w,h),w,h),w,h),w,h),w,h),w,h);
     return fax_quests_log_present(fax_map_present(fax_shops_present(picture,w,h),w,h),w,h);
 }

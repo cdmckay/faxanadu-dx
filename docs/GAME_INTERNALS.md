@@ -2028,8 +2028,32 @@ jump a few updates after stepping off, as A from the hang itself would.
   `fax_text_shown_tile` reads it): not on the title, the password screen or
   the ending, nor while the game has the screen off to load one.
 - **Its palette** is the text box's, `UI_AttributeDataIndex` (see *The text
-  box*), so its colors change from place to place: in Eolis's town, palette
-  3, the MP bar is green, the HP bar pink, the text white.
+  box*). Which of the four background palettes that is changes from place to
+  place (`PALETTE_INDEX_TO_UI_BG_ATTRIBUTE_INDEX`, `$81F0`: 3 in Eolis, the
+  towns and the Evil Fortress, 2 in Trunk, Mist, Branch, the towers and
+  every building, 0 in Dartmoor, the Castle of Fraternal and King Grieve's
+  room), but every one of the screens' palettes 0-27 (bank 11, 16 bytes
+  each from `$8000`, by `Screen_PaletteIndex`; 16 is the title's, and 4,
+  all black, only dead code loads) holds the same colors there: black, the
+  HP bar's pink `$15`, the MP bar's green `$19` and the text's white `$30`.
+  The one difference is King Grieve's room (palette 14), whose green is
+  `$1A`. Checked in the ROM's table, and in the game with palettes 0, 6, 7,
+  11, 12, 14 and 15. A screen fading out
+  (`Screen_SetFadeOutPalette`, `FADE_OUT_DELTA_TABLE`) takes every color down
+  a row a stage, `$10` to `$40`, and one below `$00` is black, so the bar's
+  white goes `$20`, `$10`, `$00`, black. An earlier note here said the colors
+  themselves change from place to place; they do only through a fade and in
+  King Grieve's room.
+- **The item box** shows `SelectedItem`: `UI_DrawSelectedItem` copies its
+  picture into tiles `$3C-$3F`, and `UI_ClearSelectedItemPic` (`$C8DC`)
+  clears it. Its `[` (`$2C` over `$2D`) and `]` (`$2E` over `$2F`) are white
+  (color 3), each a one-pixel upright (x 220 and 243, lines 17-30) with
+  two-pixel arms three wide at lines 17-18 and 29-30. Every item's picture
+  is at most 15 lines (16-30) and 15 columns (224-238), so line 31 of the box
+  and line 15 above it are always clear. With the remaster the box lights
+  while its item runs (Item box, *Features and what they use*): the Wing
+  Boots with `Player_StatusFlag`'s `$80`, the Hour Glass with
+  `DurationHourGlass` below `$80`.
 - **The items' pictures** are four tiles each in bank 10.
   `ITEM_TILEMAP_INDEXES` (`$B4E4`) gives an item's tile numbers by
   `ITEMINVENTORY_*` × 4 (top left, top right, bottom left, bottom right), and
@@ -4818,8 +4842,9 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   and blinks, 8 frames on and 8 off (`InterruptCounter & $08`), for 96
   frames not counting those a text box shows, so through "I've used Elixir."
   and 1.5 s after. The Wing Boots and the Hour Glass are not drawn (#113 had
-  them in a row past the item box, with the Elixir): they run on MP, and T:
-  counts the selected one's run (Recharging items, above). Drawn at present time, after
+  them in a row past the item box, with the Elixir): they run on MP, T:
+  counts the selected one's run (Recharging items, above), and the item box
+  lights while the one in it runs (Item box, below). Drawn at present time, after
   Seamless composes its picture and before every other feature's drawing,
   only while the frame shows the status bar (`fax_text_hud_showing`), and
   only where there is room: Seamless lays the status bar band out with the
@@ -4831,6 +4856,40 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   the three items' states, then their blinks) loads with the Elixir's, and
   a state without one starts with no blink, and an Elixir spent in it does
   not start one.
+- **Item box** (`fax_item_box.c`, #149). While the item the status bar's
+  item box shows is running, the box's `[` and `]` give way to a closed gold
+  frame round its picture, and they come back the frame the run ends.
+  Running is the game's state at each present: `SelectedItem` the Wing Boots
+  (`$0F`) with `Player_StatusFlag`'s `$80`, or the Hour Glass (`$0D`) with
+  `DurationHourGlass` below `$80`. Recharging items ends both runs through
+  the game's own countdowns, which clear `$80` and wrap the duration to `$FF`
+  in the frame each ends, so the box goes dark that frame, with "... is
+  gone." (checked headless, frame by frame, against each frame's RAM). Only
+  the item the box shows lights it: the Hour Glass selected while the boots
+  fly shows the Hour Glass, unlit, and T: the flight. Through a death
+  (checked in the game): the boots' box goes dark at once, as
+  `Player_HandleDeath` zeroes `Player_StatusFlag`; the Hour Glass's goes dark
+  as the hero dissolves (`PlayerDeath_ResetSelectedItemState` sets
+  `SelectedItem` to `$FF`), and with the selection back for the Guru's words
+  it lights again, T: still showing the freeze's seconds, until the
+  respawn's `Game_ClearTimedItems` sets `DurationHourGlass` to `$FF`.
+  The Ointment and the Glove run on timers too, but are never in the box.
+  The frame is x 219-244 and lines 15-31 of the band: sides two pixels wide
+  over the brackets' uprights, top and bottom one pixel, just clear of every
+  item's picture. The rest of the bracket tiles is erased with palette RAM's
+  first color. Its color is gold, `$27`, which the status bar has nowhere
+  (*The status bar*), for a bar whose white (its palette's color 3) is `$30`
+  or `$20`; `$17` for `$10`, `$07` for `$00`, and nothing drawn for black, so
+  it fades with the bar (`fax_item_box_gold`; checked headless through the
+  door of Eolis's temple, where the bar's white and the gold step down in
+  the same frames, 5 apart, then stay dark 19 frames). Drawn at present
+  time, after Charges and before Spell cost, over the band wherever Seamless
+  put it
+  (`fax_world_hud_x`), only while the frame shows the status bar
+  (`fax_text_hud_showing`) with the box's four bracket tiles where
+  `UI_DrawHUDSprites` puts them (`fax_text_shown_tile`), with the emphasis
+  and greyscale each line was drawn with. No hooks, no ROM, no read
+  overrides, no save-state record, nothing written to the machine.
 - **Block** (`fax_block.c`). A bindable button (V, or B on a controller)
   raises whatever the shield slot holds, the Battle Helmet included. The host
   input callback clears the d-pad, A and B while it is up and a pass of
@@ -5078,9 +5137,9 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   through the emphasis and greyscale its lines were drawn with; one that is
   black (a fade's last stages), or would darken to black, is left alone.
   Drawn at present time, over the status bar band wherever Seamless put it
-  (`fax_world_hud_x`, plus 24), after Charges draws the Elixir and before
-  every other feature, only while the frame shows the status bar
-  (`fax_text_hud_showing`). It shows only the selected spell's cost, never
+  (`fax_world_hud_x`, plus 24), after Charges draws the Elixir and Item box
+  lights the box, and before every other feature, only while the frame
+  shows the status bar (`fax_text_hud_showing`). It shows only the selected spell's cost, never
   an item's. No hooks, no ROM, no read overrides, no save-state record,
   nothing written to the machine.
 

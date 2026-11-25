@@ -59,6 +59,7 @@ STATES = {
     "sugata-flash": ("sugata_state", "enabled"), "quick-shops": ("shops_state", "enabled"),
     "auto-keys": ("keys_state", "auto"), "reusable-tools": ("keys_state", "reuse"),
     "recharging-items": ("recharge_state", "enabled"), "charges": ("charges_state", "enabled"),
+    "item-box": ("item_box_state", "enabled"),
     "mana-refill": ("mana_state", "enabled"),
     "magician-lesson": ("lesson_state", "enabled"), "potion-sellers": ("potions_state", "enabled"),
     "double-gold": ("gold_state", "enabled"),

@@ -169,7 +169,8 @@ the Select menu, opens it too.
   P: bars it refills, as Super Metroid shows a reserve tank beside Energy: in
   color when it is charged, grey while it waits for a Guru, and not at all
   until you have it. It greys and blinks the moment it revives you, so you
-  see when it saves you.
+  see when it saves you. And while the Wing Boots or the Hour Glass in your
+  item box is running, the box has a gold frame, gone the moment it stops.
 - **Quick shops.** Up on a shopkeeper opens his list at once, Select switches
   between buying and selling, and you stay in the list after each sale. Any
   shop buys what you carry, except what you own for good, like a key or the

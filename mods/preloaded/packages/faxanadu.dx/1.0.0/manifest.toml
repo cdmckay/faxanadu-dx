@@ -88,6 +88,10 @@ id = "faxanadu.charges"
 
 [[plugin]]
 feature = "dx"
+id = "faxanadu.item-box"
+
+[[plugin]]
+feature = "dx"
 id = "faxanadu.mana-refill"
 
 [[plugin]]
