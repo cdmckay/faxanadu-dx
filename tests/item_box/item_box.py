@@ -1,15 +1,16 @@
-"""Play the item box lit while its item runs, end to end, in Seamless.
+"""Play the item box's brackets gold while its item runs, end to end, in Seamless.
 
     python3 tests/item_box/item_box.py --build build-cycle --rom "Faxanadu (USA).nes" --out /tmp/item-box
 
 While the item the status bar's item box shows is running (the Wing Boots
 flying, Player_StatusFlag's $80; the Hour Glass freezing, DurationHourGlass
-below $80), the box's [ and ] give way to a closed gold frame round the
-item's picture, and they come back the frame the run ends. The checks are on
-the screenshots' pixels, against the band's left edge as Seamless laid it out
-(the frame's pixels the gold the feature reports, the rest of the [ and ]
-tiles black, or the white brackets and no gold anywhere in the band) and on
-the feature's TCP state. Each run's end is played headless from a save
+below $80), the box's [ and ] turn gold, and go back to white the frame the
+run ends. The checks are on the screenshots' pixels, against the band's left
+edge as Seamless laid it out: lit, the brackets' pixels (those bank 10's
+tiles $2C-$2F draw) are the gold the feature reports, the rest of their
+tiles the backdrop's black, and nothing else in the band is gold; unlit, the
+brackets are white and nothing in the band is gold. And on the feature's TCP
+state. Each run's end is played headless from a save
 state, frame exact, every frame's RAM logged and its presented picture
 written (--present-out): the box is lit in every frame the run is on, and in
 none from the frame it ends. The setup reuses Recharging
@@ -19,7 +20,7 @@ what the hero holds and his MP. Items are used with Down+B and chosen in the
 Select menu's ITEM list, as a player would.
 
 1. boots: in Eolis, the Wing Boots selected and the Hour Glass his: unlit.
-   Down+B: lit as the flight begins, with no box (#151).
+   Down+B: gold as the flight begins, with no box (#151).
    The Hour Glass chosen in the menu while they fly: the box shows it,
    unlit, and T: still counts the flight. The boots chosen again: lit.
    Down+B standing ends the flight (headless): unlit from the frame it ends.
@@ -32,10 +33,10 @@ Select menu's ITEM list, as a player would.
    has $19): unlit, then lit while the boots fly, the same gold.
 4. fade: flying, Up at the door of Eolis's temple (headless): as the screen
    fades out, the status bar's white goes light grey, grey, then black, and
-   the frame's gold goes down with it, in the same frames ($17, $07, then
-   not drawn), never brighter than the bar; lit again in the temple.
+   the brackets' gold goes down with it, in the same frames ($17, $07, then
+   black), never brighter than the bar; gold again in the temple.
 5. original: the remaster off, the Wing Boots flying (and put back in the box
-   by a RAM edit, as the remaster keeps them): no frame, the brackets white.
+   by a RAM edit, as the remaster keeps them): the brackets white.
 """
 from pathlib import Path
 import shutil
@@ -52,12 +53,13 @@ import recharging_items as recharge  # noqa: E402  (its recipes, its walk out of
 
 PARTS = ("boots", "glass", "grieve", "fade", "original")
 PACKAGE = ("faxanadu.dx", "dx")
-LEFT, RIGHT, TOP, BOTTOM, SIDE = 219, 244, 15, 31, 2      # fax_item_box.h: the lit frame, in the band's pixels
 BRACKETS = (216, 240)                                      # the [ and ] tiles' left edges, 8 wide, lines 16-31
-UPRIGHTS = (220, 243)                                      # the stock brackets' one-pixel uprights, lines 17-30
+TILES = ((0x2C, 0x2D), (0x2E, 0x2F))                       # UI_STATUS_TILES' [ and ], top over bottom
+HUD_TILES = 16 + 10 * 0x4000 + 0x140                       # HUD_TILES_START, bank 10, in the ROM image
+PIXELS = 44                                                # fax_item_box.h: the brackets' white pixels
 NATIVE_W, HUD, HUD_X = 256, 32, 92                          # the band's column 0 in Seamless's 424-wide view
 GOLD = (232, 173, 0)                                       # $27, as the host draws it
-# Through a fade-out (Screen_SetFadeOutPalette), the bar's white as the host draws it, and the frame's gold for it:
+# Through a fade-out (Screen_SetFadeOutPalette), the bar's white as the host draws it, and the brackets' gold:
 # $30 or $20 (both white) take $27, $10 $17, $00 $07; black takes nothing.
 FADE = {(255, 255, 255): GOLD, (174, 174, 174): (151, 93, 0), (102, 102, 102): (84, 40, 0)}
 M_PIXEL = (8, 16)                                          # the "M"'s top left pixel: the bar's white
@@ -99,11 +101,21 @@ def rgb(value):
     return (value >> 16 & 255, value >> 8 & 255, value & 255)
 
 
-def on_frame(x, y):
-    """fax_item_box_on_frame: the band's pixel (x, y) is on the lit frame."""
-    if not (LEFT <= x <= RIGHT and TOP <= y <= BOTTOM):
-        return False
-    return y in (TOP, BOTTOM) or x < LEFT + SIDE or x > RIGHT - SIDE
+def bracket_pixels(image):
+    """The band's pixels the [ and ] tiles draw (all in color 3, the bar's
+    white), from the ROM image: {(x, y)}."""
+    out = set()
+    for left, pair in zip(BRACKETS, TILES):
+        for half, t in enumerate(pair):
+            tile = image[HUD_TILES + t * 16:HUD_TILES + t * 16 + 16]
+            for r in range(8):
+                for c in range(8):
+                    if (tile[r] | tile[r + 8]) >> (7 - c) & 1:
+                        out.add((left + c, 16 + half * 8 + r))
+    return out
+
+
+BRACKET = set()                                            # bracket_pixels(), once the ROM is read
 
 
 class Box:
@@ -119,23 +131,23 @@ class Box:
         x += self.hud_x
         return tuple(self.rows[y][x * 3:x * 3 + 3])
 
+    def brackets(self, color):
+        """The brackets' pixels all `color`, and the rest of their two tiles the backdrop's black."""
+        return all(self.at(x, y) == (color if (x, y) in BRACKET else BLACK)
+                   for left in BRACKETS for x in range(left, left + 8) for y in range(16, 32))
+
+    def gold_elsewhere(self, gold):
+        """A pixel of the band outside the brackets' tiles is `gold`."""
+        return any(self.at(x, y) == gold for y in range(HUD) for x in range(NATIVE_W)
+                   if not (16 <= y < 32 and any(left <= x < left + 8 for left in BRACKETS)))
+
     def lit(self, gold):
-        """The frame all `gold`, and the rest of the [ and ] tiles black: the brackets gone."""
-        for y in range(TOP, BOTTOM + 1):
-            for x in range(LEFT, RIGHT + 1):
-                if on_frame(x, y) and self.at(x, y) != gold:
-                    return False
-            if y >= 16:
-                for left in BRACKETS:
-                    if any(self.at(x, y) != BLACK for x in range(left, left + 8) if not on_frame(x, y)):
-                        return False
-        return True
+        """The brackets `gold`, their shape as it was, and no gold anywhere else in the band."""
+        return self.brackets(gold) and not self.gold_elsewhere(gold)
 
     def unlit(self, gold):
         """The stock brackets, white, and no gold anywhere in the band."""
-        uprights = all(self.at(x, y) == WHITE for x in UPRIGHTS for y in range(17, 31))
-        no_gold = all(self.at(x, y) != gold for y in range(HUD) for x in range(NATIVE_W))
-        return uprights and no_gold and self.at(LEFT, TOP) == BLACK and self.at(RIGHT, BOTTOM) == BLACK
+        return self.brackets(WHITE) and not self.gold_elsewhere(gold)
 
     def green(self):
         """The MP bar's fill color, at its first pixel (fax_spell_cost.h: x 24, lines 18-21)."""
@@ -180,14 +192,16 @@ def main():
         box, s = look(name)
         gold = rgb(s["gold_rgb"])
         assert s["running"] and s["lit"] and s["selected"] == item, s
-        assert s["x"] == box.hud_x + LEFT and s["gold"] == 0x27 and s["white"] == 0x30, (s, box.hud_x)
-        assert gold == GOLD and box.lit(gold), f"{name}: the box should be lit in {gold}"
+        assert s["x"] == box.hud_x + BRACKETS[0] and s["close_x"] == box.hud_x + BRACKETS[1], (s, box.hud_x)
+        assert s["pixels"] == PIXELS and s["gold"] == 0x27 and s["white"] == 0x30, s
+        assert gold == GOLD and box.lit(gold), f"{name}: the brackets should be {gold}"
         return box, s
 
     def expect_unlit(name, item):
         box, s = look(name)
-        assert not s["running"] and not s["lit"] and s["x"] == -1 and s["selected"] == item and s["box"], s
-        assert box.unlit(GOLD), f"{name}: the box should be the stock brackets, with no gold"
+        assert not s["running"] and not s["lit"] and s["x"] == -1 and s["pixels"] == 0, s
+        assert s["selected"] == item and s["box"], s
+        assert box.unlit(GOLD), f"{name}: the brackets should be white, with no gold in the band"
         return box, s
 
     def warp(name, item, other, mp, area=EOLIS, screen=1, pos=0x99, palette=PALETTE_EOLIS, region=0):
@@ -204,9 +218,16 @@ def main():
     def choose(item):
         """Select, down to ITEM, A, then A on the one item in the list: it goes
         in the box, and the one there into the list. Play is paused while the
-        menu is up."""
+        menu is up. Select waits for the hero to stand, and is pressed again
+        if the menu did not open, as recharging_items' status_shot() does: with
+        no box to page through after Down+B (#151), it comes soon after."""
         before = ram(SELECTED_ITEM)
-        act("select", 4, 30)
+        until("the hero to stand", lambda: not ram(PLAYER_FLAGS) & 0x05, 120)
+        for _ in range(3):
+            act("select", 4, 30)
+            if box_open():
+                break
+            wait(30)
         assert box_open(), "the Select menu"
         for _ in range(menu_row("ITEM")):
             act("down", 4, 8)
@@ -272,6 +293,8 @@ def main():
         shutil.rmtree(out / f"run-{name}")
         return end
 
+    BRACKET.update(bracket_pixels(game.image))
+    assert len(BRACKET) == PIXELS, len(BRACKET)
     try:
         shop = game.state("eolis-meat-shop")
 
@@ -282,9 +305,9 @@ def main():
             use()
             until("the flight", lambda: ram(PLAYER_STATUS) & 0x80, 30)
             box, s = expect_lit("eolis-boots-lit", WING_BOOTS)
-            print(f"ok: the Wing Boots in the box: the stock [ ] until the flight begins, then a gold frame "
-                  f"(${s['gold']:02X}, #{'%02x%02x%02x' % rgb(s['gold_rgb'])}) at x {s['x']}-{s['right']}, "
-                  f"lines {s['y']}-{s['bottom']}")
+            print(f"ok: the Wing Boots in the box: the stock white [ ] until the flight begins, then gold "
+                  f"(${s['gold']:02X}, #{'%02x%02x%02x' % rgb(s['gold_rgb'])}): their {s['pixels']} pixels in the "
+                  f"tiles at x {s['x']} and {s['close_x']}, and nothing else")
             choose(HOUR_GLASS)
             box, s = expect_unlit("eolis-glass-shown-boots-flying", HOUR_GLASS)
             assert s["wing_boots"] and not s["hour_glass"] and ram(DURATION_WING_BOOTS) < 0x80, s
@@ -334,8 +357,7 @@ def main():
             box, s = expect_lit("grieve-boots-lit", WING_BOOTS)
             assert box.green() == GREEN_GRIEVE, box.green()
             print(f"ok: in King Grieve's room (status bar sub-palette 0, its green #{'%02x%02x%02x' % GREEN_GRIEVE} "
-                  f"where Eolis's is #{'%02x%02x%02x' % GREEN}), the same: unlit, then the gold frame while the "
-                  "boots fly")
+                  f"where Eolis's is #{'%02x%02x%02x' % GREEN}), the same: white, then gold while the boots fly")
 
         if args.wants("fade"):
             launch()
@@ -352,11 +374,10 @@ def main():
                 assert running(ram_i), f"fade: frame {i}: the flight should go on through the door"
                 white = box.at(*M_PIXEL)
                 if white == BLACK:                             # faded out, or the screen off: nothing lit
-                    assert all(box.at(x, y) == BLACK for y in range(TOP, BOTTOM + 1)
-                               for x in range(LEFT, RIGHT + 1) if on_frame(x, y)), f"fade: frame {i}: lit in black"
+                    assert box.brackets(BLACK), f"fade: frame {i}: lit in black"
                     dark += 1
                     continue
-                assert white in FADE and box.lit(FADE[white]), (i, white, box.at(LEFT, 20))
+                assert white in FADE and box.lit(FADE[white]), (i, white, box.at(220, 20))   # the [ upright
                 if not seen or seen[-1] != white:
                     seen.append(white)
                     if white != (255, 255, 255):
@@ -364,7 +385,8 @@ def main():
             assert seen == list(FADE) + [(255, 255, 255)] and dark, (seen, dark)
             assert rams[-1][AREA] == BUILDINGS, "in the temple"
             shutil.rmtree(out / "run-fade")
-            print(f"ok: through the door's fade the gold goes down with the status bar's white, in the same frames "
+            print(f"ok: through the door's fade the brackets' gold goes down with the status bar's white, in the same "
+                  f"frames "
                   f"({', '.join('#%02x%02x%02x' % FADE[w] for w in seen[:3])}), {dark} frames dark, and is lit "
                   "again in the temple")
 
@@ -380,8 +402,8 @@ def main():
             wait(2)
             box, s = look("original-boots-flying")
             assert not s["enabled"] and not s["lit"] and s["x"] == -1 and s["wing_boots"], s
-            assert all(box.at(x, y) == BLACK for x in range(LEFT, RIGHT + 1) for y in (TOP, BOTTOM)), "no frame"
-            print("ok: with the remaster off, the Wing Boots flying (in the box by a RAM edit): no frame")
+            assert box.unlit(GOLD), "the brackets white, no gold"
+            print("ok: with the remaster off, the Wing Boots flying (in the box by a RAM edit): the brackets white")
         print("screenshots:", ", ".join(game.shots))
     except BaseException:
         if game.running():

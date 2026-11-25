@@ -1,19 +1,19 @@
-/* Item box: the status bar's item box lights while its item runs (#149).
- * USA 57dd23d1, chipx86 byte-exact disassembly.
+/* Item box: the status bar's item box lights while its item runs (#149,
+ * #159). USA 57dd23d1, chipx86 byte-exact disassembly.
  *
  * Nothing on screen said the Wing Boots or the Hour Glass were on but T:
  * counting down. Now, while the item the status bar's item box shows is
- * running, the box's [ and ] give way to a closed frame in gold round the
- * item's picture, and they come back the frame the run ends. Running is the
- * game's own state, read at every present:
+ * running, the box's [ and ] turn gold, and go back to white the frame the
+ * run ends. Running is the game's own state, read at every present:
  * - the Wing Boots fly while Player_StatusFlag has $80.
  *   Game_DecWingBootsDuration sets it every main-loop frame DurationWingBoots
- *   runs and clears it in the frame the flight ends (@_wingBootsDone, the
- *   "is gone" line's), and Game_InitStateForSpawn zeroes it;
+ *   runs and clears it in the frame the flight ends (@_wingBootsDone), and
+ *   Game_InitStateForSpawn zeroes it;
  * - the Hour Glass freezes while DurationHourGlass is below $80, as
  *   Sprites_UpdateBehavior's BMI reads it: from Player_UseHourGlass's STA to
- *   the second it wraps to $FF (the "is gone" line's), or
- *   Game_ClearTimedItems'.
+ *   the second it wraps to $FF, or Game_ClearTimedItems'.
+ * The game's "The power of ... is gone." comes up as each ends; Recharging
+ * items skips it (#151), and ends nothing sooner or later for that.
  * Recharging items (fax_recharge.c) runs both on MP and ends them through
  * the game's own countdowns, so these are its runs too, to the frame. The
  * box shows SelectedItem (UI_DrawSelectedItem), and only that item lights
@@ -21,25 +21,28 @@
  * unlit, while T: shows the flight. The Ointment and the Glove run on timers
  * too, but are never in the box.
  *
- * The frame is gold ($27), a color the status bar has nowhere (its palette
- * is black, the HP bar's pink $15, the MP bar's green $19, or $1A in King
- * Grieve's room, and the white $30 of its text and brackets, in every
- * region), and closed where the brackets were open, so it reads by shape as
- * well as by color. It goes round the outside of the item's 16x16 picture,
- * so no picture loses a pixel. A screen fading out (Screen_SetFadeOutPalette)
- * takes the status bar's white down a row a stage, and the gold goes down
- * with it (fax_item_box_gold), so the frame fades with the bar rather than
- * staying lit over a black screen.
+ * Only the brackets' own pixels change: in the [ and ] tiles, each pixel that
+ * shows the status bar's white (its palette's color 3, which the brackets are
+ * drawn in) is drawn gold instead, so they keep their shape and nothing else
+ * moves: not the item's picture, not the backdrop around them, not the rest
+ * of the band. #149 drew a closed frame in their place, which looked pasted
+ * on (#159). The gold is $27, a color the status bar has nowhere (its
+ * palette is black, the HP bar's pink $15, the MP bar's green $19, or $1A in
+ * King Grieve's room, and the white $30 of its text and brackets, in every
+ * region), and far darker than the white it replaces. A screen fading out
+ * (Screen_SetFadeOutPalette) takes the white down a row a stage, and the
+ * gold goes down with it (fax_item_box_gold), so the brackets fade with the
+ * bar rather than staying lit over a black screen.
  *
  * Drawn over the status bar band wherever Seamless put it (fax_world_hud_x),
  * after the Elixir (fax_charges.c), only while the frame shows the status bar
  * (fax_text_hud_showing) with the box's [ and ] tiles where
  * UI_DrawHUDSprites puts them, and with the emphasis and greyscale each of
- * its lines was drawn with. Its colors are those of the band's palette
- * (UI_AttributeDataIndex): the brackets are erased with its backdrop.
+ * its lines was drawn with: a pixel is the white as that line drew it, and
+ * turns the gold as that line would draw it.
  *
  * No hooks, no ROM, no record, nothing written to the machine: it reads RAM,
- * palette RAM and the last frame's nametable, and draws over the presented
+ * palette RAM and the last frame's nametable, and recolors the presented
  * picture. See docs/GAME_INTERNALS.md, "The status bar". */
 #include "fax_item_box.h"
 #include "fax_text.h"
@@ -71,9 +74,10 @@ enum { WHITE = 3, NATIVE_W = 256, BAND = 32 };   /* the text's and brackets' col
 static bool enabled;
 static uint32_t *canvas;
 static size_t capacity;
-/* What the last present drew, for TCP: whether the box was lit, the frame's left, its colors. */
-static bool shown;
-static int frame_x = -1;
+/* What the last present drew, for TCP: the [ tile's x when the brackets were
+ * gold, how many pixels turned, and the colors. */
+static int open_x = -1;
+static unsigned pixels;
 static uint8_t white_nes = 0x0F, gold_nes = 0x0F;
 
 static uint8_t q(uint16_t addr) { return cyc_mod_peek(addr); }
@@ -97,11 +101,10 @@ uint8_t fax_item_box_gold(uint8_t white) {
     }
 }
 
-bool fax_item_box_on_frame(int x, int y) {
-    if (x < FAX_ITEM_BOX_LEFT || x > FAX_ITEM_BOX_RIGHT) return false;
-    if (y < FAX_ITEM_BOX_TOP || y > FAX_ITEM_BOX_BOTTOM) return false;
-    return y == FAX_ITEM_BOX_TOP || y == FAX_ITEM_BOX_BOTTOM || x < FAX_ITEM_BOX_LEFT + FAX_ITEM_BOX_SIDE ||
-           x > FAX_ITEM_BOX_RIGHT - FAX_ITEM_BOX_SIDE;
+bool fax_item_box_in_brackets(int x, int y) {
+    if (y < FAX_ITEM_BOX_LINE || y >= FAX_ITEM_BOX_LINE + FAX_ITEM_BOX_LINES) return false;
+    return (x >= FAX_ITEM_BOX_OPEN_X && x < FAX_ITEM_BOX_OPEN_X + FAX_ITEM_BOX_TILE) ||
+           (x >= FAX_ITEM_BOX_CLOSE_X && x < FAX_ITEM_BOX_CLOSE_X + FAX_ITEM_BOX_TILE);
 }
 
 /* ---- the machine ---- */
@@ -125,8 +128,8 @@ static uint32_t ink(uint8_t nes, unsigned mask) {
 }
 
 const uint32_t *fax_item_box_present(const uint32_t *picture, int *w, int *h) {
-    shown = false;
-    frame_x = -1;
+    open_x = -1;
+    pixels = 0;
     if (!enabled) return picture;
     int width = 0, height = 0;
     const uint32_t *from = picture;
@@ -146,19 +149,19 @@ const uint32_t *fax_item_box_present(const uint32_t *picture, int *w, int *h) {
         canvas = grown; capacity = n;
     }
     memcpy(canvas, from, n * sizeof *canvas);
-    uint8_t backdrop_nes = (uint8_t)(cyc_render_palette(0) & 0x3F);
-    for (int y = FAX_ITEM_BOX_TOP; y <= FAX_ITEM_BOX_BOTTOM; ++y) {
+    for (int y = FAX_ITEM_BOX_LINE; y < FAX_ITEM_BOX_LINE + FAX_ITEM_BOX_LINES; ++y) {
         unsigned mask = cyc_render_line_mask(y);
-        uint32_t gold = ink(gold_nes, mask), backdrop = ink(backdrop_nes, mask);
+        uint32_t white = ink(white_nes, mask), gold = ink(gold_nes, mask);
+        if (white == gold) continue;   /* greyscale: no gold to show */
         uint32_t *line = canvas + (size_t)y * (size_t)width + (size_t)x;
-        if (y >= FAX_ITEM_BOX_LINE)   /* the [ and ] go */
-            for (int c = 0; c < FAX_ITEM_BOX_TILE; ++c)
-                line[FAX_ITEM_BOX_OPEN_X + c] = line[FAX_ITEM_BOX_CLOSE_X + c] = backdrop;
-        for (int c = FAX_ITEM_BOX_LEFT; c <= FAX_ITEM_BOX_RIGHT; ++c)
-            if (fax_item_box_on_frame(c, y)) line[c] = gold;
+        for (int c = 0; c < FAX_ITEM_BOX_TILE; ++c) {
+            uint32_t *open = &line[FAX_ITEM_BOX_OPEN_X + c], *close = &line[FAX_ITEM_BOX_CLOSE_X + c];
+            if (*open == white) *open = gold, ++pixels;
+            if (*close == white) *close = gold, ++pixels;
+        }
     }
-    shown = true;
-    frame_x = x + FAX_ITEM_BOX_LEFT;
+    if (!pixels) return picture;
+    open_x = x + FAX_ITEM_BOX_OPEN_X;
     *w = width; *h = height;
     return canvas;
 }
@@ -168,23 +171,22 @@ static void item_box_state(int id, const char *line) {
     (void)line;
     char fields[384];
     unsigned mask = cyc_render_line_mask(FAX_ITEM_BOX_LINE);
-    /* The game's state now; the frame (x, its colors, lit) as the last present drew it. */
+    /* The game's state now; the brackets (where, how many pixels, their colors) as the last present drew them. */
     snprintf(fields, sizeof fields,
              "\"enabled\":%s,\"hud\":%s,\"box\":%s,\"selected\":%u,\"wing_boots\":%s,\"hour_glass\":%s,"
-             "\"running\":%s,\"lit\":%s,\"x\":%d,\"y\":%d,\"right\":%d,\"bottom\":%d,\"side\":%d,"
+             "\"running\":%s,\"lit\":%s,\"x\":%d,\"close_x\":%d,\"y\":%d,\"pixels\":%u,"
              "\"white\":%u,\"gold\":%u,\"gold_rgb\":%u",
              enabled ? "true" : "false", fax_text_hud_showing() ? "true" : "false", box_showing() ? "true" : "false",
              q(SELECTED_ITEM), q(PLAYER_STATUS_FLAG) & WING_BOOTS_ON ? "true" : "false",
              q(DURATION_HOUR_GLASS) < NOT_RUNNING ? "true" : "false", running() ? "true" : "false",
-             shown ? "true" : "false", frame_x, FAX_ITEM_BOX_TOP,
-             frame_x < 0 ? -1 : frame_x + (FAX_ITEM_BOX_RIGHT - FAX_ITEM_BOX_LEFT),
-             FAX_ITEM_BOX_BOTTOM, FAX_ITEM_BOX_SIDE, white_nes, gold_nes,
-             (unsigned)(ink(gold_nes, mask) & 0xFFFFFFu));
+             pixels ? "true" : "false", open_x,
+             open_x < 0 ? -1 : open_x + (FAX_ITEM_BOX_CLOSE_X - FAX_ITEM_BOX_OPEN_X), FAX_ITEM_BOX_LINE, pixels,
+             white_nes, gold_nes, (unsigned)(ink(gold_nes, mask) & 0xFFFFFFu));
     cyc_tcp_ok(id, fields);
 }
 void fax_item_box_tcp_setup(void) {
     cyc_tcp_register("item_box_state",
-                     "Item box: lit while its item runs (the item, the runs, lit in the last picture, and where)",
+                     "Item box: its brackets gold while its item runs (the item, the runs, lit in the last picture)",
                      item_box_state);
 }
 #else

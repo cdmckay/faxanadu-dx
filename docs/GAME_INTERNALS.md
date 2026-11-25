@@ -2162,11 +2162,11 @@ jump a few updates after stepping off, as A from the hang itself would.
   picture into tiles `$3C-$3F`, and `UI_ClearSelectedItemPic` (`$C8DC`)
   clears it. Its `[` (`$2C` over `$2D`) and `]` (`$2E` over `$2F`) are white
   (color 3), each a one-pixel upright (x 220 and 243, lines 17-30) with
-  two-pixel arms three wide at lines 17-18 and 29-30. Every item's picture
-  is at most 15 lines (16-30) and 15 columns (224-238), so line 31 of the box
-  and line 15 above it are always clear. With the remaster the box lights
-  while its item runs (Item box, *Features and what they use*): the Wing
-  Boots with `Player_StatusFlag`'s `$80`, the Hour Glass with
+  two-pixel arms three wide at lines 17-18 and 29-30: 44 pixels of color 3
+  on the backdrop, nothing else. Every item's picture is at most 15 lines
+  (16-30) and 15 columns (224-238). With the remaster the brackets turn gold
+  while the box's item runs (Item box, *Features and what they use*): the
+  Wing Boots with `Player_StatusFlag`'s `$80`, the Hour Glass with
   `DurationHourGlass` below `$80`.
 - **The items' pictures** are four tiles each in bank 10.
   `ITEM_TILEMAP_INDEXES` (`$B4E4`) gives an item's tile numbers by
@@ -5041,36 +5041,37 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   the three items' states, then their blinks) loads with the Elixir's, and
   a state without one starts with no blink, and an Elixir spent in it does
   not start one.
-- **Item box** (`fax_item_box.c`, #149). While the item the status bar's
-  item box shows is running, the box's `[` and `]` give way to a closed gold
-  frame round its picture, and they come back the frame the run ends.
-  Running is the game's state at each present: `SelectedItem` the Wing Boots
-  (`$0F`) with `Player_StatusFlag`'s `$80`, or the Hour Glass (`$0D`) with
-  `DurationHourGlass` below `$80`. Recharging items ends both runs through
-  the game's own countdowns, which clear `$80` and wrap the duration to `$FF`
-  in the frame each ends, so the box goes dark that frame, with "... is
-  gone." (checked headless, frame by frame, against each frame's RAM). Only
-  the item the box shows lights it: the Hour Glass selected while the boots
-  fly shows the Hour Glass, unlit, and T: the flight. Through a death
-  (checked in the game): the boots' box goes dark at once, as
-  `Player_HandleDeath` zeroes `Player_StatusFlag`; the Hour Glass's goes dark
-  as the hero dissolves (`PlayerDeath_ResetSelectedItemState` sets
-  `SelectedItem` to `$FF`), and with the selection back for the Guru's words
-  it lights again, T: still showing the freeze's seconds, until the
-  respawn's `Game_ClearTimedItems` sets `DurationHourGlass` to `$FF`.
-  The Ointment and the Glove run on timers too, but are never in the box.
-  The frame is x 219-244 and lines 15-31 of the band: sides two pixels wide
-  over the brackets' uprights, top and bottom one pixel, just clear of every
-  item's picture. The rest of the bracket tiles is erased with palette RAM's
-  first color. Its color is gold, `$27`, which the status bar has nowhere
-  (*The status bar*), for a bar whose white (its palette's color 3) is `$30`
-  or `$20`; `$17` for `$10`, `$07` for `$00`, and nothing drawn for black, so
-  it fades with the bar (`fax_item_box_gold`; checked headless through the
+- **Item box** (`fax_item_box.c`, #149, #159). While the item the status
+  bar's item box shows is running, the box's `[` and `]` turn gold, and go
+  back to white the frame the run ends. Running is the game's state at each
+  present: `SelectedItem` the Wing Boots (`$0F`) with `Player_StatusFlag`'s
+  `$80`, or the Hour Glass (`$0D`) with `DurationHourGlass` below `$80`.
+  Recharging items ends both runs through the game's own countdowns, which
+  clear `$80` and wrap the duration to `$FF` in the frame each ends (their
+  "... is gone." skipped since #151), so the brackets go back to white that
+  frame (checked headless, frame by frame, against each frame's RAM). Only the item the box
+  shows lights it: the Hour Glass selected while the boots fly shows the Hour
+  Glass, its brackets white, and T: the flight. Through a death (checked in
+  the game): the boots' brackets go white at once, as `Player_HandleDeath`
+  zeroes `Player_StatusFlag`; the Hour Glass's go white as the hero
+  dissolves (`PlayerDeath_ResetSelectedItemState` sets `SelectedItem` to
+  `$FF`), and with the selection back for the Guru's words they turn gold
+  again, T: still showing the freeze's seconds, until the respawn's
+  `Game_ClearTimedItems` sets `DurationHourGlass` to `$FF`. The Ointment and
+  the Glove run on timers too, but are never in the box. Only the brackets'
+  own pixels change: in their two tiles (x 216-223 and 240-247, lines
+  16-31), each pixel showing the bar's white, as its line drew it, is drawn
+  gold instead, so they keep their shape, and the item's picture, the
+  backdrop and the rest of the band are untouched. #149 drew a closed frame
+  in their place (x 219-244, lines 15-31), which looked pasted on over the
+  status bar's art (#159). The gold is `$27`, which the status bar has
+  nowhere (*The status bar*), for a bar whose white (its palette's color 3)
+  is `$30` or `$20`; `$17` for `$10`, `$07` for `$00`, and nothing for black,
+  so it fades with the bar (`fax_item_box_gold`; checked headless through the
   door of Eolis's temple, where the bar's white and the gold step down in
   the same frames, 5 apart, then stay dark 19 frames). Drawn at present
   time, after Charges and before Spell cost, over the band wherever Seamless
-  put it
-  (`fax_world_hud_x`), only while the frame shows the status bar
+  put it (`fax_world_hud_x`), only while the frame shows the status bar
   (`fax_text_hud_showing`) with the box's four bracket tiles where
   `UI_DrawHUDSprites` puts them (`fax_text_shown_tile`), with the emphasis
   and greyscale each line was drawn with. No hooks, no ROM, no read
@@ -5348,7 +5349,7 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   black (a fade's last stages), or would darken to black, is left alone.
   Drawn at present time, over the status bar band wherever Seamless put it
   (`fax_world_hud_x`, plus 24), after Charges draws the Elixir and Item box
-  lights the box, and before every other feature, only while the frame
+  turns the box's brackets gold, and before every other feature, only while the frame
   shows the status bar (`fax_text_hud_showing`). It shows only the selected spell's cost, never
   an item's. No hooks, no ROM, no read overrides, no save-state record,
   nothing written to the machine.
