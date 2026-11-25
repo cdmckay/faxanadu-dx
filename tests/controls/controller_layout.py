@@ -6,7 +6,7 @@
 The game runs uncapped and the script waits on the game's own state, never on
 the clock, on a reserved TCP port (tests/e2e/fax_e2e.py). Controller input goes
 in where a player's does: TCP `pad` holds buttons, or pushes a trigger, of an
-SDL virtual controller, and `key` holds a key. Five parts, each its own game,
+SDL virtual controller, and `key` holds a key. Six parts, each its own game,
 all but the last in Seamless:
 
 pad        From Eolis town: the bindings are the layout's (Magic C / Y, Use
@@ -17,6 +17,8 @@ pad        From Eolis town: the bindings are the layout's (Magic C / Y, Use
            closes it. The left trigger opens the quest log and closes it.
            Return opens the menu as Start does, and Backslash (the NES Select)
            still opens it too.
+shop       In Eolis's key shop, the buy list up: Back, the NES Select outside
+           play, switches to the sell list, and back.
 hands      From Eolis town, the Small Shield on and a Red Potion selected: the
            right trigger held raises Block (the hero stands), and let go lowers
            it. B uses the Red Potion (the selected item gone, its line typing)
@@ -42,17 +44,20 @@ import re
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import Game, act, box_open, hold, page_through, parse_args, ram, tcp, type_out, until, wait  # noqa: E402
+from fax_e2e import (Game, act, box_open, hold, page_through, parse_args, ram, tcp, type_out, until,  # noqa: E402
+                     wait, walk)
 
-PLAYER_X, PLAYER_FLAGS, PAUSED = 0x9E, 0xA4, 0x120
+AREA, SCREEN, SCREEN_READY, PLAYER_X, PLAYER_FLAGS, PAUSED = 0x24, 0x63, 0x0E, 0x9E, 0xA4, 0x120
+AREA_SAVED_SCREEN, PLAYER_SAVED_POS = 0x3D6, 0x3D8                  # where a building's way out leads
+BUILDINGS, KEY_SHOP_DOOR = 4, 0x9D
 TEXTBOX_X, TEXTBOX_CLOSED, STRINGS_COUNT = 0x208, 0x20C, 0x21F         # X, Y, Width, Height; Arg_StringsCount
-SELECTED_SHIELD, SELECTED_ITEM, NUMBER_OF_ITEMS = 0x3BF, 0x3C1, 0x3C6
+SELECTED_SHIELD, SELECTED_ITEM, ITEM_INVENTORY, NUMBER_OF_ITEMS = 0x3BF, 0x3C1, 0x3AD, 0x3C6
 ATTACKING, JUMPING = 0x80, 0x01                                       # Player_Flags
 SMALL_SHIELD, RED_POTION, NO_ITEM = 0x00, 0x10, 0xFF
 MENU_WIDTH = 0x0A
 PACKAGE = ("faxanadu.dx", "dx")
 SWITCH_PRO = dict(vendor=0x057E, product=0x2009)                     # Nintendo's USB ids
-PARTS = ("pad", "hands", "switch-pro", "migration", "original")
+PARTS = ("pad", "shop", "hands", "switch-pro", "migration", "original")
 
 # What a build before the layout wrote, cut to the bindings: no BindingsLayout, no ControlsLayout. The player
 # had moved Fast-forward to the left stick's press and Magic to the left shoulder.
@@ -159,7 +164,7 @@ def main():
             until("the map", lambda: tcp("map_state")["open"] and ram(PAUSED) != 0, 120)
             wait(10)
             assert tcp("select_menu_state")["opened"] == opened + 1, "Back opened the menu too"
-            assert controls()["taken"] >= 1, controls()
+            assert controls()["kept"] == 1, controls()
             game.shot("back-map")
             press("back")
             until("the map to close", lambda: not tcp("map_state")["open"] and ram(PAUSED) == 0, 120)
@@ -188,6 +193,57 @@ def main():
             act("b", 4, 6)
             until("the menu to close", lambda: ram(TEXTBOX_CLOSED) != 0, 120)
             print("ok: Return opens and closes the menu as Start does, and Backslash still opens it")
+            game.close()
+
+        if args.wants("shop"):
+            game.launch(at="eolis-meat-shop")
+            # The meat shop asks; the key shop next door (screen 3, its door at block $9D) has lists. Out of the
+            # meat shop onto that door (Area_SavedScreen, Player_SavedPos), and in, with something to sell.
+            game.poke({AREA_SAVED_SCREEN: 3, PLAYER_SAVED_POS: KEY_SHOP_DOOR, ITEM_INVENTORY: RED_POTION,
+                       NUMBER_OF_ITEMS: 1})
+            hold("right", lambda: ram(AREA) != BUILDINGS)
+            until("Eolis screen 3", lambda: (ram(AREA), ram(SCREEN)) == (0, 3) and ram(SCREEN_READY) == 0, 600)
+            wait(30)
+            column = (KEY_SHOP_DOOR & 15) * 16
+            for _ in range(200):
+                x = ram(PLAYER_X)
+                if column - 6 <= x <= column + 4:
+                    break
+                act("right" if x < column - 6 else "left", 2, 2)
+            for _ in range(3):                                                   # Up counts only on the frame it goes down
+                act("up", 4, 10)
+                try:
+                    until("the key shop", lambda: ram(AREA) == BUILDINGS, 120)
+                    break
+                except AssertionError:
+                    pass
+            wait(40)
+            walk("left", lambda: ram(PLAYER_X) <= 80)                           # he stands at block $84, x 64
+
+            def list_up(mode, frames=900):
+                """The `mode` list on screen, and waiting for a button (it has stopped redrawing)."""
+                until(f"the {mode} list", lambda: (lambda s: s["shown"] == mode and s["list_up"])(
+                    tcp("shops_state")), frames)
+                waits = tcp("shops_state")["waits"]
+                until("the list to wait for a button", lambda: tcp("shops_state")["waits"] > waits, 300)
+                wait(2)
+
+            for _ in range(5):                                                   # Up counts only on the frame it goes down
+                act("up", 4, 10)
+                try:
+                    list_up("buy", 120)
+                    break
+                except AssertionError:
+                    pass
+            else:
+                raise AssertionError("the shopkeeper does not answer")
+            press("back")
+            list_up("sell")
+            game.shot("back-sell-list")
+            press("back")
+            list_up("buy")
+            assert not tcp("map_state")["open"] and ram(PAUSED) == 0
+            print("ok: in a shop, Back (the NES Select there) switches to the sell list and back")
             game.close()
 
         if args.wants("hands"):

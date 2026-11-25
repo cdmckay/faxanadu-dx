@@ -8,15 +8,9 @@
  * the map, the quest log and the runtime menu. With the remaster off its
  * hooks are off, and Start and Back are the NES's Start and Select again.
  * The keyboard keeps its keys: Return (the NES Start) opens the menu as Start
- * does, and Backslash (the NES Select) still opens it too.
- *
- * - A controller button bound to one of the remaster's actions (Magic, Use
- *   item, Block, Map, Quest log) is that action's while it is held: it does
- *   not also press the NES button the host binds to the same button, as a
- *   host shortcut's buttons are the shortcut's (cyc_input.h). So Back, the
- *   NES Select's and the map's, opens the map and not the menu. The game's
- *   input callback takes those bits out of the pad byte before the NES reads
- *   it, from the controllers as SDL reads them that frame.
+ * does, and Backslash (the NES Select) still opens it too. Back stays the
+ * NES Select everywhere but in play, so it still switches a shop's lists and
+ * moves between the title's NEW GAME and CONTINUE.
  *
  * How, on the unchanged ROM (fixed bank and bank 12):
  * - GameLoop_CheckShowPlayerMenu ($E016), which opens the menu on a new
@@ -25,7 +19,10 @@
  *   its entry this feature rewrites Joy1_ChangedButtonMask: a new Start
  *   becomes a new Select, so the game opens its own menu (Seamless's freeze
  *   at the same site, after this one, sees the Select it captures for), and
- *   the Start is gone before the pause check. The changed mask is what the
+ *   the Start is gone before the pause check. A new Select while the Map
+ *   button is held, on the controller button the host binds the NES Select
+ *   to (Back, by default), is the map's: it is taken out, and the map opens
+ *   at the pause check of the same pass. The changed mask is what the
  *   NMI's next read rewrites whole, and the held mask is left alone, so the
  *   next frame's pad is the real one.
  * - GameLoop_CheckPauseGame's AND #$10 ($E02D, after LDA
@@ -47,10 +44,8 @@
  * See docs/GAME_INTERNALS.md, "Input and casting". */
 #include "fax_controls.h"
 #include "fax_block.h"
-#include "fax_magic.h"
 #include "fax_map.h"
 #include "fax_quests.h"
-#include "fax_use_item.h"
 #include "cyc_mod.h"
 #include "mod_runtime.h"
 #include "mod_function_hooks.h"
@@ -84,21 +79,30 @@ enum { LAYOUT = 2 };   /* ControlsLayout: 1 before #147 (none written) */
 
 static bool enabled;
 static unsigned starts, closes, unpaused;  /* Starts shown as Select, that closed the menu, kept from the pause */
-static unsigned taken;                     /* frames a held action's button kept an NES button up */
+static unsigned kept;                      /* Selects taken out as the Map button's */
 static int file_layout;                    /* the layout config.ini said, 0 none read yet */
 static unsigned moved;                     /* bindings the last load moved */
 static char menu_label[80] = "Select menu: RETURN / START";
 
 static uint8_t q(uint16_t a) { return cyc_mod_peek(a); }
 
-/* GameLoop_CheckShowPlayerMenu's entry: a new Start is a new Select. */
+static bool select_is_the_maps(void);
+
+/* GameLoop_CheckShowPlayerMenu's entry: a new Start is a new Select, and a
+ * Select from the Map button is no Select. */
 static int menu_hook(uint16_t addr) {
     (void)addr;
     if (!enabled || cyc_mod_isolated()) return 0;
-    uint8_t changed = q(JOY1_CHANGED_BUTTON_MASK);
-    if (!(changed & BUTTON_START)) return 0;
-    ++starts;
-    cyc_mod_poke(JOY1_CHANGED_BUTTON_MASK, (uint8_t)((changed & ~BUTTON_START) | BUTTON_SELECT));
+    uint8_t changed = q(JOY1_CHANGED_BUTTON_MASK), now = changed;
+    if ((changed & BUTTON_SELECT) && select_is_the_maps()) {
+        now &= (uint8_t)~BUTTON_SELECT;
+        ++kept;
+    }
+    if (changed & BUTTON_START) {
+        now = (uint8_t)((now & ~BUTTON_START) | BUTTON_SELECT);
+        ++starts;
+    }
+    if (now != changed) cyc_mod_poke(JOY1_CHANGED_BUTTON_MASK, now);
     return 0;
 }
 
@@ -135,7 +139,7 @@ static void hooks(int on) {
 }
 static void deactivate(void) {
     enabled = false;
-    starts = closes = unpaused = taken = 0;
+    starts = closes = unpaused = kept = 0;
     hooks(0);
 }
 static void activate(void) {
@@ -183,10 +187,10 @@ bool fax_controls_settings_loaded(void) {
     return true;   /* written now with this layout, moved or not */
 }
 
-/* ---- the remaster's actions own their controller buttons ---- */
+/* ---- Back is the map's in play ---- */
 
 /* A controller binding held on any open controller, as SDL reads it now
- * (button, or an axis past half travel, the actions' press point). */
+ * (a button, or an axis past half travel, the Map button's press point). */
 static bool pad_held(int pad) {
     for (int i = 0; i < SDL_NumJoysticks(); ++i) {
         SDL_GameController *c = SDL_GameControllerFromInstanceID(SDL_JoystickGetDeviceInstanceID(i));
@@ -200,20 +204,12 @@ static bool pad_held(int pad) {
     return false;
 }
 
-void fax_controls_input(uint8_t pad_bits[2]) {
-    if (!enabled) return;
-    const CycHostBinding *(*const actions[])(void) = {
-        fax_magic_binding, fax_use_item_binding, fax_block_binding, fax_map_binding, fax_quests_binding,
-    };
-    const CycBindings *bind = cyc_window_bindings();
-    uint8_t before = pad_bits[0];
-    for (size_t a = 0; a < sizeof actions / sizeof actions[0]; ++a) {
-        const CycHostBinding *b = actions[a]();
-        if (!b || !*b->pad || !pad_held(*b->pad)) continue;
-        for (int i = 0; i < CYC_INPUT_BUTTONS; ++i)
-            if (bind->button[0][i].pad == *b->pad) pad_bits[0] &= (uint8_t)~(0x80u >> i);
-    }
-    if (pad_bits[0] != before) ++taken;
+/* The Select came from the Map button: it is bound where the host binds the
+ * NES Select (Back), and held. */
+static bool select_is_the_maps(void) {
+    const CycHostBinding *map = fax_map_binding();
+    int select = cyc_window_bindings()->button[0][2].pad;   /* cyc_input.h: A B Select Start ... */
+    return map && *map->pad && *map->pad == select && pad_held(select);
 }
 
 void fax_controls_power_on(void) {
@@ -229,22 +225,22 @@ static void controls_state(int id, const char *line) {
     char fields[320], text[96];
     cyc_tcp_quote(menu_label + 13, text, sizeof text);
     /* starts: Starts the menu check saw as Select; closes: Starts that closed the menu; unpaused: Starts the
-     * pause check never saw; taken: frames an action's held button kept the NES button the host binds to it
-     * up; moved: bindings the last config.ini load moved from layout 1's defaults */
+     * pause check never saw; kept: Selects from the Map button the menu check never saw; moved: bindings the
+     * last config.ini load moved from layout 1's defaults */
     snprintf(fields, sizeof fields,
              "\"enabled\":%s,\"layout\":%d,\"menu_binding\":%s,\"starts\":%u,\"closes\":%u,\"unpaused\":%u,"
-             "\"taken\":%u,\"moved\":%u",
-             enabled ? "true" : "false", LAYOUT, text, starts, closes, unpaused, taken, moved);
+             "\"kept\":%u,\"moved\":%u",
+             enabled ? "true" : "false", LAYOUT, text, starts, closes, unpaused, kept, moved);
     cyc_tcp_ok(id, fields);
 }
 void fax_controls_tcp_setup(void) {
     cyc_tcp_register("controls_state",
                      "Controller layout: Starts shown to the menu check as Select, Starts that closed the menu, "
-                     "NES buttons an action's button kept up, bindings moved from layout 1",
+                     "Selects kept from it as the Map button's, bindings moved from layout 1",
                      controls_state);
 }
 #else
-void fax_controls_input(uint8_t pad_bits[2]) { (void)pad_bits; }
+static bool select_is_the_maps(void) { return false; }
 bool fax_controls_settings_loaded(void) { return false; }
 void fax_controls_power_on(void) {}
 void fax_controls_tcp_setup(void) {}

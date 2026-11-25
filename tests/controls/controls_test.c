@@ -4,8 +4,8 @@
  * - its three hooks against a model of the machine (RAM and the registers),
  *   each where the disassembly has it: GameLoop_CheckShowPlayerMenu's entry,
  *   the pause check's AND after its load, the Select menu's BMI after its;
- * - a held action's controller button keeping the NES button the host binds
- *   to it up, on an SDL virtual controller;
+ * - in play, the NES Select that Back presses kept from the menu while Back
+ *   is the Map button's, on an SDL virtual controller;
  * - an old config.ini (a build before the layout wrote it) through the
  *   engine's own load (nesrecomp's cyc_settings.c), the game's keys going to
  *   this module and to stand-ins for the features' bindings: each binding
@@ -116,6 +116,8 @@ static void fresh(void) {
     deactivate(); activate();
     memset(ram, 0, sizeof ram);
     cpu = (CycModRegs){ .s = 0xFD };
+    defaults();
+    cyc_bindings_default(&window);
 }
 
 /* ---- the hooks ---- */
@@ -180,21 +182,18 @@ static void off_means_off(void) {
     cpu.a = START;
     pause_hook(0xE02D);
     CHECK(CHANGED == START && cpu.a == START);
-    uint8_t pad[2] = { SELECT, 0 };
-    fax_controls_input(pad);
-    CHECK(pad[0] == SELECT);
 }
 
-/* ---- an action's controller button is the action's ---- */
+/* ---- in play, Back is the map's ---- */
 
 static void back_is_the_maps(void) {
     if (SDL_Init(SDL_INIT_JOYSTICK | SDL_INIT_GAMECONTROLLER) != 0) {
-        printf("controls_test: no SDL controllers here (%s): held buttons not checked\n", SDL_GetError());
+        printf("controls_test: no SDL controllers here (%s): Back not checked\n", SDL_GetError());
         return;
     }
     fresh();
     defaults();
-    cyc_bindings_default(&window);               /* NES Select on Back, as the host has it */
+    cyc_bindings_default(&window);               /* the NES Select on Back, as the host has it */
     SDL_VirtualJoystickDesc desc;
     SDL_zero(desc);
     desc.version = SDL_VIRTUAL_JOYSTICK_DESC_VERSION;
@@ -208,37 +207,42 @@ static void back_is_the_maps(void) {
     SDL_JoystickSetVirtualAxis(joy, SDL_CONTROLLER_AXIS_TRIGGERLEFT, SDL_JOYSTICK_AXIS_MIN);
     SDL_JoystickSetVirtualAxis(joy, SDL_CONTROLLER_AXIS_TRIGGERRIGHT, SDL_JOYSTICK_AXIS_MIN);
     SDL_GameControllerUpdate();
-    /* Nothing held: the pad byte as the host made it. */
-    uint8_t pad[2] = { SELECT | A, 0 };
-    fax_controls_input(pad);
-    CHECK(pad[0] == (SELECT | A) && taken == 0);
-    /* Back held: the map's, so the NES Select the host binds to it stays up. */
+    /* A Select with Back up (Backslash, a TCP action): the menu's, as ever. */
+    CHANGED = SELECT | A;
+    menu_hook(0xE016);
+    CHECK(CHANGED == (SELECT | A) && kept == 0);
+    /* Back held: the Select it presses is the Map button's, so no menu. */
     SDL_JoystickSetVirtualButton(joy, SDL_CONTROLLER_BUTTON_BACK, 1);
     SDL_GameControllerUpdate();
-    pad[0] = SELECT | A;
-    fax_controls_input(pad);
-    CHECK(pad[0] == A && taken == 1);
-    /* The map rebound elsewhere: Back is the NES Select again. */
+    CHANGED = SELECT | A;
+    menu_hook(0xE016);
+    CHECK(CHANGED == A && kept == 1);
+    /* Start with it: Start still opens the menu. */
+    CHANGED = SELECT | START;
+    menu_hook(0xE016);
+    CHECK(CHANGED == SELECT && kept == 2 && starts == 1);
+    /* The map rebound off Back: Back is the NES Select's alone again. */
     actions[3].pad = CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_LEFTSTICK);
-    pad[0] = SELECT;
-    fax_controls_input(pad);
-    CHECK(pad[0] == SELECT);
+    CHANGED = SELECT;
+    menu_hook(0xE016);
+    CHECK(CHANGED == SELECT && kept == 2);
+    /* The NES Select moved to another button: Back held is no Select of its. */
+    actions[3].pad = CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_BACK);
+    window.button[0][2].pad = CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_LEFTSHOULDER);
+    menu_hook(0xE016);
+    CHECK(CHANGED == SELECT && kept == 2);
+    /* Both on a trigger, held past half travel: the map's. */
+    actions[3].pad = window.button[0][2].pad = CYC_PAD_AXIS(SDL_CONTROLLER_AXIS_TRIGGERLEFT, 1);
     SDL_JoystickSetVirtualButton(joy, SDL_CONTROLLER_BUTTON_BACK, 0);
-    /* Any action: Use item moved onto X, the NES B's, keeps the NES B up while held. */
-    actions[1].pad = CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_X);
-    SDL_JoystickSetVirtualButton(joy, SDL_CONTROLLER_BUTTON_X, 1);
+    SDL_JoystickSetVirtualAxis(joy, SDL_CONTROLLER_AXIS_TRIGGERLEFT, SDL_JOYSTICK_AXIS_MAX);
     SDL_GameControllerUpdate();
-    pad[0] = B | DOWN;
-    fax_controls_input(pad);
-    CHECK(pad[0] == DOWN);
-    /* A trigger: the NES A bound to the right trigger, Block's, held past half. */
-    SDL_JoystickSetVirtualButton(joy, SDL_CONTROLLER_BUTTON_X, 0);
-    window.button[0][0].pad = CYC_PAD_AXIS(SDL_CONTROLLER_AXIS_TRIGGERRIGHT, 1);
-    SDL_JoystickSetVirtualAxis(joy, SDL_CONTROLLER_AXIS_TRIGGERRIGHT, SDL_JOYSTICK_AXIS_MAX);
-    SDL_GameControllerUpdate();
-    pad[0] = A;
-    fax_controls_input(pad);
-    CHECK(pad[0] == 0);
+    menu_hook(0xE016);
+    CHECK(CHANGED == 0 && kept == 3);
+    /* The remaster off: nothing. */
+    deactivate();
+    CHANGED = SELECT;
+    menu_hook(0xE016);
+    CHECK(CHANGED == SELECT);
     SDL_GameControllerClose(c);
     SDL_JoystickClose(joy);
     SDL_JoystickDetachVirtual(index);

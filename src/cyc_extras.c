@@ -248,7 +248,7 @@ static void event(void *ctx,const void *e,int player) {
     fax_map_event(e);
     fax_quests_event(e);
 }
-static void input(void *ctx, uint8_t buttons[2]) { (void)ctx; fax_controls_input(buttons); fax_block_input(buttons); }
+static void input(void *ctx, uint8_t buttons[2]) { (void)ctx; fax_block_input(buttons); }
 static void load_setting(void *ctx, const char *key, const char *value) {
     (void)ctx;
     if (!fax_controls_load_setting(key, value) && !fax_magic_load_setting(key, value) &&
