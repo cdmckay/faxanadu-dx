@@ -906,3 +906,24 @@ rom = []
 # the tool shops' buy lists at its own site ($83F7, fax_shops.c), asking
 # fax_found_on. Keeps found.hourglass in the file in play and the same in its
 # save-state record. No ROM, no read overrides.
+
+[[feature]]
+id = "select-menu"
+package = "faxanadu.dx"
+plugin = "faxanadu.select-menu"
+source = "src/fax_menu.c"
+hooks = "faxanadu.select-menu."
+rom = []
+# Hooks, which no other feature hooks, all in bank 12: PlayerMenu_Show's LDA
+# #$18 ($8AB1) and JSR PlayerMenu_DrawStringLines ($8ADA), where it writes
+# TextBox_Height (18), then DataArray ($0220-$0227, all eight entries: the
+# rows' string numbers) and Arg_StringsCount (8); UI_DrawString's STA
+# Temp_Int24_U ($8E9D) and JSR Strings_ASCIIToIndex ($8EA5), where A, N and Z
+# become the added rows' length and letters, for strings 6 and 7 of
+# PLAYER_TOP_MENU_ITEM_STRINGS only (Temp_Int24 $8873, Y $60-$7F), which the
+# original never draws; and @_loadMenuIDs ($8AF0), where it writes
+# Menu_CursorPos (the original's rows, back by two), or returns into
+# TextBox_Close, or through Sound_PlayEffect into @_inputLoop, pushing those
+# addresses where its handled return pulls them, so S ends where it was. The
+# map's and the quest log's opens are theirs (fax_map_request,
+# fax_quests_request). No ROM, no read overrides, no save-state record.

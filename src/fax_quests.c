@@ -144,7 +144,7 @@ static unsigned banner_age;
 static bool open, closing;
 static int page;
 static uint64_t frames, want;
-static unsigned opens, closes, turns, presses, lines_said, banners_shown, age;
+static unsigned opens, closes, turns, presses, requests, lines_said, banners_shown, age;
 static char label[80] = "Quest log: L / RS";
 
 static uint8_t q(uint16_t a) { return cyc_mod_peek(a); }
@@ -485,6 +485,14 @@ static void press(void) {
     ++presses;
     if (open) closing = true;
     else if (!fax_map_showing()) want = frames + OPEN_WINDOW;
+}
+
+/* The Select menu's QUESTS row (fax_menu.c): as a press. */
+bool fax_quests_request(void) {
+    if (!enabled || !decoded || open || fax_map_showing()) return false;
+    want = frames + OPEN_WINDOW;
+    ++requests;
+    return true;
 }
 
 bool fax_quests_showing(void) { return enabled && open; }
@@ -859,10 +867,10 @@ static void quest_state(int id, const char *line) {
     for (char *c = text; *c; ++c) if (*c == '\n') *c = '|';
     n += (size_t)snprintf(fields + n, sizeof fields - n,
                           "\"enabled\":%s,\"decoded\":%s,\"open\":%s,\"page\":%d,\"pages\":%u,\"opens\":%u,"
-                          "\"closes\":%u,\"turns\":%u,\"presses\":%u,\"binding\":\"%s\",\"paused\":%u,"
+                          "\"closes\":%u,\"turns\":%u,\"presses\":%u,\"requests\":%u,\"binding\":\"%s\",\"paused\":%u,"
                           "\"saying\":%s%s%s,\"lines\":%u,\"banner\":%s%s%s,\"banners\":%u,\"quiet\":%s,\"in_play\":%s",
                           enabled ? "true" : "false", decoded ? "true" : "false", open ? "true" : "false", page,
-                          page_count, opens, closes, turns, presses, label + 11, q(GAME_PAUSED_STATE),
+                          page_count, opens, closes, turns, presses, requests, label + 11, q(GAME_PAUSED_STATE),
                           saying ? "\"" : "", saying ? text : "null", saying ? "\"" : "", lines_said,
                           banner_quest >= 0 ? "\"" : "", banner_quest >= 0 ? fax_quests[banner_quest].id : "null",
                           banner_quest >= 0 ? "\"" : "", banners_shown, quiet ? "true" : "false",
@@ -915,7 +923,7 @@ static void deactivate(void) {
     enabled = false;
     open = closing = false;
     page = 0; want = 0;
-    opens = closes = turns = presses = lines_said = banners_shown = age = 0;
+    opens = closes = turns = presses = requests = lines_said = banners_shown = age = 0;
     forget();
     quiet = true; seeded = false;
     hooks(0);

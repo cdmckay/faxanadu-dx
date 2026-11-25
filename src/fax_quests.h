@@ -27,6 +27,10 @@ void fax_quests_save_settings(FILE *f);
 const char *fax_quests_controls_label(void);   /* "Quest log: L / RS", for the runtime menu */
 void fax_quests_tcp_setup(void);
 bool fax_quests_showing(void);                  /* the log is open */
+/* Open the log as its button does, at the main loop's next pause check: the
+ * Select menu's QUESTS row (fax_menu.c). False where it cannot (the map open,
+ * or the quest table not read). */
+bool fax_quests_request(void);
 /* Whether `quest` (fax_quest_table.h's FAX_QUEST_*) is given: in the log now,
  * or in the file in play's quests.given (false without the field, or with it
  * damaged), as the log reads it when the file is continued. */
