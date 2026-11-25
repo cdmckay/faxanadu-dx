@@ -279,17 +279,17 @@ static void list_bindings(void) {
 /* The runtime menu's Controls section: Start's Select menu, then the Magic, Use item, Block, Map and
  * Quest log buttons' bindings, information rows like the host's own shortcuts. */
 static RecompRuntimeUiItem menu_rows[] = {
-    { "faxanadu.select-menu", "Controls", "Select menu", "Start opens QUESTS, MAP and your gear. Rebind Start in the launcher.",
+    { "faxanadu.select-menu", "Controls", "Select menu", "Opens QUESTS, MAP and your gear. Rebind it in the launcher.",
       RECOMP_RUNTIME_UI_ACTION, 0, 0, 0, NULL, 0, NULL },
-    { "faxanadu.magic", "Controls", "Magic", "Casts like Up+B. Rebind it in the launcher or config.ini [Game].",
+    { "faxanadu.magic", "Controls", "Magic", "Casts like Up+B. Rebind it in the launcher.",
       RECOMP_RUNTIME_UI_ACTION, 0, 0, 0, NULL, 0, NULL },
-    { "faxanadu.use-item", "Controls", "Use item", "Uses your item like Down+B. Rebind it in the launcher or config.ini [Game].",
+    { "faxanadu.use-item", "Controls", "Use item", "Uses your item like Down+B. Rebind it in the launcher.",
       RECOMP_RUNTIME_UI_ACTION, 0, 0, 0, NULL, 0, NULL },
-    { "faxanadu.block", "Controls", "Block", "Hold with a shield to stop magic. Rebind it in the launcher or config.ini [Game].",
+    { "faxanadu.block", "Controls", "Block", "Hold with a shield to stop magic. Rebind it in the launcher.",
       RECOMP_RUNTIME_UI_ACTION, 0, 0, 0, NULL, 0, NULL },
-    { "faxanadu.map", "Controls", "Map", "Shows the screens you've been to. Rebind it in the launcher or config.ini [Game].",
+    { "faxanadu.map", "Controls", "Map", "Shows the screens you've been to. Rebind it in the launcher.",
       RECOMP_RUNTIME_UI_ACTION, 0, 0, 0, NULL, 0, NULL },
-    { "faxanadu.quests", "Controls", "Quest log", "Lists your quests. Rebind it in the launcher or config.ini [Game].",
+    { "faxanadu.quests", "Controls", "Quest log", "Lists your quests. Rebind it in the launcher.",
       RECOMP_RUNTIME_UI_ACTION, 0, 0, 0, NULL, 0, NULL },
 };
 static int menu_row_enabled(void *ctx, const RecompRuntimeUiItem *it) { (void)ctx; (void)it; return 0; }
