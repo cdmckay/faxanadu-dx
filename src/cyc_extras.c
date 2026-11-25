@@ -236,7 +236,7 @@ static void tcp_setup(void *ctx) {
 static const uint32_t *present(void *ctx,int *w,int *h) {
     (void)ctx;
     const uint32_t *picture=fax_quests_marks_present(fax_damage_present(fax_sugata_present(fax_spell_cost_present(fax_item_box_present(fax_charges_present(fax_world_present(w,h,cyc_frame_argb()),w,h),w,h),w,h),w,h),w,h),w,h);
-    picture=fax_files_present(fax_title_present(fax_speaker_present(fax_quests_banner_present(fax_slain_present(fax_banner_present(picture,w,h),w,h),w,h),w,h),w,h),w,h);
+    picture=fax_files_present(fax_title_present(fax_speaker_present(fax_recharge_present(fax_quests_banner_present(fax_slain_present(fax_banner_present(picture,w,h),w,h),w,h),w,h),w,h),w,h),w,h);
     return fax_quests_log_present(fax_map_present(fax_shops_present(picture,w,h),w,h),w,h);
 }
 static void event(void *ctx,const void *e,int player) {

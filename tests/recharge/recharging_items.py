@@ -15,30 +15,36 @@ cleared, the random-item visit counter, and for a run going over a Guru
 travel journey or a save, and the Elixir spent, the feature's own record.
 Items are used with Down+B, as a player would. Both run on MP (#124): a
 frame of either is a main-loop pass, a frame the game plays, and the drain
-is checked against the frame counter on a quiet screen.
+is checked against the frame counter on a quiet screen. Turning either on or
+off shows no box (#151): each Down+B is checked to start or end its run
+with none, play going on, and the item's sound; an end the player did not
+cause says so below the HUD. The game starts with both lessons learned
+(fax_e2e's LEARNED), as after their first use, but in 17.
 
 1. Wing Boots by title band: a full bar's flight shows 40, 50, 60 and 80 s on
    T: (the original: 40, 30, 20, 10), and with A held MP falls an MP every
    32, 40, 48 and 64 frames, to the frame.
 2. A whole Novice flight from a full bar, in Eolis, A held throughout: T:
    counts its seconds, MP falls on schedule and never comes back while he
-   flies, and at 0 MP, 2,560 frames on, "The power of the Wing Boots is
-   gone.". Then T: is 00,
+   flies, and at 0 MP, 2,560 frames on, it ends: "Out of magic" below the
+   HUD, and no box. Then T: is 00,
    Down+B at 0 MP does nothing but the refusal sound, and with MP (a kill's
    or a Guru's, poked here) the same pair flies again at once.
 3. Landing early: Down+B in the air (A held, so the game takes Down as a
-   climb and allows the item) ends the flight with the game's line, and no
-   more MP goes; standing, the same. Then it flies again at once.
+   climb and allows the item) ends the flight with the item's sound and no
+   box or line: he falls at once, and no more MP goes; standing, the same.
+   Then it flies again at once, with no box either.
 4. Dying while flying ends the flight; he comes back with the pair, ready.
 5. The Hour Glass on Eolis screen 4: the Zozuras stop, no HP is taken, and
    the freeze takes an MP every 24 frames, T: its seconds while it is
    selected (the original's 00 with another item); after its 15 s, 40 MP
-   gone. Again at once, and Down+B ends it early.
-6. The Hour Glass on 10 MP: it ends at 0 MP, 240 frames on; then Down+B does
-   nothing but the refusal sound.
+   gone, and "The Hour Glass ran out" below the HUD while the Zozuras move
+   again, no box. Again at once, and Down+B ends it early, with no box.
+6. The Hour Glass on 10 MP: it ends at 0 MP, 240 frames on, "Out of magic"
+   below the HUD; then Down+B does nothing but the refusal sound.
 7. The Hour Glass at Ripasheiku (Trunk $15): the boss keeps moving. Walking
    onto a boss's screen with the Hour Glass running ends it within a second
-   (LimitItemDurations), and its MP stops.
+   (LimitItemDurations), "Bosses end the Hour Glass", and its MP stops.
 8. The Elixir on Eolis screen 4 with 1 HP: a Zozura's hit, and it revives the
    hero ("I've used Elixir."). With 1 HP again, the next hit kills him; he
    respawns with it still spent, and the menu's Player page, which showed it,
@@ -68,11 +74,19 @@ is checked against the frame counter on a quiet screen.
     tests/recharge/guru_lines.py's).
 15. With the remaster off, the original: the pair is used up after one 40 s
     (Novice) flight, which takes no MP and counts down with A up, and the
-    Hour Glass halves HP and is used up.
+    Hour Glass halves HP and is used up; each use shows "I've used ...", and
+    each end "The power of ... is gone.", in boxes.
 16. The Wing Boots take MP only while A is held (#148), in Eolis: with them
     on, walking and standing take none and T: holds; A and Up, he rises and
     MP goes on schedule; let go, he falls and it stops; A held on the
-    ground takes it too; out of MP in the air, the game's line ends them.
+    ground takes it too; out of MP in the air, they end: "Out of magic"
+    below the HUD, and he falls on, no box stopping play.
+17. The lessons (#151), with faxanadu_recharge.txt removed: the first Down+B
+    on the Wing Boots shows "Hold A to fly. / Flying uses / your magic." in
+    place of "I've used Wing Boots.", then they fly; the next uses show no
+    box. The Hour Glass's first: "Time stops for / enemies, using / your
+    magic.". Both are written to the file, and after a restart neither is
+    said again.
 """
 from pathlib import Path
 import sys
@@ -97,6 +111,9 @@ HOUR_GLASS, WING_BOOTS, RED_POTION, NO_ITEM, BIT_ELIXIR, RING_OF_ELF = 0x0D, 0x0
 USED_HOUR_GLASS, USED_WING_BOOTS, USED_ELIXIR = 0xAC, 0xAD, 0xAF      # message IDs
 GOT_WING_BOOTS, GOT_HOUR_GLASS, GOT_ELIXIR = 0xB3, 0xB4, 0xB0        # "I'm holding ..."
 WING_BOOTS_GONE, HOUR_GLASS_GONE, NEGATIVE_THOUGHTS, HO_HO_HO = 0xC0, 0xC1, 0x24, 0x57
+SOUND_EFFECT, SOUND_ASKED, ITEM_SOUND = 0xFB, 0x436, 0x1A           # SoundEffect_Current, Temp_SoundIDToPlay; $1A
+OUT_OF_MAGIC, GLASS_RAN_OUT, BOSSES = "Out of magic", "The Hour Glass ran out", "Bosses end the Hour Glass"
+LESSON_LINE, BOOTS_LESSON, GLASS_LESSON = 0xC3, 3, 4               # the slot; recharge_state's line for each
 FILE, GURU_SAVED = "faxanadu_file1.txt", 3                          # Start on the title: a new game in file 1
 ELIXIR_LINE = 0xC3                                                  # the slot: a Guru's line about the Elixir
 EOLIS, TRUNK, MIST, BUILDINGS = 0, 1, 2, 4
@@ -115,7 +132,7 @@ INTERRUPT_COUNTER = 0x1A                                            # counts NMI
 FLY = 36000                                                         # an A hold to fly on, the longest: let go to end it
 PACKAGE = ("faxanadu.dx", "dx")                                  # the one switch: off is the original game
 PARTS = ("bands", "boots-flight", "boots-land", "boots-death", "glass-freeze", "glass-mp", "boss", "elixir",
-         "tool-shop", "finds", "spring", "travel", "save", "apolune-guru", "original", "boots-a")
+         "tool-shop", "finds", "spring", "travel", "save", "apolune-guru", "original", "boots-a", "lessons")
 GURUS = ("Eolis", "Apolune")                                        # met, for Guru travel's journey
 RECORD = b"faxanadu.recharge"                                       # its save-state record, version 3:
 FLYING, FLY_NEXT = 1, 2                                             # the flight: running, frames to its next MP;
@@ -233,8 +250,39 @@ def use():
     act("down", 1, 0)                                               # let go
 
 
-def close_box():
-    fax_e2e.page_through("the box to close", lambda: not box_open(), 3000)
+def played(s):
+    """Main-loop passes a run has counted: a flight's frames, A held or not, or a freeze's."""
+    return s["lift_frames"] + s["rest_frames"] + s["freeze_played"]
+
+
+def turn_on(key="boots_running", sound=True):
+    """Down+B with the item off: it turns on with no box (#151), and any
+    notice of an earlier end is put away. Its run has begun and counted
+    frames, so the game played on, with the item's sound the last asked for
+    (Temp_SoundIDToPlay) and playing (SoundEffect_Current with bit 7);
+    `sound` False where an enemy may have made another since."""
+    before = state()
+    use()
+    s = state()
+    assert s[key] and s["quiet_uses"] == before["quiet_uses"] + 1 and not box_open() and s["notice"] is None, s
+    assert played(s) > played(before) and s["gones_skipped"] == before["gones_skipped"], (before, s)
+    if sound:
+        assert (ram(SOUND_ASKED), ram(SOUND_EFFECT)) == (ITEM_SOUND, 0x80 | ITEM_SOUND), (ram(SOUND_ASKED), ram(SOUND_EFFECT))
+    return s
+
+
+def said_below_the_hud(notice, frames=60):
+    """The end of a run the player did not cause says `notice` below the HUD
+    (#151): drawn over the picture, with no box up, so play goes on. The
+    state of that frame."""
+    seen = []
+
+    def shown():
+        seen.append(state())
+        return seen[-1]["notice"] == notice and seen[-1]["notice_drawn"]
+    until(f'"{notice}" below the HUD', shown, frames)
+    assert not box_open() and seen[-1]["gones_skipped"] > 0, seen[-1]
+    return seen[-1]
 
 
 def fly_on():
@@ -252,8 +300,6 @@ def _boots_words(g):
     warp_out(g, g.save("shop"), "boots-dying", EOLIS, 1, 0x99, PALETTE_EOLIS, 0,
              {SELECTED_ITEM: WING_BOOTS, NUMBER_OF_ITEMS: 0, PLAYER_TITLE: 0, MP: FULL})
     use()
-    until("I've used Wing Boots.", box_open, 120)
-    close_box()
     until("the flight", lambda: state()["boots_running"] == 1, 60)
     g.poke({PLAYER_IS_DEAD: 1})
     dissolve()
@@ -331,6 +377,21 @@ def main():
             return seen[-1] == expect
         until(f"message ${expect:02X} (saw {sorted(set(seen))})", shown, frames)
         page_through()
+
+    def landed_quietly(key, landed, press=None):
+        """Down+B (or `press`) with the item on: its run ends in this pass,
+        with the item's sound (the last asked for: none since the poke) and
+        no box or line (#151), and the game plays on: the state after."""
+        poke({SOUND_ASKED: 0})
+        before = state()
+        (press or use)()
+        until("the run's end", lambda: not state()[key], 30)
+        wait(10)
+        s = state()
+        assert s[landed] == before[landed] + 1 and s["gones_skipped"] == before["gones_skipped"] + 1, (before, s)
+        assert not box_open() and s["notices"] == before["notices"] and ram(SOUND_ASKED) == ITEM_SOUND, \
+            (s, ram(SOUND_ASKED))
+        return s
 
     def refused_at_zero():
         """Down+B with no MP: the refusal sound and nothing else, no line and no run."""
@@ -418,9 +479,7 @@ def main():
                                       PLAYER_TITLE: band * 4 + 3, **no_one})
                 tcp("load_state", path=str(boots))
                 wait(10)
-                use()
-                dismiss(USED_WING_BOOTS)
-                s = state()
+                s = turn_on()
                 assert s["boots_running"] and s["frames_per_mp"] == step, s
                 assert ram(DURATION_WING_BOOTS) in (flight, flight - 1) and s["hud_drawn"] in (flight, flight - 1), s
                 fly_on()                                                # MP goes only while A is held
@@ -437,9 +496,7 @@ def main():
             warp(shop, "boots-novice", EOLIS, 1, 0x99, PALETTE_EOLIS, 0,  # walked out, so the HUD shows the pair
                  {SELECTED_ITEM: WING_BOOTS, NUMBER_OF_ITEMS: 0, PLAYER_TITLE: 0, MP: FULL})
             clear()
-            use()
-            until("I've used Wing Boots.", lambda: ram(MESSAGE_ID) == USED_WING_BOOTS, 120)
-            page_through()
+            turn_on()
             fly_on()                                                    # A held for the whole flight
             wait(2)
             s0, mp0, f0 = snapshot()
@@ -468,22 +525,20 @@ def main():
                     sampled = 1
                 wait(min(200, max(1, s["flight_left"] - 2)))
             fax_e2e.let_go()
-            until("The power of the Wing Boots is gone.", lambda: ram(MESSAGE_ID) == WING_BOOTS_GONE, 60)
-            s = state()
+            s = said_below_the_hud(OUT_OF_MAGIC)
             assert ram(MP) == 0 and s["boots_landed"] == 0 and not ram(PLAYER_STATUS) & 0x80, s
             assert ended - begun == FULL * STEP, (ended, begun)
-            page_through()
             wait(4)
             s = state()
             assert s["hud_drawn"] == 0 and s["boots_ready"] and items() == ([], WING_BOOTS), s
             shot("flight-over")
             print(f"ok: a Novice's full bar flies {ended - begun} frames of A held ({FULL} MP, an MP every {STEP}), MP "
-                  f"never rising, T: counting down; at 0 MP the game's own line ends it, and T: is 00")
+                  f"never rising, T: counting down; at 0 MP it ends, \"{OUT_OF_MAGIC}\" below the HUD and no box, "
+                  "and T: is 00")
             refused_at_zero()
             print("ok: Down+B at 0 MP does nothing but the refusal sound")
             poke({MP: FULL})                                            # a kill's, or a Guru's
-            use()
-            dismiss(USED_WING_BOOTS)
+            turn_on()
             assert state()["boots_running"] and state()["flights"] == 2, state()
             print("ok: with MP the same pair flies again at once: no cooldown")
 
@@ -493,32 +548,31 @@ def main():
             warp(shop, "boots-land", EOLIS, 1, 0x99, PALETTE_EOLIS, 0,
                  {SELECTED_ITEM: WING_BOOTS, NUMBER_OF_ITEMS: 0, PLAYER_TITLE: 0, MP: FULL})
             clear()
-            use()
-            dismiss(USED_WING_BOOTS)
+            turn_on()
+            print("ok: Down+B turns the Wing Boots on with no box: they fly at once, with the item's sound")
             rise(30)
             y = ram(PLAYER_Y)
             tcp("pad", buttons="dpdown", frames=20)                     # A still held: Down is a climb down
             wait(4)
             assert not ram(PLAYER_FLAGS) & 0x05, f"flags ${ram(PLAYER_FLAGS):02X}: jumping or falling"
-            tcp("action", name="b", frames=4)
-            until("The power of the Wing Boots is gone.", lambda: ram(MESSAGE_ID) == WING_BOOTS_GONE, 30)
-            s, mp, _ = snapshot()
-            assert s["boots_landed"] == 1 and not s["boots_running"] and ram(PLAYER_Y) < y + 30, s
+
+            def press_b():
+                tcp("action", name="b", frames=4)
+            landed_quietly("boots_running", "boots_landed", press_b)
+            mp = ram(MP)
+            assert ram(PLAYER_Y) > y and not ram(PLAYER_STATUS) & 0x80, (ram(PLAYER_Y), y)   # he falls: play went on
             shot("boots-landed-in-the-air")
             let_go()
-            page_through()
             wait(STEP * 2)
             assert ram(MP) == mp and not ram(PLAYER_STATUS) & 0x80, (ram(MP), mp)
             until("on the floor", lambda: not ram(PLAYER_FLAGS) & 0x05, 120)
-            print(f"ok: Down+B in the air, A held, ends the flight with the game's line at {mp} MP, and no more MP goes")
-            use()
-            dismiss(USED_WING_BOOTS)
+            print(f"ok: Down+B in the air, A held, ends the flight at {mp} MP with the item's sound and no box or "
+                  "line: he falls at once, and no more MP goes")
+            turn_on()
             wait(30)
-            use()                                                       # standing
-            dismiss(WING_BOOTS_GONE, 120)
-            s = state()
+            s = landed_quietly("boots_running", "boots_landed")         # standing
             assert s["boots_landed"] == 2 and s["flights"] == 2 and s["boots_ready"], s
-            print("ok: they fly again at once, and Down+B standing ends that flight too")
+            print("ok: they fly again at once, and Down+B standing ends that flight too, both with no box")
 
         # 4. Dying while flying.
         if args.wants("boots-death"):
@@ -536,9 +590,7 @@ def main():
                  {SELECTED_ITEM: HOUR_GLASS, NUMBER_OF_ITEMS: 0, MP: FULL, HP_FRACTION: 0})
             zozuras = [i for i, e in enumerate(ram(SPRITE_ENTITIES, 8)) if e == ZOZURA]
             assert zozuras, "Zozuras on screen 4"
-            use()
-            until("I've used Hour Glass.", lambda: ram(MESSAGE_ID) == USED_HOUR_GLASS, 120)
-            page_through()
+            turn_on("glass_running")
             s0, mp0, f0 = snapshot()
             begun = f0 - s0["freeze_played"]
             assert ram(DURATION_HOUR_GLASS) in (FREEZE, FREEZE - 1) and ram(HP) == 0x50, (ram(DURATION_HOUR_GLASS), ram(HP))
@@ -557,23 +609,24 @@ def main():
             assert [ram(SPRITE_X + i) for i in zozuras] == before, "the Zozuras still frozen"
             shot("hour-glass-mp-draining")
             ended = run_out()
-            until("The power of the Hour Glass is gone.", lambda: ram(MESSAGE_ID) == HOUR_GLASS_GONE, 60)
+            said_below_the_hud(GLASS_RAN_OUT)
             assert ended - begun == FREEZE * SECOND, (ended, begun)
             assert ram(MP) == FULL - FREEZE * SECOND // GLASS_STEP and ram(HP) == 0x50, (ram(MP), ram(HP))
-            page_through()
+            until("the Zozuras to move", lambda: [ram(SPRITE_X + i) for i in zozuras] != before, 120)
+            assert not box_open() and state()["notice"] == GLASS_RAN_OUT, state()
+            shot("hour-glass-ran-out")
             print(f"ok: after its 15 s ({ended - begun} frames) the freeze is over, {FREEZE * SECOND // GLASS_STEP} MP "
-                  "gone, HP whole")
+                  f"gone, HP whole: \"{GLASS_RAN_OUT}\" below the HUD as the Zozuras move again, no box")
             clear(ZOZURA)
-            use()
-            dismiss(USED_HOUR_GLASS)
+            turn_on("glass_running")
             assert state()["glass_running"] and state()["freezes"] == 2, state()
             wait(40)
-            use()
-            dismiss(HOUR_GLASS_GONE, 120)
-            s, mp, _ = snapshot()
+            s = landed_quietly("glass_running", "glass_landed")
+            mp = ram(MP)
             wait(GLASS_STEP * 2)
             assert s["glass_landed"] == 1 and not s["glass_running"] and ram(MP) == mp, (s, ram(MP), mp)
-            print("ok: no cooldown: it freezes again at once, and Down+B again ends that freeze, its MP with it")
+            print("ok: no cooldown: it freezes again at once, and Down+B again ends that freeze, its MP with it, both "
+                  "with the item's sound and no box")
 
         # 6. The Hour Glass on less MP than a freeze costs.
         if args.wants("glass-mp"):
@@ -581,9 +634,7 @@ def main():
             warp(shop, "glass-mp", EOLIS, 4, 0x9E, PALETTE_EOLIS, 0,
                  {SELECTED_ITEM: HOUR_GLASS, NUMBER_OF_ITEMS: 0, MP: 10})
             clear(ZOZURA)
-            use()
-            until("I've used Hour Glass.", lambda: ram(MESSAGE_ID) == USED_HOUR_GLASS, 120)
-            page_through()
+            turn_on("glass_running")
             s0, mp0, f0 = snapshot()
             begun = f0 - s0["freeze_played"]
             # MP as the drain left it by this read, which can come a few of its steps in on a loaded machine.
@@ -591,12 +642,12 @@ def main():
             assert s0["freeze_left"] == 10 * GLASS_STEP - s0["freeze_played"], s0
             assert s0["hud_drawn"] == -(-s0["freeze_left"] // SECOND), s0
             ended = run_out()
-            until("The power of the Hour Glass is gone.", lambda: ram(MESSAGE_ID) == HOUR_GLASS_GONE, 60)
+            said_below_the_hud(OUT_OF_MAGIC)
             assert ended - begun == 10 * GLASS_STEP and ram(MP) == 0, (ended, begun)
-            page_through()
+            shot("hour-glass-out-of-magic")
             refused_at_zero()
-            print(f"ok: on 10 MP the freeze ends at 0 MP, {ended - begun} frames on; then Down+B does nothing but the "
-                  "refusal sound")
+            print(f"ok: on 10 MP the freeze ends at 0 MP, {ended - begun} frames on, \"{OUT_OF_MAGIC}\" below the HUD "
+                  "and no box; then Down+B does nothing but the refusal sound")
 
         if args.wants("boss"):
             start()
@@ -606,12 +657,9 @@ def main():
             boss = ram(SPRITE_ENTITIES, 8).index(RIPASHEIKU)
             for _ in range(3):                                          # a shot's knockback can take the press
                 use()
-                try:
-                    until("the Hour Glass's line", lambda: ram(MESSAGE_ID) == USED_HOUR_GLASS, 60)
+                if state()["glass_running"]:
                     break
-                except AssertionError:
-                    pass
-            dismiss(USED_HOUR_GLASS)
+            assert state()["glass_running"] and not box_open(), state()
             assert ram(DURATION_HOUR_GLASS) in (FREEZE, FREEZE - 1)
             counter = ram(SPRITE_UPDATE_COUNTER)
             seen = set()                                                # his place, phase and its countdowns
@@ -643,11 +691,12 @@ def main():
             ended, cut_at = frame() - entered, ram(MP)
             s = state()
             assert 5 <= left <= 12 and ended <= 2 * SECOND and s["cuts"] == 1, (left, ended, s)
-            dismiss(HOUR_GLASS_GONE, 300)
+            said_below_the_hud(BOSSES)
+            shot("bosses-end-the-hour-glass")
             wait(GLASS_STEP * 2)
             assert ram(MP) == cut_at and not state()["glass_running"], (ram(MP), cut_at)
             print(f"ok: walking onto the boss's screen with {left} s of the Hour Glass left ends it within "
-                  f"{ended} frames (LimitItemDurations), and its MP stops")
+                  f"{ended} frames (LimitItemDurations), \"{BOSSES}\" below the HUD and no box, and its MP stops")
 
         if args.wants("elixir"):
             start()
@@ -747,8 +796,7 @@ def main():
             warp(shop, "spring", TRUNK, 0x20, 0x94, PALETTE_OUTSIDE, 1,
                  {SELECTED_ITEM: WING_BOOTS, NUMBER_OF_ITEMS: 0, QUESTS: 0x01, PLAYER_TITLE: 0, MP: FULL})
             lifted = state()["lift_frames"]                             # A held in flights so far: none runs
-            use()
-            dismiss(USED_WING_BOOTS)
+            turn_on()
             took_off = frame()
             assert ram(DURATION_WING_BOOTS) in (FLIGHT, FLIGHT - 1)
             hold, held = 40, {}                                         # pad button -> frame its hold was renewed
@@ -766,6 +814,20 @@ def main():
 
             def steer(x, target):
                 return {"dpright"} if x < target - 3 else {"dpleft"} if x > target + 3 else set()
+
+            replayed = 0                                                # frames of A held counted twice
+
+            def clear_in_flight():
+                """clear(), as a poke does it, counting the frames of A held its load plays again: the state comes
+                back to the save, MP with it, but lift_frames, TCP's, kept outside the state, has counted the
+                frames between the save and the load, and counts them again (#144's rule on pokes)."""
+                nonlocal replayed
+                path = out / "poke.cycstate"
+                saved, _ = batch(("recharge_state", {}), ("save_state", dict(path=str(path))))
+                fax_e2e.fixture(path, path, {SPRITE_ENTITIES + i: 0xFF for i in range(8)})
+                _, loaded = batch(("load_state", dict(path=str(path))), ("recharge_state", {}))
+                assert loaded["flight_next"] == saved["flight_next"], (saved, loaded)   # read before a frame of it
+                replayed += loaded["lift_frames"] - saved["lift_frames"]
             cleared = shaft_shot = None
             end = frame() + (FLIGHT + 2) * SECOND                     # frames, not reads: several can come in a frame
             while True:
@@ -775,7 +837,7 @@ def main():
                 screen, x, y = zp[SCREEN - SCREEN_READY], zp[PLAYER_X - SCREEN_READY], zp[PLAYER_Y - SCREEN_READY]
                 assert ram(DURATION_WING_BOOTS) < 0x80, f"the flight ran out at {place()}, x={x} y={y}"
                 if screen != cleared and screen != 0x25 and zp[0] == 0:   # not the man and his fountain
-                    clear()
+                    clear_in_flight()
                     cleared = screen
                 if screen == 0x24 and not shaft_shot and y < 160:
                     shot("spring-flight")
@@ -796,9 +858,10 @@ def main():
                 press(want, now)
             until("the landing", lambda: ram(PLAYER_FLAGS) & 0x05 == 0 and place() == (TRUNK, 0x25), 300)
             s, mp, f = snapshot()
-            landed, left, flown = f - took_off, ram(DURATION_WING_BOOTS), s["lift_frames"] - lifted
+            landed, left, flown = f - took_off, ram(DURATION_WING_BOOTS), s["lift_frames"] - lifted - replayed
             assert left < 0x80, "the flight ran out before the landing"
-            assert FULL - mp == flown // STEP, f"{FULL - mp} MP for {flown} frames of A held, at one every {STEP}"
+            assert FULL - mp == flown // STEP, \
+                f"{FULL - mp} MP for {flown} frames of A held ({replayed} more counted twice), at one every {STEP}"
             for _ in range(30):                                         # beside him, on the fountain's ledge
                 if ram(MESSAGE_ID) == HO_HO_HO:
                     break
@@ -808,10 +871,12 @@ def main():
                     continue
                 act("up", 4, 20)
             until("the Spring of Sky's man", lambda: ram(MESSAGE_ID) == HO_HO_HO, 300)
+            # The walk to him took none: read as he speaks, since the A that closes his last page is still down
+            # for a frame or two of play, which with the boots on is flight.
+            assert ram(MP) == mp and state()["boots_running"], (ram(MP), mp)
             shot("spring-of-sky")
             page_through()
             assert ram(QUESTS) & QUEST_SPRING_OF_SKY, "the Spring of Sky's man woke"
-            assert ram(MP) == mp and state()["boots_running"], (ram(MP), mp)  # the walk to him took none
             print(f"ok: the Spring of Sky: from Trunk $20's floor to the man in $25 in {landed} frames "
                   f"({landed / SECOND:.1f} of the game's seconds), {flown} of them with A held, for {FULL - mp} MP, "
                   f"with {left} s of a Novice's {FLIGHT} s flight left ({mp} MP); none on the walk to him")
@@ -845,9 +910,8 @@ def main():
             assert s["boots_running"] == 1 and ram(PLAYER_STATUS) & 0x80 and f_after <= left_before, (s, left_before)
             assert mp_after <= mp_before, (mp_before, mp_after)
             poke({MP: 1})
-            until("The power of the Wing Boots is gone.", lambda: ram(MESSAGE_ID) == WING_BOOTS_GONE, 2 * STEP)
+            said_below_the_hud(OUT_OF_MAGIC, 2 * STEP)
             fax_e2e.let_go()
-            page_through()
             print(f"ok: a Guru travel journey from Eolis to Apolune keeps the flight ({mp_before} MP before, "
                   f"{mp_after} after), still taking MP on schedule while A is held, until it runs out")
 
@@ -888,8 +952,7 @@ def main():
             assert "recharge.wingboots" not in rewritten and "recharge.hourglass" not in rewritten, rewritten
             assert rewritten.get("recharge.elixir") == "spent", rewritten
             poke({MP: FULL})
-            use()
-            dismiss(USED_WING_BOOTS)
+            turn_on()
             assert state()["boots_running"], state()
             print("ok: a Guru's save writes nothing of the Wing Boots or the Hour Glass; a file with #27's cooldowns "
                   "continues with nothing running and the pair flying at once, a spent Elixir still spent, and its "
@@ -936,6 +999,11 @@ def main():
             counted = ram(DURATION_WING_BOOTS)
             wait(3 * SECOND)
             assert ram(MP) == FULL and ram(DURATION_WING_BOOTS) <= counted - 3, (ram(MP), ram(DURATION_WING_BOOTS))
+            poke({DURATION_WING_BOOTS: 0})                              # its last second
+            until("The power of the Wing Boots is gone.", lambda: ram(MESSAGE_ID) == WING_BOOTS_GONE, 2 * SECOND)
+            type_out("the line to type out", 600)
+            shot("original-boots-gone")
+            page_through()
             glass = out / "glass-original.cycstate"
             fixture(town, glass, {HP: 0x50, HP_FRACTION: 0, MP: FULL, SELECTED_ITEM: HOUR_GLASS, NUMBER_OF_ITEMS: 0,
                                   **no_one})
@@ -946,16 +1014,18 @@ def main():
             assert ram(HP) == 0x28 and items() == ([], NO_ITEM) and ram(DURATION_HOUR_GLASS) in (15, 14), ram(HP)
             wait(SECOND)
             assert ram(MP) == FULL, ram(MP)
+            poke({DURATION_HOUR_GLASS: 0})
+            dismiss(HOUR_GLASS_GONE, 2 * SECOND)
             print("ok: with the remaster off, a Novice's Wing Boots fly 40 s, counting down with A up, take no MP "
-                  "and are used up, and the Hour Glass halves HP and is used up, as in the original")
+                  "and are used up, and the Hour Glass halves HP and is used up, as in the original, each use and "
+                  "each end in its box")
         if args.wants("boots-a"):
             # 16. The Wing Boots take MP only while A is held (#148).
             start()
             warp(shop, "boots-a", EOLIS, 1, 0x99, PALETTE_EOLIS, 0,
                  {SELECTED_ITEM: WING_BOOTS, NUMBER_OF_ITEMS: 0, PLAYER_TITLE: 0, MP: FULL})
             clear()
-            use()
-            dismiss(USED_WING_BOOTS)
+            turn_on()
             wait(4)
             s0, mp0, f0 = snapshot()
             x0, floor = ram(PLAYER_X), ram(PLAYER_Y)
@@ -1009,28 +1079,91 @@ def main():
             fax_e2e.let_go()
             print(f"ok: A held on the ground: he jumps to y {min(ys)} (the floor at {floor}), sinks back and stands, "
                   f"and MP goes on schedule all the while")
-            # Out of MP in the air: the game's own line.
+            # Out of MP in the air: "Out of magic" below the HUD, and he falls on.
             poke({MP: 2})
             s5, mp5, _ = snapshot()
             assert mp5 == 2 and s5["flight_left"] == s5["flight_next"] + STEP and s5["boots_running"], s5
             fly_on()
             wait(8)
             tcp("action", name="up", frames=FLY)
-            until("The power of the Wing Boots is gone.", lambda: ram(MESSAGE_ID) == WING_BOOTS_GONE,
-                  s5["flight_left"] + 60)
+            until("the flight's end", lambda: not state()["boots_running"], s5["flight_left"] + 60)
             s6, mp6, _ = snapshot()
             y6 = ram(PLAYER_Y)
-            assert mp6 == 0 and not s6["boots_running"] and s6["boots_landed"] == 0 and y6 < floor, (s6, y6)
+            assert mp6 == 0 and s6["boots_landed"] == 0 and y6 < floor, (s6, y6)
             assert s6["lift_frames"] - s5["lift_frames"] == s5["flight_left"], (s5, s6)
             assert not ram(PLAYER_STATUS) & 0x80, ram(PLAYER_STATUS)
+            said_below_the_hud(OUT_OF_MAGIC)
+            shot("boots-out-of-magic-mid-flight")
+            ys = [ram(PLAYER_Y)]
+            for _ in range(4):                                          # A and Up still held: he falls all the same
+                wait(2)
+                ys.append(ram(PLAYER_Y))
+                assert not box_open() and state()["notice"] == OUT_OF_MAGIC, state()
+            assert ys[-1] > y6 and ys == sorted(ys), (y6, ys)
             act("up", 1, 0)
             fax_e2e.let_go()
-            type_out("the line to type out", 600)
-            shot("boots-gone-mid-flight")
-            page_through()
             assert state()["boots_ready"] and items() == ([], WING_BOOTS), (state(), items())
             print(f"ok: out of MP {floor - y6} pixels up, after {s5['flight_left']} frames of A held on its last "
-                  f"2 MP, the game's own line ends the flight")
+                  f"2 MP, the flight ends: \"{OUT_OF_MAGIC}\" below the HUD, no box, and he falls on (y {ys})")
+        if args.wants("lessons"):
+            # 17. Each item's lesson, at its first use ever (#151): a fresh install's, with no
+            # faxanadu_recharge.txt.
+            learned = out / "game" / fax_e2e.LEARNED[0]
+            learned.unlink()
+            start()
+            s = state()
+            assert not s["boots_taught"] and not s["glass_taught"], s
+            warp(shop, "lessons", EOLIS, 1, 0x99, PALETTE_EOLIS, 0,
+                 {SELECTED_ITEM: WING_BOOTS, ITEM_INVENTORY: HOUR_GLASS, NUMBER_OF_ITEMS: 1, PLAYER_TITLE: 0,
+                  MP: FULL})
+            clear()
+
+            def lesson(key, line, name):
+                """Down+B, the item's first use: its lesson in the box, in place of "I've used ...", then the run."""
+                poke({SOUND_ASKED: 0})
+                use()
+                until(f"the {name}'s lesson", lambda: ram(MESSAGE_ID) == LESSON_LINE, 120)
+                s = state()
+                assert box_open() and s["talk"] == 2 and s["line"] == line and not s[key], s   # the run comes after
+                type_out("the lesson to type out", 600)
+                shot(f"lesson-{name}")
+                page_through()
+                until("the run, after the lesson", lambda: state()[key], 60)
+                assert ram(SOUND_ASKED) == ITEM_SOUND, ram(SOUND_ASKED)
+                return state()
+
+            s = lesson("boots_running", BOOTS_LESSON, "wing-boots")
+            assert s["boots_taught"] and not s["glass_taught"] and s["boots_lessons"] == 1 and s["quiet_uses"] == 0, s
+            assert learned.read_text() == "recharge.boots_taught\n", learned.read_text()
+            landed_quietly("boots_running", "boots_landed")
+            turn_on()
+            landed_quietly("boots_running", "boots_landed")
+            print("ok: the Wing Boots' first use says their lesson in its box, in place of \"I've used Wing Boots.\", "
+                  "then they fly; the next turn them on and off with no box")
+            warp(shop, "lessons-glass", EOLIS, 1, 0x99, PALETTE_EOLIS, 0,   # walked out: the box shows the Hour Glass
+                 {SELECTED_ITEM: HOUR_GLASS, ITEM_INVENTORY: WING_BOOTS, NUMBER_OF_ITEMS: 1, PLAYER_TITLE: 0,
+                  MP: FULL})
+            clear()
+            s = lesson("glass_running", GLASS_LESSON, "hour-glass")
+            assert s["glass_taught"] and s["glass_lessons"] == 1 and s["boots_lessons"] == 1, s
+            assert learned.read_text() == "recharge.boots_taught\nrecharge.glass_taught\n", learned.read_text()
+            landed_quietly("glass_running", "glass_landed")
+            turn_on("glass_running")
+            print("ok: the Hour Glass's first use says its lesson, then it freezes; the next shows no box")
+            game.close()
+            start()
+            s = state()
+            assert s["boots_taught"] and s["glass_taught"], s
+            warp(shop, "lessons-again", EOLIS, 1, 0x99, PALETTE_EOLIS, 0,
+                 {SELECTED_ITEM: WING_BOOTS, ITEM_INVENTORY: HOUR_GLASS, NUMBER_OF_ITEMS: 1, PLAYER_TITLE: 0,
+                  MP: FULL})
+            clear()
+            turn_on()
+            poke({SELECTED_ITEM: HOUR_GLASS, ITEM_INVENTORY: WING_BOOTS})
+            turn_on("glass_running")
+            s = state()
+            assert s["boots_lessons"] == s["glass_lessons"] == 0 and s["quiet_uses"] == 2, s
+            print("ok: after a restart neither lesson is said again (faxanadu_recharge.txt): both turn on with no box")
         print("screenshots:", ", ".join(game.shots))
     except BaseException:
         if game.running():

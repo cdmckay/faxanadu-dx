@@ -30,13 +30,13 @@ import sys
 import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import Game, batch, box_open, fixture, page_through, parse_args, ram, tcp, until, wait  # noqa: E402
+from fax_e2e import Game, batch, box_open, fixture, parse_args, ram, tcp, until, wait  # noqa: E402
 
 PARTS = ("cost", "short", "drain", "original")
 PACKAGE = ("faxanadu.dx", "dx")
 MP, SELECTED_MAGIC, CAST_MAGIC_TYPE = 0x39A, 0x3C0, 0x2B3
 DELUGE, THUNDER, FIRE, DEATH, TILTE, NO_SPELL = 0, 1, 2, 3, 4, 0xFF
-SELECTED_ITEM, HOUR_GLASS, PLAYER_FLAGS, MESSAGE_ID, USED_HOUR_GLASS = 0x3C1, 0x0D, 0xA4, 0x213, 0xAC
+SELECTED_ITEM, HOUR_GLASS, PLAYER_FLAGS = 0x3C1, 0x0D, 0xA4
 GLASS_STEP = 24                                            # fax_recharge.c: GLASS_FRAMES_PER_MP
 NAMES = ("deluge", "thunder", "fire", "death", "tilte")
 COSTS = (2, 4, 6, 10, 16)                                  # MAGIC_COSTS ($B7A9, bank 14)
@@ -247,9 +247,8 @@ def main():
             tcp("action", name="down", frames=60)                    # Down+B, the selected item
             wait(6)
             tcp("action", name="b", frames=4)
-            until("I've used Hour Glass.", lambda: ram(MESSAGE_ID) == USED_HOUR_GLASS, 120)
-            page_through("the box to close", lambda: not box_open(), 3000)
-            assert tcp("recharge_state")["glass_running"], tcp("recharge_state")
+            until("the freeze", lambda: tcp("recharge_state")["glass_running"], 120)   # no box (#151)
+            assert not box_open(), "Down+B shows no box"
             light = seen = None
             for _ in range(3):
                 start = ram(MP)

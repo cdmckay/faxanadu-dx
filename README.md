@@ -164,10 +164,14 @@ opens it too.
   first, up to 80 as your title rises; walking, standing or falling with them
   on costs nothing. The Hour Glass freezes enemies for its 15 seconds for
   40 MP, and no longer costs half your HP. Use either again to end it early;
-  with no MP, they do nothing. There's no cooldown: they work again as soon
-  as you have MP, and T: on the status bar counts the selected one down. The
-  Elixir stays with you after it revives you, and a Guru recharges it and
-  tells you so; the first Guru you bring it to tells you he can.
+  with no MP, they do nothing. Turning one on or off shows no text box, just
+  its sound and the gold frame on the item box, so play never stops; when
+  one ends without you, a short line below the status bar says why ("Out of
+  magic"), and the first use of each explains it once. There's no cooldown:
+  they work again as soon as you have MP, and T: on the status bar counts the
+  selected one down. The Elixir stays with you after it revives you, and a
+  Guru recharges it and tells you so; the first Guru you bring it to tells
+  you he can.
 - **Found, not bought.** Since the Wing Boots, the Hour Glass and the Elixir
   stay with you, no shop sells them any more: they're upgrades you find. The
   Wing Boots come only from the Dwarf at the top of the Tower of Fortress,

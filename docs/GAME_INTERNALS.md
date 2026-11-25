@@ -251,7 +251,8 @@ message therefore starts at `$B45B` with ID `$C3`. The remaster's slot there
 is 48 bytes (`$B45B-$B48A`, all the override budget allows), so a line of
 its own is at most 47 bytes, newlines included, before its `$FF`: four full
 rows of 16 do not fit. The Elixir lines were cut to fit ("Return whenever it
-is used." did not).
+is used." did not), and the Wing Boots' and the Hour Glass's lessons (#151)
+were written to it: 38 and 41 bytes.
 
 Encoding: `$21-$7E` ASCII, `$FD` space, `$FE` newline (ignored at the start
 of a line), `$FC` pause, `$FB` the player's title, `$FF` end.
@@ -477,7 +478,8 @@ What a feature can rely on, and the traps:
   (its 48-byte line slot and 7 step bytes), the Taller dagger 1, and Save
   files shares the slot and adds 5 (4 step bytes and the menu's operand), or
   8 if Guru travel's steps are not served (its own 3-byte SAY): 61 to 64 of
-  64. Block, the quest log, Recharging items' Elixir lines, the Magician's
+  64. Block, the quest log, Recharging items' Elixir lines and its items'
+  lessons, the Magician's
   lesson and the Potion Sellers borrow Guru travel's SAY step and slot (the
   lesson and the Potion Sellers its ASK step too), and Quick shops and Double
   gold take none. `tools/check_allocations.py` counts every byte claimed in
@@ -3738,11 +3740,25 @@ jumping or falling, `Player_Flags & $05`):
 - `Player_UseHourGlass` (`$C5C8`): script `$82`, `JSR Player_ClearSelectedItem`
   at `$C5D0`, sound `$1A`, halves HP (`LSR Player_HP_U`, `ROR Player_HP_L`),
   `DurationHourGlass` = 15, music `$0B`.
+- Each routine opens with its script: `LDA #$83` (`#$82`), `JSR
+  MMC1_LoadBankAndJump` (`$F859`) and its three inline bytes (`$0C`, then
+  `IScripts_Begin` - 1, `$8241`), which return to `@_afterFarJump`, the `JSR
+  Player_ClearSelectedItem` (`$C581`, `$C5D0`). So a hook at the routine's
+  entry that pushes `$C580` (`$C5CF`) and returns 1 skips the script and
+  nothing else: no box, and the sound, the duration and the music as ever
+  (Recharging items, #151). The scripts are 4 bytes each:
+  `ISCRIPT_USED_HOURGLASS` (`$A670`) `00 01 AC 00` and `ISCRIPT_USED_WINGBOOTS`
+  (`$A674`) `00 01 AD 00`, `GENERIC` then `SHOW_UNSKIPPABLE_MESSAGE` and `END`;
+  `IScripts_Begin` starts each at `IScriptOffset` 1, so the message's action
+  is at `$A671` (`$A675`).
 - Every main-loop frame `GameLoop_CountdownItems` (`$C88F`) runs
   `Game_DecHourGlassDuration`, `Game_DecWingBootsDuration`, then the Glove's
   and the Ointment's. Each takes a second off on the game's second, so a
   duration of N lasts between N and N+1 seconds; wrapping to `$FF` runs "The
-  power of the Wing Boots (Hour Glass) is gone." (messages `$C0`, `$C1`).
+  power of the Wing Boots (Hour Glass) is gone." (messages `$C0`, `$C1`;
+  scripts `$96` at `$A6C0`, `$97` at `$A6C4`, `00 01 C0 00` and `00 01 C1
+  00`), a box that stops play until A, as every end does: Down+B again (with
+  the remaster), MP, the 15 s, or a boss's screen.
 - The two countdowns at the game's second, byte for byte:
   `Game_DecWingBootsDuration` (`$C59D`) is `LDA DurationWingBoots`, `BMI
   @_return`, `LDA Player_StatusFlag`, `ORA #$80`, `STA`, then at `$C5A8` `LDA
@@ -3754,8 +3770,18 @@ jumping or falling, `Player_Flags & $05`):
   @_return`, else script `$97` and `Music_Current` = `Areas_DefaultMusic`.
   So a site at either `LDA InterruptCounter` runs once a main-loop frame
   while that item runs and decides its second: an RTS skips it, and a jump
-  to the `DEC` with the duration at 0 ends the item with the game's own line
-  (Recharging items does both).
+  to the `DEC` with the duration at 0 ends the item through the game's own
+  end (Recharging items does both).
+- Each end's script, byte for byte: the boots' `LDA #$96` at `$C5BF`, after
+  `@_wingBootsDone` has cleared `$80`, then the far jump and an `RTS` at
+  `$C5C7`; the Hour Glass's `LDA #$97` at `$C5FB`, the far jump, then
+  `@_afterFarJump` (`$C603`), `LDA Areas_DefaultMusic`, `STA Music_Current`,
+  `RTS`. A site at `$C5BF` that returns 1 is that `RTS`; one at `$C5FB` that
+  pushes `$C602` goes on to the music. Every end of either run reaches
+  these, and nothing else does: `Game_ClearTimedItems` (a death, a new
+  game) sets the durations to `$FF` with no script. With the remaster the
+  scripts are skipped there, and an end the player did not cause says so
+  below the HUD instead (Recharging items, #151).
 - `Player_UseHourGlass`'s cost is `LSR Player_HP_U`, `ROR Player_HP_L` at
   `$C5D8`, then `JSR UI_DrawPlayerHP` (`$C0BD`) at `$C5DE`, `LDA #$0F`, `STA
   DurationHourGlass`, `LDA #$0B`, `STA Music_Current`.
@@ -3888,10 +3914,13 @@ the enemies of `$20`, `$23` and `$24` cleared, it takes about 1,035 frames
 (16 of the game's seconds) from leaving the message box to landing by him, so
 #27's lowest band (30 s) was enough, with 15 s to spare. The original gave a
 Novice 40 s. Flying on MP (#124), a Novice's full bar flies 40 s of A held
-(#148), and the climb takes about 30 of its 80 MP: 979 frames in the
-end-to-end test, 963 of them with A held, for 30 MP at one every 32. The
+(#148), and the climb takes about 30 of its 80 MP: 975 frames in the
+end-to-end test, 957 of them with A held, for 29 MP at one every 32. The
 drop onto the man's ledge and the walk to him, A up, take none. So he needs
-well under half a bar.
+well under half a bar. (The count was 963 for 30 MP while the flight began
+after "I've used Wing Boots.": the A that closed it was still down for a
+few frames of flight, and the frames each mid-flight poke plays again were
+counted twice. #151 removed the one and the test now subtracts the other.)
 
 The dialogue also says the Wing Boots are needed "to get to the misty town of
 Victim" (Mist `$22` and `$25` lead into it). One candidate: the ladder at the
@@ -4654,7 +4683,8 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   boxes; a box is open by `TextBox_Closed` and the nametable together
   (`fax_text_box_showing`; see *The text box*). Its save-state record keeps
   the banner as it was. Its drawing, `fax_banner_draw`, takes any line, so
-  Slain by draws in the same box.
+  Slain by draws in the same box, and so does Recharging items' notice of a
+  run's end (#151).
 
 - **Slain by** (`fax_slain.c`, drawn by `fax_banner.c`). When a hit takes the
   hero's last HP, the banner says what it came from, "Slain by a Sugata", from
@@ -4781,9 +4811,10 @@ one of them since #110, so the remaster always plays in its 424x240 view.
 - **Recharging items** (`fax_recharge.c`, with the use-up list in
   `fax_items.h`). The Wing Boots and the Hour Glass are kept, and both run on
   MP with no cooldown (#124, after #27's 60 s cooldowns), the Wing Boots only
-  while A is held (#148), and the Elixir is kept and a Guru charges it
-  again. Its sites are in the fixed bank, but for `$826E` in bank 12
-  (below). The costs are one table and two constants at
+  while A is held (#148), with no box to turn either on or off (#151), and
+  the Elixir is kept and a Guru charges it again. Its sites are in the
+  fixed bank, but for `$826E` in bank 12 (below). The costs are one table
+  and two constants at
   the top of `fax_recharge.c`, in played frames (a pass of the main loop) a
   MP, so every cost is exact: the Wing Boots take an MP every 32, 40, 48 or
   64 frames of A held by title band (2, 1.6, 1.33 and 1 MP a second of the
@@ -4795,16 +4826,34 @@ one of them since #110, so the remaster always plays in its 424x240 view.
     running is ended, at this pass's countdown (`GameLoop_CheckUseCurrentItem`
     comes before `GameLoop_CountdownItems`), so Down+B again lands a flight
     (in the air with A held, or standing: *Using them*) or ends a freeze,
-    with the game's own line. With 0 MP either plays the "invalid choice"
-    sound (`$0D`, `Sound_PlayEffect` in a committed call), as a spell he
-    can't afford does nothing. Both return to the main loop as the routine's
-    RTS would.
+    with the item's sound (`$1A`, in a committed call) and no box. With 0 MP
+    either plays the "invalid choice" sound (`$0D`, `Sound_PlayEffect` in a
+    committed call), as a spell he can't afford does nothing. Both return to
+    the main loop as the routine's RTS would. Otherwise the item turns on:
+    the site pushes `$C580` (`$C5CF`) and returns 1, so the routine goes on
+    past its script, "I've used ...", to its `JSR Player_ClearSelectedItem`
+    (*Using them*), and play goes on with no box; a notice still showing
+    (below) is put away. Use item (#147) presses Down+B for
+    `GameLoop_CheckUseCurrentItem`, so it reaches the same routines.
+  - **The lessons.** The first use of each, once ever, still shows a box: the
+    site returns 0 and leaves the item's lesson waiting for its script's
+    message (`$A675`, `$A671`), which the hook at `$826E` (below) points at
+    Guru travel's SAY step with the lesson in message `$C3`'s slot, coming
+    back past the message, at the script's `END`. "Hold A to fly. / Flying
+    uses / your magic." in place of "I've used Wing Boots.", "Time stops for /
+    enemies, using / your magic." in place of the Hour Glass's; the item
+    turns on as the box closes, as in the original. That each was said is a
+    named field, `recharge.boots_taught` and `recharge.glass_taught`, kept as
+    a line in `faxanadu_recharge.txt` beside the game (`fax_remember.c`, as
+    Block keeps `faxanadu_block.txt`), read when the feature comes on. With
+    saves off they are said once a session; if the slot's overrides cannot
+    be set, the game's own line shows and later uses show no box. The
+    end-to-end tests' games start with both learned (`fax_e2e.LEARNED`).
   - `Player_ClearSelectedItem` (`$C4BF`), shared with reusable tools: skipped
     when the JSR came from `$C581` or `$C5D0`, so the item stays selected and
     drawn. `fax_items.h` lists every caller and who keeps its item.
-  - The `STA DurationWingBoots` at `$C592`: the flight begins, after its
-    line, and A becomes its seconds on the MP there is, which
-    `UI_DrawTimeValue` draws.
+  - The `STA DurationWingBoots` at `$C592`: the flight begins, and A becomes
+    its seconds on the MP there is, which `UI_DrawTimeValue` draws.
   - The `LSR Player_HP_U` at `$C5D8`: the freeze begins, and the site jumps
     to the `JSR UI_DrawPlayerHP` at `$C5DE` (push `$C5DD`, return 1), past the
     original's halving: the freeze costs no HP.
@@ -4824,14 +4873,33 @@ one of them since #110, so the remaster always plays in its 424x240 view.
     frame that has, as MP from kills draws its bars), the duration is set to the
     seconds left, rounded up, and the site returns 1, an RTS, so the game's
     own second never ticks. At the run's end (0 MP, the freeze's 15 s, or
-    Down+B) it sets the duration to 0 and jumps to the `DEC` (`$C5F6`,
-    `$C5AE`), which wraps it to `$FF`: the game's own end, "The power of the
-    ... is gone." and, for the Hour Glass, the area's music. A
-    `DurationHourGlass` it did not set is `LimitItemDurations`' 0 on a boss's
-    screen: the freeze stops taking MP, and the site returns 0, so the
-    game's own second ends it within a second, as in the original. Both
-    running at once drain together, and each ends on the frame it finds MP at
-    0 (the Hour Glass's site runs first in a pass).
+    Down+B) it notes why and sets the duration to 0 and jumps to the `DEC`
+    (`$C5F6`, `$C5AE`), which wraps it to `$FF`: the game's own end, and, for
+    the Hour Glass, the area's music. A `DurationHourGlass` it did not set is
+    `LimitItemDurations`' 0 on a boss's screen: the freeze stops taking MP,
+    the cut is noted, and the site returns 0, so the game's own second ends
+    it within a second, as in the original. Both running at once drain
+    together, and each ends on the frame it finds MP at 0 (the Hour Glass's
+    site runs first in a pass). A freeze whose last MP goes on its 15 s's
+    last frame ended for its time.
+  - The "... is gone" scripts' `LDA #$96` at `$C5BF` and `LDA #$97` at `$C5FB`
+    (*Using them*), which every end reaches: the script is skipped (an RTS for
+    the boots; for the Hour Glass, push `$C602` and return 1, to the area's
+    music), so no box. Down+B, the player's own doing, says nothing more. Any
+    other end says why below the HUD, without stopping play: "Out of magic"
+    (either item, or both: one line, though the freeze ends a frame after a
+    flight that took the last MP, its site running first), "The Hour Glass ran
+    out" (its 15 s), "Bosses end the Hour Glass" (`LimitItemDurations`), and
+    "The Wing Boots ran out" for a run on the game's own timer, which only a
+    save state made before this feature has. The notice is drawn in Zone
+    names' box (`fax_banner_draw`), centred below the HUD, after the quest
+    log's banner and before Speaker names, and puts away a zone name showing
+    (`fax_banner_hide`), as Slain by does. It fades in, holds and fades out
+    over 160 played frames (8, 120, 32), counted at `GameLoop_CountdownItems`,
+    so it holds through a pause, a box or a menu; it hides behind the game's
+    boxes (`fax_text_box_showing`) and while the hero lies dead, and a spawn
+    (`Game_ClearTimedItems`) or the title puts it away. Its font is the one
+    Zone names loads.
   - `GameLoop_CountdownItems`, before the game's own countdowns: T: shows the
     selected item's seconds left while it runs, the flight's or the freeze's
     at the MP there is and all that drains it, rounded up (a full bar's 40 s
@@ -4922,16 +4990,19 @@ one of them since #110, so the remaster always plays in its 424x240 view.
     continuing spawns the hero with no timed item running, and neither has a
     cooldown. #27's `recharge.wingboots` and `recharge.hourglass` (seconds
     until ready) are read no more, and its next write drops them from a file.
-  - Its hooks do nothing inside Seamless's isolated simulations. Its 20-byte
-    save-state record, version 3 (a version; the flight running, its frames
+  - Its hooks do nothing inside Seamless's isolated simulations. Its 24-byte
+    save-state record, version 4 (a version; the flight running, its frames
     to the next MP, and whether it is ending; the freeze running, ending, its
     frames so far, to its next MP, and the `DurationHourGlass` it set; the MP
     bar still to draw; the Elixir spent, whether a Guru has told the hero,
-    and the Guru's line: waiting or showing, which, the action it goes
-    before, and where the script goes back to) is its whole state while
-    playing. A state saved while the line shows gets it back in the slot
-    after the load (`fax_recharge_loaded`, after Guru travel's record has put
-    its own last line there). Version 2 (17 bytes, with the cooldowns and a
+    and the line, a Guru's or a lesson: waiting or showing, which, the action
+    it goes before, and where the script goes back to; why each run is
+    ending, which a boss's cut keeps for up to a second; the notice below the
+    HUD and its age) is its whole state while playing, with the lessons
+    learned in `faxanadu_recharge.txt`. A state saved while a line shows gets
+    it back in the slot after the load (`fax_recharge_loaded`, after Guru
+    travel's record has put its own last line there). Version 3 (#124, 20
+    bytes, before the notice) loads with no notice. Version 2 (17 bytes, with the cooldowns and a
     continued file's cooldowns) and version 1 (9 bytes, before the lines,
     nothing told) still load: the cooldowns are dropped, and a run going on
     the game's timer goes on as a run on MP, once RAM is in
@@ -5024,7 +5095,8 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   same box. The line names the binding of the device last used. That it was
   said is a named field (`block.taught`) behind `remembered()`/`remember()`:
   a line in `faxanadu_block.txt` beside the game until save slots keep named
-  fields. Its save-state record is what the hero owned and whether the line
+  fields (`fax_remember.c`, which Recharging items' lessons share with
+  their own file). Its save-state record is what the hero owned and whether the line
   is showing. The tutorial sets the SAY step's and the slot's read overrides
   itself, so it speaks with Guru travel off too.
   It shows. With any shield-slot item, in any pose, Block going up makes the

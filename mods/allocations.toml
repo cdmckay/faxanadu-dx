@@ -456,12 +456,13 @@ package = "faxanadu.dx"
 plugin = "faxanadu.recharge"
 source = "src/fax_recharge.c"
 hooks = "faxanadu.recharge."
-# A Guru's Elixir line borrows Guru travel's SAY step and line slot
-# (fax_travel.h), as Block's tutorial and the quest log do, through the same
-# read overrides: no override of its own, so the budget stays at 64.
+# A Guru's Elixir line, and each timed item's lesson at its first use,
+# borrow Guru travel's SAY step and line slot (fax_travel.h), as Block's
+# tutorial and the quest log do, through the same read overrides: no override
+# of its own, so the budget stays at 64.
 rom = [
-    { bank = 12, start = 0xAE00, end = 0xAE03, use = "Guru travel's SAY step, to show a Guru's Elixir line" },
-    { bank = 13, start = 0xB45B, end = 0xB48B, use = "message $C3, the line slot, for a Guru's Elixir line" },
+    { bank = 12, start = 0xAE00, end = 0xAE03, use = "Guru travel's SAY step, to show a Guru's Elixir line or an item's lesson" },
+    { bank = 13, start = 0xB45B, end = 0xB48B, use = "message $C3, the line slot, for a Guru's Elixir line or an item's lesson" },
 ]
 # Writes DurationWingBoots (through A at its STA, then each frame of a
 # flight) and DurationHourGlass (each frame of a freeze), Player_MP (both
@@ -469,13 +470,21 @@ rom = [
 # SpecialItems' Elixir bit (when a Guru recharges it) and T:'s two tiles
 # through the PPU buffer, as UI_DrawTimeValue queues them; and the stack, a
 # return address as a JSR would push it, to jump past Player_UseHourGlass's
-# halving and into the two countdowns' DEC. Its site at
+# halving, past the two routines' use scripts (to $C581 and $C5D0), into the
+# two countdowns' DEC, and past the Hour Glass's "... is gone" script (to its
+# area music, $C603); the boots' one it skips with the RTS after it. A Down+B
+# that ends a run plays the item's sound ($1A, Sound_PlayEffect in a
+# committed call). Its site at
 # IScripts_InvokeNextAction ($826E) hears a Guru's first action, which Save
 # files and Guru travel leave where it is, has MP from kills (mana-refill,
 # fax_mana_guru) fill HP and MP there, and to show his Elixir line writes IScriptOrCHRAddr and IScriptOffset (to the SAY step, then
-# back). Keeps the fields recharge.elixir and recharge.elixir_told in the
-# file in play (fax_save.h), when Save files has one, and drops #27's
-# recharge.wingboots and recharge.hourglass from it.
+# back), and so too for an item's lesson at its use script's message. Keeps
+# the fields recharge.elixir and recharge.elixir_told in the file in play
+# (fax_save.h), when Save files has one, and drops #27's recharge.wingboots
+# and recharge.hourglass from it; and the lessons learned in
+# faxanadu_recharge.txt beside the game (fax_remember.h). Draws the end of a
+# run the player did not cause in Zone names' box (fax_banner_draw), and puts
+# away a zone name showing (fax_banner_hide).
 
 [[feature]]
 id = "charges"

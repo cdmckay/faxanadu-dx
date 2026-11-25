@@ -650,9 +650,9 @@ bank = 14
 bytes = "bc cc 02 b9 0e b6 85 ec a9 00 85 ed"   # Player_AddExperienceFromSprite: LDY CurrentSprites_Entities,X, LDA ENEMY_EXPERIENCE,Y
 
 # Recharging items (fax_recharge.c): the Wing Boots and the Hour Glass are kept,
-# the boots fly on MP and the glass's freeze drains HP, and the Elixir is kept
-# and a Guru charges it again, and says so. The sites are each routine's entry
-# unless noted.
+# the boots fly on MP and the glass's freeze drains it too, with no box to turn
+# either on or off, and the Elixir is kept and a Guru charges it again, and
+# says so. The sites are each routine's entry unless noted.
 
 [[mod_function_hook]]
 id = "faxanadu.recharge.elixir"
@@ -731,6 +731,18 @@ id = "faxanadu.recharge.guru"
 addr = 0x826e
 bank = 12
 bytes = "20 a4 87 aa bd 93 82 48 bd 7b 82 48"   # IScripts_InvokeNextAction: a Guru's first action charges the Elixir; it says so. Keep last at $826E
+
+[[mod_function_hook]]
+id = "faxanadu.recharge.boots-gone"
+addr = 0xc5bf
+bank = 15
+bytes = "a9 96 20 59 f8 0c 41 82 60 a9 82 20"   # @_wingBootsDone after it clears $80: LDA #$96, JSR MMC1_LoadBankAndJump ("... is gone"), RTS
+
+[[mod_function_hook]]
+id = "faxanadu.recharge.glass-gone"
+addr = 0xc5fb
+bank = 15
+bytes = "a9 97 20 59 f8 0c 41 82 ad d1 03 85"   # Game_DecHourGlassDuration, wrapped: LDA #$97, JSR MMC1_LoadBankAndJump ("... is gone")
 
 # Slain by (fax_slain.c): every loss of HP, and every sprite another spawns
 # (a shot, a rock). Both only observe.

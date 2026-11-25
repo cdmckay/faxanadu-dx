@@ -35,13 +35,13 @@
  * or the Battle Helmet's pickup, whose script runs before the helmet is
  * added), the script's end is steered to one more line naming the bound key,
  * in Guru travel's SAY step and message slot (fax_travel.h). That it has been
- * said is remembered (remembered()/remember(): a sidecar file until save
- * slots, #24, keep named fields), so it is said once. See
- * docs/GAME_INTERNALS.md. */
+ * said is remembered (remembered()/remember(): a line in faxanadu_block.txt,
+ * fax_remember.h, until save slots, #24, keep named fields), so it is said
+ * once. See docs/GAME_INTERNALS.md. */
 #include "fax_block.h"
+#include "fax_remember.h"
 #include "fax_travel.h"
 #include "cyc_mod.h"
-#include "cyc_host_extras.h"
 #include "mod_runtime.h"
 #include "mod_function_hooks.h"
 #include "mod_savestate.h"
@@ -348,64 +348,14 @@ static bool serve(void) {
 
 /* ---- what the game remembers: a seam for save slots ----
  *
- * Whether the line has been said is one named field of the player's progress.
- * Save slots (#24) will keep named fields in the save (fax_save_get/set);
- * until they land, a field that is set is a line naming it in
- * faxanadu_block.txt beside the game, as Guru travel keeps faxanadu_gurus.txt.
- * Only remembered() and remember() know where it lives: swap their bodies for
- * fax_save_get/set then. With saves off (--no-save) nothing is kept,
- * and the line is said once a session. */
-static bool sidecar_path(const char *name, char out[1100]) {
-#ifdef CYC_WITH_SDL
-    char *base = SDL_GetBasePath();
-    if (!base) return false;
-    int n = snprintf(out, 1100, "%s%s", base, name);
-    SDL_free(base);
-#else
-    int n = snprintf(out, 1100, "%s", name);
-#endif
-    return n > 0 && n < 1100;
-}
+ * Whether the line has been said is one named field of the player's progress,
+ * a line naming it in faxanadu_block.txt beside the game (fax_remember.h)
+ * until save slots (#24) keep named fields. Only remembered() and remember()
+ * know where it lives. With saves off (--no-save) nothing is kept, and the
+ * line is said once a session. */
 #define SIDECAR "faxanadu_block.txt"
-static bool remembered(const char *field) {
-    char path[1100], text[64];
-    bool found = false;
-    if (!cyc_host_saves_enabled() || !sidecar_path(SIDECAR, path)) return false;
-    FILE *f = fopen(path, "r");
-    if (!f) return false;
-    while (!found && fgets(text, sizeof text, f)) {
-        text[strcspn(text, "\r\n")] = 0;
-        found = !strcmp(text, field);
-    }
-    fclose(f);
-    return found;
-}
-static void remember(const char *field) {
-    char path[1100], temp[1120], kept[1024] = "", text[64];
-    if (remembered(field) || !cyc_host_saves_enabled() || !sidecar_path(SIDECAR, path)) return;
-    FILE *f = fopen(path, "r");                       /* the fields already kept, kept */
-    if (f) {
-        size_t n = 0;
-        while (fgets(text, sizeof text, f)) {
-            text[strcspn(text, "\r\n")] = 0;
-            size_t len = strlen(text);
-            if (len && n + len + 2 < sizeof kept) { memcpy(kept + n, text, len); n += len; kept[n++] = '\n'; kept[n] = 0; }
-        }
-        fclose(f);
-    }
-    snprintf(temp, sizeof temp, "%s.tmp", path);
-    f = fopen(temp, "w");
-    if (!f) return;
-    bool ok = fprintf(f, "%s%s\n", kept, field) > 0;
-    if (fclose(f) != 0) ok = false;
-    if (!ok) { remove(temp); return; }
-#ifdef _WIN32
-    extern bool faxanadu_replace_file(const char *, const char *);
-    if (!faxanadu_replace_file(temp, path)) remove(temp);
-#else
-    if (rename(temp, path) != 0) remove(temp);
-#endif
-}
+static bool remembered(const char *field) { return fax_remembered(SIDECAR, field); }
+static void remember(const char *field) { fax_remember(SIDECAR, field); }
 #define TAUGHT "block.taught"
 
 /* The script running is the Battle Helmet's pickup ("You got the Battle

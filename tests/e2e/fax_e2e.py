@@ -37,7 +37,8 @@ Game, one per test
     Game(build, rom, out, game_args=(), realtime=False, port=0), or Game.from_args(args)
         Checks the ROM is the original Faxanadu (USA), empties OUT, installs the
         build in OUT/game (install(): FaxanaduRecomp hard-linked, assets/ and
-        mods/ copied, a config.ini at window scale 1; sidecars such as
+        mods/ copied, a config.ini at window scale 1, and LEARNED, the Wing
+        Boots' and the Hour Glass's lessons already learned; sidecars such as
         faxanadu_gurus.txt and config.ini stay there) and opens OUT/game.log.
     .launch(*extra, at=None)
                       Start the game: FaxanaduRecomp ROM --hidden --tcp PORT, the
@@ -225,6 +226,10 @@ STOPPED_FRAMES = 6                         # frames without moving that walk() t
 LOADED_FRAMES = 2                          # frames a load_state that ends a batch lets run (batch())
 WAIT_CHUNK = 600                           # frames a wait command asks for at most (well inside .timeout)
 CONFIG = "[Display]\nWindowScale = 1\n"     # config.ini a test's game starts with; the game adds the rest
+# faxanadu_recharge.txt a test's game starts with: the Wing Boots' and the Hour
+# Glass's lessons learned, so their first Down+B shows no box, as every later
+# one (#151). tests/recharge/recharging_items.py's "lessons" removes it.
+LEARNED = ("faxanadu_recharge.txt", "recharge.boots_taught\nrecharge.glass_taught\n")
 QUICKACK = getattr(socket, "TCP_QUICKACK", None)   # Linux
 TEXTBOX_CLOSED = 0x20C                     # TextBox_Closed: 0 while a box is open
 MESSAGE_ID = 0x213                         # MessageID, Message_ProcessedLength, TextBox_MessagePaused
@@ -652,7 +657,8 @@ def install(build, folder):
     which plays them about 10% faster than separate copies; a copy if the
     link fails), assets/ and mods/ copied, and a config.ini with the window at
     scale 1: the hidden window's scaling blit is a tenth of a frame at 3.
-    Seamless's view is 424x240 at any window size, so it runs at scale 1 too."""
+    Seamless's view is 424x240 at any window size, so it runs at scale 1 too.
+    And LEARNED: the two timed items' lessons, said once ever, already said."""
     build, folder = Path(build), Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
     try:
@@ -662,6 +668,7 @@ def install(build, folder):
     for sub in ("assets", "mods"):
         shutil.copytree(build / sub, folder / sub)
     (folder / "config.ini").write_text(CONFIG)
+    (folder / LEARNED[0]).write_text(LEARNED[1])
 
 
 class _Line:

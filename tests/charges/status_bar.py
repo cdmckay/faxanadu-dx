@@ -52,7 +52,7 @@ SELECTED_ITEM, ITEM_INVENTORY, NUMBER_OF_ITEMS = 0x3C1, 0x3AD, 0x3C6
 SPECIAL_ITEMS, HP, HP_FRACTION, MP, MESSAGE_ID = 0x42C, 0x431, 0x432, 0x39A, 0x213
 PLAYER_FLAGS = 0xA4
 WING_BOOTS, HOUR_GLASS, NO_ITEM, BIT_ELIXIR = 0x0F, 0x0D, 0xFF, 0x08
-USED_HOUR_GLASS, USED_WING_BOOTS, USED_ELIXIR = 0xAC, 0xAD, 0xAF
+USED_ELIXIR = 0xAF                                          # "I've used Elixir."
 ELIXIR_LINE = 0xC3                                         # the slot a Guru's Elixir line shows from
 EOLIS, PALETTE_EOLIS = 0, 0x00
 
@@ -225,18 +225,16 @@ def main():
             act("b", 4, 30)
             print(f"ok: the Select menu stays on the room at x {x}, centred as before, and the Elixir stays")
             use()
-            until("the Wing Boots' line", lambda: ram(MESSAGE_ID) == USED_WING_BOOTS, 120)
+            until("the flight", lambda: recharge.state()["boots_running"] == 1, 60)   # no box (#151)
+            assert not box_open(), "Down+B shows no box"
             for _ in range(24):
                 s = charges()["elixir"]
                 assert s["charge"] == READY and s["shown"] and s["blink"] == 0, s
                 wait(2)
             look("boots-used", "colour")
-            page_through("the box to close", lambda: not box_open(), 3000)
-            assert recharge.state()["boots_running"] == 1, recharge.state()   # the flight begins after the line
             game.poke({SELECTED_ITEM: HOUR_GLASS, ITEM_INVENTORY: WING_BOOTS})   # the Select menu's swap
             use()
-            until("the Hour Glass's line", lambda: ram(MESSAGE_ID) == USED_HOUR_GLASS, 120)
-            page_through("the box to close", lambda: not box_open(), 3000)
+            until("the freeze", lambda: recharge.state()["glass_running"] == 1, 60)
             r = recharge.state()
             assert r["boots_running"] == 1 and r["glass_running"] == 1, r
             look("both-running", "colour")
