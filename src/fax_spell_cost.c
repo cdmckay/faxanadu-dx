@@ -20,10 +20,11 @@
  * recolored, those that show the fill's color on its four fill lines, so in
  * the frame or two before the game redraws the bar after MP changes nothing
  * is drawn where the bar shows no fill. Drawn over the status bar band
- * wherever Seamless put it (fax_world_hud_x), after the Elixir and before
- * every other feature's drawing, only while the frame shows the status bar
- * (fax_text_hud_showing), in its palette (UI_AttributeDataIndex) and with the
- * emphasis and greyscale its lines were drawn with.
+ * wherever Seamless put it (fax_world_hud_x), after the Elixir and the lit
+ * item box (fax_item_box.c) and before every other feature's drawing, only
+ * while the frame shows the status bar (fax_text_hud_showing), in its
+ * palette (UI_AttributeDataIndex) and with the emphasis and greyscale its
+ * lines were drawn with.
  *
  * No hooks, no ROM, no record, nothing written to the machine: it reads RAM,
  * the cart image's MAGIC_COSTS and the frame, and draws over the presented
