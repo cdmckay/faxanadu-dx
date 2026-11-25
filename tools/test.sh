@@ -250,6 +250,7 @@ E2E=(
   "found        tests/found/found_items.py --parts"
   "menu         tests/menu/select_menu.py --parts"
   "controls     tests/controls/controller_layout.py --parts"
+  "back-out     tests/controls/b_backs_out.py --parts"
 )
 # At most E2E_JOBS runs play at once (default: one a hardware thread; 0: all
 # at once): a game is uncapped and takes a whole thread, and more of them

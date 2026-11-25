@@ -225,7 +225,7 @@ bool fax_controls_settings_loaded(void) {
 
 /* A controller binding held on any open controller, as SDL reads it now
  * (a button, or an axis past half travel, the Map button's press point). */
-static bool pad_held(int pad) {
+bool fax_controls_pad_held(int pad) {
     for (int i = 0; i < SDL_NumJoysticks(); ++i) {
         SDL_GameController *c = SDL_GameControllerFromInstanceID(SDL_JoystickGetDeviceInstanceID(i));
         if (!c) continue;
@@ -243,7 +243,7 @@ static bool pad_held(int pad) {
 static bool select_is_the_maps(void) {
     const CycHostBinding *map = fax_map_binding();
     int select = cyc_window_bindings()->button[0][2].pad;   /* cyc_input.h: A B Select Start ... */
-    return map && *map->pad && *map->pad == select && pad_held(select);
+    return map && *map->pad && *map->pad == select && fax_controls_pad_held(select);
 }
 
 void fax_controls_power_on(void) {

@@ -980,6 +980,12 @@ rom = []
 # feature hooks, and never handles them. Writes only A, the byte each load
 # just read, so the joypad masks and Player_Flags stay the game's. No ROM, no
 # read overrides, no save-state record: a press lasts the frame it came in.
+# Outside play its controller button is the NES B (#160): its input callback
+# adds B to the pad byte for that press, and at Game_MainLoop's JSR
+# Player_CastMagic ($DB5F, fixed bank), which no other feature hooks, it
+# takes that B out of Joy1_ChangedButtonMask ($19), which the NMI's next read
+# rewrites whole, when a read inside GameLoop_UpdatePlayer (a door's line)
+# took it.
 
 [[feature]]
 id = "controls"
