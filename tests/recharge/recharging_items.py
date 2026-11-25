@@ -446,12 +446,16 @@ def main():
             assert s0["boots_running"] and s0["hud"] == FLIGHT and s0["hud_drawn"] == FLIGHT, s0
             assert items() == ([], WING_BOOTS) and s0["kept"] >= 1, items()
             begun = f0 - (FULL * STEP - s0["flight_left"])             # the flight's first frame, had A been down
-            low, sampled = mp0, 0
+            low, sampled, last = mp0, 0, f0
             while True:                                                 # the drain, and T:, as it flies
                 s, mp, f = snapshot()
                 if not s["boots_running"]:
-                    ended = f
+                    # The frame it was over at, as the game noted it: this read can come any number of frames
+                    # later (#155). After the last read that found it flying: this flight's end.
+                    ended = s["flight_ended"]
+                    assert ended > last, (ended, last)
                     break
+                last = f
                 assert f - begun == FULL * STEP - s["flight_left"], (s, f, begun)
                 assert mp == -(-s["flight_left"] // STEP) and mp <= low, (s, mp, low)
                 assert s["hud_drawn"] == -(-s["flight_left"] // SECOND), s
@@ -467,7 +471,7 @@ def main():
             until("The power of the Wing Boots is gone.", lambda: ram(MESSAGE_ID) == WING_BOOTS_GONE, 60)
             s = state()
             assert ram(MP) == 0 and s["boots_landed"] == 0 and not ram(PLAYER_STATUS) & 0x80, s
-            assert FULL * STEP <= ended - begun <= FULL * STEP + 2, (ended, begun)
+            assert ended - begun == FULL * STEP, (ended, begun)
             page_through()
             wait(4)
             s = state()

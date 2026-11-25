@@ -284,10 +284,11 @@ static unsigned flights, freezes, refused, kept, pickups, revives, guru_recharge
 static unsigned landings[TIMED], lines_said[LINES];
 static unsigned lift_frames, rest_frames;   /* TCP: a flight's played frames with A held, and without */
 static bool lifting;                        /* TCP: A held at the flight's last frame */
-/* For TCP: the frame boundary the last freeze was over at, as ping counts them. A freeze ends inside a frame,
- * whose number is cyc_ring_frame (the frames completed) while it runs, so this is the next. A test reads its
- * end here: a read that finds it over can come any number of frames later on a loaded machine (#144). */
-static unsigned long freeze_ended;
+/* For TCP: the frame boundaries the last freeze and the last flight were over at, as ping counts them. A run
+ * ends inside a frame, whose number is cyc_ring_frame (the frames completed) while it runs, so this is the
+ * next. A test reads its end here: a read that finds it over can come any number of frames later on a loaded
+ * machine (#144, #155). */
+static unsigned long freeze_ended, flight_ended;
 
 /* ---- the rules, on plain values ---- */
 
@@ -596,6 +597,7 @@ static int boots_second_hook(uint16_t addr) {
     if (mp != was) set_mp(mp);
     if (ends) {
         if (charge.flight.land) ++landings[BOOTS];
+        flight_ended = cyc_ring_frame + 1ul;
         charge.flight = (Flight){ 0 };
         cyc_mod_poke(DURATION_WING_BOOTS, 0);
         draw_hud(false);
@@ -908,7 +910,7 @@ static void deactivate(void) {
     flights = freezes = refused = kept = pickups = revives = guru_recharges = spawns = cuts = springs = 0;
     lift_frames = rest_frames = 0;
     lifting = false;
-    freeze_ended = 0;
+    freeze_ended = flight_ended = 0;
     memset(landings, 0, sizeof landings);
     memset(lines_said, 0, sizeof lines_said);
     hooks(false);
@@ -945,13 +947,16 @@ static void recharge_state(int id, const char *line) {
              rest_frames, lifting ? "true" : "false");
     /* The Elixir: spent, charged; the Guru's line: told, talk (0 none, 1 waiting, 2 showing), line (0 none, 1
      * restored, 2 can), how many of each he has said, and whether the lines are off (their overrides could not
-     * be set); the Elixirs the Spring of Trunk has spent; the frame the last freeze was over at (0: none yet). */
+     * be set); the Elixirs the Spring of Trunk has spent; the frames the last freeze and the last flight were
+     * over at (0: none yet). */
     snprintf(fields + n, sizeof fields - (size_t)n,
              ",\"elixir_spent\":%s,\"elixir_charged\":%s,\"elixir_told\":%s,\"talk\":%u,\"line\":%u,"
-             "\"restored_lines\":%u,\"can_lines\":%u,\"lines_failed\":%s,\"springs\":%u,\"freeze_ended\":%lu",
+             "\"restored_lines\":%u,\"can_lines\":%u,\"lines_failed\":%s,\"springs\":%u,\"freeze_ended\":%lu,"
+             "\"flight_ended\":%lu",
              charge.elixir_spent ? "true" : "false", q(SPECIAL_ITEMS) & BIT_ELIXIR ? "true" : "false",
              charge.elixir_told ? "true" : "false", talk.phase, talk.line, lines_said[LINE_RESTORED],
-             lines_said[LINE_CAN], lines_failed ? "true" : "false", springs, freeze_ended);
+             lines_said[LINE_CAN], lines_failed ? "true" : "false", springs, freeze_ended,
+             flight_ended);
     cyc_tcp_ok(id, fields);
 }
 void fax_recharge_tcp_setup(void) {
