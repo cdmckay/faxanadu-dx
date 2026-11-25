@@ -27,7 +27,7 @@ real SDL key and controller events.
    removed from the save state), picked up as the first shield-slot item: the
    line follows "I've got the Battle Helmet." Picked up again once taught:
    nothing.
-4. config.ini rebinds it (BlockKey = S, BlockButton = leftstick), and the
+4. config.ini rebinds it (BlockKey = G, BlockButton = leftstick), and the
    window writes the bindings back; the line names the device last used.
 5. With the remaster off in the mod selection, as the original, V does nothing.
 """
@@ -156,7 +156,7 @@ def main():
             if not g.running():
                 g.launch()
                 state = block()
-                assert state["enabled"] and state["binding"] == "V / B" and not state["taught"], state
+                assert state["enabled"] and state["binding"] == "V / RT" and not state["taught"], state
 
         if args.wants("stand"):
             game_up()
@@ -295,17 +295,17 @@ def main():
                 g.launch()
                 g.close()
             text = g.config.read_text()
-            assert re.search(r"^BlockKey = V$", text, re.M) and re.search(r"^BlockButton = b$", text, re.M), text
-            g.config.write_text(re.sub(r"^BlockButton = b$", "BlockButton = leftstick",
-                                       re.sub(r"^BlockKey = V$", "BlockKey = S", text, flags=re.M), flags=re.M))
+            assert re.search(r"^BlockKey = V$", text, re.M) and re.search(r"^BlockButton = righttrigger\+$", text, re.M), text
+            g.config.write_text(re.sub(r"^BlockButton = righttrigger\+$", "BlockButton = leftstick",
+                                       re.sub(r"^BlockKey = V$", "BlockKey = G", text, flags=re.M), flags=re.M))
             g.launch()
             state = block()
-            assert state["binding"] == "S / L3" and state["line"] == LINE.replace("V", "S"), state
+            assert state["binding"] == "G / L3" and state["line"] == LINE.replace("V", "G"), state
             g.load(shielded)
             g.tcp("key", name="V", frames=20)
             g.wait(6)
             assert not block()["raised"]
-            g.tcp("key", name="S", frames=20)
+            g.tcp("key", name="G", frames=20)
             g.wait(6)
             assert block()["raised"]
             g.wait(20)
@@ -315,8 +315,8 @@ def main():
             assert state["raised"] and state["line"] == "Hold L3 to raise\nyour shield\nagainst magic.", state
             g.close()
             text = g.config.read_text()
-            assert re.search(r"^BlockKey = S$", text, re.M) and re.search(r"^BlockButton = leftstick$", text, re.M), text
-            print("ok: BlockKey = S and BlockButton = leftstick move it to S and L3, stay in config.ini, "
+            assert re.search(r"^BlockKey = G$", text, re.M) and re.search(r"^BlockButton = leftstick$", text, re.M), text
+            print("ok: BlockKey = G and BlockButton = leftstick move it to G and L3, stay in config.ini, "
                   "and the line names the one last used")
 
         if args.wants("original"):
@@ -331,7 +331,7 @@ def main():
             target = g.out / "off.cycstate"
             fixture(cast, target, {SPRITE_Y + slot: HEAD_HEIGHT, SELECTED_SHIELD: SMALL})
             g.load(target)
-            g.tcp("key", name="S", frames=200)
+            g.tcp("key", name="G", frames=200)
             hp = g.hp()
             g.until("the shot to be gone", lambda: g.ram(ENTITIES + slot) != HOOD_MAGIC, 200)
             g.wait(10)

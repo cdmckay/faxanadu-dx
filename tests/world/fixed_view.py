@@ -14,8 +14,9 @@ Eolis's town, from a saved game:
    a 4x4 block, and black around it. #107's sharp 4.5x needs a hook in the
    host, so this checks the 4x until then. A real window centres it, at
    (112, 60); the hidden window's software renderer draws it at the top left
-   (the stock view too), so either place is taken. Start's pause holds the
-   picture still, so both layers show the same frame.
+   (the stock view too), so either place is taken. The quest log's pause (L:
+   with the remaster Start opens the Select menu, #147) holds the picture
+   still, so both layers show the same frame.
 4. F4's connected-map overview grows the canvas to the region; F4 again
    brings back 424x240.
 """
@@ -72,7 +73,7 @@ def main():
 
         g.tcp("window_size", w=1920, h=1080)
         check_view("window-1920x1080")
-        g.act("start")
+        g.tcp("key", name="L", frames=4)                                # the quest log, through the game's pause
         g.until("the pause", lambda: g.ram(PAUSED) != 0, 60)
         g.wait(4)
         pw, ph, picture = png(g.shot("paused"))
@@ -103,7 +104,7 @@ def main():
         at = next((xy for xy in ((112, 60), (0, 0)) if presented_at(*xy)), None)
         assert at, "the window does not show the picture at 4x"
         print(f"1920x1080: the picture at 4x, 1696x960, at {at}, black around it")
-        g.act("start")
+        g.tcp("key", name="L", frames=4)
         g.until("the pause to end", lambda: g.ram(PAUSED) == 0, 60)
 
         g.tcp("window_size", w=300, h=600)

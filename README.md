@@ -52,7 +52,7 @@ line, and "Quest complete" when it is done: the King's plea for the
 fountain's water, the Ring of Elf, the Mattock and the wall, the three
 springs, the path to Mascon, the meteorite, the Battle Suit, the rings of
 Dworf and the Demon, and the Evil One, 17 in all. Chatter stays chatter.
-Press L, or the right stick on a controller, and the game pauses on your
+Press L, or the left trigger on a controller, and the game pauses on your
 quests: the ones under way with what to do, then the ones done. Your file
 keeps them. The Select menu lists QUESTS at its top, so you can open the log
 from there too.
@@ -66,18 +66,18 @@ you should see next.
 
 ### The map
 
-Press M, or the left trigger on a controller, and the game pauses on a map of
-where you have been, as in Metroid: a box for every screen you have stood on,
-laid out by how the screens join, with the one you are on blinking. Screens
-you haven't seen stay blank. Each region, tower and castle has its page, the
-towns sitting between the screens they join; Left and Right turn the page,
-and B, Start or M close the map. It marks only what matters: a cross for each
-Guru you have visited, a block for every other door you have gone through,
-and a dot wherever an item still lies on a screen you have seen, gone once you
-pick it up (one that turns up only now and then shows only while it is
-there). Ladders you have climbed join the screens above and below. Your file
-keeps the map, and the items you have taken. MAP, under QUESTS at the top of
-the Select menu, opens it too.
+Press M, or Back on a controller, and the game pauses on a map of where you
+have been, as in Metroid: a box for every screen you have stood on, laid out
+by how the screens join, with the one you are on blinking. Screens you haven't
+seen stay blank. Each region, tower and castle has its page, the towns sitting
+between the screens they join; Left and Right turn the page, and B, Start, M
+or Back close the map. It marks only what matters: a cross for each Guru you
+have visited, a block for every other door you have gone through, and a dot
+wherever an item still lies on a screen you have seen, gone once you pick it
+up (one that turns up only now and then shows only while it is there). Ladders
+you have climbed join the screens above and below. Your file keeps the map,
+and the items you have taken. MAP, under QUESTS at the top of the Select menu,
+opens it too.
 
 ![The map on the Trunk's page: the screens seen from its first past Forepaw, with the towns between them, the crosses of two Gurus, four doors used, the dots of two items still lying there, and the hero's screen lit](docs/screenshots/map.png)
 
@@ -99,9 +99,10 @@ the Select menu, opens it too.
 
 ### Combat
 
-- **Block.** Hold V, or B on a controller, with a shield or the Battle Helmet
-  to raise it and stop enemy magic from the front, and Sugata's flash from any
-  side. You glint in the shield's colors as you raise it.
+- **Block.** Hold V, or the right trigger on a controller, with a shield or
+  the Battle Helmet to raise it and stop enemy magic from the front, and
+  Sugata's flash from any side. You glint in the shield's colors as you raise
+  it.
 - **Spell cost on the MP bar.** As in Castlevania: Belmont's Curse, the end
   of the M: bar lights a shade brighter for what your selected spell will
   cost, so you see what a cast leaves you. Short of MP for it, the whole bar
@@ -142,9 +143,18 @@ the Select menu, opens it too.
   you off it.
 - **Zone names.** Entering a different town, region, tower or castle shows its
   name below the status bar for about two seconds.
+- **A modern controller layout.** Start opens the Select menu and closes it,
+  Back opens the map, the left trigger the quest log, and every action has a
+  button of its own (see Controls). Nothing pauses the game but the screens
+  that hold it anyway. A Nintendo-layout pad is read by where its buttons
+  sit, so the lower one jumps, as on any other.
 
 ### Items and shops
 
+- **Use item button.** S, or B on a controller, uses your selected item, as
+  Down+B does, but without swinging your sword or climbing down a ladder.
+  Like Down+B, it does nothing in the air, unless you're flying on the Wing
+  Boots with A held.
 - **Keys and tools.** Up at a locked door opens it with the right key from
   your inventory, without selecting it, and keys and the Mattock are no longer
   used up.
@@ -233,32 +243,45 @@ The remaster also fixes these bugs in the original game:
 
 | | Keyboard | Controller |
 |---|---|---|
-| Move | Arrow keys | D-pad |
-| A (jump) | Z | A |
-| B (attack) | X | X |
-| Start | Enter | Start |
-| Select | Backslash | Back |
+| Move | Arrow keys | D-pad or left stick |
+| Jump (A) | Z | A |
+| Attack (B) | X | X |
 | Magic | C | Y |
-| Block (hold, with a shield) | V | B |
-| Map | M | Left trigger |
-| Quest log | L | Right stick (press) |
-| Menu | Escape | Right shoulder |
-| Fast-forward (hold) | Tab | Right trigger |
-| Save states | F7 | Back + left stick |
-| Rewind | F8 | Back + right stick |
+| Use item | S | B |
+| Block (hold, with a shield) | V | Right trigger |
+| Select menu | Enter | Start |
+| Map | M | Back |
+| Quest log | L | Left trigger |
+| Rewind | F8 | Left shoulder |
+| Fast-forward (hold) | Tab | Right shoulder |
+| Menu (save states, rewind, controls, quit) | Escape | Right stick (press) |
+| Save states | F7 | |
 | Fullscreen | F11 | |
 | Screenshot | F12 | |
 
-On the title, Select or the D-pad moves between NEW GAME and CONTINUE, A or
-Start chooses, and B goes back from the list of files.
+A controller's buttons are named for where they sit, as on an Xbox pad: A is
+the lower face button (✕ on a PlayStation pad), B the right (○), X the left
+(□) and Y the top (△). A Nintendo-layout pad, like a Switch Pro or an 8BitDo
+in Switch mode, is read the same way, by place rather than by its letters.
 
-The launcher's Controls page remaps them. To rebind Magic, Block, the Map or
-the Quest log, set `MagicKey`, `BlockKey`, `MapKey` and `QuestLogKey` (a key
-name, like `V` or `Left Shift`) and `MagicButton`, `BlockButton`, `MapButton`
-and `QuestLogButton` (a controller button, like `b` or `leftshoulder`, or a
-trigger, like `lefttrigger+`) in the `[Game]` section of `config.ini`, next
-to the game. `none` unbinds one. Pick ones nothing else
-uses.
+Enter and Start are the NES's Start, and Backslash and Back its Select. In
+play, Start opens the Select menu and closes it, and no longer pauses;
+Backslash opens the menu too, and Back is the map's. Everywhere else they
+are the NES's own: on the title, Select or the D-pad moves between NEW GAME
+and CONTINUE, A or Start chooses, and B goes back from the list of files; in
+a shop, Select switches between buying and selling. With the remaster off,
+the pad is the original's: Start pauses, and Back opens the Select menu.
+
+The launcher's Controls page remaps them, the remaster's five buttons after
+the shortcuts. They are also in the `[Game]` section of `config.ini`, next to
+the game: `MagicKey`, `UseItemKey`, `BlockKey`, `MapKey` and `QuestLogKey` (a
+key name, like `V` or `Left Shift`), and `MagicButton`, `UseItemButton`,
+`BlockButton`, `MapButton` and `QuestLogButton` (a controller button, like
+`b` or `leftshoulder`, or a trigger, like `lefttrigger+`). `none` unbinds
+one. Pick ones nothing else uses. A `config.ini` from an earlier version
+moves to this layout the first time you start, except for any binding you
+changed; a new default that would land on a button you gave something else
+is left unbound instead, for you to place.
 
 ## Save files
 

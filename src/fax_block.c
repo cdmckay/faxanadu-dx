@@ -101,9 +101,11 @@
 /* What the hero cannot do while he blocks: A, B, Up, Down, Left, Right. */
 #define STAND_STILL   0xCFu
 
-/* The defaults as SDL numbers them: SDL_SCANCODE_V, and SDL_CONTROLLER_BUTTON_B
- * in the host's binding encoding (cyc_input.h CYC_PAD_BUTTON: 1 + the button). */
-enum { DEFAULT_KEY = 25, DEFAULT_PAD = 1 + 1, AXIS_PRESS = 16384 };
+/* The defaults as SDL numbers them: SDL_SCANCODE_V, and the right trigger
+ * (SDL_CONTROLLER_AXIS_TRIGGERRIGHT, 5) pressed, in the host's binding encoding
+ * (cyc_input.h CYC_PAD_AXIS: 100 + axis * 2 + positive). Layout 1 (before
+ * #147) had SDL_CONTROLLER_BUTTON_B, now Use item's (fax_controls.c moves it). */
+enum { DEFAULT_KEY = 25, DEFAULT_PAD = 100 + 5 * 2 + 1, AXIS_PRESS = 16384 };
 enum { KEYBOARD, CONTROLLER };
 
 /* The tutorial, one interaction script at a time. */
@@ -118,7 +120,7 @@ static uint8_t phase = QUIET;
 static bool taught;                     /* remembered("block.taught") */
 static char line[80];                   /* the tutorial's line, '\n' between rows */
 static unsigned magic_blocked, shield_saved, flashes_blocked, tutorials, stood;
-static char label[80] = "Block: V / B";
+static char label[80] = "Block: V / RT";
 
 static uint8_t peek(uint16_t a) { return cyc_mod_peek(a); }
 static uint32_t prg(unsigned bank, uint16_t addr) { return bank * 16384u + (addr - 0x8000u); }
@@ -517,7 +519,7 @@ static void hint(int k, int p, char *out, size_t n) {
     CycBinding b = { k, p };
     cyc_binding_hint(&b, out, n);
 }
-static void describe(void) {   /* as the host shows its own shortcuts: "V / B" */
+static void describe(void) {   /* as the host shows its own shortcuts: "V / RT" */
     char text[64] = "unbound";
     if (key || pad) hint(key, pad, text, sizeof text);
     snprintf(label, sizeof label, "Block: %s", text);
@@ -529,6 +531,12 @@ static void compose(void) {
     if (pad_first ? pad : !key && pad) hint(0, pad, name, sizeof name);
     else if (key) hint(key, 0, name, sizeof name);
     if (!name[0] || !wrap(name, line)) wrap("Block", line);
+}
+
+static void rebound(void) { describe(); line[0] = 0; }
+const CycHostBinding *fax_block_binding(void) {
+    static const CycHostBinding b = { "Block (hold)", &key, &pad, DEFAULT_KEY, DEFAULT_PAD, rebound };
+    return &b;
 }
 
 bool fax_block_load_setting(const char *name, const char *value) {
@@ -595,6 +603,7 @@ void fax_block_tcp_setup(void) {
 }
 #else
 static void compose(void) { wrap("V", line); }
+const CycHostBinding *fax_block_binding(void) { return NULL; }
 bool fax_block_load_setting(const char *name, const char *value) { (void)name; (void)value; return false; }
 void fax_block_save_settings(FILE *f) { (void)f; }
 void fax_block_event(const void *ev) { (void)ev; }

@@ -47,6 +47,8 @@
 #include "fax_spell_cost.h"
 #include "fax_found.h"
 #include "fax_menu.h"
+#include "fax_controls.h"
+#include "fax_use_item.h"
 #ifdef CYC_WITH_SDL
 #include "cyc_tcp.h"
 #include <SDL.h>
@@ -95,6 +97,7 @@ static void power_on(void *ctx) {
     fax_banner_reset();
     fax_files_power_on();
     fax_title_power_on();
+    fax_controls_power_on();
     fax_dagger_step();
     if (compile_path[0]) {
         int n = chr_override_compile_dir(compile_path);
@@ -154,6 +157,7 @@ static void frame_end(void *ctx) {
     fax_world_step();
     fax_travel_step();
     fax_magic_frame_end();
+    fax_use_item_frame_end();
     fax_mana_frame_end();
     fax_banner_step();
     fax_slain_frame_end();
@@ -225,6 +229,8 @@ static void tcp_setup(void *ctx) {
     fax_spell_cost_tcp_setup();
     fax_found_tcp_setup();
     fax_menu_tcp_setup();
+    fax_controls_tcp_setup();
+    fax_use_item_tcp_setup();
 }
 #endif
 static const uint32_t *present(void *ctx,int *w,int *h) {
@@ -237,6 +243,7 @@ static void event(void *ctx,const void *e,int player) {
     (void)ctx;(void)player;
     fax_world_event(e);
     fax_magic_event(e);
+    fax_use_item_event(e);
     fax_block_event(e);
     fax_map_event(e);
     fax_quests_event(e);
@@ -244,23 +251,45 @@ static void event(void *ctx,const void *e,int player) {
 static void input(void *ctx, uint8_t buttons[2]) { (void)ctx; fax_block_input(buttons); }
 static void load_setting(void *ctx, const char *key, const char *value) {
     (void)ctx;
-    if (!fax_magic_load_setting(key, value) && !fax_block_load_setting(key, value) && !fax_map_load_setting(key, value))
+    if (!fax_controls_load_setting(key, value) && !fax_magic_load_setting(key, value) &&
+        !fax_use_item_load_setting(key, value) && !fax_block_load_setting(key, value) &&
+        !fax_map_load_setting(key, value))
         fax_quests_load_setting(key, value);
 }
 static void save_settings(void *ctx, FILE *f) {
-    (void)ctx; fax_magic_save_settings(f); fax_block_save_settings(f); fax_map_save_settings(f); fax_quests_save_settings(f);
+    (void)ctx;
+    fax_controls_save_settings(f);
+    fax_magic_save_settings(f); fax_use_item_save_settings(f); fax_block_save_settings(f);
+    fax_map_save_settings(f); fax_quests_save_settings(f);
+}
+static bool settings_loaded(void *ctx) { (void)ctx; return fax_controls_settings_loaded(); }
+/* The launcher's Controls page lists these after the host's shortcuts (a
+ * window build: each feature's binding is there). */
+static CycHostBinding bindings[5];
+static void list_bindings(void) {
+    const CycHostBinding *(*const each[])(void) = {
+        fax_magic_binding, fax_use_item_binding, fax_block_binding, fax_map_binding, fax_quests_binding,
+    };
+    for (size_t i = 0; i < sizeof each / sizeof each[0]; ++i) {
+        const CycHostBinding *b = each[i]();
+        if (b) bindings[i] = *b;
+    }
 }
 #ifdef CYC_WITH_RECOMP_UI
-/* The runtime menu's Controls section: the Magic, Block, Map and Quest log buttons' bindings,
- * information rows like the host's own shortcuts. */
+/* The runtime menu's Controls section: Start's Select menu, then the Magic, Use item, Block, Map and
+ * Quest log buttons' bindings, information rows like the host's own shortcuts. */
 static RecompRuntimeUiItem menu_rows[] = {
-    { "faxanadu.magic", "Controls", "Magic", "Casts like Up+B. Rebind it in config.ini [Game].",
+    { "faxanadu.select-menu", "Controls", "Select menu", "Opens QUESTS, MAP and your gear. Rebind it in the launcher.",
       RECOMP_RUNTIME_UI_ACTION, 0, 0, 0, NULL, 0, NULL },
-    { "faxanadu.block", "Controls", "Block", "Hold with a shield to stop magic. Rebind it in config.ini [Game].",
+    { "faxanadu.magic", "Controls", "Magic", "Casts like Up+B. Rebind it in the launcher.",
       RECOMP_RUNTIME_UI_ACTION, 0, 0, 0, NULL, 0, NULL },
-    { "faxanadu.map", "Controls", "Map", "Shows the screens you've been to. Rebind it in config.ini [Game].",
+    { "faxanadu.use-item", "Controls", "Use item", "Uses your item like Down+B. Rebind it in the launcher.",
       RECOMP_RUNTIME_UI_ACTION, 0, 0, 0, NULL, 0, NULL },
-    { "faxanadu.quests", "Controls", "Quest log", "Lists your quests. Rebind it in config.ini [Game].",
+    { "faxanadu.block", "Controls", "Block", "Hold with a shield to stop magic. Rebind it in the launcher.",
+      RECOMP_RUNTIME_UI_ACTION, 0, 0, 0, NULL, 0, NULL },
+    { "faxanadu.map", "Controls", "Map", "Shows the screens you've been to. Rebind it in the launcher.",
+      RECOMP_RUNTIME_UI_ACTION, 0, 0, 0, NULL, 0, NULL },
+    { "faxanadu.quests", "Controls", "Quest log", "Lists your quests. Rebind it in the launcher.",
       RECOMP_RUNTIME_UI_ACTION, 0, 0, 0, NULL, 0, NULL },
 };
 static int menu_row_enabled(void *ctx, const RecompRuntimeUiItem *it) { (void)ctx; (void)it; return 0; }
@@ -276,14 +305,18 @@ const CycHostExtras *cyc_host_extras(void) {
         { "--world-view", true, "World camera: off, seamless or atlas" },
     };
 #ifdef CYC_WITH_RECOMP_UI
-    menu_rows[0].label = fax_magic_controls_label();
-    menu_rows[1].label = fax_block_controls_label();
-    menu_rows[2].label = fax_map_controls_label();
-    menu_rows[3].label = fax_quests_controls_label();
+    menu_rows[0].label = fax_controls_menu_label();
+    menu_rows[1].label = fax_magic_controls_label();
+    menu_rows[2].label = fax_use_item_controls_label();
+    menu_rows[3].label = fax_block_controls_label();
+    menu_rows[4].label = fax_map_controls_label();
+    menu_rows[5].label = fax_quests_controls_label();
 #endif
+    list_bindings();
     static const CycHostExtras extras = {
         .present=present,.event=event,.input=input,
-        .load_setting = load_setting, .save_settings = save_settings,
+        .load_setting = load_setting, .save_settings = save_settings, .settings_loaded = settings_loaded,
+        .bindings = bindings, .binding_count = sizeof bindings / sizeof bindings[0],
 #ifdef CYC_WITH_RECOMP_UI
         .menu_items = menu_rows, .menu_item_count = sizeof(menu_rows) / sizeof(menu_rows[0]),
         .menu_callbacks = &menu_callbacks,

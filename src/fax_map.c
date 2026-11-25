@@ -23,7 +23,7 @@
  * removes shows nowhere, and the one Hour Glass it keeps lying (Mist $30)
  * shows until he has taken it.
  *
- * The Map button (M, or LT on a controller; MapKey and MapButton in
+ * The Map button (M, or Back on a controller; MapKey and MapButton in
  * config.ini [Game]) opens it during play, through the game's own pause:
  * at GameLoop_CheckPauseGame's BEQ ($E02F), which returns when Start is not
  * new, Z is cleared, so the game pauses as for Start (Game_PausedState 1, the
@@ -116,10 +116,12 @@ extern uint32_t hw_palette_argb[512];   /* the host's NES colors, emphasis in bi
 /* The temples' interiors (area 4), by temple number; see "Temples and spawning". */
 static const uint8_t temple_interior[8] = { 0x02, 0x0B, 0x10, 0x1E, 0x23, 0x2B, 0x33, 0x3C };
 
-/* The defaults as SDL numbers them: SDL_SCANCODE_M, and the left trigger
- * (SDL_CONTROLLER_AXIS_TRIGGERLEFT, 4) pressed, in the host's binding encoding
- * (cyc_input.h CYC_PAD_AXIS: 100 + axis * 2 + positive). */
-enum { DEFAULT_KEY = 16, DEFAULT_PAD = 100 + 4 * 2 + 1, AXIS_PRESS = 16384 };
+/* The defaults as SDL numbers them: SDL_SCANCODE_M, and Back
+ * (SDL_CONTROLLER_BUTTON_BACK, 4) in the host's binding encoding (cyc_input.h
+ * CYC_PAD_BUTTON: 1 + the button). Back is the NES Select too; with the
+ * remaster it no longer opens the Select menu in play (fax_controls.c). Layout
+ * 1 (before #147) had the left trigger, now the quest log's. */
+enum { DEFAULT_KEY = 16, DEFAULT_PAD = 1 + 4, AXIS_PRESS = 16384 };
 enum { OPEN_WINDOW = 30 };   /* frames a press waits for the main loop's pause check */
 
 /* ---- what the hero has seen ---- */
@@ -142,7 +144,7 @@ static bool open, closing;
 static int shown = -1;                                 /* the page on display */
 static uint64_t frames, want;                          /* a press waits until frame `want` */
 static unsigned opens, closes, turns, presses, requests, age, pickups;
-static char label[80] = "Map: M / LT";
+static char label[80] = "Map: M / BACK";
 
 static uint8_t q(uint16_t a) { return cyc_mod_peek(a); }
 static bool bit(const uint8_t *set, unsigned i) { return set[i / 8] >> (i % 8) & 1; }
@@ -745,11 +747,16 @@ const char *fax_map_controls_label(void) { return label; }
 static int key = DEFAULT_KEY, pad = DEFAULT_PAD;   /* 0: unbound */
 static bool axis_down;
 
-static void describe(void) {   /* as the host shows its own shortcuts: "M / LT" */
+static void describe(void) {   /* as the host shows its own shortcuts: "M / BACK" */
     char hint[64] = "unbound";
     CycBinding both = { key, pad };
     if (key || pad) cyc_binding_hint(&both, hint, sizeof hint);
     snprintf(label, sizeof label, "Map: %s", hint);
+}
+
+const CycHostBinding *fax_map_binding(void) {
+    static const CycHostBinding b = { "Map", &key, &pad, DEFAULT_KEY, DEFAULT_PAD, describe };
+    return &b;
 }
 
 bool fax_map_load_setting(const char *name, const char *value) {
@@ -850,6 +857,7 @@ void fax_map_tcp_setup(void) {
                      "and item dots drawn", map_state);
 }
 #else
+const CycHostBinding *fax_map_binding(void) { return NULL; }
 bool fax_map_load_setting(const char *name, const char *value) { (void)name; (void)value; return false; }
 void fax_map_save_settings(FILE *f) { (void)f; }
 void fax_map_event(const void *ev) { (void)ev; }

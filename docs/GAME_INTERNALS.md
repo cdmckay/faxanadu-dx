@@ -554,6 +554,55 @@ What a feature can rely on, and the traps:
   window keeps `config.ini` beside the executable and writes it at first
   start; its `[Game]` keys go to the host extras' `load_setting`, and
   `save_settings` writes them back whenever the window saves.
+- TCP `pad` also pushes one axis all the way (`lefttrigger+`, `leftx-`) for
+  its frames. The first `pad` attaches the virtual controller, as a plain
+  one or, with `vendor` and `product`, with a real pad's USB ids (Nintendo's
+  Switch Pro: 1406, 8201), which SDL gives that pad's type and labels. A
+  virtual trigger rests at the bottom of its range: SDL reads the middle as
+  half pressed, and takes the first value it sees for where an axis rests, so
+  one first seen pushed never lets go. The attach opens the controllers and
+  drops their hot-plug event, which would open them again after the press.
+- **Controllers by position.** The game links sdl2-compat, which maps a
+  Nintendo-layout pad (a Switch Pro, an 8BitDo in Switch mode) by its printed
+  letters, as SDL2 did, unless `SDL_HINT_GAMECONTROLLER_USE_BUTTON_LABELS` is
+  0 when the controller opens: its lower face button, printed B, would read
+  as B, Use item. The launcher sets the hint for itself, and its `SDL_Quit`
+  clears hints, so the window sets it again before its own `SDL_Init`
+  (`cyc_input_sdl_hints`), launcher or not. At the default priority, so
+  `SDL_GAMECONTROLLER_USE_BUTTON_LABELS=1` in the environment has the labels
+  back.
+- **The bindings' layout.** The engine's controller shortcuts are layout 2
+  (#147): the Menu on the right stick's press, Fast-forward on the right
+  shoulder, Rewind on the left, Disk and the save-state browser on D and F7
+  alone. `config.ini` says its layout (`[Input] BindingsLayout`); a file
+  without it is layout 1's (Disk on LB, the Menu on RB, Fast-forward on RT,
+  the browsers on Back + L3 and Back + R3), and its load moves each shortcut
+  still on layout 1's default, once; the window then saves the file at once.
+  The game's own keys move the same way: `[Game] ControlsLayout`, and the
+  host extras' `settings_loaded`, which runs once the whole file is read
+  (`fax_controls.c`: Block from B, the map from LT, the quest log from R3).
+  A value the player changed, or set back in a file of the new layout, stays,
+  and a moved one gives way to it: a new default that lands on a controller
+  button the player kept for something else is unbound instead. The engine
+  checks its moved shortcuts against the player's NES buttons as it loads
+  (`moved_shortcuts`) and against the game's actions after
+  (`cyc_settings_yield_moved`, in `cyc_sdl_prelaunch`); the game checks its
+  moved actions against its kept ones, the shortcuts and any NES button the
+  player moved (the NES Select on Back is the host's own, shared with the map
+  by design). A player who had Magic on LB, free in layout 1, keeps it there,
+  and Rewind keeps F8 alone.
+- The launcher's Controls page lists the game's own actions (the host
+  extras' `bindings`) after the host's shortcuts, and edits them in place;
+  recomp-ui holds sixteen such rows since 3b646bb (eight before), and a
+  cartridge has six shortcuts.
+- **Two tables abort or drop past their size.** The function-hook registry
+  (`NES_MOD_MAX_FUNCTION_HOOKS`, `mod_function_hooks.c`) held 128: a feature
+  whose site did not fit failed its registration, and its constructor's
+  `abort()` killed the game before its first line of output (exit 134).
+  It holds 256 now, and `tools/check_allocations.py` counts the sites
+  against it. The TCP server held 64 commands, and the host registers 20:
+  past it a game's last commands were dropped without a word and answered
+  "unknown command". It holds 128 now and says when one does not fit.
 - **The window finds its folder from the executable's path,** in
   `cyc_settings_default_path()` (`runner/cyc/cyc_settings.c`): `config.ini`
   and the mod catalog, `mods/`, are both beside it. It asks
@@ -2012,6 +2061,60 @@ jump a few updates after stepping off, as A from the hang itself would.
 - On Eolis screen 0 (see *Eolis, for tests*), the intro's trigger stops the
   hero at x=53 for a long monologue that A pages through. Up goes through the
   gate from anywhere in x=188-199.
+- **Who reads Start and Select.** In play, only
+  `GameLoop_CheckShowPlayerMenu` (`$E016`: `LDA Area_CurrentArea`, `BNE`,
+  `LDA Area_CurrentScreen`, `BEQ` to an RTS outside Eolis's gate, then
+  `$E01E` `LDA Joy1_ChangedButtonMask`, `$E020` `AND #$20`, `BEQ`, far-call
+  `PlayerMenu_Show`) and `GameLoop_CheckPauseGame` (`$E02B` `LDA
+  Joy1_ChangedButtonMask`, `$E02D` `AND #$10`, `$E02F` `BEQ`), back to back
+  in `Game_MainLoop` with only `GameLoop_RunScreenEventHandlers` between, which
+  reads no button. Elsewhere: the title (`StartScreen_CheckHandleInput`, bank
+  12: Select toggles, then the wait loop's own `AND #$10`: Start takes it),
+  a shop's lists (Quick shops: Select switches them) and the mantra screen.
+  The Select menu's `@_inputLoop` (`$8AE6` `LDA Joy1_ChangedButtonMask`,
+  `$8AE8` `BMI` (A) to `@_loadMenuIDs`, `$8AEA` `ASL A`, `$8AEB` `BPL` back to
+  the loop, `$8AED` `JMP TextBox_Close` (B)) reads only A and B.
+- **A Start that closes the menu is new again at the pause check.** The
+  menu runs inside `GameLoop_CheckShowPlayerMenu`'s far call, and
+  `TextBox_Close` returns without a frame when the PPU buffer has room, so
+  the pass goes on to `GameLoop_CheckPauseGame` with the same changed mask:
+  a Start that closed the menu would pause the game (seen before the
+  remaster took Start out at `$E02D`: `Game_PausedState` `$81`).
+- **With the remaster, Start is the Select menu's** (`fax_controls.c`,
+  #147). At `$E016`'s entry (before Seamless's and Guru travel's sites there)
+  a new Start in `Joy1_ChangedButtonMask` becomes a new Select, so the
+  game's own check opens the menu and Seamless's freeze, which captures the
+  scene on a new Select, sees it. At `$E02D` A loses Start, so nothing pauses
+  on it, the menu's closing Start included; the map's and the quest log's
+  sites at `$E02F` still open their screens through the pause. At `$8AE8` a
+  new Start without A gets B's bit in A (N and Z as the load left them, Z
+  clear), so Start closes the menu as B does. The lists and the PLAYER page
+  keep the original's B. Writing the changed mask is safe there: the NMI's
+  next read rewrites it whole from the held mask, which stays the pad's.
+- **Back is the NES Select's and the Map button's.** The host binds the NES
+  Select to Back, and the remaster binds the map there too. At `$E016`, a new
+  Select while the Map button's controller binding is held, and is the one
+  the host binds the NES Select to, is taken out of the changed mask, so it
+  opens the map (at `$E02F`, the same pass) and not the menu. Only there:
+  outside play Back is the NES Select, so it still switches a shop's lists
+  and moves between the title's NEW GAME and CONTINUE. Backslash (the
+  keyboard's Select) and TCP `action select` open the menu as ever.
+- **Use item** (`fax_use_item.c`, #147). `GameLoop_CheckUseCurrentItem`
+  (`$C478`): `LDA Player_Flags`, `$C47A` `AND #$05`, `BNE` return (jumping or
+  falling), `LDA Joy1_ButtonMask`, `$C480` `AND #$04`, `BEQ` (Down),
+  `LDA a:Joy1_ChangedButtonMask`, `$C487` `AND #$40`, `BEQ` (a new B), then
+  the selected item's routine through `USE_ITEM_JUMP_TABLE`. A press of the
+  button ORs Down into A at `$C480` and B at `$C487`, only when the JSR that
+  entered it is `Game_MainLoop`'s (`$DB62`, which pushes `$DB64`;
+  `EndGame_MainLoop`'s at `$DC0E` pushes `$DC10`). No mask changes, so the
+  sword (`GameLoop_UpdatePlayer`, earlier in the pass), a ladder's climb down
+  and the NPCs see the pad as it is. In flight it copies the one way the
+  stock Down+B gets past `$C47A`: with `Player_StatusFlag` `$80` and A held,
+  `Player_CheckHandleVertMovement` takes a held Down as a climb down, `AND
+  #$DA`, which clears the jumping and falling bits before the item check; the
+  button holds no Down, so at `$C47A` it clears those two bits from A, in
+  that case only. The items' routines read no button (the Red Potion's
+  `IScripts_Begin` waits for A to close its line, then clears the item).
 
 ## The status bar (banks 15 and 10)
 
@@ -3625,7 +3728,7 @@ jumping or falling, `Player_Flags & $05`):
   air reaches the selected item's routine; without A the hero falls, and it
   does not (checked in the game: `Player_Flags` `$42` with A and Down held).
   An item used there runs before that pass's countdowns. Over TCP, B is the
-  NES button (`action b`): a controller's B is Block (`pad b`).
+  NES button (`action b`): a controller's B is Use item (`pad b`).
 
 - `Player_UseWingBoots` (`$C579`): script `$83` ("I've used Wing Boots."),
   `JSR Player_ClearSelectedItem` at `$C581`, sound `$1A`, then
@@ -4901,7 +5004,7 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   `UI_DrawHUDSprites` puts them (`fax_text_shown_tile`), with the emphasis
   and greyscale each line was drawn with. No hooks, no ROM, no read
   overrides, no save-state record, nothing written to the machine.
-- **Block** (`fax_block.c`). A bindable button (V, or B on a controller)
+- **Block** (`fax_block.c`). A bindable button (V, or the right trigger on a controller)
   raises whatever the shield slot holds, the Battle Helmet included. The host
   input callback clears the d-pad, A and B while it is up and a pass of
   `Game_MainLoop` reached `GameLoop_CountdownItems` (`$C88F`, from `$DB68`)
@@ -5066,7 +5169,7 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   overrides, no state.
 
 - **The map** (`fax_map.c`, laid out by `fax_map_layout.c`). A Map button (M,
-  or LT on a controller; `MapKey` and `MapButton` in `config.ini` [Game])
+  or Back on a controller; `MapKey` and `MapButton` in `config.ini` [Game])
   pauses the game on a map of the screens the hero has stood on, a page per
   region, tower and castle, with only Gurus, doors and the items still
   lying in the world marked; see *The map*. Three hook sites: the BEQs at
@@ -5114,8 +5217,32 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   `fax_map_request`, which set the button's press, or refuse where the
   button would do nothing; the TCP states of both count them as `requests`,
   not `presses`. Seamless sizes the top box it keeps under a list by
-  `fax_menu_height`. Magic and Block are actions, not screens, so they stay
-  buttons. No ROM, no read overrides, no state.
+  `fax_menu_height`. Magic, Use item and Block are actions, not screens, so
+  they stay buttons. No ROM, no read overrides, no state.
+
+- **Controller layout** (`fax_controls.c`, #147). Start opens the Select
+  menu and closes it, and never pauses; in play, Back is the map's; see
+  *Input and casting*. Three hook sites: `GameLoop_CheckShowPlayerMenu`'s
+  entry (`$E016`, first of the three there), where it writes
+  `Joy1_ChangedButtonMask`; `GameLoop_CheckPauseGame`'s `AND #$10` (`$E02D`),
+  where it takes Start out of A; and the Select menu's `BMI` (`$8AE8`, bank
+  12), where a new Start gets B's bit in A. It moves a `config.ini` of
+  layout 1 (no `ControlsLayout`) onto the layout's defaults once, in the host
+  extras' `settings_loaded`, and names Start's binding in the runtime menu's
+  Controls rows (`cyc_window_bindings`). No ROM, no read overrides, no state.
+
+- **Use item button** (`fax_use_item.c`, #147). A bindable button (S, or B
+  on a controller; `UseItemKey` and `UseItemButton` in `config.ini` [Game])
+  uses the selected item as Down+B does, under the game's rule; see *Input
+  and casting*. Three hook sites in `GameLoop_CheckUseCurrentItem`, which no
+  other feature hooks (the Magic button's restore is at its entry), each the
+  `AND` after a load, where it changes only A. A press lasts one frame, as a
+  pad read does. No ROM, no read overrides, no state.
+
+- **The launcher's Controls page** lists Magic, Use item, Block, Map and
+  Quest log after the host's shortcuts (`cyc_extras.c`'s `bindings`), and
+  the in-game Menu's Controls rows list the Select menu (Start's binding),
+  Magic, Use item, Block, Map and Quest log.
 
 - **Fair entrances** (`fax_entrances.c`). The enemies placed where a way onto
   their screen puts the hero, so they hit him before anyone could react, start
