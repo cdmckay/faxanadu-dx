@@ -158,6 +158,11 @@ static void describe(void) {   /* as the host shows its own shortcuts: "C / Y" *
     snprintf(label, sizeof label, "Magic: %s", hint);
 }
 
+const CycHostBinding *fax_magic_binding(void) {
+    static const CycHostBinding b = { "Magic", &key, &pad, DEFAULT_KEY, DEFAULT_PAD, describe };
+    return &b;
+}
+
 bool fax_magic_load_setting(const char *name, const char *value) {
     int v;
     if (!strcmp(name, "MagicKey")) {
@@ -209,6 +214,7 @@ void fax_magic_tcp_setup(void) {
                      "Magic button: bindings, presses, presses shown to Player_CastMagic, masks restored", magic_state);
 }
 #else
+const CycHostBinding *fax_magic_binding(void) { return NULL; }
 bool fax_magic_load_setting(const char *name, const char *value) { (void)name; (void)value; return false; }
 void fax_magic_save_settings(FILE *f) { (void)f; }
 void fax_magic_event(const void *ev) { (void)ev; }

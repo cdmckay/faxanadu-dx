@@ -26,7 +26,7 @@
  * at present time, in both views: in Seamless at each room's place, the
  * neighbouring rooms' people from their copies (fax_world_room_ram).
  *
- * The log. A Quest log button (L, or the right stick; QuestLogKey and
+ * The log. A Quest log button (L, or the left trigger; QuestLogKey and
  * QuestLogButton in config.ini [Game]) opens it through the game's own pause,
  * as the map does, at the same two branches of GameLoop_CheckPauseGame
  * ($E02F, $E040), after the map's hooks: the active quests with their
@@ -117,10 +117,11 @@ static const uint16_t list_addr[FAX_QUEST_LISTS] = { 0x039D, 0x03A1, 0x03A5, 0x0
 static const uint8_t list_max[FAX_QUEST_LISTS] = { 4, 4, 4, 4, 8 };
 static const unsigned area_screens[AREAS] = { 9, 64, 83, 14, 0, 40, 32, 20 };
 
-/* The defaults as SDL numbers them: SDL_SCANCODE_L, and the right stick's
- * button (SDL_CONTROLLER_BUTTON_RIGHTSTICK, 8) in the host's binding encoding
- * (cyc_input.h CYC_PAD_BUTTON: 1 + button). */
-enum { DEFAULT_KEY = 15, DEFAULT_PAD = 1 + 8 };
+/* The defaults as SDL numbers them: SDL_SCANCODE_L, and the left trigger
+ * (SDL_CONTROLLER_AXIS_TRIGGERLEFT, 4) pressed, in the host's binding encoding
+ * (cyc_input.h CYC_PAD_AXIS: 100 + axis * 2 + positive). Layout 1 (before
+ * #147) had the right stick's press, now the runtime menu's. */
+enum { DEFAULT_KEY = 15, DEFAULT_PAD = 100 + 4 * 2 + 1 };
 enum { OPEN_WINDOW = 30 };   /* frames a press waits for the main loop's pause check */
 
 /* ---- state ---- */
@@ -145,7 +146,7 @@ static bool open, closing;
 static int page;
 static uint64_t frames, want;
 static unsigned opens, closes, turns, presses, requests, lines_said, banners_shown, age;
-static char label[80] = "Quest log: L / RS";
+static char label[80] = "Quest log: L / LT";
 
 static uint8_t q(uint16_t a) { return cyc_mod_peek(a); }
 static uint32_t prg(unsigned bank, uint16_t addr) { return bank * 16384u + (addr - 0x8000u); }
@@ -805,11 +806,16 @@ const char *fax_quests_controls_label(void) { return label; }
 static int key = DEFAULT_KEY, pad = DEFAULT_PAD;   /* 0: unbound */
 static bool axis_down;
 
-static void describe(void) {   /* as the host shows its own shortcuts: "L / RS" */
+static void describe(void) {   /* as the host shows its own shortcuts: "L / LT" */
     char hint[64] = "unbound";
     CycBinding both = { key, pad };
     if (key || pad) cyc_binding_hint(&both, hint, sizeof hint);
     snprintf(label, sizeof label, "Quest log: %s", hint);
+}
+
+const CycHostBinding *fax_quests_binding(void) {
+    static const CycHostBinding b = { "Quest log", &key, &pad, DEFAULT_KEY, DEFAULT_PAD, describe };
+    return &b;
 }
 
 bool fax_quests_load_setting(const char *name, const char *value) {
@@ -908,6 +914,7 @@ void fax_quests_tcp_setup(void) {
                      "Quest log: quests given, done and active, the line saying, the marks drawn, the log's page", quest_state);
 }
 #else
+const CycHostBinding *fax_quests_binding(void) { return NULL; }
 bool fax_quests_load_setting(const char *name, const char *value) { (void)name; (void)value; return false; }
 void fax_quests_save_settings(FILE *f) { (void)f; }
 void fax_quests_event(const void *ev) { (void)ev; }

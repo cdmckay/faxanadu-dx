@@ -135,6 +135,31 @@ addr = 0xe02b
 bank = 15
 bytes = "a5 19 29 10 f0 f9 a9 01 8d 20 01 20"
 
+# The controller layout (fax_controls.c, #147): GameLoop_CheckShowPlayerMenu's
+# entry, where a new Start becomes a new Select (the menu); it must come before
+# Seamless's site here, which captures the scene on the Select it leaves.
+# GameLoop_CheckPauseGame's AND #$10, where A loses Start: nothing pauses on
+# it. And PlayerMenu_Show's @_inputLoop BMI, where a new Start is B: Start
+# closes the menu. None handles.
+
+[[mod_function_hook]]
+id = "faxanadu.controls.menu"
+addr = 0xe016
+bank = 15
+bytes = "a5 24 d0 04 a5 63 f0 0c a5 19 29 20"   # LDA Area_CurrentArea, BNE, LDA Area_CurrentScreen, BEQ, LDA Joy1_ChangedButtonMask, AND #$20
+
+[[mod_function_hook]]
+id = "faxanadu.controls.pause"
+addr = 0xe02d
+bank = 15
+bytes = "29 10 f0 f9 a9 01 8d 20 01 20 25 ca"   # AND #$10, BEQ return, LDA #$01, STA Game_PausedState
+
+[[mod_function_hook]]
+id = "faxanadu.controls.close"
+addr = 0x8ae8
+bank = 12
+bytes = "30 06 0a 10 f0 4c 02 90 ae 1e 02 e0"   # BMI @_loadMenuIDs, ASL A, BPL @_inputLoop, JMP TextBox_Close
+
 [[mod_function_hook]]
 id = "faxanadu.world.inventory"
 addr = 0xe016
@@ -214,6 +239,29 @@ id = "faxanadu.magic-button.restore"
 addr = 0xc478
 bank = 15
 bytes = "a5 a4 29 05 d0 1e a5 16 29 04 f0 18"
+
+# The Use item button (fax_use_item.c, #147): GameLoop_CheckUseCurrentItem's
+# three ANDs, each after the load it tests: Player_Flags (in flight with A
+# held, as Down+B would leave them), the held mask (Down) and the changed mask
+# (a new B), steered in A alone. None handles.
+
+[[mod_function_hook]]
+id = "faxanadu.use-item.air"
+addr = 0xc47a
+bank = 15
+bytes = "29 05 d0 1e a5 16 29 04 f0 18 ad 19"   # AND #$05, BNE return, LDA Joy1_ButtonMask
+
+[[mod_function_hook]]
+id = "faxanadu.use-item.down"
+addr = 0xc480
+bank = 15
+bytes = "29 04 f0 18 ad 19 00 29 40 f0 11 ad"   # AND #$04, BEQ return, LDA a:Joy1_ChangedButtonMask
+
+[[mod_function_hook]]
+id = "faxanadu.use-item.b"
+addr = 0xc487
+bank = 15
+bytes = "29 40 f0 11 ad c1 03 0a a8 c0 22 b0"   # AND #$40, BEQ return, LDA a:SelectedItem
 
 # Auto keys and reusable tools (fax_keys.c): the door requirement handler, the
 # HUD picture clear that uses up a key or the Mattock, and the Mattock's

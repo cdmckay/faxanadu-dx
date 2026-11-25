@@ -9,6 +9,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include "cyc_host_extras.h"
 
 void fax_block_event(const void *sdl_event);
 /* The NES controller bytes for the next frame: while Block is up in play, the
@@ -20,6 +21,8 @@ void fax_block_save_settings(FILE *f);
 /* "Block: V / B", the runtime menu's Controls row. The buffer stays put and
  * follows the bindings. */
 const char *fax_block_controls_label(void);
+/* The binding, for the launcher's Controls page and the layout's move (cyc_host_extras.h). */
+const CycHostBinding *fax_block_binding(void);
 void fax_block_frame_end(void);
 /* A save state was loaded: put the tutorial's line back if it was showing. */
 void fax_block_loaded(void);
