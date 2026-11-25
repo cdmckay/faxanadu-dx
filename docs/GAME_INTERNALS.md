@@ -65,7 +65,7 @@ and data tables after it shifted). Not supported: the build rejects it.
 | `$00DB-$00DD` | `IScriptOrCHRAddr`, `IScriptOffset` | The interpreter reads the next action at addr + offset |
 | `$00EC-$00EE` | `Temp_Int24` | `UI_DrawString`'s strings' address (low, `_M`), and its count of letters left (`_U`) |
 | `$0100` | `CurrentROMBank` | 14 in the main loop. The stack shares this page |
-| `$0120` | `Game_PausedState` | Nonzero while the game is paused: Start, or the map (see *The map*) |
+| `$0120` | `Game_PausedState` | Nonzero while the game is paused: Start, or the map and the quest log (see *The map*); the sound engine adds bit 7 as it mutes, which under those two it never does |
 | `$0127` | `SoundEffect_State_Counter` | The playing sound effect's tick; the typing sound runs 1-4 |
 | `$0200-$021D` | `Temp_0200` on | `Screen_LoadBlocksHoriz`'s column of tiles, over the text box's variables: after a screen is drawn or scrolls sideways, every one of them from `$0208` to `$021D` holds a tile of it (see *The text box*) |
 | `$0208-$020B` | `TextBox_X`, `TextBox_Y`, `TextBox_Width`, `TextBox_Height` | The box last opened or closed, in tiles (see *The text box*) |
@@ -2444,7 +2444,9 @@ Other ways between screens and areas, in bank 15:
   `$54` is 0. `Game_PausedState` (`$0120`) is nonzero while Start pauses:
   `GameLoop_CheckPauseGame` stores 1, and the sound engine
   (`Music_HandleOnInterrupt`, bank 5) sets bit 7 once it has muted, so it
-  reads `$81` from then on.
+  reads `$81` from then on (in a frame log, from the frame after the one that
+  paused). Under the map and the quest log it stays 1, the music playing on
+  (*The sound engine under the pause*, below *The map*).
 
 Who and what is on each screen is in bank 11, `AREA_SPRITE_ADDRESSES`: for
 each screen, (entity, `YX`) pairs to a `$FF`, then the NPCs' interaction
@@ -2719,8 +2721,8 @@ has settled and the game is not paused, so in both world views):
 `LDA Joy1_ChangedButtonMask`, `AND #$10`, `$E040` `BEQ @_waitForUnpause`,
 `LDA #$00`, `STA Game_PausedState`, `RTS`. The instruction after either BEQ
 loads A, N and Z again, so a hook there steers it with Z (and A) alone. The
-map's press waits up to 30 frames for `$E02F`: there it clears Z, so the game pauses as for Start, the music held
-(`Game_PausedState`) and every feature holding as for a pause. At `$E040`,
+map's press waits up to 30 frames for `$E02F`: there it clears Z, so the game pauses as for Start
+(`Game_PausedState`), every feature holding as for a pause, and only the music plays on (below). At `$E040`,
 once a frame, it reads the pad: Left and Right turn the page, and B, Start
 or Map close it, with Z cleared so the game unpauses; otherwise Z is set. A
 press during the game's own pause opens it there. The menu, scrolling and
@@ -2728,6 +2730,45 @@ conversations never reach `$E02F`, so the map opens only in play. The Select
 menu's MAP row (`fax_map_request`) sets the same press as it closes the menu,
 which returns to the main loop before its pause check; it refuses while no
 page is seen, where the button would open nothing.
+
+**The sound engine under the pause** (bank 5, #162). `OnInterrupt` runs
+`Music_HandleOnInterrupt` (`$800D`), then `SoundEffects_HandleOnInterrupt`
+(`$862F`), in every NMI, paused or not, on all three of its paths (with the
+interrupt handlers off too). `Music_HandleOnInterrupt`: `LDA
+Game_PausedState`, `$8010` `BNE Audio_HandlePaused`, `LDA Music_Current`,
+`BEQ Audio_ResetIfNothingSet`, `BPL Music_Load`, `JMP Music_PlayNext`.
+`Audio_HandlePaused` (`$802E`) goes on to `Audio_ResetIfNothingSet` (which
+returns while music is set) once bit 7 is set; the first time it sets it
+(`ORA #$80`, `STA Game_PausedState`) and runs `Audio_Reset` (`$804A`: `$10`
+to `SQ1_VOL`, `SQ2_VOL` and `NOISE_VOL`, 0 to the other registers of
+`$4001-$400F` but the unused `$4009` and `$400D`). So Start's pause silences
+the channels and holds the music where it was, its scripts and counters
+untouched, and the unpause's next NMI goes on with it. Sound effects are not
+held: `SoundEffects_HandleOnInterrupt` never reads the pause, so one playing
+as the game pauses plays out, though nothing in the pause loop queues one.
+Nothing in the game reads the music's RAM (`Music_CurrentScriptAddrs`
+`$F2-$F9`, `Music_Current` `$FA`, `$012C-$0181`) but the ending's outro,
+which waits for `Music_Current` to clear: the music running or not changes
+nothing the game decides.
+
+With the remaster the map hooks the BNE at `$8010`: while the map or the
+quest log is open it sets Z (A 0), so the engine plays the next tick of the
+music as in play and `Game_PausedState` stays 1. That is all that changes:
+measured in a frame log (`tests/map/music_plays_on.py`), a frame of the
+pause loop changes in CPU RAM only the music's RAM, `InterruptCounter` (the
+NMI's), the shadow OAM (`$0700`, whose ranges `Sprites_FlipRanges` turns
+each frame) and the stack (`$01EF`, `$01F0` from the music's deeper calls,
+`$01FA` the pause loop's), against the same but the music's in Start's
+pause; the nametables, palette, CHR RAM and the game's picture hold. Each
+frame every channel's `Music_ChannelTicksRemaining` (`$0130-$0133`) goes
+down by one, or on its note's last tick `MScripts_InvokeNext` moves its
+script on (the noise channel may instead play its next hit,
+`Music_Noise_Remaining` `$0169`), so a tick missed or doubled shows. Play
+after a close is the same byte for byte, but the music's RAM and the stack,
+whether the screen was open 256 frames longer or not (256, so that
+`InterruptCounter` and the sprite ranges' turn agree). The Select menu
+(`PlayerMenu_Show`) is no pause: `Game_PausedState` stays 0 and the music
+plays there, as in the original.
 
 **Where it is drawn.** Last in the present chain (`cyc_extras.c`), after
 every feature and after Seamless composes its picture: black over the whole
@@ -2975,7 +3016,8 @@ while a character of text is read).
 
 **The log.** The Quest log button opens it through the game's pause, at the
 map's two branches (*The map*), after the map's hooks; neither opens over the
-other. Black over the picture, the text box's frame over the native 256 x 240,
+other. The music plays on under it, by the map's hook at `$8010` (*The sound
+engine under the pause*). Black over the picture, the text box's frame over the native 256 x 240,
 "Quests" on row 2, and from row 4 the active quests, a block each (the name in
 `$37`, its objective, the King's Plea's springs), kept whole on a page, then
 "Completed" and the names of the quests done, in `$10`. Left and Right turn
@@ -5381,13 +5423,16 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   or Back on a controller; `MapKey` and `MapButton` in `config.ini` [Game])
   pauses the game on a map of the screens the hero has stood on, a page per
   region, tower and castle, with only Gurus, doors and the items still
-  lying in the world marked; see *The map*. Three hook sites: the BEQs at
+  lying in the world marked; see *The map*. Four hook sites: the BEQs at
   `$E02F` and `$E040` in `GameLoop_CheckPauseGame`, shared with the quest log
   (whose hooks come after; neither opens over the other), where it changes
-  only A and Z, and the game's own code pauses and unpauses; and
+  only A and Z, and the game's own code pauses and unpauses;
   `Player_HandleTouchItem` (`$88FB`, bank 14), after Kept finds' site there,
   where it only observes the slot touched (recharging items' pickup hook,
-  `Player_PickUpItem`, runs later, inside `Player_PickUp`). Everything else
+  `Player_PickUpItem`, runs later, inside `Player_PickUp`); and
+  `Music_HandleOnInterrupt`'s BNE (`$8010`, bank 5), where it sets A and Z
+  while the map or the quest log is open, so the music plays on under both
+  (*The sound engine under the pause*). Everything else
   it learns from RAM at the end of each frame and as it draws, at present
   time, after every other feature. Guru travel's visited Gurus
   (`fax_travel_visited`) count as their temples, and Found items says which

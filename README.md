@@ -53,9 +53,9 @@ fountain's water, the Ring of Elf, the Mattock and the wall, the three
 springs, the path to Mascon, the meteorite, the Battle Suit, the rings of
 Dworf and the Demon, and the Evil One, 17 in all. Chatter stays chatter.
 Press L, or the left trigger on a controller, and the game pauses on your
-quests: the ones under way with what to do, then the ones done. Your file
-keeps them. The Select menu lists QUESTS at its top, so you can open the log
-from there too.
+quests, the music playing on: the ones under way with what to do, then the
+ones done. Your file keeps them. The Select menu lists QUESTS at its top, so
+you can open the log from there too.
 
 ![The King's plea ends with New quest, The King's Plea, in his box; the quest log, partway to Mascon](docs/screenshots/quest-log.png)
 
@@ -77,7 +77,7 @@ wherever an item still lies on a screen you have seen, gone once you pick it
 up (one that turns up only now and then shows only while it is there). Ladders
 you have climbed join the screens above and below. Your file keeps the map,
 and the items you have taken. MAP, under QUESTS at the top of the Select menu,
-opens it too.
+opens it too. The game holds still underneath, but the music plays on.
 
 ![The map on the Trunk's page: the screens seen from its first past Forepaw, with the towns between them, the crosses of two Gurus, four doors used, the dots of two items still lying there, and the hero's screen lit](docs/screenshots/map.png)
 

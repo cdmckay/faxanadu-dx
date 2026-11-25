@@ -236,6 +236,7 @@ E2E=(
   "damage       tests/damage/damage_numbers.py"
   "inventory    tests/inventory/inventory_fix.py --parts"
   "map          tests/map/explored_map.py --parts"
+  "map-music    tests/map/music_plays_on.py --parts"
   "quests       tests/quests/quest_log.py --parts"
   "fixes        tests/fixes/small_fixes.py --parts"
   "graphics     tests/graphics/graphics_fixes.py --parts"

@@ -26,13 +26,21 @@
  * The Map button (M, or Back on a controller; MapKey and MapButton in
  * config.ini [Game]) opens it during play, through the game's own pause:
  * at GameLoop_CheckPauseGame's BEQ ($E02F), which returns when Start is not
- * new, Z is cleared, so the game pauses as for Start (Game_PausedState 1, the
- * music held, every feature holding as it does for a pause). In the pause
+ * new, Z is cleared, so the game pauses as for Start (Game_PausedState 1,
+ * every feature holding as it does for a pause). In the pause
  * loop's BEQ ($E040), which waits another frame unless Start is new, it reads
  * the pad: Left and Right turn the page, and B, Start or Map close it, Z then
  * cleared so the game unpauses as for Start; otherwise Z is set, and the game
  * waits. The game's own code does the pausing; the hooks only steer the two
  * branches. Pressed during the game's own pause, it opens there.
+ *
+ * The music plays on while the map or the quest log (fax_quests.c, which
+ * opens through the same pause) is open (#162): at the sound engine's BNE in
+ * Music_HandleOnInterrupt ($8010, bank 5, from the NMI every frame), which
+ * mutes and holds the music while Game_PausedState is set, Z is set, so the
+ * engine plays the next tick of the music as in play. Only the music: the
+ * game stays paused, Game_PausedState stays 1, and Start's own pause (the
+ * remaster off: the original's) stays silent.
  *
  * It is drawn over the presented picture (after every other feature, and
  * after Seamless composes its own), in the game's text box frame and font
@@ -102,6 +110,11 @@ extern uint32_t hw_palette_argb[512];   /* the host's NES colors, emphasis in bi
  * instructions after the BEQs load A, N and Z again, and nothing reads C or V, so Z (and A) alone steer them. */
 #define PAUSE_CHECK 0xE02Fu   /* BEQ RETURN_E02A: Start not new, no pause */
 #define PAUSE_LOOP  0xE040u   /* BEQ @_waitForUnpause: Start not new, another frame paused */
+/* Bank 5: Music_HandleOnInterrupt ($800D), run by OnInterrupt every frame: LDA Game_PausedState, BNE
+ * Audio_HandlePaused (the first time, ORA #$80, STA Game_PausedState and Audio_Reset, the channels silenced;
+ * then the music held), LDA Music_Current, BEQ Audio_ResetIfNothingSet, BPL Music_Load, JMP Music_PlayNext. The
+ * instruction after the BNE loads A, N and Z again, and nothing reads C or V, so Z (and A) alone steer it. */
+#define MUSIC_PAUSED 0x8010u   /* BNE Audio_HandlePaused: paused, no music */
 /* Bank 14: Player_HandleTouchItem, the item category's touch: LDA CurrentSprites_Entities,X, JSR Player_PickUp
  * (the item's "I've got" script and what it gives), LDX CurrentSpriteIndex, LDA #$FF, STA
  * CurrentSprites_Entities,X (the item gone), RTS. X is the slot of the item the hero touched. */
@@ -373,6 +386,16 @@ static int loop_hook(uint16_t addr) {
     else if (!close && (changed & BUTTON_RIGHT)) turn(1);
     if (close) { open = false; ++closes; }
     steer(close);
+    return 0;
+}
+
+/* Music_HandleOnInterrupt's BNE, each frame: while the map or the quest log
+ * holds the game paused, on to the music as in play (Z set), so it neither
+ * mutes nor holds. The sound effects run after it, paused or not, as ever. */
+static int music_hook(uint16_t addr) {
+    (void)addr;
+    if (!enabled || cyc_mod_isolated() || !(open || fax_quests_showing())) return 0;
+    steer(false);
     return 0;
 }
 
@@ -864,7 +887,8 @@ void fax_map_event(const void *ev) { (void)ev; }
 void fax_map_tcp_setup(void) {}
 #endif
 
-static const char *const hook_ids[] = { "faxanadu.map.check", "faxanadu.map.loop", "faxanadu.map.touch" };
+static const char *const hook_ids[] = { "faxanadu.map.check", "faxanadu.map.loop", "faxanadu.map.touch",
+                                        "faxanadu.map.music" };
 static void hooks(int on) {
     for (unsigned i = 0; i < sizeof hook_ids / sizeof hook_ids[0]; ++i) nes_mod_set_function_hook_enabled(hook_ids[i], on);
 }
@@ -887,6 +911,7 @@ NES_MOD_CONSTRUCTOR(register_map) {
     if (!nes_mod_register_function_entry_plugin(hook_ids[0], PAUSE_CHECK, check_hook) ||
         !nes_mod_register_function_entry_plugin(hook_ids[1], PAUSE_LOOP, loop_hook) ||
         !nes_mod_register_function_entry_plugin(hook_ids[2], PLAYER_HANDLE_TOUCH_ITEM, touch_hook) ||
+        !nes_mod_register_function_entry_plugin(hook_ids[3], MUSIC_PAUSED, music_hook) ||
         !nes_mod_register_reset_callback(deactivate) ||
         !nes_mod_register_activation_plugin("faxanadu.map", activate) ||
         !nes_mod_register_savestate_hook("faxanadu.map", state_get, state_set) ||

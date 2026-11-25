@@ -753,9 +753,14 @@ rom = []
 # (Game_PausedState). And Player_HandleTouchItem ($88FB, bank 14), after Kept
 # finds' site there, where it only observes X, the slot of the item touched
 # (recharging items' pickup hook is Player_PickUpItem, $C8CD, further in).
+# And Music_HandleOnInterrupt's BNE ($8010, bank 5), which no other feature
+# hooks (Small fixes' bank 5 site is the typing sound's, $86B2): while the map
+# or the quest log is open it sets A and Z there, so the music plays on; the
+# game's Game_PausedState stays as the pause set it.
 # Reads bank 3's area tables, bank 15's town edges and climb and bank 11's
 # sprite lists from a copy of the cart, writes nothing to the machine but A and
-# Z at the BEQs, and draws at present time. No ROM, no read overrides.
+# Z at the BEQs and the BNE, and draws at present time. No ROM, no read
+# overrides.
 
 [[feature]]
 id = "small-fixes"
