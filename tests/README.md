@@ -219,7 +219,14 @@ that frame first).
 Read when something ended from the game, not from the first read that finds
 it over, which can come any number of frames late: a feature notes the frame
 in its TCP command (#144: Recharging items' `freeze_ended`, the frame
-boundary at which the Hour Glass's freeze was over, as `ping` counts).
+boundary at which the Hour Glass's freeze was over, as `ping` counts; #155:
+`flight_ended`, the Wing Boots').
+
+A moment a few frames long can't be caught by polls either: on a loaded
+machine they step over all of it, and a press sent on one goes down late.
+Play it headless and read every frame (`play.py`'s `headless()`), each press
+on the frame after the one whose RAM calls for it (#155: the dagger test's
+swings, whose first hit phase lasts 3 frames).
 
 A walk of taps goes as far a tap however many frames come between them, so
 one bounded by frames runs out on a loaded machine: hold the direction

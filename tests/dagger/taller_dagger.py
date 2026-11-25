@@ -1,18 +1,24 @@
-"""Play the taller dagger end to end in a hidden window.
+"""Play the taller dagger end to end, headless and in a hidden window.
 
     python3 tests/dagger/taller_dagger.py --build build-cycle --rom "Faxanadu (USA).nes" --out /tmp/dagger
-
-The game runs uncapped and the script waits on the game's own state, never on
-the clock, and takes a free TCP port, so any number can run in parallel.
 
 Copies the build to OUT and starts from the fixture eolis-zozuras (an
 external prerequisite, not coverage, tests/e2e/fax_e2e.py): the first
 enemies, two Zozura crawling right along the ground on Eolis screen 4, fresh
-as the screen loads, the hero at its right facing them. Each
-case loads that save with a weapon in hand, full HP and a Zozura that no hit
-here kills, and swings once as it crawls in, when it is a set distance away
-(his x minus its x). Every case's load also checks that the dagger's reach is
-served again after a save-state load.
+as the screen loads, the hero at its right facing them. Each case is that
+save, played on headless to the frame before the nearer Zozura comes within
+any case's distance, with a weapon in hand, full HP and a Zozura that no hit
+here kills; he swings once as it crawls in, when it is a set distance away
+(his x minus its x).
+
+The swings play headless, frame exact, every case at once (#155): a swing's
+first hit phase lasts 3 frames, which polls over TCP on a loaded machine can
+step over, and a press sent on a poll goes down any number of frames late.
+Each frame's RAM is read after it, and each press goes down on the frame
+after the one whose RAM calls for it, as polls a frame apart would press it;
+a run that needs a press it lacks plays again with it. Before that, each
+case is loaded in a hidden window over TCP (on a reserved port, uncapped):
+the dagger's reach is served again after a save-state load in a running game.
 
 The reach is read from RAM, from Maybe_WeaponRange_X/Y, which Player_DrawWeapon
 loads from MAYBE_WEAPON_RANGES every frame: a read through the CPU, so it sees
@@ -34,16 +40,21 @@ pixels away and the swords from 31; it hurts the hero from 15.
    every swing after it, until it reaches the hero and hurts him. The Long
    Sword's reach and hit are as with the feature on.
 
-Screenshots, each on the first frame of a swing's first hit phase (its low
-frame): the taller dagger hitting the Zozura, the Long Sword hitting it from
-further out, the taller dagger missing from there, the taller dagger passing
-over it in a jump, and the original dagger passing over it from close in.
+Screenshots, each what the window shows after the first frame of a swing's
+first hit phase (its low frame): the taller dagger hitting the Zozura, the
+Long Sword hitting it from further out, the taller dagger missing from there,
+the taller dagger passing over it in a jump, and the original dagger passing
+over it from close in.
 """
+from concurrent.futures import ThreadPoolExecutor
+import os
 from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import Game, fixture, frame, parse_args, ram, tcp  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "movement"))
+from fax_e2e import fixture, parse_args, ram, tcp  # noqa: E402
+from play import Game  # noqa: E402  (fax_e2e's, with headless runs)
 
 AREA, SCREEN, HERO_X, HERO_Y = 0x24, 0x63, 0x9E, 0xA1               # Player_PosX_Block, Player_PosY
 PLAYER_FLAGS, ATTACKING, FACING_RIGHT = 0xA4, 0x80, 0x40
@@ -70,6 +81,10 @@ JUMP_AT = 27                                                        # jump when 
 GROUND = 144                                                        # Player_PosY standing on screen 4
 TOUGH = 60                                                          # a Zozura's HP that no hit here ends
 FULL_HP = 0x50
+NEAR = 40                                                           # each case starts a frame before this close
+PRESS, JUMP_HOLD = 2, 20                                            # frames B and A are held, as a player taps them
+STEP, FRAMES = 64, 256                                              # a case's run: past its last press, at most
+CRAWL = 200                                                         # the Zozura's crawl to NEAR, with frames to spare
 PACKAGE, FEATURE = "faxanadu.dx", "dx"                          # the one switch: off is the original game
 
 
@@ -80,26 +95,23 @@ def main():
     assert list(ranges) == [8, 4, 16, 8, 16, 8, 16, 8], f"MAYBE_WEAPON_RANGES: {ranges.hex()}"
     out = game.out
 
-    def swing(zozura, weapon, aim, jump=False, again=False, name=None):
-        """Load the Zozura save with this weapon, and swing once the nearer
-        Zozura is `aim` pixels away (with `jump`, jump first and swing in the
-        air). With `again`, keep swinging until something happens. Returns
-        what happened: hit (its HP fell), hurt (it reached the hero), swings,
-        the reaches the game loaded, and (distance, hero y) in each sample of
-        a first hit phase. `name` takes a screenshot in the first one, the
-        swing's low frame, so hits and misses show the same moment."""
-        case = out / "case.cycstate"
-        fixture(zozura, case, {PLAYER_CUR_WEAPON: weapon, SELECTED_WEAPON: weapon, HP: FULL_HP,
-                               SPRITE_HP + TARGET: TOUGH})
-        tcp("load_state", path=str(case))
-        m = ram(0, MACHINE)
-        assert m[SCREEN] == ZOZURA_SCREEN and m[SPRITE_ENTITY + TARGET] == ZOZURA
-        assert not m[PLAYER_FLAGS] & FACING_RIGHT, "the hero faces the Zozura"
-        got = dict(hit=False, hurt=False, swings=0, reaches=set(), phase1=[])
+    def schedule(presses):
+        """headless()'s schedule for presses (frame, button, frames): each button
+        held from its frame for its frames, with any other held then."""
+        edges = sorted({f for at, _, n in presses for f in (at, at + n)})
+        return [(0, "-")] + [(f, "+".join(sorted(b for at, b, n in presses if at <= f < at + n)) or "-")
+                             for f in edges]
+
+    def follow(rams, presses, aim, jump, again):
+        """The swing's rules on each frame's RAM, as one poll a frame would
+        play them: what happened, and the next press they call for that
+        `presses` does not have (to go down on the next frame), None once the
+        case is over, or ... if the run ended first. A press already there is
+        the same decision on the same frame: the runs are frame exact."""
+        got = dict(hit=False, hurt=False, swings=0, reaches=set(), phase1=[], low=None)
         jumped = pressed = attacking = False
-        end = frame() + 1600                                        # one read a sample, a frame or less apart
-        while frame() < end:
-            m = ram(0, MACHINE)
+        free = 0                                                    # B can go down again from here
+        for i, m in enumerate(rams):
             d = m[HERO_X] - m[SPRITE_X + TARGET]
             got["reaches"].add((m[REACH_X], m[REACH_Y]))
             was, attacking = attacking, bool(m[PLAYER_FLAGS] & ATTACKING)
@@ -107,88 +119,153 @@ def main():
                 got["swings"] += 1
             if attacking and m[ATTACK_PHASE] == 1:
                 got["phase1"].append((d, m[HERO_Y]))
-                if name:
-                    game.shot(name)
-                    name = None
+                got["low"] = i if got["low"] is None else got["low"]
             if m[SPRITE_HP + TARGET] < TOUGH:
                 got["hit"] = True
-                return got
+                return got, None
             if m[HP] < FULL_HP or m[SCREEN] != ZOZURA_SCREEN:
                 got["hurt"] = True
-                return got
+                return got, None
             if was and not attacking and not again:
-                return got                                          # the one swing is over
+                return got, None                                    # the one swing is over
+            press = None
             if jump and not jumped and d <= JUMP_AT:
-                tcp("action", name="a", frames=20)
-                jumped = True
+                press, jumped = (i + 1, "A", JUMP_HOLD), True
             airborne = not jump or (jumped and m[HERO_Y] <= GROUND - 20)
-            if not attacking and airborne and (again or not pressed) and d <= aim:
-                tcp("action", name="b", frames=2)
-                pressed = True
-        raise AssertionError(f"{NAMES[weapon]}: nothing happened: {got}")
+            if (not press and not attacking and airborne and (again or not pressed) and d <= aim and
+                    i + 1 >= free):
+                press, pressed, free = (i + 1, "B", PRESS), True, i + 2 + PRESS
+            if press and press not in presses:
+                return got, press
+        return got, ...                                             # the run ended first
+
+    def swing(case, mods, aim, jump=False, again=False, name=None):
+        """Play the save `case` headless with `mods`, swinging once the nearer
+        Zozura is `aim` pixels away (with `jump`, jumping first and swinging in
+        the air; with `again`, swinging again each time a swing ends, until
+        something happens). Returns what happened: hit (its HP fell), hurt (it
+        reached the hero), swings, the reaches the game loaded, (distance, hero
+        y) on each frame of a first hit phase, and the first of them (low).
+        `name` takes a picture after that frame, the swing's low frame, so hits
+        and misses show the same moment."""
+        presses, frames = [], STEP
+        while True:
+            got, press = follow(game.headless(case, schedule(presses), frames, mods), presses, aim, jump, again)
+            if press is None:
+                break
+            if press is ...:                                        # nothing yet: play further
+                assert frames < FRAMES, f"nothing happened in {frames} frames: {got}"
+                frames = min(FRAMES, frames * 2)
+                continue
+            presses.append(press)
+            frames = min(FRAMES, press[0] + STEP)
+        if name:
+            assert got["low"] is not None, f"no first hit phase to show: {got}"
+            game.headless(case, schedule(presses), got["low"] + 1, mods, picture=out / f"{name}.png")
+        return got
+
+    def near(mods, name):
+        """The Zozura save, played on with `mods` to the frame before the nearer
+        Zozura is NEAR pixels away: a save state of it."""
+        crawl = game.headless(zozura, [(0, "-")], CRAWL, mods)
+        k = next(i for i, m in enumerate(crawl) if m[HERO_X] - m[SPRITE_X + TARGET] <= NEAR)
+        path = out / f"{name}.cycstate"
+        game.headless(zozura, [(0, "-")], k, mods, save=(k - 1, path))
+        return path
+
+    def case(near, weapon):
+        """The save `near` with this weapon in hand, full HP and a Zozura no
+        hit here kills."""
+        path = out / f"case-{len(cases)}.cycstate"
+        fixture(near, path, {PLAYER_CUR_WEAPON: weapon, SELECTED_WEAPON: weapon, HP: FULL_HP,
+                             SPRITE_HP + TARGET: TOUGH})
+        cases.append(path)
+        return path
+
+    def loaded(path):
+        """Load the case in the window: the reach the game serves after a load,
+        read in one call with what the case needs."""
+        tcp("load_state", path=str(path))
+        m = ram(0, MACHINE)
+        assert m[SCREEN] == ZOZURA_SCREEN and m[SPRITE_ENTITY + TARGET] == ZOZURA
+        assert not m[PLAYER_FLAGS] & FACING_RIGHT, "the hero faces the Zozura"
+        return m[REACH_X], m[REACH_Y]
 
     def first_phase(got):
         ds = sorted({d for d, _ in got["phase1"]})
         assert ds, f"no sample in the first hit phase: {got}"
         return f"{ds[0]}-{ds[-1]}" if len(ds) > 1 else f"{ds[0]}"
 
+    cases = []
     try:
         zozura = game.state("eolis-zozuras")
+        on, off = game.mods("mods-on"), game.mods("mods-off", original=True)
+        near_on, near_off = near(on, "near-on"), near(off, "near-off")    # headless: before a window waits
+        # (case, mods, aim, jump, again, picture): 0-4 on, 5-7 off
+        plays = [(case(near_on, DAGGER), on, CLOSE, False, False, "taller-dagger-hits"),
+                 (case(near_on, LONG_SWORD), on, SWORD_RANGE, False, False, "long-sword-hits"),
+                 (case(near_on, DAGGER), on, SWORD_RANGE, False, False, "taller-dagger-from-afar-misses"),
+                 (case(near_on, DAGGER), on, REACH_IN_PHASE_1[DAGGER], True, False, "taller-dagger-jumps-over"),
+                 (case(near_on, LONG_SWORD), on, REACH_IN_PHASE_1[LONG_SWORD], True, False, None),
+                 (case(near_off, DAGGER), off, CLOSE, False, False, "stock-dagger-passes-over"),
+                 (case(near_off, DAGGER), off, CLOSE + 12, False, True, None),
+                 (case(near_off, LONG_SWORD), off, SWORD_RANGE, False, False, None)]
+
+        # Each case's load in the window: the reach served after a save-state load.
         game.launch(at="eolis-zozuras")
         state = tcp("dagger_state")
         assert state["enabled"] and state["served"] and not state["failed"], f"on by default: {state}"
         assert ram(SCREEN) == ZOZURA_SCREEN and (ram(SPRITE_ENTITY + OTHER), ram(SPRITE_ENTITY + TARGET)) == (ZOZURA, ZOZURA)
         assert ram(SPRITE_X + TARGET) > ram(SPRITE_X + OTHER), "the target is the nearer Zozura"
         assert (ram(HERO_Y), ram(SPRITE_Y + TARGET)) == (GROUND, GROUND + 16), "both on the ground"
-
-        # 1. On: the dagger hits from close in, and keeps its short reach.
-        got = swing(zozura, DAGGER, CLOSE, name="taller-dagger-hits")
-        assert got["reaches"] == {TALL}, f"the taller dagger's reach after a load: {got}"
-        assert got["hit"] and got["swings"] == 1, f"the taller dagger hits a Zozura: {got}"
-        print(f"ok: on, the dagger's reach is {TALL}, and one swing from {CLOSE} pixels hits the Zozura")
-        tall_phase = got["phase1"]
-        got = swing(zozura, LONG_SWORD, SWORD_RANGE, name="long-sword-hits")
-        assert got["reaches"] == {SWORD} and got["hit"], f"the Long Sword: {got}"
-        on_sword = got
-        got = swing(zozura, DAGGER, SWORD_RANGE, name="taller-dagger-from-afar-misses")
-        assert got["reaches"] == {TALL} and not got["hit"] and got["swings"] == 1, f"dagger from afar: {got}"
-        far = first_phase(got)
-        assert all(d > REACH_IN_PHASE_1[DAGGER] for d, _ in got["phase1"]), got
-        print(f"ok: swung from {SWORD_RANGE} pixels, the Long Sword {SWORD} hits and the dagger misses "
-              f"(first hit phase at {far}): it keeps its short reach")
-
-        # 2. Nothing under his feet: a swing at the top of a jump, right over it.
-        for weapon in (DAGGER, LONG_SWORD):
-            got = swing(zozura, weapon, REACH_IN_PHASE_1[weapon], jump=True,
-                        name="taller-dagger-jumps-over" if weapon == DAGGER else None)
-            assert got["swings"] == 1 and not got["hit"], f"{NAMES[weapon]} in a jump: {got}"
-            assert all(y <= GROUND - 20 and d <= REACH_IN_PHASE_1[weapon] for d, y in got["phase1"]), got
-            print(f"ok: {NAMES[weapon]}: swung in a jump {GROUND - max(y for _, y in got['phase1'])} pixels up, "
-                  f"in reach across (first hit phase at {first_phase(got)}), it passes over the Zozura")
+        reach = [loaded(play[0]) for play in plays[:5]]
         state = tcp("dagger_state")
         assert state["served"] and not state["failed"], f"still served after every load: {state}"
         game.close()
-
-        # 3. Off: the original dagger passes over it; the Long Sword is the same.
         game.set_features({(PACKAGE, FEATURE): False})
         game.launch()
         state = tcp("dagger_state")
         assert not state["enabled"] and not state["served"], f"the remaster is off: {state}"
-        got = swing(zozura, DAGGER, CLOSE, name="stock-dagger-passes-over")
-        assert got["reaches"] == {STOCK}, f"the original dagger's reach: {got}"
-        assert not got["hit"] and got["swings"] == 1, f"the stock dagger passes over a Zozura: {got}"
-        assert all(HURTS < d <= REACH_IN_PHASE_1[DAGGER] for d, _ in got["phase1"]), \
-            f"in reach across, as when it hit with the feature on ({tall_phase}): {got}"
+        reach += [loaded(play[0]) for play in plays[5:]]
+        game.close()
+
+        # The swings, headless, every case at once.
+        with ThreadPoolExecutor(max_workers=min(len(plays), os.cpu_count() or 4)) as pool:
+            got = list(pool.map(lambda play: swing(*play), plays))
+        for g, r in zip(got, reach):
+            g["reaches"].add(r)
+
+        # 1. On: the dagger hits from close in, and keeps its short reach.
+        assert got[0]["reaches"] == {TALL}, f"the taller dagger's reach after a load: {got[0]}"
+        assert got[0]["hit"] and got[0]["swings"] == 1, f"the taller dagger hits a Zozura: {got[0]}"
+        print(f"ok: on, the dagger's reach is {TALL}, and one swing from {CLOSE} pixels hits the Zozura")
+        assert got[1]["reaches"] == {SWORD} and got[1]["hit"], f"the Long Sword: {got[1]}"
+        assert got[2]["reaches"] == {TALL} and not got[2]["hit"] and got[2]["swings"] == 1, f"dagger from afar: {got[2]}"
+        assert all(d > REACH_IN_PHASE_1[DAGGER] for d, _ in got[2]["phase1"]), got[2]
+        print(f"ok: swung from {SWORD_RANGE} pixels, the Long Sword {SWORD} hits and the dagger misses "
+              f"(first hit phase at {first_phase(got[2])}): it keeps its short reach")
+
+        # 2. Nothing under his feet: a swing at the top of a jump, right over it.
+        for weapon, jumped in ((DAGGER, got[3]), (LONG_SWORD, got[4])):
+            assert jumped["swings"] == 1 and not jumped["hit"], f"{NAMES[weapon]} in a jump: {jumped}"
+            assert jumped["phase1"] and all(y <= GROUND - 20 and d <= REACH_IN_PHASE_1[weapon]
+                                            for d, y in jumped["phase1"]), jumped
+            print(f"ok: {NAMES[weapon]}: swung in a jump {GROUND - max(y for _, y in jumped['phase1'])} pixels up, "
+                  f"in reach across (first hit phase at {first_phase(jumped)}), it passes over the Zozura")
+
+        # 3. Off: the original dagger passes over it; the Long Sword is the same.
+        assert got[5]["reaches"] == {STOCK}, f"the original dagger's reach: {got[5]}"
+        assert not got[5]["hit"] and got[5]["swings"] == 1, f"the stock dagger passes over a Zozura: {got[5]}"
+        assert got[5]["phase1"] and all(HURTS < d <= REACH_IN_PHASE_1[DAGGER] for d, _ in got[5]["phase1"]), \
+            f"in reach across, as when it hit with the feature on ({got[0]['phase1']}): {got[5]}"
         print(f"ok: off, the dagger's reach is {STOCK}, and the same swing (first hit phase at "
-              f"{first_phase(got)}, in reach across) passes over the Zozura")
-        got = swing(zozura, DAGGER, CLOSE + 12, again=True)
-        assert got["hurt"] and not got["hit"] and got["swings"] >= 2, f"swinging until it arrives: {got}"
-        print(f"ok: off, {got['swings']} swings pass over it until it reaches the hero and hurts him")
-        got = swing(zozura, LONG_SWORD, SWORD_RANGE)
-        assert got["reaches"] == {SWORD} and got["hit"], f"the Long Sword, off: {got}"
+              f"{first_phase(got[5])}, in reach across) passes over the Zozura")
+        assert got[6]["hurt"] and not got[6]["hit"] and got[6]["swings"] >= 2, f"swinging until it arrives: {got[6]}"
+        print(f"ok: off, {got[6]['swings']} swings pass over it until it reaches the hero and hurts him")
+        assert got[7]["reaches"] == {SWORD} and got[7]["hit"], f"the Long Sword, off: {got[7]}"
         print(f"ok: the Long Sword's reach is {SWORD} on and off, and it hits from {SWORD_RANGE} pixels both "
-              f"ways (first hit phase at {first_phase(on_sword)} on, {first_phase(got)} off)")
-        print("screenshots:", ", ".join(game.shots))
+              f"ways (first hit phase at {first_phase(got[1])} on, {first_phase(got[7])} off)")
+        print("screenshots:", ", ".join(f"{play[5]}.png" for play in plays if play[5]))
     except BaseException:
         if game.running():
             game.shot("failure")
