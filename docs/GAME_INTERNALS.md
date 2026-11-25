@@ -376,8 +376,8 @@ faxanatools' `messages.py` decodes and encodes them; `fax_travel.c`'s
   clears, row by row. In the game only the shops close a box mid-script
   (`Maybe_Shop_DrawTextBox`, and the sale's `TextBox_Close` at `$86F8`), and
   Quick shops skips both (#163): before, B in a list closed it and opened the
-  dialogue box before the end, and the portrait went for 8 frames, came back
-  for 20, and went (Cameron's "flicker"). A box opened over another without a
+  dialogue box before the end, and the portrait went for 9 frames, came back
+  for 18, and went (the portrait's flicker). A box opened over another without a
   close shows only its own rectangle in Seamless; the other's rows stay in the
   nametable until `IScriptAction_EndScript` clears both boxes' area.
 - **A box is drawn when the PPU buffer is empty**: `PPUBuffer_ReadOffset`

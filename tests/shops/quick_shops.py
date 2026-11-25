@@ -33,9 +33,9 @@ every frame of the run is held to what the original shows, never a flash:
 Seamless (fax_world.c) shows a script's boxes only while TextBox_Closed is 0.
 Before #163, Quick shops opened the list straight over an empty dialogue box
 (the chat box's flash), and B closed the list (TextBox_Close) and opened the
-dialogue box again before the end, so for 8 frames no box and no portrait
-showed, then the portrait came back for 20 and went (its flicker). Both break
-the rules above.
+dialogue box again before the end, so for 9 frames no box and no portrait
+showed, then the portrait came back for 18 and went (its flicker). Both break
+the rules above: on master's frames, Up then B, the check finds both.
 
 talk-buy       Two purchases in a row (the Hand Dagger, then Down and the
                Deluge), each back in the list with the cursor where it was;
