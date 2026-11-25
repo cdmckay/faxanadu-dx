@@ -207,6 +207,11 @@ state's first frame. Anything needing more than one timed press runs headless
 from a state with `--input`. `game.poke(writes)` edits RAM in the running game
 (save, `fixture()`, load), for example to clear a screen's enemies.
 
+Read when something ended from the game, not from the first read that finds
+it over, which can come any number of frames late: a feature notes the frame
+in its TCP command (#144: Recharging items' `freeze_ended`, the frame
+boundary at which the Hour Glass's freeze was over, as `ping` counts).
+
 ### Ports
 
 Never pick a port in a test. The suite lock keeps two suites apart, but one
