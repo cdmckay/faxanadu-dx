@@ -2117,6 +2117,63 @@ jump a few updates after stepping off, as A from the hang itself would.
   button holds no Down, so at `$C47A` it clears those two bits from A, in
   that case only. The items' routines read no button (the Red Potion's
   `IScripts_Begin` waits for A to close its line, then clears the item).
+- **Which loop takes a pad read.** The NMI reads the pad only with
+  `Game_InterruptHandlersEnabled` (`$13`) set and
+  `Game_InterruptsHandledLatch` (`$10`) 0, and while the game runs only
+  `WaitForNextFrame` stores that 0 (`Game_InitScreenAndMusic` does too, from
+  `Game_Init` at power-on). So a read comes only while the main thread spins in
+  `WaitForNextFrame`, and the `JSR` that called it, whose return address is
+  at S + 1 (see *MP and its bar*, "Where the main loop waits"), names the
+  loop the read is for. At the cycle host's frame boundary, before the NMI,
+  `cyc_mod_regs` shows that wait (PC in `$CA25`-`$CA2D`), so the input
+  callback, which makes the frame's pad bytes, knows whose read they are
+  (checked in the game: play's in Eolis town, a menu's with the Select menu
+  up). The callers, by the `JSR`'s address: in bank 12, the text box's
+  (`IScripts_UpdatePortraitAnimation`, `$87B0`, once a frame in every
+  script's message, question and shop loop), the Select menu's
+  (`PlayerMenu_Show`'s `@_inputLoop`, `$8ADD`), an empty list's
+  (`PlayerMenu_ShowSubmenu`, `$8B41`), a list's
+  (`PlayerMenu_HandleInventoryMenuInput`, `$8B71`), the PLAYER page's
+  (`PlayerMenu_ShowStatusMenu`, `$8E41`), the mantra screen's (`$9140`,
+  `$9162`) and the splash's (`$A7AE`, `$A944`, `$A963`, `$A97D`); in the
+  fixed bank, `Player_FillHPAndMP`'s (`$C4E7`-`$C525`),
+  `Player_UseRedPotion`'s (`$C554`-`$C566`), `Player_UseMattock`'s
+  (`$C658`-`$C661`), the death's (`$D941`), the ending's (`$D9B3`, `$D9C8`,
+  `$DBF6`), the screen setups' (`$DAA9`, `$DAB8`, `$DAC7`, `$DAD6`, `$DAED`),
+  `Game_Start`'s (`$DB3F`), `Game_MainLoop`'s (`$DB4D`, and its scroll's), the
+  pause loop's (`$E036`) and the title's (`Game_ShowStartScreen`, `$FC6E`).
+  No other bank calls it.
+- **A script's end waits a frame more.** `IScriptAction_EndScript` starts
+  with `JSR IScripts_UpdatePortraitAnimation`, a read of its own, before it
+  closes the box. So the button that ended the last message (A on its last
+  page, or B dismissing it) is no longer new when the script returns, but one
+  that goes down at that last read is, to whatever runs after the script in
+  the same pass. A door's line runs inside `GameLoop_UpdatePlayer`
+  (`Player_CheckHandleEnterDoor`, `Game_RunDoorRequirementHandler`,
+  `IScripts_Begin`), so `Player_CastMagic` and `GameLoop_CheckUseCurrentItem`
+  come after it: with Up held at Eolis's exit door without the J key, A
+  ending "mark of Jack" and X (the NES B) the frame after casts the selected
+  spell (checked in the game, from a state saved headless after A's frame).
+- **The PLAYER page closes on B alone.** `PlayerMenu_ShowStatusMenu`'s loop
+  is `LDA Joy1_ChangedButtonMask`, `ASL A`, `BPL` back: A does nothing there.
+- **Outside play, Use item's controller button is the NES B**
+  (`fax_use_item.c`, #160), so a modern pad's B backs out. A press waits for
+  the first frame whose read the NMI will make, and that read's loop decides
+  it. The text box's, the Select menu's, a list's, the PLAYER page's, the
+  pause's (the map and the quest log, which close on B) and the title's (its
+  file picks) make it a back press: the input callback adds the NES B to the
+  pad byte for as long as the button is held, until a read of any other loop,
+  play's, where it lets go of the NES B and stays up until the button does.
+  Any other read makes it a press of Use item, which never presses the NES
+  B. So a press never both uses an item and backs out: B held from a menu
+  into play holds no NES B there (no sword, no item), and B held from an item
+  into its line closes nothing. A press let go before any read is gone, as an
+  NES button's would be. One case is left, the one above: a back press new at
+  a door line's last read reaches the cast and the item check of that pass.
+  At `Game_MainLoop`'s `JSR Player_CastMagic` (`$DB5F`), when that read had
+  the NES B from a back press alone, B is taken out of
+  `Joy1_ChangedButtonMask`, which the next read rewrites whole. X, the host's
+  NES B, is untouched, and so is the keyboard: S is only ever Use item.
 
 ## The status bar (banks 15 and 10)
 
@@ -3730,7 +3787,8 @@ jumping or falling, `Player_Flags & $05`):
   air reaches the selected item's routine; without A the hero falls, and it
   does not (checked in the game: `Player_Flags` `$42` with A and Down held).
   An item used there runs before that pass's countdowns. Over TCP, B is the
-  NES button (`action b`): a controller's B is Use item (`pad b`).
+  NES button (`action b`): a controller's B is Use item in play (`pad b`),
+  and the NES B outside it.
 
 - `Player_UseWingBoots` (`$C579`): script `$83` ("I've used Wing Boots."),
   `JSR Player_ClearSelectedItem` at `$C581`, sound `$1A`, then
@@ -5310,7 +5368,12 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   and casting*. Three hook sites in `GameLoop_CheckUseCurrentItem`, which no
   other feature hooks (the Magic button's restore is at its entry), each the
   `AND` after a load, where it changes only A. A press lasts one frame, as a
-  pad read does. No ROM, no read overrides, no state.
+  pad read does. On a controller, outside play, the button is the NES B
+  (#160): its input callback adds B to the pad byte while a text box, a
+  menu, the pause or the title takes the reads, and a fourth site,
+  `Game_MainLoop`'s `JSR Player_CastMagic` (`$DB5F`), which no other feature
+  hooks, takes that B out of `Joy1_ChangedButtonMask` after a door's line.
+  No ROM, no read overrides, no state.
 
 - **The launcher's Controls page** lists Magic, Use item, Block, Map and
   Quest log after the host's shortcuts (`cyc_extras.c`'s `bindings`), and

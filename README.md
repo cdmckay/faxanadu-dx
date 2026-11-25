@@ -144,10 +144,11 @@ opens it too.
 - **Zone names.** Entering a different town, region, tower or castle shows its
   name below the status bar for about two seconds.
 - **A modern controller layout.** Start opens the Select menu and closes it,
-  Back opens the map, the left trigger the quest log, and every action has a
-  button of its own (see Controls). Nothing pauses the game but the screens
-  that hold it anyway. A Nintendo-layout pad is read by where its buttons
-  sit, so the lower one jumps, as on any other.
+  Back opens the map, the left trigger the quest log, B backs out of menus
+  and text, and every action has a button of its own (see Controls).
+  Nothing pauses the game but the screens that hold it anyway. A
+  Nintendo-layout pad is read by where its buttons sit, so the lower one
+  jumps, as on any other.
 
 ### Items and shops
 
@@ -252,7 +253,8 @@ The remaster also fixes these bugs in the original game:
 | Jump (A) | Z | A |
 | Attack (B) | X | X |
 | Magic | C | Y |
-| Use item | S | B |
+| Use item (in play) | S | B |
+| Back out of menus and text | X | B or X |
 | Block (hold, with a shield) | V | Right trigger |
 | Select menu | Enter | Start |
 | Map | M | Back |
@@ -268,6 +270,15 @@ A controller's buttons are named for where they sit, as on an Xbox pad: A is
 the lower face button (✕ on a PlayStation pad), B the right (○), X the left
 (□) and Y the top (△). A Nintendo-layout pad, like a Switch Pro or an 8BitDo
 in Switch mode, is read the same way, by place rather than by its letters.
+
+On a controller, B is Use item only in play. Everywhere else it backs out,
+as a modern pad's B does: it is the NES's B in text and its questions, the
+Select menu, its lists and the PLAYER page, shops, the map and the quest
+log, Guru travel and saving, and the title's list of files, where X still
+is too. Each press is one or the other, so a B that uses an item never
+closes the line it brings up, and a B that closes a menu never uses an item
+or swings the sword. On the keyboard, S is only ever Use item, and X the
+NES's B.
 
 Enter and Start are the NES's Start, and Backslash and Back its Select. In
 play, Start opens the Select menu and closes it, and no longer pauses;

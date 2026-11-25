@@ -263,6 +263,16 @@ addr = 0xc487
 bank = 15
 bytes = "29 40 f0 11 ad c1 03 0a a8 c0 22 b0"   # AND #$40, BEQ return, LDA a:SelectedItem
 
+# Outside play its controller button is the NES B (#160): Game_MainLoop's JSR
+# Player_CastMagic, where a B that button pressed for a door's line, read in
+# GameLoop_UpdatePlayer, leaves the changed mask. Doesn't handle.
+
+[[mod_function_hook]]
+id = "faxanadu.use-item.back"
+addr = 0xdb5f
+bank = 15
+bytes = "20 5b ba 20 78 c4 20 00 80 20 8f c8"   # JSR Player_CastMagic, JSR GameLoop_CheckUseCurrentItem
+
 # Auto keys and reusable tools (fax_keys.c): the door requirement handler, the
 # HUD picture clear that uses up a key or the Mattock, and the Mattock's
 # Player_ClearSelectedItem call. Both features hook UI_ClearSelectedItemPic.
