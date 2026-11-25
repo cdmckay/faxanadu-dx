@@ -19,14 +19,14 @@ what the hero holds and his MP. Items are used with Down+B and chosen in the
 Select menu's ITEM list, as a player would.
 
 1. boots: in Eolis, the Wing Boots selected and the Hour Glass his: unlit.
-   Down+B: unlit through "I've used Wing Boots.", lit as the flight begins.
+   Down+B: lit as the flight begins, with no box (#151).
    The Hour Glass chosen in the menu while they fly: the box shows it,
    unlit, and T: still counts the flight. The boots chosen again: lit.
    Down+B standing ends the flight (headless): unlit from the frame it ends.
 2. glass: in Eolis, the Hour Glass selected, on 6 MP: lit as the freeze
    begins. The Wing Boots chosen while it freezes: unlit; the Hour Glass
-   again: lit. At 0 MP the freeze ends with "The power of the Hour Glass is
-   gone." (headless, from 1 MP): unlit from the frame it ends.
+   again: lit. At 0 MP the freeze ends (headless, from 1 MP): unlit from the
+   frame it ends.
 3. grieve: in King Grieve's room (Dartmoor $15), whose status bar palette is
    the one that differs (sub-palette 0, its green $1A where everywhere else
    has $19): unlit, then lit while the boots fly, the same gold.
@@ -67,7 +67,7 @@ MP, PLAYER_STATUS, PLAYER_FLAGS, MESSAGE_ID, UI_PALETTE = 0x39A, 0xA5, 0xA4, 0x2
 DURATION_WING_BOOTS, DURATION_HOUR_GLASS = 0x429, 0x42A
 SPRITE_ENTITIES, AREA, BUILDINGS = 0x2CC, 0x24, 4
 HOUR_GLASS, WING_BOOTS = 0x0D, 0x0F
-USED_HOUR_GLASS, USED_WING_BOOTS = 0xAC, 0xAD
+USED_WING_BOOTS = 0xAD                                     # "I've used Wing Boots.": the original's box
 EOLIS, DARTMOOR = 0, 6
 TEMPLE_SCREEN, TEMPLE_DOOR = 2, 0x95                       # Eolis's temple door (recharging_items' recipe)
 PALETTE_EOLIS, PALETTE_GRIEVE, REGION_DARTMOOR = 0x00, 0x0E, 4
@@ -196,13 +196,10 @@ def main():
                           {SELECTED_ITEM: item, ITEM_INVENTORY: other, NUMBER_OF_ITEMS: 1, MP: mp})
         wait(2)
 
-    def use(line):
-        """Down+B, the selected item: its line, paged through. The run begins after it."""
+    def use():
+        """Down+B, the selected item: it turns on with no box (#151)."""
         recharge.use()
-        until(f"message ${line:02X}", lambda: ram(MESSAGE_ID) == line, 120)
-        s = state()
-        assert box_open() and not s["running"] and not s["lit"], s   # not yet: the run begins after the line
-        page_through("the box to close", lambda: not box_open(), 3000)
+        assert not box_open(), "Down+B shows no box"
 
     def choose(item):
         """Select, down to ITEM, A, then A on the one item in the list: it goes
@@ -282,7 +279,7 @@ def main():
             launch()
             warp("boots", WING_BOOTS, HOUR_GLASS, 0x50)
             expect_unlit("eolis-boots-unlit", WING_BOOTS)
-            use(USED_WING_BOOTS)
+            use()
             until("the flight", lambda: ram(PLAYER_STATUS) & 0x80, 30)
             box, s = expect_lit("eolis-boots-lit", WING_BOOTS)
             print(f"ok: the Wing Boots in the box: the stock [ ] until the flight begins, then a gold frame "
@@ -306,7 +303,7 @@ def main():
             launch()
             warp("glass", HOUR_GLASS, WING_BOOTS, 6)
             expect_unlit("eolis-glass-unlit", HOUR_GLASS)
-            use(USED_HOUR_GLASS)
+            use()
             until("the freeze", lambda: ram(DURATION_HOUR_GLASS) < 0x80, 30)
             expect_lit("eolis-glass-lit", HOUR_GLASS)
             choose(WING_BOOTS)
@@ -332,7 +329,7 @@ def main():
             assert ram(UI_PALETTE) == 0, ram(UI_PALETTE)
             box, s = expect_unlit("grieve-boots-unlit", WING_BOOTS)
             assert box.green() == GREEN_GRIEVE, box.green()
-            use(USED_WING_BOOTS)
+            use()
             until("the flight", lambda: ram(PLAYER_STATUS) & 0x80, 30)
             box, s = expect_lit("grieve-boots-lit", WING_BOOTS)
             assert box.green() == GREEN_GRIEVE, box.green()
@@ -343,7 +340,7 @@ def main():
         if args.wants("fade"):
             launch()
             warp("fade", WING_BOOTS, HOUR_GLASS, 0x50, screen=TEMPLE_SCREEN, pos=TEMPLE_DOOR)
-            use(USED_WING_BOOTS)
+            use()
             until("the flight", lambda: ram(PLAYER_STATUS) & 0x80, 30)
             until("the hero to stand", lambda: not ram(PLAYER_FLAGS) & 0x05, 120)
             expect_lit("fade-at-the-door", WING_BOOTS)

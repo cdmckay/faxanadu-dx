@@ -7,8 +7,9 @@
  * room in the buffer), the pad as the NMI reads it, and the item, countdown,
  * death and pickup code
  * played step by step as the disassembly has them (the JSRs push their real
- * return addresses). So the tests check what the player holds, sees and
- * hears rather than restate the module's constants. */
+ * return addresses), the use scripts through the script interpreter, Zone
+ * names' box, and faxanadu_recharge.txt. So the tests check what the player
+ * holds, sees and hears rather than restate the module's constants. */
 #include "fax_recharge.c"
 
 static unsigned checks;
@@ -172,6 +173,44 @@ bool fax_save_set_int(const char *key, long value) {
     snprintf(v, sizeof v, "%ld", value);
     return fax_save_set(key, v);
 }
+/* Zone names' box (fax_banner.c): the line and strength it was last asked to
+ * draw, and how often the zone name was put away; a text box of the game's
+ * up (fax_text.c). */
+static const char *banner_line;
+static unsigned banner_alpha, banner_hides;
+static bool box_up;
+static const uint32_t banner_canvas[1];       /* what fax_banner_draw returns: the picture with the box drawn */
+const uint32_t *fax_banner_draw(const uint32_t *picture, int *w, int *h, const char *line, unsigned alpha) {
+    CHECK(w && h && *w == 424 && *h == 240 && line && alpha > 0 && alpha <= 255);
+    (void)picture;
+    banner_line = line;
+    banner_alpha = alpha;
+    return banner_canvas;
+}
+void fax_banner_hide(void) { ++banner_hides; }
+bool fax_text_box_showing(void) { return box_up; }
+/* faxanadu_recharge.txt (fax_remember.c): its fields, kept across launches as
+ * the file is, unless saves are off. It starts with both lessons learned, as
+ * the end-to-end tests' games do; forget_lessons() is a fresh install. */
+static char sidecar[4][32] = { "recharge.boots_taught", "recharge.glass_taught" };
+static int sidecar_n = 2;
+static bool saves_on = true;
+bool fax_remembered(const char *file, const char *field) {
+    CHECK(!strcmp(file, "faxanadu_recharge.txt"));
+    for (int i = 0; saves_on && i < sidecar_n; ++i) if (!strcmp(sidecar[i], field)) return true;
+    return false;
+}
+void fax_remember(const char *file, const char *field) {
+    if (!saves_on || fax_remembered(file, field)) return;
+    CHECK(sidecar_n < 4);
+    snprintf(sidecar[sidecar_n++], sizeof sidecar[0], "%s", field);
+}
+static void forget_lessons(void) { sidecar_n = 0; }
+static void learn_both(void) {
+    forget_lessons();
+    fax_remember("faxanadu_recharge.txt", "recharge.boots_taught");
+    fax_remember("faxanadu_recharge.txt", "recharge.glass_taught");
+}
 
 /* Hook sites at `addr`, as the scheduler runs them: enabled callbacks in
  * order until one handles the call. 1 when the routine was handled. */
@@ -191,15 +230,16 @@ static uint16_t site(uint16_t addr) { return fire(addr) ? rts() : addr; }
 
 /* ---- the game, as the disassembly has it ---- */
 enum { WING_BOOTS = 0x0F, HOUR_GLASS = 0x0D, RED_POTION = 0x10, MATTOCK = 0x09, NO_ITEM = 0xFF };
-enum { HP_U = 0x0431, HP_L = 0x0432, PLAYER_IS_DEAD = 0x0438, DURATION_GLOVE = 0x0428, PLAYER_STATUS = 0x00A5,
+enum { HP_U = 0x0431, HP_L = 0x0432, DURATION_GLOVE = 0x0428, PLAYER_STATUS = 0x00A5,   /* PLAYER_IS_DEAD: the module's */
        MUSIC = 0x00FA, AREA_MUSIC = 0x03D1 };
 enum { SCRIPT_USED_HOUR_GLASS = 0x82, SCRIPT_USED_WING_BOOTS = 0x83, SCRIPT_USED_ELIXIR = 0x85,
        SCRIPT_GOT_ELIXIR = 0x86, SCRIPT_GOT_WING_BOOTS = 0x89, SCRIPT_GOT_HOUR_GLASS = 0x8A };
 static const uint8_t STOCK_FLIGHT[BANDS] = { 40, 30, 20, 10 };    /* TITLE_TO_WINGBOOTS_DURATION ($C599) */
 static int picture;                         /* the item the HUD's picture tiles show */
 static int script;                          /* the last item script run */
-static int gone;                            /* the last timed item that ran out ("... is gone") */
-static unsigned gones;                      /* how many "... is gone" lines */
+static int gone;                            /* the last timed item whose run ended through the game's end */
+static unsigned gones;                      /* how many ended so */
+static unsigned gone_boxes;                 /* how many "... is gone" boxes the game showed */
 static char t_shown[3];                     /* T:'s two tiles, as the PPU has them */
 
 static uint8_t selected(void) { return ram[SELECTED_ITEM]; }
@@ -243,8 +283,10 @@ static int t_value(void) {
     return (t_shown[0] - '0') * 10 + t_shown[1] - '0';
 }
 
+/* A run ends through the game's end: its countdown wrapped to $FF. */
+static void ended(int item) { gone = item; ++gones; }
 /* The "... is gone" line: IScripts_Begin's text box, which plays its own frames. */
-static void is_gone(int item) { gone = item; ++gones; }
+static void is_gone_box(void) { ++gone_boxes; }
 /* GameLoop_CountdownItems, JSR'd from Game_MainLoop at $DB6B: its hook, then
  * Game_DecHourGlassDuration (JSR at $C88F), Game_DecWingBootsDuration ($C892), ... */
 static void countdown(void) {
@@ -257,7 +299,13 @@ static void countdown(void) {
         uint16_t at = site(GLASS_SECOND);
         if (at == GLASS_SECOND) at = second ? GLASS_SECOND_DEC : rts();   /* AND #$3F, BNE @_return */
         if (at == GLASS_SECOND_DEC) {
-            if (--ram[DURATION_HOUR_GLASS] >= 0x80) { is_gone(HOUR_GLASS); ram[MUSIC] = ram[AREA_MUSIC]; }
+            if (--ram[DURATION_HOUR_GLASS] >= 0x80) {   /* BPL: it wrapped, LDA #$97 */
+                ended(HOUR_GLASS);
+                uint16_t then = site(GLASS_GONE);
+                if (then == GLASS_GONE) { is_gone_box(); then = GLASS_GONE_MUSIC; }   /* the script, then on */
+                CHECK(then == GLASS_GONE_MUSIC);
+                ram[MUSIC] = ram[AREA_MUSIC];   /* LDA Areas_DefaultMusic, STA Music_Current */
+            }
             at = rts();
         }
         CHECK(at == 0xC892);
@@ -268,9 +316,15 @@ static void countdown(void) {
         uint16_t at = site(BOOTS_SECOND);
         if (at == BOOTS_SECOND) at = second ? BOOTS_SECOND_DEC : rts();
         if (at == BOOTS_SECOND_DEC) {
-            if (--ram[DURATION_WING_BOOTS] >= 0x80) { ram[PLAYER_STATUS] &= 0x7F; is_gone(WING_BOOTS); }
-            else draw_time(ram[DURATION_WING_BOOTS]);
-            at = rts();
+            if (--ram[DURATION_WING_BOOTS] >= 0x80) {   /* @_wingBootsDone: $80 cleared, LDA #$96 */
+                ram[PLAYER_STATUS] &= 0x7F;
+                ended(WING_BOOTS);
+                at = site(BOOTS_GONE);
+                if (at == BOOTS_GONE) { is_gone_box(); at = rts(); }   /* the script, then its RTS */
+            } else {
+                draw_time(ram[DURATION_WING_BOOTS]);
+                at = rts();
+            }
         }
         CHECK(at == 0xC895);
     }
@@ -293,28 +347,40 @@ static void clear_selected(uint16_t at) {
     }
     CHECK(rts() == at + 3);
 }
+static void run_from(uint16_t script, uint8_t offset, unsigned b_on);
+static unsigned use_b_on;                   /* B goes down on the use script's message number this (0 never) */
+/* An item's use script, run by IScripts_Begin from its routine's far jump:
+ * the message, "I've used ...", and END. The routine goes on after it. */
+static void use_script(int id) {
+    script = id;
+    run_from(id == SCRIPT_USED_WING_BOOTS ? 0xA674 : 0xA670, 1, use_b_on);
+}
 /* Down-B: GameLoop_CheckUseCurrentItem (JSR'd from Game_MainLoop at $DB62)
- * RTSes into the selected item's routine, which returns to the main loop. */
+ * RTSes into the selected item's routine, which returns to the main loop.
+ * Its entry's site may return at once, or go on past its script. */
 static void use(void) {
     cpu.s = 0xF8; script = 0; sound = -1;
     jsr(0xDB62);
+    uint16_t back = 0;                      /* where the routine returned, if its entry's site returned it */
     switch (selected()) {
-    case WING_BOOTS:                        /* Player_UseWingBoots */
-        if (fire(PLAYER_USE_WING_BOOTS)) break;
-        script = SCRIPT_USED_WING_BOOTS;
-        clear_selected(0xC581);
+    case WING_BOOTS: {                      /* Player_UseWingBoots */
+        uint16_t at = site(PLAYER_USE_WING_BOOTS);
+        if (at == PLAYER_USE_WING_BOOTS) { use_script(SCRIPT_USED_WING_BOOTS); at = BOOTS_USED; }
+        if (at != BOOTS_USED) { back = at; break; }
+        clear_selected(BOOTS_USED);
         sound = 0x1A;
         cpu.a = STOCK_FLIGHT[ram[PLAYER_TITLE] >> 2];
         CHECK(!fire(WING_BOOTS_SET_FLIGHT));
         ram[DURATION_WING_BOOTS] = cpu.a;   /* STA DurationWingBoots */
         draw_time(cpu.a);                   /* JSR UI_DrawTimeValue */
-        break;
+        break; }
     case HOUR_GLASS: {                      /* Player_UseHourGlass */
-        if (fire(PLAYER_USE_HOUR_GLASS)) break;
-        script = SCRIPT_USED_HOUR_GLASS;
-        clear_selected(0xC5D0);
+        uint16_t at = site(PLAYER_USE_HOUR_GLASS);
+        if (at == PLAYER_USE_HOUR_GLASS) { use_script(SCRIPT_USED_HOUR_GLASS); at = GLASS_USED; }
+        if (at != GLASS_USED) { back = at; break; }
+        clear_selected(GLASS_USED);
         sound = 0x1A;
-        uint16_t at = site(HOUR_GLASS_COST);
+        at = site(HOUR_GLASS_COST);
         if (at == HOUR_GLASS_COST) {        /* LSR Player_HP_U, ROR Player_HP_L */
             ram[HP_L] = (uint8_t)(ram[HP_L] >> 1 | (ram[HP_U] & 1) << 7);
             ram[HP_U] >>= 1;
@@ -332,7 +398,7 @@ static void use(void) {
         clear_selected(0xC64C);
         break;
     }
-    CHECK(rts() == 0xDB65 && cpu.s == 0xF8);
+    CHECK((back ? back : rts()) == 0xDB65 && cpu.s == 0xF8);
 }
 /* Player_CastMagic's Player_ReduceMP: the spell's cost, if MP covers it, and the bar. */
 static void cast(uint8_t cost) { if (mp() >= cost) { ram[PLAYER_MP] = (uint8_t)(mp() - cost); bar_mp = mp(); } }
@@ -533,8 +599,14 @@ static void play(bool on) {                 /* a launch with the toggle */
     give(NULL, 0, NO_ITEM);
     memcpy(t_shown, "00", 3);
     bar_mp = 0x50;
-    bar_calls = bars_queued = gones = 0;
+    bar_calls = bars_queued = gones = gone_boxes = 0;
     gone = 0;
+    static const uint8_t use_scripts[] = { 0x00, 0x01, 0xAC, 0x00, 0x00, 0x01, 0xAD, 0x00 };   /* $A670, $A674 */
+    memcpy(bank12 + (0xA670 - 0x8000), use_scripts, sizeof use_scripts);
+    use_b_on = 0;
+    banner_line = NULL;
+    banner_hides = 0;
+    box_up = false;
     isolated = false;
     overrides_lost();                       /* a launch: the engine's table starts empty */
     table_full = false;
@@ -556,7 +628,7 @@ enum { GLASS_STEP = 24 };                                    /* 40 MP for the wh
 
 /* ---- tests ---- */
 static void registers(void) {
-    CHECK(site_count == 13 && !strcmp(plugin_id, "faxanadu.recharge") && reset_cb == deactivate);
+    CHECK(site_count == 15 && !strcmp(plugin_id, "faxanadu.recharge") && reset_cb == deactivate);
     CHECK(save_get && save_set && save_validate);
     play(true);
     for (int i = 0; i < site_count; ++i) CHECK(sites[i].on);
@@ -576,7 +648,7 @@ static void flight_by_title_band(void) {
         give(NULL, 0, WING_BOOTS);
         use();
         pad = BUTTON_A;                     /* he flies the whole way */
-        CHECK(script == SCRIPT_USED_WING_BOOTS && sound == 0x1A && charge.flight.running && flights == 1);
+        CHECK(script == 0 && sound == 0x1A && charge.flight.running && flights == 1);   /* no box (#151) */
         CHECK(ram[DURATION_WING_BOOTS] == flight[band]);
         nmi();
         CHECK(t_value() == (int)flight[band]);   /* the game's own draw shows it */
@@ -592,6 +664,7 @@ static void flight_by_title_band(void) {
         }
         CHECK(frames_until(boots_down, (int)step) >= 0);
         CHECK(mp() == 0 && gone == WING_BOOTS && gones == 1 && !flying() && !charge.flight.running);
+        CHECK(gone_boxes == 0 && notice.line == NOTICE_MAGIC);   /* "Out of magic", below the HUD */
         nmi();
         CHECK(t_value() == 0);              /* T: back to the idle 00 */
         CHECK(charge.flight.next == 0);
@@ -630,7 +703,7 @@ static void a_flight_lasts_its_mp(void) {
     /* No cooldown: with MP again, they fly at once. */
     ram[PLAYER_MP] = 1;
     use();
-    CHECK(script == SCRIPT_USED_WING_BOOTS && ram[DURATION_WING_BOOTS] == 1 && flights == 2);
+    CHECK(script == 0 && ram[DURATION_WING_BOOTS] == 1 && flights == 2);
     CHECK(frames_until(boots_down, 100) == 32 && mp() == 0);
     /* An odd MP and band: 7 MP at 1.6 a second, 280 frames: 5 s, rounded up. */
     play(true);
@@ -778,14 +851,15 @@ static void using_them_again_lands(void) {
     frames(70);
     uint8_t left = ram[PLAYER_MP];
     use();
-    CHECK(script == 0 && sound == -1 && charge.flight.land && !boots_down());   /* no line yet: the countdown's */
+    CHECK(script == 0 && sound == 0x1A && charge.flight.land && !boots_down());   /* the item's sound; ends at the countdown */
     frames(1);
     CHECK(boots_down() && gone == WING_BOOTS && !flying() && mp() == left && landings[BOOTS] == 1);
+    CHECK(gone_boxes == 0 && notice.line == NOTICE_NONE);   /* his own doing: nothing said */
     CHECK(!charge.flight.running && boots_ready());
     nmi();
     CHECK(t_value() == 0);
     use();
-    CHECK(script == SCRIPT_USED_WING_BOOTS && ram[DURATION_WING_BOOTS] == (left * 32 + 63) / 64 && flights == 2);
+    CHECK(script == 0 && ram[DURATION_WING_BOOTS] == (left * 32 + 63) / 64 && flights == 2);
     frames(64);
     CHECK(mp() == left - 2u);
 }
@@ -819,7 +893,7 @@ static void the_freeze_runs_on_mp(void) {
     give(NULL, 0, HOUR_GLASS);
     ram[HP_L] = 0x80;                       /* 80.5 HP: the original took half */
     use();
-    CHECK(script == SCRIPT_USED_HOUR_GLASS && ram[DURATION_HOUR_GLASS] == 15 && hp() == 80 && ram[HP_L] == 0x80);
+    CHECK(script == 0 && ram[DURATION_HOUR_GLASS] == 15 && hp() == 80 && ram[HP_L] == 0x80);
     CHECK(selected() == HOUR_GLASS && picture == HOUR_GLASS && freezes == 1 && ram[MUSIC] == 0x0B);
     frames(1);
     nmi();
@@ -837,7 +911,7 @@ static void the_freeze_runs_on_mp(void) {
     CHECK(t_value() == 0);
     /* No cooldown: again at once. */
     use();
-    CHECK(script == SCRIPT_USED_HOUR_GLASS && ram[DURATION_HOUR_GLASS] == 15 && freezes == 2);
+    CHECK(script == 0 && ram[DURATION_HOUR_GLASS] == 15 && freezes == 2);
     CHECK(frames_until(glass_down, 1000) == 960 && mp() == 0);
     /* With no MP: refused with the sound. */
     use();
@@ -868,13 +942,14 @@ static void the_freeze_ends_early(void) {
     uint8_t left = ram[PLAYER_MP];
     CHECK(left == 80 - 4);
     use();
-    CHECK(script == 0 && sound == -1 && !glass_down());
+    CHECK(script == 0 && sound == 0x1A && !glass_down());
     frames(1);
     CHECK(glass_down() && gone == HOUR_GLASS && mp() == left && landings[GLASS] == 1 && ram[MUSIC] == 0x02);
+    CHECK(gone_boxes == 0 && notice.line == NOTICE_NONE);
     frames(200);
     CHECK(mp() == left);
     use();
-    CHECK(script == SCRIPT_USED_HOUR_GLASS && freezes == 2);
+    CHECK(script == 0 && freezes == 2);
     /* LimitItemDurations, the first frame on a boss's screen. */
     frames(200);
     left = ram[PLAYER_MP];
@@ -882,6 +957,7 @@ static void the_freeze_ends_early(void) {
     gones = 0;
     int n = frames_until(glass_down, 70);
     CHECK(n >= 1 && n <= 65 && gone == HOUR_GLASS && gones == 1 && cuts == 1 && mp() == left);
+    CHECK(gone_boxes == 0 && notice.line == NOTICE_BOSS && ram[MUSIC] == 0x02);   /* "Bosses end the Hour Glass" */
 }
 
 /* Both at once drain together; each ends when MP runs out. */
@@ -966,7 +1042,7 @@ static void dying_ends_both(void) {
     nmi();
     CHECK(t_value() == 0);
     use();
-    CHECK(script == SCRIPT_USED_WING_BOOTS);
+    CHECK(script == 0 && charge.flight.running);
     ram[SELECTED_ITEM] = HOUR_GLASS;
     use();
     frames(10);
@@ -1138,7 +1214,8 @@ static void save_states(void) {
     uint8_t buf[32];
     int n = save_get(buf, sizeof buf);
     CHECK(n == RECORD && save_validate(buf, n));
-    CHECK(buf[0] == 3 && buf[1] == 1 && buf[2] == charge.flight.next && buf[3] == 0 && buf[4] == 1 && buf[5] == 0);
+    CHECK(buf[0] == 4 && buf[1] == 1 && buf[2] == charge.flight.next && buf[3] == 0 && buf[4] == 1 && buf[5] == 0);
+    CHECK(buf[20] == ENDED_NONE && buf[21] == ENDED_NONE && buf[22] == NOTICE_NONE);
     CHECK((buf[6] | buf[7] << 8) == 30 && buf[8] == charge.freeze.next && buf[9] == 15 && buf[11] == 1);
     CHECK(buf[12] == 0 && buf[13] == TALK_IDLE && buf[14] == LINE_NONE);
     CHECK(save_get(buf, RECORD - 1) == -1);
@@ -1159,9 +1236,10 @@ static void save_states(void) {
     /* Records it does not accept change nothing. */
     CHECK(save_set(buf, n) == 1);
     static const struct { int at; uint8_t value; } bad[] = {
-        { 0, 4 }, { 0, 2 }, { 1, 2 }, { 2, 0 }, { 2, 65 }, { 3, 2 }, { 4, 2 }, { 5, 2 }, { 7, 4 }, { 8, 0 },
-        { 8, 25 }, { 9, 16 }, { 10, 2 }, { 11, 2 }, { 12, 2 }, { 13, TALK_PHASES }, { 14, LINES },
-        { 14, LINE_CAN } };                 /* the last: a line with no talk */
+        { 0, 5 }, { 0, 3 }, { 0, 2 }, { 1, 2 }, { 2, 0 }, { 2, 65 }, { 3, 2 }, { 4, 2 }, { 5, 2 }, { 7, 4 },
+        { 8, 0 }, { 8, 25 }, { 9, 16 }, { 10, 2 }, { 11, 2 }, { 12, 2 }, { 13, TALK_PHASES }, { 14, LINES },
+        { 14, LINE_CAN },                   /* a line with no talk */
+        { 20, ENDINGS }, { 21, ENDINGS }, { 22, NOTICES }, { 23, NOTICE_SHOWN + 1 } };
     for (unsigned i = 0; i < sizeof bad / sizeof bad[0]; ++i) {
         uint8_t b[RECORD];
         memcpy(b, buf, sizeof b);
@@ -1170,6 +1248,15 @@ static void save_states(void) {
         CHECK(!memcmp(&charge, &saved, sizeof charge));
     }
     CHECK(!save_validate(buf, RECORD - 1) && !save_validate(buf, RECORD + 1));
+    /* Version 3 (#124): the same, with no notice and no end noted. */
+    uint8_t v3[RECORD_V3];
+    memcpy(v3, buf, sizeof v3);
+    v3[0] = 3;
+    notice = (Notice){ NOTICE_MAGIC, 5 };
+    CHECK(save_validate(v3, RECORD_V3) && save_set(v3, RECORD_V3) == 1 && !memcmp(&charge, &saved, sizeof charge));
+    CHECK(notice.line == NOTICE_NONE);
+    v3[0] = 4;
+    CHECK(!save_validate(v3, RECORD_V3));
 }
 
 /* Records from before #124 (version 2, and version 1 before the Guru's
@@ -1235,7 +1322,7 @@ static void save_files(void) {
     respawn();
     CHECK(boots_ready() && glass_ready() && charge.elixir_spent && !(ram[SPECIAL_ITEMS] & BIT_ELIXIR));
     use();
-    CHECK(script == SCRIPT_USED_WING_BOOTS);   /* no cooldown came back with the file */
+    CHECK(charge.flight.running);           /* no cooldown came back with the file */
     meet_guru(0);
     CHECK(!charge.elixir_spent && (ram[SPECIAL_ITEMS] & BIT_ELIXIR));
     save_listener(FAX_SAVE_WRITING);
@@ -1432,7 +1519,7 @@ static bool only_the_shared_bytes(void) {
 
 static void guru_lines_fit(void) {
     uint8_t out[SLOT_LEN];
-    for (int i = LINE_NONE + 1; i < LINES; ++i) CHECK(encode(guru_line[i], out));
+    for (int i = LINE_NONE + 1; i < LINES; ++i) CHECK(encode(line_text[i], out));
     CHECK(encode("sixteen chars ok", out) && out[16] == 0xFF);
     CHECK(!encode("seventeen chars!!", out) && !encode("1\n2\n3\n4\n5", out) && !encode("tab\there", out));
     CHECK(encode("a b\nc", out) && out[1] == 0xFD && out[3] == 0xFE && out[5] == 0xFF);
@@ -1646,6 +1733,346 @@ static void told_in_the_file(void) {
     file_in_play = false;
 }
 
+/* ---- no box (#151) ---- */
+
+#define BOOTS_LESSON "Hold A to fly./Flying uses/your magic."
+#define GLASS_LESSON "Time stops for/enemies, using/your magic."
+static unsigned all_notices(void) { unsigned n = 0; for (int i = 0; i < NOTICES; ++i) n += notices[i]; return n; }
+
+/* Turning either on or off yourself shows no box: the routine goes on past
+ * its use script, the item's sound plays both ways, the "... is gone" script
+ * is not run, and nothing is said below the HUD. With the remaster off, the
+ * original's boxes. */
+static void no_box_on_or_off(void) {
+    for (int k = 0; k < 2; ++k) {
+        uint8_t item = k ? HOUR_GLASS : WING_BOOTS;
+        play(true);
+        give(NULL, 0, item);
+        use();
+        CHECK(script == 0 && sound == 0x1A && quiet_uses == 1 && selected() == item && picture == item);
+        CHECK(k ? charge.freeze.running && ram[DURATION_HOUR_GLASS] == 15 && ram[MUSIC] == 0x0B
+                : charge.flight.running && ram[DURATION_WING_BOOTS] == 40);
+        frames(100);                        /* the game plays on */
+        CHECK(k ? charge.freeze.played == 100 : rest_frames == 100);
+        use();
+        CHECK(script == 0 && sound == 0x1A && quiet_uses == 1);   /* off: the item's sound, at once */
+        frames(1);
+        CHECK((k ? glass_down() : boots_down()) && gones == 1 && gone_boxes == 0 && gones_skipped == 1);
+        CHECK(notice.line == NOTICE_NONE && all_notices() == 0 && banner_hides == 0 && landings[k] == 1);
+        CHECK(k ? ram[MUSIC] == 0x02 : !flying());   /* the area's music, which comes after the script it skips */
+        frames(100);
+        CHECK(gone_boxes == 0 && notice.line == NOTICE_NONE);
+    }
+    /* The original: "I've used ..." and "The power of ... is gone.", each a box. */
+    play(false);
+    give(NULL, 0, WING_BOOTS);
+    use();
+    CHECK(script == SCRIPT_USED_WING_BOOTS && sound == 0x1A && ram[DURATION_WING_BOOTS] == 40);
+    SAID("msg AD", "end");
+    game_seconds(41);
+    CHECK(boots_down() && gones == 1 && gone_boxes == 1 && notice.line == NOTICE_NONE);
+    play(false);
+    give(NULL, 0, HOUR_GLASS);
+    use();
+    SAID("msg AC", "end");
+    game_seconds(16);
+    CHECK(glass_down() && gone_boxes == 1 && ram[MUSIC] == 0x02 && entries == 0);
+}
+
+/* Which ends say so below the HUD: running out of MP (the flight's, or the
+ * freeze's), the Hour Glass's 15 s, and a boss's screen do; turning it off
+ * yourself does not (no_box_on_or_off). */
+static void which_ends_say_so(void) {
+    /* The rule. */
+    CHECK(notice_for(BOOTS, ENDED_BY_HAND) == NOTICE_NONE && notice_for(GLASS, ENDED_BY_HAND) == NOTICE_NONE);
+    CHECK(notice_for(BOOTS, ENDED_MAGIC) == NOTICE_MAGIC && notice_for(GLASS, ENDED_MAGIC) == NOTICE_MAGIC);
+    CHECK(notice_for(GLASS, ENDED_TIME) == NOTICE_GLASS_TIME && notice_for(GLASS, ENDED_BOSS) == NOTICE_BOSS);
+    CHECK(notice_for(BOOTS, ENDED_NONE) == NOTICE_BOOTS_TIME && notice_for(GLASS, ENDED_NONE) == NOTICE_GLASS_TIME);
+    Flight f = take_off(0);
+    CHECK(flight_ending(&f) == ENDED_MAGIC);
+    f.land = 1;
+    CHECK(flight_ending(&f) == ENDED_BY_HAND);
+    Freeze z = freeze_begin();
+    CHECK(freeze_ending(&z) == ENDED_MAGIC);
+    z.played = FREEZE;                      /* its last MP on its last frame: still its time */
+    CHECK(freeze_ending(&z) == ENDED_TIME);
+    z.land = 1;
+    CHECK(freeze_ending(&z) == ENDED_BY_HAND);
+    for (int i = NOTICE_NONE + 1; i < NOTICES; ++i)   /* one row of Zone names' box, in Seamless's 424 */
+        CHECK(strlen(notice_text[i]) > 0 && strlen(notice_text[i]) <= 26 && !strpbrk(notice_text[i], ":()/\n"));
+    /* Out of MP in flight: "Out of magic", and the zone name put away for it. */
+    play(true);
+    give(NULL, 0, WING_BOOTS);
+    ram[PLAYER_MP] = 2;
+    use();
+    pad = BUTTON_A;
+    CHECK(frames_until(boots_down, 100) == 64 && mp() == 0);
+    CHECK(gone_boxes == 0 && notice.line == NOTICE_MAGIC && notice.age == 0 && notices[NOTICE_MAGIC] == 1);
+    CHECK(banner_hides == 1 && !strcmp(notice_text[notice.line], "Out of magic"));
+    /* MP spent by a spell, A up: the same. */
+    play(true);
+    give(NULL, 0, WING_BOOTS);
+    use();
+    for (int k = 0; k < 5; ++k) cast(16);
+    frames(1);
+    CHECK(boots_down() && notice.line == NOTICE_MAGIC && gone_boxes == 0);
+    /* The Hour Glass's 15 s, on a full bar; and on exactly the 40 MP they take, the last on their last frame. */
+    for (int mp_had = 80; mp_had >= 40; mp_had -= 40) {
+        play(true);
+        give(NULL, 0, HOUR_GLASS);
+        ram[PLAYER_MP] = (uint8_t)mp_had;
+        use();
+        CHECK(frames_until(glass_down, 1000) == 960 && mp() == mp_had - 40u);
+        CHECK(gone_boxes == 0 && notice.line == NOTICE_GLASS_TIME && ram[MUSIC] == 0x02);
+        CHECK(!strcmp(notice_text[notice.line], "The Hour Glass ran out"));
+    }
+    /* Out of MP first. */
+    play(true);
+    give(NULL, 0, HOUR_GLASS);
+    ram[PLAYER_MP] = 10;
+    use();
+    CHECK(frames_until(glass_down, 1000) == 240 && notice.line == NOTICE_MAGIC);
+    /* A boss's screen: LimitItemDurations' 0, which the game's own second ends. */
+    play(true);
+    give(NULL, 0, HOUR_GLASS);
+    use();
+    frames(10);
+    ram[DURATION_HOUR_GLASS] = 0;
+    frames(1);
+    CHECK(cuts == 1 && charge.ending[GLASS] == ENDED_BOSS && notice.line == NOTICE_NONE);   /* not over yet */
+    CHECK(frames_until(glass_down, 70) >= 0 && notice.line == NOTICE_BOSS && charge.ending[GLASS] == ENDED_NONE);
+    CHECK(!strcmp(notice_text[notice.line], "Bosses end the Hour Glass") && gone_boxes == 0);
+    /* Both at once, out of MP in one pass: one line for both. */
+    play(true);
+    const uint8_t items[] = { HOUR_GLASS };
+    give(items, 1, WING_BOOTS);
+    ram[PLAYER_MP] = 5;
+    use();
+    ram[SELECTED_ITEM] = HOUR_GLASS; ram[ITEM_INVENTORY] = WING_BOOTS;
+    use();
+    CHECK(frames_until(glass_down, 1000) == 120 && boots_down() && gones == 2);
+    CHECK(notice.line == NOTICE_MAGIC && notices[NOTICE_MAGIC] == 1 && banner_hides == 1);
+    /* The flight takes the last MP: it ends in that pass, the freeze in the next (its site runs first). */
+    play(true);
+    give(items, 1, WING_BOOTS);
+    ram[PLAYER_MP] = 2;
+    use();
+    ram[SELECTED_ITEM] = HOUR_GLASS; ram[ITEM_INVENTORY] = WING_BOOTS;
+    use();
+    pad = BUTTON_A;
+    CHECK(frames_until(boots_down, 100) == 32 && mp() == 0 && !glass_down() && notice.line == NOTICE_MAGIC);
+    frames(1);
+    CHECK(glass_down() && gones == 2 && notice.age == 1 && notices[NOTICE_MAGIC] == 1 && banner_hides == 1);
+    /* A run on the game's own timer, from a save state made before this feature: its time. */
+    play(true);
+    give(NULL, 0, WING_BOOTS);
+    ram[DURATION_WING_BOOTS] = 1;
+    CHECK(save_set(NULL, 0) == 1 && !charge.flight.running);
+    CHECK(frames_until(boots_down, 200) >= 64 && notice.line == NOTICE_BOOTS_TIME && gone_boxes == 0);
+    /* A death or a new game: the durations go to $FF with no "... is gone", and a notice showing goes. */
+    play(true);
+    give(NULL, 0, WING_BOOTS);
+    ram[PLAYER_MP] = 1;
+    use();
+    pad = BUTTON_A;
+    frames(40);
+    CHECK(notice.line == NOTICE_MAGIC);
+    respawn();
+    CHECK(notice.line == NOTICE_NONE && gones == 1);
+    /* Seamless's isolated rooms: nothing. */
+    isolated = true;
+    CHECK(!gone_hook(BOOTS_GONE) && !gone_hook(GLASS_GONE) && notice.line == NOTICE_NONE);
+    isolated = false;
+}
+
+/* The notice shows below the HUD in Zone names' box, fading in and out over
+ * NOTICE_SHOWN played frames: it holds while the main loop does not run, and
+ * hides behind the game's boxes and while the hero lies dead. Turning an
+ * item on puts it away. */
+static void the_notice_shows(void) {
+    uint32_t pic[1];
+    int w = 424, h = 240;
+    play(true);
+    give(NULL, 0, WING_BOOTS);
+    ram[PLAYER_MP] = 1;
+    use();
+    pad = BUTTON_A;
+    CHECK(fax_recharge_present(pic, &w, &h) == pic && !notice_drawn);   /* nothing yet */
+    CHECK(frames_until(boots_down, 100) == 32);
+    CHECK(fax_recharge_present(pic, &w, &h) == banner_canvas && notice_drawn);
+    CHECK(!strcmp(banner_line, "Out of magic") && banner_alpha == 255u / NOTICE_IN);
+    for (int k = 0; k < 300; ++k) fax_recharge_present(pic, &w, &h);   /* no main loop: it holds */
+    CHECK(notice.age == 0);
+    frames(NOTICE_IN);
+    fax_recharge_present(pic, &w, &h);
+    CHECK(banner_alpha == 255 && notice_alpha(NOTICE_IN - 1) == 255);
+    box_up = true;                          /* a box of the game's: hidden behind it */
+    CHECK(fax_recharge_present(pic, &w, &h) == pic && !notice_drawn);
+    box_up = false;
+    ram[PLAYER_IS_DEAD] = 1;                /* Slain by has the box */
+    CHECK(fax_recharge_present(pic, &w, &h) == pic);
+    ram[PLAYER_IS_DEAD] = 0;
+    frames(NOTICE_HOLD);
+    fax_recharge_present(pic, &w, &h);
+    CHECK(banner_alpha < 255 && banner_alpha == notice_alpha(NOTICE_IN + NOTICE_HOLD));
+    frames(NOTICE_OUT - 1);
+    CHECK(fax_recharge_present(pic, &w, &h) == banner_canvas && banner_alpha == 255u / (NOTICE_OUT + 1));
+    frames(1);
+    CHECK(fax_recharge_present(pic, &w, &h) == pic && notice.age == NOTICE_SHOWN);
+    frames(100);
+    CHECK(notice.age == NOTICE_SHOWN);
+    /* Turning one on puts away a notice still showing. */
+    ram[PLAYER_MP] = 1;
+    use();
+    frames(32);
+    CHECK(notice.line == NOTICE_MAGIC && notice.age == 0);
+    frames(5);
+    ram[PLAYER_MP] = 30;
+    use();
+    CHECK(charge.flight.running && notice.line == NOTICE_NONE && fax_recharge_present(pic, &w, &h) == pic);
+    /* Off: nothing drawn. */
+    play(false);
+    notice = (Notice){ NOTICE_MAGIC, 0 };
+    CHECK(fax_recharge_present(pic, &w, &h) == pic);
+}
+
+/* The first use of each, once ever, still shows a box: its use script runs,
+ * with the item's lesson in place of its message, and the item turns on
+ * after it. The lesson is remembered beside the game, so after a restart
+ * neither is said again; with saves off, once a session. */
+static void the_first_use_teaches(void) {
+    for (int i = LINE_BOOTS; i <= LINE_GLASS; ++i) {
+        uint8_t out[SLOT_LEN];
+        CHECK(encode(line_text[i], out));   /* 16 columns, 4 lines, and the slot */
+    }
+    forget_lessons();
+    play(true);
+    CHECK(!taught[BOOTS] && !taught[GLASS]);
+    const uint8_t items[] = { HOUR_GLASS };
+    give(items, 1, WING_BOOTS);
+    use();
+    SAID(BOOTS_LESSON, "end");              /* in place of "I've used Wing Boots.", then the script's END */
+    CHECK(script == SCRIPT_USED_WING_BOOTS && sound == 0x1A && charge.flight.running && quiet_uses == 0);
+    CHECK(taught[BOOTS] && !taught[GLASS] && lines_said[LINE_BOOTS] == 1 && sidecar_n == 1);
+    CHECK(fax_remembered("faxanadu_recharge.txt", "recharge.boots_taught") && talk.phase == TALK_IDLE);
+    CHECK(!charge.elixir_told && entries == 3 + SLOT_LEN && only_the_shared_bytes());
+    use();                                  /* off, then on: no box */
+    frames(1);
+    use();
+    CHECK(script == 0 && quiet_uses == 1 && charge.flight.running && lines_said[LINE_BOOTS] == 1);
+    ram[SELECTED_ITEM] = HOUR_GLASS; ram[ITEM_INVENTORY] = WING_BOOTS;
+    use();
+    SAID(GLASS_LESSON, "end");
+    CHECK(script == SCRIPT_USED_HOUR_GLASS && charge.freeze.running && hp() == 80 && ram[MUSIC] == 0x0B);
+    CHECK(taught[GLASS] && lines_said[LINE_GLASS] == 1 && sidecar_n == 2);
+    /* A restart: both learned. */
+    play(true);
+    CHECK(taught[BOOTS] && taught[GLASS]);
+    give(NULL, 0, WING_BOOTS);
+    use();
+    CHECK(script == 0 && quiet_uses == 1 && lines_said[LINE_BOOTS] == 0);
+    /* B on the lesson ends the script as on any line: learned, and they fly after it. */
+    forget_lessons();
+    play(true);
+    give(NULL, 0, WING_BOOTS);
+    use_b_on = 1;
+    use();
+    SAID(BOOTS_LESSON, "B");
+    CHECK(taught[BOOTS] && charge.flight.running);
+    use_b_on = 0;
+    /* Saves off (--no-save): nothing kept, so once a session. */
+    forget_lessons();
+    saves_on = false;
+    play(true);
+    give(NULL, 0, WING_BOOTS);
+    use();
+    SAID(BOOTS_LESSON, "end");
+    use(); frames(1); use();
+    CHECK(script == 0 && taught[BOOTS] && sidecar_n == 0);
+    play(true);
+    give(NULL, 0, WING_BOOTS);
+    use();
+    SAID(BOOTS_LESSON, "end");
+    saves_on = true;
+    /* No room for the lines: the game's own line, the item on all the same, and no lesson for the session. */
+    forget_lessons();
+    play(true);
+    table_full = true;
+    give(NULL, 0, WING_BOOTS);
+    use();
+    SAID("msg AD", "end");
+    CHECK(lines_failed && !taught[BOOTS] && charge.flight.running && sidecar_n == 0);
+    use(); frames(1); use();
+    CHECK(script == 0 && quiet_uses == 1);
+    table_full = false;
+    /* With the remaster off: the game's own line every time, nothing learned. */
+    forget_lessons();
+    play(false);
+    give(NULL, 0, WING_BOOTS);
+    use();
+    SAID("msg AD", "end");
+    CHECK(sidecar_n == 0);
+    /* In Seamless's isolated rooms: nothing. */
+    play(true);
+    isolated = true;
+    CHECK(!use_hook(PLAYER_USE_WING_BOOTS) && talk.phase == TALK_IDLE);
+    isolated = false;
+    learn_both();
+}
+
+/* Save states: a lesson showing comes back with its line served; the notice,
+ * and why a run is ending (a boss's cut waits up to a second for the game's
+ * own), come back with the record. */
+static void lesson_mid_save(void) {
+    uint8_t rec[32];
+    CHECK(save_get(rec, sizeof rec) == RECORD && rec[13] == TALK_SAYING && rec[14] == LINE_BOOTS);
+    overrides_lost();                       /* a new launch, with this machine's RAM loaded */
+    reset_cb();
+    plugin_cb();
+    CHECK(save_set(rec, RECORD) == 1);
+    fax_recharge_loaded();
+    char text[64];
+    slot_text(text);
+    CHECK(!strcmp(text, BOOTS_LESSON));
+}
+static void notices_in_save_states(void) {
+    forget_lessons();
+    play(true);
+    give(NULL, 0, WING_BOOTS);
+    on_line = lesson_mid_save;
+    use();
+    on_line = NULL;
+    SAID(BOOTS_LESSON, "end");
+    CHECK(charge.flight.running);
+    learn_both();
+    /* The notice. */
+    play(true);
+    give(NULL, 0, WING_BOOTS);
+    ram[PLAYER_MP] = 1;
+    use();
+    pad = BUTTON_A;
+    frames(32 + 10);
+    CHECK(notice.line == NOTICE_MAGIC && notice.age == 10);
+    uint8_t buf[RECORD];
+    CHECK(save_get(buf, sizeof buf) == RECORD && buf[22] == NOTICE_MAGIC && buf[23] == 10);
+    play(true);
+    CHECK(save_set(buf, RECORD) == 1 && notice.line == NOTICE_MAGIC && notice.age == 10);
+    /* A boss's cut, saved before the game's second ends it. */
+    play(true);
+    give(NULL, 0, HOUR_GLASS);
+    use();
+    frames(10);
+    ram[DURATION_HOUR_GLASS] = 0;
+    frames(1);
+    CHECK(save_get(buf, sizeof buf) == RECORD && buf[21] == ENDED_BOSS && buf[22] == NOTICE_NONE);
+    uint8_t machine[0x800];
+    memcpy(machine, ram, sizeof ram);
+    play(true);
+    memcpy(ram, machine, sizeof ram);
+    CHECK(save_set(buf, RECORD) == 1 && charge.ending[GLASS] == ENDED_BOSS);
+    CHECK(frames_until(glass_down, 70) >= 0 && notice.line == NOTICE_BOSS);
+}
+
 int main(void) {
     registers();
     flight_by_title_band();
@@ -1679,6 +2106,11 @@ int main(void) {
     line_in_a_save_state();
     no_room_for_the_line();
     told_in_the_file();
+    no_box_on_or_off();
+    which_ends_say_so();
+    the_notice_shows();
+    the_first_use_teaches();
+    notices_in_save_states();
     printf("recharge_test: %u checks passed\n", checks);
     return 0;
 }

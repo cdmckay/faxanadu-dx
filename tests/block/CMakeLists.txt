@@ -4,8 +4,9 @@ set(CMAKE_C_STANDARD 11)
 if(NOT NESRECOMP_ROOT)
     message(FATAL_ERROR "Set NESRECOMP_ROOT to the game's cycle engine checkout")
 endif()
-# fax_block.c is included by the test, against a model of the machine (model.c).
-add_executable(block_test block_test.c model.c)
+# fax_block.c is included by the test, against a model of the machine (model.c),
+# with fax_remember.c, where it remembers its tutorial.
+add_executable(block_test block_test.c model.c ../../src/fax_remember.c)
 target_include_directories(block_test PRIVATE . ../../src ${NESRECOMP_ROOT}/runner/include ${NESRECOMP_ROOT}/runner/cyc)
 if(NOT MSVC)
     target_compile_options(block_test PRIVATE -Wall -Wextra)

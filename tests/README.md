@@ -26,7 +26,9 @@ what a player sees, so its window, like every test game's, is at scale 1 (the
 `config.ini` `install()` writes): the hidden window's scaling blit is a tenth
 of a frame at 3. A test's game is the build's, hard-linked: one copy of the
 program in memory for every game, which plays them about 10% faster than
-copies.
+copies. `install()` also writes `faxanadu_recharge.txt` with the Wing Boots'
+and the Hour Glass's lessons learned (`LEARNED`), so their first Down+B
+shows no box, as every later one (#151); a test of the lessons deletes it.
 
 ## End-to-end tests and `e2e/fax_e2e.py`
 

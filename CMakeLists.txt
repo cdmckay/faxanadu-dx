@@ -47,7 +47,7 @@ if(NESRECOMP_BACKEND STREQUAL "cycle")
             src/fax_save.c src/fax_files.c
             src/fax_title.c
             src/fax_dagger.c
-            src/fax_block.c src/fax_sugata.c
+            src/fax_block.c src/fax_remember.c src/fax_sugata.c
             src/fax_shops.c
             src/fax_respawn.c
             src/fax_recharge.c src/fax_charges.c

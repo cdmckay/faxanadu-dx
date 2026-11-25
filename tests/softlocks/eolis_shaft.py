@@ -99,18 +99,21 @@ def press_until(button, what, test, frames=60, tries=5):
 
 
 def use_wing_boots():
-    """Down+B: "I've used Wing Boots.", closed with A; then flying."""
+    """Down+B, then flying: in the original after "I've used Wing Boots.",
+    closed with A; with the remaster at once, with no box (#151)."""
+    remaster = tcp("recharge_state")["enabled"]
     for _ in range(5):
         tcp("action", name="down", frames=20)
         wait(4)
         tcp("action", name="b", frames=4)
         try:
-            until("I've used Wing Boots.", lambda: ram(TEXTBOX_CLOSED) == 0, 60)
+            until("the Wing Boots on", lambda: ram(STATUS) & FLYING if remaster else ram(TEXTBOX_CLOSED) == 0, 60)
             break
         except AssertionError:
             pass
-    type_out("the line to type out", 600)
-    press_until("a", "the box to close", lambda: ram(TEXTBOX_CLOSED) != 0)
+    if not remaster:
+        type_out("the line to type out", 600)
+        press_until("a", "the box to close", lambda: ram(TEXTBOX_CLOSED) != 0)
     until("flying", lambda: ram(STATUS) & FLYING, 60)
 
 
@@ -203,9 +206,13 @@ def under_the_floor(game, name):
 
 
 def end_flight(dx):
-    """The flight's end, then "The power of the Wing Boots is gone.", closed with A: its last second in the
-    original, the last of the MP it runs on with the remaster."""
+    """The flight's end: its last second in the original, then "The power of the Wing Boots is gone.", closed
+    with A; with the remaster the last of the MP it runs on, and "Out of magic" below the HUD, no box (#151)."""
     fax_e2e._current().poke({MP: 0} if dx else {DURATION_WING_BOOTS: 0})
+    if dx:
+        until("not flying", lambda: not ram(STATUS) & FLYING, 200)
+        until("Out of magic", lambda: tcp("recharge_state")["notice"] == "Out of magic", 30)
+        return
     until("the power gone", lambda: ram(TEXTBOX_CLOSED) == 0, 200)
     type_out("the line to type out", 600)
     press_until("a", "the box to close", lambda: ram(TEXTBOX_CLOSED) != 0)
