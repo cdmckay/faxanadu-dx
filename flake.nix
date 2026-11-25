@@ -20,7 +20,8 @@
             # The cycle build runs the recompiler and its Python generators at
             # configure time, then links the system SDL2. recomp-ui needs GL,
             # and draws color emoji with FreeType and HarfBuzz when it finds them
-            # (harfbuzz.pc requires glib-2.0).
+            # (harfbuzz.pc requires glib-2.0, and glib-2.0.pc sysprof-capture-4,
+            # which glib doesn't bring: without it pkg-config complains).
             packages = [
               pkgs.cmake
               pkgs.pkg-config
@@ -29,12 +30,17 @@
               pkgs.freetype
               pkgs.harfbuzz
               pkgs.glib
+              pkgs.libsysprof-capture
               # tools/disassembly.sh assembles chipx86's disassembly.
               pkgs.cc65
             ] ++ pkgs.lib.optionals pkgs.stdenv.isLinux [
               pkgs.libGL
               # SDL_syswm.h, included by ImGui's SDL2 backend, includes Xlib.h.
               pkgs.libx11
+            ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
+              # tools/test.sh's end-to-end lock. Linux has util-linux's flock;
+              # macOS has none.
+              pkgs.flock
             ];
           };
         });

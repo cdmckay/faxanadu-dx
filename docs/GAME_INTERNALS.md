@@ -550,6 +550,17 @@ What a feature can rely on, and the traps:
   window keeps `config.ini` beside the executable and writes it at first
   start; its `[Game]` keys go to the host extras' `load_setting`, and
   `save_settings` writes them back whenever the window saves.
+- **The window finds its folder from the executable's path,** in
+  `cyc_settings_default_path()` (`runner/cyc/cyc_settings.c`): `config.ini`
+  and the mod catalog, `mods/`, are both beside it. It asks
+  `/proc/self/exe` on Linux and `_NSGetExecutablePath` on macOS. Where that
+  fails it falls back to the current directory without a word, so a game
+  started from the repo root reads the repo's own `mods/`, which holds no
+  packages: the remaster is off, and the game writes `config.ini` and
+  `mods/state.toml` into the checkout. Every end-to-end test then times out
+  making its first fixture. Upstream nesrecomp had only the Linux path,
+  which is how macOS fell into this (#143). Save files find the folder
+  separately, through `SDL_GetBasePath()` (`fax_save.c`).
 - `--uncapped` (with `--exit-after N`) runs the window as fast as it can:
   about 250 fps alone on mango (an HX 370 held to 2 GHz on battery in the
   power-saver profile), and about 125 fps a game with 24 at once, two to a

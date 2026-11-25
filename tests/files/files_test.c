@@ -6,6 +6,8 @@
  * use, calling the hook before each as IScripts_InvokeNextAction does. Files
  * are written in a scratch directory. */
 #define _POSIX_C_SOURCE 200809L
+/* macOS's headers hide mkdtemp under a strict _POSIX_C_SOURCE; this shows it. */
+#define _DARWIN_C_SOURCE
 #include "fax_save.c"
 #include "fax_files.c"
 #include <stdarg.h>

@@ -277,9 +277,11 @@ game data. The build checks the ROM and rejects any other, including **Faxanadu
 | MD5   | `b3bb9296b5e1e0c83e90b6da9e8a41aa` |
 | SHA-1 | `5b05c8859f356013d37f0545f5de5fa1693da5da` |
 
-## Building and running on Linux
+## Building and running
 
-The Nix flake's devShell (`flake.nix`) has everything the build needs. With
+The remaster builds and plays on Linux and on Macs with Apple Silicon. You
+need [Nix](https://nixos.org/download/): the flake's devShell (`flake.nix`)
+has everything else the build needs, on both. With
 [direnv](https://direnv.net/), `direnv allow` loads it whenever you enter the
 repo; otherwise run the commands inside `nix develop`. Put your ROM at the
 repo root as `Faxanadu (USA).nes` (`*.nes` is gitignored).
@@ -295,7 +297,8 @@ build-cycle/FaxanaduRecomp "Faxanadu (USA).nes"
 ```
 
 `setup.sh` fetches the code the build depends on. The game opens in its
-launcher first.
+launcher first. On a Mac it is a program, not an app: start it from Terminal,
+as above. Intel Macs aren't supported.
 
 The game's C is in `src/` (each feature is a `fax_<name>.c`), its tests in
 `tests/`, the mod in `mods/`, scripts in `tools/` and notes in `docs/`.
