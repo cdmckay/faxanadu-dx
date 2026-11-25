@@ -62,6 +62,7 @@ ITEMS, SELECTED_ITEM, NUMBER_OF_ITEMS, PORTRAIT = 0x3AD, 0x3C1, 0x3C6, 0x3C7
 SPECIAL_ITEMS, QUESTS, VISIT_COUNT = 0x42C, 0x42D, 0x43A           # Screen_TrackedVisitCount
 DATA_ARRAY, ARG_STRINGS_COUNT = 0x220, 0x21F                        # a shop's list, as Shop_Populate copied it
 DURATION_OINTMENT, NO_PORTRAIT = 0x427, 0xFF
+SPRITE_FLAGS, READY = 0x2DC, 0x40                                   # CurrentSprites_Flags: its behavior has begun
 BIT_ELIXIR, QUEST_SPRING_OF_TRUNK, QUEST_WING_BOOTS = 0x08, 0x01, 0x08
 HOUR_GLASS, WING_BOOTS, RED_POTION = 0x0D, 0x0F, 0x10               # Items IDs
 ITEM = 0x80                                                         # the Items category, in a full ID
@@ -106,6 +107,16 @@ def main():
         g.launch()
         assert found()["enabled"] == on, found()
 
+    def answered():
+        """Every find on the screen that Found items answers for ($55, $56)
+        has run its first frame, when it is answered, read in one batch: gone
+        from its slot (removed on that frame), or its behavior's ready flag
+        set (Sprites_MaybeResetPhaseAndEnable, on that frame). The screen
+        loads its sprites before it settles."""
+        entities, flags = (bytes.fromhex(r["hex"]) for r in g.batch(
+            ("read_ram", dict(addr=ENTITIES, len=8)), ("read_ram", dict(addr=SPRITE_FLAGS, len=8))))
+        return all(e not in (BOOTS_FIND, GLASS_FIND) or f & READY for e, f in zip(entities, flags))
+
     def warp(source, name, area, screen, pos, palette, region, writes=None, records=None):
         """From the save state `source`, inside a building, out onto block `pos`
         (YX) of `screen` in `area`, with `writes` and `records` edited in. The
@@ -119,6 +130,10 @@ def main():
         g.load(target)
         g.walk_out()
         assert g.where() == (area, screen), (g.where(), area, screen)
+        # A find is answered (and counted) on its first frame, about ten frames after the screen settles. The
+        # poke plays again the frames the script took to edit its state, so a first frame among them is
+        # counted twice (#144): let it run first.
+        g.until("the finds' first frame", answered, 60)
         g.poke({POS_X: (pos & 0x0F) * 16, POS_Y: (pos >> 4) * 16})   # a step taken while the screen loaded
         g.wait(4)
 
@@ -138,11 +153,13 @@ def main():
 
     def touch_find(message, step, frames=600):
         """Walk (`step`: "left" or "right") until message `message` ("I'm
-        holding ..."), then page through it."""
-        end = g.frame() + frames
-        while g.ram(MESSAGE_ID) != message:
-            assert g.frame() < end, f"no message {message:#x}: at {g.where()} x {g.ram(POS_X)} y {g.ram(POS_Y)}"
-            act(step, 2, 2)                                     # (TextBox_Closed may read 0 with no box up)
+        holding ..."), then type it out. Held, he walks at his full speed
+        whenever the script's reads come; taps of it went as far a tap
+        whatever the frames between them, which on a loaded machine ran out
+        the frames (#144). MessageID, as TextBox_Closed may read 0 with no
+        box up."""
+        if not fax_e2e.hold(step, lambda: g.ram(MESSAGE_ID) == message, frames):
+            raise AssertionError(f"no message {message:#x}: at {g.where()} x {g.ram(POS_X)} y {g.ram(POS_Y)}")
         type_out("the line", 900, pauses=False)
         return message
 

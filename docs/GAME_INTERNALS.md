@@ -1969,6 +1969,15 @@ jump a few updates after stepping off, as A from the hang itself would.
   has ended by then (`Screen_ScrollDirection` `$FF`), so a save state taken
   ten frames after the scroll can still be a frame or two short of reading a
   press: `tests/ladders/ladders.py`'s recipes wait for the buffer to empty.
+  The screen's sprites are in their slots (`CurrentSprites_Entities`, with
+  `CurrentSprites_Flags` 0) by the frame it reads as loaded, but their
+  behaviors first run about ten frames after: out of a door onto Trunk `$2D`,
+  its Hornets' ready flags were set and its Wing Boots find (`$55`) removed
+  9 to 13 frames after the screen read as loaded (reads every 2 frames;
+  `tests/found/found_items.py`, #144). A behavior sets the ready flag
+  (`CurrentSprites_Flags` `$40`, `Sprite_SetBehaviorReady`) on its first
+  frame, and `Sprite_IsBehaviorNotReady` tests it; not every sprite does
+  (the Spring of Trunk's old man, `$3B`, keeps flags 0).
 - **Who reads the masks, in `Game_MainLoop`'s order:**
   - `GameLoop_UpdatePlayer` (`$E0CA`): `Player_CheckHandleAttack` swings the
     sword on a new B, unless climbing. `Player_CheckHandleEnterDoor` goes
@@ -3226,7 +3235,9 @@ needs; no shop sells them (*Shops*), and in the world:
   Potion, the Glove, the Ointment and the Poison that still show one visit in
   four count their visits among themselves. It keeps no state, so it runs in
   Seamless's isolated rooms too, where a neighbour's actors, the finds' first
-  frame among them, run before the hero walks in. The Hour Glass is taken when
+  frame among them, run before the hero walks in. In the hero's room the
+  answer comes on the find's first frame, about ten frames after the screen
+  loads (*Input and casting*: after a screen loads). The Hour Glass is taken when
   `Player_HandleTouchItem` (`$88FB`) reaches Found items' site after Kept
   finds' and the map's: Kept finds handles (and so ends) a touch the full
   Items list would lose, leaving it lying. It lies there while it is not taken
