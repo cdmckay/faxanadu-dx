@@ -4,7 +4,8 @@
  * returns as an RTS from S would, so a pushed address is a jump), the PPU
  * buffer as the NMI drains it into the HUD's T: and the MP bar, the
  * committed calls it makes (Sound_PlayEffect, Player_SetMP, which waits for
- * room in the buffer), and the item, countdown, death and pickup code
+ * room in the buffer), the pad as the NMI reads it, and the item, countdown,
+ * death and pickup code
  * played step by step as the disassembly has them (the JSRs push their real
  * return addresses). So the tests check what the player holds, sees and
  * hears rather than restate the module's constants. */
@@ -20,6 +21,7 @@ static bool isolated;
 static int sound = -1;                        /* the last effect Sound_PlayEffect queued */
 static int bar_mp = -1;                       /* the MP the HUD's bar was last queued with */
 static unsigned bar_calls, bars_queued;       /* Player_SetMP called; and it queued its bar */
+static uint8_t pad;                           /* the buttons the player holds: BUTTON_A flies */
 
 static uint8_t bank12[0x4000];               /* $8000-$BFFF as bank 12 maps it: the Gurus' scripts */
 /* Read overrides (cyc_mod_set_prg_read_override), in banks 12 and 13: what a
@@ -211,9 +213,11 @@ static void give(const uint8_t *items, unsigned n, uint8_t selection) {
 static unsigned hp(void) { return ram[HP_U]; }
 static unsigned mp(void) { return ram[PLAYER_MP]; }
 
-/* The NMI: InterruptCounter, then PPUBuffer_Draw empties the buffer. */
+/* The NMI: InterruptCounter, Input_HandleOnInterrupt's read of the pad into
+ * Joy1_ButtonMask, then PPUBuffer_Draw empties the buffer. */
 static void nmi(void) {
     ++ram[INTERRUPT_COUNTER];
+    ram[JOY1_BUTTON_MASK] = pad;
     uint8_t r = ram[PPU_BUFFER_READ], w = ram[PPU_BUFFER_WRITE];
     while (r != w) {
         uint8_t len = ram[PPU_BUFFER + r], hi = ram[PPU_BUFFER + (uint8_t)(r + 1)], lo = ram[PPU_BUFFER + (uint8_t)(r + 2)];
@@ -534,6 +538,7 @@ static void play(bool on) {                 /* a launch with the toggle */
     overrides_lost();                       /* a launch: the engine's table starts empty */
     table_full = false;
     on_line = NULL;
+    pad = 0;                                /* nothing held */
     if (on) plugin_cb();
     title_screen();
     respawn();                              /* Game_Start clears the timed items too */
@@ -569,6 +574,7 @@ static void flight_by_title_band(void) {
         ram[PLAYER_TITLE] = (uint8_t)title;
         give(NULL, 0, WING_BOOTS);
         use();
+        pad = BUTTON_A;                     /* he flies the whole way */
         CHECK(script == SCRIPT_USED_WING_BOOTS && sound == 0x1A && charge.flight.running && flights == 1);
         CHECK(ram[DURATION_WING_BOOTS] == flight[band]);
         nmi();
@@ -589,7 +595,8 @@ static void flight_by_title_band(void) {
         CHECK(t_value() == 0);              /* T: back to the idle 00 */
         CHECK(charge.flight.next == 0);
     }
-    /* Turned off: the original table, and the pair is used up. */
+    /* Turned off: the original table, and the pair is used up. Its timer
+     * runs on the game's seconds, A held or not. */
     for (int title = 0; title < 16; ++title) {
         play(false);
         ram[PLAYER_TITLE] = (uint8_t)title;
@@ -597,8 +604,10 @@ static void flight_by_title_band(void) {
         use();
         CHECK(ram[DURATION_WING_BOOTS] == STOCK_FLIGHT[title / 4] && selected() == NO_ITEM && picture == NO_ITEM);
         uint8_t was = ram[PLAYER_MP];
+        pad = title & 1 ? BUTTON_A : 0;
         game_seconds(5);
         CHECK(mp() == was);                 /* no MP taken */
+        CHECK(ram[DURATION_WING_BOOTS] == STOCK_FLIGHT[title / 4] - 5);
     }
 }
 
@@ -608,6 +617,7 @@ static void a_flight_lasts_its_mp(void) {
     give(NULL, 0, WING_BOOTS);
     ram[PLAYER_MP] = 20;                    /* 20 MP: 20 * 32 = 640 frames, 10 s */
     use();
+    pad = BUTTON_A;
     CHECK(ram[DURATION_WING_BOOTS] == 10 && charge.flight.next == 32);
     int n = frames_until(boots_down, 1000);
     CHECK(n == 640 && mp() == 0 && gone == WING_BOOTS);
@@ -627,6 +637,7 @@ static void a_flight_lasts_its_mp(void) {
     ram[PLAYER_MP] = 7;
     give(NULL, 0, WING_BOOTS);
     use();
+    pad = BUTTON_A;
     CHECK(ram[DURATION_WING_BOOTS] == 5);
     frames(41);                             /* 239 left: 4 s */
     CHECK(ram[DURATION_WING_BOOTS] == 4 && mp() == 6);
@@ -635,11 +646,108 @@ static void a_flight_lasts_its_mp(void) {
     CHECK(frames_until(boots_down, 400) == 239);
 }
 
+/* The Wing Boots take MP only while A is held (#148), A being what flies
+ * him: with them on, walking, standing and falling take none and T: holds,
+ * and each frame with A held counts toward the next MP at the band's rate.
+ * They stay on until MP runs out (however it went), Down+B or a death, and
+ * the Hour Glass still works every frame. */
+static void only_while_a_is_held(void) {
+    play(true);
+    give(NULL, 0, WING_BOOTS);
+    use();
+    nmi();
+    CHECK(t_value() == 40 && charge.flight.next == 32 && ram[DURATION_WING_BOOTS] == 40);
+    frames(1000);                           /* walking, standing, falling: A up */
+    nmi();
+    CHECK(mp() == 80 && charge.flight.next == 32 && ram[DURATION_WING_BOOTS] == 40 && t_value() == 40);
+    CHECK(flying() && charge.flight.running && !boots_ready() && rest_frames == 1000 && lift_frames == 0 && !lifting);
+    pad = BUTTON_A;                         /* he flies */
+    frames(31);
+    CHECK(mp() == 80 && charge.flight.next == 1 && lifting && lift_frames == 31);
+    frames(1);
+    CHECK(mp() == 79 && bar_mp == 79 && charge.flight.next == 32);
+    frames(20);                             /* 12 frames of A to the next MP */
+    pad = 0;                                /* let go: he falls, then stands */
+    frames(500);
+    nmi();
+    unsigned left = 79 * 32 - 20;           /* frames of flight left: 40 s */
+    CHECK(mp() == 79 && charge.flight.next == 12 && ram[DURATION_WING_BOOTS] == (left + 63) / 64);
+    CHECK(t_value() == (int)((left + 63) / 64) && rest_frames == 1500 && lift_frames == 52);
+    pad = BUTTON_A;
+    frames(11);
+    CHECK(mp() == 79);
+    frames(1);
+    CHECK(mp() == 78 && charge.flight.next == 32);
+    /* A frame of A, a frame without: 64 frames, 32 of them flown, one MP. */
+    for (unsigned k = 0; k < 64; ++k) { pad = k & 1 ? BUTTON_A : 0; frames(1); }
+    CHECK(mp() == 77 && charge.flight.next == 32);
+    /* Each band's rate, on frames of A alone, in pieces with rests between. */
+    for (unsigned band = 0; band < BANDS; ++band) {
+        play(true);
+        ram[PLAYER_TITLE] = (uint8_t)(band * 4 + 1);
+        give(NULL, 0, WING_BOOTS);
+        use();
+        for (unsigned held = 0; held < 3 * STEP[band]; ) {
+            pad = BUTTON_A;
+            for (unsigned k = 0; k < 7; ++k) { frames(1); ++held; CHECK(mp() == 80 - held / STEP[band]); }
+            pad = 0;
+            frames(13);
+            CHECK(mp() == 80 - held / STEP[band] && charge.flight.running);
+        }
+    }
+    /* Out of MP in flight: the game's own line ends them, as before. */
+    play(true);
+    give(NULL, 0, WING_BOOTS);
+    ram[PLAYER_MP] = 2;
+    use();
+    frames(300);
+    CHECK(mp() == 2 && !boots_down() && charge.flight.running && ram[DURATION_WING_BOOTS] == 1);
+    pad = BUTTON_A;
+    CHECK(frames_until(boots_down, 200) == 64 && mp() == 0 && gone == WING_BOOTS && gones == 1 && !flying());
+    nmi();
+    CHECK(t_value() == 0 && boots_ready() && landings[BOOTS] == 0);
+    /* MP spent with A up, by a spell: at 0 MP they end all the same, at the next frame. */
+    play(true);
+    give(NULL, 0, WING_BOOTS);
+    use();
+    frames(10);
+    for (int k = 0; k < 5; ++k) cast(16);
+    CHECK(mp() == 0 && !boots_down());
+    frames(1);
+    CHECK(boots_down() && gone == WING_BOOTS && !flying() && landings[BOOTS] == 0);
+    /* Down+B standing, A up: they end at this frame's countdown, no MP taken. */
+    play(true);
+    give(NULL, 0, WING_BOOTS);
+    use();
+    frames(100);
+    use();
+    frames(1);
+    CHECK(boots_down() && gone == WING_BOOTS && mp() == 80 && landings[BOOTS] == 1);
+    /* The Hour Glass works every frame: with the boots on and A up, only it
+     * drains, and the flight's step holds. */
+    play(true);
+    const uint8_t items[] = { HOUR_GLASS };
+    give(items, 1, WING_BOOTS);
+    ram[PLAYER_MP] = 20;
+    use();
+    ram[SELECTED_ITEM] = HOUR_GLASS; ram[ITEM_INVENTORY] = WING_BOOTS;
+    use();
+    frames(48);
+    CHECK(mp() == 18 && charge.flight.next == 32 && charge.freeze.played == 48);
+    /* T: on the glass counts the flight's drain as if A were held: the
+     * freeze never ends sooner than it says. */
+    unsigned shown = freeze_left(&charge, mp(), 0);
+    CHECK(shown == to_empty(&charge, mp(), 0) && shown < 18 * GLASS_STEP);
+    int n = frames_until(glass_down, 1000);
+    CHECK(n == 18 * GLASS_STEP && mp() == 0 && (unsigned)n > shown && boots_down() && gones == 2);
+}
+
 /* MP that changes in the air changes the flight: a spell, the Elixir. */
 static void the_flight_follows_mp(void) {
     play(true);
     give(NULL, 0, WING_BOOTS);
     use();
+    pad = BUTTON_A;
     frames(100);                            /* 3 MP gone: 77, next in 28 */
     CHECK(mp() == 77 && charge.flight.next == 28 && ram[DURATION_WING_BOOTS] == 39);
     cast(16);                               /* Tilte: 61 MP, 60 * 32 + 28 frames */
@@ -665,6 +773,7 @@ static void using_them_again_lands(void) {
     play(true);
     give(NULL, 0, WING_BOOTS);
     use();
+    pad = BUTTON_A;                         /* in the air, so Down+B can reach the item */
     frames(70);
     uint8_t left = ram[PLAYER_MP];
     use();
@@ -686,6 +795,7 @@ static void the_bar_waits_for_room(void) {
     play(true);
     give(NULL, 0, WING_BOOTS);
     use();
+    pad = BUTTON_A;
     frames(31);
     CHECK(mp() == 80 && bar_calls == 0);
     nmi();
@@ -780,6 +890,7 @@ static void both_at_once(void) {
     give(items, 1, WING_BOOTS);
     ram[PLAYER_MP] = 30;
     use();
+    pad = BUTTON_A;
     frames(10);
     ram[SELECTED_ITEM] = HOUR_GLASS; ram[ITEM_INVENTORY] = WING_BOOTS;
     use();
@@ -868,6 +979,7 @@ static void guru_travel_keeps_them(void) {
     play(true);
     give(NULL, 0, WING_BOOTS);
     use();
+    pad = BUTTON_A;
     game_seconds(3);
     uint8_t flying_left = ram[DURATION_WING_BOOTS], had = ram[PLAYER_MP];
     journey();
@@ -1017,6 +1129,7 @@ static void save_states(void) {
     const uint8_t items[] = { HOUR_GLASS };
     give(items, 1, WING_BOOTS);
     use();
+    pad = BUTTON_A;
     frames(45);
     ram[SELECTED_ITEM] = HOUR_GLASS; ram[ITEM_INVENTORY] = WING_BOOTS;
     use();
@@ -1035,6 +1148,7 @@ static void save_states(void) {
     /* Loaded into a new launch: the same, frame for frame. */
     play(true);
     memcpy(ram, machine, sizeof ram);
+    pad = BUTTON_A;
     CHECK(save_set(buf, n) == 1 && !memcmp(&charge, &saved, sizeof charge));
     fax_recharge_loaded();
     CHECK(!memcmp(&charge, &saved, sizeof charge));
@@ -1065,6 +1179,7 @@ static void old_records_load(void) {
     give(NULL, 0, WING_BOOTS);
     ram[DURATION_WING_BOOTS] = 25; ram[DURATION_HOUR_GLASS] = 7;   /* both running, as the game timed them */
     ram[PLAYER_STATUS] = 0x80;
+    pad = BUTTON_A;                         /* flying */
     /* Version 2: boots running, 0 cooldown; glass running; the Elixir spent; no continued file; told; no line. */
     const uint8_t v2[RECORD_V2] = { 2, 1, 0, 1, 0, 1, 0, 0, 0, 1, TALK_IDLE, LINE_NONE, 0, 0, 0, 0, 0 };
     CHECK(save_validate(v2, RECORD_V2) && save_set(v2, RECORD_V2) == 1);
@@ -1534,6 +1649,7 @@ int main(void) {
     registers();
     flight_by_title_band();
     a_flight_lasts_its_mp();
+    only_while_a_is_held();
     the_flight_follows_mp();
     using_them_again_lands();
     the_bar_waits_for_room();

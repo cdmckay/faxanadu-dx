@@ -2102,10 +2102,10 @@ jump a few updates after stepping off, as A from the hang itself would.
   only one that lowers it), `Player_AddMP` (`$C0D9`: `CLC`, `ADC Player_MP`,
   capped at `$50`, then `JMP Player_SetMP`) and `Player_SetMP` (`$FA85`,
   capped at 80). So MP lower than a frame before means a spell was cast (or a
-  new game began). With the remaster the Wing Boots and the Hour Glass take
-  MP too (Recharging items stores it and draws the bar with `Player_SetMP`),
-  and a kill or a Guru stores it (MP from kills, which draws it the same
-  way).
+  new game began). With the remaster the Wing Boots (while A is held) and the
+  Hour Glass take MP too (Recharging items stores it and draws the bar with
+  `Player_SetMP`), and a kill or a Guru stores it (MP from kills, which draws
+  it the same way).
 - **The bar is drawn only when MP changes through those routines.**
   `Player_SetMP` stores MP and falls into `UI_SetHUDBarValue` with Y = 1, the
   Magic bar, which queues two PPU buffer commands: the bar at `$2043`,
@@ -3724,9 +3724,20 @@ in the world, does, and a Guru says so (see *Features and what they use*).
 `Player_CheckHandleVertMovement` (`$E2C8`) treats the hero as on a ladder
 (`Player_CheckIfOnLadder`, then the climb): Up rises a pixel a frame, and
 `Player_CheckHandleJump` lets Left and Right move him in the air. Let go of A
-and he falls. A test that flies must hold A without a break: renewing short
-TCP `action` holds made the hero bob up and down, and
-`tests/recharge/recharging_items.py` renews long `pad` holds before they lapse.
+and he falls. With A alone he sinks a pixel a frame: where the fall would
+add 8 to `Player_PosY`, `Player_HandleVertLadderOrJump`'s Wing Boots check
+(`@_checkWingBoots`, `$E3CD`, and the `ADC #$01` after it) adds 1 while the
+boots run and `Joy1_ButtonMask` has A (`$80`), and it sets the falling bit.
+On the ground a new A still jumps (`Player_UpdateClimbOrJump`, `$E444`, on
+`Joy1_ChangedButtonMask`); held, he sinks back and stands (checked in the
+game: from the floor at Y 144 he jumped to about Y 112, sank back and stood,
+A held throughout). With the remaster the boots take MP only on frames with
+A held (Recharging items, #148), A on the ground included: the button is
+the rule. A test that flies must hold A without a break: renewing short TCP
+`action` holds made the hero bob up and down.
+`tests/recharge/recharging_items.py` renews long `pad` holds before they
+lapse, or, where every frame of A counts, holds `action` A once for 36,000
+frames (the longest the host takes) and lets go when done.
 
 **The Spring of Sky needs the Wing Boots** ("They say a fountain is up in the
 sky, but you need Wing Boots..."). Its man (`$3B`) stands on the fountain's
@@ -3738,9 +3749,11 @@ of `$25` and left along its top to the man. Flown in the end-to-end test with
 the enemies of `$20`, `$23` and `$24` cleared, it takes about 1,035 frames
 (16 of the game's seconds) from leaving the message box to landing by him, so
 #27's lowest band (30 s) was enough, with 15 s to spare. The original gave a
-Novice 40 s. Flying on MP (#124), a Novice's full bar flies 40 s, and the
-climb takes about 30 of its 80 MP (an MP every 32 frames: 979 frames and 30
-MP in the end-to-end test), so he needs well under half a bar.
+Novice 40 s. Flying on MP (#124), a Novice's full bar flies 40 s of A held
+(#148), and the climb takes about 30 of its 80 MP: 979 frames in the
+end-to-end test, 963 of them with A held, for 30 MP at one every 32. The
+drop onto the man's ledge and the walk to him, A up, take none. So he needs
+well under half a bar.
 
 The dialogue also says the Wing Boots are needed "to get to the misty town of
 Victim" (Mist `$22` and `$25` lead into it). One candidate: the ladder at the
@@ -4629,15 +4642,17 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   its stock value.
 - **Recharging items** (`fax_recharge.c`, with the use-up list in
   `fax_items.h`). The Wing Boots and the Hour Glass are kept, and both run on
-  MP with no cooldown (#124, after #27's 60 s cooldowns), and the Elixir is
-  kept and a Guru charges it again. Its sites are in the fixed bank, but for
-  `$826E` in bank 12 (below). The costs are one table and two constants at
+  MP with no cooldown (#124, after #27's 60 s cooldowns), the Wing Boots only
+  while A is held (#148), and the Elixir is kept and a Guru charges it
+  again. Its sites are in the fixed bank, but for `$826E` in bank 12
+  (below). The costs are one table and two constants at
   the top of `fax_recharge.c`, in played frames (a pass of the main loop) a
   MP, so every cost is exact: the Wing Boots take an MP every 32, 40, 48 or
-  64 frames by title band (2, 1.6, 1.33 and 1 MP a second of the game's 64
-  frames: a full bar flies 40, 50, 60 and 80 s), and the Hour Glass one
-  every 24 at any title (40 MP for its whole 15 s). Each takes its first MP
-  a whole step after it starts, and its last on the frame MP reaches 0.
+  64 frames of A held by title band (2, 1.6, 1.33 and 1 MP a second of the
+  game's 64 frames: a full bar flies 40, 50, 60 and 80 s), and the Hour
+  Glass one every 24 at any title (40 MP for its whole 15 s). Each takes its
+  first MP a whole step after it starts (for the Wing Boots, a whole step of
+  A held), and its last on the frame MP reaches 0.
   - `Player_UseWingBoots` and `Player_UseHourGlass`, at entry: one that is
     running is ended, at this pass's countdown (`GameLoop_CheckUseCurrentItem`
     comes before `GameLoop_CountdownItems`), so Down+B again lands a flight
@@ -4657,7 +4672,15 @@ one of them since #110, so the remaster always plays in its 424x240 view.
     original's halving: the freeze costs no HP.
   - The `LDA InterruptCounter` at `$C5F0` (`Game_DecHourGlassDuration`) and
     at `$C5A8` (`Game_DecWingBootsDuration`), each reached once a main-loop
-    frame while its item runs: that frame of the run. MP goes on schedule
+    frame while its item runs: that frame of the run. A frame of the Wing
+    Boots counts toward the next MP only with A held (`Joy1_ButtonMask`
+    `$80`, read in the NMI, so the mask `Player_CheckHandleVertMovement`
+    flew him by in the same pass; Magic button's Up+B is put back before
+    `GameLoop_CheckUseCurrentItem`, and never touches A). Without A it
+    changes nothing: walking, standing and falling with them on take no MP,
+    `DurationWingBoots` and T: hold, and the flight stays on. At 0 MP,
+    however it went (a spell, the Hour Glass), the flight ends, A or not, as
+    before. MP goes on schedule
     (stored at once; its bar drawn with `Player_SetMP` in a committed call
     when the PPU buffer has room for both of its commands, else at the next
     frame that has, as MP from kills draws its bars), the duration is set to the
@@ -4674,8 +4697,11 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   - `GameLoop_CountdownItems`, before the game's own countdowns: T: shows the
     selected item's seconds left while it runs, the flight's or the freeze's
     at the MP there is and all that drains it, rounded up (a full bar's 40 s
-    shows 40). With anything else selected, or nothing, T: is the original's:
-    the flight's while the Wing Boots fly, whatever is selected, else `00`
+    shows 40). The flight's are seconds of A held, so they hold while A is
+    up. With both running, each counts the flight's drain as if A were held
+    from now on, so the freeze never ends sooner than T: says. With anything
+    else selected, or nothing, T: is the original's: the flight's while the
+    Wing Boots fly, whatever is selected, else `00`
     (#119; the Hour Glass never showed a time). It is queued through the PPU
     buffer as `UI_DrawTimeValue` queues it, when `PPUBuffer_HasCapacity`
     would allow it, when it changes, and every 16 frames while not 0, since

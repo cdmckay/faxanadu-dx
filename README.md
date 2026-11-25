@@ -150,8 +150,9 @@ the Select menu, opens it too.
   used up.
 - **Items that run on MP.** The Wing Boots and the Hour Glass stay with you,
   and both run on MP, so you balance them against your spells. The Wing Boots
-  fly as long as your MP lasts: 40 seconds on a full bar at first, up to 80
-  as your title rises. The Hour Glass freezes enemies for its 15 seconds for
+  take MP only while you hold A to fly: 40 seconds of flight on a full bar at
+  first, up to 80 as your title rises; walking, standing or falling with them
+  on costs nothing. The Hour Glass freezes enemies for its 15 seconds for
   40 MP, and no longer costs half your HP. Use either again to end it early;
   with no MP, they do nothing. There's no cooldown: they work again as soon
   as you have MP, and T: on the status bar counts the selected one down. The

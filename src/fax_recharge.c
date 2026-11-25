@@ -3,14 +3,19 @@
  * The Wing Boots and the Hour Glass are kept after use, and both run on MP
  * (#124): each takes MP as it goes, and neither has a cooldown, so each can
  * be used again the moment its run ends.
- * - The Wing Boots fly while MP lasts. Each played frame of the flight
- *   counts toward the next MP, which goes every FRAMES_PER_MP[band] frames:
- *   2, 1.6, 1.33 and 1 MP a second (the game's, 64 frames) by title band, so
- *   a full bar of 80 flies 40, 50, 60 and 80 s. At 0 MP the flight ends with
- *   the game's own "The power of the Wing Boots is gone.". Down+B again
- *   ends it the same way: in the air with A held (flying, the game treats
- *   Down as a climb, which clears the jumping and falling flags its item use
- *   refuses on) or standing.
+ * - The Wing Boots fly while MP lasts, and take it only while they lift the
+ *   hero: while A is held (#148). With them on and A held, the game flies
+ *   him (Player_CheckHandleVertMovement); let go and he falls. So each played
+ *   frame with A held counts toward the next MP, which goes every
+ *   FRAMES_PER_MP[band] of them: 2, 1.6, 1.33 and 1 MP a second (the game's,
+ *   64 frames) by title band, so a full bar of 80 flies 40, 50, 60 and 80 s.
+ *   Walking, standing and falling with them on take nothing, and T: holds;
+ *   A held on the ground counts, as the button is the one rule. They stay on
+ *   until MP runs out (at 0 MP, however it went, the flight ends with the
+ *   game's own "The power of the Wing Boots is gone."), Down+B again ends
+ *   them the same way, in the air with A held (flying, the game treats Down
+ *   as a climb, which clears the jumping and falling flags its item use
+ *   refuses on) or standing, or he dies.
  * - The Hour Glass freezes for the game's own 15 s, and bosses still never
  *   freeze, but it costs no HP (the original halved it): the freeze takes an
  *   MP every GLASS_FRAMES_PER_MP frames, 40 MP for the whole 15 s, and ends
@@ -24,8 +29,11 @@
  * once drain together, and each ends when MP runs out.
  * T: shows the selected item's seconds left while it runs: the flight's or
  * the freeze's, at the MP there is and what drains it, rounded up (a full
- * bar's 40 s shows 40). Otherwise it is what the original shows: the
- * flight's while the Wing Boots fly, whatever is selected, else 00 (#119).
+ * bar's 40 s shows 40). The flight's are seconds of A held, so they hold
+ * while it is not; with both running, the freeze's count the flight's drain
+ * as if A were held from now on, so it never ends before T: says. Otherwise
+ * it is what the original shows: the flight's while the Wing Boots fly,
+ * whatever is selected, else 00 (#119).
  * Dying ends both (a respawn clears timed items); a Guru travel journey does
  * not. Finding a pair or an Hour Glass in the world while you own one adds
  * nothing: one is all he needs. The game's shops would sell a second
@@ -78,7 +86,9 @@
  *   in one place: cost_hook).
  * - Game_DecHourGlassDuration's and Game_DecWingBootsDuration's LDA
  *   InterruptCounter, which each reaches once a main-loop frame while its
- *   item runs: that frame of the run. MP goes on schedule, the bar drawn by
+ *   item runs: that frame of the run, for the Wing Boots one that counts only
+ *   with A held (Joy1_ButtonMask, as GameLoop_UpdatePlayer read it in the
+ *   same pass). MP goes on schedule, the bar drawn by
  *   the game's own Player_SetMP in a committed call (when the PPU buffer
  *   has room, else at the first frame that has), the duration is set to the
  *   seconds left, and the game's second is skipped (an RTS). At the run's end the site jumps to the routine's DEC with the
@@ -166,6 +176,7 @@
 #define ISCRIPT_OFFSET          0x00DDu
 #define PPU_BUFFER_READ         0x001Fu  /* PPUBuffer_ReadOffset */
 #define PPU_BUFFER_WRITE        0x0020u  /* PPUBuffer_WriteOffset */
+#define JOY1_BUTTON_MASK        0x0016u  /* Joy1_ButtonMask: held, read in the NMI; A $80 */
 #define PLAYER_MP               0x039Au  /* at most 80 */
 #define ITEM_INVENTORY          0x03ADu
 #define SELECTED_ITEM           0x03C1u
@@ -178,6 +189,7 @@
 #define PPU_BUFFER              0x0500u  /* 256 bytes, circular: [length][addr hi][addr lo][tiles] */
 /* Values */
 #define BIT_ELIXIR              0x08u
+#define BUTTON_A                0x80u    /* Joy1_ButtonMask's A: with Player_StatusFlag's $80, flying */
 #define SOUND_INVALID_CHOICE    0x0Du
 #define HUD_TIME                0x2058u  /* UI_DrawTimeValue's two digits */
 #define PPU_BUFFER_ROOM         0x24u    /* PPUBuffer_HasCapacity: at least 36 bytes free, or empty */
@@ -200,7 +212,7 @@ enum { BANDS = 4 };             /* title bands: PlayerTitle / 4 */
  * played frames, those a pass of the main loop counts down (60 a second, no
  * pause, box or menu), and the game's second, what T: counts, is 64 of
  * them; whole frames an MP, so every cost is exact. The Wing Boots take an
- * MP every FRAMES_PER_MP frames, by the title band he holds as it goes
+ * MP every FRAMES_PER_MP frames of A held, by the title band he holds as it goes
  * (PlayerTitle / 4): 80 MP flies 40, 50, 60 and 80 s, so higher titles
  * still fly longer. The original flew 40, 30, 20 and 10 s by band, #27's
  * recharging pair 30 to 60. The Hour Glass freezes for FREEZE_SECONDS, the
@@ -220,10 +232,11 @@ enum { MOST_SECONDS = 99 };     /* T: has two digits */
 
 static const uint8_t ITEM_ID[TIMED] = { FAX_ITEM_WING_BOOTS, FAX_ITEM_HOUR_GLASS };
 
-/* A flight: running, and the played frames until it takes the next MP. */
+/* A flight: running, and the played frames with A held until it takes the
+ * next MP. */
 typedef struct {
     uint8_t running;           /* begun, and neither out of MP nor ended */
-    uint8_t next;              /* played frames until the next MP goes, 1-64 */
+    uint8_t next;              /* played frames with A held until the next MP goes, 1-64 */
     uint8_t land;              /* used again: it ends at this frame's countdown */
 } Flight;
 /* A freeze: how far it has run, and the played frames until it takes the
@@ -268,6 +281,8 @@ static bool lines_failed;          /* the line could not be supplied: the Gurus 
 static bool legacy;                /* the record loaded was from before #124: adopt its runs once RAM is in */
 static unsigned flights, freezes, refused, kept, pickups, revives, guru_recharges, spawns, cuts, springs;   /* TCP */
 static unsigned landings[TIMED], lines_said[LINES];
+static unsigned lift_frames, rest_frames;   /* TCP: a flight's played frames with A held, and without */
+static bool lifting;                        /* TCP: A held at the flight's last frame */
 
 /* ---- the rules, on plain values ---- */
 
@@ -280,15 +295,15 @@ static unsigned seconds(unsigned frames) {
     return s > MOST_SECONDS ? MOST_SECONDS : s;
 }
 
-/* A flight begins: the first MP goes a whole step after it. */
+/* A flight begins: the first MP goes a whole step of A held after it. */
 static Flight take_off(uint8_t title) { return (Flight){ 1, frames_per_mp(title), 0 }; }
 /* A freeze begins, the same. */
 static Freeze freeze_begin(void) { return (Freeze){ 1, 0, 0, GLASS_FRAMES_PER_MP, FREEZE_SECONDS }; }
 
 /* Played frames until `mp` MP runs out, at the drains running: the flight's
- * (an MP at `next`, then every FRAMES_PER_MP) and the freeze's (the same,
- * every GLASS_FRAMES_PER_MP, as long as it lasts: its last MP goes on its
- * last frame). NEVER if nothing drains it to 0. */
+ * (an MP at `next`, then every FRAMES_PER_MP), as if A were held from now on,
+ * and the freeze's (the same, every GLASS_FRAMES_PER_MP, as long as it lasts:
+ * its last MP goes on its last frame). NEVER if nothing drains it to 0. */
 enum { NEVER = 0xFFFFu };
 static unsigned to_empty(const Charge *c, uint8_t mp, uint8_t title) {
     const Flight *f = &c->flight;
@@ -305,23 +320,27 @@ static unsigned to_empty(const Charge *c, uint8_t mp, uint8_t title) {
     }
     return 0;
 }
-/* Played frames left in the flight: until MP runs out. */
+/* Played frames left in the flight, of A held: until MP runs out. */
 static unsigned flight_left(const Charge *c, uint8_t mp, uint8_t title) {
     if (!c->flight.running) return 0;
     unsigned t = to_empty(c, mp, title);
     return t == NEVER ? 0u : t;
 }
-/* Played frames left in the freeze: until its 15 s are up, or MP runs out. */
+/* Played frames left in the freeze: until its 15 s are up, or MP runs out
+ * (a flight's drain counted as if A were held, so the freeze never ends
+ * sooner). */
 static unsigned freeze_left(const Charge *c, uint8_t mp, uint8_t title) {
     const Freeze *z = &c->freeze;
     if (!z->running || z->played >= FREEZE) return 0;
     unsigned t = to_empty(c, mp, title), end = (unsigned)(FREEZE - z->played);
     return t < end ? t : end;
 }
-/* One played frame of a flight, `*mp` its MP: one goes on schedule. True when
- * the flight ends now: used again, or out of MP. */
-static bool fly(Flight *f, uint8_t *mp, uint8_t title) {
+/* One played frame of a flight, `*mp` its MP: with A held (`lift`), it
+ * counts toward the next MP, which goes on schedule; without, nothing. True
+ * when the flight ends now: used again, or out of MP, A or not. */
+static bool fly(Flight *f, uint8_t *mp, uint8_t title, bool lift) {
     if (f->land || !*mp) return true;
+    if (!lift) return false;
     if (f->next > 1) { --f->next; return false; }
     f->next = frames_per_mp(title);
     return --*mp == 0;
@@ -558,12 +577,16 @@ static int glass_second_hook(uint16_t addr) {
 
 /* Game_DecWingBootsDuration's LDA InterruptCounter, once a main-loop frame
  * while DurationWingBoots runs (Player_StatusFlag's $80 just set): a frame of
- * the flight. */
+ * the flight, which counts toward MP only with A held. The mask is the one
+ * this pass's Player_CheckHandleVertMovement flew him by (the NMI reads the
+ * pad, and Magic button's Up+B is put back before GameLoop_CheckUseCurrentItem). */
 static int boots_second_hook(uint16_t addr) {
     (void)addr;
     if (cyc_mod_isolated() || !charge.flight.running) return 0;
     uint8_t title = q(PLAYER_TITLE), was = q(PLAYER_MP), mp = was;
-    bool ends = fly(&charge.flight, &mp, title);
+    lifting = (q(JOY1_BUTTON_MASK) & BUTTON_A) != 0;
+    ++*(lifting ? &lift_frames : &rest_frames);
+    bool ends = fly(&charge.flight, &mp, title, lifting);
     if (mp != was) set_mp(mp);
     if (ends) {
         if (charge.flight.land) ++landings[BOOTS];
@@ -877,6 +900,8 @@ static void deactivate(void) {
     lines_failed = legacy = false;
     drawn_valid = false;
     flights = freezes = refused = kept = pickups = revives = guru_recharges = spawns = cuts = springs = 0;
+    lift_frames = rest_frames = 0;
+    lifting = false;
     memset(landings, 0, sizeof landings);
     memset(lines_said, 0, sizeof lines_said);
     hooks(false);
@@ -895,18 +920,22 @@ static void recharge_state(int id, const char *line) {
     const Freeze *z = &charge.freeze;
     uint8_t mp = q(PLAYER_MP), title = q(PLAYER_TITLE);
     unsigned left = flight_left(&charge, mp, title), frozen = freeze_left(&charge, mp, title);
+    /* lift_frames and rest_frames count every flight's played frames, with A held (they take MP) and without;
+     * lifting is whether A was held at the last. */
     int n = snprintf(fields, sizeof fields,
              "\"enabled\":%s,\"boots_ready\":%s,\"boots_running\":%u,\"glass_ready\":%s,\"glass_running\":%u,"
              "\"flight_next\":%u,\"flight_left\":%u,\"flight_seconds\":%u,\"frames_per_mp\":%u,"
              "\"freeze_played\":%u,\"freeze_next\":%u,\"freeze_left\":%u,\"freeze_seconds\":%u,"
              "\"glass_frames_per_mp\":%u,\"glass_shown\":%u,\"bar\":%u,\"flights\":%u,\"freezes\":%u,"
              "\"refused\":%u,\"boots_landed\":%u,\"glass_landed\":%u,\"cuts\":%u,\"kept\":%u,\"pickups\":%u,"
-             "\"revives\":%u,\"guru_recharges\":%u,\"spawns\":%u,\"hud\":%u,\"hud_drawn\":%d",
+             "\"revives\":%u,\"guru_recharges\":%u,\"spawns\":%u,\"hud\":%u,\"hud_drawn\":%d,"
+             "\"lift_frames\":%u,\"rest_frames\":%u,\"lifting\":%s",
              enabled ? "true" : "false", ready(&charge, BOOTS) ? "true" : "false", f->running,
              ready(&charge, GLASS) ? "true" : "false", z->running, f->next, left, seconds(left), frames_per_mp(title),
              z->played, z->next, frozen, seconds(frozen), (unsigned)GLASS_FRAMES_PER_MP, z->shown, charge.bar, flights,
              freezes, refused, landings[BOOTS], landings[GLASS], cuts, kept, pickups, revives, guru_recharges, spawns,
-             hud_value(&charge, q(SELECTED_ITEM), mp, title), drawn_valid ? (int)drawn : -1);
+             hud_value(&charge, q(SELECTED_ITEM), mp, title), drawn_valid ? (int)drawn : -1, lift_frames,
+             rest_frames, lifting ? "true" : "false");
     /* The Elixir: spent, charged; the Guru's line: told, talk (0 none, 1 waiting, 2 showing), line (0 none, 1
      * restored, 2 can), how many of each he has said, and whether the lines are off (their overrides could not
      * be set); the Elixirs the Spring of Trunk has spent. */

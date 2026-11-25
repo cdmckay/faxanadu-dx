@@ -18,11 +18,12 @@ frame of either is a main-loop pass, a frame the game plays, and the drain
 is checked against the frame counter on a quiet screen.
 
 1. Wing Boots by title band: a full bar's flight shows 40, 50, 60 and 80 s on
-   T: (the original: 40, 30, 20, 10), and MP falls an MP every 32, 40, 48
-   and 64 frames, to the frame.
-2. A whole Novice flight from a full bar, in Eolis: T: counts its seconds,
-   MP falls on schedule and never comes back while he flies, and at 0 MP,
-   2,560 frames on, "The power of the Wing Boots is gone.". Then T: is 00,
+   T: (the original: 40, 30, 20, 10), and with A held MP falls an MP every
+   32, 40, 48 and 64 frames, to the frame.
+2. A whole Novice flight from a full bar, in Eolis, A held throughout: T:
+   counts its seconds, MP falls on schedule and never comes back while he
+   flies, and at 0 MP, 2,560 frames on, "The power of the Wing Boots is
+   gone.". Then T: is 00,
    Down+B at 0 MP does nothing but the refusal sound, and with MP (a kill's
    or a Guru's, poked here) the same pair flies again at once.
 3. Landing early: Down+B in the air (A held, so the game takes Down as a
@@ -53,10 +54,11 @@ is checked against the frame counter on a quiet screen.
     Elixir (Trunk $3C) while it is spent charges it.
 11. The Spring of Sky, the spring the Wing Boots are needed for: from the
     floor of Trunk $20 below the shaft, fly up through $23 and $24 to the
-    Spring of Sky's man in $25 and wake him, on a Novice's full bar.
+    Spring of Sky's man in $25 and wake him, on a Novice's full bar: an MP
+    every 32 frames of A held, and none on the walk to him.
 12. Guru travel (relaunched having met the Gurus of Eolis and Apolune): a
     journey from Eolis to Apolune with the Wing Boots flying keeps them
-    flying and taking MP.
+    flying and taking MP while A is held.
 13. Save files: a Guru's save writes none of #27's cooldown fields; a file
     that has them, its Elixir spent, continues with nothing running, the
     Elixir spent, the pair flying at once, and its next write drops them.
@@ -65,8 +67,12 @@ is checked against the frame counter on a quiet screen.
     first action, and says so before his greeting (the lines themselves are
     tests/recharge/guru_lines.py's).
 15. With the remaster off, the original: the pair is used up after one 40 s
-    (Novice) flight, which takes no MP, and the Hour Glass halves HP and is
-    used up.
+    (Novice) flight, which takes no MP and counts down with A up, and the
+    Hour Glass halves HP and is used up.
+16. The Wing Boots take MP only while A is held (#148), in Eolis: with them
+    on, walking and standing take none and T: holds; A and Up, he rises and
+    MP goes on schedule; let go, he falls and it stops; A held on the
+    ground takes it too; out of MP in the air, the game's line ends them.
 """
 from pathlib import Path
 import sys
@@ -106,9 +112,10 @@ GLASS_STEP, FREEZE = 24, 15                                         # the Hour G
 FLIGHT, STEP = FLIGHTS[0], STEPS[0]                                 # a Novice's: the lowest band
 EOLIS_TOOLS = [0x00, 0x60]                                          # Eolis's tools: dagger, Deluge (no Elixir)
 INTERRUPT_COUNTER = 0x1A                                            # counts NMIs
+FLY = 36000                                                         # an A hold to fly on, the longest: let go to end it
 PACKAGE = ("faxanadu.dx", "dx")                                  # the one switch: off is the original game
 PARTS = ("bands", "boots-flight", "boots-land", "boots-death", "glass-freeze", "glass-mp", "boss", "elixir",
-         "tool-shop", "finds", "spring", "travel", "save", "apolune-guru", "original")
+         "tool-shop", "finds", "spring", "travel", "save", "apolune-guru", "original", "boots-a")
 GURUS = ("Eolis", "Apolune")                                        # met, for Guru travel's journey
 RECORD = b"faxanadu.recharge"                                       # its save-state record, version 3:
 FLYING, FLY_NEXT = 1, 2                                             # the flight: running, frames to its next MP;
@@ -225,6 +232,13 @@ def use():
 
 def close_box():
     fax_e2e.page_through("the box to close", lambda: not box_open(), 3000)
+
+
+def fly_on():
+    """Hold A, the NES button, until fax_e2e.let_go(): with the Wing Boots
+    on, each frame of it flies him and counts toward the next MP. One long
+    hold, never renewed, so no frame of it lapses however the script lags."""
+    tcp("action", name="a", frames=FLY)
 
 
 @fax_e2e.recipe("recharge-boots-words", parent="eolis-meat-shop")
@@ -406,9 +420,13 @@ def main():
                 s = state()
                 assert s["boots_running"] and s["frames_per_mp"] == step, s
                 assert ram(DURATION_WING_BOOTS) in (flight, flight - 1) and s["hud_drawn"] in (flight, flight - 1), s
+                fly_on()                                                # MP goes only while A is held
+                wait(2)
                 drain_on_schedule(step, f"band {band}", 3 * step + 5)
+                fax_e2e.let_go()
             print(f"ok: a full bar flies {', '.join(map(str, FLIGHTS))} s by title band (the original: 40, 30, 20, "
-                  f"10), T: shows it, and MP falls an MP every {', '.join(map(str, STEPS))} frames, to the frame")
+                  f"10), T: shows it, and with A held MP falls an MP every {', '.join(map(str, STEPS))} frames, to "
+                  f"the frame")
 
         # 2. A whole Novice flight from a full bar.
         if args.wants("boots-flight"):
@@ -419,10 +437,12 @@ def main():
             use()
             until("I've used Wing Boots.", lambda: ram(MESSAGE_ID) == USED_WING_BOOTS, 120)
             page_through()
+            fly_on()                                                    # A held for the whole flight
+            wait(2)
             s0, mp0, f0 = snapshot()
             assert s0["boots_running"] and s0["hud"] == FLIGHT and s0["hud_drawn"] == FLIGHT, s0
             assert items() == ([], WING_BOOTS) and s0["kept"] >= 1, items()
-            begun = f0 - (FULL * STEP - s0["flight_left"])             # the flight's first frame
+            begun = f0 - (FULL * STEP - s0["flight_left"])             # the flight's first frame, had A been down
             low, sampled = mp0, 0
             while True:                                                 # the drain, and T:, as it flies
                 s, mp, f = snapshot()
@@ -434,11 +454,13 @@ def main():
                 assert s["hud_drawn"] == -(-s["flight_left"] // SECOND), s
                 low = mp
                 if sampled == 0 and mp <= FULL // 2:                    # half way: up in the air, for the picture
-                    rise()
+                    y = ram(PLAYER_Y)
+                    act("up", 40, 4)                                    # A still held: Up rises
+                    assert ram(PLAYER_Y) < y, f"flying: y {ram(PLAYER_Y)} not above {y}"
                     shot("flight-mp-draining")
-                    let_go()
                     sampled = 1
                 wait(min(200, max(1, s["flight_left"] - 2)))
+            fax_e2e.let_go()
             until("The power of the Wing Boots is gone.", lambda: ram(MESSAGE_ID) == WING_BOOTS_GONE, 60)
             s = state()
             assert ram(MP) == 0 and s["boots_landed"] == 0 and not ram(PLAYER_STATUS) & 0x80, s
@@ -448,7 +470,7 @@ def main():
             s = state()
             assert s["hud_drawn"] == 0 and s["boots_ready"] and items() == ([], WING_BOOTS), s
             shot("flight-over")
-            print(f"ok: a Novice's full bar flies {ended - begun} frames ({FULL} MP, an MP every {STEP}), MP "
+            print(f"ok: a Novice's full bar flies {ended - begun} frames of A held ({FULL} MP, an MP every {STEP}), MP "
                   f"never rising, T: counting down; at 0 MP the game's own line ends it, and T: is 00")
             refused_at_zero()
             print("ok: Down+B at 0 MP does nothing but the refusal sound")
@@ -715,6 +737,7 @@ def main():
             # $20, $23 and $24 are cleared as the hero reaches each: the flight is what is measured.
             warp(shop, "spring", TRUNK, 0x20, 0x94, PALETTE_OUTSIDE, 1,
                  {SELECTED_ITEM: WING_BOOTS, NUMBER_OF_ITEMS: 0, QUESTS: 0x01, PLAYER_TITLE: 0, MP: FULL})
+            lifted = state()["lift_frames"]                             # A held in flights so far: none runs
             use()
             dismiss(USED_WING_BOOTS)
             took_off = frame()
@@ -763,9 +786,10 @@ def main():
                     raise AssertionError(f"off the route: {place()}, x={x} y={y}")
                 press(want, now)
             until("the landing", lambda: ram(PLAYER_FLAGS) & 0x05 == 0 and place() == (TRUNK, 0x25), 300)
-            landed = frame() - took_off
-            left, mp = ram(DURATION_WING_BOOTS), ram(MP)
+            s, mp, f = snapshot()
+            landed, left, flown = f - took_off, ram(DURATION_WING_BOOTS), s["lift_frames"] - lifted
             assert left < 0x80, "the flight ran out before the landing"
+            assert FULL - mp == flown // STEP, f"{FULL - mp} MP for {flown} frames of A held, at one every {STEP}"
             for _ in range(30):                                         # beside him, on the fountain's ledge
                 if ram(MESSAGE_ID) == HO_HO_HO:
                     break
@@ -778,9 +802,10 @@ def main():
             shot("spring-of-sky")
             page_through()
             assert ram(QUESTS) & QUEST_SPRING_OF_SKY, "the Spring of Sky's man woke"
+            assert ram(MP) == mp and state()["boots_running"], (ram(MP), mp)  # the walk to him took none
             print(f"ok: the Spring of Sky: from Trunk $20's floor to the man in $25 in {landed} frames "
-                  f"({landed / SECOND:.1f} of the game's seconds), with {left} s of a Novice's {FLIGHT} s flight left "
-                  f"({mp} MP)")
+                  f"({landed / SECOND:.1f} of the game's seconds), {flown} of them with A held, for {FULL - mp} MP, "
+                  f"with {left} s of a Novice's {FLIGHT} s flight left ({mp} MP); none on the walk to him")
             game.close()
 
         if args.wants("travel"):
@@ -804,14 +829,18 @@ def main():
             until("Apolune's temple", lambda: place() == (BUILDINGS, APOLUNE_TEMPLE) and settled(), 2400)
             wait(30)
             mp_after, f_after = ram(MP), state()["flight_left"]
+            fly_on()                                                    # A held: MP goes on schedule
+            wait(2)
             drain_on_schedule(STEP, "after the journey", 2 * STEP + 3)
             s = state()
-            assert s["boots_running"] == 1 and ram(PLAYER_STATUS) & 0x80 and f_after < left_before, (s, left_before)
+            assert s["boots_running"] == 1 and ram(PLAYER_STATUS) & 0x80 and f_after <= left_before, (s, left_before)
             assert mp_after <= mp_before, (mp_before, mp_after)
             poke({MP: 1})
-            dismiss(WING_BOOTS_GONE, 2 * STEP)
+            until("The power of the Wing Boots is gone.", lambda: ram(MESSAGE_ID) == WING_BOOTS_GONE, 2 * STEP)
+            fax_e2e.let_go()
+            page_through()
             print(f"ok: a Guru travel journey from Eolis to Apolune keeps the flight ({mp_before} MP before, "
-                  f"{mp_after} after), still taking MP on schedule, until it runs out")
+                  f"{mp_after} after), still taking MP on schedule while A is held, until it runs out")
 
         if args.wants("save"):
             # 13. Save files: a Guru's save keeps nothing of the timed items; a file from #27, with its cooldowns
@@ -895,8 +924,9 @@ def main():
             use()
             dismiss(USED_WING_BOOTS)
             assert ram(DURATION_WING_BOOTS) in (40, 39) and items() == ([], NO_ITEM), (ram(DURATION_WING_BOOTS), items())
+            counted = ram(DURATION_WING_BOOTS)
             wait(3 * SECOND)
-            assert ram(MP) == FULL, ram(MP)
+            assert ram(MP) == FULL and ram(DURATION_WING_BOOTS) <= counted - 3, (ram(MP), ram(DURATION_WING_BOOTS))
             glass = out / "glass-original.cycstate"
             fixture(town, glass, {HP: 0x50, HP_FRACTION: 0, MP: FULL, SELECTED_ITEM: HOUR_GLASS, NUMBER_OF_ITEMS: 0,
                                   **no_one})
@@ -907,8 +937,91 @@ def main():
             assert ram(HP) == 0x28 and items() == ([], NO_ITEM) and ram(DURATION_HOUR_GLASS) in (15, 14), ram(HP)
             wait(SECOND)
             assert ram(MP) == FULL, ram(MP)
-            print("ok: with the remaster off, a Novice's Wing Boots fly 40 s, take no MP and are used up, and the "
-                  "Hour Glass halves HP and is used up, as in the original")
+            print("ok: with the remaster off, a Novice's Wing Boots fly 40 s, counting down with A up, take no MP "
+                  "and are used up, and the Hour Glass halves HP and is used up, as in the original")
+        if args.wants("boots-a"):
+            # 16. The Wing Boots take MP only while A is held (#148).
+            start()
+            warp(shop, "boots-a", EOLIS, 1, 0x99, PALETTE_EOLIS, 0,
+                 {SELECTED_ITEM: WING_BOOTS, NUMBER_OF_ITEMS: 0, PLAYER_TITLE: 0, MP: FULL})
+            clear()
+            use()
+            dismiss(USED_WING_BOOTS)
+            wait(4)
+            s0, mp0, f0 = snapshot()
+            x0, floor = ram(PLAYER_X), ram(PLAYER_Y)
+            assert s0["boots_running"] and ram(PLAYER_STATUS) & 0x80 and not s0["lifting"] and mp0 == FULL, s0
+            tcp("action", name="left", frames=60)                       # walk, then stand
+            wait(40)
+            shot("boots-walking")
+            wait(60)
+            s1, mp1, f1 = snapshot()
+            assert abs(ram(PLAYER_X) - x0) > 16, (x0, ram(PLAYER_X))
+            assert mp1 == mp0 and s1["flight_left"] == s0["flight_left"] and s1["flight_next"] == s0["flight_next"], \
+                (s0, s1)
+            assert s1["hud_drawn"] == s0["hud_drawn"] == s0["flight_seconds"] == ram(DURATION_WING_BOOTS), (s0, s1)
+            assert s1["lift_frames"] == s0["lift_frames"] and s1["rest_frames"] - s0["rest_frames"] == f1 - f0, (s0, s1)
+            print(f"ok: with the Wing Boots on, {f1 - f0} frames of walking and standing take no MP, and T: holds at "
+                  f"{s1['hud_drawn']}")
+            fly_on()                                                    # A, then Up: he rises
+            wait(8)
+            tcp("action", name="up", frames=FLY)
+            mp_a, mp_b = drain_on_schedule(STEP, "A held", 3 * STEP + 5)
+            risen, s2 = floor - ram(PLAYER_Y), state()
+            assert risen > 0 and mp_b < mp_a and s2["lifting"], (risen, mp_a, mp_b, s2)
+            shot("boots-rising")
+            print(f"ok: A and Up held, he rises {risen} pixels and MP goes on schedule ({mp_a} to {mp_b}, an MP "
+                  f"every {STEP} frames)")
+            act("up", 1, 0)                                             # let go: he falls
+            fax_e2e.let_go()
+            wait(2)
+            s3, mp3, f3 = snapshot()
+            y3 = ram(PLAYER_Y)
+            wait(8)
+            shot("boots-falling")
+            wait(STEP)
+            s4, mp4, f4 = snapshot()
+            assert ram(PLAYER_Y) > y3 and mp4 == mp3 and s4["flight_left"] == s3["flight_left"], (y3, s3, s4)
+            assert s4["hud_drawn"] == s3["hud_drawn"] and s4["lift_frames"] == s3["lift_frames"], (s3, s4)
+            assert s4["boots_running"] and ram(PLAYER_STATUS) & 0x80, s4
+            until("on the floor", lambda: not ram(PLAYER_FLAGS) & 0x05 and ram(PLAYER_Y) == floor, 300)
+            print(f"ok: let go, he falls ({ram(PLAYER_Y) - y3} pixels) with the Wing Boots on, and no MP goes")
+            # A alone on the ground: the button is the rule. A new A jumps, as ever; held, he sinks a pixel a frame
+            # back to the floor and stands there, and every frame of it takes MP.
+            fly_on()
+            ys = []
+            end = frame() + 300
+            while not (ys and not ram(PLAYER_FLAGS) & 0x05 and ram(PLAYER_Y) == floor):
+                assert frame() < end, f"A held: never back on the floor ({ys[-12:]})"
+                ys.append(ram(PLAYER_Y))
+                wait(2)
+            drain_on_schedule(STEP, "A held, standing", 2 * STEP + 3)
+            assert ram(PLAYER_Y) == floor and not ram(PLAYER_FLAGS) & 0x05, (ram(PLAYER_Y), floor)
+            fax_e2e.let_go()
+            print(f"ok: A held on the ground: he jumps to y {min(ys)} (the floor at {floor}), sinks back and stands, "
+                  f"and MP goes on schedule all the while")
+            # Out of MP in the air: the game's own line.
+            poke({MP: 2})
+            s5, mp5, _ = snapshot()
+            assert mp5 == 2 and s5["flight_left"] == s5["flight_next"] + STEP and s5["boots_running"], s5
+            fly_on()
+            wait(8)
+            tcp("action", name="up", frames=FLY)
+            until("The power of the Wing Boots is gone.", lambda: ram(MESSAGE_ID) == WING_BOOTS_GONE,
+                  s5["flight_left"] + 60)
+            s6, mp6, _ = snapshot()
+            y6 = ram(PLAYER_Y)
+            assert mp6 == 0 and not s6["boots_running"] and s6["boots_landed"] == 0 and y6 < floor, (s6, y6)
+            assert s6["lift_frames"] - s5["lift_frames"] == s5["flight_left"], (s5, s6)
+            assert not ram(PLAYER_STATUS) & 0x80, ram(PLAYER_STATUS)
+            act("up", 1, 0)
+            fax_e2e.let_go()
+            type_out("the line to type out", 600)
+            shot("boots-gone-mid-flight")
+            page_through()
+            assert state()["boots_ready"] and items() == ([], WING_BOOTS), (state(), items())
+            print(f"ok: out of MP {floor - y6} pixels up, after {s5['flight_left']} frames of A held on its last "
+                  f"2 MP, the game's own line ends the flight")
         print("screenshots:", ", ".join(game.shots))
     except BaseException:
         if game.running():
