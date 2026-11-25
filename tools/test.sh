@@ -150,6 +150,9 @@ cmake --build "$OUT/quests" -j"$JOBS" >/dev/null
 cmake -S tests/graphics -B "$OUT/graphics" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/graphics" -j"$JOBS" >/dev/null
 "$OUT/graphics/graphics_test"
+cmake -S tests/flicker -B "$OUT/flicker" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/flicker" -j"$JOBS" >/dev/null
+"$OUT/flicker/flicker_test"
 cmake -S tests/entrances -B "$OUT/entrances" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/entrances" -j"$JOBS" >/dev/null
 "$OUT/entrances/entrances_test"
@@ -236,6 +239,7 @@ E2E=(
   "quests       tests/quests/quest_log.py --parts"
   "fixes        tests/fixes/small_fixes.py --parts"
   "graphics     tests/graphics/graphics_fixes.py --parts"
+  "flicker      tests/flicker/no_flicker.py --parts"
   "finds        tests/finds/kept_finds.py --parts"
   "softlocks    tests/softlocks/eolis_shaft.py --parts"
   "entrances    tests/entrances/fair_entrances.py --parts"

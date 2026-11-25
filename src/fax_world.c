@@ -7,6 +7,7 @@
 #include "fax_world.h"
 #include "fax_entrances.h"
 #include "fax_charges.h"
+#include "fax_flicker.h"
 #include "fax_menu.h"
 #include "fax_text.h"
 #include "cyc_mod.h"
@@ -365,7 +366,9 @@ void fax_world_step(void){
      * screen off while one loads) keeps the last band shown (#132). */
     if(fax_text_hud_showing()){memcpy(hud_band,cyc_frame_argb(),sizeof hud_band);hud_valid=true;}
     if(!playing())return;
-    uint64_t start=SDL_GetPerformanceCounter();refresh(true);if(active<0)return;
+    /* A frame the game lagged keeps the last capture, as the PPU keeps its
+     * last sprites then (No sprite flicker, fax_flicker.c). */
+    uint64_t start=SDL_GetPerformanceCounter();refresh(fax_flicker_frame_drawn());if(active<0)return;
     if(ticks==last_tick)return;last_tick=ticks;
     int w=VIEW_W,h=VIEW_H;Room *a=&rooms[active];
     for(unsigned id=0;id<counts[area];id++)if(id!=(unsigned)active&&rooms[id].owned){
@@ -401,7 +404,10 @@ static void actors(unsigned id,int w,int h){
     const uint8_t *pal=rooms[active].palette;
     unsigned mask=cyc_render_line_mask(239);
     int ox=r->x*RW-camera_x,oy=HUD+r->y*RH-camera_y;
-    for(int s=63;s>=1;s--){const uint8_t *o=r->ram+0x700+s*4;int sy=o[0]+1,sx=o[3];
+    /* Every sprite, back to front in the order the game drew them (No sprite
+     * flicker, fax_flicker.c, from the room's own Sprites_StartSlotRange). */
+    uint8_t order[FAX_FLICKER_SPRITES];unsigned count=fax_flicker_paint_order(r->ram[0x1c],order);
+    for(unsigned k=0;k<count;k++){int s=order[k];const uint8_t *o=r->ram+0x700+s*4;int sy=o[0]+1,sx=o[3];
         if(sy<HUD||sy>=240)continue;
         if(id==(unsigned)active){int px=r->ram[0x9e];if(px>240&&sx<32)sx+=256;}
         unsigned tile=o[1],attr=o[2];
@@ -420,17 +426,18 @@ static void actors(unsigned id,int w,int h){
 static void player_edge(int w,int h){
     Room *r=&rooms[active];
     int px=r->ram[0x9e],py=r->ram[0xa1];if(px>=8&&px<=232&&py>=8&&py<=176)return;
-    uint8_t oam[256];if(!cyc_mod_isolate_begin())return;
+    uint8_t oam[256],range=0;if(!cyc_mod_isolate_begin())return;
     /* Use the same retained player pose during dialogue, even while native
      * portrait code temporarily changes drawing state. */
     for(unsigned i=0;i<2048;i++)p(i,r->ram[i]);
     p(0x9e,128);p(0xa1,96);p(0x9f,0);p(0xa2,0);p(0xc,0);p(0x57,0);
     bool ok=bank(14)&&call(0xcb17,0,0)&&call(0xb982,0,0)&&call(0xebee,0,0)&&call(0xb7d6,0,0);
-    if(ok)for(unsigned i=0;i<256;i++)oam[i]=q(0x700+i);
+    if(ok){for(unsigned i=0;i<256;i++)oam[i]=q(0x700+i);range=q(0x1c);}
     cyc_mod_isolate_end();if(!ok){failures++;return;}
     int ox=r->x*RW-camera_x,oy=HUD+r->y*RH-camera_y;
     unsigned mask=cyc_render_line_mask(239);
-    for(int s=63;s>=1;s--){const uint8_t *o=oam+s*4;if(o[0]>=239)continue;
+    uint8_t order[FAX_FLICKER_SPRITES];unsigned count=fax_flicker_paint_order(range,order);
+    for(unsigned k=0;k<count;k++){int s=order[k];const uint8_t *o=oam+s*4;if(o[0]>=239)continue;
         int sx=o[3]+px-128,sy=o[0]+1-HUD+py-96;unsigned attr=o[2],tile=o[1];
         for(int y=0;y<8;y++)for(int x=0;x<8;x++){
             int lx=sx+x,ly=sy+y;if(lx>=0&&lx<RW&&ly>=0&&ly<RH)continue;
