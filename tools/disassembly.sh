@@ -18,8 +18,9 @@ if [ ! -d "$OUT/repo" ]; then
   git clone -q --depth 1 https://github.com/chipx86/faxanadu.git "$OUT/repo"
 fi
 rm -rf "$OUT/src" && cp -r "$OUT/repo/src" "$OUT/src"
-# The sources were written on a case-insensitive file system.
-ln -sf header.asm "$OUT/src/HEADER.asm"
+# The sources were written on a case-insensitive file system. On one (macOS's
+# by default) HEADER.asm already is header.asm, and a link would replace it.
+[ -e "$OUT/src/HEADER.asm" ] || ln -s header.asm "$OUT/src/HEADER.asm"
 (cd "$OUT/src" && ca65 -g faxanadu.asm -o ../faxanadu.o && ld65 -C ld65.cfg -o ../faxanadu.nes -Ln ../labels.txt ../faxanadu.o)
 python3 - "$OUT/faxanadu.nes" "$ROM" <<'PY'
 import sys, zlib
