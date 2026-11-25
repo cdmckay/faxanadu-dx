@@ -64,7 +64,7 @@ SAVED_AREA, SAVED_SCREEN, SAVED_PALETTE, SAVED_POS, AREA_REGION = 0x3D5, 0x3D6, 
 CAN_CLIMB, CLIMBING = 0x08, 0x10
 BUILDINGS, TRUNK = 4, 1
 LEATHER, STUDDED, FIRE, NONE = 0, 1, 2, 0xFF
-MENU_WIDTH, LIST_WIDTH, MENU_ARMOR = 0x0A, 0x14, 1
+MENU_WIDTH, LIST_WIDTH = 0x0A, 0x14
 MYCONID, MYCONID_SCREEN = 0x1B, 0x18
 # ROM: bank 8's armor tiles (TILES_ARMOR_START, $81A4, 16 bytes each) and shield tiles
 # (TILES_SHIELDS_START, $9104); Player_LoadShieldTilesToPPU loads the Small Shield's
@@ -286,8 +286,14 @@ def _trunk_studded(g):
         except AssertionError:
             pass
     g.wait(10)
-    for button, what, test in (("down", "the armor row", lambda: g.ram(MENU_CURSOR) == MENU_ARMOR),
-                               ("a", "the armor list", lambda: g.ram(TEXTBOX_X + 2) == LIST_WIDTH),
+    armor = fax_e2e.menu_row("ARMOR", g)                    # below QUESTS and MAP with the remaster
+    for _ in range(2 * len(fax_e2e.SELECT_MENU)):
+        if g.ram(MENU_CURSOR) == armor:
+            break
+        g.tcp("action", name="down", frames=4)
+        g.wait(8)
+    assert g.ram(MENU_CURSOR) == armor, g.ram(MENU_CURSOR)
+    for button, what, test in (("a", "the armor list", lambda: g.ram(TEXTBOX_X + 2) == LIST_WIDTH),
                                ("a", "Studded Mail on", lambda: g.ram(SELECTED_ARMOR) == STUDDED)):
         for _ in range(5):
             g.tcp("action", name=button, frames=4)

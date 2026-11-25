@@ -141,7 +141,7 @@ static uint8_t gurus_merged;                           /* Guru travel's visited 
 static bool open, closing;
 static int shown = -1;                                 /* the page on display */
 static uint64_t frames, want;                          /* a press waits until frame `want` */
-static unsigned opens, closes, turns, presses, age, pickups;
+static unsigned opens, closes, turns, presses, requests, age, pickups;
 static char label[80] = "Map: M / LT";
 
 static uint8_t q(uint16_t a) { return cyc_mod_peek(a); }
@@ -411,6 +411,15 @@ static void press(void) {
     ++presses;
     if (open) closing = true;
     else if (!fax_quests_showing()) want = frames + OPEN_WINDOW;   /* not over the quest log */
+}
+
+/* The Select menu's MAP row (fax_menu.c): as a press, unless the map would
+ * show nothing, so the row can say no. */
+bool fax_map_request(void) {
+    if (!enabled || !decoded || open || fax_quests_showing() || !pages_seen()) return false;
+    want = frames + OPEN_WINDOW;
+    ++requests;
+    return true;
 }
 
 /* ---- the save file: one field an area ---- */
@@ -792,12 +801,12 @@ static void map_state(int id, const char *line) {
     n += (size_t)snprintf(fields + n, sizeof fields - n,
                           "\"enabled\":%s,\"decoded\":%s,\"open\":%s,\"page\":%d,\"page_name\":%s%s%s,"
                           "\"here\":[%d,%d],\"here_page\":%d,\"pages_seen\":%u,\"opens\":%u,\"closes\":%u,"
-                          "\"turns\":%u,\"presses\":%u,\"binding\":\"%s\",\"paused\":%u",
+                          "\"turns\":%u,\"presses\":%u,\"requests\":%u,\"binding\":\"%s\",\"paused\":%u",
                           enabled ? "true" : "false", decoded ? "true" : "false", open ? "true" : "false", shown,
                           shown >= 0 ? "\"" : "", shown >= 0 && decoded ? atlas.page[shown].name : "null",
                           shown >= 0 ? "\"" : "", placed ? (int)area : -1, placed ? (int)screen : -1,
                           placed ? fax_map_page_of(&atlas, area, screen) : -1, decoded ? pages_seen() : 0u, opens,
-                          closes, turns, presses, label + 5, q(GAME_PAUSED_STATE));
+                          closes, turns, presses, requests, label + 5, q(GAME_PAUSED_STATE));
     if (decoded) {
         const char *names[] = { "seen", "up", "down", "doors" };
         for (unsigned k = 0; k < 4; ++k) {
@@ -855,7 +864,7 @@ static void deactivate(void) {
     enabled = false;
     open = closing = false;
     shown = -1; want = 0;
-    opens = closes = turns = presses = age = pickups = 0;
+    opens = closes = turns = presses = requests = age = pickups = 0;
     dot_count = 0;
     forget();
     hooks(0);

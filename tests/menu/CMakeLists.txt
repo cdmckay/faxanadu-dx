@@ -1,0 +1,15 @@
+cmake_minimum_required(VERSION 3.20)
+project(FaxanaduMenuTests C)
+set(CMAKE_C_STANDARD 11)
+if(NOT NESRECOMP_ROOT)
+    message(FATAL_ERROR "Set NESRECOMP_ROOT to the game's cycle engine checkout")
+endif()
+# fax_menu.c is included by the test, against Block's model of the machine
+# (../block/model.c).
+add_executable(menu_test menu_test.c ../block/model.c)
+target_include_directories(menu_test PRIVATE ../block ../../src ${NESRECOMP_ROOT}/runner/include ${NESRECOMP_ROOT}/runner/cyc)
+if(NOT MSVC)
+    target_compile_options(menu_test PRIVATE -Wall -Wextra)
+endif()
+enable_testing()
+add_test(NAME menu_unit COMMAND menu_test)

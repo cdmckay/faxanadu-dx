@@ -28,7 +28,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 import fax_e2e  # noqa: E402
-from fax_e2e import Game, act, fixture, hold, parse_args, ram, tcp, type_out, until, wait  # noqa: E402
+from fax_e2e import Game, act, fixture, hold, menu_row, parse_args, ram, tcp, type_out, until, wait  # noqa: E402
 
 AREA, SCREEN, SCREEN_TO_THE_RIGHT, PLAYER_X, PLAYER_X_FRAC = 0x24, 0x63, 0x67, 0x9E, 0x9D
 INVINCIBILITY, SCREEN_READY, SCROLL_DIRECTION, INTERRUPTS = 0xAD, 0x0E, 0x54, 0x13
@@ -45,7 +45,6 @@ TOWER_DOOR, WALL, TOWER = 0x0B, 0x0C, 0x0D                          # Trunk: a J
 WALL_BLOCKS = (0xA3, 0xB3)                                          # (3,10), (3,11): block $63 in screen $0C
 WALL_BLOCK = 0x63
 WALL_STOP = 0x20                                                    # the hero's x up against it
-MENU_ITEM_ROW = 4                                                   # WEAPON ARMOR SHIELD MAGIC ITEM PLAYER
 PACKAGE, FEATURE = "faxanadu.dx", "dx"                          # the one switch: off is the original game
 
 
@@ -154,7 +153,7 @@ def main():
 
     def item_menu():
         act("select", 4, 30)
-        for _ in range(MENU_ITEM_ROW):
+        for _ in range(menu_row("ITEM")):
             act("down", 4, 8)
         act("a", 4, 30)
 

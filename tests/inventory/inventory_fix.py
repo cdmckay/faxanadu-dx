@@ -38,7 +38,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import Game, chunks, fixture, parse_args, ram, tcp, type_out, until, wait  # noqa: E402
+from fax_e2e import Game, chunks, fixture, menu_row, parse_args, ram, tcp, type_out, until, wait  # noqa: E402
 
 AREA, SCREEN, HERO_X, HERO_Y = 0x24, 0x63, 0x9E, 0xA1
 TEXTBOX_X, TEXTBOX_CLOSED, MESSAGE_ID, MENU_CURSOR = 0x208, 0x20C, 0x213, 0x21E
@@ -53,7 +53,6 @@ EOLIS, TOWN = 0, 1
 BATTLE_SUIT_ITEM, DRAGON_SLAYER_ITEM = 0x58, 0x5A                   # sprite entities
 GOT_BATTLE_SUIT, GOT_DRAGON_SLAYER = 0xB5, 0xB7                     # "I've got the ..."
 MENU_WIDTH, LIST_WIDTH = 0x0A, 0x14                                 # PlayerMenu_Show's box, ShowSubmenu's
-MENU_WEAPONS, MENU_ARMOR = 0, 1
 SLOT, NONE, MAX = 7, 0xFF, 4
 # Weapons: Hand Dagger, Long Sword, Giant Blade, Dragon Slayer. Armor: Leather
 # Armor, Studded Mail, Full Plate, Battle Suit.
@@ -171,10 +170,11 @@ def main():
         return listed(WEAPONS, NUMBER_OF_WEAPONS), listed(ARMOR, NUMBER_OF_ARMORS)
 
     def menu_list(entry, name):
-        """Select, Down to `entry`, A: that list on screen, shot, then B closes it all."""
+        """Select, Down to the row `entry` ("WEAPON", "ARMOR"; below QUESTS and
+        MAP with the remaster), A: that list on screen, shot, then B closes it all."""
         press_until("select", "the menu", lambda: ram(TEXTBOX_CLOSED) == 0 and ram(TEXTBOX_X + 2) == MENU_WIDTH)
         wait(10)
-        for row in range(1, entry + 1):
+        for row in range(1, menu_row(entry) + 1):
             press_until("down", f"the cursor on row {row}", lambda: ram(MENU_CURSOR) == row)
         press_until("a", "the list", lambda: ram(TEXTBOX_X + 2) == LIST_WIDTH)
         wait(30)
@@ -190,7 +190,7 @@ def main():
             want = want_fixed if fixed else want_original
             assert own == want, f"{name}: {'armor' if suit else 'weapons'} {own}, expected {want}"
             assert other == other_kit[1], f"{name}: the other list {other}, expected {other_kit[1]}"
-            menu_list(MENU_ARMOR if suit else MENU_WEAPONS, name if fixed else f"original-{name}")
+            menu_list("ARMOR" if suit else "WEAPON", name if fixed else f"original-{name}")
             print(f"ok: {'' if fixed else 'original, '}{name}: {'armor' if suit else 'weapons'} {own}")
 
     try:

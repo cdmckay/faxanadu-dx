@@ -73,8 +73,8 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 import fax_e2e  # noqa: E402
-from fax_e2e import (Game, act, batch, box_open, choose_file, chunks, dissolve, frame, hold, page_to,  # noqa: E402
-                     parse_args, ram, tcp, title_menu, type_out, typed, until, wait)
+from fax_e2e import (Game, act, batch, box_open, choose_file, chunks, dissolve, frame, hold, menu_row,  # noqa: E402
+                     page_to, parse_args, ram, tcp, title_menu, type_out, typed, until, wait)
 
 AREA, SCREEN, PLAYER_X, PLAYER_Y, PLAYER_FLAGS, PLAYER_STATUS = 0x24, 0x63, 0x9E, 0xA1, 0xA4, 0xA5
 SCREEN_READY = 0x0E
@@ -361,7 +361,7 @@ def main():
             if box_open():
                 break
             wait(60)
-        for _ in range(5):
+        for _ in range(menu_row("PLAYER")):
             act("down", 4, 8)
         act("a", 4, 40)
         assert box_open(), "the status page"

@@ -108,6 +108,10 @@ Functions, on the game launched last
                                     that typed a character, loaded with A down):
                                     whether it did.
     box_open()                      A text box (or the Select menu) is open.
+    menu_row(name, game=None)       The row of `name` ("WEAPON" ... "PLAYER",
+                                    "QUESTS", "MAP") in the Select menu: the
+                                    remaster's eight, QUESTS and MAP on top
+                                    (#146), or with it off the original's six.
     dissolve(frames=600)            Until the Guru speaks after a death: a recipe
                                     that dies ends with it, so a test starts there.
     hold(button, done, frames=600)  Hold a button until done(), then let go at
@@ -990,6 +994,18 @@ def type_out(what="the page to type out", frames=1200, pauses=True):
 def box_open():
     """A text box (or the Select menu) is open: TextBox_Closed is 0."""
     return ram(TEXTBOX_CLOSED) == 0
+
+
+SELECT_MENU = ("QUESTS", "MAP", "WEAPON", "ARMOR", "SHIELD", "MAGIC", "ITEM", "PLAYER")   # the remaster's (#146)
+
+
+def menu_row(name, game=None):
+    """The row of `name` in the Select menu: the remaster's eight, QUESTS and
+    MAP on top (fax_menu.c, on with the remaster), or the original's six from
+    WEAPON. Asked of the game (`game`, or the one launched last), not of the
+    menu on screen, so it holds before the menu has drawn its rows."""
+    rows = SELECT_MENU if (game or _current()).tcp("select_menu_state")["enabled"] else SELECT_MENU[2:]
+    return rows.index(name)
 
 
 def page_through(what, done, frames=3000, button="a"):

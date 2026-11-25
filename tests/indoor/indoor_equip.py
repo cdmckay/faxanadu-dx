@@ -44,8 +44,8 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 import fax_e2e  # noqa: E402
-from fax_e2e import (Game, act, dissolve, features_toml, fixture, hold, page_through, parse_args, ram,  # noqa: E402
-                     step_toward, tcp, until, wait)
+from fax_e2e import (Game, act, dissolve, features_toml, fixture, hold, menu_row, page_through,  # noqa: E402
+                     parse_args, ram, step_toward, tcp, until, wait)
 
 AREA, SCREEN, PLAYER_X, PLAYER_Y = 0x24, 0x63, 0x9E, 0xA1
 PLAYER_FLAGS, ATTACK_PHASE = 0xA4, 0xAE                             # Player_Flags, Player_AttackPhaseAnimFrame
@@ -266,11 +266,14 @@ def main():
         page_through("the end of the conversation", lambda: ram(PORTRAIT) == NO_PORTRAIT and ram(TEXTBOX_CLOSED) != 0)
 
     def menu_to_weapons(name="menu-indoors"):
-        """Select, then A on Weapons: the weapons list, waiting for a button."""
+        """Select, then A on WEAPON (below QUESTS and MAP with the remaster):
+        the weapons list, waiting for a button."""
         act("select", 4, 6)
         until("the menu", lambda: ram(TEXTBOX_CLOSED) == 0 and ram(TEXTBOX_X + 2) == MENU_WIDTH, 300)
         wait(30)
         menu = game.shot(name)
+        for _ in range(menu_row("WEAPON")):
+            act("down", 4, 6)
         act("a", 4, 6)
         until("the weapons list", lambda: ram(TEXTBOX_X + 2) == WEAPONS_WIDTH, 300)
         wait(30)

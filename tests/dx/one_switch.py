@@ -78,6 +78,7 @@ STATES = {
     "fair-entrances": ("entrances_state", "enabled"),
     "spell-cost": ("spell_cost_state", "enabled"),
     "found-items": ("found_state", "enabled"),
+    "select-menu": ("select_menu_state", "enabled"),
     "seamless-world": ("fax_world", "enabled"),
 }
 START_CHOICE = 0x687                                                # DAT_0687: 0 Start, 1 Continue

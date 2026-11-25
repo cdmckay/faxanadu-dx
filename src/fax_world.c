@@ -7,6 +7,7 @@
 #include "fax_world.h"
 #include "fax_entrances.h"
 #include "fax_charges.h"
+#include "fax_menu.h"
 #include "fax_text.h"
 #include "cyc_mod.h"
 #include "cyc_core.h"
@@ -451,7 +452,7 @@ static void menu_rect(int width,const uint32_t *native,int x,int y,int w,int h){
 static bool ui_pixel(int x,int y){
     if((!script_mode&&q(0x100)!=12)||q(0x20c))return false;
     int bx=q(0x208)*8,by=q(0x209)*8;
-    if(bx==32&&by==64&&x>=16&&x<96&&y>=48&&y<160)return true;
+    if(bx==32&&by==64&&x>=16&&x<96&&y>=48&&y<48+(int)fax_menu_height()*8)return true;
     return x>=bx&&x<bx+q(0x20a)*8&&y>=by&&y<by+q(0x20b)*8;
 }
 /* The status bar band (its 32 lines) and the Elixir left of it
@@ -522,9 +523,11 @@ const uint32_t *fax_world_present(int *w,int *h,const uint32_t *native){
         /* Overlay native text boxes only. Copying the entire NES image
          * would erase frozen actors inside its rectangle while leaving
          * the neighboring actors visible. Inventory submenus retain the
-         * top menu underneath them. All coordinates are native tile units. */
+         * top menu underneath them (10 tiles wide, and 18 tall with the
+         * Select menu's QUESTS and MAP: fax_menu.h). All coordinates are
+         * native tile units. */
         int x=q(0x208)*8,y=q(0x209)*8;
-        if(x==32&&y==64)menu_rect(width,native,16,48,80,112);
+        if(x==32&&y==64)menu_rect(width,native,16,48,80,(int)fax_menu_height()*8);
         if(q(0x3c7)<128)menu_rect(width,native,16,112,64,80);
         menu_rect(width,native,x,y,q(0x20a)*8,q(0x20b)*8);
     }

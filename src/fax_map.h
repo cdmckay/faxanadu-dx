@@ -15,6 +15,10 @@ void fax_map_save_settings(FILE *f);
 const char *fax_map_controls_label(void);   /* "Map: M / LT", for the runtime menu */
 void fax_map_tcp_setup(void);
 bool fax_map_showing(void);                 /* the map is open */
+/* Open the map as the Map button does, at the main loop's next pause check:
+ * the Select menu's MAP row (fax_menu.c). False where it would show nothing
+ * (no page seen yet), or the quest log is open. */
+bool fax_map_request(void);
 /* The hero has stood on `area`'s `screen` (outside), as the map has it: for
  * the quest log, which counts the places he has reached. */
 bool fax_map_seen(unsigned area, unsigned screen);
