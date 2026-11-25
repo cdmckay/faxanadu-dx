@@ -15,6 +15,7 @@ import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
 OVERRIDES_SOURCE = ROOT / "nesrecomp/runner/cyc/cyc_mod.c"   # CYC_MOD_READ_OVERRIDES_MAX
+HOOKS_SOURCE = ROOT / "nesrecomp/runner/src/mod_function_hooks.c"   # NES_MOD_MAX_FUNCTION_HOOKS
 
 
 def rom_claims(features):
@@ -78,6 +79,15 @@ def override_budget():
     found = re.search(r"#define\s+CYC_MOD_READ_OVERRIDES_MAX\s+(\d+)", OVERRIDES_SOURCE.read_text())
     if not found:
         raise SystemExit(f"allocation: no CYC_MOD_READ_OVERRIDES_MAX in {OVERRIDES_SOURCE}")
+    return int(found.group(1))
+
+
+def hook_budget():
+    """The function-hook registry's size, NES_MOD_MAX_FUNCTION_HOOKS in nesrecomp's mod_function_hooks.c: a
+    feature's constructor aborts the game when its hook does not fit."""
+    found = re.search(r"#define\s+NES_MOD_MAX_FUNCTION_HOOKS\s+(\d+)", HOOKS_SOURCE.read_text())
+    if not found:
+        raise SystemExit(f"allocation: no NES_MOD_MAX_FUNCTION_HOOKS in {HOOKS_SOURCE}")
     return int(found.group(1))
 
 
@@ -194,6 +204,10 @@ def main():
     errors += rom_errors(claims, prg, allocations.get("shared_rom", []))
     budget = override_budget()
     errors += budget_errors(claims, budget)
+    hooks = hook_budget()
+    if len(sites) > hooks:
+        errors.append(f"game.toml has {len(sites)} hook sites, but the engine registers at most {hooks} "
+                      f"(NES_MOD_MAX_FUNCTION_HOOKS): the game would abort at start")
 
     for e in errors:
         print("allocation:", e, file=sys.stderr)
@@ -202,7 +216,7 @@ def main():
     overrides = sum(r["stock"] is not None for _, r in claims)
     print(f"allocations ok: {len(features)} features, {len(sites)} hook sites, "
           f"{len(claims) - overrides} ROM claims, {overrides} overridden, "
-          f"{len(served(claims))} of {budget} read overrides")
+          f"{len(served(claims))} of {budget} read overrides, {len(sites)} of {hooks} hooks")
     return 0
 
 
