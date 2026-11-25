@@ -165,7 +165,7 @@ opens it too.
   on costs nothing. The Hour Glass freezes enemies for its 15 seconds for
   40 MP, and no longer costs half your HP. Use either again to end it early;
   with no MP, they do nothing. Turning one on or off shows no text box, just
-  its sound and the gold frame on the item box, so play never stops; when
+  its sound and the item box's gold brackets, so play never stops; when
   one ends without you, a short line below the status bar says why ("Out of
   magic"), and the first use of each explains it once. There's no cooldown:
   they work again as soon as you have MP, and T: on the status bar counts the
@@ -184,7 +184,8 @@ opens it too.
   color when it is charged, grey while it waits for a Guru, and not at all
   until you have it. It greys and blinks the moment it revives you, so you
   see when it saves you. And while the Wing Boots or the Hour Glass in your
-  item box is running, the box has a gold frame, gone the moment it stops.
+  item box is running, the box's brackets turn gold, and go back to white
+  the moment it stops.
 - **Quick shops.** Up on a shopkeeper opens his list at once, Select switches
   between buying and selling, and you stay in the list after each sale. Any
   shop buys what you carry, except what you own for good, like a key or the
