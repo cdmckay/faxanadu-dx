@@ -40,12 +40,16 @@
  *   right stick's press to the left trigger. [Game] ControlsLayout says which
  *   layout a file was written with; one without it is layout 1's, and each of
  *   those bindings still on layout 1's default moves, once (the engine moves
- *   its shortcuts the same way, cyc_settings.h). One the player changed stays.
+ *   its shortcuts the same way, cyc_settings.h). One the player changed stays,
+ *   and a moved one whose new button the player kept for something else (one
+ *   of these actions, a host shortcut, an NES button) is unbound instead.
  * See docs/GAME_INTERNALS.md, "Input and casting". */
 #include "fax_controls.h"
 #include "fax_block.h"
+#include "fax_magic.h"
 #include "fax_map.h"
 #include "fax_quests.h"
+#include "fax_use_item.h"
 #include "cyc_mod.h"
 #include "mod_runtime.h"
 #include "mod_function_hooks.h"
@@ -81,7 +85,7 @@ static bool enabled;
 static unsigned starts, closes, unpaused;  /* Starts shown as Select, that closed the menu, kept from the pause */
 static unsigned kept;                      /* Selects taken out as the Map button's */
 static int file_layout;                    /* the layout config.ini said, 0 none read yet */
-static unsigned moved;                     /* bindings the last load moved */
+static unsigned moved, unbound;            /* bindings the last load moved, and of those unbound */
 static char menu_label[80] = "Select menu: RETURN / START";
 
 static uint8_t q(uint16_t a) { return cyc_mod_peek(a); }
@@ -172,17 +176,47 @@ static const struct { const CycHostBinding *(*binding)(void); int pad; } LAYOUT1
     { fax_quests_binding, CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_RIGHTSTICK) },
 };
 
+/* A controller binding the player kept somewhere else: one of the game's
+ * actions the move left alone, a host shortcut or an NES button. */
+static bool kept_elsewhere(int pad, const CycHostBinding *const moved_ones[], unsigned count) {
+    const CycHostBinding *(*const actions[])(void) = {
+        fax_magic_binding, fax_use_item_binding, fax_block_binding, fax_map_binding, fax_quests_binding,
+    };
+    for (unsigned a = 0; a < sizeof actions / sizeof actions[0]; ++a) {
+        const CycHostBinding *b = actions[a]();
+        bool was_moved = false;
+        for (unsigned m = 0; m < count; ++m) was_moved |= moved_ones[m] == b;
+        if (b && !was_moved && *b->pad == pad) return true;
+    }
+    const CycBindings *bind = cyc_window_bindings();
+    CycBindings stock;
+    cyc_bindings_default(&stock);
+    for (int s = 0; s < CYC_SC_COUNT; ++s)
+        if (bind->shortcut[s].pad == pad) return true;
+    /* An NES button the player moved; the NES Select on Back is the host's
+     * own, and shares Back with the map by design. */
+    for (int i = 0; i < CYC_INPUT_BUTTONS; ++i)
+        if (bind->button[0][i].pad == pad && pad != stock.button[0][i].pad) return true;
+    return false;
+}
+
 bool fax_controls_settings_loaded(void) {
     int layout = file_layout ? file_layout : 1;
     file_layout = 0;
-    moved = 0;
+    moved = unbound = 0;
     if (layout >= LAYOUT) return false;
+    const CycHostBinding *moved_ones[sizeof LAYOUT1 / sizeof LAYOUT1[0]];
     for (unsigned i = 0; i < sizeof LAYOUT1 / sizeof LAYOUT1[0]; ++i) {
         const CycHostBinding *b = LAYOUT1[i].binding();
         if (!b || *b->pad != LAYOUT1[i].pad) continue;
         *b->pad = b->default_pad;
+        moved_ones[moved++] = b;
+    }
+    /* A moved one gives way to a button the player kept for something else. */
+    for (unsigned m = 0; m < moved; ++m) {
+        const CycHostBinding *b = moved_ones[m];
+        if (*b->pad && kept_elsewhere(*b->pad, moved_ones, moved)) { *b->pad = 0; ++unbound; }
         if (b->changed) b->changed();
-        ++moved;
     }
     return true;   /* written now with this layout, moved or not */
 }
@@ -226,11 +260,12 @@ static void controls_state(int id, const char *line) {
     cyc_tcp_quote(menu_label + 13, text, sizeof text);
     /* starts: Starts the menu check saw as Select; closes: Starts that closed the menu; unpaused: Starts the
      * pause check never saw; kept: Selects from the Map button the menu check never saw; moved: bindings the
-     * last config.ini load moved from layout 1's defaults */
+     * last config.ini load moved from layout 1's defaults; unbound: of those, left unbound, their new button the
+     * player's for something else */
     snprintf(fields, sizeof fields,
              "\"enabled\":%s,\"layout\":%d,\"menu_binding\":%s,\"starts\":%u,\"closes\":%u,\"unpaused\":%u,"
-             "\"kept\":%u,\"moved\":%u",
-             enabled ? "true" : "false", LAYOUT, text, starts, closes, unpaused, kept, moved);
+             "\"kept\":%u,\"moved\":%u,\"unbound\":%u",
+             enabled ? "true" : "false", LAYOUT, text, starts, closes, unpaused, kept, moved, unbound);
     cyc_tcp_ok(id, fields);
 }
 void fax_controls_tcp_setup(void) {

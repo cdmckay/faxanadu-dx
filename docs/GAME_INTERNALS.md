@@ -581,7 +581,16 @@ What a feature can rely on, and the traps:
   The game's own keys move the same way: `[Game] ControlsLayout`, and the
   host extras' `settings_loaded`, which runs once the whole file is read
   (`fax_controls.c`: Block from B, the map from LT, the quest log from R3).
-  A value the player changed, or set back in a file of the new layout, stays.
+  A value the player changed, or set back in a file of the new layout, stays,
+  and a moved one gives way to it: a new default that lands on a controller
+  button the player kept for something else is unbound instead. The engine
+  checks its moved shortcuts against the player's NES buttons as it loads
+  (`moved_shortcuts`) and against the game's actions after
+  (`cyc_settings_yield_moved`, in `cyc_sdl_prelaunch`); the game checks its
+  moved actions against its kept ones, the shortcuts and any NES button the
+  player moved (the NES Select on Back is the host's own, shared with the map
+  by design). A player who had Magic on LB, free in layout 1, keeps it there,
+  and Rewind keeps F8 alone.
 - The launcher's Controls page lists the game's own actions (the host
   extras' `bindings`) after the host's shortcuts, and edits them in place;
   recomp-ui holds sixteen such rows since 3b646bb (eight before), and a

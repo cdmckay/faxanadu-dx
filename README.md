@@ -280,7 +280,8 @@ key name, like `V` or `Left Shift`), and `MagicButton`, `UseItemButton`,
 `b` or `leftshoulder`, or a trigger, like `lefttrigger+`). `none` unbinds
 one. Pick ones nothing else uses. A `config.ini` from an earlier version
 moves to this layout the first time you start, except for any binding you
-changed.
+changed; a new default that would land on a button you gave something else
+is left unbound instead, for you to place.
 
 ## Save files
 

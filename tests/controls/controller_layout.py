@@ -31,10 +31,11 @@ switch-pro A virtual Switch Pro Controller (Nintendo's USB ids, which SDL
            by its label it would be Use item.
 migration  A config.ini an older build wrote (no layout): each binding still on
            its old default moves to the layout's, once (Block to RT, the map to
-           Back, the quest log to LT; the engine's Menu to R3, Fast-forward to
-           RB, Rewind to LB, Disk and the save states off the controller), and
-           the ones the player changed stay (Magic on LB, Fast-forward on L3).
-           The file says layout 2 at once; set back to B in it, Block stays.
+           Back, the quest log to LT; the engine's Menu to R3, Disk and the
+           save states off the controller), and the ones the player changed
+           stay (Magic on LB, Fast-forward on L3). Rewind's move to LB gives
+           way to the player's Magic there: it keeps F8 alone. The file says
+           layout 2 at once; set back to B in it, Block stays.
 original   With the remaster off (the stock view): Start pauses and Start
            unpauses; Back opens the original's menu (six rows) and B closes it;
            B, S and the left trigger do nothing.
@@ -309,7 +310,7 @@ def main():
             wait(10)
             assert bindings() == {"magic": "C / LB", "use": "S / B", "block": "V / RT", "map": "M / BACK",
                                   "quests": "L / LT"}, bindings()
-            assert controls()["moved"] == 3, controls()
+            assert controls()["moved"] == 3 and controls()["unbound"] == 0, controls()
             text = config.read_text()                                   # written at start, before any play
             for line in ("BindingsLayout = 2", "ControlsLayout = 2", "BlockButton = righttrigger+",
                          "MapButton = back", "QuestLogButton = lefttrigger+", "MagicButton = leftshoulder",
@@ -318,9 +319,9 @@ def main():
             pads = text[text.index("[Gamepad.Shortcuts]"):text.index("[Game]")]
             assert pads.split("\n")[1:8] == ["disk = none", "menu = rightstick", "fast_forward = leftstick",
                                              "screenshot = none", "fullscreen = none", "state_menu = none",
-                                             "rewind = leftshoulder"], pads
+                                             "rewind = none"], pads
             print("ok: an old config.ini moves each binding still on its old default to the layout's, once, and "
-                  "keeps the player's (Magic on LB, Fast-forward on L3)")
+                  "keeps the player's (Magic on LB, Fast-forward on L3); Rewind gives LB way to Magic")
             game.close()
             config.write_text(re.sub(r"^BlockButton = righttrigger\+$", "BlockButton = b", config.read_text(),
                                      flags=re.M))

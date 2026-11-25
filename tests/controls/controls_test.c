@@ -53,7 +53,8 @@ void cyc_tcp_quote(const char *in, char *out, size_t n) { snprintf(out, n, "\"%s
 
 /* ---- the window's bindings, and the features' as each feature keeps them ---- */
 static CycBindings window;
-const CycBindings *cyc_window_bindings(void) { return &window; }
+static const CycBindings *window_now = &window;   /* during a load, the settings being loaded, as the window's are */
+const CycBindings *cyc_window_bindings(void) { return window_now; }
 
 typedef struct { const char *name, *key_name, *pad_name; int key, pad; unsigned changes; CycHostBinding b; } Action;
 static void changed(void);
@@ -279,6 +280,7 @@ static void an_old_config(const char *dir) {
     fclose(f);
     defaults();
     CycSettings s;
+    window_now = &s.bind;
     cyc_settings_default(&s);
     CHECK(cyc_settings_load(&s, path, stderr, &GAME));
     CHECK(s.migrated);                           /* the host saves it at once */
@@ -289,10 +291,18 @@ static void an_old_config(const char *dir) {
     CHECK(actions[0].pad == CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_LEFTSHOULDER));    /* Magic: the player's */
     CHECK(actions[1].key == SDL_SCANCODE_S && actions[1].pad == CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_B));
     for (int i = 0; i < 5; ++i) CHECK(actions[i].key == actions[i].b.default_key);
-    CHECK(moved == 3 && changes == 3);
+    CHECK(moved == 3 && changes == 3 && unbound == 0);
     /* The host's: the shortcuts on layout 1's defaults moved, Fast-forward on L3 the player's. */
     CHECK(s.bind.shortcut[CYC_SC_MENU].pad == CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_RIGHTSTICK));
     CHECK(s.bind.shortcut[CYC_SC_REWIND].pad == CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_LEFTSHOULDER));
+    CHECK(s.moved_shortcuts == (1u << CYC_SC_DISK | 1u << CYC_SC_MENU | 1u << CYC_SC_STATE_MENU | 1u << CYC_SC_REWIND));
+    /* Rewind landed on LB, which the player gave Magic: the host gives way (the window does this after the
+     * load, with the game's bindings), and Rewind keeps only F8. */
+    int pads[5];
+    for (int i = 0; i < 5; ++i) pads[i] = actions[i].pad;
+    cyc_settings_yield_moved(&s, pads, 5);
+    CHECK(s.bind.shortcut[CYC_SC_REWIND].pad == 0 && s.bind.shortcut[CYC_SC_REWIND].key == SDL_SCANCODE_F8);
+    CHECK(s.bind.shortcut[CYC_SC_MENU].pad == CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_RIGHTSTICK));
     CHECK(s.bind.shortcut[CYC_SC_FAST_FORWARD].pad == CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_LEFTSTICK));
     CHECK(s.bind.shortcut[CYC_SC_DISK].pad == 0 && s.bind.shortcut[CYC_SC_STATE_MENU].pad == 0);
     CHECK(s.window_scale == 3);
@@ -328,6 +338,20 @@ static void an_old_config(const char *dir) {
     cyc_settings_default(&s);
     CHECK(cyc_settings_load(&s, path, NULL, &GAME));
     CHECK(moved == 1 && actions[2].pad == actions[2].b.default_pad);
+    /* A move onto a button the player kept for something else gives way: Magic on Back, so the map stays off
+     * the controller; the NES B on the right trigger, so Block does too. The quest log moves as ever. */
+    f = fopen(path, "w");
+    fputs("[Gamepad.Player1]\nb = righttrigger+\n[Game]\nMagicButton = back\nBlockButton = b\n"
+          "MapButton = lefttrigger+\nQuestLogButton = rightstick\n", f);
+    fclose(f);
+    defaults();
+    cyc_settings_default(&s);
+    CHECK(cyc_settings_load(&s, path, NULL, &GAME));
+    CHECK(moved == 3 && unbound == 2 && changes == 3);
+    CHECK(actions[3].pad == 0 && actions[2].pad == 0 && actions[3].key == SDL_SCANCODE_M);
+    CHECK(actions[4].pad == CYC_PAD_AXIS(SDL_CONTROLLER_AXIS_TRIGGERLEFT, 1));
+    CHECK(actions[0].pad == CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_BACK));
+    window_now = &window;
     remove(path);
 }
 
