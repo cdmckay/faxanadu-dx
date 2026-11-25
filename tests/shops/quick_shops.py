@@ -88,6 +88,17 @@ owned-*    Mascon's tool shop (Large Shield 3500, Thunder 1200, Mattock 800,
            more: tests/found/found_items.py.) And at Eolis's key shop, a J key
            held: OWNED, and A does nothing; in the sell list it is not for
            sale, and A keeps it.
+owned-gear A weapon, armor, shield or spell the hero has is OWNED (#165), at
+           Eolis's tool shop with 2000 Golds, the Giant Blade in hand and a
+           Long Sword carried: the Hand Dagger, weaker, is for sale; bought,
+           its row says OWNED, the hint "Already owned", and A on it does
+           nothing (no gold, and not the game's "You can't carry any more.").
+           The same for Deluge. B, the thanks; in the sell list the dagger
+           still sells (200), and back in the buy list it is for sale again,
+           and buys. Then, the dagger equipped (in no list): OWNED too. And at
+           the Potion Seller next door a Red Potion buys twice in a row: a
+           consumable is never owned. (With the remaster off, the game's own
+           refusal: unit tests.)
 a-key      The A key farm is gone: the man in the house on Mist $1F gives the A
            key to a hero with the Black Onyx and none (each time he is asked),
            and from his house straight to Forepaw's tool shop, with all he has,
@@ -144,6 +155,7 @@ GREETINGS, LIST_LINES, MESSAGES = (I_SELL_KEYS, I_SELL_TOOLS), (WHICH_ONE, WOULD
                                                                                        NOTHING_TO_SELL)
 GOT_MATTOCK, ABOVE_MATTOCK = 0xB2, 0x4D                            # "I'm holding Mattock."; over $0E's, at $5D (YX)
 DURATION_OINTMENT = 0x427
+POTION_ASKING = 1                                                   # fax_potions.c's phase: his question up
 EOLIS_TOOLS = 0xA37A                                                # its script: BUY at + 12, SELL at + 6
 MASCON_LIST = [LARGE_SHIELD, THUNDER, ITEM | MATTOCK]               # no Red Potion: the Potion Seller's
 MASCON_PRICES = [3500, 1200, 800]
@@ -199,7 +211,7 @@ def carrying(gold_amount, weapon_list, item_list, weapon=HAND_DAGGER, spells=())
 
 TOOL_KIT = carrying(700, [DRAGON_SLAYER, LONG_SWORD], [KEY_J, KEY_A, WING_BOOTS] + [RED_POTION] * 2, GIANT_BLADE)
 PARTS = ("talk-buy", "talk-sell", "talk-message", "talk-original", "tool-shop", "key-shop", "two-pages",
-         "last-one", "owned-mascon", "owned-found", "owned-key", "a-key", "original")   # each its own game
+         "last-one", "owned-mascon", "owned-found", "owned-key", "owned-gear", "a-key", "original")   # each its own game
 
 
 def walk_out():
@@ -828,9 +840,9 @@ def main():
 
             state = buy(0)
             assert gold() == 700 - 400 and weapons() == [DRAGON_SLAYER, LONG_SWORD, HAND_DAGGER], (gold(), weapons())
-            assert state["owned"] == [False, False] and state["traded"], state
+            assert state["owned"] == [True, False] and state["traded"], state           # his now: OWNED (#165)
             assert items() == [KEY_J, KEY_A, WING_BOOTS] + [RED_POTION] * 2, items()
-            print("ok: A buys the Hand Dagger, the list staying up and the cursor on it")
+            print("ok: A buys the Hand Dagger, the list staying up and the cursor on it, and it is OWNED")
 
             press("down")
             assert shops()["cursor"] == 1, shops()
@@ -1070,6 +1082,92 @@ def main():
             assert gold() == 1000 and items() == [KEY_J], (gold(), items())
             print("ok: nor does the key shop buy it back: not for sale, and A keeps it")
             leave(thanked=False)
+
+        if args.wants("owned-gear"):
+            game_up()
+            # Eolis's tool shop's counter: the Giant Blade in hand, a Long Sword carried.
+            kit = out / "owned-gear.cycstate"
+            fixture(counter, kit, carrying(2000, [LONG_SWORD], [], GIANT_BLADE))
+            game.load(kit)
+            wait(10)
+            state = shop_list("buy")
+            assert state["list"] == [HAND_DAGGER, DELUGE] and state["owned"] == [False, False], state
+            path = game.shot("gear-for-sale")
+            check_priced(path, 0, 400)
+            check_priced(path, 1, 400)
+            state = buy(0)
+            assert gold() == 1600 and weapons() == [LONG_SWORD, HAND_DAGGER], (gold(), weapons())
+            assert state["owned"] == [True, False] and state["hint"] == "Already owned", state
+            path = game.shot("dagger-owned")
+            check_owned(path, 0)
+            check_hint(path, "Already owned")
+            a_does_nothing(0)
+            print("ok: the Hand Dagger, weaker than his Giant Blade and Long Sword, is for sale; bought, it says "
+                  "OWNED, \"Already owned\", and A on it does nothing: no gold, no line")
+            press("down")
+            state = buy(1)
+            spells = lambda: list(ram(MAGIC, 4)[:ram(NUMBER_OF_MAGIC)])
+            assert gold() == 1200 and spells() == [DELUGE & 0x1F], (gold(), spells())
+            assert state["owned"] == [True, True] and state["hint"] == "Already owned", state
+            a_does_nothing(1)
+            path = game.shot("deluge-owned")
+            check_owned(path, 0)
+            check_owned(path, 1)
+            print("ok: Deluge, once learned, says OWNED too, and A on it does nothing")
+            leave(thanked=True)
+
+            state = shop_list("sell")
+            assert state["list"] == [HAND_DAGGER, LONG_SWORD, DELUGE] and state["prices"] == [200, 800, 200], state
+            assert state["hint"] is None, state
+            sell()
+            assert gold() == 1400 and weapons() == [LONG_SWORD], (gold(), weapons())
+            leave(thanked=True)
+            state = shop_list("buy")
+            assert state["owned"] == [False, True], state
+            path = game.shot("dagger-for-sale-again")
+            check_priced(path, 0, 400)
+            check_owned(path, 1)
+            buy(0)
+            assert gold() == 1000 and weapons() == [LONG_SWORD, HAND_DAGGER] and shops()["owned"] == [True, True]
+            print("ok: sold, the Hand Dagger is for sale again, and buys")
+            leave(thanked=True)
+
+            # The Hand Dagger equipped (in no list), nothing carried.
+            equipped = out / "dagger-equipped.cycstate"
+            fixture(counter, equipped, carrying(2000, [], [], HAND_DAGGER))
+            game.load(equipped)
+            wait(10)
+            state = shop_list("buy")
+            assert state["owned"] == [True, False] and state["hint"] == "Already owned", state
+            check_owned(game.shot("dagger-equipped-owned"), 0)
+            a_does_nothing(0)
+            leave(thanked=False)
+            print("ok: the Hand Dagger in hand is OWNED, and A on it does nothing")
+
+            # A consumable: the Potion Seller in Eolis's meat shop sells a Red Potion twice in a row.
+            meat = out / "potion-twice.cycstate"
+            fixture(start, meat, carrying(500, [], [], GIANT_BLADE))
+            game.load(meat)
+            wait(10)
+            to_counter()
+            for n in (1, 2):
+                sold_before = tcp("potions_state")["sold"]
+                for _ in range(5):                                      # Up counts only on the frame it goes down
+                    act("up", 4, 10)
+                    try:
+                        until("his question", lambda: tcp("potions_state")["phase"] == POTION_ASKING, 120)
+                        break
+                    except AssertionError:
+                        pass
+                else:
+                    raise AssertionError("the Potion Seller does not answer")
+                type_out("his question", 900, pauses=False)
+                act("a", 4, 6)
+                until("the potion", lambda: tcp("potions_state")["sold"] == sold_before + 1, 2400)
+                fax_e2e.page_through("the end", lambda: ram(PORTRAIT) == NO_PORTRAIT and ram(TEXTBOX_CLOSED) != 0)
+                wait(10)
+                assert items() == [RED_POTION] * n and gold() == 500 - n * 160, (items(), gold())
+            print("ok: a Red Potion, a consumable, buys twice in a row")
 
         if args.wants("a-key"):
             game_up()

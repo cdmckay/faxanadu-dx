@@ -25,22 +25,30 @@ bool fax_shops_never_buys(uint8_t id);
 
 /* What the hero has, for fax_shops_owned: SelectedItem and the Items list
  * (its first `count` entries), as IDs within the Items category, SpecialItems,
- * and the features that keep items after use. */
+ * the features that keep items after use, and for the weapons, armor, shields
+ * and spells (by category, 0-3) the one equipped ($FF for none) and the list
+ * (its first gear_count entries), as IDs within the category. */
+enum { FAX_SHOPS_GEAR = 4, FAX_SHOPS_GEAR_SLOTS = 4 };
 typedef struct {
     uint8_t selected, count, items[8], special;
     bool elixir_spent;            /* recharging items: it revived him, and waits for a Guru */
     bool recharging, reusable;    /* recharging items and reusable tools are on */
+    uint8_t gear_selected[FAX_SHOPS_GEAR], gear_count[FAX_SHOPS_GEAR], gear[FAX_SHOPS_GEAR][FAX_SHOPS_GEAR_SLOTS];
 } FaxShopsHero;
-/* An item (its full ID) that the hero already has for good, so in a buy list
- * Quick shops shows it as owned and A on it does nothing: the Wing Boots and
- * the Hour Glass with recharging items, and a key or the Mattock with reusable
- * tools, selected or in his list; and the Elixir, charged or spent. */
+/* An item (its full ID) that the hero already has, so in a buy list Quick
+ * shops shows it as owned and A on it does nothing: a weapon, armor, shield or
+ * spell he has equipped or in its list (one of each is all he can use; a
+ * different one, a weaker sword say, is not owned); the Wing Boots and the
+ * Hour Glass with recharging items, and a key or the Mattock with reusable
+ * tools, selected or in his list; and the Elixir, charged or spent. Never a
+ * consumable. */
 bool fax_shops_owned(uint8_t id, const FaxShopsHero *hero);
 /* An item in the sell list (its full ID) that Quick shops won't buy from the
  * hero, so it shows no price and A on it does nothing: one no shop buys
- * (fax_shops_never_buys), and one he has for good (fax_shops_owned), which
- * neither buys nor sells, so the A and Jo keys' givers, who hand out another
- * to a hero without one, can't be farmed for gold. */
+ * (fax_shops_never_buys), and an Item he has for good (fax_shops_owned's
+ * Items), which neither buys nor sells, so the A and Jo keys' givers, who hand
+ * out another to a hero without one, can't be farmed for gold. Gear he owns
+ * still sells. */
 bool fax_shops_not_for_sale(uint8_t id, const FaxShopsHero *hero);
 
 /* A buy list of `n` entries (items[i] at prices[i]) without the `drops` items
