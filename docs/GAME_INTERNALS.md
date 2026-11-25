@@ -707,7 +707,10 @@ What a feature can rely on, and the traps:
   between two frames shows the sprites of the shadow OAM the frame before
   wrote, which the PPU took at the last frame's start. In Seamless world it
   shows the last frame's own: `fax_world.c` captures the active room when
-  the main loop's pass ends.
+  the main loop's pass ends. On a frame the game lagged it keeps its last
+  capture, as the PPU keeps its sprites then (No sprite flicker, #161), so a
+  test that reads a lagging frame's sprites reads the last finished frame's
+  (`tests/flicker/no_flicker.py`'s crowd).
 - TCP input lands at no particular frame. For anything that depends on the
   frame a button goes down, run the same build headless from a save state:
   `--load-state S --input FILE --frames N --frame-log LOG --mods-root DIR`.
@@ -1565,7 +1568,8 @@ body, then the weapon: `JSR Player_DrawShield`, `Player_DrawBody` (`$EBEE`),
   halves: 1, 33, 2, 34, ... (slot 0 is the status bar's). The hero's parts
   each take a run of slots, so the body's are those between `Sprites_SpriteSlot`
   at `Player_DrawBody` and at `Player_DrawWeapon`. OAM Y is the drawing Y
-  + 32, the HUD.
+  + 32, the HUD. The whole scheme, and what the remaster draws from it, is
+  under *The shadow OAM, a frame at a time*.
 - **Sprite palettes.** Palette 0 is the hero's (`$18 $26 $30`), palette 1 the
   shield's (`$00 $25 $30`: grey, pink, white). All three sprite palette sets
   (bank 11, `$81C0` + 16 × n, loaded by `Screen_LoadSpritePalette`) have these
@@ -1575,10 +1579,12 @@ body, then the weapon: `JSR Player_DrawShield`, `Player_DrawBody` (`$EBEE`),
   once drew the shield 6 pixels up and 2 out there while it was held (#53);
   it looked wrong, and the glint replaced it (#58).
 - **Where the shield and the body overlap,** which is in front alternates
-  each frame: `Sprites_StartSlotRange` flips which half of the shadow OAM
-  the parts' slots land in, and the lower OAM index is drawn in front. A
-  picture of the hero standing still matches only one from a frame of the
-  same parity, at those pixels.
+  each frame in the original (the stock view): `Sprites_StartSlotRange` flips
+  which half of the shadow OAM the parts' slots land in, and the lower OAM
+  index is drawn in front. A picture of the hero standing still there matches
+  only one from a frame of the same parity, at those pixels. Seamless paints
+  them in the order the game drew them (No sprite flicker, #161), the shield
+  in front of the body, the same on every frame.
 
 **Zenis, for tests.** On the fortress of Zenis's screen 16 (area 7, palette
 `$0F`, region 5, position `$91`), an Execution Hood casts a shot (`$51`,
@@ -4195,7 +4201,49 @@ flights on MP):
 - **The Fire spell flickers by design**: `CastMagic_FinishHandler_Fire` draws
   it only when `InterruptCounter` has bit 1 set, 2 frames in 4, and picks its
   frame from bit 2, so each frame shows 2 frames in 8. Thunder draws on the
-  other two (bit 1 clear).
+  other two (bit 1 clear). The remaster keeps it: it draws what OAM holds.
+
+### The shadow OAM, a frame at a time
+
+- **Slots.** `Sprites_Reset` (`$CB53`, from `Screen_ResetSpritesForGamePlay`
+  at the top of every pass of the main loop) sets every Y to `$F0`, sprite 0
+  to the status bar's (Y `$17`, tile `$7F`, attributes `$23`, X 8),
+  `Sprites_SpriteSlot` (`$25`) to 1, `Sprites_SlotsFull` clear, and flips
+  `Sprites_StartSlotRange` (`$1C`) between `$00` and `$80`. `Sprite_Draw`
+  writes each cell at slot × 4 EOR `$1C`, unless the slots are full, and
+  `Sprites_IncNextSpriteSlot` hands out 1, 33, 2, 34, ... 31, 63, then sets
+  `Sprites_SlotsFull`: 62 cells a frame, the rest not drawn. So the n-th cell
+  drawn is in one half of OAM on one frame and in the other on the next.
+- **A frame draws in the same order every time.** `Game_MainLoop`:
+  `Player_DrawShield`, `Player_DrawBody`, `Player_DrawWeapon`,
+  `Player_CastMagic` (the spell), `GameLoop_CheckUseCurrentItem`, then
+  `Sprites_UpdateAll`, actor slots 7 down to 0.
+  `Game_DrawScreenInFrozenState` (a conversation's scene, the HP fills) draws
+  the hero, then the actors, without a reset.
+- **On the NES the lower OAM index is in front, 8 a line.** So wherever two
+  sprites overlap, which is in front swaps every frame, and past 8 on a line
+  the ones that go missing alternate. Beside a villager in Eolis's town the
+  hero blinked behind him at 30 Hz and read as see-through (#161), and so did
+  his shield over his body. The town holds 4 sprites a line, him and its
+  villager: the limit played no part there.
+- **`Sprites_FlipRanges`** (`$CBA8`) swaps entries 1-31 with 33-63 and leaves
+  `$1C` alone: once a frame while paused (`GameLoop_CheckPauseGame`), and
+  between the frames of a Red Potion's and the Elixir's fill
+  (`Player_UseRedPotion`, `Player_FillHPAndMP`), so the frozen scene flickers
+  on with nothing drawn again. Its halves are then the other way round from
+  what `$1C` says.
+- **The NMI copies OAM only for a finished frame.** `OnInterrupt` writes
+  `OAMDMA` from `$0700` when `Game_InterruptsHandledLatch` (`$10`) is clear,
+  that is while the CPU waits in `WaitForNextFrame` (which clears it and
+  loops until the NMI sets it), or when `Game_NeedOAMReset` (`$1B`) is set.
+  On a frame the game lagged, still drawing as it ended, the PPU keeps the
+  last frame's sprites. Villagers copied into the town's slots make it lag
+  from five: 8 frames of 28 end with the latch set, from six every other.
+  A lagging frame's shadow OAM is half drawn (44 entries of 63, from seven).
+- **The hero does not blink after a hit.** Through the 60 frames of
+  `Player_InvincibilityPhase` (`$AD`) after a Zozura's touch he is in OAM on
+  every frame, in the same palettes; only his behind-the-background bit
+  changes with where he stands (measured, #161).
 
 ## Graphics bugs
 
@@ -5298,6 +5346,36 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   in an isolated machine without hooks, so there his climbing chest is the
   stock slot (as Block's glint and the falling pose are). No ROM, no read
   overrides, no state.
+
+- **No sprite flicker** (`fax_flicker.c`, #161). Seamless composes its
+  picture from each room's shadow OAM (`actors()`, and `player_edge()`'s
+  redraw of the hero past a room's edge) and draws all 63 entries, with no
+  limit to a line. It paints them back to front in the order the game drew
+  them (`fax_flicker_paint_order`, from the room's own `$1C`: an entry's slot
+  is its index EOR 32 when `$1C` is `$80`, and a slot's place in the draw is
+  its low 5 bits, then its half), so the first drawn is in front: the hero
+  over his spell and every actor, his shield over his body and his body over
+  his weapon, and two actors in the same order on every frame (*The shadow
+  OAM, a frame at a time*). Seamless takes no frame whose halves
+  `Sprites_FlipRanges` swapped: not while paused (`playing()` needs
+  `Game_PausedState` clear, and the pause's hook took the scene before), nor
+  through a Red Potion's or the Elixir's fill, whose IScripts (`$80`, `$85`)
+  keep it in script mode until the main loop's next player update. At a
+  frame's end it now captures the active room only when the NMI is about to
+  copy its OAM (`fax_flicker_frame_drawn`): on a lagging frame it keeps its
+  last capture, the whole room, as the PPU keeps its sprites, where it once
+  took a shadow OAM half drawn and the actors drawn last vanished for a
+  frame. A room it has just entered, or one not yet live, is captured at
+  once, as before. Which sprites are in OAM is the game's, so its own
+  blinking stays (the Fire spell, 2 frames in 4). No hooks, no ROM, no
+  save-state record: OAM, the PPU (8 a line, the overflow flag, sprite 0
+  hit), RAM, save states and rewind are the machine's, and with the remaster
+  off the stock view is the original's picture, flicker and all. TCP
+  `no_flicker_state` says whether it is on and counts the lagging frames kept
+  (`kept`). Its tests:
+  `tests/flicker/flicker_test.c` (the order and the NMI's rule, on a model of
+  the slots) and `tests/flicker/no_flicker.py` (three villagers over the
+  hero, 16 sprites a line through a lagging frame, the Fire).
 
 - **The map** (`fax_map.c`, laid out by `fax_map_layout.c`). A Map button (M,
   or Back on a controller; `MapKey` and `MapButton` in `config.ini` [Game])

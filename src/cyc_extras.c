@@ -43,6 +43,7 @@
 #include "fax_map.h"
 #include "fax_quests.h"
 #include "fax_graphics.h"
+#include "fax_flicker.h"
 #include "fax_entrances.h"
 #include "fax_spell_cost.h"
 #include "fax_found.h"
@@ -223,6 +224,7 @@ static void tcp_setup(void *ctx) {
     fax_map_tcp_setup();
     fax_quests_tcp_setup();
     fax_graphics_tcp_setup();
+    fax_flicker_tcp_setup();
     fax_finds_tcp_setup();
     fax_shaft_tcp_setup();
     fax_entrances_tcp_setup();

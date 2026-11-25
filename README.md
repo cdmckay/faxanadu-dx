@@ -211,6 +211,15 @@ opens it too.
   FAXANADU letters, in the title's own letters and the logo's light yellow,
   outlined in black.
 
+### The picture
+
+- **No sprite flicker.** The NES shows 8 sprites a line, so Faxanadu swaps its
+  sprites' order every frame, and beside the villagers you flickered behind
+  them as if see-through. The remaster draws every sprite, every frame: you in
+  front, then your spell, then everyone else, and a busy room no longer drops
+  anyone for a frame when the game slows down. The Fire spell still flickers,
+  as it was made to.
+
 ## Bugs fixed
 
 The remaster also fixes these bugs in the original game:

@@ -75,6 +75,7 @@ STATES = {
     "eolis-shaft": ("eolis_shaft_state", "enabled"),
     "map": ("map_state", "enabled"),
     "graphics-fix": ("graphics_fix_state", "enabled"),
+    "no-flicker": ("no_flicker_state", "enabled"),
     "quest-log": ("quest_state", "enabled"),
     "fair-entrances": ("entrances_state", "enabled"),
     "spell-cost": ("spell_cost_state", "enabled"),

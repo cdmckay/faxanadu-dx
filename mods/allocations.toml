@@ -799,6 +799,21 @@ rom = []
 # its rooms through fax_world_set_room_fixup, which this feature sets.
 
 [[feature]]
+id = "no-flicker"
+package = "faxanadu.dx"
+plugin = "faxanadu.no-flicker"
+source = "src/fax_flicker.c"
+hooks = "faxanadu.no-flicker."
+rom = []
+# No hooks, no ROM, no saved state: Seamless (fax_world.c) asks it the order to
+# paint each room's shadow OAM in, from that room's Sprites_StartSlotRange
+# ($1C), when it composes the picture, and at a frame's end whether the NMI
+# is about to copy OAM (Game_InterruptsHandledLatch $10, Game_NeedOAMReset
+# $1B), to keep its last capture on a frame the game lagged. It writes
+# nothing; Block's glint, which rewrites the body's OAM palettes, is painted
+# in the new order like any other sprite.
+
+[[feature]]
 id = "quest-log"
 package = "faxanadu.dx"
 plugin = "faxanadu.quest-log"
