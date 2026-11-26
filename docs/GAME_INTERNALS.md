@@ -805,7 +805,8 @@ What a feature can rely on, and the traps:
   town's edge. Eolis `$08`'s Monodron waits at its left edge, the seam with
   the town, which no monster crosses (towns stay safe), and knocks a hero who
   crosses and stops there back onto `$01`, at x 239-255 (#130), so a walk
-  that stops at an X, reading no screen, can stop on the wrong one. A test that walks in should put them in place in its save
+  that stops at an X, reading no screen, can stop on the wrong one. A test
+  that walks in should put them in place in its save
   state, as `tests/damage/damage_numbers.py` does, or come in by a door, whose
   load spawns them fresh, as the `eolis-zozuras` and the keys test's
   `keys-eolis-exit` fixtures do. In Seamless the walk itself has no scroll: a
@@ -2773,8 +2774,8 @@ door into a building and no monster on their list: every region screen
 with a building's door has monsters (the Trunk's `$06` and `$2D`, the
 Mist's `$06`, `$0D`, `$16`, `$1F` and `$29`, Dartmoor's `$02`, `$03`,
 `$08`, `$1E` and `$1F`). A region screen can list a person and no monster
-(the Trunk's springs, `$25`, `$3D` and `$3F`: a person and the spring), so
-people alone don't make a town. Town edges that are seams are only
+(the Trunk area's three springs, `$25`, `$3D` and `$3F`: a person, `$3B`,
+and the spring), so people alone don't make a town. Town edges that are seams are only
 Eolis's: `$03`|`$04`, `$05`|`$06` and `$01`|`$08`. The other towns' two
 screens join each other, and their outer edges are
 `AREA_TOWN_TRANSITIONS_DATA`'s loads.
@@ -5036,7 +5037,8 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   (a seam between a town room and one that isn't, from `fax_zone.c`'s zones
   and bank 11's lists) is a wall for them all; they are drawn whole across a
   seam, from their home room's tiles where the room they enter has none; a
-  load forgets the other rooms (*Seams: actors across rooms*). Its hooks: bank 14's `Sprites_UpdateAll` entry and loop end,
+  load forgets the other rooms (*Seams: actors across rooms*). Its hooks:
+  bank 14's `Sprites_UpdateAll` entry and loop end,
   `Sprites_UpdateBehavior`'s and `CurrentSprite_UpdateState`'s entries, the
   edge and floor tests at `$86BD`, `$86A7`, `$873A`, `$842A` and `$855E`; bank
   15's `Sprite_Draw_Standard`, `Sprite_Draw_FlippedHoriz` and
@@ -5047,8 +5049,7 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   tiles' room, and its last loop's OAM owners and cells past its sides,
   which `fax_world_present` paints. Seamless gives it `fax_world_view()`,
   each room's place, RAM and block, the joined rooms, and its area
-  (`fax_world_area()`). With the remaster
-  off nothing of it runs. Slice 0, seams lose nothing, is two hooks in bank
+  (`fax_world_area()`). With the remaster off nothing of it runs. Slice 0, seams lose nothing, is two hooks in bank
   14's sprite loop:
   - `CurrentSprite_CheckHitPlayer`'s entry (`$890A`) returns at once in a
     neighbouring room's tick, with X the current slot as its first `LDX
