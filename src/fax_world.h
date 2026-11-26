@@ -21,6 +21,13 @@ bool fax_world_room_origin(int area,int room,int *x,int *y);
  * active room, a room not on the map around it, or one not running. For the
  * quest log's marks over the people next door. */
 const uint8_t *fax_world_room_ram(int area,int room);
+/* True while a neighbouring room's actors run their tick on its isolated
+ * copy of the machine (Sprites_UpdateAll, with hooks allowed), against the
+ * hero projected to that room's edge, invincible, not swinging and with no
+ * spell: the hooks a feature runs there act on the copy, whose effects on
+ * anything but the room's own bytes are thrown away. Seams lose nothing
+ * (fax_seams.c) keeps those actors from touching him there. */
+bool fax_world_ticking(void);
 /* A correction for each room Seamless decodes itself, in isolated calls where
  * no hooks run: called with the room's area, its screen and its RAM (2 KiB,
  * ScreenBuffer at $600) once Area_LoadBlocks or Area_LoadScrollData has
