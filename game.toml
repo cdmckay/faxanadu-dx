@@ -516,8 +516,9 @@ bytes = "ad c7 03 10 fa ad c8 03 30 f5 a5 a7"
 # steps: the script's actions, "What would you like?", the list kept up after a
 # purchase or a sale, the sell list's contents, each list's A, the menu's
 # input each frame, the end of a shop's message, the buy list before it is
-# drawn (without the Red Potion while the Potion Sellers sell it), each list
-# action's end (B), and Maybe_Shop_DrawTextBox's close of the list.
+# drawn (without the Wing Boots, the Hour Glass and the Elixir while Found
+# items is on), each list action's end (B), and Maybe_Shop_DrawTextBox's close
+# of the list.
 
 [[mod_function_hook]]
 id = "faxanadu.shops.next-action"
@@ -650,24 +651,6 @@ id = "faxanadu.lesson.pay"
 addr = 0x8347
 bank = 12
 bytes = "20 a5 f9 4c 21 83 ce 03 02 a9 3c 8d"   # JSR Player_SubtractGold, JMP IScripts_ProgressivelySubtractGold, DEC Temp_0203, LDA #$3C, STA
-
-# Potion Sellers (fax_potions.c): the meat shops' scripts, steered at each
-# interaction-script action (after the Magician's lesson's site and before
-# Recharging items', which stays last), and the potion's price, at
-# IScriptAction_SpendGold once it has read the meat's, after the lesson's site
-# there.
-
-[[mod_function_hook]]
-id = "faxanadu.potions.next-action"
-addr = 0x826e
-bank = 12
-bytes = "20 a4 87 aa bd 93 82 48 bd 7b 82 48"   # IScripts_InvokeNextAction: his question, the room, his pay step, the potion
-
-[[mod_function_hook]]
-id = "faxanadu.potions.price"
-addr = 0x8367
-bank = 12
-bytes = "ad 02 02 85 ec ad 03 02 85 ed 20 dc"   # LDA Temp_0202, STA Temp_Int24, LDA Temp_0203, STA Temp_Int24_M, JSR IScripts_CheckEnoughMoney
 
 # MP from kills (fax_mana.c): the routine both kills (a weapon's, a spell's)
 # call to give the enemy's experience, X its slot. It only observes.

@@ -18,7 +18,7 @@ coverage): where a shop's door leads, the gold, HP and MP.
 
 tool-shop  Eolis's tool shop with 700 Golds: Up, his greeting, Buy and its
            line open the buy list (Quick shops, fax_e2e's shop_list()), Down
-           to Deluge (400), a save state there. A buys it:
+           twice to Deluge (400), a save state there. A buys it:
            on every frame of the count-down the band's digits are the gold
            the game had that frame or the one before, so they read every
            amount from 700 down to 300, 10 a frame, on frames in a row, all
@@ -61,7 +61,7 @@ TOOL_SHOP_SCREEN, TOOL_SHOP_DOOR = 3, 0x9A                       # EOLIS_DOOR_LO
 KINGS_SCREEN, KINGS_DOOR, KINGS_STAIRS, RING_OF_ELF = 7, 0x98, 48, 0x80
 PLEA = 0x35                                                       # the King's message
 ZONE_NAMES = "faxanadu.zone-names"                                # its record: the area and screen, at 5 and 6
-START_GOLD, DELUGE_PRICE, DELUGE_ROW, GIFT = 700, 400, 1, 3000                 # Eolis's tools: dagger, Deluge
+START_GOLD, DELUGE_PRICE, DELUGE_ROW, GIFT = 700, 400, 2, 3000                 # Eolis's tools: dagger, potion, Deluge
 FULL = 80
 HUD, NATIVE_W, VIEW_W, ITEM = 32, 256, 424, 16
 HUD_X = (VIEW_W - NATIVE_W - ITEM) // 2 + ITEM                    # the band's column 0 (fax_world_hud_x): 92
@@ -121,8 +121,10 @@ def _deluge(g):
     walk("left")                                                    # to the counter
     fax_e2e.shop_list("buy")
     g.wait(2)
-    g.act("down", 4, 6)
-    waiting("the buy list again")
+    for row in range(1, DELUGE_ROW + 1):
+        g.act("down", 4, 6)
+        waiting("the buy list again")
+        assert g.tcp("shops_state")["cursor"] == row, g.tcp("shops_state")
     s = g.tcp("shops_state")
     assert s["cursor"] == DELUGE_ROW, s
     assert s["list"][DELUGE_ROW] == 0x60 and s["prices"][DELUGE_ROW] == DELUGE_PRICE, s

@@ -6,8 +6,8 @@
  * so one is all the hero ever needs: buying them made no sense any more.
  * - No shop sells them. Quick shops drops their lines from the tool shops'
  *   buy lists (fax_found_unsold): Eolis's Elixir, Forepaw's and Conflate's
- *   Wing Boots, and the Hour Glass and the Elixir of the shop after Mascon,
- *   as it drops the Red Potion for the Potion Sellers (fax_shops.c).
+ *   Wing Boots, and the Hour Glass and the Elixir of the shop after Mascon
+ *   (fax_shops.c).
  * - The Wing Boots come only from Zorugeriru (Trunk $3B, sprite $5C, until
  *   Quests $08): beat the boss, get the movement upgrade. The seven sprites
  *   $55 that showed one counted visit in four are gone.

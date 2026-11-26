@@ -37,8 +37,8 @@ dialogue box again before the end, so for 9 frames no box and no portrait
 showed, then the portrait came back for 18 and went (its flicker). Both break
 the rules above: on master's frames, Up then B, the check finds both.
 
-talk-buy       Two purchases in a row (the Hand Dagger, then Down and the
-               Deluge), each back in the list with the cursor where it was;
+talk-buy       Two purchases in a row (the Hand Dagger, then Down and a Red
+               Potion), each back in the list with the cursor where it was;
                B: "Thank you for shopping.", then the end.
 talk-sell      The same for selling: Down on the menu, "Which one would like
                to sell?", two Red Potions sold in a row, B, the thanks.
@@ -54,21 +54,21 @@ The other parts drive the shops over TCP (fax_e2e's shop_list() goes through
 the conversation) and check the lists, their hint line and OWNED in the
 picture, and gold and inventory after each step:
 
-tool-shop  Eolis's tool shop (Hand Dagger 400, Deluge 400: its Red Potion is
-           the Potion Seller's now, fax_potions.c, and its Elixir is found, not
-           bought, fax_found.c), with 700 Golds, the Giant Blade in hand and,
-           unequipped, the Long Sword and the Dragon Slayer, and the J and A
-           keys, the Wing Boots and two Red Potions. A buys the Hand Dagger
-           (the list stays up, the cursor on it); Down and A on the Deluge says
-           "This is not enough Golds." and A goes back to the list; B thanks
-           him. Then the sell list: everything carried, the Items first, at
-           half a shop's price (a Red Potion 80 and the Hand Dagger 200, this
-           shop's; the Long Sword 800, Forepaw's), and with no price the Wing
-           Boots and the keys, his for good, and the Dragon Slayer. On those
-           the hint says "Not for sale" and A does nothing; Down from the
-           bottom wraps to the top, and a Red Potion sells.
+tool-shop  Eolis's tool shop (Hand Dagger 400, Red Potion 160, Deluge 400: its
+           Elixir is found, not bought, fax_found.c), with 1100 Golds, the
+           Giant Blade in hand and, unequipped, the Long Sword and the Dragon
+           Slayer, and the J and A keys and the Wing Boots. A buys the Hand
+           Dagger (the list stays up, the cursor on it); Down and A twice buy
+           two Red Potions, never OWNED; Down and A on the Deluge says "This is
+           not enough Golds." and A goes back to the list; B thanks him. Then
+           the sell list: everything carried, the Items first, at half a shop's
+           price (the Hand Dagger 200, this shop's; the Long Sword 800,
+           Forepaw's), a Red Potion 80 as at every shop (#176), and with no
+           price the Wing Boots and the keys, his for good, and the Dragon
+           Slayer. On those the hint says "Not for sale" and A does nothing;
+           Down from the bottom wraps to the top, and a Red Potion sells.
 key-shop   Next door, the Key Seller talks the same way, and buys a Red Potion
-           for 80 (half the lowest tool shop's price).
+           for 80, as every shop does.
 two-pages  A full inventory (8 items and 3 more weapons) is two pages, the keys
            and the Mattock on the first with no price: Down from the bottom of
            the first turns to the second, and a sale there keeps the page.
@@ -76,8 +76,8 @@ last-one   Selling the last item (a Red Potion) empties the list ("You have
            nothing to buy.", the game's own line), and the conversation goes
            on to buying, with "What would you like?".
 owned-*    Mascon's tool shop (Large Shield 3500, Thunder 1200, Mattock 800,
-           its Red Potion gone to the Potion Seller), with 9000 Golds and a Red
-           Potion: the Mattock is priced, and buying it marks it OWNED at once
+           Red Potion 600), with 9000 Golds and a Red Potion: the Mattock is
+           priced, and buying it marks it OWNED at once
            (it is kept, reusable tools). Coming back, it keeps its row with
            OWNED where the price was, the hint says "Already owned" on it, and
            A there does nothing: no gold, no line, the list as it was. Thunder
@@ -95,15 +95,20 @@ owned-gear A weapon, armor, shield or spell the hero has is OWNED (#165), at
            nothing (no gold, and not the game's "You can't carry any more.").
            The same for Deluge. B, the thanks; in the sell list the dagger
            still sells (200), and back in the buy list it is for sale again,
-           and buys. Then, the dagger equipped (in no list): OWNED too. And at
-           the Potion Seller next door a Red Potion buys twice in a row: a
-           consumable is never owned. (With the remaster off, the game's own
-           refusal: unit tests.)
+           and buys. Then, the dagger equipped (in no list): OWNED too, and a
+           Red Potion buys twice in a row: a consumable is never owned. (With
+           the remaster off, the game's own refusal: unit tests.)
 a-key      The A key farm is gone: the man in the house on Mist $1F gives the A
            key to a hero with the Black Onyx and none (each time he is asked),
            and from his house straight to Forepaw's tool shop, with all he has,
            the key is not for sale and A keeps it, while a Red Potion sells for
-           200.
+           80.
+dartmoor   Dartmoor's tool shop (the towns' screen $0D, door $9D: Giant Blade
+           13000, Red Potion 2000), with 4000 Golds and a Red Potion: two Red
+           Potions buy in a row, and its sell list offers each at 80, not half
+           its own 2000 (#176): a sale pays 80. Then, with the remaster off and
+           headless from its counter (as the talk parts), the original's sell
+           list there pays 1000 for one, half its price.
 original   With the remaster off, the original: the same Up shows the shop's
            greeting and then the Buy/Sell menu's own line. (With it on the
            shops run that menu too, with its own line: Save files serves its
@@ -155,11 +160,16 @@ GREETINGS, LIST_LINES, MESSAGES = (I_SELL_KEYS, I_SELL_TOOLS), (WHICH_ONE, WOULD
                                                                                        NOTHING_TO_SELL)
 GOT_MATTOCK, ABOVE_MATTOCK = 0xB2, 0x4D                            # "I'm holding Mattock."; over $0E's, at $5D (YX)
 DURATION_OINTMENT = 0x427
-POTION_ASKING = 1                                                   # fax_potions.c's phase: his question up
 EOLIS_TOOLS = 0xA37A                                                # its script: BUY at + 12, SELL at + 6
-MASCON_LIST = [LARGE_SHIELD, THUNDER, ITEM | MATTOCK]               # no Red Potion: the Potion Seller's
-MASCON_PRICES = [3500, 1200, 800]
+EOLIS_LIST, EOLIS_PRICES = [HAND_DAGGER, ITEM | RED_POTION, DELUGE], [400, 160, 400]   # its Elixir: found
+POTION_ROW, DELUGE_ROW = 1, 2
+MASCON_LIST = [LARGE_SHIELD, THUNDER, ITEM | MATTOCK, ITEM | RED_POTION]
+MASCON_PRICES = [3500, 1200, 800, 600]
 THUNDER_ROW, MATTOCK_ROW = 1, 2
+DARTMOOR, DARTMOOR_TOOLS_DOOR, DARTMOOR_TOOL_SHOP = 0x0D, 0x9D, 0x41  # the towns' screen $0D, its door, building $41
+DARTMOOR_LIST, DARTMOOR_PRICES = [GIANT_BLADE, ITEM | RED_POTION], [13000, 2000]
+REGION_DARTMOOR = 4
+ARG_STRINGS_COUNT, SHOP_ITEMS, SHOP_COSTS_L, SHOP_COSTS_U = 0x21F, 0x220, 0x228, 0x230   # a list as drawn
 # The tool shop's sell list: two Red Potions, then the kit's Items from the last, then its weapons from the last.
 BOOTS_SELL_ROW, KEY_A_ROW, KEY_J_ROW, DAGGER_ROW, LONG_SWORD_ROW, SLAYER_ROW = 2, 3, 4, 5, 6, 7
 SPECIAL_ITEMS, BLACK_ONYX = 0x42C, 0x01                           # SpecialItems, its Black Onyx bit
@@ -209,9 +219,10 @@ def carrying(gold_amount, weapon_list, item_list, weapon=HAND_DAGGER, spells=())
     return w
 
 
-TOOL_KIT = carrying(700, [DRAGON_SLAYER, LONG_SWORD], [KEY_J, KEY_A, WING_BOOTS] + [RED_POTION] * 2, GIANT_BLADE)
+TOOL_KIT = carrying(1100, [DRAGON_SLAYER, LONG_SWORD], [KEY_J, KEY_A, WING_BOOTS], GIANT_BLADE)
 PARTS = ("talk-buy", "talk-sell", "talk-message", "talk-original", "tool-shop", "key-shop", "two-pages",
-         "last-one", "owned-mascon", "owned-found", "owned-key", "owned-gear", "a-key", "original")   # each its own game
+         "last-one", "owned-mascon", "owned-found", "owned-key", "owned-gear", "a-key", "dartmoor",
+         "original")                                                                   # each its own game
 
 
 def walk_out():
@@ -678,16 +689,21 @@ def main():
         wait(40)
         to_counter()
 
-    def to_tool_shop(source, name, writes, mascon=False):
-        """From inside a building, walk out onto Forepaw's tool shop door (the
-        towns' screen 2, block $9D), or Mascon's (screen 4, block $9E), and go in."""
+    # A town's tool shop: the towns' screen, its door (block YX), the building, and the region it hangs off.
+    tool_shops = {"forepaw": (FOREPAW, FOREPAW_TOOLS_DOOR, FOREPAW_TOOL_SHOP, TRUNK),
+                  "mascon": (MASCON, MASCON_TOOLS_DOOR, MASCON_TOOL_SHOP, REGION_MIST),
+                  "dartmoor": (DARTMOOR, DARTMOOR_TOOLS_DOOR, DARTMOOR_TOOL_SHOP, REGION_DARTMOOR)}
+
+    def to_tool_shop(source, name, writes, town="forepaw"):
+        """From inside a building, walk out onto a town's tool shop door
+        (tool_shops), and go in."""
         target = out / f"{name}.cycstate"
-        screen, door = (MASCON, MASCON_TOOLS_DOOR) if mascon else (FOREPAW, FOREPAW_TOOLS_DOOR)
+        screen, door, building, region = tool_shops[town]
         fixture(source, target, {AREA_SAVED_AREA: TOWNS, AREA_SAVED_SCREEN: screen, AREA_SAVED_PALETTE: PALETTE_TOWN,
-                                 PLAYER_SAVED_POS: door, AREA_REGION: REGION_MIST if mascon else TRUNK, **writes})
+                                 PLAYER_SAVED_POS: door, AREA_REGION: region, **writes})
         tcp("load_state", path=str(target))
         walk_out()
-        into_tool_shop(*((MASCON, MASCON_TOOL_SHOP) if mascon else ()))
+        into_tool_shop(screen, building)
 
     def leave(thanked):
         """B in the list (shop_leave()): the end, after "Thank you for
@@ -719,12 +735,13 @@ def main():
         state = tcp("speaker_state")
         assert state["shown"] and (state["col"], state["row"]) == (10, 5), state
 
-    def talk(name, kit, plans, original=False):
+    def talk(name, kit, plans, original=False, at=None):
         """The conversations of `plans` (converse()) from Eolis's tool shop's
-        counter with `kit`, checked for flashes: their frames, where each step
-        waited, where each ended, and the RAM after the last frame."""
+        counter (or the counter state `at`) with `kit`, checked for flashes:
+        their frames, where each step waited, where each ended, and the RAM
+        after the last frame."""
         start = out / f"{name}.cycstate"
-        fixture(counter, start, kit)
+        fixture(at or counter, start, kit)
         frames, waited, ended, run = converse(game, name, start, plans, original)
         check_flashes(name, frames, ended)
         return frames, waited, ended, run
@@ -738,21 +755,21 @@ def main():
             plan = [("greeting", "A"), ("menu", "A"), ("line", "A"), ("list", "A"), ("list", "DOWN"), ("still", "A"),
                     ("list", "B"), ("thanks", "A")]
             frames, waited, ended, run = talk("buy", kit, [plan])
-            names = ["up", "greeting", "menu", "line", "list", "bought-dagger", "on-deluge", "bought-deluge",
+            names = ["up", "greeting", "menu", "line", "list", "bought-dagger", "on-potion", "bought-potion",
                      "thanks"]
             for k, label in enumerate(names):
                 keep(game, run, f"0-{k}", f"buy-{k}-{label}")
             keep(game, run, "0-end", "buy-9-end")
             said = lines(frames)
             assert said == [I_SELL_TOOLS, BUY_OR_SELL, WOULD_LIKE, THANK_YOU], [hex(m) for m in said]
-            dagger, deluge = frames[waited[(0, 5)]], frames[waited[(0, 7)]]
-            assert dagger.ram[MENU_CURSOR] == 0 and deluge.ram[MENU_CURSOR] == 1, (dagger.ram[MENU_CURSOR],
-                                                                                  deluge.ram[MENU_CURSOR])
+            dagger, potion = frames[waited[(0, 5)]], frames[waited[(0, 7)]]
+            assert dagger.ram[MENU_CURSOR] == 0 and potion.ram[MENU_CURSOR] == POTION_ROW, (dagger.ram[MENU_CURSOR],
+                                                                                           potion.ram[MENU_CURSOR])
             last = frames[-1].ram
             money = last[GOLD] | last[GOLD + 1] << 8 | last[GOLD + 2] << 16
-            assert money == 900 - 400 - 400, money
-            assert (last[NUMBER_OF_WEAPONS], last[WEAPONS], last[NUMBER_OF_MAGIC], last[MAGIC]) == \
-                (1, HAND_DAGGER, 1, DELUGE & 0x1F), bytes(last[WEAPONS:WEAPONS + 16]).hex()
+            assert money == 900 - 400 - 160, money
+            assert (last[NUMBER_OF_WEAPONS], last[WEAPONS], last[NUMBER_OF_ITEMS], last[ITEMS]) == \
+                (1, HAND_DAGGER, 1, RED_POTION), bytes(last[WEAPONS:WEAPONS + 20]).hex()
             print(f"ok: headless, frame exact ({len(frames)} frames): Up, his greeting, Buy or Sell, \"What would "
                   "you like?\", the list; two purchases in a row, each back in the list with the cursor where it "
                   "was; B, \"Thank you for shopping.\", the end; the portrait in every frame, no empty box but "
@@ -830,30 +847,42 @@ def main():
             go_in(start, "tool-shop", EOLIS_TOOLS_SCREEN, EOLIS_TOOLS_DOOR, TOOL_KIT)
             to_counter()
             state = shop_list("buy")
-            assert state["list"] == [HAND_DAGGER, DELUGE] and state["dropped"] == 2, state   # the Red Potion, the Elixir
-            assert state["prices"] == [400, 400] and state["cursor"] == 0, state
+            assert state["list"] == EOLIS_LIST and state["dropped"] == 1, state         # the Elixir: found
+            assert state["prices"] == EOLIS_PRICES and state["cursor"] == 0, state
             assert state["hint"] is None and state["page_label"] is None and state["buy_line"], state
             speaker_on_list()
-            check_hint(game.shot("buy-list"), None)
-            print("ok: Up, his greeting, Buy, \"What would you like?\": the buy list, no hint, under the Tool "
-                  "Seller's name")
+            path = game.shot("buy-list")
+            check_hint(path, None)
+            check_priced(path, POTION_ROW, 160)
+            print("ok: Up, his greeting, Buy, \"What would you like?\": the buy list, the Red Potion back at 160, no "
+                  "hint, under the Tool Seller's name")
 
             state = buy(0)
-            assert gold() == 700 - 400 and weapons() == [DRAGON_SLAYER, LONG_SWORD, HAND_DAGGER], (gold(), weapons())
-            assert state["owned"] == [True, False] and state["traded"], state           # his now: OWNED (#165)
-            assert items() == [KEY_J, KEY_A, WING_BOOTS] + [RED_POTION] * 2, items()
+            assert gold() == 1100 - 400 and weapons() == [DRAGON_SLAYER, LONG_SWORD, HAND_DAGGER], (gold(), weapons())
+            assert state["owned"] == [True, False, False] and state["traded"], state    # his now: OWNED (#165)
+            assert items() == [KEY_J, KEY_A, WING_BOOTS], items()
             print("ok: A buys the Hand Dagger, the list staying up and the cursor on it, and it is OWNED")
 
             press("down")
-            assert shops()["cursor"] == 1, shops()
+            for n in (1, 2):
+                state = buy(POTION_ROW)
+                assert gold() == 700 - n * 160 and items() == [KEY_J, KEY_A, WING_BOOTS] + [RED_POTION] * n, \
+                    (gold(), items())
+                assert state["owned"] == [True, False, False] and state["hint"] is None, state
+            check_priced(game.shot("potions-bought"), POTION_ROW, 160)
+            print("ok: Down and A twice buy two Red Potions in a row at 160, the list staying up and the cursor on "
+                  "them, never OWNED")
+
+            press("down")
+            assert shops()["cursor"] == DELUGE_ROW, shops()
             act("a", 4, 6)
             until("This is not enough Golds.", lambda: ram(MESSAGE_ID) == NOT_ENOUGH_GOLDS, 600)
             type_out("the line to type out", 600, pauses=False)
             game.shot("not-enough-golds")
-            assert gold() == 300 and not shops()["list_up"], (gold(), shops())
+            assert gold() == 380 and not shops()["list_up"], (gold(), shops())
             act("a", 4, 6)
             state = list_up("buy", "the buy list, after the message")
-            assert state["cursor"] == 1 and state["messages"] == 1, state
+            assert state["cursor"] == DELUGE_ROW and state["messages"] == 1, state
             print("ok: the Deluge is not enough Golds, in the game's words, and A goes back to the list")
 
             leave(thanked=True)
@@ -874,7 +903,7 @@ def main():
             for row in (BOOTS_SELL_ROW, KEY_A_ROW, KEY_J_ROW, SLAYER_ROW):
                 check_no_price(path, row)
             print("ok: Down and A on the menu, \"Which one would like to sell?\": everything carried, at half a "
-                  "shop's price; the Wing Boots, the keys and the Dragon Slayer with no price")
+                  "shop's price and a Red Potion at 80; the Wing Boots, the keys and the Dragon Slayer with no price")
 
             def not_for_sale(row, name):
                 """The cursor on `row`: "Not for sale", and A there sells nothing."""
@@ -903,9 +932,9 @@ def main():
             press("down")                                       # one page: Down from the bottom wraps to the top
             assert shops()["cursor"] == 0, shops()
             sell()
-            assert gold() == 300 + 80, gold()
+            assert gold() == 380 + 80, gold()
             assert items() == [KEY_J, KEY_A, WING_BOOTS, RED_POTION], items()
-            print("ok: a Red Potion sells for 80, half this shop's price")
+            print("ok: a Red Potion sells for 80, as at every shop")
             leave(thanked=True)
             print("ok: B, after selling: the thanks, then the end")
 
@@ -921,7 +950,7 @@ def main():
             assert state["list"] == [ITEM | RED_POTION] and state["prices"] == [80], state
             game.shot("key-shop-sell-list")
             leave(thanked=False)
-            print("ok: the Key Seller talks the same way, and offers 80 for a Red Potion, a tool shop's half; B "
+            print("ok: the Key Seller talks the same way, and offers 80 for a Red Potion, as every shop does; B "
                   "without a sale ends at once")
 
         if args.wants("two-pages"):
@@ -981,10 +1010,10 @@ def main():
         if args.wants("owned-mascon"):
             game_up()
             # Owned: Mascon's tool shop. Buy the Mattock.
-            to_tool_shop(start, "mascon", carrying(9000, [], [RED_POTION]), mascon=True)
+            to_tool_shop(start, "mascon", carrying(9000, [], [RED_POTION]), "mascon")
             state = shop_list("buy")
             assert state["list"] == MASCON_LIST and state["prices"] == MASCON_PRICES, state
-            assert state["owned"] == [False] * 3, state
+            assert state["owned"] == [False] * 4, state
             for _ in range(MATTOCK_ROW):
                 press("down")
             state = shops()
@@ -994,7 +1023,7 @@ def main():
             check_priced(path, MATTOCK_ROW, 800)
             state = buy(MATTOCK_ROW)
             assert gold() == 9000 - 800 and items() == [RED_POTION, MATTOCK], (gold(), items())
-            assert state["owned"] == [False] * 2 + [True] and state["hint"] == "Already owned", state
+            assert state["owned"] == [False, False, True, False] and state["hint"] == "Already owned", state
             print("ok: Mascon sells the Mattock, and once bought it is owned at once")
 
             # Leave, and come back: the row says OWNED, A does nothing, and Thunder still buys (a first
@@ -1004,7 +1033,7 @@ def main():
             into_tool_shop(MASCON, MASCON_TOOL_SHOP)
             state = shop_list("buy")
             assert state["list"] == MASCON_LIST and state["prices"] == MASCON_PRICES, state
-            assert state["owned"] == [False] * 2 + [True] and state["cursor"] == 0, state
+            assert state["owned"] == [False, False, True, False] and state["cursor"] == 0, state
             assert state["hint"] is None, state
             path = game.shot("owned-after")
             check_hint(path, None)
@@ -1046,9 +1075,9 @@ def main():
             wait(10)
             found = items()
             assert found == [RED_POTION, MATTOCK], found
-            to_tool_shop(start, "mascon-found", carrying(9000, [], found), mascon=True)
+            to_tool_shop(start, "mascon-found", carrying(9000, [], found), "mascon")
             state = shop_list("buy")
-            assert state["owned"] == [False] * 2 + [True], state
+            assert state["owned"] == [False, False, True, False], state
             for _ in range(MATTOCK_ROW):
                 press("down")
             check_owned(game.shot("owned-found"), MATTOCK_ROW)
@@ -1091,13 +1120,13 @@ def main():
             game.load(kit)
             wait(10)
             state = shop_list("buy")
-            assert state["list"] == [HAND_DAGGER, DELUGE] and state["owned"] == [False, False], state
+            assert state["list"] == EOLIS_LIST and state["owned"] == [False] * 3, state
             path = game.shot("gear-for-sale")
             check_priced(path, 0, 400)
-            check_priced(path, 1, 400)
+            check_priced(path, DELUGE_ROW, 400)
             state = buy(0)
             assert gold() == 1600 and weapons() == [LONG_SWORD, HAND_DAGGER], (gold(), weapons())
-            assert state["owned"] == [True, False] and state["hint"] == "Already owned", state
+            assert state["owned"] == [True, False, False] and state["hint"] == "Already owned", state
             path = game.shot("dagger-owned")
             check_owned(path, 0)
             check_hint(path, "Already owned")
@@ -1105,14 +1134,15 @@ def main():
             print("ok: the Hand Dagger, weaker than his Giant Blade and Long Sword, is for sale; bought, it says "
                   "OWNED, \"Already owned\", and A on it does nothing: no gold, no line")
             press("down")
-            state = buy(1)
+            press("down")
+            state = buy(DELUGE_ROW)
             spells = lambda: list(ram(MAGIC, 4)[:ram(NUMBER_OF_MAGIC)])
             assert gold() == 1200 and spells() == [DELUGE & 0x1F], (gold(), spells())
-            assert state["owned"] == [True, True] and state["hint"] == "Already owned", state
-            a_does_nothing(1)
+            assert state["owned"] == [True, False, True] and state["hint"] == "Already owned", state
+            a_does_nothing(DELUGE_ROW)
             path = game.shot("deluge-owned")
             check_owned(path, 0)
-            check_owned(path, 1)
+            check_owned(path, DELUGE_ROW)
             print("ok: Deluge, once learned, says OWNED too, and A on it does nothing")
             leave(thanked=True)
 
@@ -1123,12 +1153,13 @@ def main():
             assert gold() == 1400 and weapons() == [LONG_SWORD], (gold(), weapons())
             leave(thanked=True)
             state = shop_list("buy")
-            assert state["owned"] == [False, True], state
+            assert state["owned"] == [False, False, True], state
             path = game.shot("dagger-for-sale-again")
             check_priced(path, 0, 400)
-            check_owned(path, 1)
+            check_owned(path, DELUGE_ROW)
             buy(0)
-            assert gold() == 1000 and weapons() == [LONG_SWORD, HAND_DAGGER] and shops()["owned"] == [True, True]
+            assert gold() == 1000 and weapons() == [LONG_SWORD, HAND_DAGGER], (gold(), weapons())
+            assert shops()["owned"] == [True, False, True], shops()
             print("ok: sold, the Hand Dagger is for sale again, and buys")
             leave(thanked=True)
 
@@ -1138,36 +1169,19 @@ def main():
             game.load(equipped)
             wait(10)
             state = shop_list("buy")
-            assert state["owned"] == [True, False] and state["hint"] == "Already owned", state
+            assert state["owned"] == [True, False, False] and state["hint"] == "Already owned", state
             check_owned(game.shot("dagger-equipped-owned"), 0)
             a_does_nothing(0)
-            leave(thanked=False)
             print("ok: the Hand Dagger in hand is OWNED, and A on it does nothing")
 
-            # A consumable: the Potion Seller in Eolis's meat shop sells a Red Potion twice in a row.
-            meat = out / "potion-twice.cycstate"
-            fixture(start, meat, carrying(500, [], [], GIANT_BLADE))
-            game.load(meat)
-            wait(10)
-            to_counter()
+            # A consumable: the Red Potion below it buys twice in a row, and is never owned.
+            press("down")
             for n in (1, 2):
-                sold_before = tcp("potions_state")["sold"]
-                for _ in range(5):                                      # Up counts only on the frame it goes down
-                    act("up", 4, 10)
-                    try:
-                        until("his question", lambda: tcp("potions_state")["phase"] == POTION_ASKING, 120)
-                        break
-                    except AssertionError:
-                        pass
-                else:
-                    raise AssertionError("the Potion Seller does not answer")
-                type_out("his question", 900, pauses=False)
-                act("a", 4, 6)
-                until("the potion", lambda: tcp("potions_state")["sold"] == sold_before + 1, 2400)
-                fax_e2e.page_through("the end", lambda: ram(PORTRAIT) == NO_PORTRAIT and ram(TEXTBOX_CLOSED) != 0)
-                wait(10)
-                assert items() == [RED_POTION] * n and gold() == 500 - n * 160, (items(), gold())
+                state = buy(POTION_ROW)
+                assert items() == [RED_POTION] * n and gold() == 2000 - n * 160, (items(), gold())
+                assert state["owned"] == [True, False, False] and state["hint"] is None, state
             print("ok: a Red Potion, a consumable, buys twice in a row")
+            leave(thanked=True)
 
         if args.wants("a-key"):
             game_up()
@@ -1208,12 +1222,12 @@ def main():
             # Straight from his house to Forepaw's tool shop, with all he has.
             to_tool_shop(game.save("a-key-given"), "forepaw-a-key", {})
             state = shop_list("sell")
-            assert state["list"] == [ITEM | KEY_A, ITEM | RED_POTION] and state["prices"] == [0, 200], state
+            assert state["list"] == [ITEM | KEY_A, ITEM | RED_POTION] and state["prices"] == [0, 80], state
             assert state["cursor"] == 0 and state["hint"] == "Not for sale", state
             path = game.shot("a-key-not-for-sale")
             check_hint(path, "Not for sale")
             check_no_price(path, 0)
-            check_priced(path, 1, 200)
+            check_priced(path, 1, 80)
             before = shops()
             act("a", 4, 30)
             state = shops()
@@ -1222,9 +1236,56 @@ def main():
             assert gold() == 0 and items() == [RED_POTION, KEY_A], (gold(), items())
             press("down")
             sell()
-            assert gold() == 200 and items() == [KEY_A], (gold(), items())
+            assert gold() == 80 and items() == [KEY_A], (gold(), items())
             print("ok: a shop won't buy the A key his giver hands out, so he can't be farmed; a Red Potion sells")
             leave(thanked=True)
+
+        if args.wants("dartmoor"):
+            game_up()
+            # Dartmoor's tool shop, which asks 2000 for a Red Potion: the original paid 1000 for one.
+            to_tool_shop(start, "dartmoor", carrying(4000, [], [RED_POTION]), "dartmoor")
+            state = shop_list("buy")
+            assert state["list"] == DARTMOOR_LIST and state["prices"] == DARTMOOR_PRICES, state
+            press("down")
+            for n in (1, 2):
+                buy(1)
+                assert gold() == 4000 - n * 2000 and items() == [RED_POTION] * (1 + n), (gold(), items())
+            check_priced(game.shot("dartmoor-buy-list"), 1, 2000)
+            print("ok: Dartmoor's tool shop sells the Red Potion at its own 2000, two in a row")
+            leave(thanked=True)
+            state = shop_list("sell")
+            assert state["list"] == [ITEM | RED_POTION] * 3 and state["prices"] == [80] * 3, state
+            path = game.shot("dartmoor-sell-list")
+            check_hint(path, None)
+            check_priced(path, 0, 80)
+            sell()
+            assert gold() == 80 and items() == [RED_POTION] * 2, (gold(), items())
+            print("ok: its sell list offers a Red Potion at 80, not half its 2000, and a sale pays 80")
+            leave(thanked=True)
+
+            # The remaster off: to its counter, then the original's conversation there, headless.
+            game.close()
+            launch(on=False)
+            to_tool_shop(start, "dartmoor-original", {}, "dartmoor")
+            wait(10)
+            at = game.save("dartmoor-counter-original")
+            game.close()
+            plan = [("greeting", "A"), ("menu", "DOWN"), ("menu", "A"), ("line", "A"), ("list", "A"), ("thanks", "A")]
+            frames, waited, ended, run = talk("dartmoor-original", carrying(0, [], [RED_POTION], GIANT_BLADE), [plan],
+                                              original=True, at=at)
+            assert frames[0].width == 256, "not the stock view"
+            said = lines(frames)
+            assert said == [I_SELL_TOOLS, BUY_OR_SELL, WHICH_ONE, THANK_YOU], [hex(m) for m in said]
+            listed = frames[waited[(0, 5)]].ram                         # the sell list, waiting for A
+            price = listed[SHOP_COSTS_L] | listed[SHOP_COSTS_U] << 8
+            assert (listed[ARG_STRINGS_COUNT], listed[SHOP_ITEMS], price) == (1, ITEM | RED_POTION, 1000), \
+                bytes(listed[SHOP_ITEMS:SHOP_COSTS_U + 8]).hex()
+            check_priced(keep(game, run, "0-5", "dartmoor-original-sell-list"), 0, 1000)
+            last = frames[-1].ram
+            money = last[GOLD] | last[GOLD + 1] << 8 | last[GOLD + 2] << 16
+            assert money == 1000 and last[NUMBER_OF_ITEMS] == 0, (money, last[NUMBER_OF_ITEMS])
+            print("ok: with the remaster off, Dartmoor's tool shop pays 1000 for a Red Potion, as the original does")
+            shutil.rmtree(run)
 
         if args.wants("original"):
             game.close()
