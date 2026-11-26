@@ -190,8 +190,10 @@ opens it too. The game holds still underneath, but the music plays on.
   the moment it stops.
 - **Quick shops.** Shopkeepers talk as they always did, but after you buy or
   sell you stay in the list until you're done, and B thanks you on your way
-  out. Any shop buys what you carry, except what you own for good, like a key
-  or the Mattock: it says OWNED and isn't for sale.
+  out. A weapon, armor, shield or spell you already have says OWNED, so you
+  never buy a copy you can't use. Any shop buys what you carry, except what
+  you own for good, like a key or the Mattock: it says OWNED and isn't for
+  sale.
 - **Potion Sellers.** The meat shops sell Red Potions instead of dried meat,
   each at the price its town's tool shop charged, and the tool shops no longer
   stock them. They still buy one back.

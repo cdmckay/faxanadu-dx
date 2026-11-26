@@ -3830,16 +3830,16 @@ box's inside, since `Shop_Draw` would write "0"), the hint reads "Not for
 sale" while the cursor is on it, and A on it does nothing: a hook at `$86E0`
 re-enters the wait at `$86DB` by return, before the price is taken.
 
-**What the hero owns, with Quick shops.** An item he already has for good keeps
-its row in every buy list, so the list, its cursor positions and its pages are
-the shop's own, but shows **OWNED** where its price was; the hint reads
-"Already owned" while the cursor is on it, and A on it does nothing: a hook at
-`$8402`, before `Shop_GetPlayerHasSelectedItem`, re-enters the wait at `$83FA`
-by return, so no gold is taken and no refusal shows. Owned
-(`fax_shops_owned`):
+**What the hero owns, with Quick shops.** An item he already has keeps its row
+in every buy list, so the list, its cursor positions and its pages are the
+shop's own, but shows **OWNED** where its price was; the hint reads "Already
+owned" while the cursor is on it, and A on it does nothing: a hook at `$8402`,
+before `Shop_GetPlayerHasSelectedItem`, re-enters the wait at `$83FA` by
+return, so no gold is taken and no refusal shows. Owned (`fax_shops_owned`):
 
 | Item | Kept by | Owned when |
 |---|---|---|
+| A weapon, armor, shield or spell (#165) | (one of each is all he can use) | He has that one: equipped (`SelectedWeapon` and on, `$03BD-$03C0`, in no list), or in its list |
 | Wing Boots, Hour Glass | Recharging items | He has it: selected, or in the Items list |
 | The A, K, Q, J and Jo keys, the Mattock | Reusable tools | He has it |
 | Elixir | Recharging items | Charged (its `SpecialItems` bit) or spent |
@@ -3853,8 +3853,17 @@ a second. Shops sell only the J, Q and K keys; the A and Jo keys are in the
 rule for completeness. OWNED is five letters, in the five cells `Shop_Draw`
 gives a price (column 23, an entry's second row, right-aligned), painted over
 the price as an unsellable item's is. In the sell list an owned item is not for
-sale (above). Weapons, armor, shields and spells the hero has are not marked:
-the game refuses them ("You can't carry any more."), as before.
+sale (above), but gear he owns is not kept for good: it still sells, a second
+copy bought before #165 too, and once sold it is for sale again (the rule reads
+his lists as they are). A different piece is never owned: a Hand Dagger is for
+sale to a hero with the Long Sword. Before #165 the game itself refused gear he
+had, with `Shop_GetPlayerHasSelectedItem` and the misleading "You can't carry
+any more." (checked in the game: a Hand Dagger bought at Eolis, then A on it
+again, said it and took nothing; Deluge the same), so OWNED shows what the
+refusal meant. Consumables are never owned: with the remaster no tool shop
+lists one (the Red Potion is the Potion Sellers', whose question sells one
+every time), and in the tool shops' own lists (the mod off) a Red Potion buys
+until the Items list is full.
 
 ## Doors and keys
 
@@ -5563,8 +5572,8 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   it puts the cursor back and a page turn goes through `Sound_PlayEffect`
   (`$0B`) to the sell step again; `$838E`, where a shop's message goes back to
   the list; `$8402`, the buy list's A, back to the wait (`$83FA`) for an item
-  the hero owns (see *Shops*), which it asks reusable tools and recharging
-  items about (`fax_reusable_tools_on`, `fax_recharge_on`,
+  the hero owns (see *Shops*: gear he has, and what he has for good), which
+  it asks reusable tools and recharging items about (`fax_reusable_tools_on`, `fax_recharge_on`,
   `fax_recharge_elixir_spent`), as it does for the sell list's; `$83FF` and
   `$8701`, the list actions' `JMP IScriptAction_EndScript` (B), where with
   something bought or sold it points the script at the thank-you step and

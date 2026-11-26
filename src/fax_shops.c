@@ -60,13 +60,18 @@
  *   two boxes blanked the portrait for the frames it took. The rows of the
  *   list outside the dialogue box stay in the nametable, which Seamless never
  *   shows, until IScriptAction_EndScript clears both boxes' whole area.
- * - An item the hero already has for good (fax_shops_owned: the Wing Boots,
- *   the Hour Glass, the Elixir, the keys and the Mattock, as the features that
- *   keep them are on) keeps its row in the buy list, with OWNED where its price
- *   was; the hint says "Already owned" while the cursor is on it, and A on it
- *   is ignored, before the game's own checks: no gold, no refusal.
+ * - An item the hero already has (fax_shops_owned: a weapon, armor, shield
+ *   or spell equipped or in its list, of which he can only use one; the Wing
+ *   Boots, the Hour Glass, the Elixir, the keys and the Mattock, which he has
+ *   for good as the features that keep them are on) keeps its row in the buy
+ *   list, with OWNED where its price was; the hint says "Already owned" while
+ *   the cursor is on it, and A on it is ignored, before the game's own checks:
+ *   no gold, and not the game's "You can't carry any more." for gear he has.
+ *   Sold, it is for sale again. A consumable, and a different piece (a weaker
+ *   weapon than his), are never owned.
  * - An item not for sale (fax_shops_not_for_sale: one no shop buys, and one
- *   the hero has for good, so a key's giver can't be farmed for gold) is listed
+ *   the hero has for good, so a key's giver can't be farmed for gold; gear he
+ *   owns still sells, a second copy bought before too) is listed
  *   without a price, the hint says "Not for sale" while the cursor is on it,
  *   and A on it is ignored.
  * - The meat shops sell the Red Potions (Potion Sellers, fax_potions.h), so
@@ -122,6 +127,8 @@
 #define SHOP_ITEM_COSTS_L   0x0228u
 #define SHOP_ITEM_COSTS_U   0x0230u
 #define ITEM_INVENTORY      0x03ADu   /* the Items list, NumberOfItems entries */
+#define SELECTED_WEAPON     0x03BDu   /* then armor, shields, spells, items: each kind's equipped entry,
+                                         in no list; $FF for none */
 #define SELECTED_ITEM       0x03C1u   /* the Items' selection, in no list; $FF for none */
 #define NUMBER_OF_WEAPONS   0x03C2u   /* then armor, shields, spells, items */
 #define NUMBER_OF_ITEMS     0x03C6u
@@ -198,7 +205,7 @@ typedef struct {
 static bool enabled, failed, priced;
 static Session shop;
 static uint16_t lowest[256];   /* by item: the lowest price any shop asks, 0 if none sells it */
-static unsigned opened, bought, sold, refused, ignored, turned, messages, dropped, thanked, kept;
+static unsigned opened, bought, sold, refused, ignored, turned, messages, dropped, thanked, boxes_kept;
 static unsigned waits;         /* frames a list has waited for a button: it reads the pad */
 
 static uint8_t q(uint16_t addr) { return cyc_mod_peek(addr); }
@@ -234,7 +241,9 @@ uint16_t fax_shops_sell_price(uint8_t id, uint16_t here, uint16_t lowest_price) 
 
 /* ---- what the hero owns ---- */
 
-bool fax_shops_owned(uint8_t id, const FaxShopsHero *h) {
+/* An item the hero has for good: kept after use by a feature that is on, or
+ * the Elixir, charged or spent. */
+static bool kept_for_good(uint8_t id, const FaxShopsHero *h) {
     bool kept;
     switch (id) {
     case 0x92:                                   /* SPECIAL_ELIXIR: a bit, one at most; spent, still his */
@@ -257,12 +266,30 @@ bool fax_shops_owned(uint8_t id, const FaxShopsHero *h) {
     return false;
 }
 
+bool fax_shops_owned(uint8_t id, const FaxShopsHero *h) {
+    unsigned c = id >> 5;
+    if (c >= ITEMS) return kept_for_good(id, h);
+    /* A weapon, armor, shield or spell: he uses one at a time, so a second
+     * copy does nothing. Equipped (in no list, Player_Equip), or in the list. */
+    uint8_t entry = id & 0x1F;
+    if (h->gear_selected[c] == entry) return true;
+    for (unsigned i = 0; i < h->gear_count[c] && i < FAX_SHOPS_GEAR_SLOTS; ++i)
+        if (h->gear[c][i] == entry) return true;
+    return false;
+}
+
 static FaxShopsHero hero_now(void) {
     FaxShopsHero h = { .selected = q(SELECTED_ITEM), .count = q(NUMBER_OF_ITEMS), .special = q(SPECIAL_ITEMS),
                        .elixir_spent = fax_recharge_elixir_spent(), .recharging = fax_recharge_on(),
                        .reusable = fax_reusable_tools_on() };
     if (h.count > sizeof h.items) h.count = sizeof h.items;
     for (unsigned i = 0; i < h.count; ++i) h.items[i] = q((uint16_t)(ITEM_INVENTORY + i));
+    for (unsigned c = 0; c < ITEMS; ++c) {       /* weapons, armor, shields, spells */
+        h.gear_selected[c] = q((uint16_t)(SELECTED_WEAPON + c));
+        h.gear_count[c] = q((uint16_t)(NUMBER_OF_WEAPONS + c));
+        if (h.gear_count[c] > FAX_SHOPS_GEAR_SLOTS) h.gear_count[c] = FAX_SHOPS_GEAR_SLOTS;
+        for (unsigned i = 0; i < h.gear_count[c]; ++i) h.gear[c][i] = q((uint16_t)(list_at[c] + i));
+    }
     return h;
 }
 static bool owned(uint8_t id) {
@@ -275,7 +302,7 @@ static bool owned_entry(unsigned i) {
 }
 
 bool fax_shops_not_for_sale(uint8_t id, const FaxShopsHero *h) {
-    return fax_shops_never_buys(id) || fax_shops_owned(id, h);
+    return fax_shops_never_buys(id) || (id >> 5 == ITEMS && kept_for_good(id, h));
 }
 static bool unsold(uint8_t id) {
     FaxShopsHero h = hero_now();
@@ -640,7 +667,7 @@ static int sell_end_hook(uint16_t addr) { (void)addr; return leave(SELL); }
 static int keep_hook(uint16_t addr) {
     (void)addr;
     if (!here() || !shop.active) return 0;
-    ++kept;
+    ++boxes_kept;
     return go(false, MAYBE_SHOP_OPEN, 0, 0, -1);
 }
 
@@ -782,7 +809,7 @@ static void hooks(int on) {
 static void deactivate(void) {
     enabled = failed = priced = false;
     shop = (Session){ .mode = NONE, .shown = NONE };
-    opened = bought = sold = refused = ignored = turned = messages = waits = dropped = thanked = kept = 0;
+    opened = bought = sold = refused = ignored = turned = messages = waits = dropped = thanked = boxes_kept = 0;
     hooks(0);
 }
 static void activate(void) {
@@ -873,7 +900,7 @@ static void shops_state(int id, const char *line) {
              hinted && up ? "\"" : "", up && paged ? "\"" : "", up && paged ? page : "null", up && paged ? "\"" : "",
              shop.lines & 1u << BUY ? "true" : "false", shop.lines & 1u << SELL ? "true" : "false",
              shop.traded ? "true" : "false", shop.leaving ? "true" : "false", shop.script.base, opened, bought, sold,
-             refused, ignored, turned, messages, waits, dropped, thanked, kept);
+             refused, ignored, turned, messages, waits, dropped, thanked, boxes_kept);
     cyc_tcp_ok(id, fields);
 }
 void fax_shops_tcp_setup(void) {

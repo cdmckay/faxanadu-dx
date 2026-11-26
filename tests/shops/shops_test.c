@@ -595,7 +595,7 @@ static void buying(void) {
     talk(shops[EOLIS_TOOLS].index);
     CHECK(input_at == 9 && !stuck && said_count == 4 && said[3] == 0x02);
     CHECK(gold() == 700 - 3 * 160 && count_of(RED_POTION) == 3 && count_of(KEY_J) == 1);
-    CHECK(!strcmp(events, "mmmddddom") && closes == 0 && kept == 1);
+    CHECK(!strcmp(events, "mmmddddom") && closes == 0 && boxes_kept == 1);
     CHECK(bought == 3 && thanked == 1 && ram[ISCRIPT_PORTRAIT_ID] == 0xFF);
     /* The Elixir: bought once, then it is owned, and A on it does nothing:
      * no gold, no line, the list as it was. */
@@ -618,13 +618,13 @@ static void the_games_checks(void) {
     CHECK(!strcmp(events, "mmmdomddom") && closes == 0);
     CHECK(gold() == 300 - 160 && count_of(RED_POTION) == 1 && count_of(DELUGE) == 0);
     CHECK(input_at == 13 && !stuck && messages == 1);
-    /* The Hand Dagger in hand: "You can't carry any more.", then the list;
-     * B, nothing bought: no thanks. */
+    /* The Hand Dagger in hand is owned (#165): A does nothing, where the game
+     * said "You can't carry any more."; B, nothing bought: no thanks. */
     on(true);
     carry(1000, NULL, 0);
     press(TO_BUY "AAB");
     talk(shops[EOLIS_TOOLS].index);
-    CHECK(said_count == 4 && said[3] == 0x06 && gold() == 1000 && thanked == 0 && !stuck);
+    CHECK(said_count == 3 && gold() == 1000 && ignored == 2 && thanked == 0 && !stuck && count_of(HAND_DAGGER) == 0);
     /* A full Items list: the same line for a Red Potion. */
     static const uint8_t eight[] = { KEY_J, KEY_J, KEY_J, KEY_J, KEY_Q, KEY_Q, KEY_Q, MATTOCK };
     carry(1000, eight, 8);
@@ -633,6 +633,7 @@ static void the_games_checks(void) {
     CHECK(said_count == 4 && said[3] == 0x06 && gold() == 1000 && count_of(RED_POTION) == 0);
     /* The Elixir with one in hand is owned: A does nothing, where the game
      * would refuse it. */
+    on(true);
     carry(1000, NULL, 0);
     ram[SPECIAL_ITEMS] = 0x08;
     press(TO_BUY "ddAAB");
@@ -643,7 +644,8 @@ static void the_games_checks(void) {
 /* fax_shops_owned, on plain values: each item, held or selected, with the
  * feature that keeps it on or off. */
 static void ownership(void) {
-    FaxShopsHero none = { .selected = 0xFF, .recharging = true, .reusable = true };
+    FaxShopsHero none = { .selected = 0xFF, .recharging = true, .reusable = true,
+                          .gear_selected = { 0xFF, 0xFF, 0xFF, 0xFF } };
     static const uint8_t kept[] = { WING_BOOTS, HOUR_GLASS, KEY_A, KEY_K, KEY_Q, KEY_J, KEY_JO, MATTOCK };
     for (unsigned k = 0; k < sizeof kept; ++k) {
         uint8_t id = kept[k];
@@ -673,9 +675,8 @@ static void ownership(void) {
     CHECK(fax_shops_owned(ELIXIR, &h));
     h = none; h.special = 0xF7;                                     /* every other bit */
     CHECK(!fax_shops_owned(ELIXIR, &h));
-    /* Anything else never is: a Red Potion or the Poison held, weapons,
-     * armor, shields and spells (the game refuses those it has), the other
-     * special items. */
+    /* Anything else never is: a Red Potion or the Poison held, the other
+     * special items, and gear he does not have (gear()). */
     static const uint8_t never[] = { RED_POTION, POISON, HAND_DAGGER, LONG_SWORD, STUDDED_MAIL, SMALL_SHIELD,
                                      DELUGE, DEATH, RING_OF_ELF, MAGICAL_ROD, PENDANT, BLACK_ONYX };
     for (unsigned k = 0; k < sizeof never; ++k) {
@@ -715,6 +716,74 @@ static void not_for_sale(void) {
         h.items[0] = sells[k] & 0x1F; h.count = 1;
         CHECK(!fax_shops_not_for_sale(sells[k], &h));
     }
+}
+
+/* A weapon, armor, shield or spell he has, equipped or in its list, is
+ * owned (#165): a second copy does nothing. Sold, it is not; a different
+ * piece never is; and it still sells. */
+static void gear(void) {
+    FaxShopsHero none = { .selected = 0xFF, .recharging = true, .reusable = true,
+                          .gear_selected = { 0xFF, 0xFF, 0xFF, 0xFF } };
+    static const uint8_t each[] = { HAND_DAGGER, GIANT_BLADE, STUDDED_MAIL, FULL_PLATE, SMALL_SHIELD, MAGIC_SHIELD,
+                                    DELUGE, TILTE };
+    for (unsigned k = 0; k < sizeof each; ++k) {
+        uint8_t id = each[k], c = id >> 5, entry = id & 0x1F, other = (uint8_t)(entry ^ 1);
+        FaxShopsHero h = none;
+        CHECK(!fax_shops_owned(id, &h));                            /* neither */
+        h.gear_selected[c] = entry;
+        CHECK(fax_shops_owned(id, &h));                             /* equipped, in no list */
+        CHECK(!fax_shops_owned((uint8_t)(c << 5 | other), &h));     /* a different piece: for sale */
+        for (unsigned d = 0; d < 4; ++d)
+            if (d != c) CHECK(!fax_shops_owned((uint8_t)(d << 5 | entry), &h));   /* another kind's same entry */
+        CHECK(!fax_shops_owned((uint8_t)(0x80 | entry), &h));       /* the Items' same entry */
+        h = none;
+        h.gear[c][0] = other; h.gear[c][1] = entry; h.gear_count[c] = 2;
+        CHECK(fax_shops_owned(id, &h));                             /* carried, in its list */
+        h.gear_count[c] = 1;
+        CHECK(!fax_shops_owned(id, &h));                            /* just sold: a stale byte past the count */
+        h.gear_count[c] = 2;
+        CHECK(!fax_shops_not_for_sale(id, &h));                     /* owned, and still for sale */
+        h.reusable = h.recharging = false;
+        CHECK(fax_shops_owned(id, &h));                             /* whatever keeps items */
+    }
+
+    /* In a shop. Eolis's: Hand Dagger, Red Potion, Elixir, Deluge. The Giant
+     * Blade in hand: the Hand Dagger, weaker, is for sale; bought, it is
+     * owned, and A on it does nothing, nor on the Deluge once bought. */
+    on(true);
+    carry(2000, NULL, 0);
+    ram[0x03BD] = GIANT_BLADE;
+    press(TO_BUY "AAdddAABA");
+    talk(shops[EOLIS_TOOLS].index);
+    CHECK(gold() == 2000 - 400 - 400 && count_of(HAND_DAGGER) == 1 && count_of(DELUGE) == 1 && !stuck);
+    CHECK(bought == 2 && ignored == 2 && said_count == 4 && said[3] == 0x02 && messages == 0);
+    /* Sell the dagger: then it buys again, at Eolis's 400. */
+    on(true);
+    press(TO_SELL "AB" "A");
+    talk(shops[EOLIS_TOOLS].index);
+    CHECK(gold() == 1200 + 200 && count_of(HAND_DAGGER) == 0 && sold == 1);
+    press(TO_BUY "ABA");
+    talk(shops[EOLIS_TOOLS].index);
+    CHECK(gold() == 1400 - 400 && count_of(HAND_DAGGER) == 1 && ignored == 0 && bought == 1);
+    /* A duplicate bought before this change still sells: two Long Swords. */
+    on(true);
+    carry(0, (const uint8_t[]){ LONG_SWORD, LONG_SWORD }, 2);
+    press(TO_SELL "AA" "AABA");                                     /* the last: nothing to sell, then buying */
+    talk(shops[EOLIS_TOOLS].index);
+    CHECK(gold() == 800 + 800 && count_of(LONG_SWORD) == 0 && refused == 0 && !stuck);
+    /* Consumables stay buyable as often as there is room: three Red Potions. */
+    on(true);
+    carry(1000, NULL, 0);
+    press(TO_BUY "dAAABA");
+    talk(shops[EOLIS_TOOLS].index);
+    CHECK(count_of(RED_POTION) == 3 && ignored == 0);
+    /* Quick shops off: the game's own refusal, as the original. */
+    on(false);
+    carry(1000, NULL, 0);
+    press("AAAAA");
+    talk(shops[EOLIS_TOOLS].index);
+    CHECK(gold() == 1000 && said[said_count - 1] == 0x06);
+    on(true);
 }
 
 /* In the buy list, an owned item keeps its row, and A on it does nothing. */
@@ -1022,9 +1091,9 @@ static void potion_sellers(void) {
     CHECK(gold() == 1000 - 400 && count_of(DELUGE) == 1 && count_of(RED_POTION) == 0);
     /* Bought again, the list is drawn again without it, the cursor kept. */
     carry(2000, NULL, 0);
-    press(TO_BUY "ddAAABA");                                              /* the Deluge, again: refused, A, the list */
+    press(TO_BUY "ddAAABA");                                              /* the Deluge, again: owned, A ignored */
     talk(shops[EOLIS_TOOLS].index);
-    CHECK(gold() == 2000 - 400 && count_of(DELUGE) == 1 && said_count == 5 && said[3] == 0x06 && draws == 3);
+    CHECK(gold() == 2000 - 400 && count_of(DELUGE) == 1 && said_count == 4 && said[3] == 0x02 && draws == 2);
     CHECK(listed((const uint8_t[]){ HAND_DAGGER, ELIXIR, DELUGE }, (const uint16_t[]){ 400, 320, 400 }, 3));
     /* Selling a Red Potion: half the shop's own price, from its list. */
     static const struct { unsigned shop; uint16_t pays; } sales[] = {
@@ -1185,6 +1254,7 @@ static void the_hint(void) {
     static const uint8_t carried[] = { RED_POTION, KEY_J, KEY_Q, KEY_K, MATTOCK, RED_POTION, KEY_A, RED_POTION,
                                        LONG_SWORD, DRAGON_SLAYER };
     carry(0, carried, sizeof carried);
+    ram[0x03BD] = GIANT_BLADE;                                /* in hand: nothing Eolis sells is his */
     frame_list(true);
     /* B: the script has ended, nothing is drawn. */
     press(TO_BUY "B");
@@ -1307,6 +1377,7 @@ int main(void) {
     the_games_checks();
     ownership();
     not_for_sale();
+    gear();
     owned_rows();
     selling();
     leaving();
