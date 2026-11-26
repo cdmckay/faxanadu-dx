@@ -37,6 +37,11 @@ pressed buttons in every test game, and in the fixtures saved then: a
 checkout whose suite ran while a pad was in use deletes `build-tests/fixtures`
 once.
 
+VSync is on in a test game's `config.ini`, as in a player's (#181: the
+engine turns it on in the file `install()` writes), but a hidden window
+never waits on it, and an uncapped one turns it off anyway: no test game is
+paced by the display, at normal speed (`--realtime`) or uncapped.
+
 ## End-to-end tests and `e2e/fax_e2e.py`
 
 An end-to-end test plays a feature in a hidden window and drives it over TCP.
