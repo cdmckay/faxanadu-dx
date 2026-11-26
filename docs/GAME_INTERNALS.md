@@ -762,6 +762,34 @@ What a feature can rely on, and the traps:
 - In Seamless, a neighboring room's actors live in `fax_world.c`'s copy of
   that room, not in `CurrentSprites_Entities`: setting those slots to `$FF`
   clears only the hero's room.
+- **The hero a neighbouring room sees** is `shadow()`'s: his position in that
+  room's coordinates clamped to x 0-240 and y 0-176 (so a room to his left
+  sees him at its x 240 wherever he stands in his own), invincible (200),
+  `Player_AttackPhaseAnimFrame` 0, no spell (`CastMagic_Type` `$FF`) and no
+  buttons. So its monsters can't hurt him and his swing never lands there.
+  Before Seams lose nothing (#177), `CurrentSprite_CheckHitPlayer` (`$890A`)
+  sent every touch to its category's handler without looking at the
+  invincibility: a coin or bread at that edge was taken in the copy and its
+  gold or HP thrown away, and an item or a person who talks when touched
+  froze the room (*Features and what they use*, Seams lose nothing). The
+  clamp is what makes a neighbour's monsters and walking people wait at the
+  seam (*Screens and blocks*), and what makes a behaviour that measures his
+  distance (`Sprite_CalcDistanceXToPlayer`, `$82F8`;
+  `Sprite_CalcDistanceYToPlayer`, `$831B`; the same sum inline in
+  `SpriteBehavior_Ishiisu`, `$9129`, and `FUN_PRG14__9aa1`) find him at the
+  seam however far he is. Nash (`SpriteBehavior_Nash`, `$9060`) reappears
+  32 pixels to one side of `Player_PosX_Block`, the other side if that one
+  is off the screen; Magman (`SpriteBehavior_Magman`, `$95C0`) 48 pixels in
+  front of or behind it, at his Y, with no check for the edge. So in a copy
+  Nash appears by the seam, and Magman there or, wrapped, at the room's far
+  side.
+  See [SEAMLESS-COMBAT.md](SEAMLESS-COMBAT.md).
+- **A test can read a neighbouring room whole** from Seamless's save-state
+  record, `faxanadu.world`: a 32-byte header (byte 9 the area + 1, byte 10
+  the hero's room + 1), then `fax_world.c`'s `Room` for each of 83 rooms,
+  10,296 bytes each with this build's compiler (its 2 KB of RAM first; then
+  CHR, palette, `valid`, `live`, `owned`, the edges, x, y and ticks). A
+  `fixture()` record edit puts anything in a neighbour's slots.
 
 ## Far calls (`MMC1_LoadBankAndJump`)
 
@@ -1780,8 +1808,11 @@ callers store a new entity at `CurrentSprites_Entities,Y` and `JMP` there:
 - **The death plays out over 256 frames.** `Player_HandleDeath` (`$D8EC`)
   plays sound `$16` and loops once a frame until `Screen_TransitionCounter`
   (`$03DB`) wraps, dissolving the hero (`Player_DrawDeathAnimation`), then
-  runs the Guru's words. Nothing reads the pad in between. Everything a
-  death decides comes after the words (the gold and experience, the place,
+  runs the Guru's words. It clears every sprite first
+  (`Screen_ClearSprites`), and the loop draws only the hero
+  (`Player_DrawBody`, then the dissolve), so the monsters vanish as he dies.
+  Nothing reads the pad in between. Everything a death decides comes after
+  the words (the gold and experience, the place,
   the respawn's save), so a save state taken as the Guru speaks (`MessageID`
   `$24`) carries the death on without the dissolve; the end-to-end tests
   start most deaths there (`fax_e2e.dissolve()`). Poking the counter near
@@ -2099,6 +2130,23 @@ jump a few updates after stepping off, as A from the hang itself would.
   `Player_ReduceMP` (fixed bank) takes `MAGIC_COSTS` (`$B7A9`, bank 14: 2, 4,
   6, 10, 16) or refuses. The spell starts from the hero and flies the way he
   faces.
+- **Every spell ends at the screen's edge.** Its update handler
+  (`CAST_MAGIC_UPDATE_HANDLERS`) moves it with `CastMagic_UpdateXPosition`
+  (`$BCAF`), whose `CastMagic_CheckDirection` (`$BD8F`) sets
+  `Blocks_Result` to 1 to disperse it: going left
+  (`CastMagic_CheckDirection_Left`, `$BD3C`) once its X is `$F0` or more,
+  wrapped past 0; going right (`CastMagic_CheckDirection_Right`, `$BD4A`)
+  once X plus its width (`CAST_MAGIC_WIDTHS`, `$BD9D`: `$0F`, Fire `$1F`)
+  carries. Otherwise `CastMagic_CheckDirection_CheckImpassable` (`$BD58`)
+  tests the blocks the spell covers in `ScreenBuffer`, never the next
+  screen's edge blocks. Up and down never disperse it. The handler also
+  clears it (`CastMagic_Clear`, `$BB3F`) when `CastMagic_UpdateXPosition`
+  returns C set: X `$F0` or more going left, or X at least
+  `CAST_MAGIC_MAX_SCREEN_WIDTHS` (`$BCF6`: `$F0`, Fire `$E0`) going right.
+  It hits only the screen's own slots: `Sprite_CheckHitByCastMagic` (`$8ADC`)
+  runs for each slot in `Sprites_UpdateAll`. Checked in the game (Seamless):
+  Deluge cast left from x 43 starts at x 40, moves 3 pixels a frame, is last
+  at x 1, and is gone (`CastMagic_Type` `$FF`) the frame after.
 - **Up+B is clumsy by design.** The sword swings on the same new B, so the
   stock combo always swings and casts. At a door the new Up goes through it
   first, in `GameLoop_UpdatePlayer`, and `Game_SetupEnterScreen` waits for the
@@ -3444,6 +3492,13 @@ frame:
   entry while its two Sir Gawaines are on the screen, `$40` and two OAM
   entries once they are gone). So a find there shows once its screen's
   enemies are dead, and the hero cannot pick up one he cannot see.
+  **In Seamless** a room first met as a neighbour decides on its copy's
+  first frame, against the live count, and the copy's change to it is thrown
+  away; the live game never runs that frame for a room it adopts. So no
+  seam moves the count, and such a find shows only when it happens to be 3.
+  Checked out of Eolis's meat shop onto Trunk `$0B`, its door edited: with
+  the count at 0, `$0C`'s Red Potion (`$5D`, slot 7) was gone at once; at 3
+  it stayed; the count was unchanged both times (SEAMLESS-COMBAT.md).
 - Held state: `$49` Black Onyx (`SpecialItems` `$01`), `$4A` Pendant (`$02`),
   `$57` Magical Rod (`$04`) and `$5C` Zorugeriru's Wing Boots (`Quests` `$08`)
   remove themselves once set; `$5B` Ripasheiku's Mattock too (`Quests` `$10`),
@@ -4131,6 +4186,39 @@ flights on MP):
   past its `LDY`. `Player_CheckIfOnLadder` and
   `Sprites_CheckPlacementInvalidAtY` read properties without it. A hook at
   `$E87C` makes any block solid by where it is (Eolis's edge does).
+- **A screen's edge is a wall to every sprite.** A sprite's sideways move
+  (`Sprites_Something_SomethingAndMoveHoriz`, `$8494`: `Sprite_MoveForwardX`,
+  then `MoveSpriteHorizIfPossible`, `$84C4`) asks
+  `CurrentSprite_CanMoveInDirection` (`$8710`). Going left,
+  `FUN_PRG14__86bd` (`$86BD`) calls an X of `$F1` or more (wrapped past 0)
+  blocked; going right, `Sprites_MoveRight` (`$86A7`) calls it blocked when X
+  plus `SPRITE_HITBOX_WIDTHS` carries. Both reach
+  `Sprites_SetBlockIsMovingResult` (`$86B5`), whose `Blocks_Result` 1 means
+  blocked, whatever its name; inside the screen they test the blocks.
+  `MoveSpriteHorizIfPossible` then snaps X back to the block's edge and
+  returns C set (its comments' "moved" is "blocked"), and
+  `Sprite_MoveHorizAndTurnAroundIfNeeded` (`$8419`) turns the sprite round.
+  Fliers and shots go through `Sprite_Maybe_TurnAroundIfAtScreenEdgeHoriz`
+  (`$8427`), which snaps and turns one at X `$F0` or more, and returns C set
+  then; a shot (`SpriteBehavior_EnemyMagic`, `$A0CB`, 2 pixels a frame)
+  takes that C to remove itself (entity `$FF`). Up and down, Y `$F0` or more
+  is blocked. So no sprite ever straddles a screen's edge, and a shot that
+  misses ends there. In Seamless a seam is such an edge: a neighbouring
+  room's monsters press against it and turn (Eolis `$05`'s two Zozuras spent
+  800 frames between its x 222 and 240 while the hero stood on `$04`), and so
+  do its walking people (the `eolis-town` fixture: Eolis `$02`'s walking
+  woman walked from x 85 to x 240, the seam with his `$01`, and turned back
+  there); SEAMLESS-COMBAT.md.
+- **People who walk.** `BSCRIPTS_NPC_WALKING_MAN` (`$34`) walks forward 60
+  ticks, stands 30 and faces the hero; the walking women
+  (`BSCRIPTS_NPC_WALKING_WOMAN_01` and `_02`, `$44` and `$45`), the King's
+  guard (`$42`) and the lady with the cup (`$41`) move toward the hero for
+  60 to 192 ticks, then turn. Eolis's screens `$01`, `$02`, `$06` and `$07`
+  hold one each, and nine of the towns' screens (area 3). They talk when the
+  hero presses Up touching them (`Player_CheckHandlePressUpOnNPC`, category
+  2 of `SPRITE_COLLISION_HANDLERS`); only category 4, the intro's trigger
+  (`$4F`), talks when touched (`Player_HandleTouchNPC`). The script is the
+  slot's `CurrentSprites_Values`.
 - **Eolis screen 4's tower** (about x 160-208) is drawn in front of sprites:
   a hero or a Zozura behind it disappears. Stage a fight there left of x 150.
 - `Area_LoadScrollData` (`$D127`) decompresses the four neighbours first,
@@ -4273,6 +4361,31 @@ flights on MP):
     `TILES_SHIELDS_START` (`$9104`).
   So a slot no loader of the current gear fills keeps what an earlier one
   left there.
+- **Nothing is drawn past the screen's edge.** `Sprite_Draw_Standard` and
+  `Sprite_Draw_FlippedHoriz` skip a cell when its X carries past 255 or its
+  Y leaves 0-255 (`Sprite_TileInfo_OffsetX` or `_OffsetY` plus the carry not
+  0), so a sprite near an edge loses the cells past it. Appearances drawn
+  left of their origin (the header's X offset): the Maskman's, Sir
+  Gawaine's and the Wolfman's reach 16 pixels left, King Grieve's, the
+  King's and the man in the chair's 8. The other enemies, people and items
+  lie within 16 pixels right of their origin, the big enemies within 32
+  (King Grieve up to 96). In Seamless such a cut at a room's edge shows at
+  the seam.
+- **Actors' own sounds** (`Sound_PlayEffect`, `$D0E4`, from bank 14 outside
+  the hero's touches and hits): a coin drop's `$10`
+  (`Sprites_ReplaceWithCoinDrop`, `$AC75`), Pakukame's `$12` as it spawns,
+  a boss's death `$03` (`SpriteBehavior_BossDeath`), Sugata's flash `$04`,
+  and `$07` in `SpriteBehavior_Garbled3`. `Sound_PlayEffect` only queues the
+  effect by priority (`SoundEffect_SetCurrent`), in RAM. In Seamless a
+  neighbouring room's copy plays them into RAM it throws away.
+- **A screen's enemy tiles follow its slots.** `GameLoop_LoadSpriteImages`
+  (`$C28D`) starts at `$0900` (`CurrentSprite_ResetPPUTileOffset`), loads
+  each occupied slot's image in turn from slot 7 down
+  (`Sprites_LoadImageForCurrentSprite`, `$CDB5`), each where the last ended,
+  and keeps the tile it starts at in `CurrentSprites_PPUOffsets` (`$032C`),
+  which `Sprites_PPUOffset` adds when it is drawn. So an entity's tiles start
+  at a place that depends on what else the screen holds: a sprite moved to
+  another screen's slots would draw with that screen's tiles there.
 - The appearances: the hero's are `TILEINFO_PLAYER_ADDRS` (`$A9F1`), 8 poses
   a gear set (0-2 walking, 3 jumping, 7 climbing), in the order of the armor
   lists; then the weapons' (64-98). Entities' are `TILEINFO_ENTITY_ADDRS`
@@ -4547,7 +4660,7 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   (byte 28).
 
 - **Seams lose nothing** (`fax_seams.c`, #166's slice 0; the plan is
-  `docs/SEAMLESS-COMBAT.md` on PR #173's branch). Two hooks in bank 14's
+  [SEAMLESS-COMBAT.md](SEAMLESS-COMBAT.md)). Two hooks in bank 14's
   sprite loop, neither of which keeps a record:
   - `CurrentSprite_CheckHitPlayer`'s entry (`$890A`) returns at once in a
     neighbouring room's tick, with X the current slot as its first `LDX

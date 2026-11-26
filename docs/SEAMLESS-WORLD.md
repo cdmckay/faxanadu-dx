@@ -167,19 +167,48 @@ more. Initial region decoding and native portal delays remain separate costs.
 Still open (#110 made Seamless the remaster's only view, so these are the
 risks a playtest must cover):
 
-- **Combat across rooms.** Enemies and shots do not migrate between rooms.
-  A neighbouring room's actors run on an isolated machine against a
-  projected hero, clamped to that room's edge, so they gather at the seam he
-  is nearest, and his swing there can hit them in that room's copy (the
-  Pendant fix counts only the live game's hits). This changes encounter timing compared with stock.
+- **Seams** (#166; the plan, toward one big world, is
+  [SEAMLESS-COMBAT.md](SEAMLESS-COMBAT.md)). A seam is still an invisible
+  wall. Enemies, shots and people do not move between rooms. A neighbouring
+  room's actors run on an isolated machine against a projected hero, clamped
+  to that room's edge, so its monsters gather at the seam he is nearest and
+  its walking people wait there (Eolis `$02`'s walking woman, in the
+  `eolis-town` fixture); a shot vanishes at it, and a sprite drawn past it is
+  cut off. Monsters can't hurt him across it, and his swing can't hit them:
+  the copy sets his attack phase to 0, so a hit never lands in it. A spell
+  ends at the seam, and one in flight vanishes when he crosses. A
+  neighbouring room's sounds are lost with its copy. This changes encounter
+  timing compared with stock. Fixed by the plan's slice 0 (Seams lose
+  nothing, #177): the live game's ghost hit at the far side of his own room,
+  the drops a copy took at its edge, and the rooms an item or a person there
+  froze.
+- **Black where no room is.** The camera clamps to the box around the rooms
+  joined to his, so where that box holds no room the view is black, a block
+  with straight edges (out of the Tower of Trunk's door onto `$10`: the top
+  left). 142 such places lie beside a room, in Trunk, the Mist, Branch,
+  Dartmoor and Zenis.
 - **Secrets and breakable terrain** (the Mattock's walls, the path to
   Mascon's fountain): the suite covers the fountain's ladder (the ladder
   fixes' test), breaking Trunk `$0C`'s Mattock wall in its own room (the keys
   test) and the wall's block drawn in a neighbour
-  (`tests/graphics/graphics_fixes.py`); not a wall at a seam, nor whether a
-  broken one stays broken after walking away and back.
+  (`tests/graphics/graphics_fixes.py`). No Mattock wall is at a seam: both
+  breakable blocks (`$63`) are in column 3. A broken one stays broken while
+  the hero stays in the area, since the room's record keeps its
+  `ScreenBuffer`; the original brings it back at every load. After an area
+  load with the path to Mascon open, Trunk `$28` seen from `$27` shows the
+  fountain's stone and no ladder until he crosses, when the stone clears and
+  the ladder drops.
+- **One-in-four items** (the Mattock, Red Potion, Poison, Glove and Ointment
+  of GAME_INTERNALS.md's *Items in the world*) in a room first met as a
+  neighbour are decided in its copy, against a count no seam moves, so they
+  show only when it happens to be 3: Trunk `$0C`'s Red Potion was gone with
+  the count at 0 and kept at 3.
 - **Death and retry**: zone respawn's test dies and comes back in rooms Seamless
-  joined (Eolis, a screen into the Tower of Trunk); not every region.
+  joined (Eolis, a screen into the Tower of Trunk); not every region. A load
+  (a door within the area, a zone respawn) spawns its own room fresh but
+  leaves the rooms beside it as he left them. A hero who dies straddling a
+  seam is cut at it while he dissolves: the death shows the game's own
+  picture over his room.
 - **The ending**: `tests/world/boss_arenas.py` kills the final boss and checks
   the ending reaches the King's room; not the credits.
 - Complete progression and mantra audit; full-map costs and other hosts. No
