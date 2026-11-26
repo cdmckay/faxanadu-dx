@@ -24,9 +24,9 @@ open ground:
 
 1. Monsters, their shots and the people who walk go through a seam whichever
    way they walk, between any two rooms, and are drawn whole while they
-   straddle it. They are dormant until he sees them: out of the view they
-   stand still, so nothing comes at him from a room he can't see, and a
-   monster he outruns gives up. The view is the leash.
+   straddle it. Each is dormant until he first sees it: until then it
+   stands still, so nothing comes at him from a room he hasn't looked into.
+   Once seen, it stays awake.
 2. Monsters near a seam *visit* the live game's sprite loop, so the sword,
    touches, shots and drops work across it, and a neighbouring room's sounds
    play.
@@ -353,20 +353,22 @@ mover whose move would carry it off its room's edge into a joined room goes
 through, whichever way it walks. Once its origin is across, it moves to that
 room's machine.
 
-- **Dormant until seen.** An actor acts only while it is in the view, the
-  424x240 picture he sees (Seamless's camera). Out of it, its behaviour
-  doesn't run: hooks at `Sprites_UpdateBehavior` (`$A66B`) and
-  `CurrentSprite_UpdateState` (`$8BD2`) return at once for it, so it
-  neither moves nor seeks him, and isn't drawn, being out of sight. That
-  holds in the copies and in the live game alike: the view is centred on
-  him, so at a seam up to 50 pixels of his own room's far side are out of
-  it. It wakes as soon as any part of it is in the view, and sleeps again
-  only once it is wholly outside by 16 pixels, so it doesn't flicker
-  between the two at the edge. A shot that leaves the view is removed
-  (entity `$FF`), as the original removes one at its screen's edge, so none
-  waits out of sight to hit him as he walks back. This covers monsters,
-  big ones included, their shots and the people who walk; standing people,
-  items, bread and coins run as now.
+- **Dormant until seen.** An actor is dormant until the first frame any
+  part of it is in the view, the 424x240 picture he sees (Seamless's
+  camera). While dormant, its behaviour doesn't run: hooks at
+  `Sprites_UpdateBehavior` (`$A66B`) and `CurrentSprite_UpdateState`
+  (`$8BD2`) return at once for it, so it neither moves nor seeks him, and
+  isn't drawn, being out of sight. That holds in the copies and in the live
+  game alike: the view is centred on him, so at a seam up to 50 pixels of
+  his own room's far side are out of it. **Once seen, it stays awake**, out
+  of the view too, until it dies or a load or an area change refreshes its
+  room: a monster he outruns keeps coming. Its wake is a bit per slot in
+  Seamless's record (version 5), and goes with the slot through a seam.
+  This covers monsters, big ones included, their shots and the people who
+  walk; standing people, items, bread and coins run as now.
+- **A shot that leaves the view is removed** (entity `$FF`) once it is
+  wholly outside it by 16 pixels, as the original removes one at its
+  screen's edge, so none hits him that he couldn't see coming.
 - **The edge.** Hooks at the edge checks, `FUN_PRG14__86bd` (left),
   `Sprites_MoveRight` (right) and `Sprite_Maybe_TurnAroundIfAtScreenEdgeHoriz`
   (`$8427`, the fliers' and the shots'), make a seam passable for a mover
@@ -442,18 +444,19 @@ hero sees them." So:
   copies is in view only near a corner of four rooms; elsewhere a mover
   going through it is out of sight, so it matters there and for movers
   following him.
-- **Dormant until seen** (mechanism 1, above). An actor out of the view
+- **Dormant until seen** (mechanism 1, above). An actor he has never seen
   stands still, in his room or a neighbour's. Standing still rather than
   wandering: out of the view nobody can tell the difference, and a copy's
   monsters steer by the hero, so wandering blind would need a made-up hero
   that the game's behaviours would chase. Only an awake actor goes through a
   seam.
-- **The view is the leash.** One that leaves the view goes dormant again
-  where it stands, so a monster he outruns gives up there, and one that
-  keeps pace in view follows him through the seams. Walking back, he finds
-  it where he left it, and it wakes as he sees it. Beyond that nothing
-  bounds it but what bounds everything in the original: a load refreshes the
-  rooms joined to the one loaded, and an area change empties them all.
+- **Once seen, it stays awake** (Cameron: "once they see you they should
+  stay alive"). A monster he has seen keeps coming after he outruns it, and
+  follows him through the seams. What bounds it is what bounds everything
+  in the original: it dies, a load refreshes the rooms joined to the one
+  loaded, or an area change empties them all. And only the rooms next to his
+  tick, so an awake monster that falls two rooms behind him stands still
+  until he comes back.
 - **One limit is left: a full room.** A room takes no mover while it holds 5
   actors, the most any list holds, dormant ones included. That is also where
   the live game starts to lag, as Eolis's town does. The seam is a wall for
@@ -462,26 +465,27 @@ hero sees them." So:
 
 **Its honest cost:**
 
-- **Encounters change.** A monster that keeps pace with him in view follows
-  him room after room until it dies, a load comes, or he outruns it and it
-  drops out of the view. A slow walk through a busy stretch can still gather
-  a few, up to 5 in his room. What he can't see never comes for him, so
-  walking away from a fight still ends it, a little further out than the
-  original's screen's edge. This needs a playtest.
+- **Encounters change the most.** A monster he has seen follows him room
+  after room until it dies, a load comes, or he outruns it by two rooms. A
+  walk through a busy stretch can gather a train of what he has seen, up to
+  5 in his room. The original let him escape everything by walking off a
+  screen; here only a door does, or speed. What he hasn't seen never comes
+  for him, so nothing piles on him from rooms he hasn't looked into. This
+  needs a playtest.
 - **The view is a new edge.** The original ran everything on his screen;
-  here an actor up to 50 pixels inside his own room's far side, out of the
-  view, stands still until he turns toward it. Nobody sees it stand, but a
-  monster there waits instead of coming.
-- **Towns get livelier.** The people who walk wander between the rooms in
-  view and come toward him, and stand still out of it. Any shop puts them
-  home (an area change).
+  here an actor up to 50 pixels inside his own room's far side, never yet in
+  the view, stands still until he turns toward it. Nobody sees it stand, but
+  a monster there waits instead of coming.
+- **Towns get busier.** The people who walk, once seen, come toward him from
+  the rooms beside his and gather round him for a while, then wander off.
+  Any shop puts them home (an area change).
 - **More moves.** The live game gives actors away as well as takes them, and
   people wander into rooms whose CHR has no tiles for them, so tiles from
   home are drawn more often.
 - **Size.** About 100 lines over the one-way moves (sending from the live
   game, people, the cap, the refresh), less the leash and the homes it
-  needed, and about 80 more for dormancy: two hooks, the view test with its
-  margin, and the shots' removal.
+  needed, and about 80 more for dormancy: two hooks, the view test, the
+  wake bits, and the shots' removal.
 
 It goes in **slice 1**, right after slice 0. It removes the tell a player
 sees most, things waiting at invisible lines in every town and most fights,
@@ -645,11 +649,12 @@ keeps the view over places that hold a room:
   and fight across the seam as visitors until then.
 - **One-way moves, or a leash at a seam** (this plan's first version). Each
   keeps an invisible wall in view: see "Both ways, and dormant until seen".
-- **No leash at all** (its second version). Every room next to his ran its
-  monsters against him unseen, so they came at him from rooms he couldn't
-  see and piled up on him, and one followed him until it died or a load
-  came.
-- **Wandering out of the view** instead of standing still. Nobody sees the
+- **Every actor awake** (its second version). Every room next to his ran its
+  monsters against him unseen, so they came at him from rooms he hadn't
+  looked into and piled up on him.
+- **Dormant whenever out of the view**, so a monster he outruns gives up.
+  Cameron's call is that one that has seen him stays after him.
+- **Wandering until seen** instead of standing still. Nobody sees the
   difference, and a copy's monsters steer by the hero: wandering would need
   a made-up hero, which the game's hero-relative behaviours would chase.
 - **Homes for every monster.** The first version kept each slot's home room
@@ -676,12 +681,12 @@ visitor. 5 is the most any list holds, keeps 3 slots for shots and drops,
 and is where the live game starts to lag. A visitor with no slot that frame
 waits a frame.
 
-**A monster that leaves its home room.** It goes where it walks while he
-sees it, and once out of the view it stands still where it is, dormant, until
-he sees it again, a load refreshes the rooms joined to the one loaded, or an
-area change empties them all. Killed away from home, it stays dead until
-then too, as every kill does in Seamless. Its home room does not spawn it
-again meanwhile. The view is its leash: nothing he can't see comes for him.
+**A monster that leaves its home room.** Only one he has seen moves at all.
+It goes where it walks, out of the view too, and stays there until a load
+refreshes the rooms joined to the one loaded, or an area change empties them
+all. Killed away from home, it stays dead until then too, as every kill does
+in Seamless. Its home room does not spawn it again meanwhile. One left two
+rooms behind stands still, since only the rooms next to his tick.
 
 **Save states, rewind and Guru travel mid-crossing.** A move happens between
 frames, whole, so a state always has a mover in exactly one room; one
@@ -709,13 +714,12 @@ can't hurt him or be hurt, gather at the seam, and hit him as he steps in
 (#130); a spell dies at the seam.
 
 Afterwards a seam is open ground. Harder: monsters and their shots across a
-seam hurt him; a monster that keeps pace with him in view follows him until
-it dies, a load comes, or he outruns it; a bigger fight forms where two
-rooms' monsters meet in view. Easier: he strikes first across a seam instead
-of walking into a waiting pile; spells reach the monsters he can see;
-nothing out of the view comes for him, so walking away still ends a fight;
-a door still ends everything. Towns are livelier: their walkers wander
-between rooms in view and come to him. Bosses are as in the original. The first fight to play is Eolis's
+seam hurt him; a monster he has seen follows him until it dies, a load
+comes, or he outruns it by two rooms; a bigger fight forms where two rooms'
+monsters meet. Easier: he strikes first across a seam instead of walking
+into a waiting pile; spells reach the monsters he can see; nothing he hasn't
+seen comes for him; a door still ends everything. Towns are livelier: their
+walkers wander between rooms and come to him. Bosses are as in the original. The first fight to play is Eolis's
 Zozuras; then Eolis's town, Trunk's Hornets (fliers), the Mist's Charrons
 (fireballs) and Sugatas, Rokusutahn (staying home), and Dartmoor and Zenis,
 where most big enemies stand by a seam.
@@ -732,9 +736,9 @@ write, a room's side of the hero, calls at a tick, a crossing and a load,
 and the drawn-whole cells to paint. The camera is `fax_world.c`'s own.
 `fax_world.c` is about 630 lines now.
 
-- **Encounters change the most:** followers that keep pace in view, up to 5
-  in his room, livelier towns, and actors standing still out of the view,
-  his own room's far side included. They need a playtest, not only tests
+- **Encounters change the most:** followers once seen, trains of up to 5,
+  busier towns, and actors standing still until first seen, his own room's
+  far side included. They need a playtest, not only tests
   (see "Both ways, and dormant until seen").
 - **The second pass runs the game's interaction code on slots it never held
   together.** The checks read the slot, the hero and the spell, not the room,
@@ -766,7 +770,7 @@ twice its estimate (see "What it costs").
 | Slice | What it does | Its end-to-end test | Size |
 |---|---|---|---|
 | 0. Seams lose nothing (**done**, #177) | Copies stop touching the hero (no lost drops, no frozen rooms). The weapon's reach in 16 bits (no ghost hit; the original keeps it) | A coin at room 5's edge stays, and he takes it walking in; the Dragon Slayer there leaves room 5 ticking; a swing at room 4's x 4 leaves a Zozura at its x 236 alone, and the original's kills it | Small: estimated at 100 lines, built in about 200 |
-| 1. Seams are open ground | Monsters, shots and walking people go through side-by-side seams both ways, between any two rooms, up to 5 actors a room; dormant out of the view, waking as he sees them (a shot leaving it is removed); drawn whole across a seam; tiles from home; a load refreshes the rooms joined to it; record version 5 | Eolis's walking woman walks from room 2 into his room 1 and out; a room 5 Zozura follows him through room 4 into room 3, and one he walks past leaves room 4 for room 5; a Zozura out of the view stands still, wakes as it comes into view, and goes dormant once he outruns it; monsters in two rooms out of the view don't gather at him; a missed fireball flies on through a seam, and one leaving the view is gone; a room holding 5 keeps its seam a wall; a straddling Zozura's pixels on both sides of the seam; a door's load brings the rooms beside it back fresh; a person who talks when touched, at a neighbour's edge, leaves its room ticking (slice 0's hook); save and load mid-crossing | Large, about 730 |
+| 1. Seams are open ground | Monsters, shots and walking people go through side-by-side seams both ways, between any two rooms, up to 5 actors a room; dormant until first seen, then awake for good (a shot leaving the view is removed); drawn whole across a seam; tiles from home; a load refreshes the rooms joined to it; record version 5 | Eolis's walking woman walks from room 2 into his room 1 and out; a room 5 Zozura follows him through room 4 into room 3, and one he walks past leaves room 4 for room 5; a Zozura never seen stands still, wakes the first frame it is in view, and keeps coming after it leaves the view; unseen monsters in two rooms don't gather at him; a missed fireball flies on through a seam, and one leaving the view is gone; a room holding 5 keeps its seam a wall; a straddling Zozura's pixels on both sides of the seam; a door's load brings the rooms beside it back fresh; a person who talks when touched, at a neighbour's edge, leaves its room ticking (slice 0's hook); save and load mid-crossing | Large, about 730 |
 | 2. Fights across a seam | The visitors' pass, side by side: the sword, touches, shots on him and his shield, bread and coins; a neighbouring room's sounds; Sugata's flash | From room 4, he kills a room 5 Zozura: its experience and MP, its death in room 5, its coin and the coin's sound; a Zozura straddling the seam hurts him; he takes a coin across it; a Sugata across a Mist seam flashes him in reach | Medium, about 470 |
 | 3. Spells fly on | The spell's side, walls across, the view's edge, its picture, visitors in its path, kept through a crossing | Deluge ends at a wall across a seam and kills a Zozura across one; Fire still flickers; save and load mid-flight | Medium, about 230 |
 | 4. The view shows only rooms | The camera keeps the view over rooms, gliding where its limits change | Walking the Tower of Trunk from `$10`, and a Mist stretch with an empty corner: on no frame does the view lie over an empty place (`fax_world`'s camera against `fax_world_room`'s places), and it moves a few pixels a frame at most | Medium, about 150 |
