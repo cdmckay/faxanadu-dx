@@ -17,7 +17,9 @@ sound     Before Conflate's Guru (died into his temple from Eolis's gate), Up:
           from the next routine's LDA #$14), and $10, $10, $01, $01 with the
           fix: the table's own second byte.
 ointment  The Execution Hood's shot in the Fortress of Zenis (Block's fixture,
-          its other actors sent away) at the Small Shield's height, the hero
+          its other actors sent away, and the neighbouring rooms' in
+          Seamless's record, whose monsters come through the seams) at the
+          Small Shield's height, the hero
           not blocking. Without Ointment the shield lets half its 8 HP
           through, with knockback, in both. With Ointment running, the
           original still lets 4 through and knocks him back; with the fix,
@@ -52,7 +54,7 @@ TESTS = Path(__file__).resolve().parents[1]
 for folder in ("e2e", "block", "travel"):
     sys.path.insert(0, str(TESTS / folder))
 import fax_e2e  # noqa: E402
-from fax_e2e import chunks, fixture, parse_args  # noqa: E402
+from fax_e2e import chunks, fixture, parse_args, quiet_neighbours  # noqa: E402
 import block  # noqa: E402,F401  (registers the fixture "block-hood-cast")
 import harness  # noqa: E402
 import guru_travel  # noqa: E402,F401  (registers the fixture "travel-conflate-temple")
@@ -190,7 +192,7 @@ def main():
                 (HP lost, knocked back, the shot gone)."""
                 state = out / f"{name}.cycstate"
                 fixture(cast, state, {**alone, SPRITE_Y + slot: y, SELECTED_SHIELD: SMALL, HP: 0x50,
-                                      DURATION_OINTMENT: ointment, IFRAMES: 0})
+                                      DURATION_OINTMENT: ointment, IFRAMES: 0}, quiet_neighbours(cast))
                 tag = f"{name}-{'original' if original else 'dx'}"
                 rams = g.headless(state, [], 100, original, picture=out / f"shot-{tag}.png")
                 g.shots.append(f"shot-{tag}.png")
@@ -218,7 +220,7 @@ def main():
                            SPRITE_Y + copy: SHIELD_HEIGHT, POS_X: ON_THE_FLOOR, SELECTED_SHIELD: SMALL, HP: 0x50,
                            DURATION_OINTMENT: 0xFF, IFRAMES: 0})
             two = out / "two-shots.cycstate"
-            fixture(cast, two, writes)
+            fixture(cast, two, writes, quiet_neighbours(cast))
             between = out / "between-hits.cycstate"
 
             def hits(rams):

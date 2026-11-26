@@ -192,12 +192,13 @@ def main():
 
         def swing(name):
             """Swing the Long Sword from x 4 facing left, a Zozura at x 236 in
-            slot 7, 232 pixels behind him. Returns the Zozura's entity, HP and
-            hit counter at each read until the swing ended, and the experience
-            before and after."""
+            slot 7, 232 pixels behind him, facing him (with Seams, slice 1,
+            one walking right would go on through the seam into room 3).
+            Returns the Zozura's entity, HP and hit counter at each read until
+            the swing ended, and the experience before and after."""
             writes = {HERO_X: 4, PLAYER_FLAGS: 0, PLAYER_CUR_WEAPON: LONG_SWORD, SELECTED_WEAPON: LONG_SWORD,
                       HP: 0x50, WEAPON_Y: hero_y + 8, RANGE_X: LONG_SWORD_REACH[0], RANGE_Y: LONG_SWORD_REACH[1],
-                      ENTITIES + 6: EMPTY, SPRITE_X + 7: 236}
+                      ENTITIES + 6: EMPTY, SPRITE_X + 7: 236, FLAGS + 7: live[FLAGS + 7] & 0xFE}   # facing left
             path = out / f"{name}.cycstate"
             fixture(source, path, writes, {"faxanadu.world": empty_room5})
             exp0 = None
@@ -232,6 +233,7 @@ def main():
             state = tcp("seams_state")
             assert all(e == ZOZURA and hp == zozura_hp and c == 0 for e, hp, c, _ in seen), seen
             assert exp1 == exp0, (exp0, exp1)
+            assert state["refused"] > before, (state, seen)
             assert state["refused"] > before, state
             assert state["last_weapon_x"] in (4 - 16, 4 - 24) and state["last_entity"] == ZOZURA, state
             assert 220 <= state["last_sprite_x"] <= 240, state

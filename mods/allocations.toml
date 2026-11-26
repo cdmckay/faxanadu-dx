@@ -1023,4 +1023,20 @@ rom = []
 # them, with C set; handles the second only in Seamless's neighbouring rooms'
 # ticks (fax_world_ticking()), returning at once, so the touch hooks behind
 # it (Kept finds', the map's and Found items' at $88FB, Block's at $8999)
-# never fire there. No ROM, no read overrides, no save-state record.
+# never fire there. No ROM, no read overrides.
+# Slice 1, seams are open ground, hooks in bank 14 Sprites_UpdateAll's entry
+# ($8000) and its loop's end ($8049), Sprites_UpdateBehavior's ($A66B) and
+# CurrentSprite_UpdateState's ($8BD2) entries, the edge and floor tests at
+# $86BD, $86A7, $873A (inside CurrentSprite_CanMoveInDirection), $842A
+# (Sprite_Maybe_TurnAroundIfAtScreenEdgeHoriz) and $855E
+# (Sprites_CheckPlacementInvalidAtY); in bank 15 Sprite_Draw_Standard's
+# ($F0EC), Sprite_Draw_FlippedHoriz's ($F181) and Screen_LoadSpriteInfo's
+# ($C1B4) entries. No other feature hooks any of them. Handles the entries
+# of UpdateBehavior and UpdateState only for a sleeper not yet seen (it
+# stands still), and the edge and floor tests only for an awake mover at or
+# past a side, leaving Blocks_Result, Arg_PixelPosX/Y and the registers as
+# the game's own test does; the others observe (a draw's cells, a load).
+# Between frames it writes rooms' sprite slots: moves (every
+# CurrentSprites_* byte to a free slot of the room entered, its old slot
+# $FF) and shots out of the view ($FF), in the live game by poke. Its state
+# is a block in each room of Seamless's record ("faxanadu.world", version 5).

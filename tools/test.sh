@@ -256,6 +256,7 @@ E2E=(
   "controls     tests/controls/controller_layout.py --parts"
   "back-out     tests/controls/b_backs_out.py --parts"
   "seams        tests/seams/seams_lose_nothing.py --parts"
+  "open-ground  tests/seams/open_ground.py --parts"
 )
 # At most E2E_JOBS runs play at once (default: one a hardware thread; 0: all
 # at once): a game is uncapped and takes a whole thread, and more of them

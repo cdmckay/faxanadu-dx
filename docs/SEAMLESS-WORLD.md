@@ -109,6 +109,24 @@ takes it then. Before, the hero projected to that edge took drops there and
 their gold was lost with the copy, and an item or a person who talks when
 touched made every tick of the room fail, freezing it.
 
+**Seams are open ground** (`fax_seams.c`, #166's slice 1). Monsters, their
+shots and the people who walk go through side-by-side seams both ways,
+between any two rooms, the live game's included: an actor whose origin
+crosses moves, every byte of its slot, to a free slot of the room it entered,
+between frames (`fax_seams_step()`, called once the neighbours have ticked).
+Each stands still until the view first comes within 16 pixels of it, in his
+room or a neighbour's, and stays awake from then on, so what he hasn't seen
+never comes for him and what has seen him follows; a shot wholly out of the
+view by 16 pixels goes. A room takes no mover once it holds 5 actors. Seams
+keeps the cells an actor draws past its room's side, and `actors()` paints
+them in the room joined there; one that came from a room with no tiles for
+it is painted from its home room's CHR. The hero a neighbour's actors see is
+clamped to its x 0-255 (240 before). A load within the area (a door, a zone
+respawn, the original's scroll into an arena: `Screen_LoadSpriteInfo` in
+play) forgets every other room of the area, so each comes back fresh from
+its list as it comes near. Each room keeps Seams' 384-byte block in its
+record; the record is version 5.
+
 The original player starts a right scroll when his right edge crosses at
 x=241. This adapter retains the source until his origin wraps, preserving
 continuous position. Wrapped floor/ladder samples read the correct neighboring
@@ -148,6 +166,7 @@ All automated launches were hidden and muted with native saves disabled.
 | Fixed view (#107) | `tests/world/fixed_view.py`, in the suite: the canvas and picture are 424x240 at 424x240, 1920x1080 and 300x600 windows; at 1920x1080 the window shows them at 4x (1696x960) with black around; F4's overview grows to the region and F4 again restores 424x240. The adaptive Fit it replaced was checked at 1536x720, 600x1200 and 3840x720 |
 | Boss arenas (#110) | `tests/world/boss_arenas.py`, in the suite, a part per boss's screen: beside it, it is on no map; in by the original's scroll (or a door, for walled King Grieve and the final boss), the room alone with the boss handler running; the boss's slot emptied, the handler ends and the room joins its neighbour; out again by a handoff. The final boss's kill begins the ending, which reaches the King's room |
 | Live status bar (#132) | `tests/world/live_status_bar.py`, in the suite, read off the presented picture's pixels (the band's gold digits, and its bars' fill): buying the Elixir at Eolis's tool shop, every frame of the count-down shows the gold the game had a frame before, every amount from 700 down to 380, and every frame's band is the game's own picture's; the King's gift counts 0 up to 3000 the same way; at Eolis's Guru the bars read 32 HP and 5 MP, and 80 and 80 during his first line. Without the fix all three fail. A probe through the shop's opening, a Start pause and the Select menu found the band equal to the game's own on every frame |
+| Open seams (#166, slice 1) | `tests/seams/open_ground.py`, in the suite, a part each: unseen Zozuras in two rooms stand still 300 frames; one wakes on the first read within 16 pixels of the view and keeps coming once out of it; Eolis's Zozuras follow him into `$05` and back through `$04` into `$03`; the town's walking woman walks into his room, the walking man in and out; a fireball flies through a seam and goes once out of the view; a room of 5 keeps its seam a wall; a straddling Zozura's pixels on both sides of the seam; a respawn's load brings room 2 back fresh; the intro's trigger by a neighbour's edge leaves it ticking; a save mid-crossing replays alike in two fresh games |
 | Shared CIRAM API | Invalid bounds/NULL and isolated upload refused; upload/restore succeeds; serialized complete machine unchanged after the probe |
 | Catalog / prepared helper | Feature activation without CLI override; hidden helper loads and pauses all prepared states; owner configuration restored to normal audio |
 
@@ -168,20 +187,18 @@ Still open (#110 made Seamless the remaster's only view, so these are the
 risks a playtest must cover):
 
 - **Seams** (#166; the plan, toward one big world, is
-  [SEAMLESS-COMBAT.md](SEAMLESS-COMBAT.md)). A seam is still an invisible
-  wall. Enemies, shots and people do not move between rooms. A neighbouring
-  room's actors run on an isolated machine against a projected hero, clamped
-  to that room's edge, so its monsters gather at the seam he is nearest and
-  its walking people wait there (Eolis `$02`'s walking woman, in the
-  `eolis-town` fixture); a shot vanishes at it, and a sprite drawn past it is
-  cut off. Monsters can't hurt him across it, and his swing can't hit them:
-  the copy sets his attack phase to 0, so a hit never lands in it. A spell
-  ends at the seam, and one in flight vanishes when he crosses. A
-  neighbouring room's sounds are lost with its copy. This changes encounter
-  timing compared with stock. Fixed by the plan's slice 0 (Seams lose
-  nothing, #177): the live game's ghost hit at the far side of his own room,
-  the drops a copy took at its edge, and the rooms an item or a person there
-  froze.
+  [SEAMLESS-COMBAT.md](SEAMLESS-COMBAT.md)). Since slice 1 monsters, shots
+  and walking people go through side-by-side seams, dormant until first
+  seen, and are drawn whole across them. Still open: monsters can't hurt
+  him across a seam, and his swing can't hit them there (the copy sets his
+  attack phase to 0, so a hit never lands in it), until they cross; a spell
+  ends at the seam, and one in flight vanishes when he crosses; a
+  neighbouring room's sounds are lost with its copy; seams one above the
+  other are walls. Encounters change most: a monster he has seen follows
+  him room after room, Eolis's Zozuras into its town, and towns are busier;
+  that wants a playtest. Fixed by slice 0 (Seams lose nothing, #177): the
+  live game's ghost hit at the far side of his own room, the drops a copy
+  took at its edge, and the rooms an item or a person there froze.
 - **Black where no room is.** The camera clamps to the box around the rooms
   joined to his, so where that box holds no room the view is black, a block
   with straight edges (out of the Tower of Trunk's door onto `$10`: the top
@@ -205,10 +222,10 @@ risks a playtest must cover):
   the count at 0 and kept at 3.
 - **Death and retry**: zone respawn's test dies and comes back in rooms Seamless
   joined (Eolis, a screen into the Tower of Trunk); not every region. A load
-  (a door within the area, a zone respawn) spawns its own room fresh but
-  leaves the rooms beside it as he left them. A hero who dies straddling a
-  seam is cut at it while he dissolves: the death shows the game's own
-  picture over his room.
+  (a door within the area, a zone respawn) spawns its own room fresh and,
+  since slice 1, every other room of the area too, as each comes near. A
+  hero who dies straddling a seam is cut at it while he dissolves: the death
+  shows the game's own picture over his room.
 - **The ending**: `tests/world/boss_arenas.py` kills the final boss and checks
   the ending reaches the King's room; not the credits.
 - Complete progression and mantra audit; full-map costs and other hosts. No
