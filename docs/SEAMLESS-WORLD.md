@@ -30,11 +30,20 @@ top 32 lines, is the one exception (#113, #117): it and the Elixir left of its
 `M:` and `P:` bars (`fax_charges.c`) are centred together, so the band's
 columns start at x 92, 8 pixels right of the room's, and the Elixir is at x
 76-91 (`fax_world_hud_x`).
-The host scales the view to the window, keeping its shape, as its Display
-settings say: with IntegerScale (the default), the largest whole multiple
-that fits, so 3x, 6x and 9x fill 720p, 1440p and 4K, and 1080p shows 4x,
-1696x960, with bars. #107's sharp 4.5x at 1080p (nearest-neighbour up to 5x,
-then a smooth scale down) needs a hook in the host, which has none for it.
+The host scales the view by its one fixed rule (#107), whatever its Display
+settings say: Seamless asks for it (`sharp_scale` in `cyc_host_extras.h`,
+the rule in the engine's `cyc_present_fit.h`), so `IntegerScale` and
+`LinearFilter` apply only to the original's 256x240 picture, the remaster
+off. The rule: the largest scale that fits the window's drawable, in pixels
+(a HiDPI window has twice its points), keeping 424:240, with bars only where
+the window's shape differs. A whole-number scale is nearest-neighbour: 3x,
+6x and 9x at 720p, 1440p and 4K (1272x720, 2544x1440, 3816x2160, so 4, 8
+and 12 pixels of bar each side). Any other is sharp: nearest-neighbour up to
+the next whole multiple, then linear down to the fit. At 1080p that is 4.5x,
+1908x1080: the view drawn at 5x (2120x1200), then down. Each pixel keeps its
+exact colour but for one blended output pixel at most at each edge, where
+the 4.5-pixel grid cuts it (every other edge, at 4.5x), as Shovel Knight
+scales. A window smaller than the view shows all of it, linearly smaller.
 F4 toggles a connected-map overview, capped at the preview's 4096x2048
 presentation limit. Empty space outside the connected geometry remains
 empty; terrain is not stretched or repeated to fill it.
@@ -163,7 +172,7 @@ All automated launches were hidden and muted with native saves disabled.
 | Town palette | Eight connected Eolis rooms match native terrain samples; stale white instance palettes cannot recolor terrain. Static setup probes were neutral; the actual death/retry route reproduces stale neighboring NPC-room palettes in the old build, and the candidate corrects them with an identical complete guest core state |
 | Sprite palette | Actual death/retry A/B preserves actor OAM, CHR and complete guest core state. All 357 changed sprite pixels in two affected NPC rooms map from stale building colors to the native outdoor palette; poisoning neighboring sprite palettes no longer changes NPC or enemy colors |
 | Current-build restore | Supported right seam: complete final state and rendered picture reproduce exactly after save/load; native/interpreter state and rolling trace match |
-| Fixed view (#107) | `tests/world/fixed_view.py`, in the suite: the canvas and picture are 424x240 at 424x240, 1920x1080 and 300x600 windows; at 1920x1080 the window shows them at 4x (1696x960) with black around; F4's overview grows to the region and F4 again restores 424x240. The adaptive Fit it replaced was checked at 1536x720, 600x1200 and 3840x720 |
+| Fixed view (#107) | `tests/world/fixed_view.py`, in the suite, with config.ini's IntegerScale and LinearFilter both on: the canvas and picture are 424x240 at 424x240, 1920x1080, 1280x720, 1080x1920 and 300x600 windows, and what each presents (the ui layer, the whole drawable) is checked pixel by pixel against the picture: 1920x1080 sharp 4.5x, 1908x1080 at (6, 0), 1,628,160 pixels exactly their picture pixel's colour and the other 432,480 between their two; 1280x720 3x nearest, every pixel; 1080x1920 letterboxed, sharp at 2.55x; 300x600 the whole view, linearly smaller; black bars around each. F4's overview grows to the region and is presented whole at 1920x1080; F4 again restores 424x240. With the remaster off, the original's 256x240 at 1920x1080 is IntegerScale's 4x, 1024x960. The engine's `present_fit_test` (also in the suite) checks the fit at #107's sizes and every drawable up to 4K. The adaptive Fit it replaced was checked at 1536x720, 600x1200 and 3840x720 |
 | Boss arenas (#110) | `tests/world/boss_arenas.py`, in the suite, a part per boss's screen: beside it, it is on no map; in by the original's scroll (or a door, for walled King Grieve and the final boss), the room alone with the boss handler running; the boss's slot emptied, the handler ends and the room joins its neighbour; out again by a handoff. The final boss's kill begins the ending, which reaches the King's room |
 | Live status bar (#132) | `tests/world/live_status_bar.py`, in the suite, read off the presented picture's pixels (the band's gold digits, and its bars' fill): buying the Elixir at Eolis's tool shop, every frame of the count-down shows the gold the game had a frame before, every amount from 700 down to 380, and every frame's band is the game's own picture's; the King's gift counts 0 up to 3000 the same way; at Eolis's Guru the bars read 32 HP and 5 MP, and 80 and 80 during his first line. Without the fix all three fail. A probe through the shop's opening, a Start pause and the Select menu found the band equal to the game's own on every frame |
 | Open seams (#166, slice 1) | `tests/seams/open_ground.py`, in the suite, a part each: unseen Zozuras in two rooms stand still 300 frames; one wakes on the first read within 16 pixels of the view and keeps coming once out of it; Eolis's Zozuras follow him into `$05` and back through `$04` into `$03`; the town's walking woman walks into his room, the walking man in and out; a fireball flies through a seam and goes once out of the view; a room of 5 keeps its seam a wall; a straddling Zozura's pixels on both sides of the seam; a respawn's load brings room 2 back fresh; the intro's trigger by a neighbour's edge leaves it ticking; a save mid-crossing replays alike in two fresh games |

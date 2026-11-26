@@ -670,25 +670,47 @@ What a feature can rely on, and the traps:
   window (#107), so at scale 1 its window is the picture's own size. When it
   fitted its picture to the window, it needed `--world-size 426x240` for
   that: 70 million instructions a frame at scale 1 against 82 at 3.
-- **The host scales a game's picture; the game cannot.** The picture a
-  game's `present` returns becomes a texture of its size, drawn with
-  `SDL_RenderSetLogicalSize` at that size, so SDL fits it to the window with
-  bars. The player's `[Display]` settings choose how: `IntegerScale` (on by
-  default) takes the largest whole multiple that fits, once the window is at
-  least the picture's size, and `LinearFilter` (off) filters the whole
-  texture. So Seamless's 424x240 is 4x (1696x960) at 1080p, and 3x, 6x and
-  9x fill 720p, 1440p and 4K. The game has no hook between the texture and
-  the window, so a two-filter scale such as sharp bilinear (nearest up to a
-  whole multiple, then linear down) needs the host to change. Nor can a game
-  hand over a picture already scaled to the window: the host also sizes the
-  window as the picture times `WindowScale` on F11 and on every Display
-  change (`apply_settings` in `cyc_sdl.c`), and every screenshot of the
-  `picture` layer would be window-sized.
+- **The host scales a game's picture; the game asks how.** The picture a
+  game's `present` returns becomes a texture of its size. By default the
+  window draws it with `SDL_RenderSetLogicalSize` at that size, so SDL fits
+  it to the window with bars, and the player's `[Display]` settings choose
+  how: `IntegerScale` (on by default) takes the largest whole multiple that
+  fits, once the window is at least the picture's size, and `LinearFilter`
+  (off) filters the whole texture. That would make Seamless's 424x240 4x
+  (1696x960) at 1080p. So the engine (our fork, #107) lets a game ask for
+  one fixed scale instead, frame by frame: `sharp_scale` in
+  `cyc_host_extras.h`, which `cyc_extras.c` answers with
+  `fax_world_composed()`, true while the remaster's view is the picture.
+  The rule is `cyc_present_fit.h`'s: the largest fit in the drawable's
+  pixels, nearest-neighbour at a whole multiple, and otherwise sharp
+  (nearest-neighbour into a target texture at the next whole multiple, then
+  that linearly down to the fit). `draw_fixed()` in `cyc_sdl.c` draws it in
+  the drawable's pixels, with the logical size off meanwhile, as the runtime
+  menu draws; integer scaling stays off for it, so the logical size SDL
+  keeps for the overlays and the mouse letterboxes the same rectangle. The
+  settings still apply to the original's picture (the remaster off). A game
+  cannot do this itself by handing over a picture already scaled to the
+  window: the host also sizes the window as the picture times `WindowScale`
+  on F11 and on every Display change (`apply_settings`), and every
+  screenshot of the `picture` layer would be window-sized.
+- **A window's `ui` screenshot (TCP `screenshot layer ui`, and the window's
+  `--present-out`) is the whole drawable**, bars and all, read with the
+  logical size off. Before #107 it was read with the logical size on, and
+  sdl2-compat (SDL3, which the Nix build links) reads that as the logical
+  letterbox alone: the picture landed at the PNG's top left and the rest of
+  the buffer was never written (black when fresh, garbage when reused). That
+  is why the hidden window seemed to draw its picture at the top left (#112);
+  it was centred all along. Real SDL2 (the Windows build) read the whole
+  window either way.
 - In the hidden test window (`SDL_VIDEODRIVER=dummy`, so SDL's software
-  renderer), the `ui` layer of a TCP `screenshot` (what the window presents)
-  shows the scaled picture at the window's top left, not centred, in the
-  stock view as in Seamless (`tests/world/fixed_view.py`). TCP `window_size`
-  resizes that window, and the host follows it as it does a real one.
+  renderer), TCP `window_size` resizes the window, and the host follows it
+  as it does a real one; `video` reports the drawable. The software linear
+  filter steps across a row in 16.16 fixed point, rounded down, so a
+  sample centred exactly on (or a hair past) an edge between two picture
+  pixels takes a little of the earlier one: at 2.55x a few pixels do, never
+  at 4.5x, where no centre comes within an 18th of a texel of an edge
+  (`tests/world/fixed_view.py`'s `samples()`). Metal and OpenGL windows
+  matched the same model at 1920x1080 and 1280x720 drawables.
 - **24 windows run faster from one program file than from 24 copies.** Each
   copy is its own page cache, so its own copy of the code in the L3: from
   hard links to one file, 24 windows ran 10% more instructions a cycle (2.75

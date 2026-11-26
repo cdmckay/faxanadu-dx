@@ -7,6 +7,10 @@ void fax_world_step(void);
 bool fax_world_option(const char *name,const char *value);
 void fax_world_event(const void *event);
 const uint32_t *fax_world_present(int *w,int *h,const uint32_t *native);
+/* The last fax_world_present returned Seamless's view (the remaster on):
+ * the window then scales the picture by the host's one fixed rule
+ * (cyc_host_extras.h sharp_scale), whatever the player's Display settings. */
+bool fax_world_composed(void);
 void fax_world_tcp_setup(void);
 /* Where the active room's top-left (native column 0, the first line under
  * the HUD) sat in the last picture fax_world_present composed of the world;

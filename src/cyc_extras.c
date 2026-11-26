@@ -243,6 +243,10 @@ static const uint32_t *present(void *ctx,int *w,int *h) {
     picture=fax_files_present(fax_title_present(fax_speaker_present(fax_recharge_present(fax_quests_banner_present(fax_slain_present(fax_banner_present(picture,w,h),w,h),w,h),w,h),w,h),w,h),w,h);
     return fax_quests_log_present(fax_map_present(fax_shops_present(picture,w,h),w,h),w,h);
 }
+/* Seamless's fixed 424x240 view is scaled by the host's one rule (#107):
+ * the largest fit, sharp at 1080p's 4.5x. The original's picture (the
+ * remaster off) keeps the player's Display settings. */
+static bool sharp_scale(void *ctx) {(void)ctx;return fax_world_composed();}
 static void event(void *ctx,const void *e,int player) {
     (void)ctx;(void)player;
     fax_world_event(e);
@@ -318,7 +322,7 @@ const CycHostExtras *cyc_host_extras(void) {
 #endif
     list_bindings();
     static const CycHostExtras extras = {
-        .present=present,.event=event,.input=input,
+        .present=present,.sharp_scale=sharp_scale,.event=event,.input=input,
         .load_setting = load_setting, .save_settings = save_settings, .settings_loaded = settings_loaded,
         .bindings = bindings, .binding_count = sizeof bindings / sizeof bindings[0],
 #ifdef CYC_WITH_RECOMP_UI
