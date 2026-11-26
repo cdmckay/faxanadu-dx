@@ -1,9 +1,20 @@
-/* Unit tests for Seams lose nothing (fax_seams.c), without the emulator or a
- * ROM. The module runs against a model of the machine: CPU RAM, the
- * registers, bank 14's MAYBE_SPRITE_EXTENTS, and Sprites_IsSpriteOutOfWeaponRange
- * ($88CB) played instruction by instruction as the disassembly has it, with
- * the hook site at its entry. So the tests check what the game decides, not
- * the module's own arithmetic, against the box the weapon really covers. */
+/* Unit tests for Seams (fax_seams.c), without the emulator or a ROM.
+ *
+ * Slice 0, seams lose nothing: the module runs against a model of the
+ * machine: CPU RAM, the registers, bank 14's MAYBE_SPRITE_EXTENTS, and
+ * Sprites_IsSpriteOutOfWeaponRange ($88CB) played instruction by instruction
+ * as the disassembly has it, with the hook site at its entry. So the tests
+ * check what the game decides, not the module's own arithmetic, against the
+ * box the weapon really covers.
+ *
+ * Slice 1, seams are open ground: a model of Seamless's rooms too (three side
+ * by side, 5, 4 and 3, room 4 the live game's; each room's RAM and Seams'
+ * block; the view), and bank 14's and 15's tables as the ROM has them. The
+ * edge and floor tests are checked against the blocks a sprite really
+ * covers in the joined world, the draw's cells against where each really
+ * lies in 16 bits, and the moves byte for byte. The rooms are the Trunk's
+ * (a region), but for towns stay safe: Eolis's, with bank 11's lists for
+ * its screens as the ROM has them, and fax_zone.c's zones. */
 #include "fax_seams.c"
 #include <string.h>
 
@@ -15,17 +26,20 @@ static unsigned checks;
 #define SPRITE_Y          0x0380u   /* Something_Maybe_WeaponDistanceY */
 #define SPRITE_EXTENTS_Y  0xB408u   /* MAYBE_SPRITE_EXTENTS_1_ */
 enum { ZOZURA = 0x47, COIN = 0x02, KING_GRIEVE = 0x3C, SLOT = 7 };
+enum { FIREBALL = 0x0A, WALKING_MAN = 0x34, MAN = 0x3D, ROKUSUTAHN = 0x11 };
 enum { DAGGER_X = 0x08, DAGGER_Y = 0x04, SWORD_X = 0x10, SWORD_Y = 0x08 };   /* MAYBE_WEAPON_RANGES */
 
 /* ---- the machine ---- */
-static uint8_t ram[0x800], bank14[0x4000];
+static uint8_t ram[0x800], bank11[0x4000], bank14[0x4000], bank15[0x4000];
 static CycModRegs cpu;
-static int reach_on = -1, touch_on = -1;        /* the hooks' enabled states, as last set */
+static int reach_on = -1, touch_on = -1;        /* the slice 0 hooks' enabled states, as last set */
+static int hooks_on[HOOKS];
 static bool isolated, ticking;                   /* an isolated scope; Seamless's neighbour tick inside it */
 
 uint8_t cyc_mod_peek(uint16_t addr) {
     if (addr < 0x2000) return ram[addr & 0x7FF];
-    return addr >= 0x8000 && addr < 0xC000 ? bank14[addr - 0x8000] : 0;
+    if (addr >= 0x8000 && addr < 0xC000) return bank14[addr - 0x8000];
+    return addr >= 0xC000 ? bank15[addr - 0xC000] : 0;
 }
 bool cyc_mod_poke(uint16_t addr, uint8_t value) {
     if (addr >= 0x2000) return false;
@@ -37,20 +51,51 @@ void cyc_mod_set_regs(const CycModRegs *in) { cpu = *in; }
 bool cyc_mod_isolated(void) { return isolated; }
 bool fax_world_ticking(void) { return ticking; }
 int nes_mod_register_function_entry_plugin(const char *id, uint16_t addr, NESModFunctionEntryCallback cb) {
-    return id && ((!strcmp(id, reach_id) && addr == OUT_OF_WEAPON_RANGE && cb == reach_hook) ||
-                  (!strcmp(id, touch_id) && addr == CHECK_HIT_PLAYER && cb == touch_hook));
+    for (unsigned i = 0; i < HOOKS; i++)
+        if (id && !strcmp(id, hooks[i].id)) return addr == hooks[i].addr && cb == hooks[i].hook;
+    return 0;
 }
 int nes_mod_set_function_hook_enabled(const char *id, int on) {
-    if (!strcmp(id, reach_id)) reach_on = on;
-    else if (!strcmp(id, touch_id)) touch_on = on;
-    else return 0;
-    return 1;
+    if (!strcmp(id, "faxanadu.seams.reach")) reach_on = on;
+    if (!strcmp(id, "faxanadu.seams.touch")) touch_on = on;
+    for (unsigned i = 0; i < HOOKS; i++)
+        if (!strcmp(id, hooks[i].id)) { hooks_on[i] = on; return 1; }
+    return 0;
 }
 int nes_mod_register_reset_callback(NESModActivationCallback cb) { return cb == deactivate; }
 int nes_mod_register_activation_plugin(const char *id, NESModActivationCallback cb) {
     return !strcmp(id, "faxanadu.seams") && cb == activate;
 }
 void nes_mod_set_local_only(const char *name, int required) { (void)name; (void)required; }
+
+/* ---- Seamless's rooms ---- */
+static uint8_t records[ROOMS][2048], blocks[ROOMS][FAX_WORLD_SEAMS_BYTES];
+static int place_x[ROOMS], edge[ROOMS][2], active_room = -1, tick_room = -1, area_now = FAX_AREA_TRUNK;
+static bool live_room[ROOMS], view_ok;
+static int view_x, view_y;
+static unsigned loads;
+int fax_world_seams_room(void) { return ticking ? tick_room : isolated ? -1 : active_room; }
+int fax_world_active_room(void) { return active_room; }
+int fax_world_area(void) { return area_now; }
+bool fax_world_room_live(int r) { return r >= 0 && r < ROOMS && live_room[r]; }
+int fax_world_joined(int r, int side) {
+    if (r < 0 || r >= ROOMS) return -1;
+    int n = edge[r][side];
+    return n >= 0 && live_room[n] ? n : -1;
+}
+uint8_t *fax_world_seams_block(int r) { return r >= 0 && r < ROOMS ? blocks[r] : NULL; }
+uint8_t *fax_world_room_record(int r) { return r >= 0 && r < ROOMS ? records[r] : NULL; }
+void fax_world_place(int r, int *x, int *y) { *x = place_x[r] * 256; *y = 0; }
+bool fax_world_view(int *x, int *y) {
+    if (!view_ok) return false;
+    *x = view_x, *y = view_y;
+    return true;
+}
+void fax_world_update_view(void) {}
+void fax_world_screen_loaded(void) { ++loads; }
+uint8_t fax_world_rom(unsigned bank, unsigned addr) {
+    return bank == 11 ? bank11[addr & 0x3FFF] : bank == 14 ? bank14[addr & 0x3FFF] : bank == 15 ? bank15[addr & 0x3FFF] : 0;
+}
 
 static uint8_t rom(uint16_t addr) { return bank14[addr - 0x8000]; }
 
@@ -248,6 +293,552 @@ static void off_means_off(void) {
     CHECK(in_range(SLOT, true));                                 /* the hook is off: the original's ghost hit */
 }
 
+/* ==== slice 1 ==== */
+
+enum { LEFT_ROOM = 5, LIVE = 4, RIGHT_ROOM = 3, AIR = 0, SOLID = 1, LADDER = 2, DATA = 0xA000 };
+
+/* Rooms 5, 4 and 3 side by side, every one's actors running, room 4 the
+ * live game's (the machine's RAM); the tables of banks 14 and 15 as the ROM
+ * has them; block id 0 air, 1 solid, 2 a ladder in every room. */
+static void world(void) {
+    setup();
+    memset(records, 0, sizeof records);
+    memset(blocks, 0, sizeof blocks);
+    memset(live_room, 0, sizeof live_room);
+    memset(bank15, 0, sizeof bank15);
+    static const uint8_t widths[] = {15, 15, 31, 31, 31, 63, 47}, heights[] = {15, 31, 47, 63, 31, 31, 79};
+    static const uint8_t impassable[] = {0, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0};
+    memcpy(bank14 + (HITBOX_WIDTHS - 0x8000), widths, sizeof widths);
+    memcpy(bank14 + (HITBOX_HEIGHTS - 0x8000), heights, sizeof heights);
+    memset(bank14 + (CATEGORIES - 0x8000), 5, 0x66);             /* items, unless set below */
+    bank14[CATEGORIES - 0x8000 + ZOZURA] = 0;
+    bank14[CATEGORIES - 0x8000 + COIN] = 1;
+    bank14[CATEGORIES - 0x8000 + FIREBALL] = 6;
+    bank14[CATEGORIES - 0x8000 + WALKING_MAN] = 2;
+    bank14[CATEGORIES - 0x8000 + MAN] = 2;
+    bank14[CATEGORIES - 0x8000 + ROKUSUTAHN] = 7;
+    memcpy(bank15 + (BLOCK_IMPASSABLE - 0xC000), impassable, sizeof impassable);
+    for (unsigned i = 0; i < 16; i++) bank15[TILE_POSITIONS - 0xC000 + i] = (uint8_t)(i * 8);
+    bank15[VISIBILITY_MASK - 0xC000] = 1, bank15[VISIBILITY_MASK - 0xC000 + 1] = 2;
+    bank15[VISIBILITY_FLIPPED - 0xC000] = 2, bank15[VISIBILITY_FLIPPED - 0xC000 + 1] = 1;
+    int ids[3] = {LEFT_ROOM, LIVE, RIGHT_ROOM};
+    for (int i = 0; i < 3; i++) {
+        int r = ids[i];
+        live_room[r] = true;
+        place_x[r] = i - 1;
+        edge[r][0] = i > 0 ? ids[i - 1] : -1;
+        edge[r][1] = i < 2 ? ids[i + 1] : -1;
+        memset(records[r] + ENTITIES, EMPTY, 8);
+        records[r][BLOCK_PROPERTIES] = 0x10;                     /* id 0 air, id 1 solid */
+        records[r][BLOCK_PROPERTIES + 1] = 0x02;                 /* id 2 a ladder */
+    }
+    edge[LEFT_ROOM][0] = edge[RIGHT_ROOM][1] = -1;
+    memcpy(ram, records[LIVE], sizeof ram);
+    active_room = LIVE, tick_room = -1, area_now = FAX_AREA_TRUNK;
+    isolated = ticking = false;
+    view_ok = true, view_x = -84, view_y = 0;                    /* the hero at room 4's x 120 */
+    cpu = (CycModRegs){.a = 0, .x = 0, .y = 0, .s = 0xF0, .p = 0x24};
+}
+/* Run `room`'s sprite loop: the live game's for room 4, else its tick on
+ * the copy (the machine holds the room's RAM); and back. */
+static void run(int room) {
+    if (room == LIVE) { isolated = ticking = false; return; }
+    memcpy(records[active_room], ram, sizeof ram);
+    memcpy(ram, records[room], sizeof ram);
+    isolated = ticking = true, tick_room = room;
+}
+static void done(int room) {
+    if (room == LIVE) return;
+    memcpy(records[room], ram, sizeof ram);
+    memcpy(ram, records[active_room], sizeof ram);
+    isolated = ticking = false, tick_room = -1;
+}
+static uint8_t *mem(int room) { return room == fax_world_seams_room() ? ram : records[room]; }
+static Block *blk(int room) { return (Block *)blocks[room]; }
+static void put(int room, unsigned s, uint8_t entity, uint8_t x, uint8_t y, bool right, bool woken) {
+    uint8_t *m = mem(room);
+    m[ENTITIES + s] = entity, m[SLOT_X + s] = x, m[SLOT_Y + s] = y, m[HITBOX + s] = 0;
+    m[FLAGS + s] = right ? 1 : 0;
+    if (woken) blk(room)->awake |= (uint8_t)(1u << s);
+}
+static void block_at(int room, int col, int row, uint8_t id) { mem(room)[SCREEN_BUFFER + row * 16 + col] = id; }
+
+/* The truth: whether pixel (px, py) of `room` (px past its sides in the
+ * room joined there) lies in a solid block, or one solid or a ladder. */
+static bool truly(int room, int px, int py, bool ladder) {
+    int r = px < 0 ? edge[room][0] : px >= 256 ? edge[room][1] : room;
+    if (r < 0) return true;
+    uint8_t id = mem(r)[SCREEN_BUFFER + (py & 0xF0) + ((px & 0xFF) >> 4)];
+    return id == SOLID || (ladder && id == LADDER);
+}
+/* Any solid block among the rows [y, y + ext] at column px, or the columns
+ * [x, x + ext] at row y. */
+static bool any_down(int room, int px, int y, int ext) {
+    for (int t = y; t <= y + ext; t++) if (truly(room, px, t, false)) return true;
+    return false;
+}
+static bool any_across(int room, int x, int py, int ext) {
+    for (int t = x; t <= x + ext; t++) if (truly(room, t, py, false)) return true;
+    return false;
+}
+static unsigned rand_state = 1;
+static unsigned next_rand(void) { rand_state = rand_state * 1103515245u + 12345u; return rand_state >> 16; }
+static void scatter(int room, int col) {
+    for (int row = 0; row < 13; row++) block_at(room, col, row, next_rand() % 3 == 0 ? SOLID : AIR);
+}
+static int test_hook(int (*hook)(uint16_t), unsigned s, bool by_x) {
+    if (by_x) cpu.x = (uint8_t)s; else cpu.y = (uint8_t)s;
+    ram[BLOCKS_RESULT] = 0xEE;
+    return hook(0);
+}
+
+static void walking_right_through_the_seam(void) {
+    /* Room 5's tick: a Zozura past its right side, X 241-255 (X + 15
+     * carries: the original's wall). Against every place, with blocks
+     * scattered in room 4's first column: the test is room 4's, at its
+     * column the hitbox's right edge is in, down its rows. */
+    for (unsigned trial = 0; trial < 40; trial++) {
+        world();
+        scatter(LIVE, 0), scatter(LIVE, 1);
+        run(LEFT_ROOM);
+        for (int x = 241; x <= 255; x++)
+            for (int y = 96; y <= 176; y += 5) {
+                blk(LEFT_ROOM)->through[SLOT] = 0;
+                put(LEFT_ROOM, SLOT, ZOZURA, (uint8_t)x, (uint8_t)y, true, true);
+                CHECK(test_hook(right_hook, SLOT, false) == 1);
+                bool truth = any_down(LEFT_ROOM, x + 15, y, 15);
+                CHECK(!ram[BLOCKS_RESULT] == !truth && cpu.x == SLOT && cpu.a == ram[BLOCKS_RESULT]);
+                CHECK(blk(LEFT_ROOM)->through[SLOT] == (truth ? 0 : THROUGH_RIGHT));
+                CHECK(ram[PIXEL_X] == (uint8_t)(x + 15) && ram[PIXEL_Y] == y);
+            }
+        done(LEFT_ROOM);
+    }
+    /* Inside the room, the original's test. */
+    world();
+    run(LEFT_ROOM);
+    put(LEFT_ROOM, SLOT, ZOZURA, 200, 160, true, true);
+    CHECK(test_hook(right_hook, SLOT, false) == 0 && ram[BLOCKS_RESULT] == 0xEE);
+    done(LEFT_ROOM);
+}
+
+static void walking_left_through_the_seam(void) {
+    /* The live game: a Zozura that walked left past x 0 (X wrapped, $F1 and
+     * up): room 5's last column. And one straddling room 4's right side,
+     * let through it (in from room 3), walking left: its own column 15. */
+    for (unsigned trial = 0; trial < 40; trial++) {
+        world();
+        scatter(LEFT_ROOM, 15), scatter(LIVE, 15);
+        for (int x = 0xF1; x <= 0xFF; x++)
+            for (int y = 96; y <= 176; y += 5) {
+                blk(LIVE)->through[SLOT] = 0;
+                put(LIVE, SLOT, ZOZURA, (uint8_t)x, (uint8_t)y, false, true);
+                CHECK(test_hook(left_hook, SLOT, false) == 1);
+                bool truth = any_down(LIVE, x - 256, y, 15);
+                CHECK(!ram[BLOCKS_RESULT] == !truth && blk(LIVE)->through[SLOT] == (truth ? 0 : THROUGH_LEFT));
+                blk(LIVE)->through[SLOT] = THROUGH_RIGHT;
+                CHECK(test_hook(left_hook, SLOT, false) == 1);
+                CHECK(!ram[BLOCKS_RESULT] == !any_down(LIVE, x, y, 15) && blk(LIVE)->through[SLOT] == THROUGH_RIGHT);
+            }
+    }
+}
+
+static void walls_stay_walls(void) {
+    world();
+    /* No room joined that way: the original's wall. */
+    run(RIGHT_ROOM);
+    put(RIGHT_ROOM, SLOT, ZOZURA, 250, 160, true, true);
+    CHECK(test_hook(right_hook, SLOT, false) == 0);
+    done(RIGHT_ROOM);
+    /* Not awake, not a mover (a person who stands, a big enemy), or Seamless
+     * with no room: the original's. */
+    put(LIVE, SLOT, ZOZURA, 250, 160, true, false);
+    CHECK(test_hook(right_hook, SLOT, false) == 0);
+    put(LIVE, SLOT, MAN, 250, 160, true, true);
+    CHECK(test_hook(right_hook, SLOT, false) == 0);
+    put(LIVE, SLOT, ROKUSUTAHN, 250, 160, true, true);
+    CHECK(test_hook(right_hook, SLOT, false) == 0);
+    put(LIVE, SLOT, WALKING_MAN, 250, 160, true, true);
+    CHECK(test_hook(right_hook, SLOT, false) == 1);                 /* a person who walks goes */
+    view_ok = false;                                                 /* the live machine holds another room */
+    CHECK(test_hook(right_hook, SLOT, false) == 0);
+}
+
+static void a_full_room_is_a_wall(void) {
+    world();
+    /* Room 3 holding 5 actors (dormant ones too): a mover from room 4 stays
+     * out, counted. With 4 it goes in, and a mover on its way in from room
+     * 3's other side counts as one of the 5. One already through goes on. */
+    for (unsigned k = 0; k < 5; k++) records[RIGHT_ROOM][ENTITIES + k] = ZOZURA;
+    put(LIVE, SLOT, ZOZURA, 250, 160, true, true);
+    CHECK(test_hook(right_hook, SLOT, false) == 0 && kept_out == 1 && !blk(LIVE)->through[SLOT]);
+    records[RIGHT_ROOM][ENTITIES + 4] = EMPTY;
+    CHECK(test_hook(right_hook, SLOT, false) == 1 && blk(LIVE)->through[SLOT] == THROUGH_RIGHT);
+    blk(LIVE)->through[SLOT] = 0;
+    live_room[2] = true, edge[RIGHT_ROOM][1] = 2, edge[2][0] = RIGHT_ROOM;
+    blk(2)->through[0] = THROUGH_LEFT;                               /* on its way into room 3 from its right */
+    CHECK(test_hook(right_hook, SLOT, false) == 0 && kept_out == 2);
+    blk(LIVE)->through[SLOT] = THROUGH_RIGHT;                        /* already through: not entering */
+    CHECK(test_hook(right_hook, SLOT, false) == 1);
+    /* The flier's edge the same. */
+    blk(LIVE)->through[SLOT] = 0;
+    put(LIVE, SLOT, FIREBALL, 0xF4, 150, true, true);
+    CHECK(test_hook(flier_hook, SLOT, true) == 0 && kept_out == 3);
+}
+
+static void floors_across_the_seam(void) {
+    /* Straddling room 4's right side (through it), or wrapped past it: the
+     * up and down test's row across the hitbox's columns, and the placement
+     * test's leading column, in the room each column is in. */
+    for (unsigned trial = 0; trial < 40; trial++) {
+        world();
+        scatter(LIVE, 14), scatter(LIVE, 15), scatter(RIGHT_ROOM, 0), scatter(RIGHT_ROOM, 1);
+        mem(RIGHT_ROOM)[SCREEN_BUFFER + 10 * 16 + 0] = LADDER;
+        for (int x16 = 233; x16 <= 270; x16++)
+            for (int py = 100; py <= 190; py += 9) {
+                bool wrapped = x16 >= 256;
+                put(LIVE, SLOT, ZOZURA, (uint8_t)x16, 150, true, true);
+                blk(LIVE)->through[SLOT] = x16 + 15 > 255 ? THROUGH_RIGHT : 0;
+                ram[PIXEL_Y] = (uint8_t)py;
+                int handled = test_hook(vertical_hook, SLOT, false);
+                CHECK(handled == (x16 + 15 > 255));
+                if (handled) CHECK(!ram[BLOCKS_RESULT] == !any_across(LIVE, x16, py, 15));
+                ram[PIXEL_Y] = (uint8_t)py;
+                handled = test_hook(placement_hook, SLOT, true);
+                CHECK(handled == (x16 + 15 > 255));
+                if (handled) CHECK(!cpu.a == !truly(LIVE, x16 + 15, py, true));
+                (void)wrapped;
+            }
+    }
+}
+
+static void fliers_and_shots(void) {
+    world();
+    /* X $F0 and up facing right: through room 4's right side, "not at the
+     * edge" (C clear). Facing left there, wrapped past its left side. */
+    put(LIVE, SLOT, FIREBALL, 0xF2, 150, true, true);
+    cpu.p = 0x24 | FLAG_C;
+    CHECK(test_hook(flier_hook, SLOT, true) == 1 && !(cpu.p & FLAG_C) && cpu.a == 0xF2);
+    CHECK(blk(LIVE)->through[SLOT] == THROUGH_RIGHT);
+    blk(LIVE)->through[SLOT] = 0;
+    put(LIVE, SLOT, FIREBALL, 0xFE, 150, false, true);
+    CHECK(test_hook(flier_hook, SLOT, true) == 1 && blk(LIVE)->through[SLOT] == THROUGH_LEFT);
+    /* On the screen: the original's. */
+    put(LIVE, SLOT, FIREBALL, 0x80, 150, false, true);
+    CHECK(test_hook(flier_hook, SLOT, true) == 0);
+}
+
+static void dormant_until_seen(void) {
+    world();
+    /* Room 5's tick: a Zozura at its x 100 (world -156), the view from -84:
+     * it stands still and isn't drawn. Within 16 pixels of the view it
+     * wakes, and stays awake out of it. */
+    run(LEFT_ROOM);
+    put(LEFT_ROOM, SLOT, ZOZURA, 100, 160, false, false);
+    ram[CURRENT_SPRITE_INDEX] = SLOT;
+    CHECK(behavior_hook(UPDATE_BEHAVIOR) == 1 && cpu.x == SLOT && state_hook(UPDATE_STATE) == 1);
+    CHECK(frozen == 1 && !blk(LEFT_ROOM)->awake);
+    view_x = -156 + 16 + PAD;                                        /* its right edge, padded: just short */
+    CHECK(behavior_hook(UPDATE_BEHAVIOR) == 1);
+    view_x -= 1;
+    CHECK(behavior_hook(UPDATE_BEHAVIOR) == 0 && (blk(LEFT_ROOM)->awake >> SLOT & 1) && woken == 1);
+    CHECK(state_hook(UPDATE_STATE) == 0);
+    view_x = 400;
+    CHECK(behavior_hook(UPDATE_BEHAVIOR) == 0 && state_hook(UPDATE_STATE) == 0);
+    /* Not sleepers: a coin, a person who stands. A big enemy sleeps. */
+    put(LEFT_ROOM, 2, COIN, 100, 160, false, false);
+    ram[CURRENT_SPRITE_INDEX] = 2;
+    CHECK(behavior_hook(UPDATE_BEHAVIOR) == 0 && state_hook(UPDATE_STATE) == 0);
+    put(LEFT_ROOM, 2, MAN, 100, 160, false, false);
+    CHECK(behavior_hook(UPDATE_BEHAVIOR) == 0);
+    put(LEFT_ROOM, 2, ROKUSUTAHN, 100, 160, false, false);
+    CHECK(behavior_hook(UPDATE_BEHAVIOR) == 1);
+    done(LEFT_ROOM);
+}
+
+/* The draw's truth: each cell of a sprite at 16-bit X (the high byte's sign
+ * and the low byte), its columns 8 apart (mirrored round the pivot when
+ * flipped), its rows 8 apart. */
+static void drawn_where_it_lies(void) {
+    for (unsigned flipped = 0; flipped < 2; flipped++)
+        for (unsigned cols = 0; cols < 4; cols++)
+            for (int base = -40; base < 300; base += 3) {
+                world();
+                unsigned rows = 1, s = 5;
+                uint16_t data = DATA;
+                for (unsigned i = 0, at = 0; i < (rows + 1) * (cols + 1); i++) {   /* a tile and attributes a cell, $FF one empty */
+                    if (i == 1) { bank14[data - 0x8000 + at++] = 0xFF; continue; }
+                    bank14[data - 0x8000 + at++] = (uint8_t)(0x10 + i);
+                    bank14[data - 0x8000 + at++] = (uint8_t)(i & 3);
+                }
+                ram[COLS] = (uint8_t)cols, ram[ROWS] = (uint8_t)rows, ram[NORM_Y] = 120, ram[OFFSET_Y] = 0;
+                ram[NORM_X] = (uint8_t)base, ram[OFFSET_X] = (uint8_t)(base < 0 ? 0xFF : base >= 256 ? 1 : 0);
+                ram[READ_ADDR] = (uint8_t)data, ram[READ_ADDR + 1] = (uint8_t)(data >> 8);
+                ram[FLIP_MASK] = flipped ? 0x40 : 0, ram[MOVING_VISIBILITY] = 1, ram[PPU_OFFSET] = 0x40;
+                ram[SPRITE_SLOT] = 3, ram[START_SLOT_RANGE] = 0x10, ram[SLOTS_FULL] = 0, ram[TEMP_ADDR_L] = 4;
+                Drawn d;
+                memset(&d, 0, sizeof d);
+                play_draw(&d, s, flipped);
+                int shift = flipped ? (int8_t)(uint8_t)(4 * 2 - (cols + 1) * 8) : 0;
+                unsigned slot = 3, n = 0, owned = 0;
+                for (unsigned row = 0, i = 0; row <= rows; row++)
+                    for (unsigned k = 0; k <= cols; k++, i++) {
+                        if (i == 1) continue;
+                        unsigned tx = flipped ? cols - k : k;
+                        int x = base + shift + (int)tx * 8;
+                        uint8_t attr = (uint8_t)((i & 3) ^ (flipped ? 0x40 : 0));
+                        if ((flipped ? (tx & 1 ? 1 : 2) : (tx & 1 ? 2 : 1)) & 1) attr |= 0x20;
+                        if (x >= 0 && x < 256) {
+                            CHECK(d.owner[((slot << 2 ^ 0x10) >> 2) & 63] == s + 1);
+                            slot ^= 0x20;
+                            if (!(slot & 0x20)) ++slot;
+                            ++owned;
+                        } else {
+                            CHECK(n < d.count && d.cell[n].x == x && d.cell[n].y == 120 + row * 8);
+                            CHECK(d.cell[n].tile == (uint8_t)(0x10 + i + 0x40) && d.cell[n].attr == attr && d.cell[n].slot == s);
+                            ++n;
+                        }
+                    }
+                unsigned marked = 0;
+                for (unsigned k = 0; k < 64; k++) marked += d.owner[k] != 0;
+                CHECK(n == d.count && marked == owned);
+            }
+}
+
+static void drawn_a_screen_over(void) {
+    /* The live loop draws a slot through room 4's left side and wrapped (X
+     * 250: x -6): its cells move a screen over, so the first lies at -6,
+     * past the side, and the second at 2, on the screen. */
+    world();
+    loop_hook(SPRITES_UPDATE_ALL);
+    put(LIVE, SLOT, ZOZURA, 250, 120, false, true);
+    blk(LIVE)->through[SLOT] = THROUGH_LEFT;
+    ram[CURRENT_SPRITE_INDEX] = SLOT;
+    bank14[DATA - 0x8000] = 0x20, bank14[DATA - 0x8000 + 1] = 0, bank14[DATA - 0x8000 + 2] = 0x21, bank14[DATA - 0x8000 + 3] = 0;
+    ram[COLS] = 1, ram[ROWS] = 0, ram[NORM_X] = 250, ram[OFFSET_X] = 0, ram[NORM_Y] = 152, ram[OFFSET_Y] = 0;
+    ram[READ_ADDR] = (uint8_t)DATA, ram[READ_ADDR + 1] = DATA >> 8, ram[SPRITE_SLOT] = 0, ram[START_SLOT_RANGE] = 0;
+    CHECK(draw_hook(DRAW_STANDARD) == 0 && ram[OFFSET_X] == 0xFF);
+    CHECK(drawn[0].count == 1 && drawn[0].cell[0].x == -6 && drawn[0].owner[0] == SLOT + 1);
+    loop_done_hook(SPRITES_LOOP_DONE);
+    fax_seams_captured(blocks[LIVE], FAX_SEAMS_LIVE);
+    const FaxSeamsCell *cells;
+    CHECK(fax_seams_cells(blocks[LIVE], &cells) == 1 && cells[0].x == -6 && fax_seams_oam_slot(blocks[LIVE], 0) == SLOT);
+    /* Outside a sprite loop (the hero's own draws), nothing. */
+    ram[OFFSET_X] = 0;
+    CHECK(draw_hook(DRAW_STANDARD) == 0 && ram[OFFSET_X] == 0);
+}
+
+static void moves_between_frames(void) {
+    /* Room 5's slot 7, wrapped past its right side (X 2, through it): to
+     * room 4, the live game's, every byte, into its highest free slot,
+     * taking the tiles of the Zozura there; its old slot emptied. */
+    world();
+    put(LIVE, 6, ZOZURA, 100, 160, false, true);
+    ram[PPU_OFFSETS + 6] = 0x5C;
+    blk(LIVE)->tiles[6] = 0;
+    uint8_t *r5 = records[LEFT_ROOM];
+    for (unsigned a = SLOT_ARRAYS; a < SLOT_ARRAYS + 23 * 8; a += 8) r5[a + SLOT] = (uint8_t)(a >> 2);
+    put(LEFT_ROOM, SLOT, ZOZURA, 2, 160, true, true);
+    r5[PPU_OFFSETS + SLOT] = 0x70;
+    blk(LEFT_ROOM)->through[SLOT] = THROUGH_RIGHT;
+    fax_seams_step();
+    CHECK(r5[ENTITIES + SLOT] == EMPTY && !blk(LEFT_ROOM)->through[SLOT] && !blk(LEFT_ROOM)->awake);
+    CHECK(ram[ENTITIES + 7] == ZOZURA && ram[SLOT_X + 7] == 2 && ram[SLOT_Y + 7] == 160);
+    for (unsigned a = SLOT_ARRAYS; a < SLOT_ARRAYS + 23 * 8; a += 8)
+        if (a != ENTITIES && a != FLAGS && a != HITBOX && a != PPU_OFFSETS) CHECK(ram[a + 7] == (uint8_t)(a >> 2));
+    CHECK(ram[PPU_OFFSETS + 7] == 0x5C && blk(LIVE)->tiles[7] == 0 && (blk(LIVE)->awake >> 7 & 1));
+    CHECK(moves == 1 && move_log[0][0] == LEFT_ROOM && move_log[0][2] == LIVE && move_log[0][3] == 7);
+    /* Room 4's, wrapped past its left side (X 250, through it): to room 5,
+     * which has no Zozura now: its tiles stay room 4's, and it straddles room
+     * 5's right side, so it is marked through it. */
+    put(LIVE, 3, ZOZURA, 250, 160, false, true);
+    ram[PPU_OFFSETS + 3] = 0x5C;
+    blk(LIVE)->through[3] = THROUGH_LEFT;
+    fax_seams_step();
+    CHECK(ram[ENTITIES + 3] == EMPTY && r5[ENTITIES + 7] == ZOZURA && r5[SLOT_X + 7] == 250);
+    CHECK(r5[PPU_OFFSETS + 7] == 0x5C && blk(LEFT_ROOM)->tiles[7] == LIVE + 1);
+    CHECK(blk(LEFT_ROOM)->through[7] == THROUGH_RIGHT);
+    CHECK(fax_seams_slot_tiles(blocks[LEFT_ROOM], 7) == -1);         /* the picture's: not drawn there yet */
+    /* Back home it takes its own room's tiles again, through room 5's
+     * right side: room 4's tiles, no mark needed. */
+    r5[SLOT_X + 7] = 1;
+    fax_seams_step();
+    CHECK(r5[ENTITIES + 7] == EMPTY && ram[ENTITIES + 5] == ZOZURA && ram[SLOT_X + 5] == 1);   /* its highest free slot */
+    CHECK(ram[PPU_OFFSETS + 5] == 0x5C && blk(LIVE)->tiles[5] == 0 && !blk(LIVE)->through[5]);
+    /* Nowhere to go (every slot of room 4 taken): back inside, turned round. */
+    for (unsigned k = 0; k < 8; k++) ram[ENTITIES + k] = ZOZURA;
+    put(LEFT_ROOM, 2, ZOZURA, 3, 160, true, true);
+    blk(LEFT_ROOM)->through[2] = THROUGH_RIGHT;
+    fax_seams_step();
+    CHECK(r5[ENTITIES + 2] == ZOZURA && r5[SLOT_X + 2] == 240 && !(r5[FLAGS + 2] & 1) && pushed_back == 1);
+    /* Turned back before crossing: no longer through. */
+    put(LEFT_ROOM, 1, ZOZURA, 238, 160, false, true);
+    blk(LEFT_ROOM)->through[1] = THROUGH_RIGHT;
+    fax_seams_step();
+    CHECK(!blk(LEFT_ROOM)->through[1] && r5[ENTITIES + 1] == ZOZURA);
+}
+
+static void shots_out_of_the_view_go(void) {
+    world();
+    /* The view from -84: room 5's x 172 and up lies within it. A fireball at
+     * its x 100 is gone; one at 230 stays; an empty slot's wake goes. */
+    put(LEFT_ROOM, 1, FIREBALL, 100, 150, false, true);
+    put(LEFT_ROOM, 2, FIREBALL, 230, 150, false, true);
+    blk(LEFT_ROOM)->awake |= 1;
+    fax_seams_step();
+    CHECK(records[LEFT_ROOM][ENTITIES + 1] == EMPTY && records[LEFT_ROOM][ENTITIES + 2] == FIREBALL && removed == 1);
+    CHECK(blk(LEFT_ROOM)->awake == 0x04);
+    /* A Zozura out of the view stays, dormant or not. */
+    put(LEFT_ROOM, 1, ZOZURA, 20, 150, false, true);
+    fax_seams_step();
+    CHECK(records[LEFT_ROOM][ENTITIES + 1] == ZOZURA && removed == 1);
+}
+
+static void blocks_and_the_record(void) {
+    world();
+    Block *b = blk(LIVE);
+    b->awake = 3, b->count = 2, b->owner[0] = 1;
+    fax_seams_captured(blocks[LIVE], FAX_SEAMS_FRESH);
+    CHECK(!b->awake && !b->count && !b->owner[0]);
+    drawn[1].count = 1, drawn[1].owner[5] = 3, drawn[1].tiles[2] = LEFT_ROOM + 1;
+    fax_seams_captured(blocks[RIGHT_ROOM], FAX_SEAMS_TICK);
+    CHECK(fax_seams_oam_slot(blocks[RIGHT_ROOM], 5) == 2 && fax_seams_slot_tiles(blocks[RIGHT_ROOM], 2) == LEFT_ROOM);
+    CHECK(fax_seams_valid(blocks[RIGHT_ROOM], ROOMS));
+    blk(RIGHT_ROOM)->through[0] = 3;
+    CHECK(!fax_seams_valid(blocks[RIGHT_ROOM], ROOMS));
+    blk(RIGHT_ROOM)->through[0] = 0, blk(RIGHT_ROOM)->owner[9] = 9;
+    CHECK(!fax_seams_valid(blocks[RIGHT_ROOM], ROOMS));
+    char out[300];
+    blk(RIGHT_ROOM)->owner[9] = 0, blk(RIGHT_ROOM)->awake = 0x81, blk(RIGHT_ROOM)->tiles[1] = LEFT_ROOM + 1;
+    fax_seams_describe(blocks[RIGHT_ROOM], out, sizeof out);
+    CHECK(strstr(out, "\"awake\":129") && strstr(out, "\"tiles\":[-1,5,"));
+    /* A load in play is the live game's: Seamless is told. */
+    load_hook(LOAD_SPRITE_INFO);
+    isolated = true;
+    load_hook(LOAD_SPRITE_INFO);
+    CHECK(loads == 1);
+}
+
+/* ==== towns stay safe ==== */
+
+enum { NURSE = 0x44, WOMAN = 0x45, GUARD = 0x42, MONODRON = 0x2A, TRIGGER = 0x4F, DWARF = 0x3B, SPRING = 0x62 };
+
+/* Bank 11's AREA_SPRITE_ADDRESSES for Eolis, the towns and the Trunk, each
+ * screen's list (entity, block) to a $FF, as the ROM has them for Eolis and
+ * the screens named below; the categories the ROM gives their entities. */
+static void lists(void) {
+    memset(bank11, 0xFF, sizeof bank11);
+    static const uint8_t eolis[9][5] = {
+        {TRIGGER, 0x04, EMPTY}, {WALKING_MAN, 0x9C, EMPTY}, {WOMAN, 0x97, EMPTY}, {MAN, 0x84, EMPTY},
+        {ZOZURA, 0xA9, ZOZURA, 0xA4, EMPTY}, {ZOZURA, 0xAB, ZOZURA, 0xA5, EMPTY}, {NURSE, 0x93, EMPTY},
+        {GUARD, 0x9A, EMPTY}, {MONODRON, 0x9C, EMPTY}};
+    static const uint8_t towns[14][3] = {
+        {WOMAN, 0, EMPTY}, {WALKING_MAN, 0, EMPTY}, {NURSE, 0, EMPTY}, {WALKING_MAN, 0, EMPTY},
+        {WALKING_MAN, 0, EMPTY}, {EMPTY}, {WOMAN, 0, EMPTY}, {EMPTY}, {GUARD, 0, EMPTY}, {WALKING_MAN, 0, EMPTY},
+        {0x41, 0, EMPTY}, {EMPTY}, {EMPTY}, {EMPTY}};
+    unsigned at = 0x9000;
+    for (unsigned a = 0; a < 8; a++) {                       /* a list of 0x40 screens an area, each an empty list */
+        unsigned base = 0x8400 + a * 0x80;
+        bank11[0x0210 + 2 * a] = (uint8_t)base, bank11[0x0210 + 2 * a + 1] = (uint8_t)(base >> 8);
+        for (unsigned sc = 0; sc < 0x40; sc++, at += 12) {
+            bank11[base - 0x8000 + 2 * sc] = (uint8_t)at, bank11[base - 0x8000 + 2 * sc + 1] = (uint8_t)(at >> 8);
+            const uint8_t *l = a == FAX_AREA_EOLIS && sc < 9 ? eolis[sc] : a == FAX_AREA_TOWNS && sc < 14 ? towns[sc] : NULL;
+            static const uint8_t spring[] = {DWARF, 0x9C, SPRING, 0x5C, EMPTY};
+            if (a == FAX_AREA_TRUNK && sc == 0x25) l = spring;
+            for (unsigned k = 0; l && k < 5; k++) {
+                bank11[at - 0x8000 + k] = l[k];
+                if (l[k] == EMPTY && !(k & 1)) break;
+            }
+        }
+    }
+    bank14[CATEGORIES - 0x8000 + NURSE] = bank14[CATEGORIES - 0x8000 + WOMAN] = 2;
+    bank14[CATEGORIES - 0x8000 + GUARD] = bank14[CATEGORIES - 0x8000 + 0x41] = bank14[CATEGORIES - 0x8000 + DWARF] = 2;
+    bank14[CATEGORIES - 0x8000 + MONODRON] = 0;
+    bank14[CATEGORIES - 0x8000 + TRIGGER] = 4;
+    bank14[CATEGORIES - 0x8000 + SPRING] = 3;
+}
+
+static void what_a_town_room_is(void) {
+    world();
+    lists();
+    /* Eolis: its town's screens and the King's, not the Zozuras' path, the
+     * Monodron's by the way out, or the gate's (no zone). */
+    area_now = FAX_AREA_EOLIS;
+    static const bool eolis[9] = {false, true, true, true, false, false, true, true, false};
+    for (int sc = 0; sc < 9; sc++) CHECK(fax_seams_town(sc) == eolis[sc]);
+    /* Every screen of the towns, those with no one listed too. */
+    area_now = FAX_AREA_TOWNS;
+    for (int sc = 0; sc < 14; sc++) CHECK(fax_seams_town(sc));
+    /* A region's screen with a person and no monster (the Trunk's spring
+     * $25) is no town; nor any room with no area, or no room. */
+    area_now = FAX_AREA_TRUNK;
+    CHECK(!fax_seams_town(0x25) && !fax_seams_town(3));
+    area_now = -1;
+    CHECK(!fax_seams_town(3));
+    area_now = FAX_AREA_EOLIS;
+    CHECK(!fax_seams_town(-1));
+}
+
+static void towns_stay_safe(void) {
+    /* Eolis $05, $04 and $03 (rooms 5, 4 and 3), room 4 the live game's: $03
+     * is the town's left end, so the seam between 4 and 3 is its edge. */
+    world();
+    lists();
+    area_now = FAX_AREA_EOLIS;
+    /* A Zozura walking right into the town, at every place past room 4's
+     * side: the original's wall (the hook leaves it), never let through,
+     * counted. Walking left into room 5, the Zozuras' own, it goes. */
+    for (int x = 241; x <= 255; x++)
+        for (int y = 96; y <= 176; y += 20) {
+            put(LIVE, SLOT, ZOZURA, (uint8_t)x, (uint8_t)y, true, true);
+            unsigned before = town_edge;
+            CHECK(test_hook(right_hook, SLOT, false) == 0 && ram[BLOCKS_RESULT] == 0xEE);
+            CHECK(!blk(LIVE)->through[SLOT] && town_edge == before + 1 && kept_out == 0);
+            put(LIVE, SLOT, ZOZURA, (uint8_t)x, (uint8_t)y, false, true);   /* wrapped past x 0 */
+            CHECK(test_hook(left_hook, SLOT, false) == 1 && blk(LIVE)->through[SLOT] == THROUGH_LEFT);
+            blk(LIVE)->through[SLOT] = 0;
+        }
+    /* Its shot too, flying right. */
+    put(LIVE, SLOT, FIREBALL, 0xF4, 150, true, true);
+    unsigned before = town_edge;
+    CHECK(test_hook(flier_hook, SLOT, true) == 0 && town_edge == before + 1 && !blk(LIVE)->through[SLOT]);
+    /* From a neighbour's tick toward the live game: the hero in room 3, the
+     * Zozura in room 4's copy, the same. */
+    memcpy(records[LIVE], ram, sizeof ram);
+    active_room = RIGHT_ROOM;
+    isolated = ticking = true, tick_room = LIVE;                     /* room 4's tick: the machine holds its RAM */
+    put(LIVE, SLOT, ZOZURA, 245, 160, true, true);
+    before = town_edge;
+    CHECK(test_hook(right_hook, SLOT, false) == 0 && town_edge == before + 1 && !blk(LIVE)->through[SLOT]);
+    memcpy(records[LIVE], ram, sizeof ram);
+    memcpy(ram, records[RIGHT_ROOM], sizeof ram);
+    isolated = ticking = false, tick_room = -1;
+    /* The people stay in: the walking man in room 3 (now the live game's)
+     * walking left past its side, toward the path, finds a wall; walking
+     * right into room 2, the town's next screen, he goes. */
+    live_room[2] = true, edge[RIGHT_ROOM][1] = 2, edge[2][0] = RIGHT_ROOM, edge[2][1] = -1;
+    memset(records[2] + ENTITIES, EMPTY, 8);
+    put(RIGHT_ROOM, 1, WALKING_MAN, 0xF8, 160, false, true);
+    cpu.y = 1;
+    before = town_edge;
+    CHECK(left_hook(MOVE_LEFT) == 0 && town_edge == before + 1 && !blk(RIGHT_ROOM)->through[1]);
+    put(RIGHT_ROOM, 1, WALKING_MAN, 245, 160, true, true);
+    CHECK(test_hook(right_hook, 1, false) == 1 && blk(RIGHT_ROOM)->through[1] == THROUGH_RIGHT);
+    CHECK(town_edge == before + 1);
+    /* In the towns' area every screen is a town's: people go both ways. */
+    area_now = FAX_AREA_TOWNS;
+    blk(RIGHT_ROOM)->through[1] = 0;
+    put(RIGHT_ROOM, 1, WALKING_MAN, 0xF8, 160, false, true);
+    CHECK(test_hook(left_hook, 1, false) == 1 && blk(RIGHT_ROOM)->through[1] == THROUGH_LEFT);
+    /* A full room is still full, counted as such. */
+    area_now = FAX_AREA_EOLIS;
+    for (unsigned k = 0; k < 5; k++) records[2][ENTITIES + k] = WOMAN;
+    blk(RIGHT_ROOM)->through[1] = 0;
+    put(RIGHT_ROOM, 1, WALKING_MAN, 245, 160, true, true);
+    before = town_edge;
+    unsigned full_before = kept_out;
+    CHECK(test_hook(right_hook, 1, false) == 0 && kept_out == full_before + 1 && town_edge == before);
+}
+
 int main(void) {
     the_original_wraps();
     the_ghost_hit_is_refused();
@@ -256,6 +847,20 @@ int main(void) {
     the_same_rule_in_a_copy_uncounted();
     copies_touch_nothing();
     off_means_off();
+    walking_right_through_the_seam();
+    walking_left_through_the_seam();
+    walls_stay_walls();
+    a_full_room_is_a_wall();
+    floors_across_the_seam();
+    fliers_and_shots();
+    dormant_until_seen();
+    drawn_where_it_lies();
+    drawn_a_screen_over();
+    moves_between_frames();
+    shots_out_of_the_view_go();
+    blocks_and_the_record();
+    what_a_town_room_is();
+    towns_stay_safe();
     printf("seams_test: %u checks passed\n", checks);
     return 0;
 }

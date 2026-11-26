@@ -204,8 +204,10 @@ id = "faxanadu.select-menu"
 feature = "dx"
 id = "faxanadu.controls"
 
-# Seams lose nothing (#166, slice 0): a neighbouring room's copy touches
-# nothing of the hero's, and the sword's reach no longer wraps round a room.
+# Seamless's seams (#166). Slice 0, seams lose nothing: a neighbouring room's
+# copy touches nothing of the hero's, and the sword's reach no longer wraps
+# round a room. Slice 1, seams are open ground: monsters, their shots and the
+# people who walk go through them, dormant until first seen.
 [[plugin]]
 feature = "dx"
 id = "faxanadu.seams"

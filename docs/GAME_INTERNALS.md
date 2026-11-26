@@ -796,33 +796,42 @@ What a feature can rely on, and the traps:
 - The remaster plays in Seamless, so the hero's routines can run in an
   isolated scope where `cyc_mod_isolated()` is true. A hook that keeps state
   must leave it alone there.
-- In Seamless a neighboring room's actors keep moving before the hero walks
-  in, chasing a copy of him held at that room's edge, so where they are when
-  he arrives depends on how long he took (Eolis $04's Zozuras gather at its
-  right edge and knock him about as he crosses). Eolis $08's Monodron waits at
-  its left edge, the seam with the town: a hero who crosses and stops there is
-  knocked back onto $01, at x 239-255 (#130), so a walk that stops at an X,
-  reading no screen, can stop on the wrong one. A test that walks in should
-  put them in place in its save state, as `tests/damage/damage_numbers.py`
-  does, or come in by a door, whose load spawns them fresh, as the
-  `eolis-zozuras` and the keys test's `keys-eolis-exit` fixtures do. In Seamless the walk itself has no scroll: a
+- In Seamless a neighbouring room's monsters, shots and walking people stand
+  still until the view first comes within 16 pixels of them, and from then on
+  chase a copy of him held at that room's edge and come through the seam to
+  him (Seams, slice 1: *Seams: actors across rooms*). So where they are when
+  he arrives depends on how long he took, and what he has seen follows him:
+  Eolis `$04`'s Zozuras and `$05`'s follow him from room to room, up to the
+  town's edge. Eolis `$08`'s Monodron waits at its left edge, the seam with
+  the town, which no monster crosses (towns stay safe), and knocks a hero who
+  crosses and stops there back onto `$01`, at x 239-255 (#130), so a walk
+  that stops at an X, reading no screen, can stop on the wrong one. A test
+  that walks in should put them in place in its save
+  state, as `tests/damage/damage_numbers.py` does, or come in by a door, whose
+  load spawns them fresh, as the `eolis-zozuras` and the keys test's
+  `keys-eolis-exit` fixtures do. In Seamless the walk itself has no scroll: a
   headless schedule that holds a direction through the original's scroll
   carries the hero rooms further.
 - In Seamless, a neighboring room's actors live in `fax_world.c`'s copy of
   that room, not in `CurrentSprites_Entities`: setting those slots to `$FF`
-  clears only the hero's room.
+  clears only the hero's room, and the neighbours' monsters, once seen, come
+  through the seams. `fax_e2e.quiet_neighbours()` empties every other room's
+  slots in Seamless's record for a test that sends a screen's actors away
+  (the Execution Hood's shot in `tests/fixes/small_fixes.py`: a monster from
+  Zenis `$0F` hit the hero on `$10` at frame 48 without it).
 - **The hero a neighbouring room sees** is `shadow()`'s: his position in that
-  room's coordinates clamped to x 0-240 and y 0-176 (so a room to his left
-  sees him at its x 240 wherever he stands in his own), invincible (200),
+  room's coordinates clamped to x 0-255 and y 0-176 (so a room to his left
+  sees him at its x 255 wherever he stands in his own: 240 before slice 1,
+  which let a monster coming for him stop short of the seam), invincible (200),
   `Player_AttackPhaseAnimFrame` 0, no spell (`CastMagic_Type` `$FF`) and no
   buttons. So its monsters can't hurt him and his swing never lands there.
   Before Seams lose nothing (#177), `CurrentSprite_CheckHitPlayer` (`$890A`)
   sent every touch to its category's handler without looking at the
   invincibility: a coin or bread at that edge was taken in the copy and its
   gold or HP thrown away, and an item or a person who talks when touched
-  froze the room (*Features and what they use*, Seams lose nothing). The
-  clamp is what makes a neighbour's monsters and walking people wait at the
-  seam (*Screens and blocks*), and what makes a behaviour that measures his
+  froze the room (*Features and what they use*, Seams). The clamp is what
+  made a neighbour's monsters and walking people wait at the seam before
+  slice 1 (*Screens and blocks*), and what makes a behaviour that measures his
   distance (`Sprite_CalcDistanceXToPlayer`, `$82F8`;
   `Sprite_CalcDistanceYToPlayer`, `$831B`; the same sum inline in
   `SpriteBehavior_Ishiisu`, `$9129`, and `FUN_PRG14__9aa1`) find him at the
@@ -834,11 +843,17 @@ What a feature can rely on, and the traps:
   side.
   See [SEAMLESS-COMBAT.md](SEAMLESS-COMBAT.md).
 - **A test can read a neighbouring room whole** from Seamless's save-state
-  record, `faxanadu.world`: a 32-byte header (byte 9 the area + 1, byte 10
-  the hero's room + 1), then `fax_world.c`'s `Room` for each of 83 rooms,
-  10,296 bytes each with this build's compiler (its 2 KB of RAM first; then
-  CHR, palette, `valid`, `live`, `owned`, the edges, x, y and ticks). A
-  `fixture()` record edit puts anything in a neighbour's slots.
+  record, `faxanadu.world`, version 5 (byte 8): a 32-byte header (byte 9 the
+  area + 1, byte 10 the hero's room + 1, byte 29 a screen load not yet acted
+  on), then `fax_world.c`'s `Room` for each of 83 rooms, 10,680 bytes each
+  with this build's compiler (its 2 KB of RAM first; then CHR, palette,
+  `valid`, `live`, `owned`, the edges, x, y and ticks; and last Seams' 384
+  bytes: a wake bit per slot, a count of cells past the room's sides, a mark
+  per slot for one let through a side, 1 left and 2 right, then each slot's
+  tiles room plus one, as moved and as drawn, the slot that drew each OAM
+  entry plus one, and the cells). A `fixture()` record edit puts anything in
+  a neighbour's slots. The active room's RAM there is its last capture; its
+  slots are the live game's (`fax_world_room` reads them live).
 
 ## Far calls (`MMC1_LoadBankAndJump`)
 
@@ -2727,6 +2742,44 @@ apart:
   properties, scroll data, door locations, door destinations
   (`Game_LoadAreaTable` adds `$80` to each high byte).
 
+### Eolis's screens, and town rooms
+
+Eolis is the one town that shares scroll links with ground that has
+monsters. Its screens, left to right as the scroll data joins them, with
+their lists (bank 11) and doors (bank 3; a building's kind is its
+`BUILDING_PALETTES` index):
+
+| Screen | Holds | Doors |
+|---|---|---|
+| `$07` | The King's guard (`$42`, walks) | The King's room |
+| `$06` | The nurse (`$44`, `SPRITE_NPC_NURSE`, walks) | The magic shop, martial arts |
+| `$05` | Two Zozuras | |
+| `$04` | Two Zozuras | |
+| `$03` | The smoking man (`$3D`, stands) | The key shop, the tool shop |
+| `$02` | The walking woman (`$45`) | A house, the temple |
+| `$01` | The walking man (`$34`) | The meat shop |
+| `$08` | A Monodron | The way out (`$FF`, the "J" key) |
+
+Screen 0, outside the gate, is joined to nothing; its door leads to `$01`.
+So walking left from the gate's side, the town (`$01-$03`) gives onto the
+Zozuras' path (`$04-$05`), then the King's end (`$06-$07`); right of
+`$01`, the Monodron guards the way out.
+
+**A town room** (Seams, *Seams: actors across rooms*) is a screen of a
+town's zone (`fax_zone.c`: Eolis's `$01-$08`, and every screen of
+`AREA_TOWNS`) whose list holds no monster (category 0) or big enemy (7):
+Eolis `$01-$03` and `$06-$07`, and all 14 of `AREA_TOWNS` (four of them
+list no one). Decoded from the ROM, the same rooms are exactly those with a
+door into a building and no monster on their list: every region screen
+with a building's door has monsters (the Trunk's `$06` and `$2D`, the
+Mist's `$06`, `$0D`, `$16`, `$1F` and `$29`, Dartmoor's `$02`, `$03`,
+`$08`, `$1E` and `$1F`). A region screen can list a person and no monster
+(the Trunk area's three springs, `$25`, `$3D` and `$3F`: a person, `$3B`,
+and the spring), so people alone don't make a town. Town edges that are seams are only
+Eolis's: `$03`|`$04`, `$05`|`$06` and `$01`|`$08`. The other towns' two
+screens join each other, and their outer edges are
+`AREA_TOWN_TRANSITIONS_DATA`'s loads.
+
 ## Entrances and zone respawn
 
 **Every screen load passes through `Screen_SetupNew` (`$DD13`)**: from
@@ -4376,21 +4429,42 @@ flights on MP):
   then; a shot (`SpriteBehavior_EnemyMagic`, `$A0CB`, 2 pixels a frame)
   takes that C to remove itself (entity `$FF`). Up and down, Y `$F0` or more
   is blocked. So no sprite ever straddles a screen's edge, and a shot that
-  misses ends there. In Seamless a seam is such an edge: a neighbouring
-  room's monsters press against it and turn (Eolis `$05`'s two Zozuras spent
-  800 frames between its x 222 and 240 while the hero stood on `$04`), and so
-  do its walking people (the `eolis-town` fixture: Eolis `$02`'s walking
-  woman walked from x 85 to x 240, the seam with his `$01`, and turned back
-  there); SEAMLESS-COMBAT.md.
+  misses ends there. Before Seams' slice 1 a seam was such an edge: a
+  neighbouring room's monsters pressed against it and turned (Eolis `$05`'s
+  two Zozuras spent 800 frames between its x 222 and 240 while the hero
+  stood on `$04`), and so did its walking people (the `eolis-town` fixture:
+  Eolis `$02`'s walking woman walked from x 85 to x 240, the seam with his
+  `$01`, and turned back there). Now a joined seam is open ground for them
+  (*Seams: actors across rooms*); SEAMLESS-COMBAT.md.
+- **Every widths and heights table is less one.** `SPRITE_HITBOX_WIDTHS`
+  (`$B4D1`: 15, 15, 31, 31, 31, 63, 47) and `SPRITE_HITBOX_HEIGHTS` (`$B4D8`:
+  15, 31, 47, 63, 31, 31, 79) give the last pixel from the origin, so X +
+  width carrying is the box's last pixel past 255, the same edge as
+  `FUN_PRG14__86bd`'s `$F1` on the other side. The block tests cover the box
+  exactly: `Sprites_MoveRight__86c6` walks down a column from the row of Y,
+  one more for each 16 of the height, and one more if Y is not on a block's
+  edge, so the rows of [Y, Y + height]; `CurrentSprite_CanMoveInDirection`'s
+  up and down test (`$873A`) walks along a row the same way, the columns of
+  [X, X + width], with `INX`, so a box past column 15 would read the next
+  row's first block.
 - **People who walk.** `BSCRIPTS_NPC_WALKING_MAN` (`$34`) walks forward 60
-  ticks, stands 30 and faces the hero; the walking women
+  ticks at `$C0`/256 pixels a frame, stands 30 and faces the hero, so he
+  keeps coming back past him. The walking women
   (`BSCRIPTS_NPC_WALKING_WOMAN_01` and `_02`, `$44` and `$45`), the King's
-  guard (`$42`) and the lady with the cup (`$41`) move toward the hero for
-  60 to 192 ticks, then turn. Eolis's screens `$01`, `$02`, `$06` and `$07`
-  hold one each, and nine of the towns' screens (area 3). They talk when the
-  hero presses Up touching them (`Player_CheckHandlePressUpOnNPC`, category
-  2 of `SPRITE_COLLISION_HANDLERS`); only category 4, the intro's trigger
-  (`$4F`), talks when touched (`Player_HandleTouchNPC`). The script is the
+  guard (`$42`) and the lady with the cup (`$41`) use
+  `SPRITE_BEHAVIOR_MOVE_TOWARD_PLAYER` (`SpriteBehavior_MoveTowardPlayer`),
+  which despite its name does not steer: it walks the way the person faces,
+  with the fall test, for its ticks. `_02` walks 60 ticks, turns, walks 80,
+  turns, at `$80`/256 a frame: 30 pixels one way and 40 back, a drift of 10
+  a cycle, so she wanders one way until a wall turns her (from Eolis `$02`'s
+  x 112 she reached x 181 in 1,100 frames); `_01` faces the hero after each
+  turn. Eolis's screens `$01`, `$02`, `$06` and `$07` hold one each, and
+  nine of the towns' screens (area 3). They talk when the hero presses Up
+  touching them (`Player_CheckHandlePressUpOnNPC`, category 2 of
+  `SPRITE_COLLISION_HANDLERS`); only category 4, the intro's trigger (`$4F`,
+  value 0, at Eolis `$00`'s x 64 in a new game), talks when touched
+  (`Player_HandleTouchNPC`: a value other than `$FF` starts its interaction
+  script, and the trigger is removed, entity `$FF`). The script is the
   slot's `CurrentSprites_Values`.
 - **Eolis screen 4's tower** (about x 160-208) is drawn in front of sprites:
   a hero or a Zozura behind it disappears. Stage a fight there left of x 150.
@@ -4542,8 +4616,12 @@ flights on MP):
   Gawaine's and the Wolfman's reach 16 pixels left, King Grieve's, the
   King's and the man in the chair's 8. The other enemies, people and items
   lie within 16 pixels right of their origin, the big enemies within 32
-  (King Grieve up to 96). In Seamless such a cut at a room's edge shows at
-  the seam.
+  (King Grieve up to 96). In Seamless such a cut at a room's edge would show
+  at the seam: Seams (slice 1) keeps each skipped cell and paints it in the
+  next room's space (*Seams: actors across rooms*). The 16-bit sum has a
+  quirk: a cell of a negative X offset (`Sprite_TileInfo_OffsetX` `$FF`) that
+  lands on the screen leaves the X test's `ADC #$00` with C set, which the Y
+  sum then adds, so such a cell is drawn a line lower than its row.
 - **Actors' own sounds** (`Sound_PlayEffect`, `$D0E4`, from bank 14 outside
   the hero's touches and hits): a coin drop's `$10`
   (`Sprites_ReplaceWithCoinDrop`, `$AC75`), Pakukame's `$12` as it spawns,
@@ -4558,7 +4636,13 @@ flights on MP):
   and keeps the tile it starts at in `CurrentSprites_PPUOffsets` (`$032C`),
   which `Sprites_PPUOffset` adds when it is drawn. So an entity's tiles start
   at a place that depends on what else the screen holds: a sprite moved to
-  another screen's slots would draw with that screen's tiles there.
+  another screen's slots would draw with that screen's tiles there. Seams
+  (slice 1) gives one moved into a screen that has its entity that slot's
+  offset, and paints any other from the CHR of the room its tiles are in.
+  An enemy's shot is the exception: `Sprite_CastMagic` (`$A0F6`, from King
+  Grieve's and Ripasheiku's behaviours) puts entity `$0A` in a slot facing
+  its caster's way with `CurrentSprites_PPUOffsets` `$80`, a place every
+  screen loads its magic at.
 - The appearances: the hero's are `TILEINFO_PLAYER_ADDRS` (`$A9F1`), 8 poses
   a gear set (0-2 walking, 3 jumping, 7 climbing), in the order of the armor
   lists; then the weapons' (64-98). Entities' are `TILEINFO_ENTITY_ADDRS`
@@ -4612,6 +4696,119 @@ flights on MP):
   `Player_InvincibilityPhase` (`$AD`) after a Zozura's touch he is in OAM on
   every frame, in the same palettes; only his behind-the-background bit
   changes with where he stands (measured, #161).
+
+## Seams: actors across rooms (bank 14)
+
+What Seams' slice 1 (`fax_seams.c`, #166, docs/SEAMLESS-COMBAT.md) builds
+on, so that monsters, their shots and the people who walk go through
+Seamless's seams.
+
+- **The sprite loop, a slot at a time.** `Sprites_UpdateAll` (`$8000`) bumps
+  `SpriteUpdateCounter` (not while paused or under the Hour Glass), then
+  from slot 7 down to 0, for an entity below `$80`: with a hit counter
+  running, the knockback (2 pixels, `Sprites_Something_SomethingAndMoveHoriz`)
+  and `CurrentSprite_UpdateState`; with a magic-hit behaviour,
+  `Sprites_Maybe_UpdateHitByMagic`; else `Sprites_UpdateBehavior` (`$A66B`,
+  the slot's behaviour, by `SPRITE_BEHAVIORS`), `Player_HitSpriteWithWeapon`,
+  `Sprite_CheckHitByCastMagic`, `Sprite_GetBounds`,
+  `Player_CheckShieldHitByMagic`, `CurrentSprite_CheckHitPlayer` and
+  `CurrentSprite_UpdateState` (`$8BD2`: its update handler, which draws it).
+  It ends at `$8049` (`LDA #$00`, `STA Sprites_PPUOffset`, `RTS`).
+  `Sprites_UpdateBehavior` falls through into `CurrentSprite_UpdateState`
+  for a behaviour of `$42` and up, so such a slot is drawn twice. Returning
+  at once from `Sprites_UpdateBehavior` and `CurrentSprite_UpdateState`
+  freezes a slot: it neither moves nor is drawn, and the touches still run.
+  `EndGame_MainLoop` runs the same loop.
+- **Categories** (`SPRITE_CATEGORIES_BY_ENTITY`, `$B544`): 0 the monsters
+  (`$00`, `$03-$09`, `$0B-$10`, `$15-$2C`, `$46`, `$47`, `$65`), 1 bread and
+  coins (`$01`, `$02`), 2 the people (`$34-$45`), 3 effects (`$13` an enemy's
+  death, `$14`, `$52`, `$61-$64`), 4 the intro's trigger (`$4F`), 5 items, 6
+  shots (`$0A` an enemy's, `$51` the Execution Hood's, `$53`, `$54`), 7 the
+  big enemies (`$11`, `$12`, `$2D-$33`). The multi-part actors'
+  `Sprite12BodyPartHandler` (`$0379-$037E`) serve only unused enemies.
+- **A free slot.** `Sprites_PopulateNextAvailableSprite` takes the highest
+  slot whose entity is exactly `$FF`, clearing its phase and flags and
+  setting its hitbox, HP and behaviour script from the entity's tables. A
+  slot's every byte is `CurrentSprites_XPos_Full` and `_YPos` (`$BA`,
+  `$C2`) and the 23 arrays of 8 from `CurrentSprites_XPos_Frac` (`$02BC`) to
+  `CurrentSprites_Values` (`$036C`); nothing else of a room's is per slot.
+- **Where a move is called off.** Four tests stop a sprite at a screen's
+  side, and two more read a block past it. Walking left, `FUN_PRG14__86bd`
+  (`$86BD`): X `$F1` and up has wrapped past 0, blocked. Walking right,
+  `Sprites_MoveRight` (`$86A7`): X plus the hitbox's width (less one) carries,
+  blocked. Both are reached by branches inside
+  `CurrentSprite_CanMoveInDirection` (`$8710`, Y the slot), and both leave
+  `Blocks_Result`, `Arg_PixelPosX` and `Arg_PixelPosY`, and X the slot.
+  Flying and shots, `Sprite_Maybe_TurnAroundIfAtScreenEdgeHoriz` after its
+  `JSR Sprite_MoveForwardX` (`$842A`): X `$F0` and up is the side, either
+  way, snapped and turned, C set. Up and down, the row across the hitbox's
+  columns (`$873A`), which would wrap into the next row past column 15. And
+  `Sprites_CheckPlacementInvalidAtY` (`$854C`, the walkers' "is there floor
+  ahead"): its block at X + 0 facing left or + 15 facing right
+  (`SPRITE_CHECK_PLACEMENT_X_OFFSETS_BY_FACING`), read at `$855E` (`JSR
+  Area_ConvertPixelsToBlockPos`, `JMP Area_IsBlockImpassableOrLadder`), whose
+  X + 15 wraps to the room's left column past x 240. A walker that finds no
+  floor there turns round (`SpriteBehavior_WalkForward`: `BScript_Action_FlipXDirection`
+  and a fall), so a wrong read at a seam turned Zozuras back.
+- **Opening a seam.** At those six places, for an awake mover (category 0, 6,
+  or a person who walks) at or past a side with a joined room that way whose
+  actors run, Seams answers itself, with the game's own test in the room each
+  column lies in: the block id from that room's `ScreenBuffer`, its
+  property nibble from that room's `BlockProperties` (`$043C`, an odd id the
+  high nibble), and `BLOCK_PROPERTY_IMPASSABLE_MAP` (`$E8D9`; a ladder,
+  property 2, counts for the placement test). The slot is marked as through
+  that side. Its X keeps its byte: room 5's x 250 is room 4's x -6. A slot
+  whose origin is across (marked left and X 128 up, or marked right and X
+  below 128) moves between frames, every byte, to the highest free slot of
+  the room it entered, and its old slot goes `$FF`; one in from the right
+  straddles its new room's right side and is marked so, which also tells
+  `FUN_PRG14__86bd` that its X of `$F1` and up has not wrapped. A room takes
+  no mover once its actors and the movers on their way in make 5 (the most
+  a list holds); then the side stays a wall for that one.
+- **Drawn whole.** Hooks at `Sprite_Draw_Standard` (`$F0EC`) and
+  `Sprite_Draw_FlippedHoriz` (`$F181`), inside a sprite loop
+  (`CurrentSpriteIndex` the slot), replay the tile loop from the state
+  `Sprite_Draw` left: `Temp_Sprites_NormXPos` (`$3C`) and
+  `Sprite_TileInfo_OffsetX` (`$3E`) the 16-bit X, `$3D`/`$3F` the Y,
+  `Temp_Sprites_ColsRemaining`/`_RowsRemaining` (`$40`/`$41`, less one),
+  `Sprite_TileInfo_ReadAddr` (`$3A`), `CurrentSprite_FlipMask` (`$29`),
+  `MovingSpriteVisibility` (`$26`, with `DRAW_SPRITE_VISIBILITY_MASK`
+  `$F224`, 1 and 2, and the flipped loop's `$F226`, 2 and 1, by the column's
+  parity: a set bit is behind the background), `Sprites_PPUOffset` (`$33`),
+  and for the flip the pivot in `Temp_Addr_L` (`$02`: X moves by twice it,
+  less the width, in 16 bits). Columns are `SPRITE_TILE_BLOCK_POSITIONS`
+  (`$F23D`, 8 apart). Each cell put in OAM is at `Sprites_SpriteSlot` × 4
+  EOR `Sprites_StartSlotRange`; each skipped for X past the side (with its Y
+  on the screen) is kept. A slot whose origin crossed this frame is drawn a
+  screen over by moving `Sprite_TileInfo_OffsetX` by one before the loop.
+- **Dormant until seen.** The sleepers (the movers and the big enemies) stand
+  still, by `Sprites_UpdateBehavior` and `CurrentSprite_UpdateState`
+  returning at once, until their hitbox with 16 pixels round it meets the
+  view (the 424x208 below the status bar, where `fax_world_present` puts it
+  for the frame: `fax_world_view()`); then a bit per slot keeps them awake
+  until the slot empties or a load forgets the room. In Eolis's town that cut
+  the neighbours' ticks to a third of their CPU cycles.
+- **A load.** `Screen_LoadSpriteInfo` (`$C1B4`) runs in play from the main
+  loop's two load paths (a door or a respawn, and the original's scroll into
+  a room Seamless doesn't join) and from `Screen_SetupSprites` (a building):
+  Seamless then forgets every other room of the area, so each is decoded and
+  spawned fresh from its list as it comes near, as the original does every
+  screen it loads.
+- **Towns stay safe.** A seam between a town room and one that isn't (*Eolis's
+  screens, and town rooms*) is a wall for every mover, as a full room's is:
+  Seams leaves the edge test to the game, which stops the sprite at its
+  screen's side and turns it round (a shot is removed). Monsters and their
+  shots stay out of a town, and its people in. Only Eolis has such seams.
+- **What crossing changes.** A Zozura (`BSCRIPTS_ENEMY_ZOZURA`: face the hero,
+  walk 60 ticks at `$60`/256 pixels a frame, again) that has seen him comes
+  room after room. From Eolis `$05` Zozuras follow him through `$04` to `$03`,
+  the left end of the town, and turn back at its edge: pressed against it,
+  each walks into the wall, turns, walks off for the rest of its 60 ticks,
+  faces him again and comes back, so they pace at the town's edge while he
+  stays in. Before towns stayed safe four of them followed him into `$03`,
+  Seamless joining the town to the screens past it. The walking man on
+  `$01`, faced toward `$08`, paces at its right side the same way. Shots fly
+  on through a seam and go once wholly out of the view by 16 pixels.
 
 ## Graphics bugs
 
@@ -4832,9 +5029,28 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   it captures the live room before it decides. The flag is kept in its record
   (byte 28).
 
-- **Seams lose nothing** (`fax_seams.c`, #166's slice 0; the plan is
-  [SEAMLESS-COMBAT.md](SEAMLESS-COMBAT.md)). Two hooks in bank 14's
-  sprite loop, neither of which keeps a record:
+- **Seams** (`fax_seams.c`, #166; the plan is
+  [SEAMLESS-COMBAT.md](SEAMLESS-COMBAT.md)). Slice 1, seams are open
+  ground: monsters, their shots and the people who walk go through
+  Seamless's seams side by side, both ways, between any two rooms, dormant
+  until first seen; a room takes no more once it holds 5; a town's edge
+  (a seam between a town room and one that isn't, from `fax_zone.c`'s zones
+  and bank 11's lists) is a wall for them all; they are drawn whole across a
+  seam, from their home room's tiles where the room they enter has none; a
+  load forgets the other rooms (*Seams: actors across rooms*). Its hooks:
+  bank 14's `Sprites_UpdateAll` entry and loop end,
+  `Sprites_UpdateBehavior`'s and `CurrentSprite_UpdateState`'s entries, the
+  edge and floor tests at `$86BD`, `$86A7`, `$873A`, `$842A` and `$855E`; bank
+  15's `Sprite_Draw_Standard`, `Sprite_Draw_FlippedHoriz` and
+  `Screen_LoadSpriteInfo` entries. Between frames (`fax_seams_step()`, from
+  Seamless's step once its neighbours have ticked) it moves slots and removes
+  shots, the live game's by poke. Each room's state is a 384-byte block in
+  Seamless's record (version 5): a wake bit and a through mark per slot, the
+  tiles' room, and its last loop's OAM owners and cells past its sides,
+  which `fax_world_present` paints. Seamless gives it `fax_world_view()`,
+  each room's place, RAM and block, the joined rooms, and its area
+  (`fax_world_area()`). With the remaster off nothing of it runs. Slice 0, seams lose nothing, is two hooks in bank
+  14's sprite loop:
   - `CurrentSprite_CheckHitPlayer`'s entry (`$890A`) returns at once in a
     neighbouring room's tick, with X the current slot as its first `LDX
     CurrentSpriteIndex` leaves it; `CurrentSprite_UpdateState`, next in the

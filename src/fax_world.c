@@ -5,6 +5,7 @@
  * Door/region/script transitions retain their original ownership.
  * Boss screens are arenas: while a boss lives, its room joins no neighbour. */
 #include "fax_world.h"
+#include "fax_seams.h"
 #include "fax_entrances.h"
 #include "fax_charges.h"
 #include "fax_flicker.h"
@@ -39,6 +40,7 @@ typedef struct {
     uint8_t valid,live,owned,edges[4];
     int16_t x,y;
     uint64_t ticks;
+    uint8_t seams[FAX_WORLD_SEAMS_BYTES]; /* Seams' own (fax_seams.c): its actors' wake, crossings, tiles and cells past the edges */
 } Room;
 static Room rooms[MAX_ROOMS];
 static const unsigned counts[8]={9,64,83,14,10,40,32,20};
@@ -51,8 +53,16 @@ static unsigned ticks,last_tick,handoffs,failures,portals;
 static bool player_tick;
 static bool collision_active;
 /* Inside tick_room's isolated pass of a neighbour's sprite loop, where its
- * actors meet the projected hero (shadow()): fax_world_ticking(). */
+ * actors meet the projected hero (shadow()): fax_world_ticking(), and the
+ * room ticking (fax_world_seams_room()). */
 static bool ticking;
+static int tick_id=-1;
+/* The game loaded a screen's sprite list in play (fax_world_screen_loaded):
+ * the next refresh forgets every other room of the area. */
+static bool screen_loaded;
+/* The view's top-left in world pixels for the frame being run
+ * (fax_world_view), and whether there is one. */
+static int view_x,view_y;static bool view_ok;
 static bool death_mode,script_mode;
 static int camera_x,camera_y,picture_w,picture_h;
 static int origin_x,origin_y;static bool origin_valid;
@@ -146,10 +156,14 @@ static void drain(void){
 }
 static int queue_hook(uint16_t pc){(void)pc;if(!speculative)return 0;drain();return 0;}
 static int wait_hook(uint16_t pc){(void)pc;if(!speculative)return 0;drain();return 1;}
-static void capture(unsigned id,bool graphics){
+/* how: Seams' cells and OAM owners for the room come from the live game's
+ * sprite loop (FAX_SEAMS_LIVE), from its tick (FAX_SEAMS_TICK), or the room
+ * is fresh (FAX_SEAMS_FRESH: its actors just started). */
+static void capture(unsigned id,bool graphics,int how){
     Room *r=&rooms[id];memcpy(r->ram,cyc_cpu_ram(),2048);
     if(graphics){for(unsigned i=0;i<8192;i++)r->chr[i]=cyc_render_chr((uint16_t)i);memcpy(r->palette,cyc_ppu_palette(),32);}
     r->live=r->valid=1;
+    fax_seams_captured(r->seams,how);
 }
 static void load(unsigned id){
     Room *r=&rooms[id];for(unsigned i=0;i<2048;i++)if(local[i])p(i,r->ram[i]);
@@ -214,12 +228,21 @@ static void topology(unsigned current){
 static void refresh(bool completed){
     int a=q(0x24),id=q(0x63);if(a<0||a>7||id>=(int)counts[a])return;
     if(area!=a){memset(rooms,0,sizeof rooms);memset(raster_valid,0,sizeof raster_valid);area=a;active=-1;fighting=false;}
+    /* A load within the area (a door, a zone respawn, the original's own
+     * scroll into an arena) spawns its screen fresh from its list, as the
+     * original does every screen it loads: Seamless forgets every other room
+     * too, so each comes back decoded and spawned fresh as it comes near.
+     * So nothing meets itself (a monster that wandered out, and its room's
+     * new one), and a retry finds the rooms round it as fresh as its own. An
+     * area change has emptied them all already. */
+    if(screen_loaded){screen_loaded=false;
+        for(unsigned i=0;i<counts[a];i++){Room *r=&rooms[i];r->live=r->valid=0;r->ticks=0;memset(r->seams,0,sizeof r->seams);raster_valid[i]=false;}}
     bool changed=active!=id;
     if(changed){if(active>=0)portals++;active=id;}
     /* Player entry runs after the ROM clears OAM. Keep the last completed
      * scene until this tick actually finishes drawing, including when an
      * actor interrupts the tick to start a conversation. */
-    if(completed||changed||!rooms[id].live)capture(id,true);
+    if(completed||changed||!rooms[id].live)capture(id,true,rooms[id].live?FAX_SEAMS_LIVE:FAX_SEAMS_FRESH);
     /* Lay the map out from here when this room is not on it, and again when
      * its boss has died (join it) or when the original's own load has
      * brought a boss back into a room whose old copy had none (seal it).
@@ -237,7 +260,7 @@ static int script_hook(uint16_t pc){
      * replaces sprite graphics/palettes, then retain that scene throughout
      * opening, text, and closing. Never change the live guest here. */
     if(cyc_mod_isolate_begin()){
-        if(bank(14)&&call(0xcb47,0,0)&&call(0xdc46,0,0))capture((unsigned)active,true);
+        if(bank(14)&&call(0xcb47,0,0)&&call(0xdc46,0,0))capture((unsigned)active,true,FAX_SEAMS_LIVE);
         else failures++;
         cyc_mod_isolate_end();
     }else failures++;
@@ -250,12 +273,16 @@ static int freeze_hook(uint16_t pc){
        active>=0&&area==q(0x24)&&active==q(0x63))
         /* The completed actor draw exists here. At the player-entry hook
          * the original game has already cleared its OAM staging buffer. */
-        capture((unsigned)active,true);
+        capture((unsigned)active,true,FAX_SEAMS_LIVE);
     return 0;
 }
+/* The hero as a neighbour's actors see him: his place in that room's
+ * coordinates, clamped to its edge (0-255: a monster coming for him across
+ * a seam keeps coming until it crosses, Seams, fax_seams.c), invincible, not
+ * swinging, with no spell and no buttons. */
 static void shadow(unsigned id){
     Room *r=&rooms[id],*a=&rooms[active];
-    p(0x9e,clamp(a->x*RW+q(0x9e)-r->x*RW,0,240));
+    p(0x9e,clamp(a->x*RW+q(0x9e)-r->x*RW,0,255));
     p(0xa1,clamp(a->y*RH+q(0xa1)-r->y*RH,0,176));
     p(0xad,200);p(0xae,0);p(0x2b3,255);p(0x16,0);p(0x19,0);
 }
@@ -273,7 +300,7 @@ static bool initialize(unsigned id){
     transfer=r;speculative=true;cyc_mod_allow_isolated_hooks(true);
     if(ok)ok=call(0xc28d,0,0);
     drain();speculative=false;transfer=NULL;
-    if(ok){capture(id,false);fixup_room(id);r->ticks=0;}
+    if(ok){capture(id,false,FAX_SEAMS_FRESH);fixup_room(id);r->ticks=0;}
     cyc_mod_isolate_end();if(!ok)failures++;return ok;
 }
 static void tick_room(unsigned id){
@@ -282,9 +309,9 @@ static void tick_room(unsigned id){
     load(id);shadow(id);p(0x54,255);p(0xc,0);p(0xd,0);p(0x57,0);p(0x58,0);p(0x59,0);p(0x9f,0);p(0xa2,0);
     for(unsigned i=0x700;i<0x800;i+=4)p(i,0xf0);
     transfer=r;speculative=true;cyc_mod_allow_isolated_hooks(true);p(0x1f,0);p(0x20,0);
-    ticking=true;bool ok=bank(14)&&call(0xcb17,0,0)&&call(0x8000,0,0);ticking=false;
+    ticking=true;tick_id=(int)id;bool ok=bank(14)&&call(0xcb17,0,0)&&call(0x8000,0,0);ticking=false;tick_id=-1;
     drain();speculative=false;transfer=NULL;
-    if(ok){capture(id,false);r->ticks++;}
+    if(ok){capture(id,false,FAX_SEAMS_TICK);r->ticks++;}
     cyc_mod_isolate_end();if(!ok)failures++;
 }
 static int player_hook(uint16_t pc){
@@ -309,7 +336,7 @@ static int seam_hook(uint16_t pc){
 }
 static bool adopt(unsigned next,int x,int y){
     uint64_t start=SDL_GetPerformanceCounter();
-    capture((unsigned)active,true);load(next);
+    capture((unsigned)active,true,FAX_SEAMS_LIVE);load(next);
     for(unsigned i=0x900;i<0x1000;i++)cyc_mod_chr_poke((uint16_t)i,rooms[next].chr[i]);
     p(0x9e,x);p(0xa1,y);p(0x9f,0);p(0xa2,0);p(0xc,0);p(0xd,0);p(0x57,0);p(0x58,0);p(0x59,0);
     p(0x54,255);p(0xe,0);p(0xb4,0);p(0x2b3,255);
@@ -374,12 +401,38 @@ void fax_world_step(void){
     uint64_t start=SDL_GetPerformanceCounter();refresh(fax_flicker_frame_drawn());if(active<0)return;
     if(ticks==last_tick)return;last_tick=ticks;
     int w=VIEW_W,h=VIEW_H;Room *a=&rooms[active];
+    fax_world_update_view();
     for(unsigned id=0;id<counts[area];id++)if(id!=(unsigned)active&&rooms[id].owned){
         Room *r=&rooms[id];int dx=abs(r->x-a->x)*RW,dy=abs(r->y-a->y)*RH;
         if(atlas||(dx<w/2+RW&&dy<(h-HUD)/2+RH))tick_room(id);
     }
+    /* Between frames, once every room has run: actors that crossed a seam
+     * move to the room they entered, and shots that left the view go. */
+    fax_seams_step();
     sim_ms=(SDL_GetPerformanceCounter()-start)*1000.0/SDL_GetPerformanceFrequency();
 }
+/* The box, in rooms, round every room on the map. */
+static void region(int *l,int *t,int *r,int *b){
+    Room *a=&rooms[active];*l=*r=a->x;*t=*b=a->y;
+    for(unsigned i=0;i<counts[area];i++)if(rooms[i].owned){Room *v=&rooms[i];if(v->x<*l)*l=v->x;if(v->x>*r)*r=v->x;if(v->y<*t)*t=v->y;if(v->y>*b)*b=v->y;}
+}
+/* The view's top-left in world pixels, width by height (the status bar
+ * included), with the hero at (hx,hy) of the active room: centred on him,
+ * kept inside the region's box, and centred in it when it is narrower. */
+static void camera_at(int width,int height,int l,int t,int r,int b,int hx,int hy,int *cx,int *cy){
+    Room *a=&rooms[active];
+    int x=a->x*RW+hx+8-width/2,y=a->y*RH+hy+16-(height-HUD)/2;
+    int xmax=(r+1)*RW-width,ymax=(b+1)*RH-(height-HUD);
+    *cx=xmax<l*RW?(l*RW+xmax)/2:clamp(x,l*RW,xmax);
+    *cy=ymax<t*RH?ymax:clamp(y,t*RH,ymax);
+}
+void fax_world_update_view(void){
+    view_ok=false;
+    if(!enabled||cyc_mod_isolated()||active<0||area!=q(0x24)||active!=q(0x63))return;
+    int l,t,r,b;region(&l,&t,&r,&b);
+    camera_at(VIEW_W,VIEW_H,l,t,r,b,q(0x9e),q(0xa1),&view_x,&view_y);view_ok=true;
+}
+bool fax_world_view(int *x,int *y){if(!view_ok)return false;*x=view_x;*y=view_y;return true;}
 static unsigned terrain(Room *r,int x,int y){
     unsigned block=r->ram[0x600+(y/16)*16+x/16],quadrant=(x&8?1:0)+(y&8?2:0);
     unsigned ptr=word(0x80+quadrant*2),tile=data(3,ptr+block);
@@ -399,6 +452,27 @@ static void raster(unsigned id){
     for(int y=0;y<RH;y++)for(int x=0;x<RW;x++)rasters[id][y*RW+x]=colors[terrain(r,x,y)];
     memcpy(raster_blocks[id],r->ram+0x600,256);memcpy(raster_palette[id],pal,16);raster_palette[id][16]=(uint8_t)emphasis;memcpy(raster_chr[id],r->chr+0x1000,4096);raster_valid[id]=true;
 }
+/* The CHR an actor's tiles are in: its room's, unless it came through a
+ * seam into a room that has no tiles for it (Seams' tiles from home). */
+static const uint8_t *tiles_of(Room *r,int from){
+    return from>=0&&from<MAX_ROOMS&&rooms[from].live?rooms[from].chr:r->chr;
+}
+/* One 8x8 sprite cell of room r at (sx,sy) of its picture (sy as OAM Y + 1,
+ * the status bar included). A pixel past the room's side falls in the room
+ * joined there, whose terrain its behind-the-background bit is tested
+ * against; past a side with no room joined it isn't drawn. */
+static void cell(Room *r,const uint8_t *chr,int sx,int sy,unsigned tile,unsigned attr,int w,int h,const uint8_t *pal,unsigned mask){
+    int ox=r->x*RW-camera_x,oy=HUD+r->y*RH-camera_y;
+    for(int y=0;y<8;y++)for(int x=0;x<8;x++){
+        int dx=ox+sx+x,dy=oy+sy-HUD+y;if(dx<0||dx>=w||dy<HUD||dy>=h)continue;
+        unsigned py=attr&128?7-y:y,shift=attr&64?x:7-x,off=tile*16+py;
+        unsigned v=((chr[off]>>shift)&1)|(((chr[off+8]>>shift)&1)<<1);if(!v)continue;
+        int lx=sx+x;Room *under=r;
+        if(lx<0||lx>=RW){unsigned n=r->edges[lx<0?0:1];if(n>=MAX_ROOMS||!rooms[n].valid)continue;under=&rooms[n];lx+=lx<0?RW:-RW;}
+        if((attr&32)&&terrain(under,lx,clamp(sy-HUD+y,0,207)))continue;
+        canvas[(size_t)dy*w+dx]=hw_palette_argb[(pal[16+(attr&3)*4+v]&((mask&1)?0x30:0x3f))|((mask>>5)<<6)];
+    }
+}
 static void actors(unsigned id,int w,int h){
     Room *r=&rooms[id];if(!r->live)return;
     /* Sprite palettes are global to the connected region just like terrain
@@ -406,21 +480,21 @@ static void actors(unsigned id,int w,int h){
      * a building/fade palette; it must use the active scene's colors. */
     const uint8_t *pal=rooms[active].palette;
     unsigned mask=cyc_render_line_mask(239);
-    int ox=r->x*RW-camera_x,oy=HUD+r->y*RH-camera_y;
+    /* The cells the room's actors drew past its sides, which the NES skips
+     * (Seams' drawn whole), behind its own sprites. */
+    const FaxSeamsCell *cells;unsigned n=fax_seams_cells(r->seams,&cells);
+    for(unsigned k=0;k<n;k++){const FaxSeamsCell *c=&cells[k];int sy=c->y+1;if(sy<HUD||sy>=240)continue;
+        cell(r,tiles_of(r,fax_seams_slot_tiles(r->seams,c->slot)),c->x,sy,c->tile,c->attr,w,h,pal,mask);}
     /* Every sprite, back to front in the order the game drew them (No sprite
      * flicker, fax_flicker.c, from the room's own Sprites_StartSlotRange). */
     uint8_t order[FAX_FLICKER_SPRITES];unsigned count=fax_flicker_paint_order(r->ram[0x1c],order);
     for(unsigned k=0;k<count;k++){int s=order[k];const uint8_t *o=r->ram+0x700+s*4;int sy=o[0]+1,sx=o[3];
         if(sy<HUD||sy>=240)continue;
-        if(id==(unsigned)active){int px=r->ram[0x9e];if(px>240&&sx<32)sx+=256;}
-        unsigned tile=o[1],attr=o[2];
-        for(int y=0;y<8;y++)for(int x=0;x<8;x++){
-            int dx=ox+sx+x,dy=oy+sy-HUD+y;if(dx<0||dx>=w||dy<HUD||dy>=h)continue;
-            unsigned py=attr&128?7-y:y,shift=attr&64?x:7-x,off=tile*16+py;
-            unsigned v=((r->chr[off]>>shift)&1)|(((r->chr[off+8]>>shift)&1)<<1);if(!v)continue;
-            if((attr&32)&&terrain(r,clamp(sx+x,0,255),clamp(sy-HUD+y,0,207)))continue;
-            canvas[(size_t)dy*w+dx]=hw_palette_argb[(pal[16+(attr&3)*4+v]&((mask&1)?0x30:0x3f))|((mask>>5)<<6)];
-        }
+        int slot=fax_seams_oam_slot(r->seams,(unsigned)s);
+        /* The hero's own cells that wrap round the screen as he stands past
+         * x 240; never an actor's. */
+        if(id==(unsigned)active&&slot<0){int px=r->ram[0x9e];if(px>240&&sx<32)sx+=256;}
+        cell(r,tiles_of(r,slot<0?-1:fax_seams_slot_tiles(r->seams,(unsigned)slot)),sx,sy,o[1],o[2],w,h,pal,mask);
     }
 }
 /* The NES clips player tiles at its 256x240 raster even though the world
@@ -488,8 +562,7 @@ const uint32_t *fax_world_present(int *w,int *h,const uint32_t *native){
     uint64_t start=SDL_GetPerformanceCounter();*w=VIEW_W;*h=VIEW_H;
     bool same=active>=0&&area==q(0x24)&&active==q(0x63);
     Room *a=same?&rooms[active]:NULL;int l=0,t=0,r=0,b=0;
-    if(same){l=r=a->x;t=b=a->y;
-        for(unsigned i=0;i<counts[area];i++)if(rooms[i].owned){Room *v=&rooms[i];if(v->x<l)l=v->x;if(v->x>r)r=v->x;if(v->y<t)t=v->y;if(v->y>b)b=v->y;}
+    if(same){region(&l,&t,&r,&b);
         if(atlas){*w=clamp((r-l+1)*RW,128,4096);*h=clamp((b-t+1)*RH+HUD,96,2048);}}
     int width=*w,height=*h;size_t n=(size_t)width*height;
     if(n>capacity){uint32_t *v=realloc(canvas,n*sizeof *v);if(!v)return NULL;canvas=v;capacity=n;}
@@ -503,13 +576,8 @@ const uint32_t *fax_world_present(int *w,int *h,const uint32_t *native){
         for(int y=0;y<240;y++)memcpy(canvas+(size_t)y*width+(y<HUD?hud_x:nx),native+y*RW,RW*sizeof *canvas);
         goto finished;
     }
-    camera_x=atlas?l*RW:a->x*RW+a->ram[0x9e]+8-width/2;
-    camera_y=atlas?t*RH:a->y*RH+a->ram[0xa1]+16-(height-HUD)/2;
-    if(!atlas){
-        int xmax=(r+1)*RW-width,ymax=(b+1)*RH-(height-HUD);
-        camera_x=xmax<l*RW?(l*RW+xmax)/2:clamp(camera_x,l*RW,xmax);
-        camera_y=ymax<t*RH?ymax:clamp(camera_y,t*RH,ymax);
-    }
+    if(atlas){camera_x=l*RW;camera_y=t*RH;}
+    else camera_at(width,height,l,t,r,b,a->ram[0x9e],a->ram[0xa1],&camera_x,&camera_y);
     for(unsigned id=0;id<counts[area];id++)if(rooms[id].owned&&rooms[id].valid){
         Room *v=&rooms[id];int ox=v->x*RW-camera_x,oy=HUD+v->y*RH-camera_y;
         if(ox>=width||ox+RW<=0||oy>=height||oy+RH<=HUD)continue;raster(id);
@@ -548,8 +616,22 @@ const uint32_t *fax_world_present(int *w,int *h,const uint32_t *native){
 finished:
     picture_w=width;picture_h=height;render_ms=(SDL_GetPerformanceCounter()-start)*1000.0/SDL_GetPerformanceFrequency();return canvas;
 }
-void fax_world_reset(void){hud_x=-1;hud_w=0;make_mask();memset(rooms,0,sizeof rooms);memset(raster_valid,0,sizeof raster_valid);area=active=-1;pending=-1;events_area=-1;fighting=false;rom_ok=false;hud_valid=death_mode=script_mode=false;ticks=last_tick=handoffs=failures=portals=0;player_tick=collision_active=false;cyc_mod_set_ram_read_hook(NULL);}
+void fax_world_reset(void){hud_x=-1;hud_w=0;make_mask();memset(rooms,0,sizeof rooms);memset(raster_valid,0,sizeof raster_valid);area=active=-1;pending=-1;events_area=-1;fighting=false;rom_ok=false;hud_valid=death_mode=script_mode=false;ticks=last_tick=handoffs=failures=portals=0;player_tick=collision_active=false;screen_loaded=view_ok=false;tick_id=-1;cyc_mod_set_ram_read_hook(NULL);}
 bool fax_world_ticking(void){return ticking;}
+static bool on_map(int id){return enabled&&area>=0&&id>=0&&id<(int)counts[area]&&rooms[id].owned;}
+int fax_world_seams_room(void){if(!enabled||active<0)return -1;return ticking?tick_id:cyc_mod_isolated()?-1:active;}
+int fax_world_active_room(void){return enabled?active:-1;}
+int fax_world_area(void){return enabled?area:-1;}
+bool fax_world_room_live(int id){return on_map(id)&&rooms[id].live;}
+int fax_world_joined(int id,int side){
+    if(!on_map(id)||side<0||side>1)return -1;
+    unsigned n=rooms[id].edges[side];return n<MAX_ROOMS&&fax_world_room_live((int)n)?(int)n:-1;
+}
+uint8_t *fax_world_seams_block(int id){return on_map(id)?rooms[id].seams:NULL;}
+uint8_t *fax_world_room_record(int id){return on_map(id)?rooms[id].ram:NULL;}
+void fax_world_place(int id,int *x,int *y){*x=on_map(id)?rooms[id].x*RW:0;*y=on_map(id)?rooms[id].y*RH:0;}
+uint8_t fax_world_rom(unsigned b,unsigned addr){return supported()?(uint8_t)data(b&15,addr):0;}
+void fax_world_screen_loaded(void){if(enabled&&!cyc_mod_isolated())screen_loaded=true;}
 bool fax_world_origin(int *x,int *y){if(!origin_valid)return false;*x=origin_x;*y=origin_y;return true;}
 bool fax_world_room_origin(int a,int id,int *x,int *y){if(!origin_valid||a!=area||id<0||id>=(int)counts[area]||!rooms[id].owned)return false;*x=rooms[id].x*RW-camera_x;*y=HUD+rooms[id].y*RH-camera_y;return true;}
 const uint8_t *fax_world_room_ram(int a,int id){if(!enabled||!origin_valid||a!=area||id<0||id>=(int)counts[area]||id==active||!rooms[id].owned||!rooms[id].live)return NULL;return rooms[id].ram;}
@@ -571,7 +653,12 @@ static void status(int id,const char *line){
     for(unsigned i=0;i<MAX_ROOMS;i++){Room *r=&rooms[i];owned+=r->owned;live+=r->live;sum+=r->ticks;if(r->live)for(unsigned j=0;j<8;j++)actors_count+=r->ram[0x2cc+j]<128;}
     snprintf(out,sizeof out,"\"enabled\":%s,\"area\":%d,\"room\":%d,\"owned\":%u,\"live\":%u,\"actors\":%u,\"neighbor_ticks\":%llu,\"handoffs\":%u,\"portals\":%u,\"failures\":%u,\"camera\":[%d,%d],\"size\":[%d,%d],\"simulation_ms\":%.3f,\"render_ms\":%.3f,\"max_seam_ms\":%.3f,\"playing\":%s,\"arena\":%s,\"hud_x\":%d",enabled?"true":"false",area,active,owned,live,actors_count,(unsigned long long)sum,handoffs,portals,failures,camera_x,camera_y,picture_w,picture_h,sim_ms,render_ms,max_seam_ms,playing()?"true":"false",fighting?"true":"false",fax_world_hud_x(picture_w));cyc_tcp_ok(id,out);
 }
-static void room_status(int id,const char *line){long n=active;cyc_tcp_long(line,"room",&n);if(n<0||n>=MAX_ROOMS){cyc_tcp_err(id,"invalid room");return;}Room *r=&rooms[n];char out[600];snprintf(out,sizeof out,"\"room\":%ld,\"owned\":%u,\"event\":%u,\"xy\":[%d,%d],\"edges\":[%u,%u,%u,%u],\"live\":%u,\"ticks\":%llu,\"entities\":[%u,%u,%u,%u,%u,%u,%u,%u],\"x\":[%u,%u,%u,%u,%u,%u,%u,%u]",n,r->owned,events_area==area&&n<MAX_ROOMS?events[n]:255u,r->x,r->y,r->edges[0],r->edges[1],r->edges[2],r->edges[3],r->live,(unsigned long long)r->ticks,r->ram[0x2cc],r->ram[0x2cd],r->ram[0x2ce],r->ram[0x2cf],r->ram[0x2d0],r->ram[0x2d1],r->ram[0x2d2],r->ram[0x2d3],r->ram[0xba],r->ram[0xbb],r->ram[0xbc],r->ram[0xbd],r->ram[0xbe],r->ram[0xbf],r->ram[0xc0],r->ram[0xc1]);cyc_tcp_ok(id,out);}
+static void room_status(int id,const char *line){long n=active;cyc_tcp_long(line,"room",&n);if(n<0||n>=MAX_ROOMS){cyc_tcp_err(id,"invalid room");return;}Room *r=&rooms[n];char out[900];
+    /* The active room's slots are the live game's; a neighbour's its record's. */
+    uint8_t slots[3][8];for(unsigned j=0;j<8;j++){bool here=n==active&&enabled;slots[0][j]=here?q(0x2cc+j):r->ram[0x2cc+j];slots[1][j]=here?q(0xba+j):r->ram[0xba+j];slots[2][j]=here?q(0xc2+j):r->ram[0xc2+j];}
+    char seams[200];fax_seams_describe(r->seams,seams,sizeof seams);
+    snprintf(out,sizeof out,"\"room\":%ld,\"owned\":%u,\"event\":%u,\"xy\":[%d,%d],\"edges\":[%u,%u,%u,%u],\"live\":%u,\"ticks\":%llu,\"entities\":[%u,%u,%u,%u,%u,%u,%u,%u],\"x\":[%u,%u,%u,%u,%u,%u,%u,%u],\"y\":[%u,%u,%u,%u,%u,%u,%u,%u],%s,\"town\":%s",n,r->owned,events_area==area&&n<MAX_ROOMS?events[n]:255u,r->x,r->y,r->edges[0],r->edges[1],r->edges[2],r->edges[3],r->live,(unsigned long long)r->ticks,
+        slots[0][0],slots[0][1],slots[0][2],slots[0][3],slots[0][4],slots[0][5],slots[0][6],slots[0][7],slots[1][0],slots[1][1],slots[1][2],slots[1][3],slots[1][4],slots[1][5],slots[1][6],slots[1][7],slots[2][0],slots[2][1],slots[2][2],slots[2][3],slots[2][4],slots[2][5],slots[2][6],slots[2][7],seams,fax_seams_town((int)n)?"true":"false");cyc_tcp_ok(id,out);}
 static void probe(int id,const char *line){
     (void)line;uint8_t *before=NULL,*after=NULL;size_t nb=0,na=0,n=0;char err[256];
     bool saved=cyc_state_save(&before,&nb,err,sizeof err);
@@ -589,23 +676,25 @@ void fax_world_tcp_setup(void){}
 enum { STATE_HEADER=32 };
 static int state_get(uint8_t *buf,int cap){
     if(!enabled)return 0;int len=STATE_HEADER+(int)sizeof rooms;if(len>cap)return -1;
-    memset(buf,0,STATE_HEADER);memcpy(buf,"FAXWORLD",8);buf[8]=4;buf[9]=(uint8_t)(area+1);buf[10]=(uint8_t)(active+1);buf[18]=death_mode;buf[19]=script_mode;
+    memset(buf,0,STATE_HEADER);memcpy(buf,"FAXWORLD",8);buf[8]=5;buf[9]=(uint8_t)(area+1);buf[10]=(uint8_t)(active+1);buf[18]=death_mode;buf[19]=script_mode;
     buf[11]=(uint8_t)(pending+1);buf[12]=(uint8_t)direction;buf[13]=player_tick;buf[14]=collision_active;buf[15]=(uint8_t)pending_y;
-    buf[16]=(uint8_t)pre_x;buf[17]=(uint8_t)pre_y;memcpy(buf+20,&ticks,4);memcpy(buf+24,&last_tick,4);buf[28]=fighting;
+    buf[16]=(uint8_t)pre_x;buf[17]=(uint8_t)pre_y;memcpy(buf+20,&ticks,4);memcpy(buf+24,&last_tick,4);buf[28]=fighting;buf[29]=screen_loaded;
     memcpy(buf+STATE_HEADER,rooms,sizeof rooms);return len;
 }
 /* A record is checked whether Seamless is on or not: with the remaster off
  * (the original game) a state saved with it on still loads, and Seamless's
- * record is set aside (state_set), as the other features' are. */
+ * record is set aside (state_set), as the other features' are. Version 5
+ * (#166's slice 1) keeps each room's Seams block and the screen load not yet
+ * acted on; older records don't load. */
 static int state_validate(const uint8_t *buf,int len){
-    if(!len)return 1;if(!buf||len!=STATE_HEADER+sizeof rooms||memcmp(buf,"FAXWORLD",8)||buf[8]!=4||buf[9]>8||buf[10]>MAX_ROOMS||buf[11]>MAX_ROOMS||buf[12]>3||buf[13]>1||buf[14]>1||buf[18]>1||buf[19]>1||buf[28]>1)return 0;
+    if(!len)return 1;if(!buf||len!=STATE_HEADER+sizeof rooms||memcmp(buf,"FAXWORLD",8)||buf[8]!=5||buf[9]>8||buf[10]>MAX_ROOMS||buf[11]>MAX_ROOMS||buf[12]>3||buf[13]>1||buf[14]>1||buf[18]>1||buf[19]>1||buf[28]>1||buf[29]>1)return 0;
     if(!buf[9]&&(buf[10]||buf[11]))return 0;
     if(buf[9]&&(buf[10]>counts[buf[9]-1]||buf[11]>counts[buf[9]-1]))return 0;
-    for(unsigned i=0;i<MAX_ROOMS;i++){Room r;memcpy(&r,buf+STATE_HEADER+i*sizeof r,sizeof r);if(r.live>1||r.valid>1||r.owned>1||r.x< -83||r.x>83||r.y< -83||r.y>83)return 0;for(unsigned j=0;j<4;j++)if(r.edges[j]!=255&&r.edges[j]>=MAX_ROOMS)return 0;}return 1;
+    for(unsigned i=0;i<MAX_ROOMS;i++){Room r;memcpy(&r,buf+STATE_HEADER+i*sizeof r,sizeof r);if(r.live>1||r.valid>1||r.owned>1||r.x< -83||r.x>83||r.y< -83||r.y>83||!fax_seams_valid(r.seams,MAX_ROOMS))return 0;for(unsigned j=0;j<4;j++)if(r.edges[j]!=255&&r.edges[j]>=MAX_ROOMS)return 0;}return 1;
 }
 static int state_set(const uint8_t *buf,int len){
     if(!state_validate(buf,len))return 0;if(!len||!enabled){fax_world_reset();return 1;}
-    area=buf[9]-1;active=buf[10]-1;pending=buf[11]-1;direction=buf[12];player_tick=buf[13]!=0;collision_active=buf[14]!=0;death_mode=buf[18]!=0;script_mode=buf[19]!=0;pending_y=buf[15];pre_x=buf[16];pre_y=buf[17];fighting=buf[28]!=0;
+    area=buf[9]-1;active=buf[10]-1;pending=buf[11]-1;direction=buf[12];player_tick=buf[13]!=0;collision_active=buf[14]!=0;death_mode=buf[18]!=0;script_mode=buf[19]!=0;pending_y=buf[15];pre_x=buf[16];pre_y=buf[17];fighting=buf[28]!=0;screen_loaded=buf[29]!=0;
     memcpy(&ticks,buf+20,4);memcpy(&last_tick,buf+24,4);memcpy(rooms,buf+STATE_HEADER,sizeof rooms);fax_world_loaded();return 1;
 }
 static int hud_get(uint8_t *buf,int cap){

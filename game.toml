@@ -1121,6 +1121,91 @@ addr = 0x890a
 bank = 14
 bytes = "ae 78 03 bd cc 02 c9 ff f0 f5 20 c8"   # CurrentSprite_CheckHitPlayer: LDX CurrentSpriteIndex, LDA CurrentSprites_Entities,X, CMP #$FF, BEQ RETURN_8909, JSR Sprites_IsSpriteHidden
 
+# Seams are open ground (fax_seams.c, #166's slice 1): monsters, their shots
+# and the people who walk go through Seamless's seams, dormant until first
+# seen. Sprites_UpdateAll's entry and its loop's end (which room's loop runs);
+# Sprites_UpdateBehavior's and CurrentSprite_UpdateState's entries (a sleeper
+# not yet seen stands still and isn't drawn); the four tests that call a move
+# past a screen's side blocked (walking left and right, flying) and the two
+# floor tests that read a column past it; Sprite_Draw_Standard's and
+# _FlippedHoriz's entries (the cells past a side); Screen_LoadSpriteInfo's
+# entry (a load forgets the other rooms). The mid-routine sites $86A7, $86BD
+# and $873A are reached by branches inside CurrentSprite_CanMoveInDirection,
+# $842A and $855E after a JSR's return inside a routine called by JSR, so a
+# hook that handles one returns from that routine.
+
+[[mod_function_hook]]
+id = "faxanadu.seams.loop"
+addr = 0x8000
+bank = 14
+bytes = "ad 26 04 d0 0a ad 2a 04 c9 ff d0 03"   # Sprites_UpdateAll: LDA Sprites_UpdatesPaused, BNE @_spritesLoop, LDA DurationHourGlass, CMP #$FF, BNE
+
+[[mod_function_hook]]
+id = "faxanadu.seams.loop-done"
+addr = 0x8049
+bank = 14
+bytes = "a9 00 85 33 60 de 4c 03 bd cc 02 c9"   # Sprites_UpdateAll, past the slots' loop: LDA #$00, STA Sprites_PPUOffset, RTS; @_handleHit: DEC CurrentSprites_HitCounter,X
+
+[[mod_function_hook]]
+id = "faxanadu.seams.behavior"
+addr = 0xa66b
+bank = 14
+bytes = "ad 2a 04 30 09 bc cc 02 b9 44 b5 d0"   # Sprites_UpdateBehavior: LDA DurationHourGlass, BMI, LDY CurrentSprites_Entities,X, LDA SPRITE_CATEGORIES_BY_ENTITY,Y, BNE
+
+[[mod_function_hook]]
+id = "faxanadu.seams.state"
+addr = 0x8bd2
+bank = 14
+bytes = "ad c7 03 10 40 ae 78 03 bc cc 02 30"   # CurrentSprite_UpdateState: LDA IScript_PortraitID, BPL @_return, LDX CurrentSpriteIndex, LDY CurrentSprites_Entities,X, BMI
+
+[[mod_function_hook]]
+id = "faxanadu.seams.left"
+addr = 0x86bd
+bank = 14
+bytes = "b9 ba 00 c9 f1 b0 f1 85 b5 b9 c2 00"   # FUN_PRG14__86bd: LDA CurrentSprites_XPos_Full,Y, CMP #$F1, BCS Sprites_SetBlockIsMovingResult, STA Arg_PixelPosX, LDA CurrentSprites_YPos,Y
+
+[[mod_function_hook]]
+id = "faxanadu.seams.right"
+addr = 0x86a7
+bank = 14
+bytes = "be 04 03 b9 ba 00 18 7d d1 b4 85 b5"   # Sprites_MoveRight: LDX CurrentSprites_HitBoxTypes,Y, LDA CurrentSprites_XPos_Full,Y, CLC, ADC SPRITE_HITBOX_WIDTHS,X, STA Arg_PixelPosX
+
+[[mod_function_hook]]
+id = "faxanadu.seams.vertical"
+addr = 0x873a
+bank = 14
+bytes = "b9 ba 00 85 b5 20 6c e8 20 7c e8 85"   # CurrentSprite_CanMoveInDirection's up and down test: LDA CurrentSprites_XPos_Full,Y, STA Arg_PixelPosX, JSR Area_ConvertPixelsToBlockPos, JSR ScreenBuffer_IsBlockImpassable
+
+[[mod_function_hook]]
+id = "faxanadu.seams.placement"
+addr = 0x855e
+bank = 14
+bytes = "20 6c e8 4c 87 e8 20 ca 85 20 75 85"   # Sprites_CheckPlacementInvalidAtY: JSR Area_ConvertPixelsToBlockPos, JMP Area_IsBlockImpassableOrLadder
+
+[[mod_function_hook]]
+id = "faxanadu.seams.flier"
+addr = 0x842a
+bank = 14
+bytes = "b5 ba c9 f0 90 19 bd dc 02 4a b5 ba"   # Sprite_Maybe_TurnAroundIfAtScreenEdgeHoriz, after JSR Sprite_MoveForwardX: LDA CurrentSprites_XPos_Full,X, CMP #$F0, BCC @_returnFalse
+
+[[mod_function_hook]]
+id = "faxanadu.seams.draw"
+addr = 0xf0ec
+bank = 15
+bytes = "a9 00 85 43 a8 a5 40 48 a9 00 85 42"   # Sprite_Draw_Standard: LDA #$00, STA Temp_Sprites_TileYOffset, TAY, LDA Temp_Sprites_ColsRemaining, PHA
+
+[[mod_function_hook]]
+id = "faxanadu.seams.draw-flipped"
+addr = 0xf181
+bank = 15
+bytes = "a9 00 85 05 a4 40 c8 98 0a 0a 0a 85"   # Sprite_Draw_FlippedHoriz: LDA #$00, STA Temp_05, LDY Temp_Sprites_ColsRemaining, INY, TYA, ASL A x3
+
+[[mod_function_hook]]
+id = "faxanadu.seams.load"
+addr = 0xc1b4
+bank = 15
+bytes = "ad 00 01 48 a2 0b 20 1a cc 20 54 c1"   # Screen_LoadSpriteInfo: LDA $0100, PHA, LDX #$0B, JSR MMC1_UpdateROMBank, JSR Screen_LoadAllScreenInfo
+
 # Punches (fax_punch.c, #180): without a weapon, Player_DrawWeapon's BMI after
 # LDA Player_CurWeapon (the fist placed, with the Hand Dagger's reach),
 # Player_HitSpriteWithWeapon's (the punch goes on), and the Glove's STA

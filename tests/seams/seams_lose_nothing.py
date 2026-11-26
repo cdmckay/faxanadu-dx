@@ -37,6 +37,12 @@ the ROM's own tables.
 4. original: the same swing with the remaster off, in the original's own
    view: its ghost hit kills the Zozura (one Long Sword hit is 10 without the
    Pendant), for its experience.
+5. ghost-punch: the same with no weapon, a punch (Punches, fax_punch.c): the
+   fist is placed as the Hand Dagger is, 8 pixels left of him in the swing's
+   second pose and 16 in its third, at x -4 and -12 off the screen, which
+   in 8 bits match the Zozura at x 236 only by wrapping. The same 16-bit
+   test refuses them: the Zozura keeps its 9 HP and no experience comes,
+   while Punches counts the fist placed.
 
 Screenshots: the coin waiting at screen 5's edge, the hero picking it up,
 the Dragon Slayer and room 5's Zozuras, and the end of each swing.
@@ -59,12 +65,13 @@ SELECTED_WEAPON, PLAYER_CUR_WEAPON, HP = 0x3BD, 0x3C8, 0x431
 SPRITE_BSCRIPTS, SPRITE_ENTITIES_HITBOX_TYPES, SPRITE_ENTITIES_HP = 0xAD2D, 0xB4DF, 0xB5A9   # bank 14
 COIN, ZOZURA, DRAGON_SLAYER, EMPTY = 0x02, 0x47, 0x5A, 0xFF
 LONG_SWORD, LONG_SWORD_REACH = 1, (0x10, 0x08)                       # MAYBE_WEAPON_RANGES
+NO_WEAPON, FIST_REACH = 0xFF, (0x08, 0x08)                           # the Hand Dagger's X reach; the taller dagger's Y
 ZOZURA_SCREEN, NEXT_SCREEN = 4, 5                                    # Eolis $04, and $05 left of it
 ROOMS, HEADER = 83, 32                                               # fax_world.c's MAX_ROOMS, STATE_HEADER
 COIN_VALUE = 20
 WATCH = 120                                                          # frames room 5 runs with the coin or the item there
 PACKAGE, FEATURE = "faxanadu.dx", "dx"                               # the one switch: off is the original game
-PARTS = ("coin", "item", "ghost", "original")
+PARTS = ("coin", "item", "ghost", "original", "ghost-punch")
 
 
 def bank14(image, addr, n=1):
@@ -190,14 +197,16 @@ def main():
             print(f"ok: with the Dragon Slayer at room 5's x 240, room 5 ran {room['ticks'] - ticks} ticks in "
                   f"{at2 - at} frames, no failure, its Zozuras moved ({xs} -> {[room['x'][s] for s in room5_zozuras]})")
 
-        def swing(name):
-            """Swing the Long Sword from x 4 facing left, a Zozura at x 236 in
-            slot 7, 232 pixels behind him. Returns the Zozura's entity, HP and
-            hit counter at each read until the swing ended, and the experience
-            before and after."""
-            writes = {HERO_X: 4, PLAYER_FLAGS: 0, PLAYER_CUR_WEAPON: LONG_SWORD, SELECTED_WEAPON: LONG_SWORD,
-                      HP: 0x50, WEAPON_Y: hero_y + 8, RANGE_X: LONG_SWORD_REACH[0], RANGE_Y: LONG_SWORD_REACH[1],
-                      ENTITIES + 6: EMPTY, SPRITE_X + 7: 236}
+        def swing(name, weapon=LONG_SWORD, reach=LONG_SWORD_REACH):
+            """Swing the Long Sword (or `weapon`, NO_WEAPON a punch) from x 4
+            facing left, a Zozura at x 236 in slot 7, 232 pixels behind him,
+            facing him (with Seams, slice 1, one walking right would turn at
+            the town's edge, room 3's side). Returns the Zozura's entity, HP
+            and hit counter at each read until the swing ended, and the
+            experience before and after."""
+            writes = {HERO_X: 4, PLAYER_FLAGS: 0, PLAYER_CUR_WEAPON: weapon, SELECTED_WEAPON: weapon,
+                      HP: 0x50, WEAPON_Y: hero_y + 8, RANGE_X: reach[0], RANGE_Y: reach[1],
+                      ENTITIES + 6: EMPTY, SPRITE_X + 7: 236, FLAGS + 7: live[FLAGS + 7] & 0xFE}   # facing left
             path = out / f"{name}.cycstate"
             fixture(source, path, writes, {"faxanadu.world": empty_room5})
             exp0 = None
@@ -232,12 +241,28 @@ def main():
             state = tcp("seams_state")
             assert all(e == ZOZURA and hp == zozura_hp and c == 0 for e, hp, c, _ in seen), seen
             assert exp1 == exp0, (exp0, exp1)
+            assert state["refused"] > before, (state, seen)
             assert state["refused"] > before, state
             assert state["last_weapon_x"] in (4 - 16, 4 - 24) and state["last_entity"] == ZOZURA, state
             assert 220 <= state["last_sprite_x"] <= 240, state
             print(f"ok: a swing at x 4 leaves the Zozura at x {seen[0][3]}-{seen[-1][3]} alone (HP {zozura_hp}, no hit, "
                   f"experience {exp1}); {state['refused'] - before} wrapped matches refused, the last with the "
                   f"weapon at x {state['last_weapon_x']}")
+
+        if args.wants("ghost-punch"):
+            if not game.running():
+                game.launch(at="eolis-zozuras")
+            before, placed = tcp("seams_state")["refused"], tcp("punches_state")["placed"]
+            seen, exp0, exp1 = swing("ghost-punch-spared", NO_WEAPON, FIST_REACH)
+            state, fist = tcp("seams_state"), tcp("punches_state")
+            assert fist["enabled"] and fist["placed"] > placed, fist
+            assert all(e == ZOZURA and hp == zozura_hp and c == 0 for e, hp, c, _ in seen), seen
+            assert exp1 == exp0, (exp0, exp1)
+            assert state["refused"] > before and state["last_weapon_x"] in (4 - 8, 4 - 16), state
+            assert state["last_entity"] == ZOZURA and 220 <= state["last_sprite_x"] <= 240, state
+            print(f"ok: a punch at x 4 leaves the Zozura at x {seen[0][3]}-{seen[-1][3]} alone (HP {zozura_hp}, no "
+                  f"hit, experience {exp1}); the fist placed {fist['placed'] - placed} frames, {state['refused'] - before} "
+                  f"wrapped matches refused, the last with the fist at x {state['last_weapon_x']}")
 
         if args.wants("original"):
             game.close()

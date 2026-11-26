@@ -1,6 +1,8 @@
 # Seamless's seams: the plan for one big world
 
-Issue #166. A plan for review, not a build: only slice 0 is in the game.
+Issue #166. A plan, built a slice at a time: slices 0 and 1 are in the game.
+Where building slice 1 found the plan wrong, the plan below says what was
+built, and "Slice 1, as built" lists the changes.
 
 **The goal**, as Cameron put it: "it should just feel like 1 big world." A
 player should never be able to tell where one room ends and the next begins.
@@ -36,7 +38,8 @@ open ground:
 Then come seams one above the other, what a neighbouring room sees of the
 hero, and three loose ends: seven slices after slice 0, about 2,100 lines of
 C as estimated, and likely twice that, as slice 0 took. Slice 0 (nothing
-lost at a seam, no ghost hit) is done: #177.
+lost at a seam, no ghost hit) is done: #177. Slice 1 (#178, seams are open
+ground, mechanism 1) is done too.
 
 ## How Seamless runs a neighbouring room today
 
@@ -193,11 +196,15 @@ Checked in hidden games where marked; the scripts were throwaway, on
 - **Walking people wait at the seam.** In the `eolis-town` fixture (the hero
   on room 1), room 2's walking woman (`$45`) walked from x 85 to x 240, the
   seam with his room, pressed against it, and turned back, about 160 pixels
-  from him (checked). Four of the five people who walk move toward the hero
-  (`BSCRIPTS_NPC_WALKING_WOMAN_01` and `_02`, `$44` and `$45`; the King's
-  guard, `$42`; the lady with the cup, `$41`), and the walking man (`$34`)
-  walks on until something turns him. Eolis has four of them and the other
-  towns nine, all in joined rooms. **Slice 1.**
+  from him (checked). Four of the five people who walk use
+  `SPRITE_BEHAVIOR_MOVE_TOWARD_PLAYER` (`BSCRIPTS_NPC_WALKING_WOMAN_01` and
+  `_02`, `$44` and `$45`; the King's guard, `$42`; the lady with the cup,
+  `$41`), which despite its name walks the way the person faces: `_02`
+  walks 30 pixels, turns, walks 40, turns, drifting 10 a cycle until a wall
+  turns her (found building slice 1); the walking man (`$34`) walks 45
+  pixels, stands, and faces the hero, so he keeps coming back past him.
+  Eolis has four of them and the other towns nine, all in joined rooms.
+  **Slice 1 (done).**
 - **Shots vanish at the seam.** `SpriteBehavior_EnemyMagic` (`$A0CB`) moves a
   shot 2 pixels a frame and removes it (entity `$FF`) when
   `Sprite_Maybe_TurnAroundIfAtScreenEdgeHoriz` (`$8427`) finds it at the
@@ -355,7 +362,11 @@ room's machine.
 
 - **Dormant until seen.** An actor is dormant until the first frame any
   part of it is in the view, the 424x240 picture he sees (Seamless's
-  camera). While dormant, its behaviour doesn't run: hooks at
+  camera): as built, the first frame its hitbox with 16 pixels round it
+  meets the view (no actor draws more than 16 pixels past its box but the
+  big enemies, who stay home), so it wakes up to 16 pixels early and is
+  never seen standing; with F4's map up it is still the 424x240 view. While
+  dormant, its behaviour doesn't run: hooks at
   `Sprites_UpdateBehavior` (`$A66B`) and `CurrentSprite_UpdateState`
   (`$8BD2`) return at once for it, so it neither moves nor seeks him, and
   isn't drawn, being out of sight. That holds in the copies and in the live
@@ -371,12 +382,21 @@ room's machine.
   screen's edge, so none hits him that he couldn't see coming.
 - **The edge.** Hooks at the edge checks, `FUN_PRG14__86bd` (left),
   `Sprites_MoveRight` (right) and `Sprite_Maybe_TurnAroundIfAtScreenEdgeHoriz`
-  (`$8427`, the fliers' and the shots'), make a seam passable for a mover
-  when a joined room lies that way, the blocks across are passable (each
-  room already holds its neighbours' edge columns), and the room across
-  holds fewer than 5 actors. Otherwise the seam stays a wall, as now. In
-  copies the projected hero is clamped to x 255 instead of 240, so a monster
-  coming for him keeps coming until it crosses.
+  (after its move, `$842A`, the fliers' and the shots'), make a seam
+  passable for an awake mover when a joined room lies that way whose actors
+  run, the blocks across are passable, and the room across holds fewer than
+  5 actors, counting the movers on their way in. The blocks across are
+  tested in that room's own `ScreenBuffer` and `BlockProperties`, from its
+  record: the neighbours' edge columns each room holds are one column for
+  the hero's tests, and a straddling sprite covers more. Two floor tests
+  read past a side for a sprite that straddles one, and are hooked the same
+  way (found building slice 1): `CurrentSprite_CanMoveInDirection`'s up and
+  down test (`$873A`, across the hitbox's columns, which would wrap into the
+  next row) and `Sprites_CheckPlacementInvalidAtY`'s block ahead (`$855E`,
+  X + 15 facing right, which wraps to the room's left column: a Zozura that
+  found no floor there turned back at the seam). Otherwise the seam stays a
+  wall, as now. In copies the projected hero is clamped to x 255 instead of
+  240, so a monster coming for him keeps coming until it crosses.
 - **Any room to any room.** The live game sends as well as receives: a
   monster walking away from him, one knocked back over a seam, and a shot
   that missed leave his room for the next. Copies trade with each other the
@@ -392,28 +412,43 @@ room's machine.
   person's conversation goes with the slot (`CurrentSprites_Values`), and
   the hero talks to them as at home: Up while touching them
   (`Player_CheckHandlePressUpOnNPC`).
-- **Drawn whole.** A hook where `Sprite_Draw_Standard` and
-  `Sprite_Draw_FlippedHoriz` skip a cell off the screen keeps the cell (its
-  X and Y past the edge, tile and attributes) in a list beside the room's
-  OAM, in copies and in the live game. Seamless paints those cells in the
+- **Drawn whole.** A hook at the entry of each of `Sprite_Draw_Standard`
+  and `Sprite_Draw_FlippedHoriz` replays the routine's tile loop in C from
+  the state `Sprite_Draw` left, and keeps each cell it skips off the screen
+  (its X and Y past the edge, tile and attributes) in a list beside the
+  room's OAM, in copies and in the live game; a hook where the loop skips a
+  cell would fire for every cell drawn. Seamless paints those cells in the
   next room's space, and tests the behind-the-background bit against the
   blocks of the room each pixel falls in. A mover straddling a seam is then
   drawn whole, and so are the Maskman, Sir Gawaine, the Wolfman and King
-  Grieve by a room's left edge.
+  Grieve by a room's left edge. A slot whose origin crossed in this frame,
+  before it moves, is drawn a screen over (`Sprite_TileInfo_OffsetX` moved
+  by one), so it isn't drawn at the far side of the room it is leaving.
 - **Its tiles.** If the room it enters has its entity, it takes that slot's
-  tile offset. Otherwise Seamless draws the slot from the CHR of the room its
-  tiles are in, noting which OAM entries the slot wrote (a hook around
-  `CurrentSprite_UpdateState`), and keeps that room for the slot in its
-  save-state record (version 5).
+  tile offset, and that slot's tiles' room. Otherwise Seamless draws the
+  slot from the CHR of the room its tiles are in, and keeps that room for
+  the slot in its save-state record (version 5). The same replay notes
+  which OAM entries each slot wrote. (A first build took the offset alone,
+  and a second Zozura into Eolis `$03` was drawn from `$03`'s CHR at `$05`'s
+  offset: a jumble.)
 - **A load refreshes the rooms joined to it.** When the original loads a
-  screen of the same area (a door, a zone respawn), Seamless forgets every
-  other room joined to it, so each is decoded and spawned fresh from its
+  screen of the same area (`Screen_LoadSpriteInfo` in play: a door, a zone
+  respawn, the original's scroll into an arena), Seamless forgets every
+  other room of the area, so each is decoded and spawned fresh from its
   list as it comes into the halo, as the original's screens are at every
   load. So nothing meets itself (a monster that wandered out, and its room's
   fresh one), no homes need keeping, and a retry after a death finds the
   rooms around it as fresh as the one it starts in. An area change (a
   building, a region's door, a temple) already empties every room. Bosses
   come back as they do in the original: at a load, not at a seam.
+- **Towns stay safe** (Cameron's call on #166). A seam between a town
+  room and one that isn't is a wall for every mover, as a full room's is: a
+  monster or its shot turns back at a town's edge, and the people who walk
+  stay in. A town room is a screen of a town's zone (`fax_zone.c`) whose
+  list holds no monster: Eolis `$01-$03` and `$06-$07` and every screen of
+  the towns past it, so only Eolis's three edges are seams
+  (GAME_INTERNALS.md, *Eolis's screens, and town rooms*). Without it,
+  Eolis's Zozuras, once seen, followed him into the town.
 - **Never moved:** standing people, items, the intro's trigger (category
   4), big enemies (7) and multi-part actors (`Sprite12BodyPartHandler`,
   `$0379-$037E`). Arenas join nothing while their boss lives.
@@ -457,11 +492,14 @@ hero sees them." So:
   loaded, or an area change empties them all. And only the rooms next to his
   tick, so an awake monster that falls two rooms behind him stands still
   until he comes back.
-- **One limit is left: a full room.** A room takes no mover while it holds 5
-  actors, the most any list holds, dormant ones included. That is also where
-  the live game starts to lag, as Eolis's town does. The seam is a wall for
-  that mover then: the one tell left, and rare, since it needs two busy rooms
-  to meet in view.
+- **Two limits are left: a full room, and a town's edge.** A room takes no
+  mover while it holds 5 actors, the most any list holds, dormant ones
+  included. That is also where the live game starts to lag, as Eolis's town
+  does. The seam is a wall for that mover then: a tell, and rare, since it
+  needs two busy rooms to meet in view. And a town's edge is a wall for
+  every mover (towns stay safe, above): Eolis's monsters pace there while
+  he is in the town, as the original's did at any screen's side. That one
+  is a choice: the town is a refuge.
 
 **Its honest cost:**
 
@@ -477,8 +515,8 @@ hero sees them." So:
   the view, stands still until he turns toward it. Nobody sees it stand, but
   a monster there waits instead of coming.
 - **Towns get busier.** The people who walk, once seen, come toward him from
-  the rooms beside his and gather round him for a while, then wander off.
-  Any shop puts them home (an area change).
+  the town's rooms beside his and gather round him for a while, then wander
+  off, never out of the town. Any shop puts them home (an area change).
 - **More moves.** The live game gives actors away as well as takes them, and
   people wander into rooms whose CHR has no tiles for them, so tiles from
   home are drawn more often.
@@ -701,7 +739,9 @@ with him. A zone respawn is a load: the rooms joined to it are refreshed.
 
 **Doors, boss rooms and regions.** None of them is a seam, so nothing crosses
 them: a door, a region change and a town's edge are the original's own
-loads, and nothing followed through those in the original. A boss arena
+loads, and nothing followed through those in the original. Eolis's town
+edges are seams, and walls for monsters and townspeople alike (towns stay
+safe). A boss arena
 joins no neighbour while its boss lives (SEAMLESS-WORLD.md), so its edges
 stay walls for everything, visitors and spells included. Big enemies stay in
 their rooms; they can be hit across a seam and hit back across it.
@@ -718,7 +758,8 @@ seam hurt him; a monster he has seen follows him until it dies, a load
 comes, or he outruns it by two rooms; a bigger fight forms where two rooms'
 monsters meet. Easier: he strikes first across a seam instead of walking
 into a waiting pile; spells reach the monsters he can see; nothing he hasn't
-seen comes for him; a door still ends everything. Towns are livelier: their
+seen comes for him; a door still ends everything, and no monster follows
+him into a town. Towns are livelier: their
 walkers wander between rooms and come to him. Bosses are as in the original. The first fight to play is Eolis's
 Zozuras; then Eolis's town, Trunk's Hornets (fliers), the Mist's Charrons
 (fireballs) and Sugatas, Rokusutahn (staying home), and Dartmoor and Zenis,
@@ -770,7 +811,7 @@ twice its estimate (see "What it costs").
 | Slice | What it does | Its end-to-end test | Size |
 |---|---|---|---|
 | 0. Seams lose nothing (**done**, #177) | Copies stop touching the hero (no lost drops, no frozen rooms). The weapon's reach in 16 bits (no ghost hit; the original keeps it) | A coin at room 5's edge stays, and he takes it walking in; the Dragon Slayer there leaves room 5 ticking; a swing at room 4's x 4 leaves a Zozura at its x 236 alone, and the original's kills it | Small: estimated at 100 lines, built in about 200 |
-| 1. Seams are open ground | Monsters, shots and walking people go through side-by-side seams both ways, between any two rooms, up to 5 actors a room; dormant until first seen, then awake for good (a shot leaving the view is removed); drawn whole across a seam; tiles from home; a load refreshes the rooms joined to it; record version 5 | Eolis's walking woman walks from room 2 into his room 1 and out; a room 5 Zozura follows him through room 4 into room 3, and one he walks past leaves room 4 for room 5; a Zozura never seen stands still, wakes the first frame it is in view, and keeps coming after it leaves the view; unseen monsters in two rooms don't gather at him; a missed fireball flies on through a seam, and one leaving the view is gone; a room holding 5 keeps its seam a wall; a straddling Zozura's pixels on both sides of the seam; a door's load brings the rooms beside it back fresh; a person who talks when touched, at a neighbour's edge, leaves its room ticking (slice 0's hook); save and load mid-crossing | Large, about 730 |
+| 1. Seams are open ground (**done**, #178) | Monsters, shots and walking people go through side-by-side seams both ways, between any two rooms, up to 5 actors a room; dormant until first seen, then awake for good (a shot leaving the view is removed); drawn whole across a seam; tiles from home; a load refreshes the rooms joined to it; record version 5 | Eolis's walking woman walks from room 2 into his room 1, and the walking man in and out (`tests/seams/open_ground.py`, as all here); a room 5 Zozura follows him back through room 4 to the town's edge (room 3's side) and turns back there, none ever in room 3, and room 4's follow him into room 5; the walking man at room 1's side by room 8 turns back there; a Zozura never seen stands still, wakes the first frame it is in view, and keeps coming after it leaves the view; unseen monsters in two rooms don't gather at him; a missed fireball flies on through a seam, and one leaving the view is gone; a room holding 5 keeps its seam a wall, one holding 4 doesn't; a straddling Zozura's pixels on both sides of the seam; a zone respawn's load brings the rooms beside it back fresh; the intro's trigger, a person who talks when touched, at a neighbour's edge leaves its room ticking (slice 0's hook); a save mid-crossing replays alike in two fresh games | Large: estimated at 730 lines, built in about 850 lines of C (`fax_seams.c` half comments) and 1,050 of tests |
 | 2. Fights across a seam | The visitors' pass, side by side: the sword, touches, shots on him and his shield, bread and coins; a neighbouring room's sounds; Sugata's flash | From room 4, he kills a room 5 Zozura: its experience and MP, its death in room 5, its coin and the coin's sound; a Zozura straddling the seam hurts him; he takes a coin across it; a Sugata across a Mist seam flashes him in reach | Medium, about 470 |
 | 3. Spells fly on | The spell's side, walls across, the view's edge, its picture, visitors in its path, kept through a crossing | Deluge ends at a wall across a seam and kills a Zozura across one; Fire still flickers; save and load mid-flight | Medium, about 230 |
 | 4. The view shows only rooms | The camera keeps the view over rooms, gliding where its limits change | Walking the Tower of Trunk from `$10`, and a Mist stretch with an empty corner: on no frame does the view lie over an empty place (`fax_world`'s camera against `fax_world_room`'s places), and it moves a few pixels a frame at most | Medium, about 150 |
@@ -784,6 +825,40 @@ across a seam brief; slice 2 then closes that gap, and slice 3 needs its
 visitors. Black where no room is (4) shows without a fight, but Cameron's
 report named the combat first. Seams one above the other (5) are fewer, and
 fights there rarer; 6 and 7 are narrow.
+
+### Slice 1, as built (#178)
+
+One PR: the moves would look wrong without drawing whole and tiles from home
+(a mover vanishing for the frame it crosses, and a person walking into a room
+without its tiles drawn as a jumble), so they went together. Where the plan
+changed:
+
+- **Dormancy** (Cameron, during the build): dormant until first seen, then
+  awake until it dies or a load; shots out of the view go. Its wake is a
+  bit per slot in the record.
+- **Two more hooks**, the floor tests that read past a side
+  (`$873A`, `$855E`), and the flier's at `$842A`, after its move, not at
+  `$8427`. The blocks across come from the neighbour's own record.
+- **Drawn whole** by replaying the draw's tile loop at its two entries, which
+  also notes each OAM entry's slot for tiles from home; a slot taking another
+  of its kind's tile offset takes that slot's tiles' room too.
+- **A load** is `Screen_LoadSpriteInfo` in play, and it forgets every other
+  room of the area.
+- **The hero's wrapped cells.** Seamless shifted every OAM cell at x 0-31 of
+  his room a screen right while he stood past x 240, meant for his own;
+  a monster there (now often, one just through the left seam) was drawn
+  in the next room. Only cells no actor drew move now.
+- **Towns stay safe** (Cameron's call on #166): Eolis's town is joined to
+  the screens past it, so its Zozuras, once seen, followed him into the
+  town. Now a town's edge is a wall for every mover; a town room is worked
+  out from `fax_zone.c`'s zones and the rooms' lists.
+- **Encounters.** The walking woman's script drifts her one way (*Tells*),
+  so her test walks her in and the walking man in and out.
+- **Cost.** Headless, 3,000 frames from the same save, slice 1's hooks on
+  against off: Eolis's town 3.41 against 3.43 ms of CPU a frame, Apolune
+  3.45 against 3.45, within noise; the neighbours' ticks took a third of the
+  cycles in Eolis's town, its unseen people standing still. Seamless's step
+  stays at 0.06-0.2 ms.
 
 Boss rooms are covered by `tests/world/boss_arenas.py`, which every slice
 runs, with a check that no mover or visitor comes from an arena.

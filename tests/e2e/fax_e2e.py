@@ -145,6 +145,10 @@ Save states and the mod selection
                                     ({address: byte}, in its HW chunk at offset 23)
                                     and bytes of mods' records ({record name:
                                     {offset: byte}}, e.g. "faxanadu.zone-names").
+    quiet_neighbours(source)        fixture() records that empty every other
+                                    room's sprite slots in Seamless's record:
+                                    with Seams a neighbour's monsters come
+                                    through the seams.
     features_toml(features)         state.toml text for {(package_id, feature_id): enabled}.
     parse_args(doc, parts=()) / parser(doc, parts=())
                                     The common options, with `doc` as the help. With
@@ -1298,6 +1302,23 @@ def fixture(source, target, writes, records=None):
             for offset, value in named.get(bytes(data[p:p + 64]).rstrip(b"\0"), {}).items():
                 data[p + 64 + offset] = value
     Path(target).write_bytes(data)
+
+
+def quiet_neighbours(source):
+    """Record edits for fixture() that empty every other room's sprite slots
+    in Seamless's record (faxanadu.world: a 32-byte header, then 83 rooms of
+    the same size, each with its RAM first), so only the live room's actors
+    are left. With Seams (#166) a neighbouring room's monsters, once seen, come
+    through the seams, so a test that sends a screen's actors away sends its
+    neighbours' too."""
+    data = Path(source).read_bytes()
+    live = next(data[p + 23 + 0x63] for t, p, n in chunks(data) if t == b"HW  ")   # Area_CurrentScreen
+    for tag, p, n in chunks(data):
+        if tag == b"MOD " and bytes(data[p:p + 64]).rstrip(b"\0") == b"faxanadu.world":
+            size = (n - 64 - 32) // 83
+            return {"faxanadu.world": {32 + room * size + 0x2CC + slot: 0xFF
+                                       for room in range(83) if room != live for slot in range(8)}}
+    return {}
 
 
 def features_toml(features):
