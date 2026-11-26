@@ -1008,3 +1008,19 @@ rom = []
 # Start. Its input callback takes out of the pad byte the NES buttons the host
 # binds to a held action's controller button. No ROM, no read overrides, no
 # save-state record.
+
+[[feature]]
+id = "seams"
+package = "faxanadu.dx"
+plugin = "faxanadu.seams"
+source = "src/fax_seams.c"
+hooks = "faxanadu.seams."
+rom = []
+# Hooks Sprites_IsSpriteOutOfWeaponRange's entry ($88CB, bank 14) and
+# CurrentSprite_CheckHitPlayer's ($890A, bank 14), which no other feature
+# hooks. Handles the first only for a weapon match that wraps round the
+# screen, writing the registers and Temp_00 as the X test's failure leaves
+# them, with C set; handles the second only in Seamless's neighbouring rooms'
+# ticks (fax_world_ticking()), returning at once, so the touch hooks behind
+# it (Kept finds', the map's and Found items' at $88FB, Block's at $8999)
+# never fire there. No ROM, no read overrides, no save-state record.
