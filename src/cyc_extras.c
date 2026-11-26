@@ -129,6 +129,7 @@ static void frame_begin(void *ctx) {
     (void)ctx;
     if (text_enabled) { text_override_reload_if_changed(); text_override_apply(); }
     if (tiles_enabled) chr_override_reload_if_changed();
+    fax_seams_frame_begin();   /* last: the machine runs on from here */
 }
 #ifdef CYC_WITH_SDL
 /* The end-to-end tests' frame-exact wait (tests/e2e/fax_e2e.py's wait()):
@@ -153,6 +154,7 @@ static void wait_frame_end(void) {
 #endif
 static void frame_end(void *ctx) {
     (void)ctx; ++frame;
+    fax_seams_frame_end();     /* first: everything after sees the room, not a visitors' pass */
 #ifdef CYC_WITH_SDL
     wait_frame_end();
 #endif

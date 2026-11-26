@@ -38,6 +38,10 @@ bool fax_world_room_origin(int area, int room, int *x, int *y) {
     *x = room_x[room]; *y = room_y[room];
     return true;
 }
+/* Seams (fax_seams.c): the room a slot's X counts the pixels of, -1 without
+ * Seamless (the live screen, then). */
+static int slot_room[8];
+int fax_seams_slot_room(unsigned slot) { return slot_room[slot & 7]; }
 #define BG 0xFF404040u
 #define INK_WHITE 0xFFF0F0F0u
 #define INK_PINK 0xFFF05898u
@@ -125,6 +129,7 @@ static void setup(void) {
     for (unsigned s = 0; s < SLOTS; ++s) ram[CURRENT_SPRITES_ENTITIES + s] = 0xFF;
     world_on = false;
     for (int r = 0; r < 16; ++r) room_x[r] = room_y[r] = NO_ROOM;
+    for (int s = 0; s < 8; ++s) slot_room[s] = -1;
 }
 
 /* ---- the tests ---- */
@@ -181,6 +186,22 @@ static void weapon_and_magic_hits(void) {
     place(1, ZOZURA, 250, 80, 9);
     sword(1, 8);
     CHECK(numbers[4].x == 256 - 1 - 7);
+    /* Across a seam (Seams' visitors' pass): a Zozura of room 5, left of his
+     * room 4, at its x 230, the live room's -26: its number is room 5's, over
+     * it in its pixels; and one straddling room 4's right side, let through
+     * it into room 3, at its x 2 there. */
+    setup();
+    rom[14][SPRITE_EXTENTS - 0x8000 + ZOZURA * 2] = 16; rom[14][SPRITE_EXTENTS - 0x8000 + ZOZURA * 2 + 1] = 16;
+    place(5, ZOZURA, 230, 160, 9);
+    slot_room[5] = 5;
+    sword(5, 8);
+    CHECK(count == 1 && numbers[0].room == 5 && numbers[0].x == 230 + 8 - 3 && numbers[0].slot == 5);
+    place(4, ZOZURA, 2, 160, 9);
+    slot_room[4] = 3;
+    spell(4, 6);
+    CHECK(count == 2 && numbers[1].room == 3 && numbers[1].x == 2 + 8 - 3);
+    hero_takes(4, 0);                                   /* his own: his room's */
+    CHECK(count == 3 && numbers[2].room == 4);
 }
 
 static void the_hero_hit(void) {

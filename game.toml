@@ -1206,6 +1206,46 @@ addr = 0xc1b4
 bank = 15
 bytes = "ad 00 01 48 a2 0b 20 1a cc 20 54 c1"   # Screen_LoadSpriteInfo: LDA $0100, PHA, LDX #$0B, JSR MMC1_UpdateROMBank, JSR Screen_LoadAllScreenInfo
 
+# Fights across a seam (fax_seams.c, #166's slice 2): Game_MainLoop's JSR
+# GameLoop_CountdownItems, just after the sprite loop (the visitors' pass:
+# its first arrival returns into the loop with a prepared stack, its second
+# puts the slots back); the entries of Sprite_CheckHitByCastMagic and
+# Player_CheckShieldHitByMagic (their X tests in 16 bits; the shield check
+# skipped in neighbours' copies); Player_DrawWeapon's BNE past the weapon's
+# X (its Y and reach placed off the screen too); and Sound_PlayEffect's
+# entry (a neighbour's sounds). $DB68 and $B81A are mid-routine sites: the
+# first is handled only with a stack pushed for it, the second never.
+
+[[mod_function_hook]]
+id = "faxanadu.seams.visit"
+addr = 0xdb68
+bank = 15
+bytes = "20 8f c8 20 c5 df 20 16 e0 20 4b ef"   # Game_MainLoop: JSR GameLoop_CountdownItems, JSR Fog_OnTick, JSR GameLoop_CheckShowPlayerMenu, JSR GameLoop_RunScreenEventHandlers
+
+[[mod_function_hook]]
+id = "faxanadu.seams.magic"
+addr = 0x8adc
+bank = 14
+bytes = "ad b3 02 c9 05 b0 f4 ae 78 03 20 c8"   # Sprite_CheckHitByCastMagic: LDA CastMagic_Type, CMP #$05, BCS RETURN_8AD7, LDX CurrentSpriteIndex, JSR Sprites_IsSpriteHidden
+
+[[mod_function_hook]]
+id = "faxanadu.seams.shield"
+addr = 0x877c
+bank = 14
+bytes = "ad bf 03 c9 03 b0 47 20 27 b9 38 e9"   # Player_CheckShieldHitByMagic: LDA SelectedShield, CMP #$03, BCS RETURN_87CA, JSR Maybe_Player_CalcAnimFrame, SEC, SBC
+
+[[mod_function_hook]]
+id = "faxanadu.seams.weapon"
+addr = 0xb81a
+bank = 14
+bytes = "d0 b9 ad c8 03 0a aa bd 0f b9 85 02"   # Player_DrawWeapon: BNE RETURN_B7D5, LDA Player_CurWeapon, ASL A, TAX, LDA PTR_ARRAY_PRG14__b90f,X
+
+[[mod_function_hook]]
+id = "faxanadu.seams.sound"
+addr = 0xd0e4
+bank = 15
+bytes = "8d 36 04 8a 48 98 48 ad 36 04 20 6f"   # Sound_PlayEffect: STA Temp_SoundIDToPlay, TXA, PHA, TYA, PHA, LDA Temp_SoundIDToPlay, JSR SoundEffect_SetCurrent
+
 # Punches (fax_punch.c, #180): without a weapon, Player_DrawWeapon's BMI after
 # LDA Player_CurWeapon (the fist placed, with the Hand Dagger's reach),
 # Player_HitSpriteWithWeapon's (the punch goes on), and the Glove's STA

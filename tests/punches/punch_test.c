@@ -154,7 +154,10 @@ static uint8_t calc_anim_frame(void) {
 }
 
 /* Player_DrawWeapon from $B7D6, with the hook site at $B7DE. Whether it goes
- * on to draw the weapon (@LAB_PRG14__b850). */
+ * on to draw the weapon (@LAB_PRG14__b850). Off the screen it places the Y
+ * and the reach too, as it does in the remaster: Seams' site at the BNE after
+ * the X ($B81A, fax_seams.c) keeps the branch from being taken, and the
+ * routine's next test returns before the draw. */
 static bool draw_weapon(void) {
     if (!(rd(PORTRAIT_ID) & 0x80)) return false;                 /* LDA IScript_PortraitID, BPL */
     cpu.a = rd(PLAYER_CUR_WEAPON);                                /* $B7DB LDA Player_CurWeapon */
@@ -172,7 +175,7 @@ static bool draw_weapon(void) {
     unsigned sum = (unsigned)ram[HERO_X] + ram[0x04];
     ram[WEAPON_X] = (uint8_t)sum;
     ram[WEAPON_X_HIGH] = (uint8_t)(ram[SCROLL_X] + ram[0x05] + (sum >> 8));
-    if (ram[WEAPON_X_HIGH] != ram[SCROLL_X]) return false;        /* CMP, BNE RETURN_B7D5 */
+    /* CMP, BNE RETURN_B7D5: not taken (Seams) */
     uint8_t index = (uint8_t)(rd(PLAYER_CUR_WEAPON) << 1);
     uint16_t ys = rd16((uint16_t)(WEAPON_Y_TABLES + index));
     sum = (unsigned)ram[HERO_Y] + rd((uint16_t)(ys + ram[TEMP_00]));
@@ -180,7 +183,7 @@ static bool draw_weapon(void) {
     ram[WEAPON_Y_HIGH] = (uint8_t)(ram[SCROLL_Y] + (sum >> 8));
     ram[REACH_X] = rd((uint16_t)(WEAPON_RANGES + index));
     ram[REACH_Y] = rd((uint16_t)(WEAPON_RANGES + index + 1));
-    return true;
+    return ram[WEAPON_X_HIGH] == ram[SCROLL_X];                   /* LDA, CMP, BEQ to the draw, else RTS */
 }
 
 /* ---- Player_HitSpriteWithWeapon ---- */

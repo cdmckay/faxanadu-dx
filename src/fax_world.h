@@ -72,6 +72,10 @@ void fax_world_place(int room, int *x, int *y);
  * sprite loop's start); Seamless does too before its neighbours' ticks. */
 bool fax_world_view(int *x, int *y);
 void fax_world_update_view(void);
+/* The hero's place (his top-left) in world pixels, from the live game, for
+ * the same frame as fax_world_view(), and false when that has none: in a
+ * neighbour's tick his true place, not the one projected to its edge. */
+bool fax_world_hero(int *x, int *y);
 /* A byte of the cartridge's PRG: `bank` (0-15) at `addr` as the CPU sees it
  * mapped there ($8000-$BFFF, or $C000-$FFFF for bank 15). */
 uint8_t fax_world_rom(unsigned bank, unsigned addr);

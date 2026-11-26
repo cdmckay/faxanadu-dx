@@ -18,7 +18,8 @@
  *     position from PTR_ARRAY_PRG14__b89f's dagger tables, with or without a
  *     shield, by pose and facing, in 16 bits against the screen; the Y from
  *     PTR_ARRAY_PRG14__b90f's; the reach from MAYBE_WEAPON_RANGES. Off the
- *     screen only the X is this frame's, as for a weapon. Nothing is drawn:
+ *     screen too, as Seams has the routine do for a weapon (slice 2: a
+ *     punch reaches across a seam at its true height). Nothing is drawn:
  *     the BMI returns. Outside a swing nothing is placed, since no hit can
  *     land then (Player_HitSpriteWithWeapon checks Player_Flags first) and the
  *     box is read only by Sprites_IsSpriteOutOfWeaponRange.
@@ -92,7 +93,8 @@ enum { DAGGER = 0 };
 
 /* Where the fist is this frame and how far it reaches: what Player_DrawWeapon
  * stores for the Hand Dagger. On the screen when its X's high byte is the
- * screen's; off it the routine stores only the X. */
+ * screen's; off it the routine stores only the X, but with Seams (fax_seams.c)
+ * it goes on to the Y and the reach, and so does the fist. */
 typedef struct {
     uint8_t x, x_high, y, y_high, reach_x, reach_y;
     bool on_screen;
@@ -132,7 +134,6 @@ static FistBox fist_box(void) {
     box.x = (uint8_t)sum;
     box.x_high = (uint8_t)(scroll + (offset < 0 ? 0xFF : 0) + (sum >> 8));
     box.on_screen = box.x_high == scroll;
-    if (!box.on_screen) return box;
     uint16_t ys = peek16(WEAPON_Y_TABLES + DAGGER * 2);
     unsigned y = (unsigned)peek(HERO_Y) + peek((uint16_t)(ys + pose));
     box.y = (uint8_t)y;
@@ -151,12 +152,10 @@ static int draw_hook(uint16_t addr) {
     FistBox box = fist_box();
     cyc_mod_poke(WEAPON_X, box.x);
     cyc_mod_poke(WEAPON_X_HIGH, box.x_high);
-    if (box.on_screen) {
-        cyc_mod_poke(WEAPON_Y, box.y);
-        cyc_mod_poke(WEAPON_Y_HIGH, box.y_high);
-        cyc_mod_poke(REACH_X, box.reach_x);
-        cyc_mod_poke(REACH_Y, box.reach_y);
-    }
+    cyc_mod_poke(WEAPON_Y, box.y);
+    cyc_mod_poke(WEAPON_Y_HIGH, box.y_high);
+    cyc_mod_poke(REACH_X, box.reach_x);
+    cyc_mod_poke(REACH_Y, box.reach_y);
     if (!cyc_mod_isolated()) {
         ++placed;
         last = box;

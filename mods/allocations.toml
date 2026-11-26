@@ -380,7 +380,12 @@ rom = []
 # Ointment it writes what the flash itself writes, Player_InvincibilityPhase
 # and Player_StatusFlag's knockback bit, and plays sound 4. It draws the band
 # over the presented picture, after Seamless composes it and before the zone
-# banner.
+# banner. In Seamless its hooks also act in a neighbouring room's tick
+# (fax_world_ticking()), on that room's copy: the warning and blink there, the
+# band in that room, and at the damage, in reach of the hero's true place, it
+# handles the routine (returns from the behavior) with BehaviorData2 set back
+# to 1, so the flash waits until Seams' pass runs $AB44 for it in the live
+# game.
 
 [[shared_site]]
 addr = 0xAB44   # SpriteBehavior_FlashScreenHitPlayer's damage
@@ -999,6 +1004,25 @@ rom = []
 # CurrentSprites_* byte to a free slot of the room entered, its old slot
 # $FF) and shots out of the view ($FF), in the live game by poke. Its state
 # is a block in each room of Seamless's record ("faxanadu.world", version 5).
+# Slice 2, fights across a seam, hooks Game_MainLoop's JSR
+# GameLoop_CountdownItems ($DB68, bank 15; GameLoop_CountdownItems' own entry,
+# $C88F, is Block's and recharging items', reached only once Seams has
+# returned 0 there), Sprite_CheckHitByCastMagic's ($8ADC) and
+# Player_CheckShieldHitByMagic's ($877C) entries, Player_DrawWeapon's BNE at
+# $B81A (bank 14), and Sound_PlayEffect's entry ($D0E4, bank 15), which no
+# other feature hooks (several call it, committed, where no hook runs). At
+# $DB68 it writes the live room's sprite slots (every byte, put back at its
+# second arrival), CurrentSpriteIndex and the stack (the returns into the
+# sprite loop and, for Sugata's flash, its damage at $AB44), and the
+# neighbours' records' slots it took (every byte but the position); it plays
+# a neighbour's sounds there with a committed Sound_PlayEffect. Its touch,
+# spell, shield and weapon-reach hooks handle the routine only for a match
+# found by wrapping round the room, as the X test's failure leaves it; the
+# shield's also in a neighbour's tick, returning at once; the weapon's sets
+# Z, so the routine places the weapon's Y and reach off the screen. Its pass
+# and the sounds still to play are its own record ("faxanadu.seams",
+# version 1); Sugata's flash waiting for the live game is a bit per slot in
+# its block.
 
 [[feature]]
 id = "punches"

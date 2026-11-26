@@ -35,8 +35,12 @@ world: no more stopping to scroll at each screen's edge, and the next room is
 already in view. Monsters, their shots and the people who walk cross from
 room to room as if there were no edge: they stand still until you first see
 them, then come for you, and a monster that has seen you follows you on,
-up to a town's edge: towns stay safe, and their people stay in them. A coin
-or anything else lying at a room's edge waits there for you to walk in. The
+up to a town's edge: towns stay safe, and their people stay in them. Fights
+go on across the edges too: your sword or fist reaches a monster in the next
+room, a monster or its shot there can hurt you, a coin or bread lying across
+the edge is yours for the touch, you hear what happens next door, and a
+Sugata's flash reaches you from the room beside. Anything else lying at a
+room's edge waits there for you to walk in. The
 view is always 424x240, the original's full height and 53 tiles wide, scaled
 to fill your window or screen and keep its shape: 3x at 720p, 6x at 1440p and
 9x at 4K, with every pixel square and crisp. At 1080p, 4.5x, the pixels stay

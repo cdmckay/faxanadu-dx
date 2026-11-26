@@ -257,6 +257,7 @@ E2E=(
   "back-out     tests/controls/b_backs_out.py --parts"
   "seams        tests/seams/seams_lose_nothing.py --parts"
   "open-ground  tests/seams/open_ground.py --parts"
+  "fights       tests/seams/fights.py --parts"
   "punches      tests/punches/punches.py"
   "vsync        tests/vsync/vsync_default.py"
 )

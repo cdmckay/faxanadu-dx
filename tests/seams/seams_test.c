@@ -25,6 +25,8 @@ static unsigned checks;
 #define WEAPON_RANGE_Y    0x00D3u   /* Maybe_WeaponRange_Y */
 #define SPRITE_Y          0x0380u   /* Something_Maybe_WeaponDistanceY */
 #define SPRITE_EXTENTS_Y  0xB408u   /* MAYBE_SPRITE_EXTENTS_1_ */
+#define INTERNAL_STATES   0x02FCu   /* CurrentSprites_InternalBehaviorStates: a death keeps the entity there */
+#define HP_               0x0344u   /* CurrentSprites_HP */
 enum { ZOZURA = 0x47, COIN = 0x02, KING_GRIEVE = 0x3C, SLOT = 7 };
 enum { FIREBALL = 0x0A, WALKING_MAN = 0x34, MAN = 0x3D, ROKUSUTAHN = 0x11 };
 enum { DAGGER_X = 0x08, DAGGER_Y = 0x04, SWORD_X = 0x10, SWORD_Y = 0x08 };   /* MAYBE_WEAPON_RANGES */
@@ -67,6 +69,28 @@ int nes_mod_register_activation_plugin(const char *id, NESModActivationCallback 
     return !strcmp(id, "faxanadu.seams") && cb == activate;
 }
 void nes_mod_set_local_only(const char *name, int required) { (void)name; (void)required; }
+static NESModSavestateGet record_get;
+static NESModSavestateSet record_set;
+static NESModSavestateValidate record_validate;
+int nes_mod_register_savestate_hook(const char *id, NESModSavestateGet get, NESModSavestateSet set) {
+    if (strcmp(id, "faxanadu.seams")) return 0;
+    record_get = get, record_set = set;
+    return 1;
+}
+int nes_mod_register_savestate_validator(const char *id, NESModSavestateValidate validate) {
+    if (strcmp(id, "faxanadu.seams")) return 0;
+    record_validate = validate;
+    return 1;
+}
+/* Committed calls: only Sound_PlayEffect, with A the effect (slice 2). */
+static uint8_t played_effects[16];
+static unsigned committed;
+bool cyc_mod_call_commit(uint16_t routine, CycModRegs *regs) {
+    CHECK(routine == SOUND_PLAY_EFFECT && !isolated);
+    if (committed < 16) played_effects[committed] = regs->a;
+    ++committed;
+    return true;
+}
 
 /* ---- Seamless's rooms ---- */
 static uint8_t records[ROOMS][2048], blocks[ROOMS][FAX_WORLD_SEAMS_BYTES];
@@ -85,10 +109,17 @@ int fax_world_joined(int r, int side) {
 }
 uint8_t *fax_world_seams_block(int r) { return r >= 0 && r < ROOMS ? blocks[r] : NULL; }
 uint8_t *fax_world_room_record(int r) { return r >= 0 && r < ROOMS ? records[r] : NULL; }
-void fax_world_place(int r, int *x, int *y) { *x = place_x[r] * 256; *y = 0; }
+static int place_y[ROOMS];                       /* rows of rooms: all in one but where a test moves one */
+void fax_world_place(int r, int *x, int *y) { *x = place_x[r] * 256; *y = place_y[r] * 208; }
 bool fax_world_view(int *x, int *y) {
     if (!view_ok) return false;
     *x = view_x, *y = view_y;
+    return true;
+}
+static int hero_wx, hero_wy;                     /* the hero's place, in world pixels */
+bool fax_world_hero(int *x, int *y) {
+    if (!view_ok) return false;
+    *x = hero_wx, *y = hero_wy;
     return true;
 }
 void fax_world_update_view(void) {}
@@ -839,6 +870,402 @@ static void towns_stay_safe(void) {
     CHECK(test_hook(right_hook, 1, false) == 0 && kept_out == full_before + 1 && town_edge == before);
 }
 
+/* ==== slice 2 ==== */
+
+enum { SUGATA_E = 0x18, DEATH_E = 0x13, BREAD = 0x01, ITEM = 0x5A };
+
+/* A slot as Sprites_PopulateNextAvailableSprite leaves it: no hit counter,
+ * no magic hit, hitbox 0 (16 by 16). */
+static void fill(int room, unsigned s, uint8_t entity, uint8_t x, uint8_t y) {
+    uint8_t *m = mem(room);
+    for (unsigned k = 0; k < SLOT_BYTES; k++) m[byte_at(k, s)] = (uint8_t)(0x40 + s * 3 + k);   /* every byte told apart */
+    m[ENTITIES + s] = entity, m[SLOT_X + s] = x, m[SLOT_Y + s] = y, m[HITBOX + s] = 0;
+    m[HIT_COUNTER + s] = 0, m[HIT_BY_MAGIC + s] = 0xFF, m[FLAGS + s] = 0;
+}
+/* The live game at the site after the sprite loop, the hero at room 4's
+ * (hx, 160). */
+static void fight(uint8_t hx) {
+    world();
+    bank14[CATEGORIES - 0x8000 + SUGATA_E] = 0;
+    bank14[CATEGORIES - 0x8000 + DEATH_E] = 3;
+    bank14[CATEGORIES - 0x8000 + BREAD] = 1;
+    ram[HERO_X] = hx, ram[HERO_Y] = 144;
+    ram[CURRENT_ROM_BANK] = 14, ram[SPRITES_PAUSED] = 0, ram[PLAYER_IS_DEAD] = 0, ram[CAST_TYPE] = 0xFF;
+    hero_wx = hx, hero_wy = 144;
+    view_x = hx + 8 - VIEW_W / 2;
+    committed = 0;
+}
+static uint16_t stack_word(uint8_t at) { return (uint16_t)(ram[0x100 | (uint8_t)(at + 1)] | ram[0x100 | (uint8_t)(at + 2)] << 8); }
+
+/* The game's 8-bit overlap test, with the hook at its entry: CurrentSprite_CheckHitPlayer's X test. */
+static bool touches(uint8_t hero, uint8_t left, uint8_t width) {
+    ram[HERO_X] = hero, ram[BOX_LEFT] = left, ram[BOX_WIDTH] = width;
+    if (touch_hook(CHECK_HIT_PLAYER)) return false;
+    return (uint8_t)(hero + TOUCH_PAD - left) < (uint8_t)(width + TOUCH_PAD);
+}
+
+static void touches_told_apart(void) {
+    /* Every place of the hero in his room against every box 16 wide from a
+     * room left of his to one right of it: the live slot's X in 16 bits from
+     * its mark, its box at X (Sprite_GetBounds' offset 0), the truth that
+     * the 11-pixel test's two spans meet. Hooked, the game decides it; off,
+     * it also touches a room away. */
+    fight(120);
+    unsigned ghosts = 0;
+    for (int hero = 0; hero < 256; hero += 3)
+        for (int x = -40; x < 296; x++) {
+            Block *b = blk(LIVE);
+            b->through[SLOT] = x < 0 ? THROUGH_LEFT : x >= 256 ? THROUGH_RIGHT : 0;
+            fill(LIVE, SLOT, ZOZURA, (uint8_t)x, 150);
+            ram[CURRENT_SPRITE_INDEX] = SLOT;
+            int d = hero + TOUCH_PAD - x;
+            bool truth = d >= 0 && d < 15 + TOUCH_PAD;
+            unsigned before = touch_refused;
+            bool game = touches((uint8_t)hero, (uint8_t)x, 15);
+            CHECK(game == truth);
+            ghosts += touch_refused > before;
+        }
+    CHECK(ghosts > 0);
+    /* A box of $80 and up is the game's trick: it decides. */
+    fill(LIVE, SLOT, ZOZURA, 250, 150);
+    blk(LIVE)->through[SLOT] = 0;
+    unsigned before = touch_refused;
+    CHECK(touches(4, 250, 0xF0) == ((uint8_t)(4 + 11 - 250) < (uint8_t)(0xF0 + 11)) && touch_refused == before);
+    /* An empty slot: the original's own (it returns). */
+    ram[ENTITIES + SLOT] = EMPTY;
+    CHECK(touch_hook(CHECK_HIT_PLAYER) == 0);
+    /* Sprite_GetBounds' offset is signed: a person's box 8 left of its X. */
+    fill(LIVE, SLOT, WALKING_MAN, 4, 150);
+    ram[BOX_LEFT] = (uint8_t)(4 - 8);
+    CHECK(fax_seams_box_left() == -4);
+}
+
+static void shields_and_spells_told_apart(void) {
+    /* The shield: he at x 250 facing right, his shield at 258 (its byte 2).
+     * A shot of room 3 visiting at its x 4 (the live 260) meets it; one of
+     * his own room at x 4, 246 pixels behind him, does not. */
+    fight(250);
+    ram[SHIELD_X] = 2;
+    fill(LIVE, SLOT, FIREBALL, 4, 150);
+    ram[CURRENT_SPRITE_INDEX] = SLOT, ram[BOX_LEFT] = 4, ram[BOX_WIDTH] = 7;
+    CHECK(shield_hook(CHECK_SHIELD) == 1 && shield_refused == 1 && cpu.x == SLOT);
+    blk(LIVE)->through[SLOT] = THROUGH_RIGHT;                         /* straddling into room 3: the live 260 */
+    CHECK(shield_hook(CHECK_SHIELD) == 0 && shield_refused == 1);
+    /* Not a shot: the original's (it returns before its test). */
+    ram[ENTITIES + SLOT] = ZOZURA;
+    CHECK(shield_hook(CHECK_SHIELD) == 0);
+    /* In a neighbour's tick the shield check never runs: its shield is the
+     * live room's. Another isolated call: the original's. */
+    isolated = true;
+    CHECK(shield_hook(CHECK_SHIELD) == 0);
+    ticking = true;
+    CHECK(shield_hook(CHECK_SHIELD) == 1 && shield_skipped == 1);
+    isolated = ticking = false;
+    /* The spell: Deluge at x 3, 11 wide; a Zozura of his room at x 250 is
+     * 236 pixels away (refused, as the X test's failure leaves it: X the
+     * slot, A the difference, C set); one through his left side at -6 is
+     * under it (the original's). */
+    fight(40);
+    bank14[CAST_WIDTHS - 0x8000] = 11;
+    ram[CAST_TYPE] = 0, ram[CAST_X] = 3;
+    fill(LIVE, SLOT, ZOZURA, 250, 150);
+    ram[CURRENT_SPRITE_INDEX] = SLOT;
+    CHECK(magic_hook(CHECK_MAGIC) == 1 && magic_refused == 1 && cpu.x == SLOT && (cpu.p & FLAG_C));
+    CHECK(cpu.a == (uint8_t)(3 + 11 - 250));
+    blk(LIVE)->through[SLOT] = THROUGH_LEFT;
+    CHECK(magic_hook(CHECK_MAGIC) == 0 && magic_refused == 1);
+    /* No spell, a coin, or a copy: the original's. */
+    ram[CAST_TYPE] = 0xFF;
+    CHECK(magic_hook(CHECK_MAGIC) == 0);
+    ram[CAST_TYPE] = 0, ram[ENTITIES + SLOT] = COIN;
+    CHECK(magic_hook(CHECK_MAGIC) == 0);
+    /* The weapon off the screen: Player_DrawWeapon's BNE not taken, in the
+     * live game only. */
+    cpu.p = 0x24;
+    CHECK(weapon_hook(WEAPON_OFF_SCREEN) == 0 && (cpu.p & FLAG_Z) && weapon_placed == 1);
+    CHECK(weapon_hook(WEAPON_OFF_SCREEN) == 0 && weapon_placed == 1);             /* on it: as it was */
+    cpu.p = 0x24, isolated = true;
+    CHECK(weapon_hook(WEAPON_OFF_SCREEN) == 0 && !(cpu.p & FLAG_Z));
+    isolated = false;
+}
+
+/* The site after the sprite loop: its first arrival, as the scheduler takes a
+ * handled site (the RTS the hook prepared). */
+static int arrive(void) { return visit_hook(MAIN_LOOP_COUNTDOWN); }
+
+static void the_visitors_pass(void) {
+    /* Room 4 live, its Zozura in slot 7; room 5 left of it with a coin at
+     * its x 250 (straddling), a Zozura at 230 and one at 40, far off; room 3
+     * a fireball at its x 100. The hero at room 4's x 4. */
+    fight(4);
+    fill(LIVE, 7, ZOZURA, 120, 160);
+    blk(LIVE)->awake = 0x80;
+    fill(LEFT_ROOM, 2, ZOZURA, 230, 160);
+    fill(LEFT_ROOM, 3, COIN, 250, 168);
+    fill(LEFT_ROOM, 4, ZOZURA, 40, 160);
+    fill(RIGHT_ROOM, 1, FIREBALL, 100, 150);
+    uint8_t live_before[0x800], room5_before[0x800];
+    memcpy(live_before, ram, sizeof ram);
+    memcpy(room5_before, records[LEFT_ROOM], sizeof room5_before);
+    cpu.s = 0xFF;
+    CHECK(arrive() == 1 && pass.open && pass.count == 2 && passes == 1 && visits == 2);
+    /* The stack: the loop's entry past its INC (the site's RTS takes it), and
+     * this site again for the loop's own RTS. */
+    CHECK(cpu.s == 0xFB && stack_word(0xFB) == SPRITES_LOOP - 1 && stack_word(0xFD) == MAIN_LOOP_COUNTDOWN - 1);
+    /* The room's own hidden; the nearest first in the highest free slot:
+     * the coin (it meets him), then the Zozura (8 pixels off). Every byte
+     * of each, its X the same byte and 16 bits from its side. */
+    CHECK(ram[ENTITIES + 7] == EMPTY);
+    CHECK(pass.v[0].room == LEFT_ROOM && pass.v[0].slot == 3 && pass.v[0].live == 6 && pass.v[0].shift == -256);
+    CHECK(pass.v[1].room == LEFT_ROOM && pass.v[1].slot == 2 && pass.v[1].live == 5);
+    for (unsigned k = 0; k < SLOT_BYTES; k++) {
+        CHECK(ram[byte_at(k, 6)] == records[LEFT_ROOM][byte_at(k, 3)]);
+        CHECK(ram[byte_at(k, 5)] == records[LEFT_ROOM][byte_at(k, 2)]);
+    }
+    CHECK(fax_seams_x16(6) == 250 - 256 && fax_seams_x16(5) == 230 - 256 && fax_seams_slot_room(6) == LEFT_ROOM);
+    ram[CURRENT_SPRITE_INDEX] = 6, ram[BOX_LEFT] = 250 + 4;              /* a coin's box, 4 right of its X */
+    CHECK(fax_seams_box_left() == -2);
+    /* Their behaviour and draw never run in the live game. */
+    ram[CURRENT_SPRITE_INDEX] = 5;
+    cpu.x = 0x33;
+    CHECK(behavior_hook(UPDATE_BEHAVIOR) == 1 && cpu.x == 5 && state_hook(UPDATE_STATE) == 1);
+    /* Its weapon reaches across: the Long Sword at -12 (its byte 244), off
+     * the screen, meets the Zozura at the live -26; the same at x 230 in his
+     * own room, 238 pixels away, is the ghost hit, refused. */
+    ram[WEAPON_X] = 244, ram[WEAPON_X_HIGH] = 0xFF, ram[SCROLL_X] = 0, ram[WEAPON_RANGE_X] = 16;
+    bank14[SPRITE_EXTENTS - 0x8000 + ZOZURA * 2] = 16;
+    ram[SPRITE_X] = 230;
+    cpu.x = 5;
+    unsigned refused0 = refused;
+    CHECK(reach_hook(OUT_OF_WEAPON_RANGE) == 0 && refused == refused0);
+    /* The pass: the Zozura killed (the death effect), the coin taken ($FF),
+     * and anything a handler might leave in their X. */
+    ram[ENTITIES + 5] = DEATH_E, ram[INTERNAL_STATES + 5] = ZOZURA, ram[HP_ + 5] = 0xFE;
+    ram[ENTITIES + 6] = EMPTY;
+    ram[SLOT_X + 5] = 99, ram[SLOT_Y + 5] = 98;
+    CHECK(arrive() == 0 && !pass.open && pass.count == 0);
+    /* Home with every byte but the position; the live slots as they were. */
+    CHECK(records[LEFT_ROOM][ENTITIES + 2] == DEATH_E && records[LEFT_ROOM][HP_ + 2] == 0xFE);
+    CHECK(records[LEFT_ROOM][INTERNAL_STATES + 2] == ZOZURA && records[LEFT_ROOM][ENTITIES + 3] == EMPTY);
+    CHECK(records[LEFT_ROOM][SLOT_X + 2] == 230 && records[LEFT_ROOM][SLOT_Y + 2] == 160);
+    for (unsigned k = 0; k < SLOT_BYTES; k++)
+        if (byte_at(k, 2) != ENTITIES + 2 && byte_at(k, 2) != HP_ + 2 && byte_at(k, 2) != INTERNAL_STATES + 2)
+            CHECK(records[LEFT_ROOM][byte_at(k, 2)] == room5_before[byte_at(k, 2)]);
+    CHECK(!memcmp(records[LEFT_ROOM] + ENTITIES + 4, room5_before + ENTITIES + 4, 1));   /* the far one untouched */
+    for (unsigned s = 0; s < 8; s++)
+        for (unsigned k = 0; k < SLOT_BYTES; k++) CHECK(ram[byte_at(k, s)] == live_before[byte_at(k, s)]);
+    CHECK(visit_log[0][0] == LEFT_ROOM && visit_log[0][1] == 3 && visit_log[0][3] == COIN && visit_log[0][4] == EMPTY);
+    CHECK(visit_log[1][1] == 2 && visit_log[1][3] == ZOZURA && visit_log[1][4] == DEATH_E);
+    /* Nobody in reach: no pass. */
+    fight(140);
+    fill(LEFT_ROOM, 2, ZOZURA, 230, 160);
+    CHECK(arrive() == 0 && !pass.open && passes == 0);               /* (world() starts the counts over) */
+}
+
+static void who_visits(void) {
+    fight(4);
+    /* In reach but knocked back (a hit counter), hit by a spell, a person,
+     * an item, an effect: the loop lets none interact. A big enemy and bread
+     * go. */
+    fill(LEFT_ROOM, 0, ZOZURA, 240, 160); mem(LEFT_ROOM)[HIT_COUNTER] = 5;
+    fill(LEFT_ROOM, 1, ZOZURA, 240, 160); mem(LEFT_ROOM)[HIT_BY_MAGIC + 1] = 0;
+    fill(LEFT_ROOM, 2, WALKING_MAN, 240, 160);
+    fill(LEFT_ROOM, 3, ITEM, 244, 160);
+    fill(LEFT_ROOM, 4, DEATH_E, 244, 160);
+    fill(LEFT_ROOM, 5, ROKUSUTAHN, 200, 128);
+    fill(LEFT_ROOM, 6, BREAD, 248, 168);
+    CHECK(arrive() == 1 && pass.count == 2);
+    CHECK((pass.v[0].slot == 6 && pass.v[1].slot == 5) || (pass.v[0].slot == 5 && pass.v[1].slot == 6));
+    arrive();
+    /* Above or below his reach, or the spell's: the spell's box brings one
+     * in that he can't reach. */
+    fight(120);
+    fill(LEFT_ROOM, 0, ZOZURA, 250, 160);
+    CHECK(arrive() == 0);
+    ram[CAST_TYPE] = 0, ram[CAST_X] = 2, ram[CAST_Y] = 150;
+    CHECK(arrive() == 1 && pass.count == 1);
+    arrive();
+    /* No free slot: they wait a frame, counted. */
+    fight(4);
+    for (unsigned s = 0; s < 8; s++) fill(LIVE, s, ZOZURA, (uint8_t)(100 + s), 160);
+    fill(LEFT_ROOM, 0, ZOZURA, 240, 160);
+    CHECK(arrive() == 0 && waited == 1 && !pass.open);
+    /* One free: the nearest only. */
+    ram[ENTITIES + 3] = EMPTY;
+    fill(LEFT_ROOM, 1, ZOZURA, 200, 160);
+    fill(RIGHT_ROOM, 0, ZOZURA, 0, 160);                 /* the live 256: far off */
+    CHECK(arrive() == 1 && pass.count == 1 && pass.v[0].slot == 0 && pass.v[0].live == 3 && waited == 2);
+    arrive();
+    /* From the right: the live X 256 on. */
+    fight(240);
+    fill(RIGHT_ROOM, 0, ZOZURA, 6, 160);
+    CHECK(arrive() == 1 && pass.v[0].room == RIGHT_ROOM && pass.v[0].shift == 256 && fax_seams_x16(pass.v[0].live) == 262);
+    CHECK(fax_seams_slot_room(pass.v[0].live) == RIGHT_ROOM);
+    arrive();
+    /* Paused, dead, another bank, no view, or a copy: no pass. */
+    fill(RIGHT_ROOM, 0, ZOZURA, 6, 160);
+    ram[SPRITES_PAUSED] = 1;
+    CHECK(arrive() == 0);
+    ram[SPRITES_PAUSED] = 0, ram[PLAYER_IS_DEAD] = 1;
+    CHECK(arrive() == 0);
+    ram[PLAYER_IS_DEAD] = 0, ram[CURRENT_ROM_BANK] = 12;
+    CHECK(arrive() == 0);
+    ram[CURRENT_ROM_BANK] = 14, view_ok = false;
+    CHECK(arrive() == 0);
+    view_ok = true, isolated = true;
+    CHECK(arrive() == 0);
+    isolated = false;
+    /* No arena: an arena joins nothing (fax_world_joined), so nothing comes
+     * from it. */
+    edge[LIVE][1] = -1;
+    CHECK(arrive() == 0);
+}
+
+static void sugatas_flash(void) {
+    /* In room 5's tick, at its flash's damage: room 5 joined beside the live
+     * room, the flash waits for the live game. */
+    fight(4);
+    run(LEFT_ROOM);
+    fill(LEFT_ROOM, 2, SUGATA_E, 236, 160);
+    ram[BEHAVIORS + 2] = BEHAVIOR_FLASH, ram[FLAGS + 2] = BEHAVIOR_READY;
+    ram[CURRENT_SPRITE_INDEX] = 2;
+    int hx;
+    CHECK(fax_seams_hero_x(&hx) && hx == 4 + 256);                    /* his true place, in room 5's pixels */
+    CHECK(fax_seams_flash() && (blk(LEFT_ROOM)->flash & 4) && flashes_due == 1);
+    CHECK(fax_seams_flash() && flashes_due == 1);
+    done(LEFT_ROOM);
+    /* The next pass takes it first, wherever it is, and enters the damage
+     * for it: three returns, the damage's on top, and CurrentSpriteIndex and
+     * X its live slot. */
+    fill(LEFT_ROOM, 5, ZOZURA, 250, 160);                              /* nearer, but the flash goes first */
+    cpu.s = 0xFF;
+    CHECK(arrive() == 1 && pass.v[0].flash && pass.v[0].slot == 2 && flash_runs == 1);
+    CHECK(cpu.s == 0xF9 && stack_word(0xF9) == FLASH_HIT - 1 && stack_word(0xFB) == SPRITES_LOOP - 1);
+    CHECK(ram[CURRENT_SPRITE_INDEX] == pass.v[0].live && cpu.x == pass.v[0].live && !(blk(LEFT_ROOM)->flash & 4));
+    arrive();
+    /* A flash no longer waiting there (its behaviour finished, or it moved):
+     * forgotten. */
+    fight(200);
+    fill(LEFT_ROOM, 2, SUGATA_E, 236, 160);
+    blk(LEFT_ROOM)->flash = 4;
+    CHECK(arrive() == 0 && !blk(LEFT_ROOM)->flash);
+    /* Not joined beside his (a diagonal neighbour ticking), or the live
+     * game, or his row not the room's: no. */
+    fight(4);
+    run(LEFT_ROOM);
+    edge[LIVE][0] = -1;
+    ram[CURRENT_SPRITE_INDEX] = 2;
+    CHECK(!fax_seams_flash());
+    edge[LIVE][0] = LEFT_ROOM;
+    place_y[LEFT_ROOM] = 1;                                            /* below his row */
+    CHECK(!fax_seams_hero_x(&hx));
+    place_y[LEFT_ROOM] = 0;
+    done(LEFT_ROOM);
+    CHECK(!fax_seams_flash());
+    /* In the live game his place is his. */
+    CHECK(fax_seams_hero_x(&hx) && hx == 4);
+}
+
+static void a_neighbours_sounds(void) {
+    /* In room 5's tick, the coin's sound from a slot in the view is kept; one
+     * out of it, or from the live game, is not. Between frames they wait,
+     * and the next pass's site plays them with the game's Sound_PlayEffect. */
+    fight(4);
+    run(LEFT_ROOM);
+    fill(LEFT_ROOM, 1, COIN, 100, 160);                                /* the world's -156: in the view, out of reach */
+    fill(LEFT_ROOM, 6, ZOZURA, 10, 160);                               /* room 5's x 10: the world's -246, out */
+    ram[CURRENT_SPRITE_INDEX] = 1, cpu.a = 0x10;
+    CHECK(sound_hook(SOUND_PLAY_EFFECT) == 0 && heard_count == 1 && heard[0].effect == 0x10 && heard[0].room == LEFT_ROOM);
+    ram[CURRENT_SPRITE_INDEX] = 6;
+    CHECK(sound_hook(SOUND_PLAY_EFFECT) == 0 && heard_count == 1 && heard_total == 2);
+    done(LEFT_ROOM);
+    cpu.a = 0x09;
+    CHECK(sound_hook(SOUND_PLAY_EFFECT) == 0 && heard_count == 1);
+    fax_seams_step();
+    CHECK(pending_count == 1 && heard_count == 0);
+    cpu.a = 0x77;
+    CHECK(arrive() == 0 && committed == 1 && played_effects[0] == 0x10 && cpu.a == 0x77 && pending_count == 0);
+    CHECK(played == 1 && sound_log[0][0] == LEFT_ROOM && sound_log[0][2] == 0x10);
+    /* A frame whose pass never came: dropped at the next step. */
+    run(LEFT_ROOM);
+    ram[CURRENT_SPRITE_INDEX] = 1, cpu.a = 0x10;
+    sound_hook(SOUND_PLAY_EFFECT);
+    done(LEFT_ROOM);
+    fax_seams_step();
+    fax_seams_step();
+    CHECK(pending_count == 0);
+}
+
+static void the_record_mid_pass(void) {
+    /* A frame can end inside the pass: the record holds it, and a load ends
+     * it at its site as the running game would. */
+    fight(4);
+    fill(LIVE, 7, ZOZURA, 120, 160);
+    fill(LEFT_ROOM, 2, ZOZURA, 236, 160);
+    uint8_t live_before[0x800];
+    memcpy(live_before, ram, sizeof ram);
+    CHECK(arrive() == 1 && fax_seams_visiting());
+    uint8_t rec[RECORD + 4];
+    int n = record_get(rec, sizeof rec);
+    CHECK(n == RECORD && record_validate(rec, n) && record_get(rec, 8) == -1);
+    clear_pass();
+    CHECK(!fax_seams_visiting() && record_set(rec, n) && fax_seams_visiting() && pass.count == 1);
+    ram[HP_ + pass.v[0].live] = 3;
+    CHECK(arrive() == 0 && records[LEFT_ROOM][HP_ + 2] == 3);
+    for (unsigned s = 0; s < 8; s++)
+        for (unsigned k = 0; k < SLOT_BYTES; k++) CHECK(ram[byte_at(k, s)] == live_before[byte_at(k, s)]);
+    /* Bad records are refused; none clears it. */
+    rec[2] = 9;
+    CHECK(!record_validate(rec, n));
+    rec[2] = 1, rec[5] = ROOMS;
+    CHECK(!record_validate(rec, n) && !record_validate(rec, n - 1));
+    rec[5] = LEFT_ROOM, rec[0] = 7;
+    CHECK(!record_validate(rec, n));
+    rec[0] = RECORD_VERSION, rec[1] = 0, rec[4] = 1;                 /* out of the pass, but swapped */
+    CHECK(!record_validate(rec, n));
+    CHECK(record_validate(NULL, 0) && record_set(NULL, 0) && !fax_seams_visiting());
+    /* A frame that ends inside the pass: between frames the machine shows
+     * the live slots as the game has them, the pass's kept (and saved with
+     * the record); the next frame begins with the pass's back, and the pass
+     * ends as if nothing had come between. */
+    fight(4);
+    fill(LIVE, 7, ZOZURA, 120, 160);
+    fill(LEFT_ROOM, 2, ZOZURA, 236, 160);
+    memcpy(live_before, ram, sizeof ram);
+    CHECK(arrive() == 1);
+    unsigned live = pass.v[0].live;
+    ram[HP_ + live] = 4;                                             /* hit in the pass */
+    uint8_t during[0x800];
+    memcpy(during, ram, sizeof ram);
+    fax_seams_frame_end();
+    for (unsigned s = 0; s < 8; s++)
+        for (unsigned k = 0; k < SLOT_BYTES; k++) CHECK(ram[byte_at(k, s)] == live_before[byte_at(k, s)]);
+    CHECK(ram[ENTITIES + 7] == ZOZURA && pass.swapped && fax_seams_visiting());
+    fax_seams_frame_end();                                           /* twice: still the same */
+    CHECK(ram[ENTITIES + 7] == ZOZURA);
+    n = record_get(rec, sizeof rec);
+    clear_pass();
+    CHECK(record_set(rec, n) && pass.swapped);                       /* a state saved then, loaded */
+    fax_seams_frame_begin();
+    CHECK(!memcmp(ram, during, sizeof ram) && !pass.swapped);
+    fax_seams_frame_begin();
+    CHECK(!memcmp(ram, during, sizeof ram));
+    CHECK(arrive() == 0 && records[LEFT_ROOM][HP_ + 2] == 4 && !fax_seams_visiting());
+    for (unsigned s = 0; s < 8; s++)
+        for (unsigned k = 0; k < SLOT_BYTES; k++) CHECK(ram[byte_at(k, s)] == live_before[byte_at(k, s)]);
+    fax_seams_frame_end();
+    fax_seams_frame_begin();                                         /* no pass: nothing */
+    CHECK(!pass.swapped);
+    /* The live loop's start finds no pass open; if it ever did, it ends it. */
+    arrive();
+    CHECK(fax_seams_visiting());
+    loop_hook(SPRITES_UPDATE_ALL);
+    CHECK(!fax_seams_visiting() && broken == 1);
+    /* Off: nothing kept, nothing open. */
+    deactivate();
+    CHECK(!fax_seams_visiting() && record_get(rec, sizeof rec) == 0);
+}
+
 int main(void) {
     the_original_wraps();
     the_ghost_hit_is_refused();
@@ -861,6 +1288,13 @@ int main(void) {
     blocks_and_the_record();
     what_a_town_room_is();
     towns_stay_safe();
+    touches_told_apart();
+    shields_and_spells_told_apart();
+    the_visitors_pass();
+    who_visits();
+    sugatas_flash();
+    a_neighbours_sounds();
+    the_record_mid_pass();
     printf("seams_test: %u checks passed\n", checks);
     return 0;
 }

@@ -23,4 +23,7 @@ void fax_sugata_tcp_setup(void);
  * reflections kill it, and one leaves it to two Long Sword hits instead of
  * three. */
 enum { SUGATA_REACH = 40, SUGATA_WARNING = 30, SUGATA_REFLECTED = 12 };
-bool fax_sugata_reaches(uint8_t hero_x, int center);
+bool fax_sugata_reaches(int hero_x, int center);
+/* In Seamless every Sugata in the rooms around the hero warns and flashes,
+ * each with its own band: at most this many show at once. */
+enum { FAX_SUGATA_BANDS = 4 };

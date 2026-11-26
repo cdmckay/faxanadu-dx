@@ -40,6 +40,7 @@
  * once. See docs/GAME_INTERNALS.md. */
 #include "fax_block.h"
 #include "fax_remember.h"
+#include "fax_seams.h"
 #include "fax_travel.h"
 #include "cyc_mod.h"
 #include "mod_runtime.h"
@@ -63,7 +64,8 @@
 #define SHIELD_INVENTORY      0x03A5u   /* the shields not in hand, NumberOfShields of them */
 #define SELECTED_SHIELD       0x03BFu   /* 0 Small, 1 Large, 2 Magic Shield, 3 Battle Helmet, $FF none */
 #define NUMBER_OF_SHIELDS     0x03C4u
-#define SPRITE_BOX_LEFT       0x03E2u   /* Sprite_GetBounds: the current sprite's box, this frame */
+#define SPRITE_BOX_LEFT       0x03E2u   /* Sprite_GetBounds: the current sprite's box, this frame (8 bits;
+                                              fax_seams_box_left() gives it in 16) */
 #define SPRITE_BOX_WIDTH      0x03E4u
 #define PLAYER_IS_DEAD        0x0438u
 #define SPRITES_START_SLOT_RANGE 0x001Cu   /* Sprite_Draw writes slot * 4 EOR it */
@@ -147,8 +149,9 @@ bool fax_block_raised(void) {
 }
 
 /* Magic coming from the side the hero faces: its box's middle is on that side
- * of his (the same as or ahead of it). */
-static bool from_the_front(uint8_t hero_x, bool facing_right, uint8_t box_left, uint8_t box_width) {
+ * of his (the same as or ahead of it). The box's left in 16 bits: with
+ * Seamless a shot across a seam is past his room's side (fax_seams_box_left). */
+static bool from_the_front(uint8_t hero_x, bool facing_right, int box_left, uint8_t box_width) {
     int hero = hero_x + 8, magic = box_left + box_width / 2;
     return facing_right ? magic >= hero : magic <= hero;
 }
@@ -215,7 +218,7 @@ static int shield_hit_hook(uint16_t addr) {
 static int touch_magic_hook(uint16_t addr) {
     (void)addr;
     if (!fax_block_raised() ||
-        !from_the_front(peek(PLAYER_POS_X), peek(PLAYER_FLAGS) & FACING_RIGHT, peek(SPRITE_BOX_LEFT),
+        !from_the_front(peek(PLAYER_POS_X), peek(PLAYER_FLAGS) & FACING_RIGHT, fax_seams_box_left(),
                         peek(SPRITE_BOX_WIDTH)))
         return 0;
     fax_block_return_via(SHIELD_STOPS_MAGIC);
