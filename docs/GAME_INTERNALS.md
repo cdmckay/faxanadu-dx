@@ -65,7 +65,7 @@ and data tables after it shifted). Not supported: the build rejects it.
 | `$00DB-$00DD` | `IScriptOrCHRAddr`, `IScriptOffset` | The interpreter reads the next action at addr + offset |
 | `$00EC-$00EE` | `Temp_Int24` | `UI_DrawString`'s strings' address (low, `_M`), and its count of letters left (`_U`) |
 | `$0100` | `CurrentROMBank` | 14 in the main loop. The stack shares this page |
-| `$0120` | `Game_PausedState` | Nonzero while the game is paused: Start, or the map (see *The map*) |
+| `$0120` | `Game_PausedState` | Nonzero while the game is paused: Start, or the map and the quest log (see *The map*); the sound engine adds bit 7 as it mutes, which under those two it never does |
 | `$0127` | `SoundEffect_State_Counter` | The playing sound effect's tick; the typing sound runs 1-4 |
 | `$0200-$021D` | `Temp_0200` on | `Screen_LoadBlocksHoriz`'s column of tiles, over the text box's variables: after a screen is drawn or scrolls sideways, every one of them from `$0208` to `$021D` holds a tile of it (see *The text box*) |
 | `$0208-$020B` | `TextBox_X`, `TextBox_Y`, `TextBox_Width`, `TextBox_Height` | The box last opened or closed, in tiles (see *The text box*) |
@@ -162,7 +162,14 @@ two lines apart, a column left of the text. The message ID is the immediate of
 its first instruction, `LDA #$10`, at `$8631`: a read override there shows any
 message instead, so Save files sets it for its one menu and puts it back at
 the end of the frame, once the menu has read it. Immediates are read at run
-time, so overriding one works.
+time, so overriding one works. The shops run it too, with the remaster on as
+off (#163), and with its own line, since Save files' override is set only
+for the Guru's menu. Its cursor, like the shop lists', is a sprite:
+`Menu_UpdateAndDraw` ends in `UI_DrawPromptInputSymbol` (metasprite `$AD`),
+OAM tile `$72` at x `TextBox_X` * 8 + 8, drawn on every frame the menu waits
+(each wait loop resets the sprites first, through
+`IScripts_UpdatePortraitAnimation`), and on no other: in a frame log, the
+frames a menu or list reads the pad.
 
 ### Portraits
 
@@ -359,6 +366,25 @@ faxanatools' `messages.py` decodes and encodes them; `fax_travel.c`'s
   A shop's list covers the dialogue box and rises above it; picking from it
   (`Maybe_Shop_DrawTextBox`) closes the list and opens the dialogue box again.
   The portrait box stays up throughout.
+- **Seamless shows a script's boxes only while `TextBox_Closed` is 0**
+  (`fax_world_present`, `script_mode`): then it copies the native picture's
+  rectangle of the box last opened (`TextBox_X` to `_Height`) over the world,
+  and the portrait's (2,14, 8 x 10) while `IScript_PortraitID` is below
+  `$80`. So a `TextBox_Close` in the middle of a conversation blanks every box
+  and the portrait at once, for the frames until the next `TextBox_Open`
+  sets it to 0 again: in the stock view the portrait stays and only the box
+  clears, row by row. In the game only the shops close a box mid-script
+  (`Maybe_Shop_DrawTextBox`, and the sale's `TextBox_Close` at `$86F8`), and
+  Quick shops skips both (#163): before, B in a list closed it and opened the
+  dialogue box before the end, and the portrait went for 9 frames, came back
+  for 18, and went (the portrait's flicker). A box opened over another without a
+  close shows only its own rectangle in Seamless; the other's rows stay in the
+  nametable until `IScriptAction_EndScript` clears both boxes' area.
+- **A box is drawn when the PPU buffer is empty**: `PPUBuffer_ReadOffset`
+  (`$1F`) equals `PPUBuffer_WriteOffset` (`$20`) once the NMIs have sent what
+  `TextBox_Open`, a list's rows or a line's letters queued. A menu's cursor is
+  drawn the frame its wait starts, while the rows it points at may still be
+  queued: wait for both before a screenshot or a press on what shows.
 - `TextBox_Open` and `TextBox_Close` only queue nametable writes in the PPU
   buffer, top row first, and the queue drains over the next NMIs (waiting when
   it is full), so a box appears and goes over a few frames. `TextBox_Closed`
@@ -718,7 +744,10 @@ What a feature can rely on, and the traps:
   between two frames shows the sprites of the shadow OAM the frame before
   wrote, which the PPU took at the last frame's start. In Seamless world it
   shows the last frame's own: `fax_world.c` captures the active room when
-  the main loop's pass ends.
+  the main loop's pass ends. On a frame the game lagged it keeps its last
+  capture, as the PPU keeps its sprites then (No sprite flicker, #161), so a
+  test that reads a lagging frame's sprites reads the last finished frame's
+  (`tests/flicker/no_flicker.py`'s crowd).
 - TCP input lands at no particular frame. For anything that depends on the
   frame a button goes down, run the same build headless from a save state:
   `--load-state S --input FILE --frames N --frame-log LOG --mods-root DIR`.
@@ -770,6 +799,34 @@ What a feature can rely on, and the traps:
 - In Seamless, a neighboring room's actors live in `fax_world.c`'s copy of
   that room, not in `CurrentSprites_Entities`: setting those slots to `$FF`
   clears only the hero's room.
+- **The hero a neighbouring room sees** is `shadow()`'s: his position in that
+  room's coordinates clamped to x 0-240 and y 0-176 (so a room to his left
+  sees him at its x 240 wherever he stands in his own), invincible (200),
+  `Player_AttackPhaseAnimFrame` 0, no spell (`CastMagic_Type` `$FF`) and no
+  buttons. So its monsters can't hurt him and his swing never lands there.
+  Before Seams lose nothing (#177), `CurrentSprite_CheckHitPlayer` (`$890A`)
+  sent every touch to its category's handler without looking at the
+  invincibility: a coin or bread at that edge was taken in the copy and its
+  gold or HP thrown away, and an item or a person who talks when touched
+  froze the room (*Features and what they use*, Seams lose nothing). The
+  clamp is what makes a neighbour's monsters and walking people wait at the
+  seam (*Screens and blocks*), and what makes a behaviour that measures his
+  distance (`Sprite_CalcDistanceXToPlayer`, `$82F8`;
+  `Sprite_CalcDistanceYToPlayer`, `$831B`; the same sum inline in
+  `SpriteBehavior_Ishiisu`, `$9129`, and `FUN_PRG14__9aa1`) find him at the
+  seam however far he is. Nash (`SpriteBehavior_Nash`, `$9060`) reappears
+  32 pixels to one side of `Player_PosX_Block`, the other side if that one
+  is off the screen; Magman (`SpriteBehavior_Magman`, `$95C0`) 48 pixels in
+  front of or behind it, at his Y, with no check for the edge. So in a copy
+  Nash appears by the seam, and Magman there or, wrapped, at the room's far
+  side.
+  See [SEAMLESS-COMBAT.md](SEAMLESS-COMBAT.md).
+- **A test can read a neighbouring room whole** from Seamless's save-state
+  record, `faxanadu.world`: a 32-byte header (byte 9 the area + 1, byte 10
+  the hero's room + 1), then `fax_world.c`'s `Room` for each of 83 rooms,
+  10,296 bytes each with this build's compiler (its 2 KB of RAM first; then
+  CHR, palette, `valid`, `live`, `owned`, the edges, x, y and ticks). A
+  `fixture()` record edit puts anything in a neighbour's slots.
 
 ## Far calls (`MMC1_LoadBankAndJump`)
 
@@ -1294,7 +1351,11 @@ reach:
 
   It returns before loading them when a portrait is up, when there is no
   weapon (`Player_CurWeapon` `$FF`), or when the weapon is off the screen, so
-  `$D2`/`$D3` then keep the last weapon's values.
+  `$D2`/`$D3` then keep the last weapon's values. Off the screen
+  `Maybe_Something_WeaponPosY` (`$D0`) keeps its last value too: only the X
+  (`$CE`, and its high byte `$CF`) is this frame's. A hero who walked to a
+  screen's edge keeps the Y of the last frame that had the weapon on the
+  screen: a walking pose's, y+0 or y+8 with a sword (`$B91F`: poses 0-2).
 
 `Sprites_IsSpriteOutOfWeaponRange` (`$88CB`) compares the sprite's top-left
 (`CurrentSprites_XPos_Full`, `CurrentSprites_YPos`, copied to
@@ -1329,6 +1390,42 @@ the swords.
 With the **Taller dagger**, `$B898` is served as `$08` through a read
 override, so the dagger's box is as tall as the swords' and reaches their
 low enemies, from the same short distance as before.
+
+**The X test wraps round the screen: the original's ghost hit.** Both sums
+are 8-bit, and the routine reads only the weapon's low byte.
+`Player_DrawWeapon` works the weapon's X out in 16 bits, the hero's X with
+`Screen_Maybe_ScrollXCounter` (`$9F`) as its high byte plus the pose's
+signed offset (`Player_CalcValueAndFFForNeg`): `PlayerPosXPlus10` (`$CE`)
+gets the low byte and `Maybe_Something_WeaponPosX` (`$CF`) the high one,
+which is not `$9F` when the weapon is off the screen. So the test also hits
+when weapon x + X - sprite x is below 0, or 256 or more, by less than EX +
+X: a monster at the other edge of the screen.
+
+- From Eolis `$04`'s x 4 facing left, the Long Sword's poses 5 and 6 put the
+  weapon at -12 and -20 (`$CE` 244 and 236, `$CF` `$FF`), which hit a
+  Zozura at x 229-255 and 221-252, 232 pixels behind him, if the weapon's
+  last Y on the screen reaches it (a walk's y+8 does). With the remaster
+  off, one at x 236 dies to the first hit (the Pendant Bug's 10), for its 30
+  experience; Seamless without the fix showed the same, the remaster's 8
+  then 8 (`tests/seams/seams_lose_nothing.py`).
+- Facing right, the weapon plus its reach passes 255 from x 216 on (the
+  swords' pose 6), and hits a monster at the screen's left edge. The reach
+  added wraps a box still on the screen too: facing left from x 22, pose 5's
+  weapon at x 6 hits a Zozura at x 250.
+- So in the original only a hero near one edge of a screen, with a monster
+  near the other, meets it. In Seamless he also stands at x 241-255 of a
+  room before he crosses, and the monster hit is off the view.
+- The Y test can't wrap inside a room: a weapon's box stays below 256 (the
+  hero's y is at most 176), and no sprite in a room is far enough below it.
+
+With the remaster on, **Seams lose nothing** (`fax_seams.c`) hooks the
+routine's entry. It works the X test out in 16 bits (`$CE` plus 256 times
+`$CF` - `$9F`, signed, against the sprite's X on the screen) and, when the
+8-bit test would hit only by wrapping round, returns C set (out of range)
+itself, with A, Y, `Temp_00` and the flags as the X test's failure leaves
+them; otherwise the original runs. The one caller, `$8838`
+(`Player_HitSpriteWithWeapon`), reads only C. A real hit at a screen's edge,
+the box half off it, is the original's.
 
 ## The Select menu (bank 12)
 
@@ -1576,7 +1673,8 @@ body, then the weapon: `JSR Player_DrawShield`, `Player_DrawBody` (`$EBEE`),
   halves: 1, 33, 2, 34, ... (slot 0 is the status bar's). The hero's parts
   each take a run of slots, so the body's are those between `Sprites_SpriteSlot`
   at `Player_DrawBody` and at `Player_DrawWeapon`. OAM Y is the drawing Y
-  + 32, the HUD.
+  + 32, the HUD. The whole scheme, and what the remaster draws from it, is
+  under *The shadow OAM, a frame at a time*.
 - **Sprite palettes.** Palette 0 is the hero's (`$18 $26 $30`), palette 1 the
   shield's (`$00 $25 $30`: grey, pink, white). All three sprite palette sets
   (bank 11, `$81C0` + 16 × n, loaded by `Screen_LoadSpritePalette`) have these
@@ -1586,10 +1684,12 @@ body, then the weapon: `JSR Player_DrawShield`, `Player_DrawBody` (`$EBEE`),
   once drew the shield 6 pixels up and 2 out there while it was held (#53);
   it looked wrong, and the glint replaced it (#58).
 - **Where the shield and the body overlap,** which is in front alternates
-  each frame: `Sprites_StartSlotRange` flips which half of the shadow OAM
-  the parts' slots land in, and the lower OAM index is drawn in front. A
-  picture of the hero standing still matches only one from a frame of the
-  same parity, at those pixels.
+  each frame in the original (the stock view): `Sprites_StartSlotRange` flips
+  which half of the shadow OAM the parts' slots land in, and the lower OAM
+  index is drawn in front. A picture of the hero standing still there matches
+  only one from a frame of the same parity, at those pixels. Seamless paints
+  them in the order the game drew them (No sprite flicker, #161), the shield
+  in front of the body, the same on every frame.
 
 **Zenis, for tests.** On the fortress of Zenis's screen 16 (area 7, palette
 `$0F`, region 5, position `$91`), an Execution Hood casts a shot (`$51`,
@@ -1745,8 +1845,11 @@ callers store a new entity at `CurrentSprites_Entities,Y` and `JMP` there:
 - **The death plays out over 256 frames.** `Player_HandleDeath` (`$D8EC`)
   plays sound `$16` and loops once a frame until `Screen_TransitionCounter`
   (`$03DB`) wraps, dissolving the hero (`Player_DrawDeathAnimation`), then
-  runs the Guru's words. Nothing reads the pad in between. Everything a
-  death decides comes after the words (the gold and experience, the place,
+  runs the Guru's words. It clears every sprite first
+  (`Screen_ClearSprites`), and the loop draws only the hero
+  (`Player_DrawBody`, then the dissolve), so the monsters vanish as he dies.
+  Nothing reads the pad in between. Everything a death decides comes after
+  the words (the gold and experience, the place,
   the respawn's save), so a save state taken as the Guru speaks (`MessageID`
   `$24`) carries the death on without the dissolve; the end-to-end tests
   start most deaths there (`fax_e2e.dissolve()`). Poking the counter near
@@ -2064,6 +2167,23 @@ jump a few updates after stepping off, as A from the hang itself would.
   `Player_ReduceMP` (fixed bank) takes `MAGIC_COSTS` (`$B7A9`, bank 14: 2, 4,
   6, 10, 16) or refuses. The spell starts from the hero and flies the way he
   faces.
+- **Every spell ends at the screen's edge.** Its update handler
+  (`CAST_MAGIC_UPDATE_HANDLERS`) moves it with `CastMagic_UpdateXPosition`
+  (`$BCAF`), whose `CastMagic_CheckDirection` (`$BD8F`) sets
+  `Blocks_Result` to 1 to disperse it: going left
+  (`CastMagic_CheckDirection_Left`, `$BD3C`) once its X is `$F0` or more,
+  wrapped past 0; going right (`CastMagic_CheckDirection_Right`, `$BD4A`)
+  once X plus its width (`CAST_MAGIC_WIDTHS`, `$BD9D`: `$0F`, Fire `$1F`)
+  carries. Otherwise `CastMagic_CheckDirection_CheckImpassable` (`$BD58`)
+  tests the blocks the spell covers in `ScreenBuffer`, never the next
+  screen's edge blocks. Up and down never disperse it. The handler also
+  clears it (`CastMagic_Clear`, `$BB3F`) when `CastMagic_UpdateXPosition`
+  returns C set: X `$F0` or more going left, or X at least
+  `CAST_MAGIC_MAX_SCREEN_WIDTHS` (`$BCF6`: `$F0`, Fire `$E0`) going right.
+  It hits only the screen's own slots: `Sprite_CheckHitByCastMagic` (`$8ADC`)
+  runs for each slot in `Sprites_UpdateAll`. Checked in the game (Seamless):
+  Deluge cast left from x 43 starts at x 40, moves 3 pixels a frame, is last
+  at x 1, and is gone (`CastMagic_Type` `$FF`) the frame after.
 - **Up+B is clumsy by design.** The sword swings on the same new B, so the
   stock combo always swings and casts. At a door the new Up goes through it
   first, in `GameLoop_UpdatePlayer`, and `Game_SetupEnterScreen` waits for the
@@ -2083,7 +2203,8 @@ jump a few updates after stepping off, as A from the hang itself would.
   in `Game_MainLoop` with only `GameLoop_RunScreenEventHandlers` between, which
   reads no button. Elsewhere: the title (`StartScreen_CheckHandleInput`, bank
   12: Select toggles, then the wait loop's own `AND #$10`: Start takes it),
-  a shop's lists (Quick shops: Select switches them) and the mantra screen.
+  and the mantra screen. A shop's lists ignore it, with the remaster too
+  (before #163 Quick shops switched them with it).
   The Select menu's `@_inputLoop` (`$8AE6` `LDA Joy1_ChangedButtonMask`,
   `$8AE8` `BMI` (A) to `@_loadMenuIDs`, `$8AEA` `ASL A`, `$8AEB` `BPL` back to
   the loop, `$8AED` `JMP TextBox_Close` (B)) reads only A and B.
@@ -2128,6 +2249,63 @@ jump a few updates after stepping off, as A from the hang itself would.
   button holds no Down, so at `$C47A` it clears those two bits from A, in
   that case only. The items' routines read no button (the Red Potion's
   `IScripts_Begin` waits for A to close its line, then clears the item).
+- **Which loop takes a pad read.** The NMI reads the pad only with
+  `Game_InterruptHandlersEnabled` (`$13`) set and
+  `Game_InterruptsHandledLatch` (`$10`) 0, and while the game runs only
+  `WaitForNextFrame` stores that 0 (`Game_InitScreenAndMusic` does too, from
+  `Game_Init` at power-on). So a read comes only while the main thread spins in
+  `WaitForNextFrame`, and the `JSR` that called it, whose return address is
+  at S + 1 (see *MP and its bar*, "Where the main loop waits"), names the
+  loop the read is for. At the cycle host's frame boundary, before the NMI,
+  `cyc_mod_regs` shows that wait (PC in `$CA25`-`$CA2D`), so the input
+  callback, which makes the frame's pad bytes, knows whose read they are
+  (checked in the game: play's in Eolis town, a menu's with the Select menu
+  up). The callers, by the `JSR`'s address: in bank 12, the text box's
+  (`IScripts_UpdatePortraitAnimation`, `$87B0`, once a frame in every
+  script's message, question and shop loop), the Select menu's
+  (`PlayerMenu_Show`'s `@_inputLoop`, `$8ADD`), an empty list's
+  (`PlayerMenu_ShowSubmenu`, `$8B41`), a list's
+  (`PlayerMenu_HandleInventoryMenuInput`, `$8B71`), the PLAYER page's
+  (`PlayerMenu_ShowStatusMenu`, `$8E41`), the mantra screen's (`$9140`,
+  `$9162`) and the splash's (`$A7AE`, `$A944`, `$A963`, `$A97D`); in the
+  fixed bank, `Player_FillHPAndMP`'s (`$C4E7`-`$C525`),
+  `Player_UseRedPotion`'s (`$C554`-`$C566`), `Player_UseMattock`'s
+  (`$C658`-`$C661`), the death's (`$D941`), the ending's (`$D9B3`, `$D9C8`,
+  `$DBF6`), the screen setups' (`$DAA9`, `$DAB8`, `$DAC7`, `$DAD6`, `$DAED`),
+  `Game_Start`'s (`$DB3F`), `Game_MainLoop`'s (`$DB4D`, and its scroll's), the
+  pause loop's (`$E036`) and the title's (`Game_ShowStartScreen`, `$FC6E`).
+  No other bank calls it.
+- **A script's end waits a frame more.** `IScriptAction_EndScript` starts
+  with `JSR IScripts_UpdatePortraitAnimation`, a read of its own, before it
+  closes the box. So the button that ended the last message (A on its last
+  page, or B dismissing it) is no longer new when the script returns, but one
+  that goes down at that last read is, to whatever runs after the script in
+  the same pass. A door's line runs inside `GameLoop_UpdatePlayer`
+  (`Player_CheckHandleEnterDoor`, `Game_RunDoorRequirementHandler`,
+  `IScripts_Begin`), so `Player_CastMagic` and `GameLoop_CheckUseCurrentItem`
+  come after it: with Up held at Eolis's exit door without the J key, A
+  ending "mark of Jack" and X (the NES B) the frame after casts the selected
+  spell (checked in the game, from a state saved headless after A's frame).
+- **The PLAYER page closes on B alone.** `PlayerMenu_ShowStatusMenu`'s loop
+  is `LDA Joy1_ChangedButtonMask`, `ASL A`, `BPL` back: A does nothing there.
+- **Outside play, Use item's controller button is the NES B**
+  (`fax_use_item.c`, #160), so a modern pad's B backs out. A press waits for
+  the first frame whose read the NMI will make, and that read's loop decides
+  it. The text box's, the Select menu's, a list's, the PLAYER page's, the
+  pause's (the map and the quest log, which close on B) and the title's (its
+  file picks) make it a back press: the input callback adds the NES B to the
+  pad byte for as long as the button is held, until a read of any other loop,
+  play's, where it lets go of the NES B and stays up until the button does.
+  Any other read makes it a press of Use item, which never presses the NES
+  B. So a press never both uses an item and backs out: B held from a menu
+  into play holds no NES B there (no sword, no item), and B held from an item
+  into its line closes nothing. A press let go before any read is gone, as an
+  NES button's would be. One case is left, the one above: a back press new at
+  a door line's last read reaches the cast and the item check of that pass.
+  At `Game_MainLoop`'s `JSR Player_CastMagic` (`$DB5F`), when that read had
+  the NES B from a back press alone, B is taken out of
+  `Joy1_ChangedButtonMask`, which the next read rewrites whole. X, the host's
+  NES B, is untouched, and so is the keyboard: S is only ever Use item.
 
 ## The status bar (banks 15 and 10)
 
@@ -2392,7 +2570,9 @@ Other ways between screens and areas, in bank 15:
   `$54` is 0. `Game_PausedState` (`$0120`) is nonzero while Start pauses:
   `GameLoop_CheckPauseGame` stores 1, and the sound engine
   (`Music_HandleOnInterrupt`, bank 5) sets bit 7 once it has muted, so it
-  reads `$81` from then on.
+  reads `$81` from then on (in a frame log, from the frame after the one that
+  paused). Under the map and the quest log it stays 1, the music playing on
+  (*The sound engine under the pause*, below *The map*).
 
 Who and what is on each screen is in bank 11, `AREA_SPRITE_ADDRESSES`: for
 each screen, (entity, `YX`) pairs to a `$FF`, then the NPCs' interaction
@@ -2667,8 +2847,8 @@ has settled and the game is not paused, so in both world views):
 `LDA Joy1_ChangedButtonMask`, `AND #$10`, `$E040` `BEQ @_waitForUnpause`,
 `LDA #$00`, `STA Game_PausedState`, `RTS`. The instruction after either BEQ
 loads A, N and Z again, so a hook there steers it with Z (and A) alone. The
-map's press waits up to 30 frames for `$E02F`: there it clears Z, so the game pauses as for Start, the music held
-(`Game_PausedState`) and every feature holding as for a pause. At `$E040`,
+map's press waits up to 30 frames for `$E02F`: there it clears Z, so the game pauses as for Start
+(`Game_PausedState`), every feature holding as for a pause, and only the music plays on (below). At `$E040`,
 once a frame, it reads the pad: Left and Right turn the page, and B, Start
 or Map close it, with Z cleared so the game unpauses; otherwise Z is set. A
 press during the game's own pause opens it there. The menu, scrolling and
@@ -2676,6 +2856,45 @@ conversations never reach `$E02F`, so the map opens only in play. The Select
 menu's MAP row (`fax_map_request`) sets the same press as it closes the menu,
 which returns to the main loop before its pause check; it refuses while no
 page is seen, where the button would open nothing.
+
+**The sound engine under the pause** (bank 5, #162). `OnInterrupt` runs
+`Music_HandleOnInterrupt` (`$800D`), then `SoundEffects_HandleOnInterrupt`
+(`$862F`), in every NMI, paused or not, on all three of its paths (with the
+interrupt handlers off too). `Music_HandleOnInterrupt`: `LDA
+Game_PausedState`, `$8010` `BNE Audio_HandlePaused`, `LDA Music_Current`,
+`BEQ Audio_ResetIfNothingSet`, `BPL Music_Load`, `JMP Music_PlayNext`.
+`Audio_HandlePaused` (`$802E`) goes on to `Audio_ResetIfNothingSet` (which
+returns while music is set) once bit 7 is set; the first time it sets it
+(`ORA #$80`, `STA Game_PausedState`) and runs `Audio_Reset` (`$804A`: `$10`
+to `SQ1_VOL`, `SQ2_VOL` and `NOISE_VOL`, 0 to the other registers of
+`$4001-$400F` but the unused `$4009` and `$400D`). So Start's pause silences
+the channels and holds the music where it was, its scripts and counters
+untouched, and the unpause's next NMI goes on with it. Sound effects are not
+held: `SoundEffects_HandleOnInterrupt` never reads the pause, so one playing
+as the game pauses plays out, though nothing in the pause loop queues one.
+Nothing in the game reads the music's RAM (`Music_CurrentScriptAddrs`
+`$F2-$F9`, `Music_Current` `$FA`, `$012C-$0181`) but the ending's outro,
+which waits for `Music_Current` to clear: the music running or not changes
+nothing the game decides.
+
+With the remaster the map hooks the BNE at `$8010`: while the map or the
+quest log is open it sets Z (A 0), so the engine plays the next tick of the
+music as in play and `Game_PausedState` stays 1. That is all that changes:
+measured in a frame log (`tests/map/music_plays_on.py`), a frame of the
+pause loop changes in CPU RAM only the music's RAM, `InterruptCounter` (the
+NMI's), the shadow OAM (`$0700`, whose ranges `Sprites_FlipRanges` turns
+each frame) and the stack (`$01EF`, `$01F0` from the music's deeper calls,
+`$01FA` the pause loop's), against the same but the music's in Start's
+pause; the nametables, palette, CHR RAM and the game's picture hold. Each
+frame every channel's `Music_ChannelTicksRemaining` (`$0130-$0133`) goes
+down by one, or on its note's last tick `MScripts_InvokeNext` moves its
+script on (the noise channel may instead play its next hit,
+`Music_Noise_Remaining` `$0169`), so a tick missed or doubled shows. Play
+after a close is the same byte for byte, but the music's RAM and the stack,
+whether the screen was open 256 frames longer or not (256, so that
+`InterruptCounter` and the sprite ranges' turn agree). The Select menu
+(`PlayerMenu_Show`) is no pause: `Game_PausedState` stays 0 and the music
+plays there, as in the original.
 
 **Where it is drawn.** Last in the present chain (`cyc_extras.c`), after
 every feature and after Seamless composes its picture: black over the whole
@@ -2923,7 +3142,8 @@ while a character of text is read).
 
 **The log.** The Quest log button opens it through the game's pause, at the
 map's two branches (*The map*), after the map's hooks; neither opens over the
-other. Black over the picture, the text box's frame over the native 256 x 240,
+other. The music plays on under it, by the map's hook at `$8010` (*The sound
+engine under the pause*). Black over the picture, the text box's frame over the native 256 x 240,
 "Quests" on row 2, and from row 4 the active quests, a block each (the name in
 `$37`, its objective, the King's Plea's springs), kept whole on a page, then
 "Completed" and the names of the quests done, in `$10`. Left and Right turn
@@ -3310,6 +3530,13 @@ frame:
   entry while its two Sir Gawaines are on the screen, `$40` and two OAM
   entries once they are gone). So a find there shows once its screen's
   enemies are dead, and the hero cannot pick up one he cannot see.
+  **In Seamless** a room first met as a neighbour decides on its copy's
+  first frame, against the live count, and the copy's change to it is thrown
+  away; the live game never runs that frame for a room it adopts. So no
+  seam moves the count, and such a find shows only when it happens to be 3.
+  Checked out of Eolis's meat shop onto Trunk `$0B`, its door edited: with
+  the count at 0, `$0C`'s Red Potion (`$5D`, slot 7) was gone at once; at 3
+  it stayed; the count was unchanged both times (SEAMLESS-COMBAT.md).
 - Held state: `$49` Black Onyx (`SpecialItems` `$01`), `$4A` Pendant (`$02`),
   `$57` Magical Rod (`$04`) and `$5C` Zorugeriru's Wing Boots (`Quests` `$08`)
   remove themselves once set; `$5B` Ripasheiku's Mattock too (`Quests` `$10`),
@@ -3526,6 +3753,26 @@ has to be served, which the Magician's lesson and the Potion Sellers do in
 at `$838E`, on A or B, `JMP IScriptAction_EndScript`. The shops' refusals and
 the empty sell list end the conversation through it.
 
+Each list action ends in one `JMP IScriptAction_EndScript` that both its B's
+reach: OpenShop's at `$83FF` (B on "What would you like?", the `BCS` at
+`$83E6`, and B in the list, the fall-through after the wait's `BCC` at
+`$83FD`), ShowSellMenu's at `$8701` (B on "Which one would like to sell?" and
+in the list). The original's B there ends the script with no line: no box
+opens first, and `TextBox_ClearForPortraitAndText` clears the list with the
+portrait's box.
+
+**The conversation, with Quick shops** (#163): the original's, step for step
+(the greeting, the Buy/Sell menu, the list's line, the list), with one change:
+after a purchase or a sale the hero stays in that list until B. B there, or
+on a list's line, ends it as the original's B did if nothing was bought or
+sold this visit; otherwise the shopkeeper first says "Thank you for
+shopping.", the list's own thank-you step (BUY + 3 or SELL + 3), as he did
+after each purchase, in the dialogue box opened over the list. A shop's
+message goes back to the list; "You have nothing to buy." (the empty sell
+list, from the menu or after the last sale) goes on to buying, after "What
+would you like?", the buy list's line, which types only the first time the
+buy list opens in a visit. Select does nothing, as in the original.
+
 **The sell list** (`IScriptAction_ShowSellMenu`, `$8660`): after reading the
 list's address it scans **only the Items list** (`LDX #$04` at `$866F`, `CPX
 #$05` at `$86B8`), from its last entry to its first, and offers each item that
@@ -3594,16 +3841,16 @@ box's inside, since `Shop_Draw` would write "0"), the hint reads "Not for
 sale" while the cursor is on it, and A on it does nothing: a hook at `$86E0`
 re-enters the wait at `$86DB` by return, before the price is taken.
 
-**What the hero owns, with Quick shops.** An item he already has for good keeps
-its row in every buy list, so the list, its cursor positions and its pages are
-the shop's own, but shows **OWNED** where its price was; the hint reads
-"Already owned" while the cursor is on it, and A on it does nothing: a hook at
-`$8402`, before `Shop_GetPlayerHasSelectedItem`, re-enters the wait at `$83FA`
-by return, so no gold is taken and no refusal shows. Owned
-(`fax_shops_owned`):
+**What the hero owns, with Quick shops.** An item he already has keeps its row
+in every buy list, so the list, its cursor positions and its pages are the
+shop's own, but shows **OWNED** where its price was; the hint reads "Already
+owned" while the cursor is on it, and A on it does nothing: a hook at `$8402`,
+before `Shop_GetPlayerHasSelectedItem`, re-enters the wait at `$83FA` by
+return, so no gold is taken and no refusal shows. Owned (`fax_shops_owned`):
 
 | Item | Kept by | Owned when |
 |---|---|---|
+| A weapon, armor, shield or spell (#165) | (one of each is all he can use) | He has that one: equipped (`SelectedWeapon` and on, `$03BD-$03C0`, in no list), or in its list |
 | Wing Boots, Hour Glass | Recharging items | He has it: selected, or in the Items list |
 | The A, K, Q, J and Jo keys, the Mattock | Reusable tools | He has it |
 | Elixir | Recharging items | Charged (its `SpecialItems` bit) or spent |
@@ -3617,8 +3864,17 @@ a second. Shops sell only the J, Q and K keys; the A and Jo keys are in the
 rule for completeness. OWNED is five letters, in the five cells `Shop_Draw`
 gives a price (column 23, an entry's second row, right-aligned), painted over
 the price as an unsellable item's is. In the sell list an owned item is not for
-sale (above). Weapons, armor, shields and spells the hero has are not marked:
-the game refuses them ("You can't carry any more."), as before.
+sale (above), but gear he owns is not kept for good: it still sells, a second
+copy bought before #165 too, and once sold it is for sale again (the rule reads
+his lists as they are). A different piece is never owned: a Hand Dagger is for
+sale to a hero with the Long Sword. Before #165 the game itself refused gear he
+had, with `Shop_GetPlayerHasSelectedItem` and the misleading "You can't carry
+any more." (checked in the game: a Hand Dagger bought at Eolis, then A on it
+again, said it and took nothing; Deluge the same), so OWNED shows what the
+refusal meant. Consumables are never owned: with the remaster no tool shop
+lists one (the Red Potion is the Potion Sellers', whose question sells one
+every time), and in the tool shops' own lists (the mod off) a Red Potion buys
+until the Items list is full.
 
 ## Doors and keys
 
@@ -3741,7 +3997,8 @@ jumping or falling, `Player_Flags & $05`):
   air reaches the selected item's routine; without A the hero falls, and it
   does not (checked in the game: `Player_Flags` `$42` with A and Down held).
   An item used there runs before that pass's countdowns. Over TCP, B is the
-  NES button (`action b`): a controller's B is Use item (`pad b`).
+  NES button (`action b`): a controller's B is Use item in play (`pad b`),
+  and the NES B outside it.
 
 - `Player_UseWingBoots` (`$C579`): script `$83` ("I've used Wing Boots."),
   `JSR Player_ClearSelectedItem` at `$C581`, sound `$1A`, then
@@ -3996,6 +4253,39 @@ flights on MP):
   past its `LDY`. `Player_CheckIfOnLadder` and
   `Sprites_CheckPlacementInvalidAtY` read properties without it. A hook at
   `$E87C` makes any block solid by where it is (Eolis's edge does).
+- **A screen's edge is a wall to every sprite.** A sprite's sideways move
+  (`Sprites_Something_SomethingAndMoveHoriz`, `$8494`: `Sprite_MoveForwardX`,
+  then `MoveSpriteHorizIfPossible`, `$84C4`) asks
+  `CurrentSprite_CanMoveInDirection` (`$8710`). Going left,
+  `FUN_PRG14__86bd` (`$86BD`) calls an X of `$F1` or more (wrapped past 0)
+  blocked; going right, `Sprites_MoveRight` (`$86A7`) calls it blocked when X
+  plus `SPRITE_HITBOX_WIDTHS` carries. Both reach
+  `Sprites_SetBlockIsMovingResult` (`$86B5`), whose `Blocks_Result` 1 means
+  blocked, whatever its name; inside the screen they test the blocks.
+  `MoveSpriteHorizIfPossible` then snaps X back to the block's edge and
+  returns C set (its comments' "moved" is "blocked"), and
+  `Sprite_MoveHorizAndTurnAroundIfNeeded` (`$8419`) turns the sprite round.
+  Fliers and shots go through `Sprite_Maybe_TurnAroundIfAtScreenEdgeHoriz`
+  (`$8427`), which snaps and turns one at X `$F0` or more, and returns C set
+  then; a shot (`SpriteBehavior_EnemyMagic`, `$A0CB`, 2 pixels a frame)
+  takes that C to remove itself (entity `$FF`). Up and down, Y `$F0` or more
+  is blocked. So no sprite ever straddles a screen's edge, and a shot that
+  misses ends there. In Seamless a seam is such an edge: a neighbouring
+  room's monsters press against it and turn (Eolis `$05`'s two Zozuras spent
+  800 frames between its x 222 and 240 while the hero stood on `$04`), and so
+  do its walking people (the `eolis-town` fixture: Eolis `$02`'s walking
+  woman walked from x 85 to x 240, the seam with his `$01`, and turned back
+  there); SEAMLESS-COMBAT.md.
+- **People who walk.** `BSCRIPTS_NPC_WALKING_MAN` (`$34`) walks forward 60
+  ticks, stands 30 and faces the hero; the walking women
+  (`BSCRIPTS_NPC_WALKING_WOMAN_01` and `_02`, `$44` and `$45`), the King's
+  guard (`$42`) and the lady with the cup (`$41`) move toward the hero for
+  60 to 192 ticks, then turn. Eolis's screens `$01`, `$02`, `$06` and `$07`
+  hold one each, and nine of the towns' screens (area 3). They talk when the
+  hero presses Up touching them (`Player_CheckHandlePressUpOnNPC`, category
+  2 of `SPRITE_COLLISION_HANDLERS`); only category 4, the intro's trigger
+  (`$4F`), talks when touched (`Player_HandleTouchNPC`). The script is the
+  slot's `CurrentSprites_Values`.
 - **Eolis screen 4's tower** (about x 160-208) is drawn in front of sprites:
   a hero or a Zozura behind it disappears. Stage a fight there left of x 150.
 - `Area_LoadScrollData` (`$D127`) decompresses the four neighbours first,
@@ -4138,6 +4428,31 @@ flights on MP):
     `TILES_SHIELDS_START` (`$9104`).
   So a slot no loader of the current gear fills keeps what an earlier one
   left there.
+- **Nothing is drawn past the screen's edge.** `Sprite_Draw_Standard` and
+  `Sprite_Draw_FlippedHoriz` skip a cell when its X carries past 255 or its
+  Y leaves 0-255 (`Sprite_TileInfo_OffsetX` or `_OffsetY` plus the carry not
+  0), so a sprite near an edge loses the cells past it. Appearances drawn
+  left of their origin (the header's X offset): the Maskman's, Sir
+  Gawaine's and the Wolfman's reach 16 pixels left, King Grieve's, the
+  King's and the man in the chair's 8. The other enemies, people and items
+  lie within 16 pixels right of their origin, the big enemies within 32
+  (King Grieve up to 96). In Seamless such a cut at a room's edge shows at
+  the seam.
+- **Actors' own sounds** (`Sound_PlayEffect`, `$D0E4`, from bank 14 outside
+  the hero's touches and hits): a coin drop's `$10`
+  (`Sprites_ReplaceWithCoinDrop`, `$AC75`), Pakukame's `$12` as it spawns,
+  a boss's death `$03` (`SpriteBehavior_BossDeath`), Sugata's flash `$04`,
+  and `$07` in `SpriteBehavior_Garbled3`. `Sound_PlayEffect` only queues the
+  effect by priority (`SoundEffect_SetCurrent`), in RAM. In Seamless a
+  neighbouring room's copy plays them into RAM it throws away.
+- **A screen's enemy tiles follow its slots.** `GameLoop_LoadSpriteImages`
+  (`$C28D`) starts at `$0900` (`CurrentSprite_ResetPPUTileOffset`), loads
+  each occupied slot's image in turn from slot 7 down
+  (`Sprites_LoadImageForCurrentSprite`, `$CDB5`), each where the last ended,
+  and keeps the tile it starts at in `CurrentSprites_PPUOffsets` (`$032C`),
+  which `Sprites_PPUOffset` adds when it is drawn. So an entity's tiles start
+  at a place that depends on what else the screen holds: a sprite moved to
+  another screen's slots would draw with that screen's tiles there.
 - The appearances: the hero's are `TILEINFO_PLAYER_ADDRS` (`$A9F1`), 8 poses
   a gear set (0-2 walking, 3 jumping, 7 climbing), in the order of the armor
   lists; then the weapons' (64-98). Entities' are `TILEINFO_ENTITY_ADDRS`
@@ -4148,7 +4463,49 @@ flights on MP):
 - **The Fire spell flickers by design**: `CastMagic_FinishHandler_Fire` draws
   it only when `InterruptCounter` has bit 1 set, 2 frames in 4, and picks its
   frame from bit 2, so each frame shows 2 frames in 8. Thunder draws on the
-  other two (bit 1 clear).
+  other two (bit 1 clear). The remaster keeps it: it draws what OAM holds.
+
+### The shadow OAM, a frame at a time
+
+- **Slots.** `Sprites_Reset` (`$CB53`, from `Screen_ResetSpritesForGamePlay`
+  at the top of every pass of the main loop) sets every Y to `$F0`, sprite 0
+  to the status bar's (Y `$17`, tile `$7F`, attributes `$23`, X 8),
+  `Sprites_SpriteSlot` (`$25`) to 1, `Sprites_SlotsFull` clear, and flips
+  `Sprites_StartSlotRange` (`$1C`) between `$00` and `$80`. `Sprite_Draw`
+  writes each cell at slot × 4 EOR `$1C`, unless the slots are full, and
+  `Sprites_IncNextSpriteSlot` hands out 1, 33, 2, 34, ... 31, 63, then sets
+  `Sprites_SlotsFull`: 62 cells a frame, the rest not drawn. So the n-th cell
+  drawn is in one half of OAM on one frame and in the other on the next.
+- **A frame draws in the same order every time.** `Game_MainLoop`:
+  `Player_DrawShield`, `Player_DrawBody`, `Player_DrawWeapon`,
+  `Player_CastMagic` (the spell), `GameLoop_CheckUseCurrentItem`, then
+  `Sprites_UpdateAll`, actor slots 7 down to 0.
+  `Game_DrawScreenInFrozenState` (a conversation's scene, the HP fills) draws
+  the hero, then the actors, without a reset.
+- **On the NES the lower OAM index is in front, 8 a line.** So wherever two
+  sprites overlap, which is in front swaps every frame, and past 8 on a line
+  the ones that go missing alternate. Beside a villager in Eolis's town the
+  hero blinked behind him at 30 Hz and read as see-through (#161), and so did
+  his shield over his body. The town holds 4 sprites a line, him and its
+  villager: the limit played no part there.
+- **`Sprites_FlipRanges`** (`$CBA8`) swaps entries 1-31 with 33-63 and leaves
+  `$1C` alone: once a frame while paused (`GameLoop_CheckPauseGame`), and
+  between the frames of a Red Potion's and the Elixir's fill
+  (`Player_UseRedPotion`, `Player_FillHPAndMP`), so the frozen scene flickers
+  on with nothing drawn again. Its halves are then the other way round from
+  what `$1C` says.
+- **The NMI copies OAM only for a finished frame.** `OnInterrupt` writes
+  `OAMDMA` from `$0700` when `Game_InterruptsHandledLatch` (`$10`) is clear,
+  that is while the CPU waits in `WaitForNextFrame` (which clears it and
+  loops until the NMI sets it), or when `Game_NeedOAMReset` (`$1B`) is set.
+  On a frame the game lagged, still drawing as it ended, the PPU keeps the
+  last frame's sprites. Villagers copied into the town's slots make it lag
+  from five: 8 frames of 28 end with the latch set, from six every other.
+  A lagging frame's shadow OAM is half drawn (44 entries of 63, from seven).
+- **The hero does not blink after a hit.** Through the 60 frames of
+  `Player_InvincibilityPhase` (`$AD`) after a Zozura's touch he is in OAM on
+  every frame, in the same palettes; only his behind-the-background bit
+  changes with where he stands (measured, #161).
 
 ## Graphics bugs
 
@@ -4368,6 +4725,39 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   door in the same area) brings a boss back into a room whose copy had none:
   it captures the live room before it decides. The flag is kept in its record
   (byte 28).
+
+- **Seams lose nothing** (`fax_seams.c`, #166's slice 0; the plan is
+  [SEAMLESS-COMBAT.md](SEAMLESS-COMBAT.md)). Two hooks in bank 14's
+  sprite loop, neither of which keeps a record:
+  - `CurrentSprite_CheckHitPlayer`'s entry (`$890A`) returns at once in a
+    neighbouring room's tick, with X the current slot as its first `LDX
+    CurrentSpriteIndex` leaves it; `CurrentSprite_UpdateState`, next in the
+    loop, loads X itself. Seamless's `fax_world_ticking()` says when: inside
+    `tick_room`'s isolated `Sprites_UpdateAll`, where hooks are allowed.
+    The routine sends every touch to its category's handler
+    (`SPRITE_COLLISION_HANDLERS`) without looking at the invincibility that
+    `shadow()` gives the projected hero; only the enemies' and shots'
+    handlers (`Player_HandleTouchEnemy`, `$89AE`, and
+    `Player_HandleTouchEnemyMagic`, `$8999`) do. So before the fix a coin or
+    bread at the room's edge was taken there (`Player_HandleTouchBreadOrCoin`,
+    `$8968`, has no check of its own), and the gold or HP thrown away with
+    the copy's RAM: a coin at Eolis `$05`'s x 236 with the hero on `$04` was
+    gone within two frames, his gold unchanged. An item
+    (`Player_HandleTouchItem`, `$88FB`) or a person who talks when touched
+    (`Player_HandleTouchNPC`, category 4) starts an interaction script,
+    which waits for frames that an isolated call never has: the call ran out
+    of its budget, Seamless dropped the room's tick and counted a failure,
+    every frame, and the room stood still while he stood by it (the Dragon
+    Slayer at `$05`'s x 240: 121 failures in 121 frames, its Zozuras frozen).
+    Now the live game is the only place the hero is touched: the coin waits
+    in the copy, and he takes it when he walks into its room, the live
+    game's then. The touch hooks behind the routine (Kept finds', the map's
+    and Found items' at `$88FB`, Block's at `$8999`) no longer run in
+    copies.
+  - `Sprites_IsSpriteOutOfWeaponRange`'s entry (`$88CB`): the X test in 16
+    bits, refusing a match that only wraps round the screen (*Weapon
+    reach*). A copy never swings (`Player_AttackPhaseAnimFrame` 0 there),
+    so it acts in the live game; it counts only there.
 
 - **Guru travel** (`fax_travel.c`). After the mantra or a new title, the Guru
   says "All Gurus / meditate as one." and offers "Shall I send / you to
@@ -5171,43 +5561,52 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   Drawn after Sugata's band, so it does not grey them, and before the zone
   banner, which covers them. Its save-state record holds the numbers (16 bytes
   each), and a state loaded with the remaster off restores none.
-- **Quick shops** (`fax_shops.c`). Up on a shopkeeper opens his buy list at
-  once, Select switches to the sell list and back, a purchase or a sale keeps
-  the list up with the cursor where it was, and B leaves. A shop buys
-  anything carried (see *Shops*), 8 to a page: Up from the top or Down from
-  the bottom turns the page. No ROM and no read overrides. It steers the
-  script at `IScripts_InvokeNextAction` (its first action goes to BUY; BUY + 3
-  and SELL + 3 go back to their list) and jumps by return at eight sites of
-  its own: OpenShop's entry, past "What would you like?" to `$83EA`;
-  `$8463`, past the purchase's close; `$86BC`, where it replaces the sell
-  scan's list with a page of everything carried and goes on at `Shop_Draw`
-  (`$86D8`), past "Which one would like to sell?", or, with nothing to sell
-  and a list open, through `Maybe_Shop_DrawTextBox` first; `$86E0`, back to
-  the wait for an item not for sale (one no shop buys, or one the hero owns);
-  `$86F8`, past the sale's close;
-  `$84F0`, in `IScripts_WaitForMenuInput` before the menu update, where it
-  puts the cursor back, Select or a page turn goes through
-  `Sound_PlayEffect` (`$0B`) to the other step, and B goes through
-  `Maybe_Shop_DrawTextBox` to `IScriptAction_EndScript`, so the list is closed
-  when the script ends, as after the original's purchase, and a line Block
-  adds there (its tutorial, after the first shield) shows in the dialogue box;
-  `$838E`, where a shop's message goes back to the list; and `$8402`, the buy
-  list's A, back to the wait (`$83FA`) for an item the hero owns (see
-  *Shops*), which it asks reusable tools and recharging items about
-  (`fax_reusable_tools_on`, `fax_recharge_on`, `fax_recharge_elixir_spent`),
-  as it does for the sell list's. A ninth site, at `$83F7` (`JSR Shop_Draw`,
-  after `Shop_Populate`), only writes the list: while the Potion Sellers sell
-  the Red Potions (`fax_potions_selling`), a tool shop's without it, and while
-  Found items is on (`fax_found_on`), without the Wing Boots, the Hour Glass
-  and the Elixir (`fax_found_unsold`), the entries after each moving up
-  (`fax_shops_without`).
+- **Quick shops** (`fax_shops.c`). A shopkeeper talks as the original's
+  does: his greeting, the Buy/Sell menu, the list's line, the list (#163). A
+  purchase or a sale keeps the list up with the cursor where it was, and B
+  leaves, after "Thank you for shopping." if anything was bought or sold (see
+  *Shops*, "The conversation, with Quick shops"). A shop buys anything carried
+  (see *Shops*), 8 to a page: Up from the top or Down from the bottom turns
+  the page. No ROM and no read overrides. It notes a shop's script at its
+  first action, `IScripts_InvokeNextAction` with `IScriptOffset` 1 (the session
+  starts; nothing is redirected), and there sends BUY + 3 and SELL + 3, the
+  thank-you steps the original took after a purchase or a sale, back to their
+  list (unless B is leaving through them). It jumps by return at these sites
+  of its own: OpenShop's entry, past "What would you like?" to `$83EA` once
+  the line has been said in the visit; `$8463`, past the purchase's close;
+  `$86BC`, where it replaces the sell scan's list with a page of everything
+  carried and goes on at `Shop_Draw` (`$86D8`) once "Which one would like to
+  sell?" has been said, or, with nothing to sell and a list open, through
+  `Maybe_Shop_DrawTextBox` first; `$86E0`, back to the wait for an item not
+  for sale (one no shop buys, or one the hero owns); `$86F8`, past the sale's
+  close; `$84F0`, in `IScripts_WaitForMenuInput` before the menu update, where
+  it puts the cursor back and a page turn goes through `Sound_PlayEffect`
+  (`$0B`) to the sell step again; `$838E`, where a shop's message goes back to
+  the list; `$8402`, the buy list's A, back to the wait (`$83FA`) for an item
+  the hero owns (see *Shops*: gear he has, and what he has for good), which
+  it asks reusable tools and recharging items about (`fax_reusable_tools_on`, `fax_recharge_on`,
+  `fax_recharge_elixir_spent`), as it does for the sell list's; `$83FF` and
+  `$8701`, the list actions' `JMP IScriptAction_EndScript` (B), where with
+  something bought or sold it points the script at the thank-you step and
+  goes there, through `Maybe_Shop_DrawTextBox` if the list is up, so a line
+  Block adds at the end (its tutorial, after the first shield) follows it in
+  the dialogue box; and `$8477`, `Maybe_Shop_DrawTextBox`'s `JSR
+  TextBox_Close`, skipped in a shop (on to its `JMP TextBox_OpenForNPC` at
+  `$847A`), so the dialogue box opens over the list and Seamless never shows
+  a frame without the portrait (*The text box*). A site at `$83F7` (`JSR
+  Shop_Draw`, after `Shop_Populate`) only writes the list: while the Potion
+  Sellers sell the Red Potions (`fax_potions_selling`), a tool shop's without
+  it, and while Found items is on (`fax_found_on`), without the Wing Boots,
+  the Hour Glass and the Elixir (`fax_found_unsold`), the entries after each
+  moving up (`fax_shops_without`).
   Presses while a list is drawn, or the gold counts, are lost, as in the
   original: the game reads the pad only in the list's wait. The hint line
-  ("Select to sell", "Select to buy", "Not for sale", "Already owned") is drawn
-  on the list's row 26 and the page ("1 of 2") on row 9, at present time,
-  while the list's four frame corners show; an unsellable item's price cells
-  are painted the box's inside, and an owned item's too, with OWNED in them.
-  Its save-state record holds the conversation (17 bytes).
+  ("Not for sale", "Already owned", while the cursor is on such an entry) is
+  drawn on the list's row 26 and the page ("1 of 2") on row 9, at present
+  time, while the list is the box last opened and its four frame corners
+  show; an unsellable item's price cells are painted the box's inside, and an
+  owned item's too, with OWNED in them. Its save-state record holds the
+  conversation (20 bytes; the 17 of version 1, before #163, still load).
 - **Zone respawn** (`fax_respawn.c`). Dying comes back at the last entrance
   into the zone (tower, castle, town or region) the hero died in, after the
   Guru's words, instead of at the temple. A hook at `Screen_SetupNew` records
@@ -5252,17 +5651,50 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   stock slot (as Block's glint and the falling pose are). No ROM, no read
   overrides, no state.
 
+- **No sprite flicker** (`fax_flicker.c`, #161). Seamless composes its
+  picture from each room's shadow OAM (`actors()`, and `player_edge()`'s
+  redraw of the hero past a room's edge) and draws all 63 entries, with no
+  limit to a line. It paints them back to front in the order the game drew
+  them (`fax_flicker_paint_order`, from the room's own `$1C`: an entry's slot
+  is its index EOR 32 when `$1C` is `$80`, and a slot's place in the draw is
+  its low 5 bits, then its half), so the first drawn is in front: the hero
+  over his spell and every actor, his shield over his body and his body over
+  his weapon, and two actors in the same order on every frame (*The shadow
+  OAM, a frame at a time*). Seamless takes no frame whose halves
+  `Sprites_FlipRanges` swapped: not while paused (`playing()` needs
+  `Game_PausedState` clear, and the pause's hook took the scene before), nor
+  through a Red Potion's or the Elixir's fill, whose IScripts (`$80`, `$85`)
+  keep it in script mode until the main loop's next player update. At a
+  frame's end it now captures the active room only when the NMI is about to
+  copy its OAM (`fax_flicker_frame_drawn`): on a lagging frame it keeps its
+  last capture, the whole room, as the PPU keeps its sprites, where it once
+  took a shadow OAM half drawn and the actors drawn last vanished for a
+  frame. A room it has just entered, or one not yet live, is captured at
+  once, as before. Which sprites are in OAM is the game's, so its own
+  blinking stays (the Fire spell, 2 frames in 4). No hooks, no ROM, no
+  save-state record: OAM, the PPU (8 a line, the overflow flag, sprite 0
+  hit), RAM, save states and rewind are the machine's, and with the remaster
+  off the stock view is the original's picture, flicker and all. TCP
+  `no_flicker_state` says whether it is on and counts the lagging frames kept
+  (`kept`). Its tests:
+  `tests/flicker/flicker_test.c` (the order and the NMI's rule, on a model of
+  the slots) and `tests/flicker/no_flicker.py` (three villagers over the
+  hero, 16 sprites a line through a lagging frame, the Fire).
+
 - **The map** (`fax_map.c`, laid out by `fax_map_layout.c`). A Map button (M,
   or Back on a controller; `MapKey` and `MapButton` in `config.ini` [Game])
   pauses the game on a map of the screens the hero has stood on, a page per
   region, tower and castle, with only Gurus, doors and the items still
-  lying in the world marked; see *The map*. Three hook sites: the BEQs at
+  lying in the world marked; see *The map*. Four hook sites: the BEQs at
   `$E02F` and `$E040` in `GameLoop_CheckPauseGame`, shared with the quest log
   (whose hooks come after; neither opens over the other), where it changes
-  only A and Z, and the game's own code pauses and unpauses; and
+  only A and Z, and the game's own code pauses and unpauses;
   `Player_HandleTouchItem` (`$88FB`, bank 14), after Kept finds' site there,
   where it only observes the slot touched (recharging items' pickup hook,
-  `Player_PickUpItem`, runs later, inside `Player_PickUp`). Everything else
+  `Player_PickUpItem`, runs later, inside `Player_PickUp`); and
+  `Music_HandleOnInterrupt`'s BNE (`$8010`, bank 5), where it sets A and Z
+  while the map or the quest log is open, so the music plays on under both
+  (*The sound engine under the pause*). Everything else
   it learns from RAM at the end of each frame and as it draws, at present
   time, after every other feature. Guru travel's visited Gurus
   (`fax_travel_visited`) count as their temples, and Found items says which
@@ -5321,7 +5753,12 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   and casting*. Three hook sites in `GameLoop_CheckUseCurrentItem`, which no
   other feature hooks (the Magic button's restore is at its entry), each the
   `AND` after a load, where it changes only A. A press lasts one frame, as a
-  pad read does. No ROM, no read overrides, no state.
+  pad read does. On a controller, outside play, the button is the NES B
+  (#160): its input callback adds B to the pad byte while a text box, a
+  menu, the pause or the title takes the reads, and a fourth site,
+  `Game_MainLoop`'s `JSR Player_CastMagic` (`$DB5F`), which no other feature
+  hooks, takes that B out of `Joy1_ChangedButtonMask` after a door's line.
+  No ROM, no read overrides, no state.
 
 - **The launcher's Controls page** lists Magic, Use item, Block, Map and
   Quest log after the host's shortcuts (`cyc_extras.c`'s `bindings`), and

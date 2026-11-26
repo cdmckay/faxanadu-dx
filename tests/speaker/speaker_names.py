@@ -15,7 +15,7 @@ external prerequisite, as tests/zones/zone_names.py does), walks out onto that
 building's door and goes in: the Guru (twice: the Ring of Elf, then Guru
 travel's offer), the King, the King's guard outside (no portrait, no name), the
 Martial Artist, and the Tool Seller on his shop's list, which Quick shops
-opens at once. Last, the shop's door leads to the Castle of Fraternal's temple,
+opens after his greeting, Buy and its line, as the original does. Last, the shop's door leads to the Castle of Fraternal's temple,
 for the longest name, "Guru of Fraternal". Each conversation is screenshot in
 OUT, and the tab is checked in the picture itself: its corner is the game's own
 frame tile, and it holds a line of text.
@@ -27,7 +27,7 @@ import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 from fax_e2e import (PAGE_FRAMES, Game, act, fixture, frame, hold, hold_a, hurry_page, let_go, page_through,  # noqa: E402
-                     page_to, parse_args, ram, step_toward, tcp, type_out, typed, until, wait, walk)
+                     page_to, parse_args, ram, shop_list, step_toward, tcp, type_out, typed, until, wait, walk)
 
 AREA, SCREEN, PLAYER_X = 0x24, 0x63, 0x9E
 TEXTBOX_CLOSED, MESSAGE_ID, TEXTBOX_PAUSED = 0x20C, 0x213, 0x215
@@ -295,14 +295,14 @@ def main():
             print("ok: the Martial Artist is named")
 
         if args.wants("tool-seller"):
-            # 6. The Tool Seller, on his shop's list, which Quick shops (on by
-            # default) opens at once.
+            # 6. The Tool Seller, on his shop's list (Quick shops, on by
+            # default: after his greeting, Buy and its line).
             go_in(shop, "tool-shop", 3, 0x9A)
-            talk(line=False)
+            walk("left")                                        # to the counter
+            shop_list("buy")
             until("the shop's list", lambda: speaker()["shown"] and speaker()["row"] == 5, 600)
-            wait(20)
             tab("Tool Seller", row=5, label="tool-seller-list", line=False)
-            act("b", 6, 14)                                     # leave the list: the end
+            act("b", 6, 14)                                     # leave the list, nothing bought: the end
             finish("b")
             print("ok: the Tool Seller is named, on his shop's list as well")
 

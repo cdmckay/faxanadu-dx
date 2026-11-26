@@ -21,8 +21,8 @@ real SDL key and controller events.
    hero already has the Large one says nothing more; buying it as his first
    shield adds one line naming the key as he leaves the shop, and
    faxanadu_block.txt remembers it. Again with no shield, or after a restart:
-   nothing. (Quick shops, on by default, opens the list at once and keeps it
-   up after a purchase, with no thanks, until B.)
+   nothing. (Quick shops, on by default, keeps the list up after a purchase
+   until B, which brings "Thank you for shopping.", and then the line.)
    The Battle Helmet, in Zoradohna's room (Branch, area 5, screen 7, the boss
    removed from the save state), picked up as the first shield-slot item: the
    line follows "I've got the Battle Helmet." Picked up again once taught:
@@ -93,16 +93,13 @@ def main():
 
     def talk_and_buy():
         """Walk to the shopkeeper, buy the first item (the Small Shield) from
-        his list, which Quick shops opens at once, and leave with B, paging
-        through what is said as the conversation ends. Returns the messages
-        (MessageID) shown after the purchase, and the picture of our line if
-        there was one."""
+        his buy list (Quick shops: his greeting, Buy and its line first,
+        fax_e2e's shop_list()), and leave with B: his thanks, then what is
+        said as the conversation ends. Returns the messages (MessageID) shown
+        after the thanks, and the picture of our line if there was one."""
         g.act("left", 200, 10)
-        g.act("up", 4, 10)
         shields, said, picture = g.ram(NUMBER_OF_SHIELDS), [], None
-        g.until("the shop's list", lambda: (lambda s: s["shown"] == "buy" and s["list_up"])(g.tcp("shops_state")), 600)
-        waits = g.tcp("shops_state")["waits"]
-        g.until("the list to wait for a button", lambda: g.tcp("shops_state")["waits"] > waits, 300)
+        fax_e2e.shop_list("buy")
         bought = g.tcp("shops_state")["bought"]
         g.act("a", 4, 6)
         g.until("the purchase", lambda: (lambda s: s["bought"] == bought + 1 and s["list_up"])(g.tcp("shops_state")),
@@ -110,7 +107,8 @@ def main():
         assert g.ram(NUMBER_OF_SHIELDS) == shields + 1, shields
         waits = g.tcp("shops_state")["waits"]
         g.until("the list to wait for a button", lambda: g.tcp("shops_state")["waits"] > waits, 300)
-        g.act("b", 4, 6)
+        assert fax_e2e.shop_leave(), "no thanks after a purchase"
+        g.act("a", 4, 6)
         g.until("a line, or the end", lambda: g.ram(PORTRAIT) == NO_PORTRAIT or g.ram(MESSAGE_ID) == OUR_LINE, 600)
         if g.ram(MESSAGE_ID) == OUR_LINE:
             said.append(OUR_LINE)

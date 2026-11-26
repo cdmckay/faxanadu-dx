@@ -63,6 +63,7 @@ if(NESRECOMP_BACKEND STREQUAL "cycle")
             src/fax_map_layout.c src/fax_map.c
             src/fax_quest_table.c src/fax_quests.c
             src/fax_graphics.c
+            src/fax_flicker.c
             src/fax_finds.c
             src/fax_shaft.c
             src/fax_entrances.c
@@ -70,6 +71,7 @@ if(NESRECOMP_BACKEND STREQUAL "cycle")
             src/fax_found.c
             src/fax_menu.c
             src/fax_controls.c src/fax_use_item.c
+            src/fax_seams.c
         MODS GAME_ID "faxanadu-usa"
         PLAYERS 1 REGION NTSC
         BOXART "${CMAKE_CURRENT_SOURCE_DIR}/assets/boxart.tga")

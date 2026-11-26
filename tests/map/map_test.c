@@ -416,6 +416,17 @@ static bool pause_frame(uint8_t changed) {
     ram[GAME_PAUSED_STATE] = 0;
     return true;
 }
+/* The NMI's Music_HandleOnInterrupt, once a frame: LDA Game_PausedState, then the BNE. Taken, the sound engine
+ * mutes (Audio_HandlePaused: ORA #$80, STA Game_PausedState, the first time) and holds the music. True if the
+ * music plays this frame. */
+static bool music_tick(void) {
+    cpu.a = ram[GAME_PAUSED_STATE];
+    cpu.p = (uint8_t)(cpu.a ? cpu.p & ~P_Z : cpu.p | P_Z);
+    CHECK(SITES(MUSIC_PAUSED, "faxanadu.map.music"));
+    if (cpu.p & P_Z) return true;
+    ram[GAME_PAUSED_STATE] = (uint8_t)(cpu.a | 0x80);
+    return false;
+}
 
 static void test_visits(void) {
     world();
@@ -699,8 +710,10 @@ static void test_map(void) {
     ram[JOY1_CHANGED] = 0;
     CHECK(!check() && !open);
     ram[JOY1_CHANGED] = BUTTON_START;
-    CHECK(check() && !open);   /* Start pauses as ever */
+    CHECK(check() && !open);   /* Start pauses as ever, */
+    CHECK(!music_tick() && ram[GAME_PAUSED_STATE] == 0x81 && !music_tick());   /* the music muted and held */
     CHECK(pause_frame(BUTTON_START) && !open);
+    CHECK(music_tick());
 
     /* Map: the next check pauses, on the page the hero is on. */
     press();
@@ -708,12 +721,20 @@ static void test_map(void) {
     ram[JOY1_CHANGED] = 0;
     CHECK(check() && open && shown == FAX_MAP_PAGE_TRUNK && cpu.a == BUTTON_START);
     CHECK(!pause_frame(0) && open);           /* it stays paused */
+    /* The music plays on, every frame, and the game stays paused as the pause left it. */
+    CHECK(music_tick() && music_tick() && ram[GAME_PAUSED_STATE] == 1 && open);
     CHECK(!pause_frame(BUTTON_LEFT | 0x80) && shown == FAX_MAP_PAGE_EOLIS && turns == 1);
     CHECK(!pause_frame(BUTTON_LEFT) && shown == FAX_MAP_PAGE_TRUNK);   /* round: only two pages seen */
     CHECK(!pause_frame(BUTTON_RIGHT) && shown == FAX_MAP_PAGE_EOLIS);
     CHECK(!pause_frame(BUTTON_RIGHT) && shown == FAX_MAP_PAGE_TRUNK);
     CHECK(pause_frame(BUTTON_B) && !open && closes == 1);   /* B closes it and unpauses */
-    CHECK(!ram[GAME_PAUSED_STATE]);
+    CHECK(!ram[GAME_PAUSED_STATE] && music_tick());
+    /* The quest log, open through the same pause: the music plays on there too, and not once it closes. */
+    ram[GAME_PAUSED_STATE] = 1; quests_open = true;
+    CHECK(music_tick() && ram[GAME_PAUSED_STATE] == 1);
+    quests_open = false;
+    CHECK(!music_tick() && ram[GAME_PAUSED_STATE] == 0x81);
+    ram[GAME_PAUSED_STATE] = 0;
     press(); CHECK(check() && open);
     CHECK(pause_frame(BUTTON_START) && !open);              /* so does Start */
     press(); CHECK(check() && open);
@@ -747,17 +768,19 @@ static void test_map(void) {
     CHECK(want);
     for (unsigned i = 0; i < 4; ++i) fax_map_frame_end();
     CHECK(!want && !check());
-    /* In the game's own pause, it opens there; closing it unpauses. */
+    /* In the game's own pause, it opens there, and the held music plays on; closing it unpauses. */
     ram[JOY1_CHANGED] = BUTTON_START; CHECK(check() && !open);
-    CHECK(!pause_frame(0));
+    CHECK(!pause_frame(0) && !music_tick() && ram[GAME_PAUSED_STATE] == 0x81);
     press();
-    CHECK(!pause_frame(0) && open);
+    CHECK(!pause_frame(0) && open && music_tick());
     CHECK(pause_frame(BUTTON_B) && !open);
     /* Inside an isolated machine nothing happens. */
     press(); isolated_scope = true; ram[JOY1_CHANGED] = 0;
     CHECK(!check() && !open);
     isolated_scope = false;
     CHECK(check() && open);
+    isolated_scope = true; CHECK(!music_tick()); isolated_scope = false;
+    ram[GAME_PAUSED_STATE] = 1;
     /* In a building: the page of the screen he went in from. */
     CHECK(pause_frame(BUTTON_B));
     ram[AREA] = FAX_MAP_BUILDINGS; ram[SCREEN] = TOOL_SHOP_05; ram[AREA_SAVED_AREA] = 0; ram[AREA_SAVED_SCREEN] = 1;
@@ -835,6 +858,7 @@ static void test_map(void) {
     /* Off: nothing at all. */
     model_reset();
     CHECK(!enabled && !hook_enabled("faxanadu.map.check") && fax_map_present(native, &w, &h) == native);
+    CHECK(!hook_enabled("faxanadu.map.music"));
 }
 
 /* ---- the real map ---- */

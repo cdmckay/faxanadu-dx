@@ -49,7 +49,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "block"))
 import harness  # noqa: E402
 from harness import (AREA, AREA_REGION, AREA_SAVED_AREA, AREA_SAVED_SCREEN, BUILDINGS, ENTITIES, GOLD, HP,  # noqa: E402
                      MESSAGE_ID, PLAYER_SAVED_POS, POS_X, SCREEN_SAVED_PALETTE, TOWNS, fixture, parse_args)
-from fax_e2e import act, page_through, tcp, type_out, until, walk  # noqa: E402
+from fax_e2e import act, page_through, shop_list, tcp, type_out, until, walk  # noqa: E402
 
 PARTS = ("eolis", "refusals", "daybreak", "original")
 PACKAGE = ("faxanadu.dx", "dx")
@@ -183,36 +183,36 @@ def main():
         page_through("the refusal", done_talking, 1200)
 
     def list_up(mode, what):
-        """Until the `mode` list is on screen with its hint, and waits for a
-        button (Quick shops counts the frames it reads the pad)."""
-        until(what, lambda: (lambda s: s["shown"] == mode and s["list_up"] and s["hint"] is not None)(shops()), 900)
+        """Until the `mode` list is on screen and waits for a button (Quick
+        shops counts the frames it reads the pad)."""
+        until(what, lambda: (lambda s: s["shown"] == mode and s["list_up"])(shops()), 900)
         waits = shops()["waits"]
         until("the list to wait for a button", lambda: shops()["waits"] > waits, 300)
         return shops()
 
     def tool_list(expect_items, expect_prices, name):
-        """Up on a Tool Seller: his buy list at once (Quick shops), checked
-        and screenshot."""
-        g.act("up", 4, 6)
-        s = list_up("buy", "the buy list")
+        """Up on a Tool Seller, and through his greeting, Buy and its line
+        (Quick shops, shop_list()): his buy list, checked and screenshot."""
+        s = shop_list("buy")
         assert s["list"] == expect_items and s["prices"] == expect_prices, s
         g.wait(20)                                                  # the PPU buffer has drawn the list and portrait
         g.shot(name)
         return s
 
     def sells_potion(price):
-        """Select to the sell list, a Red Potion at `price` on top; A sells
-        it, and B leaves."""
+        """B out of the buy list, nothing bought; Up again, and Sell: a Red
+        Potion at `price` on top. A sells it, and B leaves, after his thanks."""
         money = gold()
-        g.act("select", 4, 6)
-        s = list_up("sell", "the sell list")
+        g.act("b", 4, 6)
+        until("the conversation's end", done_talking, 300)
+        s = shop_list("sell")
         assert s["list"][0] == ITEM | RED_POTION and s["prices"][0] == price and s["cursor"] == 0, s
         act("a", 4, 6)
         until("the sale", lambda: shops()["sold"] == s["sold"] + 1, 2400)
         list_up("sell", "the sell list, after the sale")
         assert gold() == money + price and RED_POTION not in items(), (gold(), items())
         g.act("b", 4, 6)
-        until("the conversation's end", done_talking, 300)
+        page_through("his thanks", done_talking)
 
     try:
         shop = g.state("eolis-meat-shop")

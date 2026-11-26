@@ -18,7 +18,7 @@ rom_crc32 = "57dd23d1"
 [[feature]]
 id = "dx"
 name = "Faxanadu DX"
-description = "Everything Faxanadu DX adds, as one: Seamless, one continuous world with no stop to scroll between rooms (F4 shows the region), three save files, Guru travel, respawning where you died, Block, the Magic and Use item buttons, Start for the Select menu and Back for the map, the Pendant, the dagger, the Battle Suit and the Dragon Slayer fixed, the typing sound, Ointment against magic on the shield and the original's graphics glitches fixed, finds left lying while your items are full, the gap at Eolis's edge that trapped a flight closed, weapons equipped and swung indoors, Sugata's flash with a warning, quick shops, Red Potions sold by the meat shops, keys found for you and kept, Wing Boots, Hour Glass and Elixir found rather than bought and that recharge, shown ready or not beside the item box, MP that refills when you stop casting, and faster once Eolis's Magician teaches you, twice the gold from the King and from monsters, forgiving jumps, ladders fixed and held on to, faster text, damage numbers, enemies moved off the ways in where they hit before you can react, the names of zones and speakers, what killed you, a quest log with marks over the people who have one, the quest log and the map in the Select menu, and DX under the title's logo. Switch it off to play the original game."
+description = "Everything Faxanadu DX adds, as one: Seamless, one continuous world with no stop to scroll between rooms (F4 shows the region), three save files, Guru travel, respawning where you died, Block, the Magic and Use item buttons, Start for the Select menu and Back for the map, the Pendant, the dagger, the Battle Suit and the Dragon Slayer fixed, no swing that hits behind you across the screen, nothing lost at a room's edge, the typing sound, Ointment against magic on the shield and the original's graphics glitches fixed, every sprite drawn without flicker and the hero in front, finds left lying while your items are full, the gap at Eolis's edge that trapped a flight closed, weapons equipped and swung indoors, Sugata's flash with a warning, quick shops, Red Potions sold by the meat shops, keys found for you and kept, Wing Boots, Hour Glass and Elixir found rather than bought and that recharge, shown ready or not beside the item box, MP that refills when you stop casting, and faster once Eolis's Magician teaches you, twice the gold from the King and from monsters, forgiving jumps, ladders fixed and held on to, faster text, damage numbers, enemies moved off the ways in where they hit before you can react, the names of zones and speakers, what killed you, a quest log with marks over the people who have one, the quest log and the map in the Select menu, and DX under the title's logo. Switch it off to play the original game."
 group = "Game"
 default_enabled = true
 # Seamless draws the picture itself, so the remaster cannot be on with a
@@ -170,6 +170,11 @@ id = "faxanadu.map"
 feature = "dx"
 id = "faxanadu.graphics-fix"
 
+# No sprite flicker (#161): Seamless paints sprites in the order the game drew them.
+[[plugin]]
+feature = "dx"
+id = "faxanadu.no-flicker"
+
 [[plugin]]
 feature = "dx"
 id = "faxanadu.quest-log"
@@ -202,3 +207,9 @@ id = "faxanadu.select-menu"
 [[plugin]]
 feature = "dx"
 id = "faxanadu.controls"
+
+# Seams lose nothing (#166, slice 0): a neighbouring room's copy touches
+# nothing of the hero's, and the sword's reach no longer wraps round a room.
+[[plugin]]
+feature = "dx"
+id = "faxanadu.seams"

@@ -18,7 +18,8 @@ pad        From Eolis town: the bindings are the layout's (Magic C / Y, Use
            Return opens the menu as Start does, and Backslash (the NES Select)
            still opens it too.
 shop       In Eolis's key shop, the buy list up: Back, the NES Select outside
-           play, switches to the sell list, and back.
+           play, opens no map and changes nothing, as Select in the
+           original's shops (since #163 it no longer switches lists).
 hands      From Eolis town, the Small Shield on and a Red Potion selected: the
            right trigger held raises Block (the hero stands), and let go lowers
            it. B uses the Red Potion (the selected item gone, its line typing)
@@ -45,8 +46,8 @@ import re
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import (Game, act, box_open, hold, page_through, parse_args, ram, tcp, type_out, until,  # noqa: E402
-                     wait, walk)
+from fax_e2e import (Game, act, box_open, hold, page_through, parse_args, ram, shop_list, tcp, type_out,  # noqa: E402
+                     until, wait, walk)
 
 AREA, SCREEN, SCREEN_READY, PLAYER_X, PLAYER_FLAGS, PAUSED = 0x24, 0x63, 0x0E, 0x9E, 0xA4, 0x120
 AREA_SAVED_SCREEN, PLAYER_SAVED_POS = 0x3D6, 0x3D8                  # where a building's way out leads
@@ -221,30 +222,16 @@ def main():
             wait(40)
             walk("left", lambda: ram(PLAYER_X) <= 80)                           # he stands at block $84, x 64
 
-            def list_up(mode, frames=900):
-                """The `mode` list on screen, and waiting for a button (it has stopped redrawing)."""
-                until(f"the {mode} list", lambda: (lambda s: s["shown"] == mode and s["list_up"])(
-                    tcp("shops_state")), frames)
-                waits = tcp("shops_state")["waits"]
-                until("the list to wait for a button", lambda: tcp("shops_state")["waits"] > waits, 300)
-                wait(2)
-
-            for _ in range(5):                                                   # Up counts only on the frame it goes down
-                act("up", 4, 10)
-                try:
-                    list_up("buy", 120)
-                    break
-                except AssertionError:
-                    pass
-            else:
-                raise AssertionError("the shopkeeper does not answer")
+            before = shop_list("buy")
+            waits = before["waits"]
             press("back")
-            list_up("sell")
-            game.shot("back-sell-list")
-            press("back")
-            list_up("buy")
+            until("frames in the list", lambda: tcp("shops_state")["waits"] > waits + 20, 300)
+            after = tcp("shops_state")
+            game.shot("back-in-the-list")
+            assert after["shown"] == "buy" and after["list_up"] and after["cursor"] == before["cursor"], after
+            assert after["list"] == before["list"] and after["step"] == "buy", after
             assert not tcp("map_state")["open"] and ram(PAUSED) == 0
-            print("ok: in a shop, Back (the NES Select there) switches to the sell list and back")
+            print("ok: in a shop's list, Back (the NES Select there) opens no map and changes nothing")
             game.close()
 
         if args.wants("hands"):

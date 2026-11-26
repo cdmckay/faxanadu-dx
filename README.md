@@ -32,7 +32,8 @@ How the game works, as far as we've learned it, is in
 
 The remaster plays in Seamless. Faxanadu's rooms join into one continuous
 world: no more stopping to scroll at each screen's edge, the next room is
-already in view, and its people and monsters keep moving. The view is always
+already in view, and its people and monsters keep moving. A coin or anything
+else lying at its edge waits there for you to walk in. The view is always
 424x240, the original's full height and 53 tiles wide, scaled to your window.
 F4 shows the region you're in. Doors and region changes keep the original's
 own transitions, and so does each boss's room: while its boss lives, the
@@ -53,9 +54,9 @@ fountain's water, the Ring of Elf, the Mattock and the wall, the three
 springs, the path to Mascon, the meteorite, the Battle Suit, the rings of
 Dworf and the Demon, and the Evil One, 17 in all. Chatter stays chatter.
 Press L, or the left trigger on a controller, and the game pauses on your
-quests: the ones under way with what to do, then the ones done. Your file
-keeps them. The Select menu lists QUESTS at its top, so you can open the log
-from there too.
+quests, the music playing on: the ones under way with what to do, then the
+ones done. Your file keeps them. The Select menu lists QUESTS at its top, so
+you can open the log from there too.
 
 ![The King's plea ends with New quest, The King's Plea, in his box; the quest log, partway to Mascon](docs/screenshots/quest-log.png)
 
@@ -77,7 +78,7 @@ wherever an item still lies on a screen you have seen, gone once you pick it
 up (one that turns up only now and then shows only while it is there). Ladders
 you have climbed join the screens above and below. Your file keeps the map,
 and the items you have taken. MAP, under QUESTS at the top of the Select menu,
-opens it too.
+opens it too. The game holds still underneath, but the music plays on.
 
 ![The map on the Trunk's page: the screens seen from its first past Forepaw, with the towns between them, the crosses of two Gurus, four doors used, the dots of two items still lying there, and the hero's screen lit](docs/screenshots/map.png)
 
@@ -144,10 +145,11 @@ opens it too.
 - **Zone names.** Entering a different town, region, tower or castle shows its
   name below the status bar for about two seconds.
 - **A modern controller layout.** Start opens the Select menu and closes it,
-  Back opens the map, the left trigger the quest log, and every action has a
-  button of its own (see Controls). Nothing pauses the game but the screens
-  that hold it anyway. A Nintendo-layout pad is read by where its buttons
-  sit, so the lower one jumps, as on any other.
+  Back opens the map, the left trigger the quest log, B backs out of menus
+  and text, and every action has a button of its own (see Controls).
+  Nothing pauses the game but the screens that hold it anyway. A
+  Nintendo-layout pad is read by where its buttons sit, so the lower one
+  jumps, as on any other.
 
 ### Items and shops
 
@@ -186,10 +188,12 @@ opens it too.
   see when it saves you. And while the Wing Boots or the Hour Glass in your
   item box is running, the box's brackets turn gold, and go back to white
   the moment it stops.
-- **Quick shops.** Up on a shopkeeper opens his list at once, Select switches
-  between buying and selling, and you stay in the list after each sale. Any
-  shop buys what you carry, except what you own for good, like a key or the
-  Mattock: it says OWNED and isn't for sale.
+- **Quick shops.** Shopkeepers talk as they always did, but after you buy or
+  sell you stay in the list until you're done, and B thanks you on your way
+  out. A weapon, armor, shield or spell you already have says OWNED, so you
+  never buy a copy you can't use. Any shop buys what you carry, except what
+  you own for good, like a key or the Mattock: it says OWNED and isn't for
+  sale.
 - **Potion Sellers.** The meat shops sell Red Potions instead of dried meat,
   each at the price its town's tool shop charged, and the tool shops no longer
   stock them. They still buy one back.
@@ -209,6 +213,15 @@ opens it too.
 - **DX on the title.** The title screen shows DX on the logo, just under the
   FAXANADU letters, in the title's own letters and the logo's light yellow,
   outlined in black.
+
+### The picture
+
+- **No sprite flicker.** The NES shows 8 sprites a line, so Faxanadu swaps its
+  sprites' order every frame, and beside the villagers you flickered behind
+  them as if see-through. The remaster draws every sprite, every frame: you in
+  front, then your spell, then everyone else, and a busy room no longer drops
+  anyone for a frame when the game slows down. The Fire spell still flickers,
+  as it was made to.
 
 ## Bugs fixed
 
@@ -243,6 +256,9 @@ The remaster also fixes these bugs in the original game:
   the F in the title's logo.
 - The typing sound read past the end of its own table, so every character
   ended in a loud clack. Now it plays the softer sound the table holds.
+- A swing near one edge of a screen could hit a monster at the far edge,
+  behind you: the game measured your weapon's reach without telling one
+  edge from the other. Now it hits only what it reaches.
 
 ## Controls
 
@@ -252,7 +268,8 @@ The remaster also fixes these bugs in the original game:
 | Jump (A) | Z | A |
 | Attack (B) | X | X |
 | Magic | C | Y |
-| Use item | S | B |
+| Use item (in play) | S | B |
+| Back out of menus and text | X | B or X |
 | Block (hold, with a shield) | V | Right trigger |
 | Select menu | Enter | Start |
 | Map | M | Back |
@@ -268,6 +285,15 @@ A controller's buttons are named for where they sit, as on an Xbox pad: A is
 the lower face button (✕ on a PlayStation pad), B the right (○), X the left
 (□) and Y the top (△). A Nintendo-layout pad, like a Switch Pro or an 8BitDo
 in Switch mode, is read the same way, by place rather than by its letters.
+
+On a controller, B is Use item only in play. Everywhere else it backs out,
+as a modern pad's B does: it is the NES's B in text and its questions, the
+Select menu, its lists and the PLAYER page, shops, the map and the quest
+log, Guru travel and saving, and the title's list of files, where X still
+is too. Each press is one or the other, so a B that uses an item never
+closes the line it brings up, and a B that closes a menu never uses an item
+or swings the sword. On the keyboard, S is only ever Use item, and X the
+NES's B.
 
 Enter and Start are the NES's Start, and Backslash and Back its Select. In
 play, Start opens the Select menu and closes it, and no longer pauses;

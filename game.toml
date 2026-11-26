@@ -263,6 +263,16 @@ addr = 0xc487
 bank = 15
 bytes = "29 40 f0 11 ad c1 03 0a a8 c0 22 b0"   # AND #$40, BEQ return, LDA a:SelectedItem
 
+# Outside play its controller button is the NES B (#160): Game_MainLoop's JSR
+# Player_CastMagic, where a B that button pressed for a door's line, read in
+# GameLoop_UpdatePlayer, leaves the changed mask. Doesn't handle.
+
+[[mod_function_hook]]
+id = "faxanadu.use-item.back"
+addr = 0xdb5f
+bank = 15
+bytes = "20 5b ba 20 78 c4 20 00 80 20 8f c8"   # JSR Player_CastMagic, JSR GameLoop_CheckUseCurrentItem
+
 # Auto keys and reusable tools (fax_keys.c): the door requirement handler, the
 # HUD picture clear that uses up a key or the Mattock, and the Mattock's
 # Player_ClearSelectedItem call. Both features hook UI_ClearSelectedItemPic.
@@ -503,10 +513,11 @@ bytes = "ad c7 03 10 fa ad c8 03 30 f5 a5 a7"
 
 # Quick shops (fax_shops.c): a shop's script and its two list actions,
 # IScriptAction_OpenShop and IScriptAction_ShowSellMenu, steered at their
-# steps: the first action, "What would you like?", the list kept up after a
+# steps: the script's actions, "What would you like?", the list kept up after a
 # purchase or a sale, the sell list's contents, each list's A, the menu's
-# input each frame, the end of a shop's message, and the buy list before it is
-# drawn (without the Red Potion while the Potion Sellers sell it).
+# input each frame, the end of a shop's message, the buy list before it is
+# drawn (without the Red Potion while the Potion Sellers sell it), each list
+# action's end (B), and Maybe_Shop_DrawTextBox's close of the list.
 
 [[mod_function_hook]]
 id = "faxanadu.shops.next-action"
@@ -567,6 +578,24 @@ id = "faxanadu.shops.drawing"
 addr = 0x83f7
 bank = 12
 bytes = "20 f8 99 20 ed 84 90 03 4c b4 82 20"   # IScriptAction_OpenShop, after JSR Shop_Populate: JSR Shop_Draw
+
+[[mod_function_hook]]
+id = "faxanadu.shops.buy-end"
+addr = 0x83ff
+bank = 12
+bytes = "4c b4 82 20 82 84 b0 62 ae 1e 02 bd"   # IScriptAction_OpenShop's @_endScript: JMP IScriptAction_EndScript
+
+[[mod_function_hook]]
+id = "faxanadu.shops.sell-end"
+addr = 0x8701
+bank = 12
+bytes = "4c b4 82 a0 00 b1 ec c9 ff f0 0a 8a"   # IScriptAction_ShowSellMenu's @_endScript: JMP IScriptAction_EndScript
+
+[[mod_function_hook]]
+id = "faxanadu.shops.keep"
+addr = 0x8477
+bank = 12
+bytes = "20 02 90 4c e2 81 04 04 04 04 08 ae"   # Maybe_Shop_DrawTextBox: JSR TextBox_Close, JMP TextBox_OpenForNPC
 
 # Zone respawn (fax_respawn.c): every screen load (the way into a zone), the
 # death path after the Guru's words, Player_Spawn's JSR Game_SpawnInTemple,
@@ -882,6 +911,15 @@ addr = 0x88fb
 bank = 14
 bytes = "bd cc 02 20 64 c7 ae 78 03 a9 ff 9d"   # Player_HandleTouchItem: LDA CurrentSprites_Entities,X, JSR Player_PickUp
 
+# And the sound engine's pause check, so the music plays on while the map or
+# the quest log is open (#162): Z set at the BNE, on to the music.
+
+[[mod_function_hook]]
+id = "faxanadu.map.music"
+addr = 0x8010
+bank = 5
+bytes = "d0 1c a5 fa f0 22 10 61 4c 06 81 a9"   # Music_HandleOnInterrupt: BNE Audio_HandlePaused, LDA Music_Current
+
 # Small fixes (fax_fixes.c): the typing sound's TAX in SoundEffect_Message_OnTick
 # (its index halved, so the table's own $01 plays, not the $A9 past its end);
 # and Player_HandleHitByMagic, skipped during iframes and under Ointment. The
@@ -1082,3 +1120,20 @@ id = "faxanadu.select-menu.choose"
 addr = 0x8af0
 bank = 12
 bytes = "ae 1e 02 e0 05 d0 03 4c 5a 8d a9 04"   # @_loadMenuIDs: LDX Menu_CursorPos, CPX #$05, BNE, JMP
+
+# Seams lose nothing (fax_seams.c, #166's slice 0): the weapon's X test in 16
+# bits, refusing a match the 8-bit test finds only by wrapping round the
+# screen; and the sprite loop's touch of the hero, skipped in Seamless's
+# neighbouring rooms' copies.
+
+[[mod_function_hook]]
+id = "faxanadu.seams.reach"
+addr = 0x88cb
+bank = 14
+bytes = "bd cc 02 0a a8 b9 07 b4 18 65 d2 85"   # Sprites_IsSpriteOutOfWeaponRange: LDA CurrentSprites_Entities,X, ASL A, TAY, LDA MAYBE_SPRITE_EXTENTS,Y, CLC, ADC Maybe_WeaponRange_X, STA
+
+[[mod_function_hook]]
+id = "faxanadu.seams.touch"
+addr = 0x890a
+bank = 14
+bytes = "ae 78 03 bd cc 02 c9 ff f0 f5 20 c8"   # CurrentSprite_CheckHitPlayer: LDX CurrentSpriteIndex, LDA CurrentSprites_Entities,X, CMP #$FF, BEQ RETURN_8909, JSR Sprites_IsSpriteHidden

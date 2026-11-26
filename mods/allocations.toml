@@ -299,10 +299,12 @@ address another acts on: with a file in play Guru travel leaves the script's \
 ends to Save files (fax_files_guru_choice), Save files acts on the Gurus' own \
 actions and its own steps, and it undoes SET_SPAWN_POINT's raise at the next \
 action rather than skipping it, so Guru travel still meets the Guru there. \
-Quick shops acts only on a script with the shops' layout, at its first action \
+Quick shops notes a script with the shops' layout at its first action \
 (IScriptOffset 1, before which the others have moved nothing in a shop), and \
-then only on its two list steps; no Guru's script has that layout, and no \
-shop's has a Guru's action or step. Guru travel also forgets a conversation \
+then steers only the thank-you steps after its two lists (BUY + 3 and \
+SELL + 3: back to the list after a purchase or a sale, unless B is leaving \
+through them); no Guru's script has that layout, and no shop's has a Guru's \
+action or step. Guru travel also forgets a conversation \
 of its own that B ended when any script begins (IScriptOffset 1), before \
 anyone steers it. Recharging items, at a Guru's first action (a temple Guru's \
 SET_SPAWN_POINT, or $A0BD for Eolis's), which none redirects, charges a spent \
@@ -415,10 +417,12 @@ rom = []
 # Menu_CursorPos, the list (DataArray, ShopItemCostsL/U, Arg_StringsCount)
 # after ShowSellMenu's scan, and the stack below S where a step is entered by
 # return. It shares IScripts_InvokeNextAction ($826E) with Guru travel and Save
-# files (declared above); its other sites are in the shops' list actions,
-# which no other feature hooks. Save files' override of the Buy/Sell menu's
-# operand ($8631) is for the Guru's menu: a shop never runs that menu, since
-# Quick shops opens its list instead. It reads, never writes, whether reusable
+# files (declared above); its other sites are in the shops' list actions and
+# Maybe_Shop_DrawTextBox ($8477, its JSR TextBox_Close: only the buy list and
+# Quick shops' own steps call it), which no other feature hooks. A shop runs the Buy/Sell menu as
+# the original does, with its own line: Save files serves its override of the
+# menu's operand ($8631) only for the Guru's menu, and puts the stock byte back
+# at the end of that frame. It reads, never writes, whether reusable
 # tools and recharging items are on and the Elixir is spent (fax_keys.h,
 # fax_recharge.h), to show what the hero owns; its buy list's A ($8402) skips
 # the game's checks for an owned item. Its site at OpenShop's JSR Shop_Draw
@@ -753,9 +757,14 @@ rom = []
 # (Game_PausedState). And Player_HandleTouchItem ($88FB, bank 14), after Kept
 # finds' site there, where it only observes X, the slot of the item touched
 # (recharging items' pickup hook is Player_PickUpItem, $C8CD, further in).
+# And Music_HandleOnInterrupt's BNE ($8010, bank 5), which no other feature
+# hooks (Small fixes' bank 5 site is the typing sound's, $86B2): while the map
+# or the quest log is open it sets A and Z there, so the music plays on; the
+# game's Game_PausedState stays as the pause set it.
 # Reads bank 3's area tables, bank 15's town edges and climb and bank 11's
 # sprite lists from a copy of the cart, writes nothing to the machine but A and
-# Z at the BEQs, and draws at present time. No ROM, no read overrides.
+# Z at the BEQs and the BNE, and draws at present time. No ROM, no read
+# overrides.
 
 [[feature]]
 id = "small-fixes"
@@ -797,6 +806,21 @@ rom = []
 # palettes after Player_DrawBody, both before or after these reads, never the
 # bytes these change. No ROM, no read overrides, no state. Seamless decodes
 # its rooms through fax_world_set_room_fixup, which this feature sets.
+
+[[feature]]
+id = "no-flicker"
+package = "faxanadu.dx"
+plugin = "faxanadu.no-flicker"
+source = "src/fax_flicker.c"
+hooks = "faxanadu.no-flicker."
+rom = []
+# No hooks, no ROM, no saved state: Seamless (fax_world.c) asks it the order to
+# paint each room's shadow OAM in, from that room's Sprites_StartSlotRange
+# ($1C), when it composes the picture, and at a frame's end whether the NMI
+# is about to copy OAM (Game_InterruptsHandledLatch $10, Game_NeedOAMReset
+# $1B), to keep its last capture on a frame the game lagged. It writes
+# nothing; Block's glint, which rewrites the body's OAM palettes, is painted
+# in the new order like any other sprite.
 
 [[feature]]
 id = "quest-log"
@@ -965,6 +989,12 @@ rom = []
 # feature hooks, and never handles them. Writes only A, the byte each load
 # just read, so the joypad masks and Player_Flags stay the game's. No ROM, no
 # read overrides, no save-state record: a press lasts the frame it came in.
+# Outside play its controller button is the NES B (#160): its input callback
+# adds B to the pad byte for that press, and at Game_MainLoop's JSR
+# Player_CastMagic ($DB5F, fixed bank), which no other feature hooks, it
+# takes that B out of Joy1_ChangedButtonMask ($19), which the NMI's next read
+# rewrites whole, when a read inside GameLoop_UpdatePlayer (a door's line)
+# took it.
 
 [[feature]]
 id = "controls"
@@ -982,3 +1012,19 @@ rom = []
 # Start. Its input callback takes out of the pad byte the NES buttons the host
 # binds to a held action's controller button. No ROM, no read overrides, no
 # save-state record.
+
+[[feature]]
+id = "seams"
+package = "faxanadu.dx"
+plugin = "faxanadu.seams"
+source = "src/fax_seams.c"
+hooks = "faxanadu.seams."
+rom = []
+# Hooks Sprites_IsSpriteOutOfWeaponRange's entry ($88CB, bank 14) and
+# CurrentSprite_CheckHitPlayer's ($890A, bank 14), which no other feature
+# hooks. Handles the first only for a weapon match that wraps round the
+# screen, writing the registers and Temp_00 as the X test's failure leaves
+# them, with C set; handles the second only in Seamless's neighbouring rooms'
+# ticks (fax_world_ticking()), returning at once, so the touch hooks behind
+# it (Kept finds', the map's and Found items' at $88FB, Block's at $8999)
+# never fire there. No ROM, no read overrides, no save-state record.

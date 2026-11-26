@@ -75,13 +75,14 @@ STATES = {
     "eolis-shaft": ("eolis_shaft_state", "enabled"),
     "map": ("map_state", "enabled"),
     "graphics-fix": ("graphics_fix_state", "enabled"),
+    "no-flicker": ("no_flicker_state", "enabled"),
     "quest-log": ("quest_state", "enabled"),
     "fair-entrances": ("entrances_state", "enabled"),
     "spell-cost": ("spell_cost_state", "enabled"),
     "found-items": ("found_state", "enabled"),
     "select-menu": ("select_menu_state", "enabled"),
     "controls": ("controls_state", "enabled"), "use-item": ("use_item_state", "enabled"),
-    "seamless-world": ("fax_world", "enabled"),
+    "seamless-world": ("fax_world", "enabled"), "seams": ("seams_state", "enabled"),
 }
 START_CHOICE = 0x687                                                # DAT_0687: 0 Start, 1 Continue
 PASSWORD_COL, PASSWORD_ROW, PASSWORD_MAX, PASSWORD_LENGTH = 0x662, 0x663, 0x665, 0x666
