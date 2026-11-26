@@ -82,7 +82,7 @@ STATES = {
     "found-items": ("found_state", "enabled"),
     "select-menu": ("select_menu_state", "enabled"),
     "controls": ("controls_state", "enabled"), "use-item": ("use_item_state", "enabled"),
-    "seamless-world": ("fax_world", "enabled"),
+    "seamless-world": ("fax_world", "enabled"), "seams": ("seams_state", "enabled"),
 }
 START_CHOICE = 0x687                                                # DAT_0687: 0 Start, 1 Continue
 PASSWORD_COL, PASSWORD_ROW, PASSWORD_MAX, PASSWORD_LENGTH = 0x662, 0x663, 0x665, 0x666

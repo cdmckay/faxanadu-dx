@@ -32,7 +32,8 @@ How the game works, as far as we've learned it, is in
 
 The remaster plays in Seamless. Faxanadu's rooms join into one continuous
 world: no more stopping to scroll at each screen's edge, the next room is
-already in view, and its people and monsters keep moving. The view is always
+already in view, and its people and monsters keep moving. A coin or anything
+else lying at its edge waits there for you to walk in. The view is always
 424x240, the original's full height and 53 tiles wide, scaled to your window.
 F4 shows the region you're in. Doors and region changes keep the original's
 own transitions, and so does each boss's room: while its boss lives, the
@@ -255,6 +256,9 @@ The remaster also fixes these bugs in the original game:
   the F in the title's logo.
 - The typing sound read past the end of its own table, so every character
   ended in a loud clack. Now it plays the softer sound the table holds.
+- A swing near one edge of a screen could hit a monster at the far edge,
+  behind you: the game measured your weapon's reach without telling one
+  edge from the other. Now it hits only what it reaches.
 
 ## Controls
 

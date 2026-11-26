@@ -1312,7 +1312,11 @@ reach:
 
   It returns before loading them when a portrait is up, when there is no
   weapon (`Player_CurWeapon` `$FF`), or when the weapon is off the screen, so
-  `$D2`/`$D3` then keep the last weapon's values.
+  `$D2`/`$D3` then keep the last weapon's values. Off the screen
+  `Maybe_Something_WeaponPosY` (`$D0`) keeps its last value too: only the X
+  (`$CE`, and its high byte `$CF`) is this frame's. A hero who walked to a
+  screen's edge keeps the Y of the last frame that had the weapon on the
+  screen: a walking pose's, y+0 or y+8 with a sword (`$B91F`: poses 0-2).
 
 `Sprites_IsSpriteOutOfWeaponRange` (`$88CB`) compares the sprite's top-left
 (`CurrentSprites_XPos_Full`, `CurrentSprites_YPos`, copied to
@@ -1347,6 +1351,42 @@ the swords.
 With the **Taller dagger**, `$B898` is served as `$08` through a read
 override, so the dagger's box is as tall as the swords' and reaches their
 low enemies, from the same short distance as before.
+
+**The X test wraps round the screen: the original's ghost hit.** Both sums
+are 8-bit, and the routine reads only the weapon's low byte.
+`Player_DrawWeapon` works the weapon's X out in 16 bits, the hero's X with
+`Screen_Maybe_ScrollXCounter` (`$9F`) as its high byte plus the pose's
+signed offset (`Player_CalcValueAndFFForNeg`): `PlayerPosXPlus10` (`$CE`)
+gets the low byte and `Maybe_Something_WeaponPosX` (`$CF`) the high one,
+which is not `$9F` when the weapon is off the screen. So the test also hits
+when weapon x + X - sprite x is below 0, or 256 or more, by less than EX +
+X: a monster at the other edge of the screen.
+
+- From Eolis `$04`'s x 4 facing left, the Long Sword's poses 5 and 6 put the
+  weapon at -12 and -20 (`$CE` 244 and 236, `$CF` `$FF`), which hit a
+  Zozura at x 229-255 and 221-252, 232 pixels behind him, if the weapon's
+  last Y on the screen reaches it (a walk's y+8 does). With the remaster
+  off, one at x 236 dies to the first hit (the Pendant Bug's 10), for its 30
+  experience; Seamless without the fix showed the same, the remaster's 8
+  then 8 (`tests/seams/seams_lose_nothing.py`).
+- Facing right, the weapon plus its reach passes 255 from x 216 on (the
+  swords' pose 6), and hits a monster at the screen's left edge. The reach
+  added wraps a box still on the screen too: facing left from x 22, pose 5's
+  weapon at x 6 hits a Zozura at x 250.
+- So in the original only a hero near one edge of a screen, with a monster
+  near the other, meets it. In Seamless he also stands at x 241-255 of a
+  room before he crosses, and the monster hit is off the view.
+- The Y test can't wrap inside a room: a weapon's box stays below 256 (the
+  hero's y is at most 176), and no sprite in a room is far enough below it.
+
+With the remaster on, **Seams lose nothing** (`fax_seams.c`) hooks the
+routine's entry. It works the X test out in 16 bits (`$CE` plus 256 times
+`$CF` - `$9F`, signed, against the sprite's X on the screen) and, when the
+8-bit test would hit only by wrapping round, returns C set (out of range)
+itself, with A, Y, `Temp_00` and the flags as the X test's failure leaves
+them; otherwise the original runs. The one caller, `$8838`
+(`Player_HitSpriteWithWeapon`), reads only C. A real hit at a screen's edge,
+the box half off it, is the original's.
 
 ## The Select menu (bank 12)
 
@@ -4561,6 +4601,39 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   door in the same area) brings a boss back into a room whose copy had none:
   it captures the live room before it decides. The flag is kept in its record
   (byte 28).
+
+- **Seams lose nothing** (`fax_seams.c`, #166's slice 0; the plan is
+  `docs/SEAMLESS-COMBAT.md` on PR #173's branch). Two hooks in bank 14's
+  sprite loop, neither of which keeps a record:
+  - `CurrentSprite_CheckHitPlayer`'s entry (`$890A`) returns at once in a
+    neighbouring room's tick, with X the current slot as its first `LDX
+    CurrentSpriteIndex` leaves it; `CurrentSprite_UpdateState`, next in the
+    loop, loads X itself. Seamless's `fax_world_ticking()` says when: inside
+    `tick_room`'s isolated `Sprites_UpdateAll`, where hooks are allowed.
+    The routine sends every touch to its category's handler
+    (`SPRITE_COLLISION_HANDLERS`) without looking at the invincibility that
+    `shadow()` gives the projected hero; only the enemies' and shots'
+    handlers (`Player_HandleTouchEnemy`, `$89AE`, and
+    `Player_HandleTouchEnemyMagic`, `$8999`) do. So before the fix a coin or
+    bread at the room's edge was taken there (`Player_HandleTouchBreadOrCoin`,
+    `$8968`, has no check of its own), and the gold or HP thrown away with
+    the copy's RAM: a coin at Eolis `$05`'s x 236 with the hero on `$04` was
+    gone within two frames, his gold unchanged. An item
+    (`Player_HandleTouchItem`, `$88FB`) or a person who talks when touched
+    (`Player_HandleTouchNPC`, category 4) starts an interaction script,
+    which waits for frames that an isolated call never has: the call ran out
+    of its budget, Seamless dropped the room's tick and counted a failure,
+    every frame, and the room stood still while he stood by it (the Dragon
+    Slayer at `$05`'s x 240: 121 failures in 121 frames, its Zozuras frozen).
+    Now the live game is the only place the hero is touched: the coin waits
+    in the copy, and he takes it when he walks into its room, the live
+    game's then. The touch hooks behind the routine (Kept finds', the map's
+    and Found items' at `$88FB`, Block's at `$8999`) no longer run in
+    copies.
+  - `Sprites_IsSpriteOutOfWeaponRange`'s entry (`$88CB`): the X test in 16
+    bits, refusing a match that only wraps round the screen (*Weapon
+    reach*). A copy never swings (`Player_AttackPhaseAnimFrame` 0 there),
+    so it acts in the live game; it counts only there.
 
 - **Guru travel** (`fax_travel.c`). After the mantra or a new title, the Guru
   says "All Gurus / meditate as one." and offers "Shall I send / you to

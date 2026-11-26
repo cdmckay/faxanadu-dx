@@ -101,6 +101,13 @@ terrain, collision borders, graphics and palette. The real player, stack,
 inventory, music, global events and persistent saves retain their ownership.
 Only explicit room-local fields transfer at a seam. Native actor routines
 run in a visible-area halo, while inactive rooms retain their records.
+A neighbouring room's copy touches nothing of the hero's (Seams lose
+nothing, `fax_seams.c`, #166): its sprite loop skips
+`CurrentSprite_CheckHitPlayer` (`fax_world_ticking()`), so a coin, bread, an
+item or a person at its edge waits for him to walk in, and the live game
+takes it then. Before, the hero projected to that edge took drops there and
+their gold was lost with the copy, and an item or a person who talks when
+touched made every tick of the room fail, freezing it.
 
 The original player starts a right scroll when his right edge crosses at
 x=241. This adapter retains the source until his origin wraps, preserving
