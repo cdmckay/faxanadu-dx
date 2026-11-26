@@ -6,14 +6,16 @@
  * them), the hook sites fired as the scheduler fires them (a handled site
  * returns as an RTS would, from the stack the hook left), and the shop
  * actions played step by step as the disassembly has them: IScripts_Begin,
- * IScripts_InvokeNextAction, IScriptAction_OpenShop, ShowBuySellMenu and
- * ShowSellMenu, IScripts_WaitForMenuInput and Menu_UpdateAndDraw, the
- * purchase's checks, Player_AddToInventory and Player_RemoveItem, the gold,
- * IScripts_ShowFinalMessage, Maybe_Shop_DrawTextBox and EndScript. A
- * conversation is played from a queue of button presses, one per frame the
- * game reads them, so the tests count presses as a player would, and check
- * what the hero ends up with, what the game said, and that the stack is
- * where it started. The hint, and an owned item's OWNED, are drawn on a model
+ * IScripts_InvokeNextAction, ShowMessage, IScriptAction_OpenShop,
+ * ShowBuySellMenu and ShowSellMenu, each list's B at its JMP
+ * IScriptAction_EndScript, IScripts_WaitForMenuInput and Menu_UpdateAndDraw,
+ * the purchase's checks, Player_AddToInventory and Player_RemoveItem, the
+ * gold, IScripts_ShowFinalMessage, Maybe_Shop_DrawTextBox (its TextBox_Close
+ * and TextBox_OpenForNPC) and EndScript. A conversation is played from a
+ * queue of button presses, one per frame the game reads them, so the tests
+ * count presses as a player would (the greeting, the Buy/Sell menu, the
+ * list's line, the list), and check what the hero ends up with, what the
+ * game said, which boxes it drew, and that the stack is where it started. The hint, and an owned item's OWNED, are drawn on a model
  * picture. Reusable tools and recharging items are switches here, and so are
  * whether the Potion Sellers sell the Red Potions (fax_potions.h) and whether
  * Found items is on (fax_found.h): off but in potion_sellers() and
@@ -224,8 +226,9 @@ static unsigned count_of(uint8_t id) {
 static uint8_t inputs[64];
 static unsigned input_count, input_at;
 static uint8_t said[32];                                     /* message IDs, in order */
-static unsigned said_count, draws, closes, sounds, stuck;
-static char events[256];                                     /* d: list drawn, c: list closed, m: a message */
+static unsigned said_count, draws, closes, opens, sounds, stuck;
+static char events[256];                                     /* d: list drawn, c: list closed, o: dialogue box
+                                                                opened, m: a message */
 static bool done;
 
 static void event(char e) { size_t n = strlen(events); if (n + 1 < sizeof events) events[n] = e, events[n + 1] = 0; }
@@ -263,7 +266,8 @@ static bool message(uint8_t id) {
     return ram[JOY1_CHANGED_BUTTON_MASK] & 0x80;
 }
 static void shop_draw(void) { text_box(LIST_X, LIST_Y, LIST_W, LIST_H); ram[MENU_CURSOR_POS] = 0; ++draws; event('d'); }
-static void close_list(void) { text_box(10, 16, 20, 8); ++closes; event('c'); }   /* Maybe_Shop_DrawTextBox */
+static void close_list(void) { ram[TEXTBOX_CLOSED] = 1; ++closes; event('c'); }   /* TextBox_Close */
+static void open_npc(void) { text_box(10, 16, 20, 8); ++opens; event('o'); }        /* TextBox_OpenForNPC */
 static bool has_already(uint8_t id) {                        /* Shop_GetPlayerHasSelectedItem */
     int k = special(id);
     if (k >= 0) return ram[SPECIAL_ITEMS] & special_bits[k];
@@ -284,11 +288,12 @@ static void remove_item(uint8_t id) {                        /* Player_RemoveIte
 }
 static unsigned price(unsigned i) { return ram[SHOP_ITEM_COSTS_L + i] | ram[SHOP_ITEM_COSTS_U + i] << 8; }
 
-/* Up on a shopkeeper: IScripts_Begin with script `index`, played to its end.
- * The stack is where it was at the end. */
+/* Up on a shopkeeper: IScripts_Begin with script `index`, played to its end,
+ * where the stack is back where it was; or until the player has no more
+ * presses (`stuck`), the game left waiting where it was, a list up, say. */
 static void talk(unsigned index) {
     uint16_t base = (uint16_t)(bank12[ISCRIPT_ADDRS_L - 0x8000 + index] | bank12[ISCRIPT_ADDRS_U - 0x8000 + index] << 8);
-    said_count = draws = closes = sounds = stuck = 0;
+    said_count = draws = closes = opens = sounds = stuck = 0;
     events[0] = 0;
     done = false;
     cpu = (CycModRegs){ .s = 0xF0 };
@@ -336,7 +341,7 @@ static void talk(unsigned index) {
             break;
         case OPEN_SHOP:
             if (fire(pc)) { pc = rts(); break; }
-            pc = message(0x14) ? OPEN_SHOP_LIST : 0x82B4;
+            pc = message(0x14) ? OPEN_SHOP_LIST : BUY_END;
             break;
         case OPEN_SHOP_LIST: {                               /* the items, Shop_Populate, Shop_Draw */
             uint8_t lo = load_byte(), hi = load_byte();
@@ -369,7 +374,12 @@ static void talk(unsigned index) {
             else pc = 0x84ED;
             break;
         }
-        case 0x83FD: pc = carry_set ? 0x82B4 : BUY_PICK; break;   /* OpenShop, after the menu: BCC, JMP EndScript */
+        case 0x83FD: pc = carry_set ? BUY_END : BUY_PICK; break;  /* OpenShop, after the menu: BCC, JMP EndScript */
+        case BUY_END:                                        /* JMP IScriptAction_EndScript: B */
+        case SELL_END:
+            if (fire(pc)) { pc = rts(); break; }
+            pc = 0x82B4;
+            break;
         case BUY_PICK: {                                     /* A: Shop_GetPlayerHasSelectedItem, ... */
             if (fire(pc)) { pc = rts(); break; }
             unsigned x = ram[MENU_CURSOR_POS];
@@ -379,7 +389,7 @@ static void talk(unsigned index) {
                 unsigned c = id >> 5;
                 if (ram[NUMBER_OF_WEAPONS + c] == list_max[c]) { pc = 0x8469; break; }
             }
-            if (gold() < price(x)) { close_list(); pc = 0x837C; break; }
+            if (gold() < price(x)) { jsr(0x8453); pc = MAYBE_SHOP_DRAW_TEXTBOX; break; }
             int k = special(id);
             if (k >= 0) ram[SPECIAL_ITEMS] |= special_bits[k];
             else { unsigned c = id >> 5; ram[list_at[c] + ram[NUMBER_OF_WEAPONS + c]++] = id & 0x1F; }
@@ -387,19 +397,28 @@ static void talk(unsigned index) {
             pc = BOUGHT;
             break;
         }
+        case 0x8454: pc = 0x837C; break;                   /* JMP IScripts_ShowNotEnoughMoney */
         case BOUGHT:
             if (fire(pc)) { pc = rts(); break; }
-            close_list();
-            pc = INVOKE_NEXT_ACTION;
+            jsr(0x8465);                                     /* JSR Maybe_Shop_DrawTextBox */
+            pc = MAYBE_SHOP_DRAW_TEXTBOX;
             break;
-        case 0x8469: close_list(); cpu.a = 0x06; pc = 0x837E; break;
+        case 0x8466: pc = INVOKE_NEXT_ACTION; break;
+        case 0x8469: jsr(0x846B); pc = MAYBE_SHOP_DRAW_TEXTBOX; break;
+        case 0x846C: cpu.a = 0x06; pc = 0x837E; break;     /* LDA #$06, JMP IScripts_ShowFinalMessage */
         case 0x837C: cpu.a = 0x03; pc = 0x837E; break;     /* IScripts_ShowNotEnoughMoney */
         case 0x837E: message(cpu.a); pc = FINAL_MESSAGE_END; break;
         case FINAL_MESSAGE_END:
             if (fire(pc)) { pc = rts(); break; }
             pc = 0x82B4;
             break;
-        case MAYBE_SHOP_DRAW_TEXTBOX: close_list(); pc = rts(); break;
+        case MAYBE_SHOP_DRAW_TEXTBOX: pc = MAYBE_SHOP_CLOSE; break;   /* two frames: no input read */
+        case MAYBE_SHOP_CLOSE:                               /* JSR TextBox_Close */
+            if (fire(pc)) { pc = rts(); break; }
+            close_list();
+            pc = MAYBE_SHOP_OPEN;
+            break;
+        case MAYBE_SHOP_OPEN: open_npc(); pc = rts(); break;   /* JMP TextBox_OpenForNPC */
         case SOUND_PLAY_EFFECT: sounds += cpu.a == SOUND_CURSOR; pc = rts(); break;
         case 0x8660: {                                       /* ShowSellMenu: the items, the stock scan */
             uint8_t lo = load_byte(), hi = load_byte();
@@ -424,11 +443,11 @@ static void talk(unsigned index) {
         case SELL_LIST:
             if (fire(pc)) { pc = rts(); break; }
             if (!ram[ARG_STRINGS_COUNT]) { cpu.a = 0x12; pc = 0x837E; break; }
-            pc = message(0x13) ? SELL_DRAW : 0x82B4;
+            pc = message(0x13) ? SELL_DRAW : SELL_END;
             break;
         case SELL_DRAW: shop_draw(); pc = SELL_WAIT; break;
         case SELL_WAIT: jsr(0x86DD); pc = 0x84ED; break;
-        case 0x86DE: pc = carry_set ? 0x82B4 : SELL_PICK; break;
+        case 0x86DE: pc = carry_set ? SELL_END : SELL_PICK; break;
         case SELL_PICK: {
             if (fire(pc)) { pc = rts(); break; }
             unsigned x = ram[MENU_CURSOR_POS];
@@ -440,7 +459,8 @@ static void talk(unsigned index) {
         }
         case SOLD:
             if (fire(pc)) { pc = rts(); break; }
-            close_list();
+            close_list();                                    /* JSR TextBox_Close, JSR TextBox_OpenForNPC */
+            open_npc();
             pc = INVOKE_NEXT_ACTION;
             break;
         default:
@@ -449,6 +469,7 @@ static void talk(unsigned index) {
         }
     }
     CHECK(done);
+    if (stuck) return;                                       /* the player stopped: the game waits, mid-routine */
     if (cpu.s != 0xF0) fprintf(stderr, "talk(%u): S=%02X events=%s said=%u stuck=%u\n", index, cpu.s, events, said_count, stuck);
     CHECK(cpu.s == 0xF0);                                    /* every jump kept the stack where the game's would */
 }
@@ -517,20 +538,43 @@ static void prices(void) {
             }
 }
 
-static void straight_to_the_list(void) {
+/* The presses to a list: A on the greeting, the Buy/Sell menu's choice (A on
+ * Buy, Down and A on Sell), A on the list's line. B leaves a list; after a
+ * purchase or a sale, A on "Thank you for shopping." then ends it. */
+#define TO_BUY "AAA"
+#define TO_SELL "AdAA"
+
+static void the_conversation(void) {
     on(true);
-    /* Eolis's tool shop: Up opens the list. No message, not a press spent. */
+    /* Eolis's tool shop: the greeting, Buy/Sell, "What would you like?", the
+     * list. B, nothing bought: the end there, as the original's B. */
     carry(700, (const uint8_t[]){ KEY_J }, 1);
-    press("B");
+    press(TO_BUY "B");
     talk(shops[EOLIS_TOOLS].index);
-    CHECK(said_count == 0 && !strcmp(events, "dc") && input_at == 1 && !stuck);   /* B: closed, then the end */
+    CHECK(said_count == 3 && said[0] == I_SELL_TOOLS && said[1] == 0x10 && said[2] == 0x14);
+    CHECK(!strcmp(events, "mmmd") && input_at == 4 && !stuck && thanked == 0);   /* no close, no box after */
     CHECK(listed((const uint8_t[]){ HAND_DAGGER, RED_POTION, ELIXIR, DELUGE }, (const uint16_t[]){ 400, 160, 320, 400 }, 4));
-    CHECK(ram[ISCRIPT_PORTRAIT_ID] == 0xFF && gold() == 700);
-    /* Every shop, the key shops too. */
+    CHECK(ram[ISCRIPT_PORTRAIT_ID] == 0xFF && gold() == 700 && !shop.traded);
+    /* Every shop, the key shops too, with its own greeting. */
     for (unsigned k = 0; k < SHOPS; ++k) {
-        press("B");
+        press(TO_BUY "B");
         talk(shops[k].index);
-        CHECK(said_count == 0 && draws == 1 && ram[DATA_ARRAY] == shops[k].list[0].id);
+        CHECK(said_count == 3 && draws == 1 && ram[DATA_ARRAY] == shops[k].list[0].id && !stuck);
+        CHECK(said[0] == (shops[k].portrait == TOOLS ? I_SELL_TOOLS : I_SELL_KEYS) && said[2] == 0x14);
+    }
+    /* Sell: Down on the menu, "Which one would like to sell?", the list. */
+    carry(700, (const uint8_t[]){ RED_POTION }, 1);
+    press(TO_SELL "B");
+    talk(shops[EOLIS_TOOLS].index);
+    CHECK(said_count == 3 && said[2] == 0x13 && !strcmp(events, "mmmd") && !stuck && sounds == 0);
+    CHECK(listed((const uint8_t[]){ RED_POTION }, (const uint16_t[]){ 80 }, 1));
+    /* B on the greeting, on the menu or on a list's line: the end, as the original's. */
+    static const char *const early[] = { "B", "AB", "AAB", "AdAB" };
+    for (unsigned k = 0; k < 4; ++k) {
+        press(early[k]);
+        talk(shops[EOLIS_TOOLS].index);
+        CHECK(said_count == k + (k == 3 ? 0 : 1) && draws == 0 && !stuck && thanked == 0);
+        CHECK(ram[ISCRIPT_PORTRAIT_ID] == 0xFF && !strchr(events, 'o'));
     }
     /* Another kind of script is left alone. */
     press("A");
@@ -544,50 +588,56 @@ static void straight_to_the_list(void) {
 static void buying(void) {
     on(true);
     carry(700, (const uint8_t[]){ KEY_J }, 1);
-    /* Down to the Red Potion, A three times, B: five presses, five choices. */
-    press("dAAAB");
+    /* Down to the Red Potion, A three times: three purchases in a row, the
+     * list drawn again in place each time; then B: the dialogue box opens over
+     * the list, never closed, and he thanks you. */
+    press(TO_BUY "dAAABA");
     talk(shops[EOLIS_TOOLS].index);
-    CHECK(input_at == 5 && !stuck && said_count == 0);
+    CHECK(input_at == 9 && !stuck && said_count == 4 && said[3] == 0x02);
     CHECK(gold() == 700 - 3 * 160 && count_of(RED_POTION) == 3 && count_of(KEY_J) == 1);
-    CHECK(draws == 4 && closes == 1);                    /* drawn again in place, closed as B leaves */
-    CHECK(bought == 3);
+    CHECK(!strcmp(events, "mmmddddom") && closes == 0 && kept == 1);
+    CHECK(bought == 3 && thanked == 1 && ram[ISCRIPT_PORTRAIT_ID] == 0xFF);
     /* The Elixir: bought once, then it is owned, and A on it does nothing:
      * no gold, no line, the list as it was. */
     carry(700, NULL, 0);
-    press("ddAAAB");
+    press(TO_BUY "ddAAABA");
     talk(shops[EOLIS_TOOLS].index);
     CHECK(gold() == 700 - 320 && (ram[SPECIAL_ITEMS] & 0x08));
-    CHECK(said_count == 0 && !strcmp(events, "ddc") && ignored == 2 && input_at == 6 && !stuck);
+    CHECK(said_count == 4 && !strcmp(events, "mmmddom") && ignored == 2 && input_at == 10 && !stuck);
 }
 
 static void the_games_checks(void) {
     on(true);
-    /* Not enough Golds: the game's line, then the list again, the cursor where it was. */
+    /* Not enough Golds: the game's line, in the dialogue box opened over the
+     * list, then the list again, the cursor where it was and no line before
+     * it; a purchase; B, and the thanks. */
     carry(300, NULL, 0);
-    press("dddAAuuAB");
+    press(TO_BUY "dddAAuuABA");
     talk(shops[EOLIS_TOOLS].index);
-    CHECK(said_count == 1 && said[0] == 0x03);
-    CHECK(!strcmp(events, "dcmddc"));                    /* the list, closed for the line, again; a purchase */
+    CHECK(said_count == 5 && said[3] == 0x03 && said[4] == 0x02);
+    CHECK(!strcmp(events, "mmmdomddom") && closes == 0);
     CHECK(gold() == 300 - 160 && count_of(RED_POTION) == 1 && count_of(DELUGE) == 0);
-    CHECK(input_at == 9 && !stuck);
-    /* The Hand Dagger in hand: "You can't carry any more." */
+    CHECK(input_at == 13 && !stuck && messages == 1);
+    /* The Hand Dagger in hand: "You can't carry any more.", then the list;
+     * B, nothing bought: no thanks. */
+    on(true);
     carry(1000, NULL, 0);
-    press("AAB");
+    press(TO_BUY "AAB");
     talk(shops[EOLIS_TOOLS].index);
-    CHECK(said_count == 1 && said[0] == 0x06 && gold() == 1000);
+    CHECK(said_count == 4 && said[3] == 0x06 && gold() == 1000 && thanked == 0 && !stuck);
     /* A full Items list: the same line for a Red Potion. */
     static const uint8_t eight[] = { KEY_J, KEY_J, KEY_J, KEY_J, KEY_Q, KEY_Q, KEY_Q, MATTOCK };
     carry(1000, eight, 8);
-    press("dAAB");
+    press(TO_BUY "dAAB");
     talk(shops[EOLIS_TOOLS].index);
-    CHECK(said_count == 1 && said[0] == 0x06 && gold() == 1000 && count_of(RED_POTION) == 0);
+    CHECK(said_count == 4 && said[3] == 0x06 && gold() == 1000 && count_of(RED_POTION) == 0);
     /* The Elixir with one in hand is owned: A does nothing, where the game
      * would refuse it. */
     carry(1000, NULL, 0);
     ram[SPECIAL_ITEMS] = 0x08;
-    press("ddAAB");
+    press(TO_BUY "ddAAB");
     talk(shops[EOLIS_TOOLS].index);
-    CHECK(said_count == 0 && gold() == 1000 && ignored == 2 && !strcmp(events, "dc"));
+    CHECK(said_count == 3 && gold() == 1000 && ignored == 2 && !strcmp(events, "mmmd"));
 }
 
 /* fax_shops_owned, on plain values: each item, held or selected, with the
@@ -673,19 +723,19 @@ static void owned_rows(void) {
     /* Forepaw's: buy the Wing Boots; A on them again does nothing; then a Red Potion. */
     on(true);
     carry(9000, (const uint8_t[]){ RED_POTION }, 1);
-    press("ddddAAuAB");
+    press(TO_BUY "ddddAAuABA");
     talk(shops[FOREPAW_TOOLS].index);
-    CHECK(!stuck && input_at == 9 && said_count == 0);
+    CHECK(!stuck && input_at == 13 && said_count == 4 && said[3] == 0x02);
     CHECK(gold() == 9000 - 2800 - 400 && count_of(WING_BOOTS) == 1 && count_of(RED_POTION) == 2);
-    CHECK(bought == 2 && ignored == 1 && !strcmp(events, "dddc"));  /* drawn, redrawn after each purchase, left */
+    CHECK(bought == 2 && ignored == 1 && !strcmp(events, "mmmdddom"));  /* drawn, redrawn after each purchase, left */
     CHECK(ram[ARG_STRINGS_COUNT] == 5 && ram[DATA_ARRAY + BOOTS_ROW] == WING_BOOTS && price(BOOTS_ROW) == 2800);
     /* Back again, the boots selected (in no list): the same row, the same price, owned. */
     on(true);
     carry(5800, NULL, 0);
     ram[0x03C1] = WING_BOOTS & 0x1F;
-    press("ddddAAAuB");
+    press(TO_BUY "ddddAAAuB");
     talk(shops[FOREPAW_TOOLS].index);
-    CHECK(gold() == 5800 && ignored == 3 && said_count == 0 && !strcmp(events, "dc") && ram[MENU_CURSOR_POS] == 3);
+    CHECK(gold() == 5800 && ignored == 3 && said_count == 3 && !strcmp(events, "mmmd") && ram[MENU_CURSOR_POS] == 3);
     CHECK(listed((const uint8_t[]){ LONG_SWORD, STUDDED_MAIL, SMALL_SHIELD, RED_POTION, WING_BOOTS },
                  (const uint16_t[]){ 1600, 2500, 1100, 400, 2800 }, 5));
     /* Without recharging items they are used up, so a second pair sells, as
@@ -693,9 +743,9 @@ static void owned_rows(void) {
     recharging_on = false;
     on(true);
     carry(9000, (const uint8_t[]){ WING_BOOTS }, 1);
-    press("ddddAB");
+    press(TO_BUY "ddddABA");
     talk(shops[FOREPAW_TOOLS].index);
-    CHECK(gold() == 9000 - 2800 && count_of(WING_BOOTS) == 2 && ignored == 0);
+    CHECK(gold() == 9000 - 2800 && count_of(WING_BOOTS) == 2 && ignored == 0 && !stuck);
     recharging_on = true;
 
     /* After Mascon's (Death, Hour Glass, Elixir, Red Potion): the Hour Glass held, and the Elixir spent. */
@@ -703,15 +753,15 @@ static void owned_rows(void) {
     on(true);
     carry(20000, (const uint8_t[]){ HOUR_GLASS }, 1);
     spent = true;
-    press("dAdAdAB");
+    press(TO_BUY "dAdAdABA");
     talk(shops[AFTER_MASCON].index);
     CHECK(gold() == 20000 - 300 && count_of(HOUR_GLASS) == 1 && count_of(RED_POTION) == 1);
-    CHECK(!(ram[SPECIAL_ITEMS] & 0x08) && ignored == 2 && said_count == 0);   /* buying never charges it */
+    CHECK(!(ram[SPECIAL_ITEMS] & 0x08) && ignored == 2 && said_count == 4 && !stuck);   /* buying never charges it */
     spent = false;
     /* Neither: both sell. */
     on(true);
     carry(20000, NULL, 0);
-    press("dAdAB");
+    press(TO_BUY "dAdABA");
     talk(shops[AFTER_MASCON].index);
     CHECK(gold() == 20000 - 5600 - 4300 && count_of(HOUR_GLASS) == 1 && (ram[SPECIAL_ITEMS] & 0x08) && ignored == 0);
 
@@ -719,38 +769,41 @@ static void owned_rows(void) {
     enum { MASCON_TOOLS = 4 };
     on(true);
     carry(1000, (const uint8_t[]){ KEY_J }, 1);
-    press("AAB");
+    press(TO_BUY "AAB");
     talk(shops[EOLIS_KEYS].index);
-    CHECK(gold() == 1000 && count_of(KEY_J) == 1 && ignored == 2);
+    CHECK(gold() == 1000 && count_of(KEY_J) == 1 && ignored == 2 && thanked == 0 && !stuck);
     on(true);
     carry(1000, (const uint8_t[]){ MATTOCK }, 1);
-    press("ddAB");
+    press(TO_BUY "ddAB");
     talk(shops[MASCON_TOOLS].index);
-    CHECK(gold() == 1000 && count_of(MATTOCK) == 1 && ignored == 1);
+    CHECK(gold() == 1000 && count_of(MATTOCK) == 1 && ignored == 1 && !stuck);
     /* Without reusable tools a key is used up, so a second sells. */
     reusable_on = false;
     on(true);
     carry(1000, (const uint8_t[]){ KEY_J }, 1);
-    press("AB");
+    press(TO_BUY "ABA");
     talk(shops[EOLIS_KEYS].index);
-    CHECK(gold() == 900 && count_of(KEY_J) == 2 && ignored == 0);
+    CHECK(gold() == 900 && count_of(KEY_J) == 2 && ignored == 0 && !stuck);
     reusable_on = true;
 
     /* Nor does a shop buy them: in the sell list owned items are not for
      * sale, and A on them does nothing. */
     on(true);
     carry(0, (const uint8_t[]){ WING_BOOTS }, 1);
-    press("sAAB");
+    press(TO_SELL "AAB");
     talk(shops[FOREPAW_TOOLS].index);
     CHECK(listed((const uint8_t[]){ WING_BOOTS }, (const uint16_t[]){ 0 }, 1));
-    CHECK(gold() == 0 && count_of(WING_BOOTS) == 1 && refused == 2 && sold == 0 && said_count == 0 && !stuck);
-    /* Without recharging items they are used up, so they sell, at Forepaw's half. */
+    CHECK(gold() == 0 && count_of(WING_BOOTS) == 1 && refused == 2 && sold == 0 && said_count == 3 && !stuck);
+    /* Without recharging items they are used up, so they sell, at Forepaw's
+     * half. The last thing sold: "You have nothing to buy.", "What would you
+     * like?", the buy list; B, and the thanks. */
     recharging_on = false;
     on(true);
     carry(0, (const uint8_t[]){ WING_BOOTS }, 1);
-    press("sAAB");                                                  /* the last thing sold: the game's line */
+    press(TO_SELL "AAABA");
     talk(shops[FOREPAW_TOOLS].index);
     CHECK(gold() == 1400 && count_of(WING_BOOTS) == 0 && refused == 0 && !stuck);
+    CHECK(said_count == 6 && said[3] == 0x12 && said[4] == 0x14 && said[5] == 0x02);
     recharging_on = true;
 
     /* Quick shops off: the original. A second pair sells, and a held Elixir
@@ -773,52 +826,55 @@ static void selling(void) {
     static const uint8_t carried[] = { DRAGON_SLAYER, LONG_SWORD, KEY_J, KEY_A, WING_BOOTS, POISON, RED_POTION,
                                        RED_POTION };
     carry(100, carried, sizeof carried);
-    /* Select: the sell list, the Items first as the original lists them (from
-     * the last), then the weapons. The Poison no shop sells: 100. The Wing
-     * Boots and the keys, his for good, and the Dragon Slayer: no price. */
-    press("sB");
+    /* The sell list: the Items first as the original lists them (from the
+     * last), then the weapons. The Poison no shop sells: 100. The Wing Boots
+     * and the keys, his for good, and the Dragon Slayer: no price. */
+    press(TO_SELL "B");
     talk(shops[EOLIS_TOOLS].index);
-    CHECK(said_count == 0 && sounds == 1 && !strcmp(events, "ddc"));
+    CHECK(said_count == 3 && said[2] == 0x13 && !strcmp(events, "mmmd") && !stuck);
     CHECK(listed((const uint8_t[]){ RED_POTION, RED_POTION, POISON, WING_BOOTS, KEY_A, KEY_J, LONG_SWORD, DRAGON_SLAYER },
                  (const uint16_t[]){ 80, 80, 100, 0, 0, 0, 800, 0 }, 8));
-    /* Sell the Poison (no shop's: 100) and a Red Potion (this shop's: 80). */
-    carry(100, carried, sizeof carried);
-    press("sddAuuAB");
-    talk(shops[EOLIS_TOOLS].index);
-    CHECK(said_count == 0 && !stuck && input_at == 8);
-    CHECK(gold() == 100 + 100 + 80 && count_of(POISON) == 0 && count_of(RED_POTION) == 1 && count_of(KEY_A) == 1);
-    CHECK(closes == 1);
-    /* The Wing Boots, the A and J keys and the Dragon Slayer: A does
-     * nothing, and the list waits. */
+    /* Sell the Poison (no shop's: 100) and a Red Potion (this shop's: 80), in
+     * a row, the list drawn again after each, its line not said again; B, the
+     * dialogue box over the list, and the thanks. */
     on(true);
     carry(100, carried, sizeof carried);
-    press("sdddAdAdAddAB");
+    press(TO_SELL "ddAuuABA");
+    talk(shops[EOLIS_TOOLS].index);
+    CHECK(said_count == 4 && said[3] == 0x02 && !stuck && input_at == 12);
+    CHECK(gold() == 100 + 100 + 80 && count_of(POISON) == 0 && count_of(RED_POTION) == 1 && count_of(KEY_A) == 1);
+    CHECK(!strcmp(events, "mmmdddom") && closes == 0 && sold == 2 && thanked == 1);
+    /* The Wing Boots, the A and J keys and the Dragon Slayer: A does
+     * nothing, and the list waits. B: nothing sold, no thanks. */
+    on(true);
+    carry(100, carried, sizeof carried);
+    press(TO_SELL "dddAdAdAddAB");
     talk(shops[EOLIS_TOOLS].index);
     CHECK(gold() == 100 && count_of(WING_BOOTS) == 1 && count_of(KEY_A) == 1 && count_of(KEY_J) == 1);
-    CHECK(count_of(DRAGON_SLAYER) == 1 && said_count == 0 && refused == 4 && sold == 0 && !stuck);
+    CHECK(count_of(DRAGON_SLAYER) == 1 && said_count == 3 && refused == 4 && sold == 0 && thanked == 0 && !stuck);
     /* Without reusable tools and recharging items, the keys and the boots
      * are used up, so they sell: the J key at a key shop's half (50), the A
      * key, which no shop sells, at 100, the boots at Forepaw's half (1400). */
     reusable_on = recharging_on = false;
     on(true);
     carry(100, carried, sizeof carried);
-    press("sB");
+    press(TO_SELL "B");
     talk(shops[EOLIS_TOOLS].index);
     CHECK(listed((const uint8_t[]){ RED_POTION, RED_POTION, POISON, WING_BOOTS, KEY_A, KEY_J, LONG_SWORD, DRAGON_SLAYER },
                  (const uint16_t[]){ 80, 80, 100, 1400, 100, 50, 800, 0 }, 8));
-    press("sdddddAB");
+    press(TO_SELL "dddddABA");
     talk(shops[EOLIS_TOOLS].index);
-    CHECK(gold() == 150 && count_of(KEY_J) == 0 && refused == 0);
+    CHECK(gold() == 150 && count_of(KEY_J) == 0 && refused == 0 && !stuck);
     reusable_on = recharging_on = true;
     /* At a key shop, a Red Potion sells at half the lowest tool shop's
      * price. Then nothing is left: the original's line, and buying. */
     carry(0, (const uint8_t[]){ RED_POTION }, 1);
-    press("sAAB");
+    press(TO_SELL "AAABA");
     talk(shops[EOLIS_KEYS].index);
-    CHECK(gold() == 80 && count_of(RED_POTION) == 0 && said_count == 1 && said[0] == 0x12);
+    CHECK(gold() == 80 && count_of(RED_POTION) == 0 && said_count == 6 && said[0] == I_SELL_KEYS && said[3] == 0x12);
     /* At Dartmoor's, at half its own, as the original pays. */
     carry(0, (const uint8_t[]){ RED_POTION }, 1);
-    press("sAAB");
+    press(TO_SELL "AAABA");
     talk(shops[DARTMOOR_TOOLS].index);
     CHECK(gold() == 1000 && !stuck);
     /* A special item that somehow sits in a list is never sold, so its
@@ -826,30 +882,49 @@ static void selling(void) {
     carry(0, NULL, 0);
     ram[list_at[ITEMS]] = ELIXIR & 0x1F; ram[NUMBER_OF_WEAPONS + ITEMS] = 1;
     ram[SPECIAL_ITEMS] = 0x08;
-    press("sAB");
+    press(TO_SELL "AB");
     talk(shops[EOLIS_TOOLS].index);
-    CHECK(ram[SPECIAL_ITEMS] == 0x08 && gold() == 0 && ram[NUMBER_OF_WEAPONS + ITEMS] == 1);
+    CHECK(ram[SPECIAL_ITEMS] == 0x08 && gold() == 0 && ram[NUMBER_OF_WEAPONS + ITEMS] == 1 && !stuck);
 }
 
-static void switching(void) {
+/* Select does nothing in a list; B leaves; nothing to sell goes to buying. */
+static void leaving(void) {
     on(true);
     carry(500, (const uint8_t[]){ KEY_J, LONG_SWORD }, 2);
-    /* Each list keeps its cursor: buy on the Red Potion, sell, back. */
-    press("dsdsAB");
+    /* Select on the Red Potion: nothing, as in the original; A buys it. */
+    press(TO_BUY "dsABA");
     talk(shops[EOLIS_TOOLS].index);
-    CHECK(sounds == 2 && gold() == 500 - 160 && count_of(RED_POTION) == 1);
-    CHECK(shop.cursor[SELL] == 1);
-    /* Nothing to sell: the list closes, the original's line, then buying again. */
+    CHECK(sounds == 0 && gold() == 500 - 160 && count_of(RED_POTION) == 1 && said_count == 4 && !stuck);
+    /* Nothing to sell, from the menu: the original's line, then "What would
+     * you like?" and buying; a purchase, B, the thanks. */
+    on(true);
     carry(500, NULL, 0);
-    press("sAdAB");
+    press("AdAA" "AdABA");
     talk(shops[EOLIS_TOOLS].index);
-    CHECK(said_count == 1 && said[0] == 0x12 && !strcmp(events, "dcmddc"));
-    CHECK(gold() == 500 - 160);
-    /* Selling the last thing: the line, then buying. */
+    CHECK(said_count == 5 && said[2] == 0x12 && said[3] == 0x14 && said[4] == 0x02);
+    CHECK(!strcmp(events, "mmmmddom") && gold() == 500 - 160 && !stuck);
+    /* Selling the last thing: the dialogue box over the list for the line,
+     * then "What would you like?" and buying; B, the thanks. */
+    on(true);
     carry(0, (const uint8_t[]){ RED_POTION }, 1);
-    press("sAAB");
+    press(TO_SELL "AAABA");
     talk(shops[EOLIS_TOOLS].index);
-    CHECK(gold() == 80 && said_count == 1 && said[0] == 0x12 && !strcmp(events, "ddcmdc"));
+    CHECK(gold() == 80 && said_count == 6 && said[3] == 0x12 && !strcmp(events, "mmmdommdom") && closes == 0);
+    /* B on "What would you like?" there: he still thanks you, something sold. */
+    on(true);
+    carry(0, (const uint8_t[]){ RED_POTION }, 1);
+    press(TO_SELL "AABA");
+    talk(shops[EOLIS_TOOLS].index);
+    CHECK(gold() == 80 && said_count == 6 && said[4] == 0x14 && said[5] == 0x02 && thanked == 1);
+    CHECK(!strcmp(events, "mmmdommm") && !stuck);
+    /* Quick shops off: the original's purchase closes the list and opens the
+     * dialogue box for the thanks. */
+    on(false);
+    carry(500, NULL, 0);
+    press("AAAdAA");
+    talk(shops[EOLIS_TOOLS].index);
+    CHECK(!strcmp(events, "mmmdcom") && gold() == 500 - 160);
+    on(true);
 }
 
 static void pages_of_eight(void) {
@@ -857,26 +932,26 @@ static void pages_of_eight(void) {
     static const uint8_t carried[] = { KEY_J, KEY_Q, KEY_K, MATTOCK, RED_POTION, RED_POTION, KEY_A, RED_POTION,
                                        LONG_SWORD, GIANT_BLADE, DRAGON_SLAYER };
     carry(0, carried, sizeof carried);
-    press("sB");
+    press(TO_SELL "B");
     talk(shops[EOLIS_TOOLS].index);
     CHECK(shop.selling == 11 && pages() == 2 && ram[ARG_STRINGS_COUNT] == 8 && ram[DATA_ARRAY] == RED_POTION);
     /* Down from the bottom: the second page, its top. */
     carry(0, carried, sizeof carried);
-    press("sdddddddddB");
+    press(TO_SELL "dddddddddB");
     talk(shops[EOLIS_TOOLS].index);
     CHECK(shop.page == 1 && turned == 1 && ram[ARG_STRINGS_COUNT] == 3);
     CHECK(listed((const uint8_t[]){ DRAGON_SLAYER, GIANT_BLADE, LONG_SWORD }, (const uint16_t[]){ 0, 4250, 800 }, 3));
     /* Up from the top of the first: the last page, its bottom; sell the Long Sword there. */
     carry(0, carried, sizeof carried);
-    press("suAB");
+    press(TO_SELL "uABA");
     talk(shops[EOLIS_TOOLS].index);
-    CHECK(gold() == 800 && count_of(LONG_SWORD) == 0 && shop.page == 1);
+    CHECK(gold() == 800 && count_of(LONG_SWORD) == 0 && shop.page == 1 && !stuck);
     /* Sell the last of a page: back to the end of the page before. */
     static const uint8_t nine[] = { KEY_J, KEY_Q, KEY_K, MATTOCK, RED_POTION, RED_POTION, KEY_A, RED_POTION, LONG_SWORD };
     carry(0, nine, sizeof nine);
-    press("suAB");
+    press(TO_SELL "uAs");                                         /* Select: nothing, a frame in the list */
     talk(shops[EOLIS_TOOLS].index);
-    CHECK(gold() == 800 && shop.page == 0 && ram[MENU_CURSOR_POS] == 7);
+    CHECK(gold() == 800 && shop.page == 0 && ram[MENU_CURSOR_POS] == 7 && stuck);   /* left waiting in the list */
 }
 
 static void off(void) {
@@ -929,7 +1004,7 @@ static void potion_sellers(void) {
         for (unsigned j = 0; j < 5 && shops[k].list[j].price; ++j, ++had)
             if (shops[k].list[j].id != RED_POTION) want[n] = shops[k].list[j].id, want_costs[n++] = shops[k].list[j].price;
         carry(0, NULL, 0);
-        press("B");
+        press(TO_BUY "B");
         talk(shops[k].index);
         CHECK(listed(want, want_costs, n) && draws == 1 && !stuck);
         lost += had - n;
@@ -938,18 +1013,18 @@ static void potion_sellers(void) {
     /* Eolis's: Hand Dagger, Elixir, Deluge. Down, A: the Elixir; Up from the
      * top wraps to the Deluge, the last of three. */
     carry(1000, (const uint8_t[]){ KEY_J }, 1);
-    press("dAB");
+    press(TO_BUY "dABA");
     talk(shops[EOLIS_TOOLS].index);
     CHECK(gold() == 1000 - 320 && (ram[SPECIAL_ITEMS] & 0x08) && count_of(RED_POTION) == 0);
     carry(1000, (const uint8_t[]){ KEY_J }, 1);
-    press("uAB");
+    press(TO_BUY "uABA");
     talk(shops[EOLIS_TOOLS].index);
     CHECK(gold() == 1000 - 400 && count_of(DELUGE) == 1 && count_of(RED_POTION) == 0);
     /* Bought again, the list is drawn again without it, the cursor kept. */
     carry(2000, NULL, 0);
-    press("ddAAAB");                                                   /* the Deluge, again: refused, A, the list */
+    press(TO_BUY "ddAAABA");                                              /* the Deluge, again: refused, A, the list */
     talk(shops[EOLIS_TOOLS].index);
-    CHECK(gold() == 2000 - 400 && count_of(DELUGE) == 1 && said_count == 1 && said[0] == 0x06 && draws == 3);
+    CHECK(gold() == 2000 - 400 && count_of(DELUGE) == 1 && said_count == 5 && said[3] == 0x06 && draws == 3);
     CHECK(listed((const uint8_t[]){ HAND_DAGGER, ELIXIR, DELUGE }, (const uint16_t[]){ 400, 320, 400 }, 3));
     /* Selling a Red Potion: half the shop's own price, from its list. */
     static const struct { unsigned shop; uint16_t pays; } sales[] = {
@@ -957,13 +1032,13 @@ static void potion_sellers(void) {
         { EOLIS_KEYS, 80 } };                                         /* a key shop: half the lowest, 160 */
     for (unsigned i = 0; i < sizeof sales / sizeof sales[0]; ++i) {
         carry(0, (const uint8_t[]){ RED_POTION, RED_POTION }, 2);
-        press("sAB");
+        press(TO_SELL "ABA");
         talk(shops[sales[i].shop].index);
         CHECK(gold() == sales[i].pays && count_of(RED_POTION) == 1 && !stuck);
     }
     /* Not selling them (his line could not be supplied): the lists as they were. */
     potions_on = false;
-    press("B");
+    press(TO_BUY "B");
     talk(shops[EOLIS_TOOLS].index);
     CHECK(listed((const uint8_t[]){ HAND_DAGGER, RED_POTION, ELIXIR, DELUGE }, (const uint16_t[]){ 400, 160, 320, 400 }, 4));
     /* Nor with Quick shops off, or in Seamless's isolated scope. */
@@ -1012,7 +1087,7 @@ static void found_items(void) {
                 want[n] = id, want_costs[n++] = shops[k].list[j].price;
             }
             carry(0, NULL, 0);
-            press("B");
+            press(TO_BUY "B");
             talk(shops[k].index);
             CHECK(listed(want, want_costs, n) && draws == 1 && !stuck);
             lost += had - n;
@@ -1021,21 +1096,21 @@ static void found_items(void) {
     }
     /* Eolis's: the Hand Dagger and Deluge. Down, A: the Deluge. */
     carry(1000, (const uint8_t[]){ KEY_J }, 1);
-    press("dAB");
+    press(TO_BUY "dABA");
     talk(shops[EOLIS_TOOLS].index);
     CHECK(gold() == 1000 - 400 && count_of(DELUGE) == 1 && !(ram[SPECIAL_ITEMS] & 0x08));
     CHECK(listed((const uint8_t[]){ HAND_DAGGER, DELUGE }, (const uint16_t[]){ 400, 400 }, 2));
     /* Forepaw's: the Long Sword, the Studded Mail and the Small Shield; Up
      * from the top wraps to the shield, the last of three. */
     carry(2000, NULL, 0);
-    press("uAB");
+    press(TO_BUY "uABA");
     talk(shops[FOREPAW_TOOLS].index);
     CHECK(gold() == 2000 - 1100 && count_of(WING_BOOTS) == 0 && !stuck);
     CHECK(listed((const uint8_t[]){ LONG_SWORD, STUDDED_MAIL, SMALL_SHIELD }, (const uint16_t[]){ 1600, 2500, 1100 }, 3));
     /* Off (the original's lists), or Quick shops off: the lists as they were. */
     found_on = potions_on = false;
     carry(0, NULL, 0);
-    press("B");
+    press(TO_BUY "B");
     talk(shops[FOREPAW_TOOLS].index);
     CHECK(listed((const uint8_t[]){ LONG_SWORD, STUDDED_MAIL, SMALL_SHIELD, RED_POTION, WING_BOOTS },
                  (const uint16_t[]){ 1600, 2500, 1100, 400, 2800 }, 5));
@@ -1058,10 +1133,12 @@ static void isolated_and_saved(void) {
     talk(shops[EOLIS_TOOLS].index);
     CHECK(said[0] == I_SELL_TOOLS && !shop.active);
     isolated = false;
-    /* A state saved in a shop goes on with it. */
+    /* A state saved in a shop goes on with it: here in the buy list, after
+     * a purchase, its line said. */
     carry(700, (const uint8_t[]){ KEY_J }, 1);
-    press("dsB");
+    press(TO_BUY "dAd");
     talk(shops[EOLIS_TOOLS].index);
+    CHECK(stuck && shop.traded && shop.lines == 1u << BUY && shop.shown == BUY && ram[MENU_CURSOR_POS] == 2);
     uint8_t buf[32];
     int n = save_get(buf, sizeof buf);
     CHECK(n == STATE_LEN && save_validate(buf, n));
@@ -1069,8 +1146,17 @@ static void isolated_and_saved(void) {
     shop = (Session){ 0 };
     CHECK(save_set(buf, n) && !memcmp(&shop, &before, sizeof shop));
     CHECK(save_validate(NULL, 0) && save_set(NULL, 0) && !shop.active);
+    /* One saved before #163 (version 1: no lines, trade or leaving) goes on
+     * in the list it was in, its line said. */
+    buf[0] = 1;                                                     /* the state saved above, as version 1 */
+    CHECK(save_validate(buf, STATE_V1_LEN) && save_set(buf, STATE_V1_LEN));
+    CHECK(shop.active && shop.mode == BUY && shop.lines == 1u << BUY && !shop.traded && !shop.leaving);
+    CHECK(!save_validate(buf, STATE_LEN));                            /* version 1 is 17 bytes */
+    buf[0] = STATE_VERSION;
     buf[2] = 7;
     CHECK(!save_validate(buf, n) && !save_set(buf, n));
+    buf[2] = BUY; buf[17] = 4;
+    CHECK(!save_validate(buf, n));
     CHECK(save_get(buf, 4) < 0);
 }
 
@@ -1099,28 +1185,32 @@ static void the_hint(void) {
     static const uint8_t carried[] = { RED_POTION, KEY_J, KEY_Q, KEY_K, MATTOCK, RED_POTION, KEY_A, RED_POTION,
                                        LONG_SWORD, DRAGON_SLAYER };
     carry(0, carried, sizeof carried);
-    press("B");
+    frame_list(true);
+    /* B: the script has ended, nothing is drawn. */
+    press(TO_BUY "B");
     talk(shops[EOLIS_TOOLS].index);
-    /* The script has ended: no hint. */
-    CHECK(!hint(line));
-    ram[ISCRIPT_PORTRAIT_ID] = 9;
-    CHECK(hint(line) && !strcmp(line, "Select to sell") && !page_label(page));
+    CHECK(!hint(line) && !page_label(page) && fax_shops_present(NULL, &w, &h) == NULL);
+    /* Left in the buy list (the player stops pressing): an entry that buys
+     * has no hint, and with nothing owned nothing is drawn. Select is no
+     * longer a hint ("Select to sell" is gone). */
+    press(TO_BUY);
+    talk(shops[EOLIS_TOOLS].index);
+    CHECK(stuck && shop.shown == BUY && list_open() && !hint(line) && !page_label(page));
+    CHECK(fax_shops_present(NULL, &w, &h) == NULL);
+
+    /* The sell list: two pages, the page over the first entry, on the
+     * Red Potion no hint. */
+    press(TO_SELL);
+    talk(shops[EOLIS_TOOLS].index);
+    CHECK(!hint(line) && page_label(page) && !strcmp(page, "1 of 2"));
     frame_list(false);
     CHECK(fax_shops_present(NULL, &w, &h) == NULL);           /* the list's frame is not up yet: unchanged */
     frame_list(true);
     const uint32_t *px = fax_shops_present(NULL, &w, &h);
     CHECK(px != native && w == 256 && h == 240);
-    CHECK(lit(px, HINT_COL, HINT_ROW) && lit(px, HINT_COL + 13, HINT_ROW) && !lit(px, HINT_COL + 14, HINT_ROW));
-    CHECK(!lit(px, HINT_COL, HINT_ROW - 1));
-
-    /* The sell list: two pages, the page over the first entry. */
-    press("sB");
-    talk(shops[EOLIS_TOOLS].index);
-    ram[ISCRIPT_PORTRAIT_ID] = 9;
-    CHECK(hint(line) && !strcmp(line, "Select to buy") && page_label(page) && !strcmp(page, "1 of 2"));
-    px = fax_shops_present(NULL, &w, &h);
     CHECK(lit(px, HINT_COL + HINT_COLS - 1, PAGE_ROW) && lit(px, HINT_COL + HINT_COLS - 6, PAGE_ROW) &&
           !lit(px, HINT_COL + HINT_COLS - 7, PAGE_ROW));
+    CHECK(!lit(px, HINT_COL, HINT_ROW));                      /* no hint */
     /* The first page, from the last of the Items: Red Potion, the A key, ...
      * On the A key, his for good: "Not for sale", and no price. */
     CHECK(ram[DATA_ARRAY + 1] == KEY_A && price(1) == 0 && ram[DATA_ARRAY + 3] == MATTOCK && price(3) == 0);
@@ -1131,12 +1221,19 @@ static void the_hint(void) {
     }
     ram[MENU_CURSOR_POS] = 1;
     CHECK(hint(line) && !strcmp(line, "Not for sale"));
+    px = fax_shops_present(NULL, &w, &h);
+    CHECK(lit(px, HINT_COL, HINT_ROW) && lit(px, HINT_COL + 11, HINT_ROW) && !lit(px, HINT_COL + 12, HINT_ROW));
+    CHECK(!lit(px, HINT_COL, HINT_ROW - 1));
+    /* A dialogue box opened over the list (a shop's message, the thanks):
+     * the list is not the box up, so nothing is drawn over it. */
+    text_box(10, 16, 20, 8);
+    CHECK(!hint(line) && !page_label(page) && fax_shops_present(NULL, &w, &h) == NULL);
+    text_box(LIST_X, LIST_Y, LIST_W, LIST_H);
     ram[MENU_CURSOR_POS] = 0;
     /* On the second page, the cursor on the Dragon Slayer: "Not for sale",
      * and its price cells painted the box's inside. */
-    press("sdddddddddB");
+    press(TO_SELL "ddddddddd");
     talk(shops[EOLIS_TOOLS].index);
-    ram[ISCRIPT_PORTRAIT_ID] = 9;
     CHECK(shop.page == 1 && ram[DATA_ARRAY] == DRAGON_SLAYER);
     ram[MENU_CURSOR_POS] = 0;
     CHECK(hint(line) && !strcmp(line, "Not for sale") && page_label(page) && !strcmp(page, "2 of 2"));
@@ -1144,17 +1241,16 @@ static void the_hint(void) {
     for (int x = (LIST_X + 13) * 8; x < (LIST_X + 18) * 8; ++x) CHECK(px[(LIST_Y + 3) * 8 * 256 + x] == inside);
     CHECK(px[(LIST_Y + 5) * 8 * 256 + (LIST_X + 13) * 8] == native[0]);   /* the Long Sword's price: untouched */
     ram[MENU_CURSOR_POS] = 1;
-    CHECK(hint(line) && !strcmp(line, "Select to buy"));
+    CHECK(!hint(line));
 
     /* Forepaw's buy list with the Wing Boots owned: OWNED in their price's
      * five cells, on the box's inside, and "Already owned" while the cursor
      * is on them. */
     carry(0, (const uint8_t[]){ RED_POTION, WING_BOOTS }, 2);
-    press("B");
+    press(TO_BUY);
     talk(shops[FOREPAW_TOOLS].index);
-    ram[ISCRIPT_PORTRAIT_ID] = 9;
     ram[MENU_CURSOR_POS] = 3;
-    CHECK(hint(line) && !strcmp(line, "Select to sell"));
+    CHECK(!hint(line));
     ram[MENU_CURSOR_POS] = 4;
     CHECK(hint(line) && !strcmp(line, "Already owned") && !page_label(page));
     px = fax_shops_present(NULL, &w, &h);
@@ -1167,17 +1263,19 @@ static void the_hint(void) {
     }
     CHECK(px[boots + (LIST_X + 12) * 8 + 7] == native[0] && px[boots + (LIST_X + 18) * 8] == native[0]);
     CHECK(lit(px, HINT_COL, HINT_ROW) && lit(px, HINT_COL + 12, HINT_ROW) && !lit(px, HINT_COL + 13, HINT_ROW));
-    /* Not without recharging items: the price stays, and so does the hint. */
-    recharging_on = false;
-    CHECK(hint(line) && !strcmp(line, "Select to sell"));
+    /* The cursor on the Red Potion: OWNED stays, with no hint. */
+    ram[MENU_CURSOR_POS] = 3;
     px = fax_shops_present(NULL, &w, &h);
-    CHECK(px[boots + (LIST_X + 13) * 8] == native[0]);
+    CHECK(px && px[boots + (LIST_X + 13) * 8] != native[0] && !lit(px, HINT_COL, HINT_ROW));
+    /* Not without recharging items: the price stays, no hint, nothing drawn. */
+    recharging_on = false;
+    ram[MENU_CURSOR_POS] = 4;
+    CHECK(!hint(line) && fax_shops_present(NULL, &w, &h) == NULL);
     recharging_on = true;
     /* The sell list shows no OWNED: the boots are not for sale, with no
      * price, as the Dragon Slayer; the Red Potion under them sells. */
-    press("sB");
+    press(TO_SELL);
     talk(shops[FOREPAW_TOOLS].index);
-    ram[ISCRIPT_PORTRAIT_ID] = 9;
     CHECK(ram[DATA_ARRAY] == WING_BOOTS && ram[DATA_ARRAY + 1] == RED_POTION);   /* the Items from the last */
     ram[MENU_CURSOR_POS] = 0;
     CHECK(hint(line) && !strcmp(line, "Not for sale"));
@@ -1186,8 +1284,9 @@ static void the_hint(void) {
         for (int r = 0; r < 8; ++r) CHECK(px[((LIST_Y + 3) * 8 + r) * 256 + x] == inside);   /* no OWNED either */
     CHECK(px[(LIST_Y + 5) * 8 * 256 + (LIST_X + 13) * 8] == native[0]);
     ram[MENU_CURSOR_POS] = 1;
-    CHECK(hint(line) && !strcmp(line, "Select to buy"));
+    CHECK(!hint(line));
     /* In a wider picture (Seamless), the native picture is centered. */
+    ram[MENU_CURSOR_POS] = 0;
     static uint32_t wide[424 * 240];
     for (int i = 0; i < 424 * 240; ++i) wide[i] = 0xFF654321u;
     w = 424; h = 240;
@@ -1201,16 +1300,16 @@ static void the_hint(void) {
 
 int main(void) {
     build_bank12();
-    CHECK(site_count == 10 && reset_cb && activate_cb && save_get && save_set && save_validate);
+    CHECK(site_count == 13 && reset_cb && activate_cb && save_get && save_set && save_validate);
     prices();
-    straight_to_the_list();
+    the_conversation();
     buying();
     the_games_checks();
     ownership();
     not_for_sale();
     owned_rows();
     selling();
-    switching();
+    leaving();
     pages_of_eight();
     off();
     isolated_and_saved();

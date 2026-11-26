@@ -188,10 +188,10 @@ opens it too. The game holds still underneath, but the music plays on.
   see when it saves you. And while the Wing Boots or the Hour Glass in your
   item box is running, the box's brackets turn gold, and go back to white
   the moment it stops.
-- **Quick shops.** Up on a shopkeeper opens his list at once, Select switches
-  between buying and selling, and you stay in the list after each sale. Any
-  shop buys what you carry, except what you own for good, like a key or the
-  Mattock: it says OWNED and isn't for sale.
+- **Quick shops.** Shopkeepers talk as they always did, but after you buy or
+  sell you stay in the list until you're done, and B thanks you on your way
+  out. Any shop buys what you carry, except what you own for good, like a key
+  or the Mattock: it says OWNED and isn't for sale.
 - **Potion Sellers.** The meat shops sell Red Potions instead of dried meat,
   each at the price its town's tool shop charged, and the tool shops no longer
   stock them. They still buy one back.

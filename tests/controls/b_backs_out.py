@@ -44,8 +44,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "movement"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "keys"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "travel"))
-from fax_e2e import (FILES_NEW, FILES_TOP, act, batch, box_open, hold, page_to, parse_args, ram, tcp,  # noqa: E402
-                     title_menu, type_out, until, wait, walk)
+from fax_e2e import (FILES_NEW, FILES_TOP, act, batch, box_open, hold, page_to, parse_args, ram, shop_list,  # noqa: E402
+                     tcp, title_menu, type_out, until, wait, walk)
 import auto_and_reusable_keys  # noqa: E402,F401  (registers the fixture "keys-eolis-exit")
 import guru_travel  # noqa: E402,F401  (registers the fixture "travel-conflate-temple")
 from play import Game  # noqa: E402  (fax_e2e's, with headless runs)
@@ -237,18 +237,7 @@ def main():
             walk("left", lambda: ram(PLAYER_X) <= 80)                   # he stands at block $84, x 64
 
             def buy_list():
-                for _ in range(5):                                      # Up counts only on the frame it goes down
-                    act("up", 4, 10)
-                    try:
-                        until("the buy list", lambda: (lambda s: s["shown"] == "buy" and s["list_up"])(
-                            tcp("shops_state")), 120)
-                        break
-                    except AssertionError:
-                        pass
-                else:
-                    raise AssertionError("the Key Seller does not answer")
-                waits = tcp("shops_state")["waits"]
-                until("the list to wait for a button", lambda: tcp("shops_state")["waits"] > waits, 300)
+                shop_list("buy")                                        # his greeting, Buy, its line (Quick shops)
                 wait(2)
 
             for button in ("b", "x"):

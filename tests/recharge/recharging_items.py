@@ -94,7 +94,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 import fax_e2e  # noqa: E402
 from fax_e2e import (Game, act, batch, box_open, choose_file, chunks, dissolve, frame, hold, menu_row,  # noqa: E402
-                     page_to, parse_args, ram, tcp, title_menu, type_out, typed, until, wait)
+                     page_to, parse_args, ram, shop_list, tcp, title_menu, type_out, typed, until, wait)
 
 AREA, SCREEN, PLAYER_X, PLAYER_Y, PLAYER_FLAGS, PLAYER_STATUS = 0x24, 0x63, 0x9E, 0xA1, 0xA4, 0xA5
 SCREEN_READY = 0x0E
@@ -750,10 +750,7 @@ def main():
             assert state()["elixir_spent"] and gold() == 1000, (state(), gold())
             enter_door(TOOL_SHOP)
             act("left", 120, 10)                                        # to the counter
-            act("up", 4, 10)
-            until("the list", lambda: (lambda s: s["shown"] == "buy" and s["list_up"])(tcp("shops_state")), 900)
-            wait(20)
-            listed = tcp("shops_state")["list"]
+            listed = shop_list("buy")["list"]                           # his greeting, Buy, its line, the list
             assert listed == EOLIS_TOOLS, listed
             shot("shop-no-elixir")
             act("b", 4, 10)

@@ -52,7 +52,7 @@ from harness import (AREA, AREA_REGION, AREA_SAVED_AREA, AREA_SAVED_SCREEN, BUIL
                      MESSAGE_ID, PLAYER_IS_DEAD, PLAYER_SAVED_POS, POS_X, POS_Y, SCREEN_SAVED_PALETTE, TOWNS,
                      fixture, parse_args)
 import fax_e2e  # noqa: E402
-from fax_e2e import act, choose_file, page_through, tcp, title_menu, type_out, until, walk  # noqa: E402
+from fax_e2e import act, choose_file, page_through, shop_list, tcp, title_menu, type_out, until, walk  # noqa: E402
 
 PARTS = ("shops", "boots", "glass", "spring", "original")
 PACKAGE = ("faxanadu.dx", "dx")
@@ -190,15 +190,22 @@ def main():
         g.until("the building", lambda: g.ram(AREA) == BUILDINGS and g.settled(), 600)
         assert g.ram(0x63) == building, (g.ram(0x63), building)
         g.wait(40)
-        walk("left")                                                # to the counter
+        # To the counter: walk() stops when he stops, which a frame or two
+        # still frozen from the door reads as (#171's suite: short of the
+        # counter, Up reached no one). So walk again until a walk ends where
+        # the last one did, the counter's X, read from the game.
+        last = None
+        for _ in range(6):
+            walk("left")
+            if g.ram(POS_X) == last:
+                return
+            last = g.ram(POS_X)
+        raise AssertionError(f"no counter: x {g.ram(POS_X)}")
 
     def buy_list(name):
-        """Up on the Tool Seller: Quick shops' buy list, waiting for a button."""
-        g.act("up", 4, 6)
-        until("the buy list", lambda: (lambda s: s["shown"] == "buy" and s["list_up"] and s["hint"] is not None)(
-            tcp("shops_state")), 900)
-        waits = tcp("shops_state")["waits"]
-        until("the list to wait for a button", lambda: tcp("shops_state")["waits"] > waits, 300)
+        """Up on the Tool Seller, his greeting, Buy and its line (Quick shops,
+        shop_list()): his buy list, waiting for a button."""
+        shop_list("buy")
         g.wait(20)                                                  # the list and the portrait drawn
         g.shot(name)
         s = tcp("shops_state")

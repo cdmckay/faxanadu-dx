@@ -109,6 +109,14 @@ Functions, on the game launched last
                                     that typed a character, loaded with A down):
                                     whether it did.
     box_open()                      A text box (or the Select menu) is open.
+    shop_list(mode="buy", frames=1200)
+                                    Up on a Tool or Key Seller, and through his
+                                    conversation (Quick shops: the original's)
+                                    to his "buy" or "sell" list, up and waiting
+                                    for a button: its shops_state.
+    shop_leave(frames=1200)         B in that list: the end, or, after a purchase
+                                    or a sale, "Thank you for shopping." typed
+                                    out and waiting for A: whether he thanked.
     menu_row(name, game=None)       The row of `name` ("WEAPON" ... "PLAYER",
                                     "QUESTS", "MAP") in the Select menu: the
                                     remaster's eight, QUESTS and MAP on top
@@ -232,6 +240,7 @@ CONFIG = "[Display]\nWindowScale = 1\n"     # config.ini a test's game starts wi
 LEARNED = ("faxanadu_recharge.txt", "recharge.boots_taught\nrecharge.glass_taught\n")
 QUICKACK = getattr(socket, "TCP_QUICKACK", None)   # Linux
 TEXTBOX_CLOSED = 0x20C                     # TextBox_Closed: 0 while a box is open
+ISCRIPT_PORTRAIT_ID = 0x3C7                # IScript_PortraitID: $FF once a conversation has ended
 MESSAGE_ID = 0x213                         # MessageID, Message_ProcessedLength, TextBox_MessagePaused
 TEXTBOX_TIMER = 0x21D                      # a character types on a frame that leaves it a multiple of 4
 PLAYER_IS_DEAD = 0x438                     # PlayerIsDead: set it, and the main loop runs the death path
@@ -1001,6 +1010,66 @@ def type_out(what="the page to type out", frames=1200, pauses=True):
 def box_open():
     """A text box (or the Select menu) is open: TextBox_Closed is 0."""
     return ram(TEXTBOX_CLOSED) == 0
+
+
+def _shop():
+    """shops_state and MessageID, read in one batch: the same frame's."""
+    state, box = batch(("shops_state", {}), ("read_ram", dict(addr=MESSAGE_ID, len=1)))
+    return state, int(box["hex"][:2], 16)
+
+
+def shop_list(mode="buy", frames=1200):
+    """Up on a Tool or Key Seller, standing at him, and through his
+    conversation, the original's with the remaster on (Quick shops,
+    fax_shops.c), to his `mode` list ("buy" or "sell"): A on his greeting,
+    the Buy/Sell menu's choice (Down first for "sell"), A on the list's line.
+    Returns once the list is on screen and waits for a button, with its
+    shops_state. Each line types with A held (type_out()). Every wait is on
+    the game: the conversation's start by shops_state's count of them, each
+    step by its place in the script, read with MessageID in one batch. Up
+    counts only on the frame it goes down, so it is pressed again if he does
+    not answer."""
+    before = tcp("shops_state")["opened"]
+    for _ in range(5):
+        act("up", 4, 10)
+        try:
+            until("the shopkeeper's greeting", lambda: tcp("shops_state")["opened"] > before, 120)
+            break
+        except AssertionError:
+            pass
+    else:
+        raise AssertionError("the shopkeeper does not answer")
+    type_out("the greeting", frames, pauses=False)
+    act("a", 4, 6)
+    until("the Buy/Sell menu", lambda: (lambda s, m: s["step"] == "menu" and m == 0)(*_shop()), frames)
+    if mode == "sell":
+        act("down", 4, 6)
+    act("a", 4, 6)
+    until(f"the {mode} list's line", lambda: _shop()[0]["step"] == mode, frames)
+    type_out(f"the {mode} list's line", frames, pauses=False)
+    act("a", 4, 6)
+    until(f"the {mode} list", lambda: (lambda s: s["shown"] == mode and s["list_up"])(tcp("shops_state")), frames)
+    waits = tcp("shops_state")["waits"]
+    until("the list to wait for a button", lambda: tcp("shops_state")["waits"] > waits, 300)
+    return tcp("shops_state")
+
+
+def shop_leave(frames=1200):
+    """B in a Tool or Key Seller's list (Quick shops). With nothing bought or
+    sold this visit the conversation ends there, as the original's B: returns
+    False once it has. Otherwise he says "Thank you for shopping." first:
+    returns True once it has typed out (with A held), waiting for A, which
+    goes on to the end or to a line a feature adds there (Block's)."""
+    before = tcp("shops_state")["thanked"]
+    act("b", 4, 6)
+    until("B to leave the list", lambda: tcp("shops_state")["thanked"] > before or ram(ISCRIPT_PORTRAIT_ID) == 0xFF,
+          frames)
+    if tcp("shops_state")["thanked"] == before:
+        until("the conversation's end", lambda: ram(TEXTBOX_CLOSED) != 0, frames)
+        return False
+    until("his thanks", lambda: tcp("shops_state")["step"] == "thanks", frames)
+    type_out("his thanks", frames, pauses=False)
+    return True
 
 
 SELECT_MENU = ("QUESTS", "MAP", "WEAPON", "ARMOR", "SHIELD", "MAGIC", "ITEM", "PLAYER")   # the remaster's (#146)
