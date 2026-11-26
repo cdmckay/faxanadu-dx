@@ -1,8 +1,9 @@
 # Seamless's seams: the plan for one big world
 
-Issue #166. A plan, built a slice at a time: slices 0 and 1 are in the game.
-Where building slice 1 found the plan wrong, the plan below says what was
-built, and "Slice 1, as built" lists the changes.
+Issue #166. A plan, built a slice at a time: slices 0, 1 and 2 are in the
+game. Where building slices 1 and 2 found the plan wrong, the plan below says
+what was built, and "Slice 1, as built" and "Slice 2, as built" list the
+changes.
 
 **The goal**, as Cameron put it: "it should just feel like 1 big world." A
 player should never be able to tell where one room ends and the next begins.
@@ -39,7 +40,8 @@ Then come seams one above the other, what a neighbouring room sees of the
 hero, and three loose ends: seven slices after slice 0, about 2,100 lines of
 C as estimated, and likely twice that, as slice 0 took. Slice 0 (nothing
 lost at a seam, no ghost hit) is done: #177. Slice 1 (#178, seams are open
-ground, mechanism 1) is done too.
+ground, mechanism 1) is done too, and so is slice 2 (fights across a seam,
+mechanism 2).
 
 ## How Seamless runs a neighbouring room today
 
@@ -168,7 +170,8 @@ the details.
 - **Monsters across a seam can't hurt him.** In the copy he is invincible
   (200), so `Player_HandleTouchEnemy` (`$89AE`) returns at once, and the
   copy's damage would be thrown away anyway. They hurt him only once he
-  crosses into them (#130). Still true: slice 2 is about it.
+  crossed into them (#130). **Fixed by slice 2**: they visit the live game's
+  sprite loop, and touch him there.
 - **The copy took drops at its edge, and the gold was lost.**
   `CurrentSprite_CheckHitPlayer` (`$890A`) sends every touch to its
   category's handler with no invincibility check, and
@@ -227,11 +230,11 @@ Checked in hidden games where marked; the scripts were throwaway, on
 - **A neighbouring room's sounds are lost** with the copy's RAM: the coin's
   sound (`$10`, `Sprites_ReplaceWithCoinDrop`, `$AC75`) when a monster killed
   across a seam drops one, Pakukame's (`$12`) as it spawns (Dartmoor `$13`,
-  `$14` and `$1F`, Zenis `$07` and `$0B`). **Slice 2.**
+  `$14` and `$1F`, Zenis `$07` and `$0B`). **Slice 2 (done).**
 - **Sugata's flash never reaches across a seam.** In a copy, `fax_sugata.c`
   skips its warning and its range, and the copy's greyscale (`PPU_Mask`,
   `$0B`) and damage are thrown away. It lives on Mist `$1E`, `$1F`, `$4E` and
-  `$4F`, each joined sideways. **Slice 2.**
+  `$4F`, each joined sideways. **Slice 2 (done).**
 - **The view shows black where no room is.** The camera clamps to the box
   around the rooms joined to his, and wherever that box holds no room the
   view is black, a block with straight edges at a room's side or corner.
@@ -535,7 +538,9 @@ moments a monster straddles it.
 Every frame, once the live `Sprites_UpdateAll` returns (`$DB68`, the `JSR
 GameLoop_CountdownItems` after it), Seamless runs a second pass of the
 sprite loop for **visitors**: the neighbouring rooms' actors within reach of
-the hero or his spell.
+the hero or his spell (as built: the rooms joined beside his, their actors
+whose box is within 48 pixels of his, the weapon's offset and reach being 40
+at most, or within 16 of his spell's).
 
 - **How.** A hook at `$DB68` hides the room's own slots, puts the visitors in
   slots, and returns into the loop at `@_spritesLoop` (`$800F`, past `INC
@@ -556,8 +561,8 @@ the hero or his spell.
   would let interact: hit counter 0 and no magic-hit behaviour
   (`Sprites_UpdateAll` skips the interactions for the others too).
 - **Where.** At its position in the live room's coordinates: the same X byte
-  side by side; Y plus or minus 208 one above the other. Seamless notes which
-  side each visitor came from.
+  side by side; Y plus or minus 208 one above the other (slice 5). Seamless
+  notes which side each visitor came from.
 - **Told apart.** Each interaction check compares true positions, in 16
   bits: the weapon's X (`$CE`/`$CF`), the spell's with its side (below), the
   hero's, and a visitor's with its side. Slice 0's hook at
@@ -565,26 +570,50 @@ the hero or his spell.
   hooks at the overlap tests of `Sprite_CheckHitByCastMagic` (`$8ADC`),
   `Player_CheckShieldHitByMagic` (`$877C`) and `CurrentSprite_CheckHitPlayer`
   (`$890A`) refuse a match the 8-bit test found only by wrapping round the
-  room.
+  room. As built they are at the routines' entries, and work out the X test
+  themselves: a refusal returns as the test's failure would. A slot of his
+  own room let through a side counts from its mark too, so the same hooks
+  end the wrapped touches in his own room (the hero at x 250 and a Zozura at
+  x 2), and his sword now reaches one of his room's Zozuras straddling the
+  seam (slice 0's test took its byte). A box `$80` wide or more is one of
+  the game's tricks (GAME_INTERNALS.md, *Seams: actors across rooms*), left
+  to it. The weapon's Y and reach are placed off the screen too
+  (`Player_DrawWeapon` returned before them, `$B81A`), or a swing across a
+  seam would hit at the height of the last frame the weapon was on the
+  screen.
 - **Back home.** Every byte of the visitor's slot goes back to its room but
-  its position: HP, the hit counter, the magic-hit behaviour and its
+  its position (as built, every array from the entity on: the positions and
+  their fractions stay): HP, the hit counter, the magic-hit behaviour and its
   invincibility, its facing, and a death (the entity turned into the death
   effect) or a removal (a shot on the shield, a coin taken). The room's next
   tick does the knockback, the death's animation and the drop, as it would
   for a hit in the hero's own room.
 - **Slots.** Visitors take the slots the room's own actors leave free during
-  the pass, nearest first. One that finds none waits a frame.
+  the pass, nearest first. One that finds none waits a frame. As built every
+  live slot is saved before the pass and put back after it, the room's own
+  hidden (`$FF`) meanwhile. A frame can end inside the pass (a lag frame), so
+  the pass, and the sounds still to play, are Seams' own save-state record
+  (`faxanadu.seams`), between frames the machine shows the live slots as
+  the game has them, and Seamless's step waits for the pass to end.
 - **A neighbouring room's sounds.** A hook at `Sound_PlayEffect` (`$D0E4`)
   in a copy's tick keeps each effect and the slot that played it. After the
   tick, Seamless plays it in the live game through the game's own
   `Sound_PlayEffect` (memory only, a committed call) when that slot is in
-  the view, so a coin dropped across a seam rings.
+  the view, so a coin dropped across a seam rings. As built it keeps only
+  effects from slots in the view, and plays them at the next pass's site
+  (`$DB68`, a known point of the main loop) rather than between frames.
 - **Sugata's flash.** `fax_sugata.c` asks Seamless for a Sugata's room and
   place, and handles a copy's flash at `$AB44` as one in his room: the
   warning blink, the band where Sugata stands, the 10 HP in reach (40
-  pixels) of his true place, the Magic Shield's reflection.
+  pixels) of his true place, the Magic Shield's reflection. As built the
+  copy runs the warning, the blink and the band (a band per Sugata), and at
+  `$AB44`, in reach, leaves the flash waiting there; the next pass takes that
+  Sugata as a visitor and enters `$AB44` for it, so the damage, Block, the
+  Magic Shield and Ointment all run in the live game, on the live hero.
 - **Features that place something by a slot** (the damage numbers, which draw
   at the hit's room and slot) ask Seamless which room the slot's actor is in.
+  As built Block asks too: its "from the front" takes the shot's box in 16
+  bits.
 
 ### 3. The spell flies on, still the live game's (slice 3)
 
@@ -604,6 +633,8 @@ in relative to the hero's.
   edge of the view (the camera), whichever comes first. Each spell keeps its
   own rule, and Fire its flicker (its finish handler draws it 2 frames in 4
   by `InterruptCounter`, untouched).
+- So a spell never reaches a dormant monster: it ends at the view's edge,
+  and everything in the view is awake (Cameron's call on #166).
 - Seamless draws it on its side: its cells in the live room's OAM are moved
   a room over, and slice 1's lists give the cells past the edge.
 - A crossing keeps it: `adopt()` stops clearing `CastMagic_Type`, and the
@@ -812,8 +843,8 @@ twice its estimate (see "What it costs").
 |---|---|---|---|
 | 0. Seams lose nothing (**done**, #177) | Copies stop touching the hero (no lost drops, no frozen rooms). The weapon's reach in 16 bits (no ghost hit; the original keeps it) | A coin at room 5's edge stays, and he takes it walking in; the Dragon Slayer there leaves room 5 ticking; a swing at room 4's x 4 leaves a Zozura at its x 236 alone, and the original's kills it | Small: estimated at 100 lines, built in about 200 |
 | 1. Seams are open ground (**done**, #178) | Monsters, shots and walking people go through side-by-side seams both ways, between any two rooms, up to 5 actors a room; dormant until first seen, then awake for good (a shot leaving the view is removed); drawn whole across a seam; tiles from home; a load refreshes the rooms joined to it; record version 5 | Eolis's walking woman walks from room 2 into his room 1, and the walking man in and out (`tests/seams/open_ground.py`, as all here); a room 5 Zozura follows him back through room 4 to the town's edge (room 3's side) and turns back there, none ever in room 3, and room 4's follow him into room 5; the walking man at room 1's side by room 8 turns back there; a Zozura never seen stands still, wakes the first frame it is in view, and keeps coming after it leaves the view; unseen monsters in two rooms don't gather at him; a missed fireball flies on through a seam, and one leaving the view is gone; a room holding 5 keeps its seam a wall, one holding 4 doesn't; a straddling Zozura's pixels on both sides of the seam; a zone respawn's load brings the rooms beside it back fresh; the intro's trigger, a person who talks when touched, at a neighbour's edge leaves its room ticking (slice 0's hook); a save mid-crossing replays alike in two fresh games | Large: estimated at 730 lines, built in about 850 lines of C (`fax_seams.c` half comments) and 1,050 of tests |
-| 2. Fights across a seam | The visitors' pass, side by side: the sword, touches, shots on him and his shield, bread and coins; a neighbouring room's sounds; Sugata's flash | From room 4, he kills a room 5 Zozura: its experience and MP, its death in room 5, its coin and the coin's sound; a Zozura straddling the seam hurts him; he takes a coin across it; a Sugata across a Mist seam flashes him in reach | Medium, about 470 |
-| 3. Spells fly on | The spell's side, walls across, the view's edge, its picture, visitors in its path, kept through a crossing | Deluge ends at a wall across a seam and kills a Zozura across one; Fire still flickers; save and load mid-flight | Medium, about 230 |
+| 2. Fights across a seam (**done**) | The visitors' pass, side by side: the sword, touches, shots on him and his shield, bread and coins; a neighbouring room's sounds; Sugata's flash | From room 4, he kills a room 5 Zozura: its experience and MP, its death in room 5, its drop there (bread: a Zozura leaves no coin); a Monodron killed the same way drops its coin in room 5, and the coin's sound plays (`tests/seams/fights.py`); a Zozura straddling the seam hurts him; he takes a coin across it; a punch reaches across it; a Sugata across a Mist seam flashes him in reach, and not out of it; a save mid-swing replays alike in two fresh games; on Zenis 16 a frame that ends inside the pass reads as the room's own and replays alike | Medium: estimated at 470 lines, built in about 800 lines of C (`fax_seams.c` half comments, and the features that ask it) and 1,050 of tests |
+| 3. Spells fly on | The spell's side, walls across, the view's edge, its picture, visitors in its path, kept through a crossing | Deluge ends at a wall across a seam and kills a Zozura across one; a Deluge cast toward a dormant Zozura just past the view's edge, across a seam, ends at the view's edge, and the Zozura keeps its full HP and stays dormant (no wake, no hit, no experience); Fire still flickers; save and load mid-flight | Medium, about 230 |
 | 4. The view shows only rooms | The camera keeps the view over rooms, gliding where its limits change | Walking the Tower of Trunk from `$10`, and a Mist stretch with an empty corner: on no frame does the view lie over an empty place (`fax_world`'s camera against `fax_world_room`'s places), and it moves a few pixels a frame at most | Medium, about 150 |
 | 5. One above the other | Slices 1-3 across seams one above the other: Y converted, fliers and fallers, drawn whole up and down, his true Y for the rooms above and below | A Hornet follows him down a Trunk ladder; his sword hits one across a seam above | Medium, about 250 |
 | 6. What a neighbouring room sees of him | His true distance in a copy; Nash and Magman beside his true place | An Ishiisu across a seam waits until he is within its 32 pixels; Nash reappears beside him, in his room | Small, about 120 |
@@ -860,8 +891,54 @@ changed:
   cycles in Eolis's town, its unseen people standing still. Seamless's step
   stays at 0.06-0.2 ms.
 
+### Slice 2, as built
+
+One PR, the visitors' pass with everything that rides on it. Where the plan
+changed:
+
+- **A Zozura drops bread, not a coin** (`SPRITE_ENTITY_DROP_VALUES_INDEX`
+  `$32`: `Sprite_ReplaceWithBreadDrop`, which plays no sound). The kill's
+  test checks its bread in room 5, and a Monodron (`$2A`, a coin) killed the
+  same way gives the coin and its sound.
+- **The weapon off the screen.** `Player_DrawWeapon` placed only the X there,
+  so across a seam the reach test took the last on-screen frame's Y and
+  reach. A hook at its `BNE` (`$B81A`) places them too; Punches places the
+  fist's the same way.
+- **The copies' shield check** (slice 1 left it): a copy compared its shots
+  with the live room's shield, `Player_DrawShield` never running there, and
+  removed the ones at the place his shield had in his room. Skipped in
+  copies now, as the touch is.
+- **The told-apart hooks** are at the routines' entries, and cover his own
+  room's slots through a side too (wrapped touches at x 241-255, and his
+  sword on one of his own straddling the seam). A box `$80` wide or more is
+  left to the game.
+- **A record of its own.** The main loop lags on busy screens and a frame can
+  end inside the pass (on Zenis 16, about one frame end in 25), so its state
+  (and the neighbours' sounds still to play) is `faxanadu.seams`, and
+  Seamless's step waits while the pass is open. Between frames the machine
+  shows the live slots as the game has them: a frame's end puts them back,
+  keeping the pass's for the next frame's beginning. A test reading the room
+  then had found its shot gone (Block's, `tests/block/block.py`).
+- **Sounds** play at the next pass's site, with a committed call, from slots
+  in the view only.
+- **Sugata's flash** waits at its damage in the copy; the pass enters it in
+  the live game. A band per Sugata (up to 4), the warning per room and slot,
+  its record version 2; reach only from his row of rooms.
+- **Who.** Within 48 pixels of his box, or 16 of his spell's (which, the
+  live room's until slice 3, meets visitors straddling the seam).
+- **Tests and tools.** `fax_world_room` shows each slot's HP and hit
+  counter; `seams_state` the passes, visits (room, slot, live slot, entity,
+  what it was after) and sounds; `sugata_state` the neighbours' warnings,
+  flashes and waits, and every band.
+- **Cost.** Headless, from the same save, slice 2's hooks on against off: a
+  coin across the seam within reach (a visitor every frame), 1,000 frames,
+  3.148 against 3.149 ms of CPU a frame; Eolis's town, 3,000 frames, 3.187
+  against 3.186; the Mist's `$1E` with Sugatas on both sides, 3.061 against
+  3.055. All within noise: the pass is a few hundred instructions.
+
 Boss rooms are covered by `tests/world/boss_arenas.py`, which every slice
-runs, with a check that no mover or visitor comes from an arena.
+runs, with a check that no mover or visitor comes from an arena: the moves'
+and the visits' logs never name the boss's room, beside it or in it.
 
 ## The fallback
 

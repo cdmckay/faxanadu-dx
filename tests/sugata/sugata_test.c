@@ -6,7 +6,11 @@
  * entry, the greyscale one after STA PPU_Mask, the damage one shared by both
  * features in game.toml's order), then draws it (the blink's site), and the
  * game's own HP and death code takes a reflection. The band is checked on a
- * native picture and on a Seamless canvas. */
+ * native picture and on a Seamless canvas. In Seamless a neighbouring room's
+ * Sugata runs in that room's tick (isolated, Seamless ticking), against a
+ * model of the rooms and of what Seams answers: its flash in reach of the
+ * hero's true place waits at its damage until the live game's visitors' pass
+ * enters the damage for it, its place then in 16 bits from its side. */
 #include "fax_sugata.c"
 #include "model.h"
 
@@ -29,6 +33,36 @@ static uint32_t native[256 * 240], world[800 * 400];
 static int origin_x, origin_y;
 static bool world_on;
 bool fax_world_origin(int *x, int *y) { if (!world_on) return false; *x = origin_x; *y = origin_y; return true; }
+
+/* ---- Seamless's rooms, and Seams (fax_seams.c) ----
+ * Without Seamless (most tests) no room runs: the warning's row is NO_ROOM's.
+ * With it, room 4 is the live one and room 5, left of it, a neighbour whose
+ * tick runs on the machine (ram) and is kept in its record after. */
+enum { LIVE = 4, NEIGHBOUR = 5 };
+static int seams_room = -1, active = -1, shift[8], hero_true;
+static bool ticking, joined = true, known = true;
+static uint8_t records[ROOMS][0x800];
+static unsigned asked;
+bool fax_world_ticking(void) { return ticking; }
+int fax_world_seams_room(void) { return seams_room; }
+int fax_world_active_room(void) { return active; }
+uint8_t *fax_world_room_record(int r) { return r >= 0 && r < ROOMS ? records[r] : NULL; }
+int fax_world_area(void) { return 2; }
+bool fax_world_room_origin(int area, int room, int *x, int *y) {
+    if (!world_on || area != 2 || (room != LIVE && room != NEIGHBOUR)) return false;
+    *x = origin_x + (room == NEIGHBOUR ? -256 : 0); *y = origin_y;
+    return true;
+}
+int fax_seams_x16(unsigned s) { return ram[CURRENT_SPRITES_XPOS + s] + shift[s]; }
+int fax_seams_room_x16(int room, unsigned s) {
+    return room == active || room < 0 ? ram[CURRENT_SPRITES_XPOS + s] : records[room][CURRENT_SPRITES_XPOS + s];
+}
+bool fax_seams_hero_x(int *x) {
+    if (!isolated_scope) { *x = ram[PLAYER_POS_X]; return true; }
+    *x = hero_true;
+    return known;
+}
+bool fax_seams_flash(void) { ++asked; return ticking && joined; }
 const uint32_t *cyc_render_present(int *width, int *height) { *width = 256; *height = 240; return native; }
 int cyc_render_native_origin(int width) { return (width - 256) / 2; }
 static void palette(void) {   /* a 2C02-like palette: the $xD-$xF columns black, $20 and $30 white */
@@ -132,6 +166,8 @@ static void next_flash(void) {
 }
 
 static void scene(uint8_t hero_x, uint8_t shield, bool hold) {
+    seams_room = active = -1; ticking = false; joined = known = true; asked = 0;
+    memset(shift, 0, sizeof shift);
     model_reset();
     memset(ram, 0, sizeof ram);
     cpu.s = 0xF0;
@@ -161,6 +197,13 @@ static unsigned to_the_flash(void) {
     return n;
 }
 
+/* The band of the slot's Sugata (no room's, or `room`'s), or none. */
+static Band band_at(unsigned room) {
+    Band *b = band_of(room, SLOT, false);
+    return b ? *b : (Band){ 0 };
+}
+#define band band_at(NO_ROOM)
+
 /* ---- the rules ---- */
 static void the_reach(void) {
     /* The band is [88, 168) around a middle at 128; any of the hero's 16
@@ -168,6 +211,8 @@ static void the_reach(void) {
     CHECK(!fax_sugata_reaches(72, 128) && fax_sugata_reaches(73, 128));
     CHECK(fax_sugata_reaches(120, 128) && fax_sugata_reaches(167, 128) && !fax_sugata_reaches(168, 128));
     CHECK(fax_sugata_reaches(0, 20) && !fax_sugata_reaches(200, 20));
+    /* In 16 bits: a Sugata across a seam, its middle at -12 (room 5's 244). */
+    CHECK(fax_sugata_reaches(4, -12) && fax_sugata_reaches(27, -12) && !fax_sugata_reaches(28, -12));
     CHECK(SUGATA_REACH == 40 && SUGATA_WARNING == 30 && SUGATA_REFLECTED == 12);
 }
 
@@ -177,7 +222,7 @@ static void it_warns_then_flashes(void) {
     for (unsigned f = 1; f <= SUGATA_WARNING; ++f) {
         frame();
         CHECK(!(ram[CURRENT_SPRITES_FLAGS + SLOT] & BEHAVIOR_READY) && !(ram[PPU_MASK] & 1));   /* nothing yet */
-        CHECK(warn[SLOT] == f && band.kind == WARNING_BAND && band.center + 8 == 128);
+        CHECK(warn[NO_ROOM][SLOT] == f && band.kind == WARNING_BAND && band.center == 128);
         CHECK(drawn == !((SUGATA_WARNING - f) & 4));      /* blinking: hidden 4 frames in 8, shown at the end */
         hidden += !drawn;
     }
@@ -185,7 +230,7 @@ static void it_warns_then_flashes(void) {
     /* The flash: the game's first call, greyscale cleared at once, the band. */
     frame();
     CHECK(ram[CURRENT_SPRITES_FLAGS + SLOT] & BEHAVIOR_READY && ram[BEHAVIOR_DATA2 + SLOT] == 1);
-    CHECK(!(ram[PPU_MASK] & 1) && flashes == 1 && warned == 1 && band.kind == FLASH_BAND && warn[SLOT] == 0 && drawn);
+    CHECK(!(ram[PPU_MASK] & 1) && flashes == 1 && warned == 1 && band.kind == FLASH_BAND && warn[NO_ROOM][SLOT] == 0 && drawn);
     frame();
     CHECK(finished == 1 && out_of_reach == 1 && in_reach == 0);
     CHECK(band.kind == FLASH_BAND);                       /* it lingers a few frames */
@@ -403,31 +448,173 @@ static void it_keeps_its_place(void) {
     /* Sugata gone mid-warning (killed, or the screen changed): the next one starts afresh. */
     scene(20, NONE, false);
     for (int f = 0; f < 10; ++f) frame();
-    CHECK(warn[SLOT] == 10);
+    CHECK(warn[NO_ROOM][SLOT] == 10);
     ram[CURRENT_SPRITES_ENTITIES + SLOT] = DEATH;
     frame();
-    CHECK(warn[SLOT] == 0 && band.kind == NO_BAND);
+    CHECK(warn[NO_ROOM][SLOT] == 0 && band.kind == NO_BAND);
     /* Save states carry the warning and the band. */
     scene(20, NONE, false);
     for (int f = 0; f < 12; ++f) frame();
-    uint8_t rec[32];
+    uint8_t rec[RECORD + 8];
     int n = model_state_get("faxanadu.sugata-flash", rec, sizeof rec);
-    CHECK(n == RECORD && rec[0] == VERSION && rec[1 + SLOT] == 12 && rec[1 + SLOTS] == WARNING_BAND);
+    unsigned at = 1 + NO_ROOM * SLOTS + SLOT;
+    CHECK(n == RECORD && rec[0] == VERSION && rec[at] == 12 && rec[1 + WARNS] == WARNING_BAND);
+    CHECK(rec[1 + WARNS + 1] == NO_ROOM && rec[1 + WARNS + 2] == SLOT && rec[1 + WARNS + 4] == 128);
     CHECK(model_state_get("faxanadu.sugata-flash", rec, 4) == -1);
     for (int f = 0; f < 10; ++f) frame();
-    CHECK(model_state_set("faxanadu.sugata-flash", rec, n) && warn[SLOT] == 12 && band.kind == WARNING_BAND);
+    CHECK(model_state_set("faxanadu.sugata-flash", rec, n) && warn[NO_ROOM][SLOT] == 12 && band.kind == WARNING_BAND);
     CHECK(to_the_flash() == SUGATA_WARNING - 12 + 2);
-    CHECK(model_state_set("faxanadu.sugata-flash", NULL, 0) && warn[SLOT] == 0 && band.kind == NO_BAND);
-    rec[1 + SLOT] = SUGATA_WARNING + 1;
+    CHECK(model_state_set("faxanadu.sugata-flash", NULL, 0) && warn[NO_ROOM][SLOT] == 0 && band.kind == NO_BAND);
+    rec[at] = SUGATA_WARNING + 1;
     CHECK(!model_state_set("faxanadu.sugata-flash", rec, n));
-    rec[1 + SLOT] = 3; rec[0] = 9;
+    rec[at] = 3; rec[1 + WARNS + 1] = NO_ROOM + 1;
+    CHECK(!model_state_set("faxanadu.sugata-flash", rec, n));
+    rec[1 + WARNS + 1] = NO_ROOM; rec[0] = 9;
     CHECK(!model_state_set("faxanadu.sugata-flash", rec, n) && !model_state_set("faxanadu.sugata-flash", rec, n - 1));
+    /* A version 1 record (before Seamless's rooms had warnings) loads as none. */
+    uint8_t old[RECORD_1] = { 1 };
+    old[1 + SLOT] = 12; old[1 + SLOTS] = WARNING_BAND; old[2 + SLOTS] = SLOT;
+    warn[NO_ROOM][SLOT] = 5;
+    CHECK(model_state_set("faxanadu.sugata-flash", old, RECORD_1) && warn[NO_ROOM][SLOT] == 0 && band.kind == NO_BAND);
+    old[0] = 3;
+    CHECK(!model_state_set("faxanadu.sugata-flash", old, RECORD_1));
     /* Inside Seamless's isolated rooms, the hooks do nothing. */
     scene(100, NONE, false);
     isolated_scope = true;
     CHECK(SITES(FLASH_BEHAVIOR, "faxanadu.sugata.behavior") && SITES(FLASH_HIT, "faxanadu.sugata.hit"));
     isolated_scope = false;
-    CHECK(warn[SLOT] == 0 && in_reach == 0);
+    CHECK(warn[NO_ROOM][SLOT] == 0 && warn[LIVE][SLOT] == 0 && in_reach == 0);
+}
+
+/* ---- Seamless: a neighbouring room's Sugata ---- */
+
+/* One tick of room 5's Sugata on the machine (isolated, Seamless ticking),
+ * kept in its record, then the frame's end in the live game. */
+static void tick(void) {
+    isolated_scope = ticking = true;
+    seams_room = NEIGHBOUR;
+    ram[CURRENT_SPRITE_INDEX] = SLOT;
+    if (ram[CURRENT_SPRITES_ENTITIES + SLOT] == SUGATA) {
+        if (ram[CURRENT_SPRITES_BEHAVIORS + SLOT] == BEHAVIOR_FLASH) flash_behavior();
+        drawn = true;
+        SITES(SUGATA_DRAW, "faxanadu.sugata.blink");
+    }
+    isolated_scope = ticking = false;
+    seams_room = active;
+    memcpy(records[NEIGHBOUR], ram, sizeof ram);
+    fax_block_frame_end();
+    fax_sugata_frame_end();
+}
+/* Room 5's Sugata at its x 236 (its middle at 244, the live room's -12), the
+ * hero on room 4 at `hero` (his true place: in room 5's pixels, + 256). */
+static void beside(uint8_t hero, uint8_t shield, bool hold) {
+    scene(hero, shield, hold);
+    active = LIVE;
+    seams_room = LIVE;
+    hero_true = hero + 256;
+    ram[CURRENT_SPRITES_XPOS + SLOT] = 236;
+    memcpy(records[NEIGHBOUR], ram, sizeof ram);
+}
+static unsigned to_the_wait(void) {
+    unsigned n = 0;
+    while (!waits && !finished && n < 100) { tick(); ++n; }
+    return n;
+}
+/* Seams' visitors' pass: the Sugata in a live slot (SLOT), its X 16 bits from
+ * its side (-256), and the damage entered for it, from its behaviour's code. */
+static void visit(void) {
+    shift[SLOT] = -256;
+    ram[CURRENT_SPRITE_INDEX] = SLOT;
+    cpu.x = SLOT;
+    if (SITES(FLASH_HIT, "faxanadu.sugata.hit", "faxanadu.block.flash")) {
+        sound(0x04);
+        damage_hero(10);
+        finish();
+    }
+    shift[SLOT] = 0;
+}
+
+static void a_neighbours_sugata(void) {
+    /* It warns and blinks in its own tick, its band in its room. */
+    beside(4, NONE, false);
+    unsigned hidden = 0;
+    for (unsigned f = 1; f <= SUGATA_WARNING; ++f) {
+        tick();
+        CHECK(warn[NEIGHBOUR][SLOT] == f && warn[LIVE][SLOT] == 0);
+        CHECK(band_at(NEIGHBOUR).kind == WARNING_BAND && band_at(NEIGHBOUR).center == 244);
+        hidden += !drawn;
+    }
+    CHECK(hidden == 14 && near_warnings == 1 && warnings == 0);
+    /* The flash: its band in its room, then in reach of his true place (x 4
+     * of room 4, room 5's 260) the damage waits for the live game: nothing
+     * happens to him, and the behaviour comes back to it each tick. */
+    tick();
+    CHECK(band_at(NEIGHBOUR).kind == FLASH_BAND && near_flashes == 1 && flashes == 0);
+    tick();
+    CHECK(waits == 1 && asked == 1 && finished == 0 && ram[HP_U] == 80 && sound_count == 0);
+    CHECK(ram[BEHAVIOR_DATA2 + SLOT] == 1 && (ram[CURRENT_SPRITES_FLAGS + SLOT] & BEHAVIOR_READY));
+    CHECK(last_reached && last_distance == 260 + 8 - 244);
+    tick();
+    CHECK(waits == 2 && finished == 0 && ram[HP_U] == 80 && in_reach == 0);
+    /* The live game's pass: in reach of the visitor's place, 10 HP. */
+    visit();
+    CHECK(ram[HP_U] == 70 && in_reach == 1 && finished == 1 && last_sound() == 0x04);
+    CHECK(last_distance == 4 + 8 - (236 - 256 + 8));
+    /* Out of reach of his true place, it ends in its tick, as the game's. */
+    beside(60, NONE, false);
+    to_the_wait();
+    CHECK(waits == 0 && finished == 1 && near_out_of_reach == 1 && out_of_reach == 0 && ram[HP_U] == 80);
+    /* A room not joined beside his (Seams says no), or above or below his row
+     * (no true place): it ends there too. */
+    beside(4, NONE, false);
+    joined = false;
+    to_the_wait();
+    CHECK(waits == 0 && finished == 1 && asked == 1 && near_out_of_reach == 1);
+    beside(4, NONE, false);
+    known = false;
+    to_the_wait();
+    CHECK(waits == 0 && finished == 1 && asked == 0 && near_out_of_reach == 1);
+    /* The Magic Shield, Block up, in the pass: it goes back on Sugata, which
+     * is knocked away from him, to the left. */
+    beside(4, MAGIC, true);
+    to_the_wait();
+    CHECK(waits == 1);
+    visit();
+    CHECK(ram[HP_U] == 80 && reflected == 1 && ram[SPRITE_HP + SLOT] == SUGATA_HP - SUGATA_REFLECTED);
+    CHECK(!(ram[CURRENT_SPRITES_FLAGS + SLOT] & FACING_RIGHT) && last_pushed == -1);
+    /* Block with the Small Shield, in the pass: Block's site stops it. */
+    beside(4, SMALL, true);
+    to_the_wait();
+    visit();
+    CHECK(ram[HP_U] == 80 && test_block_flashes() == 1 && last_sound() == 0x0C);
+    /* Its band shows on Seamless's canvas in its room: room 5's origin. */
+    beside(4, NONE, false);
+    for (unsigned f = 0; f < SUGATA_WARNING + 1; ++f) tick();
+    CHECK(band_at(NEIGHBOUR).kind == FLASH_BAND);
+    for (int i = 0; i < 800 * 400; ++i) world[i] = 0xFF123456u;
+    world_on = true; origin_x = 300; origin_y = 50;
+    int w = 800, h = 400;
+    const uint32_t *p = fax_sugata_present(world, &w, &h);
+    CHECK(p != world);
+    int left = 300 - 256 + 244 - SUGATA_REACH, right = 300 - 256 + 244 + SUGATA_REACH;   /* 248 to 328 */
+    CHECK(p[100 * 800 + left] != 0xFF123456u && p[100 * 800 + left - 1] == 0xFF123456u);
+    CHECK(p[100 * 800 + right - 1] != 0xFF123456u && p[100 * 800 + right] == 0xFF123456u);
+    world_on = false;
+    /* Gone from its room (killed there): its band and warning go too. */
+    beside(4, NONE, false);
+    for (int f = 0; f < 5; ++f) tick();
+    CHECK(warn[NEIGHBOUR][SLOT] == 5);
+    records[NEIGHBOUR][CURRENT_SPRITES_ENTITIES + SLOT] = DEATH;
+    fax_sugata_frame_end();
+    CHECK(warn[NEIGHBOUR][SLOT] == 0 && band_at(NEIGHBOUR).kind == NO_BAND);
+    /* Two Sugatas, one in each room, each with its band. */
+    beside(4, NONE, false);
+    for (int f = 0; f < 3; ++f) tick();
+    ram[CURRENT_SPRITE_INDEX] = SLOT;
+    ram[CURRENT_SPRITES_XPOS + SLOT] = 100;
+    for (int f = 0; f < 3; ++f) frame();
+    CHECK(band_at(NEIGHBOUR).kind == WARNING_BAND && band_at(LIVE).kind == WARNING_BAND);
+    CHECK(band_at(LIVE).center == 108 && band_at(NEIGHBOUR).center == 244);
 }
 
 int main(void) {
@@ -441,6 +628,7 @@ int main(void) {
     each_feature_alone();
     the_band();
     it_keeps_its_place();
+    a_neighbours_sugata();
     printf("sugata_test: %u checks passed\n", checks);
     return 0;
 }

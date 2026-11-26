@@ -136,6 +136,21 @@ play) forgets every other room of the area, so each comes back fresh from
 its list as it comes near. Each room keeps Seams' 384-byte block in its
 record; the record is version 5.
 
+**Fights across a seam** (`fax_seams.c`, #166's slice 2). Everything that
+touches the hero still happens in the live game: once its sprite loop is
+over, the actors of the rooms joined beside his that are within reach of him
+or his spell visit it, in its free slots with its own hidden, and the loop
+runs once more for them, interactions only (their behaviour and drawing are
+their room's). So his sword and fist hit a monster across a seam (its
+experience and MP his, its death and drop played out in its own room), it
+and its shots hurt him, his shield takes those shots, and he takes a coin or
+bread lying across the edge. The interaction tests compare true positions in
+16 bits, so a sprite at the far side of his room is never taken for one
+across the seam. A neighbouring room's sounds from what is in the view play
+in the live game; a neighbour's Sugata warns and flashes there, and the live
+game takes its flash when he is in its reach. The pass and the sounds still
+to play are Seams' own record (`faxanadu.seams`).
+
 The original player starts a right scroll when his right edge crosses at
 x=241. This adapter retains the source until his origin wraps, preserving
 continuous position. Wrapped floor/ladder samples read the correct neighboring
@@ -176,6 +191,7 @@ All automated launches were hidden and muted with native saves disabled.
 | Boss arenas (#110) | `tests/world/boss_arenas.py`, in the suite, a part per boss's screen: beside it, it is on no map; in by the original's scroll (or a door, for walled King Grieve and the final boss), the room alone with the boss handler running; the boss's slot emptied, the handler ends and the room joins its neighbour; out again by a handoff. The final boss's kill begins the ending, which reaches the King's room |
 | Live status bar (#132) | `tests/world/live_status_bar.py`, in the suite, read off the presented picture's pixels (the band's gold digits, and its bars' fill): buying the Elixir at Eolis's tool shop, every frame of the count-down shows the gold the game had a frame before, every amount from 700 down to 380, and every frame's band is the game's own picture's; the King's gift counts 0 up to 3000 the same way; at Eolis's Guru the bars read 32 HP and 5 MP, and 80 and 80 during his first line. Without the fix all three fail. A probe through the shop's opening, a Start pause and the Select menu found the band equal to the game's own on every frame |
 | Open seams (#166, slice 1) | `tests/seams/open_ground.py`, in the suite, a part each: unseen Zozuras in two rooms stand still 300 frames; one wakes on the first read within 16 pixels of the view and keeps coming once out of it; Eolis's Zozuras follow him into `$05` and back through `$04` into `$03`; the town's walking woman walks into his room, the walking man in and out; a fireball flies through a seam and goes once out of the view; a room of 5 keeps its seam a wall; a straddling Zozura's pixels on both sides of the seam; a respawn's load brings room 2 back fresh; the intro's trigger by a neighbour's edge leaves it ticking; a save mid-crossing replays alike in two fresh games |
+| Fights across a seam (#166, slice 2) | `tests/seams/fights.py`, in the suite, a part each: from `$04` the Long Sword kills `$05`'s Zozura (its experience and MP his, its death and its bread in `$05`); a Monodron's coin drops in `$05` and its sound plays; he takes a coin across the seam without crossing; a Zozura straddling the seam hurts him; a punch reaches across it; a Sugata in the Mist's `$1F` flashes him on `$1E` in its reach, and not out of it; a save mid-swing replays alike in two fresh games; a frame that ends inside the pass on Zenis 16 reads as the room's own and replays alike. `tests/world/boss_arenas.py` checks that no move or visit comes from an arena |
 | Shared CIRAM API | Invalid bounds/NULL and isolated upload refused; upload/restore succeeds; serialized complete machine unchanged after the probe |
 | Catalog / prepared helper | Feature activation without CLI override; hidden helper loads and pauses all prepared states; owner configuration restored to normal audio |
 
@@ -198,12 +214,9 @@ risks a playtest must cover):
 - **Seams** (#166; the plan, toward one big world, is
   [SEAMLESS-COMBAT.md](SEAMLESS-COMBAT.md)). Since slice 1 monsters, shots
   and walking people go through side-by-side seams, dormant until first
-  seen, and are drawn whole across them. Still open: monsters can't hurt
-  him across a seam, and his swing can't hit them there (the copy sets his
-  attack phase to 0, so a hit never lands in it), until they cross; a spell
-  ends at the seam, and one in flight vanishes when he crosses; a
-  neighbouring room's sounds are lost with its copy; seams one above the
-  other are walls. Encounters change most: a monster he has seen follows
+  seen, and are drawn whole across them; since slice 2 they fight him across
+  side-by-side seams. Still open: a spell ends at the seam, and one in
+  flight vanishes when he crosses; seams one above the other are walls. Encounters change most: a monster he has seen follows
   him room after room, Eolis's Zozuras into its town, and towns are busier;
   that wants a playtest. Fixed by slice 0 (Seams lose nothing, #177): the
   live game's ghost hit at the far side of his own room, the drops a copy

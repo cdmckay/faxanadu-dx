@@ -1416,6 +1416,13 @@ reach:
   (`$CE`, and its high byte `$CF`) is this frame's. A hero who walked to a
   screen's edge keeps the Y of the last frame that had the weapon on the
   screen: a walking pose's, y+0 or y+8 with a sword (`$B91F`: poses 0-2).
+  The test there is `CMP Screen_Maybe_ScrollXCounter`, `BNE RETURN_B7D5`
+  (`$B818`, `$B81A`) right after `STA Maybe_Something_WeaponPosX`; past the
+  Y and the reach a second `LDA`, `CMP`, `BEQ` (`$B849`) returns before the
+  draw.
+  So with the `BNE` not taken (Seams, slice 2, *Seams: actors across
+  rooms*) the routine places the Y and the reach off the screen too and
+  still draws nothing there: a swing across a seam hits at its true height.
 
 `Sprites_IsSpriteOutOfWeaponRange` (`$88CB`) compares the sprite's top-left
 (`CurrentSprites_XPos_Full`, `CurrentSprites_YPos`, copied to
@@ -1862,6 +1869,15 @@ only user of `$1F`:
 - `SpriteUpdateHandler_Enemy_Sugata` (`$929F`) draws Sugata; returning
   through `SpriteUpdateHandler_Invisible` (`$8C98`) hides it that frame. The
   presented picture lags the sprites by a frame or two.
+- **In a neighbouring room's copy** (Seamless) the whole behavior runs, its
+  damage too, against the projected hero, and everything it does to him is
+  thrown away with the copy. Returning from the routine at `$AB44` with
+  `CurrentSprites_BehaviorData2` set back to 1 makes the next call come back
+  to `$AB44` (its `DEC` to 0, the greyscale cleared again), so the flash can
+  wait there for as long as it must: Seams holds it so until the live game
+  runs `$AB44` for it (*Seams: actors across rooms*). `$1E` has `$1F` at its
+  right and `$1D` at its left, all on one floor at y 144 (checked in the
+  game). A Sugata's flash band greys its room's 208 rows only.
 
 ## Damage, dealt and taken (banks 14, 15)
 
@@ -4832,6 +4848,87 @@ Seamless's seams.
   `$01`, faced toward `$08`, paces at its right side the same way. Shots fly
   on through a seam and go once wholly out of the view by 16 pixels.
 
+What slice 2 (fights across a seam) builds on:
+
+- **Where the sprite loop ends.** `Game_MainLoop` calls `Sprites_UpdateAll`
+  at `$DB65` and `GameLoop_CountdownItems` at `$DB68`. There bank 14 is
+  mapped and the stack is the loop's own (`LDX #$FF`, `TXS` at its top), so
+  a hook at `$DB68` that pushes `$DB67` and `$800E` and returns as handled
+  runs `@_spritesLoop` (`$800F`, `LDX #$07`, past the `INC
+  SpriteUpdateCounter`) once more, and the loop's `RTS` comes back to
+  `$DB68`, where the scheduler fires the site again (a handled site leaves
+  no pass-through behind). `EndGame_MainLoop` has its own calls, elsewhere.
+- **Hiding a slot.** The loop skips a slot whose entity has bit 7 set. Its
+  interactions touch only their own slot and the hero: the death effects
+  change the entity in place (`Sprite_SetDeathEntity`: `$13` by the
+  weapon, `$14` by a spell, `$64` a big enemy's, the entity kept in
+  `CurrentSprites_InternalBehaviorStates`), a coin, bread or a shot taken
+  goes `$FF`; nothing spawns into another slot. So the live room's own
+  slots can be hidden while other rooms' actors take its free ones, and put
+  back after.
+- **A frame can end inside the pass.** The main loop lags on a busy screen,
+  and the host's frame ends wherever the CPU is: on the fortress of Zenis's
+  screen 16, with its six actors, the Execution Hood's two shots and a
+  Maskman across the seam visiting, about one frame end in 25 fell inside
+  the pass. Between frames the machine is read (save states, the other
+  features' frame ends, TCP), and a test reading the room's shot there found
+  it gone (hidden). So a frame's end puts the live slots back and keeps the
+  pass's, the next frame's beginning puts them back before the CPU runs on
+  (`fax_seams_frame_end()` first in the host's frame end,
+  `fax_seams_frame_begin()` last in its beginning), the pass's state with
+  both is a record of its own, and Seamless ticks the neighbours and
+  captures the live room only once the pass has written its visitors home.
+- **The interaction tests, in 8 bits.** All four compare an X and a Y by
+  `(a + pad - left) mod 256 < (width + pad) mod 256`:
+  `Player_HitSpriteWithWeapon`'s reach (`Sprites_IsSpriteOutOfWeaponRange`,
+  *Weapon reach*), `Sprite_CheckHitByCastMagic` (the spell's X, its width
+  from `CAST_MAGIC_HIT_WIDTHS`, `$8B73`, against the sprite's X and
+  `SPRITE_HITBOX_WIDTHS`), `Player_CheckShieldHitByMagic` (only shots,
+  category 6: `Player_ShieldPositionX` + 7 against `SpriteBox_Left`, its
+  width + 7) and `CurrentSprite_CheckHitPlayer` (`Player_PosX_Block` + 11
+  against `SpriteBox_Left`, its width + 11). A byte past a seam passes them
+  as the game means (room 5's x 250 is room 4's -6), but a sprite at the
+  far side of the room passes too: the hero at x 250 "touches" a Zozura at
+  x 2. Seams works each out in 16 bits and refuses a match found only by
+  wrapping. `Sprite_GetBounds` (`$8A08`) sets `SpriteBox_*` from the X and
+  Y and a 4-byte entry per entity (`$B273`: X offset, Y offset, width,
+  height); the X offsets are signed, -16 to 48 (the people's boxes start 8
+  or 16 left of them). Two special tables replace it in some phases: Sir
+  Gawaine's and the Wolfman's phase 2 (`SPRITE_GETBOUNDS_COMMON`, `$8A71`:
+  48 right, width `$F0`) and the Maskman's phases 0 and 4
+  (`SPRITE_GETBOUNDS_MASKMAN`, `$8A75`: width `$F8`). Their widths plus the
+  pad make 251 or carry to 3, the game's way of a box everywhere or almost
+  nowhere: Seams leaves any width of `$80` and up to the original.
+- **The shield's place.** `Player_DrawShield` puts `Player_ShieldPositionX`
+  at the hero's X plus 0 or 8 (`SHIELD_SPRITE_OFFSETS_X`, `$B9DD`), in 8
+  bits, so it wraps to 0-7 while he stands at x 248 and up. It never runs in
+  a neighbour's copy (only `Screen_ResetForGamePlay` and `Sprites_UpdateAll`
+  do), so a copy's shield check compared its shots with the live room's
+  shield: a fireball in room 5's copy at the x his shield had in room 4 hit
+  it there and was removed, with the shield's sound and damage thrown away.
+  Slice 2 skips the check in copies.
+- **Drops.** `SpriteBehavior_EnemyDeath` counts 8 ticks, then
+  `Sprite_HandleDeathDropIfPossible` puts the drop in the highest free slot
+  (`Sprites_HasMaxOnScreen`, none if all 8 are taken) at the dead one's X
+  and Y and empties the dead slot. `SPRITE_ENTITY_DROP_VALUES_INDEX`
+  (`$B672`) by entity: `$FF` or `$40` and up nothing, below `$30` a coin
+  (`Sprites_ReplaceWithCoinDrop`, `$AC75`, which plays sound `$10`), `$30`
+  to `$3F` bread (`Sprite_ReplaceWithBreadDrop`, no sound); its value is
+  `SPRITE_DROP_VALUES` (`$ACED`) at the index. A Zozura (`$32`) leaves bread
+  worth 8 HP, a Monodron (`$2A`) a coin. A hit that leaves exactly 0 HP
+  doesn't kill (the borrow does), so the Long Sword's 8 (the Pendant fixed)
+  leaves a 9-HP Zozura at 1.
+- **Sounds.** `Sound_PlayEffect` (`$D0E4`) keeps X and Y and only stores
+  (`SoundEffect_SetCurrent` weighs the effect against the one playing, by
+  the table at `$F388`): a committed call plays it. In a neighbour's copy
+  it is thrown away with the copy, unless something plays it in the live
+  game.
+- **Sugata's flash in a copy** (*Sugata's flash*): its damage at `$AB44`
+  can wait, returning with `CurrentSprites_BehaviorData2` back at 1, and be
+  run from the live game by entering `$AB44` with `CurrentSpriteIndex` the
+  slot: it ends in `JMP Sprite_FinishBehavior`, whose `RTS` goes on wherever
+  the stack says.
+
 ## Graphics bugs
 
 What the original draws wrong on the USA ROM, found by chipx86's notes, the
@@ -5049,7 +5146,9 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   map out again from it, and so it does when the original's own load (a
   door in the same area) brings a boss back into a room whose copy had none:
   it captures the live room before it decides. The flag is kept in its record
-  (byte 28).
+  (byte 28). It gives Seams the hero's true place (`fax_world_hero()`), and
+  waits with its step while Seams' pass is open. TCP `fax_world_room` shows
+  a room's slots: entity, X, Y, HP and hit counter.
 
 - **Seams** (`fax_seams.c`, #166; the plan is
   [SEAMLESS-COMBAT.md](SEAMLESS-COMBAT.md)). Slice 1, seams are open
@@ -5071,7 +5170,35 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   tiles' room, and its last loop's OAM owners and cells past its sides,
   which `fax_world_present` paints. Seamless gives it `fax_world_view()`,
   each room's place, RAM and block, the joined rooms, and its area
-  (`fax_world_area()`). With the remaster off nothing of it runs. Slice 0, seams lose nothing, is two hooks in bank
+  (`fax_world_area()`). With the remaster off nothing of it runs. Slice 2,
+  fights across a seam: after the live sprite loop, at `Game_MainLoop`'s
+  `JSR GameLoop_CountdownItems` (`$DB68`), the actors of the rooms joined
+  beside his within 48 pixels of his box or 16 of his spell's (monsters,
+  bread and coins, shots, big enemies; hit counter 0, no magic hit) visit:
+  the live room's own slots hidden (`$FF`), they take its free ones, nearest
+  first, and the hook returns into `@_spritesLoop` (`$800F`) with `$DB67`
+  and `$800E` pushed; the behaviour and draw hooks return at once for a
+  visitor, so only the loop's interactions run, with every feature's hooks;
+  at the second arrival each visitor goes home with every byte from its
+  entity on (not its position) and the live slots are put back. The touch
+  (`$890A`), spell (`Sprite_CheckHitByCastMagic`, `$8ADC`), shield
+  (`Player_CheckShieldHitByMagic`, `$877C`) and weapon-reach (`$88CB`)
+  hooks refuse a match the 8-bit test finds only by wrapping round the
+  room, a visitor's X 16 bits from its side and a slot through a side from
+  its mark; the shield's returns at once in a copy. `Player_DrawWeapon`'s
+  `BNE` at `$B81A` is not taken, so the weapon's Y and reach are placed off
+  the screen too. `Sound_PlayEffect` (`$D0E4`) in a copy keeps an effect
+  from a slot in the view; the next pass's site plays it with a committed
+  call. A Sugata's flash that a copy left waiting (a bit per slot in the
+  block) is taken first and entered at `$AB44`. For the other features it
+  answers where a slot is: `fax_seams_x16()`, `fax_seams_slot_room()` (the
+  damage numbers' room), `fax_seams_box_left()` (Block's front),
+  `fax_seams_hero_x()` and `fax_seams_flash()` (Sugata's flash). The pass
+  and the sounds still to play are its record (`faxanadu.seams`, version
+  1, 477 bytes), since a frame can end inside the pass: then the host's
+  frame end shows the live slots as the game has them and keeps the pass's
+  until the next frame begins, and Seamless's step waits for the pass
+  (`fax_seams_visiting()`). Slice 0, seams lose nothing, is two hooks in bank
   14's sprite loop:
   - `CurrentSprite_CheckHitPlayer`'s entry (`$890A`) returns at once in a
     neighbouring room's tick, with X the current slot as its first `LDX
@@ -5145,7 +5272,8 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   during a swing; `Player_HitSpriteWithWeapon`'s (`$8817`), which lets the
   punch on; and the Glove's `STA Temp_00` (`$888F`). The strength comes in at
   the Pendant fix's hook. See *Punches*. It keeps no state: the box is the
-  machine's RAM.
+  machine's RAM. It places the fist's Y and reach off the screen too, as
+  Seams has the routine do for a weapon, so a punch reaches across a seam.
 - **Battle Suit and Dragon Slayer fix** (`fax_inventory.c`). Each of the
   two pickups adds the item at its own list's count. It hooks each routine's
   `CPX #$04` (`$C6FA`, `$C73A`), right after the `LDX` that read the other
@@ -5791,7 +5919,9 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   `Player_HandleHitByMagic` it lets nothing through. At
   `Player_HandleTouchEnemyMagic`, magic whose box's middle is on the side the
   hero faces returns through `$87CE` (removed, sound `$0C`): with the helmet,
-  which has no shield box, this is the only way magic is stopped. At `$AB44`
+  which has no shield box, this is the only way magic is stopped. The box's
+  left is in 16 bits (`fax_seams_box_left()`), so a shot across a seam to
+  his left comes from his left. At `$AB44`
   it stops Sugata's flash from any side with the shield's sound and finishes
   the behavior through `$AB60`. Contact damage is untouched. The tutorial
   hooks `IScriptAction_EndScript` (`$82B4`, which every way out of a script
@@ -5834,7 +5964,16 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   save-state record is each slot's warning count and the band. A
   reflection's committed call runs no hooks, so it reports its 12 to Damage
   numbers itself (`fax_damage_enemy_hit`), before the call, while the sprite
-  is still Sugata.
+  is still Sugata. In Seamless every Sugata in the rooms that tick does all
+  this in its own room's tick (`fax_world_ticking()`): its warning (a count
+  per room and slot), its blink, a band in its room (up to 4 bands, a
+  Sugata's each, at `fax_world_room_origin`), and at `$AB44` its reach to the
+  hero's true place in its room's pixels (`fax_seams_hero_x()`, his row of
+  rooms only). In reach, `fax_seams_flash()`, and the flash waits there for
+  the live game (it returns with `CurrentSprites_BehaviorData2` at 1), which
+  enters `$AB44` for it in Seams' pass, where the rest is decided as in his
+  room, Sugata's place 16 bits from its side. Its record is version 2: the
+  warnings of every room, and the bands; a version 1 record loads as none.
 - **Damage numbers** (`fax_damage.c`). Every hit that takes HP shows how much,
   in the HUD's digits (see *Damage, dealt and taken*), rising a pixel every 3
   frames from 8 pixels above the box it landed on, centered (the enemy's
@@ -5849,8 +5988,10 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   with the fraction. An amount of 0 shows nothing, and a hit the game stops
   (iframes, Ointment, Block, a shield that takes all of a shot) never gets
   there. A kill shows the hit's whole damage. Inside an isolated machine
-  (Seamless's neighboring rooms, where Sugata's flash still runs) nothing
-  shows. A number belongs to the area and room it landed in: Seamless draws
+  (Seamless's neighboring rooms) nothing shows. A number belongs to the area
+  and room it landed in: an enemy's is the room whose pixels its X counts
+  (`fax_seams_slot_room()`: the room beside his for one hit across a seam,
+  or straddling one); Seamless draws
   it at that room's place (`fax_world_room_origin`), so it stays put in the
   world as the camera moves, and the original view only on its own screen,
   and not while the screen scrolls; another area (a door, a building) drops

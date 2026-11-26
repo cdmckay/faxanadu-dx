@@ -64,6 +64,9 @@ static bool screen_loaded;
 /* The view's top-left in world pixels for the frame being run
  * (fax_world_view), and whether there is one. */
 static int view_x,view_y;static bool view_ok;
+/* The hero's place in world pixels for that frame (fax_world_hero), from the
+ * live game: a neighbour's tick sees him projected (shadow()). */
+static int hero_wx,hero_wy;
 static bool death_mode,script_mode;
 static int camera_x,camera_y,picture_w,picture_h;
 static int origin_x,origin_y;static bool origin_valid;
@@ -398,7 +401,10 @@ void fax_world_step(void){
      * it too; the game changes nothing on it then. A frame without it (the
      * screen off while one loads) keeps the last band shown (#132). */
     if(fax_text_hud_showing()){memcpy(hud_band,cyc_frame_argb(),sizeof hud_band);hud_valid=true;}
-    if(!playing())return;
+    /* A frame that ended inside Seams' visitors' pass (fax_seams.c, a lag
+     * frame): its visitors' rooms tick, and the live room is captured, once
+     * the pass has written them back. */
+    if(!playing()||fax_seams_visiting())return;
     /* A frame the game lagged keeps the last capture, as the PPU keeps its
      * last sprites then (No sprite flicker, fax_flicker.c). */
     uint64_t start=SDL_GetPerformanceCounter();refresh(fax_flicker_frame_drawn());if(active<0)return;
@@ -434,8 +440,10 @@ void fax_world_update_view(void){
     if(!enabled||cyc_mod_isolated()||active<0||area!=q(0x24)||active!=q(0x63))return;
     int l,t,r,b;region(&l,&t,&r,&b);
     camera_at(VIEW_W,VIEW_H,l,t,r,b,q(0x9e),q(0xa1),&view_x,&view_y);view_ok=true;
+    hero_wx=rooms[active].x*RW+q(0x9e);hero_wy=rooms[active].y*RH+q(0xa1);
 }
 bool fax_world_view(int *x,int *y){if(!view_ok)return false;*x=view_x;*y=view_y;return true;}
+bool fax_world_hero(int *x,int *y){if(!view_ok)return false;*x=hero_wx;*y=hero_wy;return true;}
 static unsigned terrain(Room *r,int x,int y){
     unsigned block=r->ram[0x600+(y/16)*16+x/16],quadrant=(x&8?1:0)+(y&8?2:0);
     unsigned ptr=word(0x80+quadrant*2),tile=data(3,ptr+block);
@@ -658,12 +666,16 @@ static void status(int id,const char *line){
     for(unsigned i=0;i<MAX_ROOMS;i++){Room *r=&rooms[i];owned+=r->owned;live+=r->live;sum+=r->ticks;if(r->live)for(unsigned j=0;j<8;j++)actors_count+=r->ram[0x2cc+j]<128;}
     snprintf(out,sizeof out,"\"enabled\":%s,\"area\":%d,\"room\":%d,\"owned\":%u,\"live\":%u,\"actors\":%u,\"neighbor_ticks\":%llu,\"handoffs\":%u,\"portals\":%u,\"failures\":%u,\"camera\":[%d,%d],\"size\":[%d,%d],\"simulation_ms\":%.3f,\"render_ms\":%.3f,\"max_seam_ms\":%.3f,\"playing\":%s,\"arena\":%s,\"hud_x\":%d",enabled?"true":"false",area,active,owned,live,actors_count,(unsigned long long)sum,handoffs,portals,failures,camera_x,camera_y,picture_w,picture_h,sim_ms,render_ms,max_seam_ms,playing()?"true":"false",fighting?"true":"false",fax_world_hud_x(picture_w));cyc_tcp_ok(id,out);
 }
-static void room_status(int id,const char *line){long n=active;cyc_tcp_long(line,"room",&n);if(n<0||n>=MAX_ROOMS){cyc_tcp_err(id,"invalid room");return;}Room *r=&rooms[n];char out[900];
-    /* The active room's slots are the live game's; a neighbour's its record's. */
-    uint8_t slots[3][8];for(unsigned j=0;j<8;j++){bool here=n==active&&enabled;slots[0][j]=here?q(0x2cc+j):r->ram[0x2cc+j];slots[1][j]=here?q(0xba+j):r->ram[0xba+j];slots[2][j]=here?q(0xc2+j):r->ram[0xc2+j];}
+static void room_status(int id,const char *line){long n=active;cyc_tcp_long(line,"room",&n);if(n<0||n>=MAX_ROOMS){cyc_tcp_err(id,"invalid room");return;}Room *r=&rooms[n];char out[1100];
+    /* The active room's slots are the live game's; a neighbour's its record's:
+     * entity, X, Y, HP and hit counter. */
+    static const unsigned at[5]={0x2cc,0xba,0xc2,0x344,0x34c};
+    uint8_t slots[5][8];for(unsigned k=0;k<5;k++)for(unsigned j=0;j<8;j++){bool here=n==active&&enabled;slots[k][j]=here?q(at[k]+j):r->ram[at[k]+j];}
     char seams[200];fax_seams_describe(r->seams,seams,sizeof seams);
-    snprintf(out,sizeof out,"\"room\":%ld,\"owned\":%u,\"event\":%u,\"xy\":[%d,%d],\"edges\":[%u,%u,%u,%u],\"live\":%u,\"ticks\":%llu,\"entities\":[%u,%u,%u,%u,%u,%u,%u,%u],\"x\":[%u,%u,%u,%u,%u,%u,%u,%u],\"y\":[%u,%u,%u,%u,%u,%u,%u,%u],%s,\"town\":%s",n,r->owned,events_area==area&&n<MAX_ROOMS?events[n]:255u,r->x,r->y,r->edges[0],r->edges[1],r->edges[2],r->edges[3],r->live,(unsigned long long)r->ticks,
-        slots[0][0],slots[0][1],slots[0][2],slots[0][3],slots[0][4],slots[0][5],slots[0][6],slots[0][7],slots[1][0],slots[1][1],slots[1][2],slots[1][3],slots[1][4],slots[1][5],slots[1][6],slots[1][7],slots[2][0],slots[2][1],slots[2][2],slots[2][3],slots[2][4],slots[2][5],slots[2][6],slots[2][7],seams,fax_seams_town((int)n)?"true":"false");cyc_tcp_ok(id,out);}
+    char arrays[5][48];static const char *names[5]={"entities","x","y","hp","hit_counter"};
+    for(unsigned k=0;k<5;k++)snprintf(arrays[k],sizeof arrays[k],"[%u,%u,%u,%u,%u,%u,%u,%u]",slots[k][0],slots[k][1],slots[k][2],slots[k][3],slots[k][4],slots[k][5],slots[k][6],slots[k][7]);
+    snprintf(out,sizeof out,"\"room\":%ld,\"owned\":%u,\"event\":%u,\"xy\":[%d,%d],\"edges\":[%u,%u,%u,%u],\"live\":%u,\"ticks\":%llu,\"%s\":%s,\"%s\":%s,\"%s\":%s,\"%s\":%s,\"%s\":%s,%s,\"town\":%s",n,r->owned,events_area==area&&n<MAX_ROOMS?events[n]:255u,r->x,r->y,r->edges[0],r->edges[1],r->edges[2],r->edges[3],r->live,(unsigned long long)r->ticks,
+        names[0],arrays[0],names[1],arrays[1],names[2],arrays[2],names[3],arrays[3],names[4],arrays[4],seams,fax_seams_town((int)n)?"true":"false");cyc_tcp_ok(id,out);}
 static void probe(int id,const char *line){
     (void)line;uint8_t *before=NULL,*after=NULL;size_t nb=0,na=0,n=0;char err[256];
     bool saved=cyc_state_save(&before,&nb,err,sizeof err);

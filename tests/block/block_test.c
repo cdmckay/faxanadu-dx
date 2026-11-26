@@ -9,6 +9,12 @@
 #include "model.h"
 #include <unistd.h>
 
+/* Seams (fax_seams.c): the current sprite's box's left in 16 bits. The
+ * model is one room, whose shots are all in it, but for the one put past
+ * its left side (box_past_the_side). */
+static int box_shift;
+int fax_seams_box_left(void) { return ram[SPRITE_BOX_LEFT] + box_shift; }
+
 /* RAM the model's game code uses */
 #define HP_U                 0x0431u
 #define INVINCIBILITY        0x00ADu
@@ -210,6 +216,10 @@ static void the_rules(void) {
     CHECK(from_the_front(100, true, 120, 15) && from_the_front(100, true, 101, 15));
     CHECK(!from_the_front(100, true, 80, 15) && from_the_front(100, false, 80, 15));
     CHECK(from_the_front(100, false, 100, 15) && !from_the_front(100, false, 110, 15));
+    /* Across a seam: a shot in the room to his left, its box at x -10 (its
+     * byte 246), is in front of him facing left, at x 2. */
+    CHECK(from_the_front(2, false, -10, 15) && !from_the_front(2, true, -10, 15));
+    CHECK(!from_the_front(2, false, 246, 15));                 /* the byte alone would put it behind him */
     /* The tutorial's line, word-wrapped to 16 columns and at most 4 rows. */
     char out[80];
     CHECK(wrap("V", out) && !strcmp(out, "Hold V to raise\nyour shield\nagainst magic."));
@@ -347,6 +357,28 @@ static void not_from_behind(void) {
     scene(SMALL, true, 10, -10);
     sprite_loop();
     CHECK(ram[HP_U] == 72);
+}
+
+static void box_past_the_side(void) {
+    /* Seamless: a shot across the seam to his left (the room there's x 248,
+     * the live room's -8), the hero at x 2 facing left with the Battle Helmet
+     * (no shield box), Block up. The game's 8-bit touch test meets it, and it
+     * comes from the front: stopped. By its byte alone it would come from
+     * behind him, and hurt. */
+    fresh();
+    hold(true);
+    scene(HELMET, false, 0, -10);
+    ram[PLAYER_POS_X] = 2;
+    ram[SPRITE_X + SLOT] = 248;
+    box_shift = -256;
+    sprite_loop();
+    CHECK(ram[ENTITIES + SLOT] == 0xFF && ram[HP_U] == 80 && magic_blocked == 1);
+    scene(HELMET, false, 0, -10);
+    ram[PLAYER_POS_X] = 2;
+    ram[SPRITE_X + SLOT] = 248;
+    box_shift = 0;
+    sprite_loop();
+    CHECK(ram[HP_U] == 72 && magic_blocked == 1);
 }
 
 static void the_battle_helmet(void) {
@@ -789,6 +821,7 @@ int main(void) {
     magic_on_the_shield();
     magic_on_the_hero();
     not_from_behind();
+    box_past_the_side();
     the_battle_helmet();
     the_flash_is_blocked_from_anywhere();
     the_shield_is_drawn_where_the_game_draws_it();

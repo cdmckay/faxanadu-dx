@@ -43,6 +43,7 @@
  * The numbers live in this feature's save-state record. See
  * docs/GAME_INTERNALS.md, "Damage numbers". */
 #include "fax_damage.h"
+#include "fax_seams.h"
 #include "fax_text.h"
 #include "fax_world.h"
 #include "cyc_mod.h"
@@ -163,20 +164,23 @@ static void make_room(void) {
     }
 }
 
-static void spawn(unsigned kind, unsigned slot, unsigned amount, int tx, int ty, int tw, int th) {
+static void spawn(unsigned kind, unsigned slot, unsigned amount, int tx, int ty, int tw, int th, unsigned room) {
     if (!amount) { ++seen.nothing; return; }
     if (amount > 255) amount = 255;
     if (count == FAX_DAMAGE_MAX) memmove(numbers, numbers + 1, --count * sizeof *numbers);
     int w = width_of(amount), x = tx + tw / 2 - w / 2;
     if (x < 1) x = 1;
     if (x > ROOM_W - 1 - w) x = ROOM_W - 1 - w;
-    numbers[count++] = (Number){ (uint8_t)kind, (uint8_t)amount, q(AREA_CURRENT_AREA), q(AREA_CURRENT_SCREEN), 0,
+    numbers[count++] = (Number){ (uint8_t)kind, (uint8_t)amount, q(AREA_CURRENT_AREA), (uint8_t)room, 0,
                                  (int16_t)x, (int16_t)(ty - ABOVE), 0, (uint8_t)tx, (uint8_t)ty, (uint8_t)tw,
                                  (uint8_t)th, (uint8_t)slot };
     make_room();
 }
 
-/* An enemy in sprite slot `slot` takes `amount`: over its box. */
+/* An enemy in sprite slot `slot` takes `amount`: over its box, in the room
+ * its X counts the pixels of. With Seamless that may be the room beside his:
+ * one across a seam, or straddling one (Seams, fax_seams.c), keeps its X's
+ * byte, which is that room's. */
 static void enemy_hit(unsigned slot, unsigned amount) {
     slot &= SLOTS - 1;
     unsigned entity = q((uint16_t)(CURRENT_SPRITES_ENTITIES + slot));
@@ -186,8 +190,9 @@ static void enemy_hit(unsigned slot, unsigned amount) {
         if (ew && ew <= 64) w = (int)ew;
         if (eh && eh <= 64) h = (int)eh;
     }
+    int room = fax_seams_slot_room(slot);
     spawn(DEALT, slot, amount, q((uint16_t)(CURRENT_SPRITES_XPOS + slot)), q((uint16_t)(CURRENT_SPRITES_YPOS + slot)),
-          w, h);
+          w, h, room >= 0 ? (unsigned)room : q(AREA_CURRENT_SCREEN));
 }
 
 void fax_damage_enemy_hit(unsigned slot, unsigned amount) {
@@ -214,7 +219,7 @@ static int hero_hook(uint16_t addr) {
     if (cyc_mod_isolated()) { ++seen.isolated; return 0; }
     ++seen.hero;
     spawn(TAKEN, HERO, fax_damage_hero_amount(q(HEALTH_DELTA_U), q(HEALTH_DELTA_L)), q(PLAYER_POS_X),
-          q(PLAYER_POS_Y), HERO_W, HERO_H);
+          q(PLAYER_POS_Y), HERO_W, HERO_H, q(AREA_CURRENT_SCREEN));
     return 0;
 }
 

@@ -26,6 +26,10 @@ share:
    its map, at the edge he came in by.
 4. He walks back out: a Seamless handoff, no scroll.
 
+Throughout, until the boss is dead, nothing comes out of its room or goes in
+(Seams, fax_seams.c, #166): no mover's move from or to it, and no visitor from
+it in the live game's sprite loop (seams_state's log and visit_log).
+
 dartmoor-15: King Grieve's room is walled on every side: the hero comes in
 by a door (the shop's, edited to lead where the castle's own on $14 does),
 its neighbour $16 (another King Grieve) is not on the map while he lives,
@@ -119,6 +123,14 @@ def main():
         fax_e2e.hold(direction, there, frames)
         g.until(what, lambda: there() and g.settled(), 300)
 
+    def sealed(screen):
+        """No move from or to the boss's room, and no visitor from it, in
+        Seams' logs (their last 16 each)."""
+        s = g.tcp("seams_state")
+        moves = [m for m in s["log"] if screen in (m[0], m[2])]
+        visits = [v for v in s["visit_log"] if v[0] == screen]
+        assert not moves and not visits, (screen, moves, visits)
+
     try:
         g.launch(at="eolis-meat-shop")
         for part, (area, boss_screen, boss, screen, side, palette, region) in ARENAS.items():
@@ -136,6 +148,8 @@ def main():
                 here = room(screen)
                 assert not room(boss_screen)["owned"] and here["owned"] and here["edges"][side] == 255, (here,)
                 assert room(boss_screen)["event"] == 1, room(boss_screen)
+                g.wait(30)                                          # its edge, a while: nothing comes out of it
+                sealed(boss_screen)
                 g.shot(f"{part}-beside")
                 before = world()
                 print(f"ok: {part}: beside the boss's room ({area}, {boss_screen:#04x}), Seamless joins it to nothing "
@@ -155,6 +169,7 @@ def main():
             assert inside["room"] == boss_screen and inside["owned"] == 1 and inside["arena"], inside
             g.until("the boss's handler", lambda: g.ram(EVENT) == 0x81 and g.ram(MUSIC) & 0x7F == BOSS_MUSIC, 60)
             assert boss in g.ram(ENTITIES, 8), [hex(e) for e in g.ram(ENTITIES, 8)]
+            sealed(boss_screen)
             g.shot(f"{part}-arena")
             print(f"ok: {part}: in {how}, the room alone in Seamless, the boss handler running "
                   f"(event $81, music $0A) and the boss ({boss:#04x}) there")

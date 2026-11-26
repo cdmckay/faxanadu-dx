@@ -1,8 +1,10 @@
 #pragma once
-/* Seams (fax_seams.c, #166): slice 0, seams lose nothing, and slice 1,
- * seams are open ground. It registers its own hooks; the host adds its TCP
- * command, and Seamless (fax_world.c) calls the rest. Each room's state is a
- * block of FAX_WORLD_SEAMS_BYTES that Seamless keeps in the room's record. */
+/* Seams (fax_seams.c, #166): slice 0, seams lose nothing; slice 1, seams
+ * are open ground; slice 2, fights across a seam. It registers its own hooks
+ * and save-state record; the host adds its TCP command, Seamless
+ * (fax_world.c) calls the rest, and the features that hit or are hit ask it
+ * where a slot is. Each room's state is a block of FAX_WORLD_SEAMS_BYTES that
+ * Seamless keeps in the room's record. */
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -36,6 +38,43 @@ void fax_seams_step(void);
  * town's zone (fax_zone.c) whose sprite list holds no monster. A seam
  * between a town room and one that isn't is a wall for every mover. */
 bool fax_seams_town(int room);
+/* ---- slice 2, fights across a seam: for the features that hit or are hit ----
+ * Rooms side by side share X's low byte (room 5's x 250 is room 4's x -6),
+ * so a slot's X byte alone can't tell which room it is in. */
+/* Slot `slot`'s X in 16 bits from the left edge of the room the machine runs:
+ * in the live game a visitor's (in the visitors' pass) from the side it came
+ * from, a slot let through a side past that side; in a neighbour's tick, that
+ * room's slot. */
+int fax_seams_x16(unsigned slot);
+/* The same for slot `slot` of room `room` (its record, unless the machine
+ * runs it). */
+int fax_seams_room_x16(int room, unsigned slot);
+/* The room whose pixels the live slot's X byte counts (its own for one that
+ * has come from or straddles a joined room): -1 outside the live game or
+ * without Seamless. The damage numbers draw there. */
+int fax_seams_slot_room(unsigned slot);
+/* The current sprite's box (SpriteBox_Left, as Sprite_GetBounds left it) in
+ * 16 bits, as fax_seams_x16. */
+int fax_seams_box_left(void);
+/* The hero's X in the pixels of the room the machine runs: the live game's,
+ * or in a neighbour's tick his true place, when that room is in his row of
+ * rooms (false when it is above or below, or there is no view). */
+bool fax_seams_hero_x(int *x);
+/* In a neighbour's tick, at Sugata's flash's damage (fax_sugata.c): true when
+ * the room is joined beside the live one, and then the live game runs that
+ * damage for this slot at its next visitors' pass, from the behaviour's own
+ * code; till then the flash waits (the caller keeps it at its damage). */
+bool fax_seams_flash(void);
+/* Whether the visitors' pass is under way (a frame ended inside it):
+ * Seamless's step waits for it to end. */
+bool fax_seams_visiting(void);
+/* The host's frame end (first) and beginning (last): a frame that ends
+ * inside the pass shows the live slots as the game has them between frames,
+ * the pass's own (the room's hidden, visitors in its free slots) kept until
+ * the next frame begins. */
+void fax_seams_frame_end(void);
+void fax_seams_frame_begin(void);
+
 /* Whether a block from a save state is one Seams could have written, for a
  * map of `rooms` rooms. */
 bool fax_seams_valid(const uint8_t *block, unsigned rooms);
