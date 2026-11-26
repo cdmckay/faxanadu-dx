@@ -18,5 +18,8 @@ bool fax_controls_settings_loaded(void);
 /* "Select menu: RETURN / START", from the NES Start's binding, refreshed at
  * power-on. The buffer stays put. */
 const char *fax_controls_menu_label(void);
+/* A controller binding (cyc_input.h's encoding) held on any open controller,
+ * as SDL reads it now: a button, or an axis past half travel. SDL builds. */
+bool fax_controls_pad_held(int pad);
 void fax_controls_power_on(void);
 void fax_controls_tcp_setup(void);

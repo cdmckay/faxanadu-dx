@@ -150,6 +150,9 @@ cmake --build "$OUT/quests" -j"$JOBS" >/dev/null
 cmake -S tests/graphics -B "$OUT/graphics" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/graphics" -j"$JOBS" >/dev/null
 "$OUT/graphics/graphics_test"
+cmake -S tests/flicker -B "$OUT/flicker" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/flicker" -j"$JOBS" >/dev/null
+"$OUT/flicker/flicker_test"
 cmake -S tests/entrances -B "$OUT/entrances" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/entrances" -j"$JOBS" >/dev/null
 "$OUT/entrances/entrances_test"
@@ -233,9 +236,11 @@ E2E=(
   "damage       tests/damage/damage_numbers.py"
   "inventory    tests/inventory/inventory_fix.py --parts"
   "map          tests/map/explored_map.py --parts"
+  "map-music    tests/map/music_plays_on.py --parts"
   "quests       tests/quests/quest_log.py --parts"
   "fixes        tests/fixes/small_fixes.py --parts"
   "graphics     tests/graphics/graphics_fixes.py --parts"
+  "flicker      tests/flicker/no_flicker.py --parts"
   "finds        tests/finds/kept_finds.py --parts"
   "softlocks    tests/softlocks/eolis_shaft.py --parts"
   "entrances    tests/entrances/fair_entrances.py --parts"
@@ -246,6 +251,7 @@ E2E=(
   "found        tests/found/found_items.py --parts"
   "menu         tests/menu/select_menu.py --parts"
   "controls     tests/controls/controller_layout.py --parts"
+  "back-out     tests/controls/b_backs_out.py --parts"
 )
 # At most E2E_JOBS runs play at once (default: one a hardware thread; 0: all
 # at once): a game is uncapped and takes a whole thread, and more of them

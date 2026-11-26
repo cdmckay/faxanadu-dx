@@ -43,6 +43,7 @@
 #include "fax_map.h"
 #include "fax_quests.h"
 #include "fax_graphics.h"
+#include "fax_flicker.h"
 #include "fax_entrances.h"
 #include "fax_spell_cost.h"
 #include "fax_found.h"
@@ -223,6 +224,7 @@ static void tcp_setup(void *ctx) {
     fax_map_tcp_setup();
     fax_quests_tcp_setup();
     fax_graphics_tcp_setup();
+    fax_flicker_tcp_setup();
     fax_finds_tcp_setup();
     fax_shaft_tcp_setup();
     fax_entrances_tcp_setup();
@@ -248,7 +250,7 @@ static void event(void *ctx,const void *e,int player) {
     fax_map_event(e);
     fax_quests_event(e);
 }
-static void input(void *ctx, uint8_t buttons[2]) { (void)ctx; fax_block_input(buttons); }
+static void input(void *ctx, uint8_t buttons[2]) { (void)ctx; fax_block_input(buttons); fax_use_item_input(buttons); }
 static void load_setting(void *ctx, const char *key, const char *value) {
     (void)ctx;
     if (!fax_controls_load_setting(key, value) && !fax_magic_load_setting(key, value) &&

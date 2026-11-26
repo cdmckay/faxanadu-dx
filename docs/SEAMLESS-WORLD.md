@@ -77,6 +77,10 @@ Death retains its native animation inside the fixed canvas.
 Neighboring terrain uses the current region background palette, including
 native fades. All visible actors use the active world scene's sprite palette;
 cached building or portrait palettes cannot recolor neighboring NPCs/enemies.
+Every sprite of a room is drawn, with no limit to a line, in the order the
+game drew it, the first in front: the hero over everyone, the same on every
+frame. A frame the game lagged keeps the last finished frame's room, as the
+NES keeps its last sprites then (No sprite flicker, #161).
 Native controls: Select opens inventory; B closes it; Start pauses/unpauses.
 The painted gate in the first Trunk room has no registered Up destination in
 the USA game. The preview preserves that behavior; its registered-door setup
