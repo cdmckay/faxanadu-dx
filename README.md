@@ -123,6 +123,9 @@ opens it too. The game holds still underneath, but the music plays on.
 - **A taller dagger.** The Hand Dagger's swing reaches as low as the swords',
   so it hits low enemies like the Zozura outside Eolis. It keeps its short
   reach.
+- **Punches.** Before your first weapon your fists hurt: 2 a punch, half the
+  Hand Dagger's, with its reach, so the Zozuras and Monodrons outside Eolis
+  fall to five or six. The Glove adds 1.
 - **Sugata's flash, made fair.** Sugata, in the Mist, blinks before it flashes
   and dims the band of the screen the flash will reach, and the flash hurts
   only there, where it used to hit you anywhere, Ointment or not. With the

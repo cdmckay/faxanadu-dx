@@ -51,6 +51,7 @@
 #include "fax_controls.h"
 #include "fax_use_item.h"
 #include "fax_seams.h"
+#include "fax_punch.h"
 #ifdef CYC_WITH_SDL
 #include "cyc_tcp.h"
 #include <SDL.h>
@@ -235,6 +236,7 @@ static void tcp_setup(void *ctx) {
     fax_controls_tcp_setup();
     fax_use_item_tcp_setup();
     fax_seams_tcp_setup();
+    fax_punch_tcp_setup();
 }
 #endif
 static const uint32_t *present(void *ctx,int *w,int *h) {
