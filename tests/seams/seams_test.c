@@ -12,7 +12,9 @@
  * block; the view), and bank 14's and 15's tables as the ROM has them. The
  * edge and floor tests are checked against the blocks a sprite really
  * covers in the joined world, the draw's cells against where each really
- * lies in 16 bits, and the moves byte for byte. */
+ * lies in 16 bits, and the moves byte for byte. The rooms are the Trunk's
+ * (a region), but for towns stay safe: Eolis's, with bank 11's lists for
+ * its screens as the ROM has them, and fax_zone.c's zones. */
 #include "fax_seams.c"
 #include <string.h>
 
@@ -28,7 +30,7 @@ enum { FIREBALL = 0x0A, WALKING_MAN = 0x34, MAN = 0x3D, ROKUSUTAHN = 0x11 };
 enum { DAGGER_X = 0x08, DAGGER_Y = 0x04, SWORD_X = 0x10, SWORD_Y = 0x08 };   /* MAYBE_WEAPON_RANGES */
 
 /* ---- the machine ---- */
-static uint8_t ram[0x800], bank14[0x4000], bank15[0x4000];
+static uint8_t ram[0x800], bank11[0x4000], bank14[0x4000], bank15[0x4000];
 static CycModRegs cpu;
 static int reach_on = -1, touch_on = -1;        /* the slice 0 hooks' enabled states, as last set */
 static int hooks_on[HOOKS];
@@ -68,12 +70,13 @@ void nes_mod_set_local_only(const char *name, int required) { (void)name; (void)
 
 /* ---- Seamless's rooms ---- */
 static uint8_t records[ROOMS][2048], blocks[ROOMS][FAX_WORLD_SEAMS_BYTES];
-static int place_x[ROOMS], edge[ROOMS][2], active_room = -1, tick_room = -1;
+static int place_x[ROOMS], edge[ROOMS][2], active_room = -1, tick_room = -1, area_now = FAX_AREA_TRUNK;
 static bool live_room[ROOMS], view_ok;
 static int view_x, view_y;
 static unsigned loads;
 int fax_world_seams_room(void) { return ticking ? tick_room : isolated ? -1 : active_room; }
 int fax_world_active_room(void) { return active_room; }
+int fax_world_area(void) { return area_now; }
 bool fax_world_room_live(int r) { return r >= 0 && r < ROOMS && live_room[r]; }
 int fax_world_joined(int r, int side) {
     if (r < 0 || r >= ROOMS) return -1;
@@ -91,7 +94,7 @@ bool fax_world_view(int *x, int *y) {
 void fax_world_update_view(void) {}
 void fax_world_screen_loaded(void) { ++loads; }
 uint8_t fax_world_rom(unsigned bank, unsigned addr) {
-    return bank == 14 ? bank14[addr & 0x3FFF] : bank == 15 ? bank15[addr & 0x3FFF] : 0;
+    return bank == 11 ? bank11[addr & 0x3FFF] : bank == 14 ? bank14[addr & 0x3FFF] : bank == 15 ? bank15[addr & 0x3FFF] : 0;
 }
 
 static uint8_t rom(uint16_t addr) { return bank14[addr - 0x8000]; }
@@ -331,7 +334,7 @@ static void world(void) {
     }
     edge[LEFT_ROOM][0] = edge[RIGHT_ROOM][1] = -1;
     memcpy(ram, records[LIVE], sizeof ram);
-    active_room = LIVE, tick_room = -1;
+    active_room = LIVE, tick_room = -1, area_now = FAX_AREA_TRUNK;
     isolated = ticking = false;
     view_ok = true, view_x = -84, view_y = 0;                    /* the hero at room 4's x 120 */
     cpu = (CycModRegs){.a = 0, .x = 0, .y = 0, .s = 0xF0, .p = 0x24};
@@ -715,6 +718,127 @@ static void blocks_and_the_record(void) {
     CHECK(loads == 1);
 }
 
+/* ==== towns stay safe ==== */
+
+enum { NURSE = 0x44, WOMAN = 0x45, GUARD = 0x42, MONODRON = 0x2A, TRIGGER = 0x4F, DWARF = 0x3B, SPRING = 0x62 };
+
+/* Bank 11's AREA_SPRITE_ADDRESSES for Eolis, the towns and the Trunk, each
+ * screen's list (entity, block) to a $FF, as the ROM has them for Eolis and
+ * the screens named below; the categories the ROM gives their entities. */
+static void lists(void) {
+    memset(bank11, 0xFF, sizeof bank11);
+    static const uint8_t eolis[9][5] = {
+        {TRIGGER, 0x04, EMPTY}, {WALKING_MAN, 0x9C, EMPTY}, {WOMAN, 0x97, EMPTY}, {MAN, 0x84, EMPTY},
+        {ZOZURA, 0xA9, ZOZURA, 0xA4, EMPTY}, {ZOZURA, 0xAB, ZOZURA, 0xA5, EMPTY}, {NURSE, 0x93, EMPTY},
+        {GUARD, 0x9A, EMPTY}, {MONODRON, 0x9C, EMPTY}};
+    static const uint8_t towns[14][3] = {
+        {WOMAN, 0, EMPTY}, {WALKING_MAN, 0, EMPTY}, {NURSE, 0, EMPTY}, {WALKING_MAN, 0, EMPTY},
+        {WALKING_MAN, 0, EMPTY}, {EMPTY}, {WOMAN, 0, EMPTY}, {EMPTY}, {GUARD, 0, EMPTY}, {WALKING_MAN, 0, EMPTY},
+        {0x41, 0, EMPTY}, {EMPTY}, {EMPTY}, {EMPTY}};
+    unsigned at = 0x9000;
+    for (unsigned a = 0; a < 8; a++) {                       /* a list of 0x40 screens an area, each an empty list */
+        unsigned base = 0x8400 + a * 0x80;
+        bank11[0x0210 + 2 * a] = (uint8_t)base, bank11[0x0210 + 2 * a + 1] = (uint8_t)(base >> 8);
+        for (unsigned sc = 0; sc < 0x40; sc++, at += 12) {
+            bank11[base - 0x8000 + 2 * sc] = (uint8_t)at, bank11[base - 0x8000 + 2 * sc + 1] = (uint8_t)(at >> 8);
+            const uint8_t *l = a == FAX_AREA_EOLIS && sc < 9 ? eolis[sc] : a == FAX_AREA_TOWNS && sc < 14 ? towns[sc] : NULL;
+            static const uint8_t spring[] = {DWARF, 0x9C, SPRING, 0x5C, EMPTY};
+            if (a == FAX_AREA_TRUNK && sc == 0x25) l = spring;
+            for (unsigned k = 0; l && k < 5; k++) {
+                bank11[at - 0x8000 + k] = l[k];
+                if (l[k] == EMPTY && !(k & 1)) break;
+            }
+        }
+    }
+    bank14[CATEGORIES - 0x8000 + NURSE] = bank14[CATEGORIES - 0x8000 + WOMAN] = 2;
+    bank14[CATEGORIES - 0x8000 + GUARD] = bank14[CATEGORIES - 0x8000 + 0x41] = bank14[CATEGORIES - 0x8000 + DWARF] = 2;
+    bank14[CATEGORIES - 0x8000 + MONODRON] = 0;
+    bank14[CATEGORIES - 0x8000 + TRIGGER] = 4;
+    bank14[CATEGORIES - 0x8000 + SPRING] = 3;
+}
+
+static void what_a_town_room_is(void) {
+    world();
+    lists();
+    /* Eolis: its town's screens and the King's, not the Zozuras' path, the
+     * Monodron's by the way out, or the gate's (no zone). */
+    area_now = FAX_AREA_EOLIS;
+    static const bool eolis[9] = {false, true, true, true, false, false, true, true, false};
+    for (int sc = 0; sc < 9; sc++) CHECK(fax_seams_town(sc) == eolis[sc]);
+    /* Every screen of the towns, those with no one listed too. */
+    area_now = FAX_AREA_TOWNS;
+    for (int sc = 0; sc < 14; sc++) CHECK(fax_seams_town(sc));
+    /* A region's screen with a person and no monster (the Trunk's spring
+     * $25) is no town; nor any room with no area, or no room. */
+    area_now = FAX_AREA_TRUNK;
+    CHECK(!fax_seams_town(0x25) && !fax_seams_town(3));
+    area_now = -1;
+    CHECK(!fax_seams_town(3));
+    area_now = FAX_AREA_EOLIS;
+    CHECK(!fax_seams_town(-1));
+}
+
+static void towns_stay_safe(void) {
+    /* Eolis $05, $04 and $03 (rooms 5, 4 and 3), room 4 the live game's: $03
+     * is the town's left end, so the seam between 4 and 3 is its edge. */
+    world();
+    lists();
+    area_now = FAX_AREA_EOLIS;
+    /* A Zozura walking right into the town, at every place past room 4's
+     * side: the original's wall (the hook leaves it), never let through,
+     * counted. Walking left into room 5, the Zozuras' own, it goes. */
+    for (int x = 241; x <= 255; x++)
+        for (int y = 96; y <= 176; y += 20) {
+            put(LIVE, SLOT, ZOZURA, (uint8_t)x, (uint8_t)y, true, true);
+            unsigned before = town_edge;
+            CHECK(test_hook(right_hook, SLOT, false) == 0 && ram[BLOCKS_RESULT] == 0xEE);
+            CHECK(!blk(LIVE)->through[SLOT] && town_edge == before + 1 && kept_out == 0);
+            put(LIVE, SLOT, ZOZURA, (uint8_t)x, (uint8_t)y, false, true);   /* wrapped past x 0 */
+            CHECK(test_hook(left_hook, SLOT, false) == 1 && blk(LIVE)->through[SLOT] == THROUGH_LEFT);
+            blk(LIVE)->through[SLOT] = 0;
+        }
+    /* Its shot too, flying right. */
+    put(LIVE, SLOT, FIREBALL, 0xF4, 150, true, true);
+    unsigned before = town_edge;
+    CHECK(test_hook(flier_hook, SLOT, true) == 0 && town_edge == before + 1 && !blk(LIVE)->through[SLOT]);
+    /* From a neighbour's tick toward the live game: the hero in room 3, the
+     * Zozura in room 4's copy, the same. */
+    memcpy(records[LIVE], ram, sizeof ram);
+    active_room = RIGHT_ROOM;
+    isolated = ticking = true, tick_room = LIVE;                     /* room 4's tick: the machine holds its RAM */
+    put(LIVE, SLOT, ZOZURA, 245, 160, true, true);
+    before = town_edge;
+    CHECK(test_hook(right_hook, SLOT, false) == 0 && town_edge == before + 1 && !blk(LIVE)->through[SLOT]);
+    memcpy(records[LIVE], ram, sizeof ram);
+    memcpy(ram, records[RIGHT_ROOM], sizeof ram);
+    isolated = ticking = false, tick_room = -1;
+    /* The people stay in: the walking man in room 3 (now the live game's)
+     * walking left past its side, toward the path, finds a wall; walking
+     * right into room 2, the town's next screen, he goes. */
+    live_room[2] = true, edge[RIGHT_ROOM][1] = 2, edge[2][0] = RIGHT_ROOM, edge[2][1] = -1;
+    memset(records[2] + ENTITIES, EMPTY, 8);
+    put(RIGHT_ROOM, 1, WALKING_MAN, 0xF8, 160, false, true);
+    cpu.y = 1;
+    before = town_edge;
+    CHECK(left_hook(MOVE_LEFT) == 0 && town_edge == before + 1 && !blk(RIGHT_ROOM)->through[1]);
+    put(RIGHT_ROOM, 1, WALKING_MAN, 245, 160, true, true);
+    CHECK(test_hook(right_hook, 1, false) == 1 && blk(RIGHT_ROOM)->through[1] == THROUGH_RIGHT);
+    CHECK(town_edge == before + 1);
+    /* In the towns' area every screen is a town's: people go both ways. */
+    area_now = FAX_AREA_TOWNS;
+    blk(RIGHT_ROOM)->through[1] = 0;
+    put(RIGHT_ROOM, 1, WALKING_MAN, 0xF8, 160, false, true);
+    CHECK(test_hook(left_hook, 1, false) == 1 && blk(RIGHT_ROOM)->through[1] == THROUGH_LEFT);
+    /* A full room is still full, counted as such. */
+    area_now = FAX_AREA_EOLIS;
+    for (unsigned k = 0; k < 5; k++) records[2][ENTITIES + k] = WOMAN;
+    blk(RIGHT_ROOM)->through[1] = 0;
+    put(RIGHT_ROOM, 1, WALKING_MAN, 245, 160, true, true);
+    before = town_edge;
+    unsigned full_before = kept_out;
+    CHECK(test_hook(right_hook, 1, false) == 0 && kept_out == full_before + 1 && town_edge == before);
+}
+
 int main(void) {
     the_original_wraps();
     the_ghost_hit_is_refused();
@@ -735,6 +859,8 @@ int main(void) {
     moves_between_frames();
     shots_out_of_the_view_go();
     blocks_and_the_record();
+    what_a_town_room_is();
+    towns_stay_safe();
     printf("seams_test: %u checks passed\n", checks);
     return 0;
 }

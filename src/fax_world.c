@@ -621,6 +621,7 @@ bool fax_world_ticking(void){return ticking;}
 static bool on_map(int id){return enabled&&area>=0&&id>=0&&id<(int)counts[area]&&rooms[id].owned;}
 int fax_world_seams_room(void){if(!enabled||active<0)return -1;return ticking?tick_id:cyc_mod_isolated()?-1:active;}
 int fax_world_active_room(void){return enabled?active:-1;}
+int fax_world_area(void){return enabled?area:-1;}
 bool fax_world_room_live(int id){return on_map(id)&&rooms[id].live;}
 int fax_world_joined(int id,int side){
     if(!on_map(id)||side<0||side>1)return -1;
@@ -656,8 +657,8 @@ static void room_status(int id,const char *line){long n=active;cyc_tcp_long(line
     /* The active room's slots are the live game's; a neighbour's its record's. */
     uint8_t slots[3][8];for(unsigned j=0;j<8;j++){bool here=n==active&&enabled;slots[0][j]=here?q(0x2cc+j):r->ram[0x2cc+j];slots[1][j]=here?q(0xba+j):r->ram[0xba+j];slots[2][j]=here?q(0xc2+j):r->ram[0xc2+j];}
     char seams[200];fax_seams_describe(r->seams,seams,sizeof seams);
-    snprintf(out,sizeof out,"\"room\":%ld,\"owned\":%u,\"event\":%u,\"xy\":[%d,%d],\"edges\":[%u,%u,%u,%u],\"live\":%u,\"ticks\":%llu,\"entities\":[%u,%u,%u,%u,%u,%u,%u,%u],\"x\":[%u,%u,%u,%u,%u,%u,%u,%u],\"y\":[%u,%u,%u,%u,%u,%u,%u,%u],%s",n,r->owned,events_area==area&&n<MAX_ROOMS?events[n]:255u,r->x,r->y,r->edges[0],r->edges[1],r->edges[2],r->edges[3],r->live,(unsigned long long)r->ticks,
-        slots[0][0],slots[0][1],slots[0][2],slots[0][3],slots[0][4],slots[0][5],slots[0][6],slots[0][7],slots[1][0],slots[1][1],slots[1][2],slots[1][3],slots[1][4],slots[1][5],slots[1][6],slots[1][7],slots[2][0],slots[2][1],slots[2][2],slots[2][3],slots[2][4],slots[2][5],slots[2][6],slots[2][7],seams);cyc_tcp_ok(id,out);}
+    snprintf(out,sizeof out,"\"room\":%ld,\"owned\":%u,\"event\":%u,\"xy\":[%d,%d],\"edges\":[%u,%u,%u,%u],\"live\":%u,\"ticks\":%llu,\"entities\":[%u,%u,%u,%u,%u,%u,%u,%u],\"x\":[%u,%u,%u,%u,%u,%u,%u,%u],\"y\":[%u,%u,%u,%u,%u,%u,%u,%u],%s,\"town\":%s",n,r->owned,events_area==area&&n<MAX_ROOMS?events[n]:255u,r->x,r->y,r->edges[0],r->edges[1],r->edges[2],r->edges[3],r->live,(unsigned long long)r->ticks,
+        slots[0][0],slots[0][1],slots[0][2],slots[0][3],slots[0][4],slots[0][5],slots[0][6],slots[0][7],slots[1][0],slots[1][1],slots[1][2],slots[1][3],slots[1][4],slots[1][5],slots[1][6],slots[1][7],slots[2][0],slots[2][1],slots[2][2],slots[2][3],slots[2][4],slots[2][5],slots[2][6],slots[2][7],seams,fax_seams_town((int)n)?"true":"false");cyc_tcp_ok(id,out);}
 static void probe(int id,const char *line){
     (void)line;uint8_t *before=NULL,*after=NULL;size_t nb=0,na=0,n=0;char err[256];
     bool saved=cyc_state_save(&before,&nb,err,sizeof err);

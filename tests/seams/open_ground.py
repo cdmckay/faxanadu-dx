@@ -27,10 +27,16 @@ touches off the hero where monsters come for him.
    read before. Walking right until it is wholly out of the view again, it
    keeps coming: awake, its X up by 20 or more in the next 160 frames.
 2. follow: under Ointment, walking left from room 4 into room 5 and back
-   right into room 3. The Zozuras, all awake, follow him: one of room 4's
-   into room 5 behind him, and one of room 5's back through room 4 into
-   room 3, where he waits. Each Zozura is followed through Seams' log of
-   moves (from room and slot, to room and slot).
+   right into room 3, the town's left end (a town room: fax_world_room's
+   "town"; rooms 4 and 5 are not). The Zozuras, all awake, follow him: one
+   of room 4's into room 5 behind him, and room 5's back into room 4 and on
+   to the town's edge, room 4's right side, where he waits at room 3's x 60.
+   There they turn back: a Zozura at room 4's x 236 or more is later 8
+   pixels or more back from its furthest, and Seams counts the town's edge
+   a wall. On no read, in 2,400 frames at most, is a Zozura in room 3 or a
+   move into it in the log, and none is ever past room 4's x 240. Each
+   Zozura is followed through Seams' log of moves (from room and slot, to
+   room and slot).
 3. walker: in Eolis's town, the hero on room 1 at x 12. Room 1's walking man
    is put in room 2 at its x 200, and room 2's walking woman (entity $45),
    whose script walks her 30 pixels, back 40, and so on, at its x 236. She
@@ -56,14 +62,20 @@ touches off the hero where monsters come for him.
    $4F, category 4, with its script, from the gate fixture) at room 5's x
    240, by the hero projected to its x 255: for 120 frames room 5 ticks on,
    with no failure, and the trigger stays (slice 0's hook).
-9. save-load: a Zozura straddling room 5's right side, saved by the game
+9. town-people: in Eolis's town, the hero on room 1 at x 248, by its right
+   side, and its walking man put at x 200 facing right. Room 8, right of it,
+   is no town (its Monodron): the seam is the town's edge. For 900 frames
+   at most the man comes to it (x 236 or more) and turns back, and is never
+   in room 8, past x 240, or in a move out of room 1, the town's edge
+   counted a wall.
+10. save-load: a Zozura straddling room 5's right side, saved by the game
    itself 20 frames after it was put there, mid-crossing (its mark in room
    5's block): two fresh games, headless, run 60 frames from that save to
    the same machine and the same record, the Zozura through into room 4.
 
-Screenshots: each part's moment (the Zozuras frozen, the wake, the train in
-room 3, the woman in his room, the fireball across the seam, the straddling
-Zozura with and without).
+Screenshots: each part's moment (the Zozuras frozen, the wake, the Zozuras
+turned back at the town's edge, the woman in his room, the fireball across
+the seam, the straddling Zozura with and without, the walking man kept in).
 """
 from pathlib import Path
 import shutil
@@ -86,7 +98,8 @@ ZOZURA, FIREBALL, WOMAN, WALKING_MAN, TRIGGER, EMPTY = 0x47, 0x0A, 0x45, 0x34, 0
 ROOMS, HEADER, BLOCK = 83, 32, 384                                   # fax_world.c's MAX_ROOMS, STATE_HEADER; Seams' block
 THROUGH_RIGHT = 2
 VIEW_W, PAD, ROOM_W, HUD = 424, 16, 256, 32                       # the view, its margin, a room, the status bar
-PARTS = ("dormant", "follow", "walker", "shot", "full", "straddle", "load", "person", "save-load")
+PARTS = ("dormant", "follow", "walker", "shot", "full", "straddle", "load", "person", "town-people", "save-load")
+EDGE = 240                                                           # the most a 16-wide hitbox's X reaches in a room
 
 
 @fax_e2e.recipe("seams-town-words", parent="eolis-town")
@@ -286,22 +299,23 @@ def main():
             start("follow", "eolis-zozuras", kit, {})
             seen = []                                     # every move, from Seams' log (its last 16, read often)
 
-            def moves():
-                for m in seams()["log"]:
+            def moves(log=None):
+                for m in seams()["log"] if log is None else log:
                     if m not in seen:
                         seen.append(m)
                 return seen
 
-            def where(start_room, start_slot):
+            def where(start_room, start_slot, fetch=True):
                 """Where the Zozura that was in this slot is now, by the moves."""
                 at = (start_room, start_slot)
-                for m in moves():
+                for m in moves() if fetch else seen:
                     if (m[0], m[1]) == at:
                         at = (m[2], m[3])
                 return at
 
             moves()
-            r4, r5_ = room(4), room(5)
+            r3, r4, r5_ = room(3), room(4), room(5)
+            assert r3["town"] and not r4["town"] and not r5_["town"], "room 3 is the town's left end"
             fives = [(5, s) for s in slot_of(r5_, ZOZURA)]
             fours = [(4, s) for s in slot_of(r4, ZOZURA)]
             assert len(fives) == 2 and len(fours) == 2
@@ -313,16 +327,47 @@ def main():
                   lambda: any(where(*z)[0] == 5 for z in fours), 900)
             game.shot("follow-room-5")
             tcp("action", name="right", frames=1200)
-            until("room 3", lambda: ram(SCREEN) == 3 and ram(HERO_X) > 40, 1200)
+            until("room 3", lambda: ram(SCREEN) == 3 and ram(HERO_X) > 60, 1200)
             tcp("action", name="right", frames=1)
             game.poke(kit)
-            until("one of room 5's Zozuras following him through room 4 into room 3",
-                  lambda: any(where(*z)[0] == 3 for z in fives), 2400)
-            game.shot("follow-room-3")
-            trail = [(m[0], m[2]) for m in moves() if m[4] == ZOZURA]
-            assert (5, 4) in trail and (4, 3) in trail and (4, 5) in trail, trail
-            print(f"ok: room 4's Zozuras follow him into room 5, and room 5's back through room 4 into room 3 "
-                  f"({[where(*z) for z in fives + fours]} now): moves {trail}")
+            # Every read from here: no Zozura in the town, none past room 4's
+            # side. Each slot of room 4 at the edge, until it leaves the slot.
+            edge0, furthest, turned, shot = seams()["town_edge"], {}, None, False
+            end = frame() + 2400
+            while frame() < end:
+                r3, r4, s, hero = batch(("fax_world_room", dict(room=3)), ("fax_world_room", dict(room=4)),
+                                        ("seams_state", {}), ("read_ram", dict(addr=SCREEN, len=1)))
+                before = len(seen)
+                moves(s["log"])
+                assert ZOZURA not in r3["entities"], ("a Zozura in the town", r3)
+                assert not [m for m in seen if m[4] == ZOZURA and m[2] == 3], ("a move into the town", seen)
+                for m in seen[before:]:
+                    if m[0] == 4:
+                        furthest.pop(m[1], None)
+                for k in slot_of(r4, ZOZURA):
+                    x = r4["x"][k]
+                    assert x <= EDGE, ("past room 4's side", k, x, r4)
+                    if x >= EDGE - 4 or k in furthest:
+                        furthest[k] = max(furthest.get(k, 0), x)
+                    if k in furthest and x <= furthest[k] - 8 and turned is None:
+                        turned = (k, furthest[k], x)
+                if furthest and not shot and len([k for k in slot_of(r4, ZOZURA) if r4["x"][k] >= EDGE - 24]) >= 2:
+                    game.shot("follow-town-edge")
+                    shot = True
+                back = [z for z in fives if where(*z, fetch=False)[0] == 4]
+                if turned and shot and back and s["town_edge"] > edge0:
+                    break
+                assert int(hero["hex"], 16) == 3, "he waits in room 3"
+                wait(4)
+            else:
+                raise AssertionError(f"the Zozuras at the town's edge: furthest {furthest}, turned {turned}, "
+                                     f"shot {shot}, room 5's {[where(*z) for z in fives]}")
+            trail = [(m[0], m[2]) for m in seen if m[4] == ZOZURA]
+            assert (4, 5) in trail and (5, 4) in trail and (4, 3) not in trail, trail
+            print(f"ok: room 4's Zozuras follow him into room 5, and room 5's back into room 4 "
+                  f"({[where(*z) for z in fives + fours]} now) to the town's edge, and turn back there "
+                  f"(slot {turned[0]} from x {turned[1]} to {turned[2]}; the edge a wall "
+                  f"{s['town_edge'] - edge0} times); none in room 3: moves {trail}")
 
         if args.wants("walker"):
             town = game.state("eolis-town")
@@ -481,6 +526,45 @@ def main():
             game.shot("person")
             print(f"ok: a person who talks when touched at room 5's x 240 leaves it ticking ({r5_['ticks'] - ticks} "
                   f"ticks in {frame() - at0} frames, no failure)")
+
+        if args.wants("town-people"):
+            town = game.state("eolis-town")
+            tlive = hw_ram(town.read_bytes())
+            men = [s for s in range(8) if tlive[ENTITIES + s] == WALKING_MAN]
+            assert tlive[SCREEN] == 1 and men, (tlive[SCREEN], men)
+            man = men[0]
+            path = edited("town-people", town, {HERO_X: 248, **kit, SPRITE_X + man: 200,
+                                                  FLAGS + man: tlive[FLAGS + man] | 1}, {})
+            if game.running():
+                game.close()
+            game.launch(at="eolis-town")
+            tcp("load_state", path=str(path))
+            r1, r8 = room(1), room(8)
+            assert r1["town"] and not r8["town"] and r8["live"] and r1["edges"][1] == 8, (r1, r8)
+            edge0, furthest, turned, shot = seams()["town_edge"], 0, None, False
+            seen, end = [], frame() + 900
+            while frame() < end:
+                r1, r8, s = batch(("fax_world_room", dict(room=1)), ("fax_world_room", dict(room=8)),
+                                  ("seams_state", {}))
+                seen.extend(m for m in s["log"] if m not in seen)
+                assert WALKING_MAN not in r8["entities"] and r1["entities"][man] == WALKING_MAN, (r1, r8)
+                assert not [m for m in seen if m[4] == WALKING_MAN], ("out of room 1", seen)
+                x = r1["x"][man]
+                assert x <= EDGE, ("past room 1's side", x)
+                if x >= EDGE - 4 or furthest:
+                    furthest = max(furthest, x)
+                if x >= EDGE - 4 and not shot:
+                    game.shot("town-people-edge")
+                    shot = True
+                if furthest and x <= furthest - 8 and turned is None:
+                    turned = (furthest, x)
+                if turned and s["town_edge"] > edge0:
+                    break
+                wait(4)
+            else:
+                raise AssertionError(f"the walking man at the town's edge: furthest {furthest}, turned {turned}")
+            print(f"ok: room 1's walking man comes to the town's edge (x {turned[0]}), turns back (x {turned[1]}) "
+                  f"and never walks into room 8 (the edge a wall {s['town_edge'] - edge0} times)")
 
         if args.wants("save-load"):
             base5 = record.base(5)

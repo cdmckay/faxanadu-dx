@@ -992,7 +992,9 @@ rom = []
 # of UpdateBehavior and UpdateState only for a sleeper not yet seen (it
 # stands still), and the edge and floor tests only for an awake mover at or
 # past a side, leaving Blocks_Result, Arg_PixelPosX/Y and the registers as
-# the game's own test does; the others observe (a draw's cells, a load).
+# the game's own test does (at a town's edge or a full room's it leaves the
+# test to the game); the others observe (a draw's cells, a load). It reads
+# bank 11's sprite lists (AREA_SPRITE_ADDRESSES) to tell a town room.
 # Between frames it writes rooms' sprite slots: moves (every
 # CurrentSprites_* byte to a free slot of the room entered, its old slot
 # $FF) and shots out of the view ($FF), in the live game by poke. Its state

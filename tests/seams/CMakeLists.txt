@@ -4,8 +4,9 @@ set(CMAKE_C_STANDARD 11)
 if(NOT NESRECOMP_ROOT)
     message(FATAL_ERROR "Set NESRECOMP_ROOT to the game's cycle engine checkout")
 endif()
-# fax_seams.c is included by the test, against a model of the machine.
-add_executable(seams_test seams_test.c)
+# fax_seams.c is included by the test, against a model of the machine;
+# fax_zone.c's zones are the game's own.
+add_executable(seams_test seams_test.c ../../src/fax_zone.c)
 target_include_directories(seams_test PRIVATE ../../src ${NESRECOMP_ROOT}/runner/include ${NESRECOMP_ROOT}/runner/cyc)
 if(NOT MSVC)
     target_compile_options(seams_test PRIVATE -Wall -Wextra)

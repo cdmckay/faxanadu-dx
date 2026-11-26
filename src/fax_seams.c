@@ -81,6 +81,13 @@
  *   - **Tiles from home.** A slot moving into a room with its entity takes
  *     that slot's CurrentSprites_PPUOffsets; otherwise Seamless paints it
  *     from the CHR of the room its tiles are in, which the block keeps.
+ *   - **Towns stay safe** (Cameron's call on #166). A town room is a screen
+ *     of a town (fax_zone.c's Eolis and the seven of AREA_TOWNS) whose list
+ *     in bank 11 holds no monster: in Eolis $01-$03 and $06-$07, not $04
+ *     and $05 (the Zozuras' path) or $08 (the Monodron's, by the way out).
+ *     A seam between a town room and one that isn't is a town's edge, and
+ *     a wall for every mover, as a full room's is: monsters and their shots
+ *     turn back there, and the people who walk stay in.
  *
  * A load within the area (Screen_LoadSpriteInfo, $C1B4, in play) has
  * Seamless forget every other room (fax_world_screen_loaded()). Each room's
@@ -91,6 +98,7 @@
  * they use". */
 #include "fax_seams.h"
 #include "fax_world.h"
+#include "fax_zone.h"
 #include "cyc_mod.h"
 #include "mod_runtime.h"
 #include "mod_function_hooks.h"
@@ -126,6 +134,8 @@
 #define HITBOX_WIDTHS         0xB4D1u   /* SPRITE_HITBOX_WIDTHS: a hitbox type's width less 1 */
 #define HITBOX_HEIGHTS        0xB4D8u   /* SPRITE_HITBOX_HEIGHTS: its height less 1 */
 #define CATEGORIES            0xB544u   /* SPRITE_CATEGORIES_BY_ENTITY */
+/* Bank 11 */
+#define AREA_SPRITE_ADDRESSES 0x8210u   /* per area, a pointer to its screens' sprite lists, a word a screen */
 /* Bank 15 */
 #define LOAD_SPRITE_INFO      0xC1B4u   /* Screen_LoadSpriteInfo: LDA $0100, PHA, LDX #$0B, JSR MMC1_UpdateROMBank */
 #define BLOCK_IMPASSABLE      0xE8D9u   /* BLOCK_PROPERTY_IMPASSABLE_MAP: 1 for a solid block property */
@@ -178,6 +188,7 @@ enum {
     PAD = 16,                               /* the view's margin: what an actor draws past its hitbox */
     VIEW_W = 424, VIEW_H = 208,             /* the view below the status bar */
     CELLS = 48, ROOMS = 83,
+    LIST_MAX = 16,                          /* entries a list may hold here (the ROM's longest has 5) */
 };
 
 /* A room's block in Seamless's record. */
@@ -205,7 +216,7 @@ static unsigned refused;                 /* weapon matches refused: they hit onl
 static int last_weapon_x = 0x7FFF;       /* the last refused one's weapon X, in 16 bits from the screen's left */
 static unsigned last_sprite_x, last_entity = 0xFF;
 /* Slice 1's counts, for the TCP command. */
-static unsigned steps, moves, kept_out, removed, woken, frozen, pushed_back;
+static unsigned steps, moves, kept_out, town_edge, removed, woken, frozen, pushed_back;
 static int last_woken[4] = {-1, -1, -1, -1};          /* room, slot, entity, step */
 enum { LOG = 16 };
 static int move_log[LOG][6];                          /* the last moves: from, slot, to, slot, entity, step */
@@ -294,6 +305,7 @@ static int touch_hook(uint16_t addr) {
 
 /* ---- slice 1: the rooms and their slots ---- */
 
+static uint8_t rom11(unsigned addr) { return fax_world_rom(11, addr); }
 static uint8_t rom14(unsigned addr) { return fax_world_rom(14, addr); }
 static uint8_t rom15(unsigned addr) { return fax_world_rom(15, addr); }
 static Block *block(int room) { return (Block *)fax_world_seams_block(room); }
@@ -389,6 +401,30 @@ static uint8_t column_cell(int room, int c, unsigned row) {
     return r < 0 ? 1 : solid(r, row | ((unsigned)c & 15), false);
 }
 
+/* A town room: a screen of a town's zone (fax_zone.c, by the dialogue's
+ * names: Eolis's $01-$08 and AREA_TOWNS's fourteen) whose sprite list, as
+ * Screen_LoadSpriteInfo reads it from bank 11's AREA_SPRITE_ADDRESSES (an
+ * entity and a block a sprite, to a $FF), holds no monster (category 0) or
+ * big enemy (7). The same rooms are exactly those with a door into a
+ * building and no monster on their list. */
+bool fax_seams_town(int room) {
+    int area = fax_world_area();
+    if (room < 0 || area < 0) return false;
+    const FaxZone *zone = fax_zone(fax_zone_at((unsigned)area, (unsigned)room));
+    if (!zone || zone->kind != FAX_ZONE_TOWN) return false;
+    unsigned at = AREA_SPRITE_ADDRESSES + 2u * (unsigned)area;
+    unsigned base = rom11(at) | rom11(at + 1) << 8;
+    unsigned list = rom11(base + 2u * (unsigned)room) | rom11(base + 2u * (unsigned)room + 1) << 8;
+    if (base < 0x8000u || list < 0x8000u || list >= 0xC000u) return false;
+    for (unsigned n = 0; n < LIST_MAX; n++) {
+        uint8_t e = rom11(list + 2 * n);
+        if (e == EMPTY) break;
+        unsigned c = category(e);
+        if (c == 0 || c == BIG) return false;
+    }
+    return true;
+}
+
 /* Whether `to` is full for a mover coming from slot s of `from`: its actors
  * (dormant ones included) and the movers on their way in from its sides
  * make ROOM_LIMIT. */
@@ -412,9 +448,11 @@ static bool awake_mover(unsigned s, int *room, Block **b) {
     return *b && ((*b)->awake >> s & 1) && mover(cyc_mod_peek(ENTITIES + s));
 }
 /* Whether a mover in slot s of `room` may go through into `to`, entering it
- * now (not already on its way): `to` runs and isn't full. */
+ * now (not already on its way): `to` runs, the seam is no town's edge (a
+ * town room on one side only), and `to` isn't full. */
 static bool may_enter(int to, int room, unsigned s, bool entering) {
     if (to < 0) return false;
+    if (entering && fax_seams_town(to) != fax_seams_town(room)) { ++town_edge; return false; }
     if (entering && full(to, room, s)) { ++kept_out; return false; }
     return true;
 }
@@ -812,7 +850,7 @@ static void deactivate(void) {
     last_weapon_x = 0x7FFF;
     last_sprite_x = 0;
     last_entity = 0xFF;
-    steps = moves = kept_out = removed = woken = frozen = pushed_back = 0;
+    steps = moves = kept_out = town_edge = removed = woken = frozen = pushed_back = 0;
     memset(move_log, 0, sizeof move_log);
     for (unsigned i = 0; i < 4; i++) last_woken[i] = -1;
     looping[0] = looping[1] = false;
@@ -839,17 +877,18 @@ static void seams_state(int id, const char *line) {
     }
     snprintf(fields, sizeof fields,
              "\"enabled\":%s,\"skipped\":%u,\"refused\":%u,\"last_weapon_x\":%d,\"last_sprite_x\":%u,\"last_entity\":%u,"
-             "\"steps\":%u,\"moves\":%u,\"kept_out\":%u,\"pushed_back\":%u,\"removed\":%u,\"woken\":%u,\"frozen\":%u,"
+             "\"steps\":%u,\"moves\":%u,\"kept_out\":%u,\"town_edge\":%u,\"pushed_back\":%u,\"removed\":%u,\"woken\":%u,\"frozen\":%u,"
              "\"view\":[%d,%d,%s],\"last_woken\":[%d,%d,%d,%d],\"log\":[%s]",
              enabled ? "true" : "false", skipped, refused, last_weapon_x, last_sprite_x, last_entity, steps, moves,
-             kept_out, pushed_back, removed, woken, frozen, vx, vy, view ? "true" : "false", last_woken[0],
+             kept_out, town_edge, pushed_back, removed, woken, frozen, vx, vy, view ? "true" : "false", last_woken[0],
              last_woken[1], last_woken[2], last_woken[3], log);
     cyc_tcp_ok(id, fields);
 }
 void fax_seams_tcp_setup(void) {
     cyc_tcp_register("seams_state",
                      "Seams: touches skipped in neighbouring rooms' copies, weapon hits refused for wrapping round the "
-                     "screen; actors moved through seams, kept out of full rooms, shots gone out of the view, "
+                     "screen; actors moved through seams, kept out of full rooms, kept at a town's edge, shots gone "
+                     "out of the view, "
                      "sleepers woken and kept frozen, the view, the last move and wake",
                      seams_state);
 }

@@ -32,6 +32,10 @@ void fax_seams_captured(uint8_t *block, int how);
  * whose origin crossed a seam move to the room they entered; shots wholly
  * out of the view go. */
 void fax_seams_step(void);
+/* Whether room `room` of Seamless's area is a town room: a screen of a
+ * town's zone (fax_zone.c) whose sprite list holds no monster. A seam
+ * between a town room and one that isn't is a wall for every mover. */
+bool fax_seams_town(int room);
 /* Whether a block from a save state is one Seams could have written, for a
  * map of `rooms` rooms. */
 bool fax_seams_valid(const uint8_t *block, unsigned rooms);

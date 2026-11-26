@@ -45,6 +45,9 @@ enum { FAX_WORLD_SEAMS_BYTES = 384 };
  * Seamless off or before it has a room. */
 int fax_world_seams_room(void);
 int fax_world_active_room(void);
+/* The area (Area_CurrentArea) whose screens the rooms are: -1 with Seamless
+ * off or before it has a map. */
+int fax_world_area(void);
 /* The room joined to `room` on `side` (0 left, 1 right) whose actors run
  * (started from its list): -1 for none, an arena, or one not started. */
 int fax_world_joined(int room, int side);

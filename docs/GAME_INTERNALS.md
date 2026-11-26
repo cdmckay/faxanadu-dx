@@ -801,11 +801,11 @@ What a feature can rely on, and the traps:
   chase a copy of him held at that room's edge and come through the seam to
   him (Seams, slice 1: *Seams: actors across rooms*). So where they are when
   he arrives depends on how long he took, and what he has seen follows him:
-  Eolis `$04`'s Zozuras and `$05`'s follow him from room to room. Eolis
-  `$08`'s Monodron used to wait at its left edge, the seam with the town,
-  and knock a hero who crossed and stopped there back onto `$01`, at x
-  239-255 (#130), so a walk that stops at an X, reading no screen, can stop
-  on the wrong one. A test that walks in should put them in place in its save
+  Eolis `$04`'s Zozuras and `$05`'s follow him from room to room, up to the
+  town's edge. Eolis `$08`'s Monodron waits at its left edge, the seam with
+  the town, which no monster crosses (towns stay safe), and knocks a hero who
+  crosses and stops there back onto `$01`, at x 239-255 (#130), so a walk
+  that stops at an X, reading no screen, can stop on the wrong one. A test that walks in should put them in place in its save
   state, as `tests/damage/damage_numbers.py` does, or come in by a door, whose
   load spawns them fresh, as the `eolis-zozuras` and the keys test's
   `keys-eolis-exit` fixtures do. In Seamless the walk itself has no scroll: a
@@ -2740,6 +2740,44 @@ apart:
   offset of `<AREA>_AREA_DATA`, five more offsets: block attributes, block
   properties, scroll data, door locations, door destinations
   (`Game_LoadAreaTable` adds `$80` to each high byte).
+
+### Eolis's screens, and town rooms
+
+Eolis is the one town that shares scroll links with ground that has
+monsters. Its screens, left to right as the scroll data joins them, with
+their lists (bank 11) and doors (bank 3; a building's kind is its
+`BUILDING_PALETTES` index):
+
+| Screen | Holds | Doors |
+|---|---|---|
+| `$07` | The King's guard (`$42`, walks) | The King's room |
+| `$06` | The nurse (`$44`, `SPRITE_NPC_NURSE`, walks) | The magic shop, martial arts |
+| `$05` | Two Zozuras | |
+| `$04` | Two Zozuras | |
+| `$03` | The smoking man (`$3D`, stands) | The key shop, the tool shop |
+| `$02` | The walking woman (`$45`) | A house, the temple |
+| `$01` | The walking man (`$34`) | The meat shop |
+| `$08` | A Monodron | The way out (`$FF`, the "J" key) |
+
+Screen 0, outside the gate, is joined to nothing; its door leads to `$01`.
+So walking left from the gate's side, the town (`$01-$03`) gives onto the
+Zozuras' path (`$04-$05`), then the King's end (`$06-$07`); right of
+`$01`, the Monodron guards the way out.
+
+**A town room** (Seams, *Seams: actors across rooms*) is a screen of a
+town's zone (`fax_zone.c`: Eolis's `$01-$08`, and every screen of
+`AREA_TOWNS`) whose list holds no monster (category 0) or big enemy (7):
+Eolis `$01-$03` and `$06-$07`, and all 14 of `AREA_TOWNS` (four of them
+list no one). Decoded from the ROM, the same rooms are exactly those with a
+door into a building and no monster on their list: every region screen
+with a building's door has monsters (the Trunk's `$06` and `$2D`, the
+Mist's `$06`, `$0D`, `$16`, `$1F` and `$29`, Dartmoor's `$02`, `$03`,
+`$08`, `$1E` and `$1F`). A region screen can list a person and no monster
+(the Trunk's springs, `$25`, `$3D` and `$3F`: a person and the spring), so
+people alone don't make a town. Town edges that are seams are only
+Eolis's: `$03`|`$04`, `$05`|`$06` and `$01`|`$08`. The other towns' two
+screens join each other, and their outer edges are
+`AREA_TOWN_TRANSITIONS_DATA`'s loads.
 
 ## Entrances and zone respawn
 
@@ -4755,12 +4793,21 @@ Seamless's seams.
   Seamless then forgets every other room of the area, so each is decoded and
   spawned fresh from its list as it comes near, as the original does every
   screen it loads.
+- **Towns stay safe.** A seam between a town room and one that isn't (*Eolis's
+  screens, and town rooms*) is a wall for every mover, as a full room's is:
+  Seams leaves the edge test to the game, which stops the sprite at its
+  screen's side and turns it round (a shot is removed). Monsters and their
+  shots stay out of a town, and its people in. Only Eolis has such seams.
 - **What crossing changes.** A Zozura (`BSCRIPTS_ENEMY_ZOZURA`: face the hero,
   walk 60 ticks at `$60`/256 pixels a frame, again) that has seen him comes
-  room after room. From Eolis `$05` four Zozuras followed him through `$04`
-  into `$03`, the left end of the town: Seamless joins the town to the screens
-  past it, so monsters can now follow him into it. Shots fly on through a
-  seam and go once wholly out of the view by 16 pixels.
+  room after room. From Eolis `$05` Zozuras follow him through `$04` to `$03`,
+  the left end of the town, and turn back at its edge: pressed against it,
+  each walks into the wall, turns, walks off for the rest of its 60 ticks,
+  faces him again and comes back, so they pace at the town's edge while he
+  stays in. Before towns stayed safe four of them followed him into `$03`,
+  Seamless joining the town to the screens past it. The walking man on
+  `$01`, faced toward `$08`, paces at its right side the same way. Shots fly
+  on through a seam and go once wholly out of the view by 16 pixels.
 
 ## Graphics bugs
 
@@ -4985,10 +5032,11 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   [SEAMLESS-COMBAT.md](SEAMLESS-COMBAT.md)). Slice 1, seams are open
   ground: monsters, their shots and the people who walk go through
   Seamless's seams side by side, both ways, between any two rooms, dormant
-  until first seen; a room takes no more once it holds 5; they are drawn
-  whole across a seam, from their home room's tiles where the room they
-  enter has none; a load forgets the other rooms (*Seams: actors across
-  rooms*). Its hooks: bank 14's `Sprites_UpdateAll` entry and loop end,
+  until first seen; a room takes no more once it holds 5; a town's edge
+  (a seam between a town room and one that isn't, from `fax_zone.c`'s zones
+  and bank 11's lists) is a wall for them all; they are drawn whole across a
+  seam, from their home room's tiles where the room they enter has none; a
+  load forgets the other rooms (*Seams: actors across rooms*). Its hooks: bank 14's `Sprites_UpdateAll` entry and loop end,
   `Sprites_UpdateBehavior`'s and `CurrentSprite_UpdateState`'s entries, the
   edge and floor tests at `$86BD`, `$86A7`, `$873A`, `$842A` and `$855E`; bank
   15's `Sprite_Draw_Standard`, `Sprite_Draw_FlippedHoriz` and
@@ -4998,7 +5046,8 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   Seamless's record (version 5): a wake bit and a through mark per slot, the
   tiles' room, and its last loop's OAM owners and cells past its sides,
   which `fax_world_present` paints. Seamless gives it `fax_world_view()`,
-  each room's place, RAM and block, and the joined rooms. With the remaster
+  each room's place, RAM and block, the joined rooms, and its area
+  (`fax_world_area()`). With the remaster
   off nothing of it runs. Slice 0, seams lose nothing, is two hooks in bank
   14's sprite loop:
   - `CurrentSprite_CheckHitPlayer`'s entry (`$890A`) returns at once in a
