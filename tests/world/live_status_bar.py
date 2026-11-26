@@ -16,8 +16,9 @@ gold a frame late, as the game draws it (UI_DrawGoldValue queues it, the next
 NMI sends it). The setup edits save-state RAM (external prerequisites, not
 coverage): where a shop's door leads, the gold, HP and MP.
 
-tool-shop  Eolis's tool shop with 700 Golds: Up opens the buy list (Quick
-           shops), Down to Deluge (400), a save state there. A buys it:
+tool-shop  Eolis's tool shop with 700 Golds: Up, his greeting, Buy and its
+           line open the buy list (Quick shops, fax_e2e's shop_list()), Down
+           twice to Deluge (400), a save state there. A buys it:
            on every frame of the count-down the band's digits are the gold
            the game had that frame or the one before, so they read every
            amount from 700 down to 300, 10 a frame, on frames in a row, all
@@ -60,7 +61,7 @@ TOOL_SHOP_SCREEN, TOOL_SHOP_DOOR = 3, 0x9A                       # EOLIS_DOOR_LO
 KINGS_SCREEN, KINGS_DOOR, KINGS_STAIRS, RING_OF_ELF = 7, 0x98, 48, 0x80
 PLEA = 0x35                                                       # the King's message
 ZONE_NAMES = "faxanadu.zone-names"                                # its record: the area and screen, at 5 and 6
-START_GOLD, DELUGE_PRICE, DELUGE_ROW, GIFT = 700, 400, 1, 3000                 # Eolis's tools: dagger, Deluge
+START_GOLD, DELUGE_PRICE, DELUGE_ROW, GIFT = 700, 400, 2, 3000                 # Eolis's tools: dagger, potion, Deluge
 FULL = 80
 HUD, NATIVE_W, VIEW_W, ITEM = 32, 256, 424, 16
 HUD_X = (VIEW_W - NATIVE_W - ITEM) // 2 + ITEM                    # the band's column 0 (fax_world_hud_x): 92
@@ -106,22 +107,24 @@ def go_in(g, name, screen, door, writes):
 
 @fax_e2e.recipe("live-hud-deluge", parent="eolis-meat-shop")
 def _deluge(g):
-    """At Eolis's tool shop's counter with 700 Golds: Up opened the buy list
-    and Down put the cursor on Deluge, and the list waits for a button."""
+    """At Eolis's tool shop's counter with 700 Golds: Up and the conversation
+    opened the buy list and Down put the cursor on Deluge, and the list waits
+    for a button."""
     def waiting(what):
         """The buy list up, drawn, and waiting for a button (as Quick shops' test waits on it)."""
-        g.until(what, lambda: (lambda s: s["shown"] == "buy" and s["list_up"] and s["hint"] is not None)(
-            g.tcp("shops_state")), 900)
+        g.until(what, lambda: (lambda s: s["shown"] == "buy" and s["list_up"])(g.tcp("shops_state")), 900)
         waits = g.tcp("shops_state")["waits"]
         g.until("the list to wait for a button", lambda: g.tcp("shops_state")["waits"] > waits, 300)
         g.wait(2)
 
     go_in(g, "tool-shop", TOOL_SHOP_SCREEN, TOOL_SHOP_DOOR, gold_bytes(START_GOLD))
     walk("left")                                                    # to the counter
-    g.act("up", 4, 6)
-    waiting("the buy list")
-    g.act("down", 4, 6)
-    waiting("the buy list again")
+    fax_e2e.shop_list("buy")
+    g.wait(2)
+    for row in range(1, DELUGE_ROW + 1):
+        g.act("down", 4, 6)
+        waiting("the buy list again")
+        assert g.tcp("shops_state")["cursor"] == row, g.tcp("shops_state")
     s = g.tcp("shops_state")
     assert s["cursor"] == DELUGE_ROW, s
     assert s["list"][DELUGE_ROW] == 0x60 and s["prices"][DELUGE_ROW] == DELUGE_PRICE, s

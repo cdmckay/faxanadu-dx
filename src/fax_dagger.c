@@ -61,6 +61,10 @@ void fax_dagger_step(void) {
     served = true;
 }
 
+/* The Hand Dagger's Y reach as the game reads it: the taller one once it is
+ * served, else the stock byte. Punches give the fist the same (fax_punch.c). */
+uint8_t fax_dagger_reach_y(void) { return served ? TALL_REACH_Y : STOCK_REACH_Y; }
+
 /* The feature keeps no state of its own, so its record is empty. A load calls
  * the setter whether or not the save has a record, and that is where the
  * reach is served again. */

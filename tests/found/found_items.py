@@ -14,10 +14,10 @@ the check is), what the hero holds, Quests, a screen's enemies cleared, the
 random-item visit counter, and the Elixir spent (Recharging items' record).
 
 shops      No tool shop lists the Wing Boots, the Hour Glass or the Elixir:
-           Eolis's (Hand Dagger, Deluge), Forepaw's (Long Sword, Studded
-           Mail, Small Shield), the one after Mascon on Mist $0D (Death) and
-           Conflate's (Giant Blade, Magic Shield), each its own list less
-           those three and its Red Potion.
+           Eolis's (Hand Dagger, Red Potion, Deluge), Forepaw's (Long Sword,
+           Studded Mail, Small Shield, Red Potion), the one after Mascon on
+           Mist $0D (Death, Red Potion) and Conflate's (Giant Blade, Magic
+           Shield, Red Potion), each its own list less those three.
 boots      Trunk $2D, where a pair lay one counted visit in four, has none on
            8 visits, at every count, and the count stays put; the map has no
            dot for it. Zorugeriru's pair still drops: with him gone, they lie
@@ -52,7 +52,7 @@ from harness import (AREA, AREA_REGION, AREA_SAVED_AREA, AREA_SAVED_SCREEN, BUIL
                      MESSAGE_ID, PLAYER_IS_DEAD, PLAYER_SAVED_POS, POS_X, POS_Y, SCREEN_SAVED_PALETTE, TOWNS,
                      fixture, parse_args)
 import fax_e2e  # noqa: E402
-from fax_e2e import act, choose_file, page_through, tcp, title_menu, type_out, until, walk  # noqa: E402
+from fax_e2e import act, choose_file, page_through, shop_list, tcp, title_menu, type_out, until, walk  # noqa: E402
 
 PARTS = ("shops", "boots", "glass", "spring", "original")
 PACKAGE = ("faxanadu.dx", "dx")
@@ -190,15 +190,22 @@ def main():
         g.until("the building", lambda: g.ram(AREA) == BUILDINGS and g.settled(), 600)
         assert g.ram(0x63) == building, (g.ram(0x63), building)
         g.wait(40)
-        walk("left")                                                # to the counter
+        # To the counter: walk() stops when he stops, which a frame or two
+        # still frozen from the door reads as (#171's suite: short of the
+        # counter, Up reached no one). So walk again until a walk ends where
+        # the last one did, the counter's X, read from the game.
+        last = None
+        for _ in range(6):
+            walk("left")
+            if g.ram(POS_X) == last:
+                return
+            last = g.ram(POS_X)
+        raise AssertionError(f"no counter: x {g.ram(POS_X)}")
 
     def buy_list(name):
-        """Up on the Tool Seller: Quick shops' buy list, waiting for a button."""
-        g.act("up", 4, 6)
-        until("the buy list", lambda: (lambda s: s["shown"] == "buy" and s["list_up"] and s["hint"] is not None)(
-            tcp("shops_state")), 900)
-        waits = tcp("shops_state")["waits"]
-        until("the list to wait for a button", lambda: tcp("shops_state")["waits"] > waits, 300)
+        """Up on the Tool Seller, his greeting, Buy and its line (Quick shops,
+        shop_list()): his buy list, waiting for a button."""
+        shop_list("buy")
         g.wait(20)                                                  # the list and the portrait drawn
         g.shot(name)
         s = tcp("shops_state")
@@ -231,12 +238,13 @@ def main():
             if part == "shops":
                 lists = (
                     ("eolis", EOLIS, 3, 0x9A, 0x04, PALETTE_EOLIS, REGION_EOLIS,
-                     [HAND_DAGGER, DELUGE], [400, 400]),
+                     [HAND_DAGGER, ITEM | RED_POTION, DELUGE], [400, 160, 400]),
                     ("forepaw", TOWNS, 0x02, 0x9D, 0x0F, PALETTE_TOWN, REGION_TRUNK,
-                     [LONG_SWORD, STUDDED_MAIL, SMALL_SHIELD], [1600, 2500, 1100]),
-                    ("after-mascon", MIST, 0x0D, 0x7C, 0x20, PALETTE_MIST, REGION_MIST, [DEATH], [9800]),
+                     [LONG_SWORD, STUDDED_MAIL, SMALL_SHIELD, ITEM | RED_POTION], [1600, 2500, 1100, 400]),
+                    ("after-mascon", MIST, 0x0D, 0x7C, 0x20, PALETTE_MIST, REGION_MIST,
+                     [DEATH, ITEM | RED_POTION], [9800, 300]),
                     ("conflate", TOWNS, 0x09, 0x99, 0x2D, PALETTE_TOWN, REGION_BRANCH,
-                     [GIANT_BLADE, MAGIC_SHIELD], [8500, 9800]),
+                     [GIANT_BLADE, MAGIC_SHIELD, ITEM | RED_POTION], [8500, 9800, 1000]),
                 )
                 for name, area, screen, door, building, palette, region, want, prices in lists:
                     enter_shop(shop, name, area, screen, door, building, palette, region)

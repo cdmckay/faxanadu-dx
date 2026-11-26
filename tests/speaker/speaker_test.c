@@ -98,9 +98,9 @@ static void everyone_else(void) {
         { FAX_PORTRAIT_NURSE, 0x0C, TOWNS, 0x01, "Nurse" }, { FAX_PORTRAIT_NURSE, 0x11, TOWNS, 0x03, "Nurse" },
         { FAX_PORTRAIT_NURSE, 0x1B, TOWNS, 0x05, "Nurse" },
         { FAX_PORTRAIT_NURSE, 0x31, TOWNS, 0x0A, "Nurse" },              /* Daybreak's meat shop */
-        { FAX_PORTRAIT_MEAT_SALESMAN, 0x00, EOLIS, 0x01, "Potion Seller" },
-        { FAX_PORTRAIT_MEAT_SALESMAN, 0x0E, TOWNS, 0x02, "Potion Seller" },
-        { FAX_PORTRAIT_MEAT_SALESMAN, 0x3E, TOWNS, 0x0C, "Potion Seller" },
+        { FAX_PORTRAIT_MEAT_SALESMAN, 0x00, EOLIS, 0x01, "Meat Seller" },
+        { FAX_PORTRAIT_MEAT_SALESMAN, 0x0E, TOWNS, 0x02, "Meat Seller" },
+        { FAX_PORTRAIT_MEAT_SALESMAN, 0x3E, TOWNS, 0x0C, "Meat Seller" },
         { FAX_PORTRAIT_TOOLS_SALESMAN, 0x04, EOLIS, 0x03, "Tool Seller" },
         { FAX_PORTRAIT_TOOLS_SALESMAN, 0x14, TRUNK, 0x06, "Tool Seller" },  /* "stores outside town" */
         { FAX_PORTRAIT_TOOLS_SALESMAN, 0x20, MIST, 0x0D, "Tool Seller" },
@@ -251,7 +251,7 @@ static void through_the_scroll(void) {
     inside(0x0E, TOWNS, 0x02);
     scroll_x = 256;
     begin_script(FAX_PORTRAIT_MEAT_SALESMAN);
-    CHECK(tab(&t) && !strcmp(t.name, "Potion Seller"));
+    CHECK(tab(&t) && !strcmp(t.name, "Meat Seller"));
     scroll_x = 0;                                    /* the other table: no frame there */
     CHECK(!tab(&t));
     /* Two rows down, in the lower table, which mirrors the upper one. */

@@ -61,7 +61,7 @@ STATES = {
     "recharging-items": ("recharge_state", "enabled"), "charges": ("charges_state", "enabled"),
     "item-box": ("item_box_state", "enabled"),
     "mana-refill": ("mana_state", "enabled"),
-    "magician-lesson": ("lesson_state", "enabled"), "potion-sellers": ("potions_state", "enabled"),
+    "magician-lesson": ("lesson_state", "enabled"),
     "double-gold": ("gold_state", "enabled"),
     "forgiving-jumps": ("forgiving_jumps_state", "enabled"), "falling-pose": ("falling_pose_state", "enabled"),
     "ladder-fixes": ("ladders_state", "enabled"), "ladder-hold": ("ladder_hold_state", "enabled"),
@@ -83,6 +83,7 @@ STATES = {
     "select-menu": ("select_menu_state", "enabled"),
     "controls": ("controls_state", "enabled"), "use-item": ("use_item_state", "enabled"),
     "seamless-world": ("fax_world", "enabled"), "seams": ("seams_state", "enabled"),
+    "punches": ("punches_state", "enabled"),
 }
 START_CHOICE = 0x687                                                # DAT_0687: 0 Start, 1 Continue
 PASSWORD_COL, PASSWORD_ROW, PASSWORD_MAX, PASSWORD_LENGTH = 0x662, 0x663, 0x665, 0x666

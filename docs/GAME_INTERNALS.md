@@ -120,7 +120,7 @@ between actions.
 | `$04` | addr | `CHECK_UPDATE_PLAYER_TITLE`: if `NextPlayerTitle` differs, take it and jump; else go on |
 | `$05` | amount (16-bit) | Pay (`IScriptAction_SpendGold`, `$835B`): reads the amount into `Temp_0202/3`, copies it to `Temp_Int24`/`_M` (`$8367`) for `IScripts_CheckEnoughMoney`; too little, "This is not enough Golds." (message 3) and the script ends; else `IScripts_ProgressivelySubtractGold` takes it, 10 Golds a frame, then holds 60 frames (*Gold*, "Taken over time") |
 | `$06` | temple | Set spawn point. **Only raises** `TempleSpawnPoint` |
-| `$07` | item | Add an item (`IScriptAction_AddInventoryItem`, `$839F`): its `IScripts_LoadByte`, then at `$83A2` `PHA`, `PHA`, `Player_AddToInventory` (no room check: a full list loses its last entry), and the item's picture and name in the dialogue box, with the blinking ▲, until A (only A: `BPL` on `Joy1_ChangedButtonMask`); then the next action. Entered at `$83A2` with the item in A, it gives any item: the Potion Sellers do |
+| `$07` | item | Add an item (`IScriptAction_AddInventoryItem`, `$839F`): its `IScripts_LoadByte`, then at `$83A2` `PHA`, `PHA`, `Player_AddToInventory` (no room check: a full list loses its last entry), and the item's picture and name in the dialogue box, with the blinking ▲, until A (only A: `BPL` on `Joy1_ChangedButtonMask`); then the next action. Entered at `$83A2` with the item in A, it gives any item (the Potion Sellers did, #127, until #179) |
 | `$08` | items | A shop's buy list (see *Shops*) |
 | `$0F` | addr | The shops' Buy/Sell menu: message `$10`, then a cursor on its lines 1 and 3. A on the first choice jumps to addr, A on the second goes on to the next action, B ends the script |
 | `$0A` | MP | Add MP (`IScriptAction_AddMP`, `$8580`), 1 at a time with its sound |
@@ -162,7 +162,14 @@ two lines apart, a column left of the text. The message ID is the immediate of
 its first instruction, `LDA #$10`, at `$8631`: a read override there shows any
 message instead, so Save files sets it for its one menu and puts it back at
 the end of the frame, once the menu has read it. Immediates are read at run
-time, so overriding one works.
+time, so overriding one works. The shops run it too, with the remaster on as
+off (#163), and with its own line, since Save files' override is set only
+for the Guru's menu. Its cursor, like the shop lists', is a sprite:
+`Menu_UpdateAndDraw` ends in `UI_DrawPromptInputSymbol` (metasprite `$AD`),
+OAM tile `$72` at x `TextBox_X` * 8 + 8, drawn on every frame the menu waits
+(each wait loop resets the sprites first, through
+`IScripts_UpdatePortraitAnimation`), and on no other: in a frame log, the
+frames a menu or list reads the pad.
 
 ### Portraits
 
@@ -359,6 +366,25 @@ faxanatools' `messages.py` decodes and encodes them; `fax_travel.c`'s
   A shop's list covers the dialogue box and rises above it; picking from it
   (`Maybe_Shop_DrawTextBox`) closes the list and opens the dialogue box again.
   The portrait box stays up throughout.
+- **Seamless shows a script's boxes only while `TextBox_Closed` is 0**
+  (`fax_world_present`, `script_mode`): then it copies the native picture's
+  rectangle of the box last opened (`TextBox_X` to `_Height`) over the world,
+  and the portrait's (2,14, 8 x 10) while `IScript_PortraitID` is below
+  `$80`. So a `TextBox_Close` in the middle of a conversation blanks every box
+  and the portrait at once, for the frames until the next `TextBox_Open`
+  sets it to 0 again: in the stock view the portrait stays and only the box
+  clears, row by row. In the game only the shops close a box mid-script
+  (`Maybe_Shop_DrawTextBox`, and the sale's `TextBox_Close` at `$86F8`), and
+  Quick shops skips both (#163): before, B in a list closed it and opened the
+  dialogue box before the end, and the portrait went for 9 frames, came back
+  for 18, and went (the portrait's flicker). A box opened over another without a
+  close shows only its own rectangle in Seamless; the other's rows stay in the
+  nametable until `IScriptAction_EndScript` clears both boxes' area.
+- **A box is drawn when the PPU buffer is empty**: `PPUBuffer_ReadOffset`
+  (`$1F`) equals `PPUBuffer_WriteOffset` (`$20`) once the NMIs have sent what
+  `TextBox_Open`, a list's rows or a line's letters queued. A menu's cursor is
+  drawn the frame its wait starts, while the rows it points at may still be
+  queued: wait for both before a screenshot or a press on what shows.
 - `TextBox_Open` and `TextBox_Close` only queue nametable writes in the PPU
   buffer, top row first, and the queue drains over the next NMIs (waiting when
   it is full), so a box appears and goes over a few frames. `TextBox_Closed`
@@ -479,10 +505,9 @@ What a feature can rely on, and the traps:
   files shares the slot and adds 5 (4 step bytes and the menu's operand), or
   8 if Guru travel's steps are not served (its own 3-byte SAY): 61 to 64 of
   64. Block, the quest log, Recharging items' Elixir lines and its items'
-  lessons, the Magician's
-  lesson and the Potion Sellers borrow Guru travel's SAY step and slot (the
-  lesson and the Potion Sellers its ASK step too), and Quick shops and Double
-  gold take none. `tools/check_allocations.py` counts every byte claimed in
+  lessons, and the Magician's lesson borrow Guru travel's SAY step and slot
+  (the lesson its ASK step too), and Quick shops and Double gold take none.
+  `tools/check_allocations.py` counts every byte claimed in
   `mods/allocations.toml` once and fails past 64, so the claims, now 64, are
   the budget. A new message for the text box should share the slot, and
   anything more needs the table made larger or Guru travel's slot cut to its
@@ -564,6 +589,17 @@ What a feature can rely on, and the traps:
   half pressed, and takes the first value it sees for where an axis rests, so
   one first seen pushed never lets go. The attach opens the controllers and
   drops their hot-plug event, which would open them again after the press.
+- **A hidden window opens only virtual controllers** (#168). It lets
+  controller input through without focus
+  (`SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS`, `cyc_sdl.c`), for the TCP
+  pad, so a real pad it opened reached the game whenever anyone used it:
+  while Cameron played on potato with an Xbox Series X controller, an idle
+  test game saw his buttons, full runs failed in unrelated parts, and the
+  fixtures saved then kept the stray input (`entrances.edges-mist` failed
+  every time until `build-tests/fixtures` was deleted). `open_pads` asks
+  `cyc_input_opens_pad`: a visible window opens every game controller, a
+  hidden one only those `SDL_JoystickIsVirtual` reports, and logs each real
+  one it leaves closed ("controller not opened (hidden window)").
 - **Controllers by position.** The game links sdl2-compat, which maps a
   Nintendo-layout pad (a Switch Pro, an 8BitDo in Switch mode) by its printed
   letters, as SDL2 did, unless `SDL_HINT_GAMECONTROLLER_USE_BUTTON_LABELS` is
@@ -670,6 +706,19 @@ What a feature can rely on, and the traps:
 - A save state's RAM is in its `HW  ` chunk at offset 23, 2 KiB, with no
   checksum. Edit it to set up test fixtures (`fixture()` in
   `tests/e2e/fax_e2e.py`).
+- **A record of a feature that is gone is skipped.** Each mod record is a
+  `MOD ` chunk named by its id (`nes_mod_register_savestate_hook`). A load
+  (`cyc_state.c`) asks only the features registered now: each validates its
+  own record, or its absence, and then takes it; a chunk no feature claims is
+  never read. So a state saved before a feature was removed still loads,
+  without a word, and the game goes on from its RAM alone. What the record
+  put back is not: a removed feature's read overrides and the steering of its
+  hooks. Checked when the Potion Sellers went (#179) with master's states in
+  Eolis's meat shop: at the counter, and after buying a potion, both load and
+  he sells his dried meat. One saved with his question up loads, A on it
+  ends the conversation, but B leaves the script on Guru travel's ASK step's
+  `$AE07`, the free ROM's `$FF`, and the conversation never ends (the hero
+  cannot move). Save files hold no such state: a file saved then continues.
 - A site at a **branch** sees the flags the instruction before set, and can
   steer the branch by changing them (and the register they came from) with
   `cyc_mod_set_regs`, then returning 0. Forgiving jumps does this twice, so
@@ -1204,8 +1253,10 @@ and starts a new line unless that is `$FF` (the end: `MessageID` 0) or `$FC`
 The sprite loop calls `Player_HitSpriteWithWeapon` (`$8804`) for each live
 sprite every frame, except while the sprite's hit counter counts down. It
 lands a hit while `Player_AttackPhaseAnimFrame` is 1 or 2, on a visible enemy
-in reach (`Sprites_IsSpriteOutOfWeaponRange`; see *Weapon reach* below). A
-hit builds its damage in `Temp_00` (`$00`):
+in reach (`Sprites_IsSpriteOutOfWeaponRange`; see *Weapon reach* below), and
+only with a weapon in hand: `$8814` `LDA Player_CurWeapon`, `$8817` `BMI
+RETURN_87CA` returns for `$FF`, no weapon (see *Punches* for the remaster's
+fist). A hit builds its damage in `Temp_00` (`$00`):
 
 | Address | Code | Does |
 |---|---|---|
@@ -1236,6 +1287,11 @@ and the Glove adds its bonus after either.
   still `Player_CurWeapon`, and X the sprite being hit.
 - `WEAPON_STRENGTHS` is read only here. Magic damage is another routine
   (`Player_HitEnemyWithMagic`), where the Magical Rod adds 50%.
+- Neither table has an entry for no weapon. With Y `$FF` the two reads land
+  past them: `WEAPON_STRENGTHS,Y` on `$B8A4`, the high byte of
+  `PTR_ARRAY_PRG14__b89f`'s third pointer (`$B8`, 184), and
+  `WEAPON_TO_GLOVE_STRENGTH,Y` on `$89C6`, code (`$02`). The original never
+  gets there without a weapon; Punches does, and replaces both (*Punches*).
 
 | Address | Name | Notes |
 |---|---|---|
@@ -1327,8 +1383,12 @@ reach:
   | Long Sword, Giant Blade, Dragon Slayer | `$10` | `$08` |
 
   It returns before loading them when a portrait is up, when there is no
-  weapon (`Player_CurWeapon` `$FF`), or when the weapon is off the screen, so
-  `$D2`/`$D3` then keep the last weapon's values. Off the screen
+  weapon (`Player_CurWeapon` `$FF`, `$B7DB` `LDA`, `$B7DE` `BMI`), or when
+  the weapon is off the screen, so `$D2`/`$D3` then keep the last weapon's
+  values: in a new game, unarmed, they are 0. Past the no-weapon check,
+  `Player_GetNormalizedWeaponID` (`$BA4B`) already answers the Hand Dagger
+  (0) for `$FF`, but the Y table, the reach and the picture index by
+  `Player_CurWeapon` itself. Off the screen
   `Maybe_Something_WeaponPosY` (`$D0`) keeps its last value too: only the X
   (`$CE`, and its high byte `$CF`) is this frame's. A hero who walked to a
   screen's edge keeps the Y of the last frame that had the weapon on the
@@ -1403,6 +1463,63 @@ itself, with A, Y, `Temp_00` and the flags as the X test's failure leaves
 them; otherwise the original runs. The one caller, `$8838`
 (`Player_HitSpriteWithWeapon`), reads only C. A real hit at a screen's edge,
 the box half off it, is the original's.
+
+## Punches (bank 14)
+
+A new game starts unarmed (`PlayerDeath_ResetSelectedItemState`: `SelectedWeapon`
+and `Player_CurWeapon` `$FF`), and a weapon in hand can't be sold or taken
+off, so the hero is unarmed only before his first weapon (400 Golds for the
+Hand Dagger in Eolis), and, in the original, in buildings. He swings all the
+same: `Player_CheckHandleAttack` checks only climbing, and the body takes the
+swing's poses, an arm thrust out. In the original nothing lands: the two
+routines that need the weapon return on `Player_CurWeapon`'s `BMI`
+(*Weapon damage*, *Weapon reach*).
+
+With the remaster (`fax_punch.c`, #180) the fist is a weapon of its own:
+
+| | Fist | Hand Dagger |
+|---|---|---|
+| Strength | 2 | 4 |
+| With the Pendant (+25%, rounded down) | 2 | 5 |
+| The Glove adds | 1 | 2 |
+| Reach (X, Y) | `$08`, `$08` | `$08`, `$08` (Taller dagger) |
+| Where, in the hit poses | the dagger's (*Weapon reach*) | |
+
+So a Zozura (9 HP) takes 5 punches, 4 with the Glove; a Monodron (10 HP)
+6, since 10 to 0 leaves it alive, and 4 with the Glove.
+
+| Address | Code | Hook |
+|---|---|---|
+| `$B7DE` | `Player_DrawWeapon`'s `BMI RETURN_B7D5`, after `LDA Player_CurWeapon` | N set and a swing on (`Player_Flags` `$80`): writes the box as the routine writes the dagger's, then the `BMI` returns, nothing drawn |
+| `$8817` | `Player_HitSpriteWithWeapon`'s `BMI RETURN_87CA`, after the same `LDA` | N set: N cleared, so the routine goes on. The `LDX CurrentSpriteIndex` after it sets N and Z again |
+| `$8884` | `@_checkGlove` (the Pendant fix's hook) | Y `$FF`: the strength is 2, not the byte at `$B8A4` |
+| `$888F` | `STA Temp_00`, after `LDA Temp_00`, `CLC`, `ADC WEAPON_TO_GLOVE_STRENGTH,Y`, only while the Glove runs | Y `$FF`: A becomes `Temp_00` + 1, in place of the code byte at `$89C6`. Nothing reads the `ADC`'s flags: `@_updateSpriteHP`'s `LDA` and `SEC` set N, Z and C first |
+
+- **The box.** `Player_DrawWeapon` runs once a frame in `Game_MainLoop`,
+  after `GameLoop_UpdatePlayer` and before `Sprites_UpdateAll`, so the hit
+  test reads the box of the same frame. The hook works out what the routine
+  would for the Hand Dagger: the pose from `Maybe_Player_CalcAnimFrame`'s
+  rule for an attacking hero (`BYTE_ARRAY_PRG14__b97b` by phase, 4 5 6; the
+  climb's 7 only while `Player_IsClimbing`, which can't start a swing), the
+  X offset from `PTR_ARRAY_PRG14__b89f`'s dagger tables (`$B8AF`, with a
+  shield `$B8BF`) by pose and facing, in 16 bits against
+  `Screen_Maybe_ScrollXCounter` (`$CE`, `$CF`), and on the screen the Y from
+  `$B917` (`$D0`, `$D1`) and the reach (`$D2` from `$B897`, `$D3` the
+  Taller dagger's served byte, which `cyc_mod_peek` would read as the stock
+  `$04`). Off the screen only the X is written, as for a weapon. Only
+  `Sprites_IsSpriteOutOfWeaponRange` reads the box, and only during a swing,
+  so outside one nothing is written. Facing left on the ground, the first
+  hit phase puts the fist 8 pixels left of the hero and 8 down, and it hits
+  a Zozura whose X is 0-23 pixels left of his (`tests/punches/punches.py`).
+- **Everything after the damage** is any hit's: the hit sound, the hit
+  counter and knockback, the damage number, the kill, its experience and
+  MP from kills, Seams lose nothing's 16-bit X test on the way. Townsfolk
+  are never hit (`SPRITE_CATEGORIES_BY_ENTITY`).
+- **A hit turns a Zozura round.** It sets bit 0 of `CurrentSprites_Flags`
+  from the hero's facing, for the knockback (2 pixels a frame for the 8
+  frames of the hit counter), and the same bit is the Zozura's crawl
+  direction: struck from the right it crawls away left afterwards, so a
+  fist, which needs five hits, has to follow it.
 
 ## The Select menu (bank 12)
 
@@ -1499,7 +1616,10 @@ Nothing else is gated.
 - **The hero swings indoors, bare-handed.** `Player_CheckHandleAttack` checks
   only climbing. `Player_DrawWeapon` and `Player_HitSpriteWithWeapon` return
   at once without `Player_CurWeapon`, so nothing is drawn or hit. Magic
-  (`Player_CastMagic`) is not gated at all.
+  (`Player_CastMagic`) is not gated at all. With the remaster the weapon
+  stays in hand (Weapons indoors), and a hero without one punches
+  (*Punches*), indoors as out: the enemies in the rooms below take it,
+  townsfolk never.
 - **The weapon's tiles have room.** `Player_LoadWeaponTilesToPPU` loads them
   to PPU `$0380` (`$0340` for the Dragon Slayer, whose set has no shield), from
   `Screen_SetupNew`'s `Player_DrawSpriteImmediately` and from
@@ -2180,7 +2300,8 @@ jump a few updates after stepping off, as A from the hang itself would.
   in `Game_MainLoop` with only `GameLoop_RunScreenEventHandlers` between, which
   reads no button. Elsewhere: the title (`StartScreen_CheckHandleInput`, bank
   12: Select toggles, then the wait loop's own `AND #$10`: Start takes it),
-  a shop's lists (Quick shops: Select switches them) and the mantra screen.
+  and the mantra screen. A shop's lists ignore it, with the remaster too
+  (before #163 Quick shops switched them with it).
   The Select menu's `@_inputLoop` (`$8AE6` `LDA Joy1_ChangedButtonMask`,
   `$8AE8` `BMI` (A) to `@_loadMenuIDs`, `$8AEA` `ASL A`, `$8AEB` `BPL` back to
   the loop, `$8AED` `JMP TextBox_Close` (B)) reads only A and B.
@@ -2392,9 +2513,8 @@ jump a few updates after stepping off, as A from the hang itself would.
   `Player_MP` (`$DB31`); `Player_Spawn` (`$DB0A`: `LDA #$50`, `STA
   Player_HP_U`, `STA Player_MP`) fills HP and MP for a death, a continue or a
   mantra. In the original, MP otherwise comes only from the meat shops (30 HP
-  and 30 MP, for 50 G in Eolis up to 800 G in Dartmoor: see *Shops*; with the
-  remaster they sell Red Potions), Eolis's Magician (40
-  MP for 200 G, `ISCRIPT_EOLIS_MARTIAL_ARTS_MAGIC_SHOP`; both through
+  and 30 MP, for 50 G in Eolis up to 800 G in Dartmoor: see *Shops*), Eolis's
+  Magician (40 MP for 200 G, `ISCRIPT_EOLIS_MARTIAL_ARTS_MAGIC_SHOP`; both through
   `IScriptAction_AddMP`, `$8580`, bank 12, 1 MP at a time with its sound) and
   the Elixir's fill (`Player_FillHPAndMP`, `$C4DA`, 4 at a time). It never
   comes back on its own. With the remaster, kills give it and a Guru fills
@@ -3640,13 +3760,15 @@ are `ISCRIPT_ADDRS_L/U` (`$9F6B`/`$A003`, 152 entries) 12, 13, 25, 26, 29, 40,
 
 No shop sells the Leather Armor, the Fire magic (the Magician's, 3000 by
 script), the A and Jo keys (gifts), the Poison, or the last fight's gear.
-With the remaster, the Red Potion lines are gone from the buy lists: the meat
-shops sell them (*The meat shops*, below). So are the Wing Boots, the Hour
-Glass and the Elixir, which are found, not bought (*Items in the world*):
-Eolis's tools are the Hand Dagger and Deluge, Forepaw's the Long Sword,
-Studded Mail and Small Shield, the shop after Mascon's (Mist `$0D`, door
-`$7C`, building `$20`) Death alone, and Conflate's the Giant Blade and Magic
-Shield. A list of nothing else would be kept; none is.
+With the remaster, the Wing Boots, the Hour Glass and the Elixir lines are
+gone from the buy lists: they are found, not bought (*Items in the world*).
+Eolis's tools are the Hand Dagger, Red Potion and Deluge, Forepaw's the Long
+Sword, Studded Mail, Small Shield and Red Potion, the shop after Mascon's
+(Mist `$0D`, door `$7C`, building `$20`) Death and the Red Potion, and
+Conflate's the Giant Blade, Magic Shield and Red Potion. A list of nothing
+else would be kept; none is. The Red Potions stay in all nine lists, at
+their own prices (from #127 to #179 the meat shops sold them instead, and
+the tool shops' lines were dropped the same way).
 
 **The meat shops** are scripts, not shops: the Meat Salesman (portrait 8),
 in seven towns (Apolune has none), each 13 bytes in bank 12 from `$A4A1`:
@@ -3657,11 +3779,23 @@ prices, by script: Eolis (`ISCRIPT_EOLIS_MEAT_SHOP`, `$A4A1`, building `$00`)
 50, Forepaw (`$A4AE`, `$0E`) 150, Mascon (`$A4BB`, `$17`) 180, Victim
 (`$A4C8`, `$26`) 250, Conflate (`$A4D5`, `$2A`) 350, Daybreak (`$A4E2`, `$31`)
 500, Dartmoor (`$A4EF`, `$3E`) 800. Each script's pay step is at its base +
-3, so after it the script stands at its `ADD_HP`, base + 6. Daybreak's two
-shops share the towns' screen `$0A`: the tool shop's door is block `$96`, the
-meat shop's `$99` (checked in the game; reading `TOWNS_DOOR_LOCATIONS` and
-`TOWNS_DOOR_DESTINATIONS` entry by entry puts each a door to the left). With
-the remaster they are the Potion Sellers (*Features*).
+3, so after it the script stands at its `ADD_HP`, base + 6. With the remaster
+they sell their dried meat, as in the original.
+
+**Where the shops' doors are.** Each entry of `TOWNS_DOOR_LOCATIONS` (bank
+3) is the towns' screen, the door's block (YX), and its index into
+`TOWNS_DOOR_DESTINATIONS` plus `$20`; the destinations' first byte is the
+building. One location is out of order: Victim's door at block `$97` on
+screen `$07` (index `$4A`, building `$45`, a tool shop) comes after screen
+`$07`'s others, so reading the two tables entry by entry is right up to it,
+and from it on gives each door the building of the door after it. By the
+index: Daybreak's two
+shops share the towns' screen `$0A`, the tool shop's door at block `$96`
+(building `$30`), the meat shop's at `$99` (`$31`); Dartmoor's tool shop is
+building `$41`, its door at block `$9D` on screen `$0D`, beside its key shop
+(`$40`, `$99`). Both checked in the game; Dartmoor's town has
+`PALETTE_TOWN` (`TOWN_TRANSITIONS_DARTMOOR`) and `Area_Region` 4, the
+Dartmoor region's, as its edge leaves it.
 
 **The two Magicians** are scripts, not shops. Eolis's
 (`ISCRIPT_EOLIS_MARTIAL_ARTS_MAGIC_SHOP`, `$A35D`, building `$05`; despite
@@ -3684,7 +3818,7 @@ Magician on the same step (`$71`) as Eolis's; Victim's man calls it "a magic
 hall outside town" (`$72`).
 The pay steps in the game ask 50, 150, 180, 200 (twice), 250 (twice), 350,
 500 (twice), 800, 1000, 1800, 2500 and 3000 (twice): a price none of them asks
-has to be served, which the Magician's lesson and the Potion Sellers do in
+has to be served, which the Magician's lesson does in
 `IScriptAction_SpendGold` (*Features*).
 
 | Address | Name | Notes |
@@ -3729,6 +3863,26 @@ has to be served, which the Magician's lesson and the Potion Sellers do in
 at `$838E`, on A or B, `JMP IScriptAction_EndScript`. The shops' refusals and
 the empty sell list end the conversation through it.
 
+Each list action ends in one `JMP IScriptAction_EndScript` that both its B's
+reach: OpenShop's at `$83FF` (B on "What would you like?", the `BCS` at
+`$83E6`, and B in the list, the fall-through after the wait's `BCC` at
+`$83FD`), ShowSellMenu's at `$8701` (B on "Which one would like to sell?" and
+in the list). The original's B there ends the script with no line: no box
+opens first, and `TextBox_ClearForPortraitAndText` clears the list with the
+portrait's box.
+
+**The conversation, with Quick shops** (#163): the original's, step for step
+(the greeting, the Buy/Sell menu, the list's line, the list), with one change:
+after a purchase or a sale the hero stays in that list until B. B there, or
+on a list's line, ends it as the original's B did if nothing was bought or
+sold this visit; otherwise the shopkeeper first says "Thank you for
+shopping.", the list's own thank-you step (BUY + 3 or SELL + 3), as he did
+after each purchase, in the dialogue box opened over the list. A shop's
+message goes back to the list; "You have nothing to buy." (the empty sell
+list, from the menu or after the last sale) goes on to buying, after "What
+would you like?", the buy list's line, which types only the first time the
+buy list opens in a visit. Select does nothing, as in the original.
+
 **The sell list** (`IScriptAction_ShowSellMenu`, `$8660`): after reading the
 list's address it scans **only the Items list** (`LDX #$04` at `$866F`, `CPX
 #$05` at `$86B8`), from its last entry to its first, and offers each item that
@@ -3762,7 +3916,19 @@ in an inventory list: half its own price where it sells the item (the
 original's rule), otherwise half the lowest price any shop asks (so selling
 where a shop does not sell an item never pays more than buying it anywhere
 costs), otherwise 100 Golds (the A and Jo keys, the Leather Armor, Fire, the
-Poison), as the 40th Anniversary Edition pays. Never:
+Poison), as the 40th Anniversary Edition pays.
+
+**The Red Potion pays 80 at every shop** (#176): half the lowest price, Eolis's
+160, wherever it is sold, where the original paid half the shop's own, up to
+1000 at Dartmoor's 2000. Of the items two or more shops sell, it was the only
+one a shop bought for more than another asked, and so a loop of gold: bought
+in Eolis, sold in Dartmoor, back by Guru travel. The J and Q keys would be
+too (a key shop pays half its own price, more than Eolis's or Forepaw's
+asks), but reusable tools keep them for good, so no shop buys them (below).
+`fax_shops_sell_price` takes the rule; the unit test checks that, the keys
+apart, no shop pays for anything what any shop asks.
+
+Never:
 
 | Item | Why |
 |---|---|
@@ -3797,16 +3963,16 @@ box's inside, since `Shop_Draw` would write "0"), the hint reads "Not for
 sale" while the cursor is on it, and A on it does nothing: a hook at `$86E0`
 re-enters the wait at `$86DB` by return, before the price is taken.
 
-**What the hero owns, with Quick shops.** An item he already has for good keeps
-its row in every buy list, so the list, its cursor positions and its pages are
-the shop's own, but shows **OWNED** where its price was; the hint reads
-"Already owned" while the cursor is on it, and A on it does nothing: a hook at
-`$8402`, before `Shop_GetPlayerHasSelectedItem`, re-enters the wait at `$83FA`
-by return, so no gold is taken and no refusal shows. Owned
-(`fax_shops_owned`):
+**What the hero owns, with Quick shops.** An item he already has keeps its row
+in every buy list, so the list, its cursor positions and its pages are the
+shop's own, but shows **OWNED** where its price was; the hint reads "Already
+owned" while the cursor is on it, and A on it does nothing: a hook at `$8402`,
+before `Shop_GetPlayerHasSelectedItem`, re-enters the wait at `$83FA` by
+return, so no gold is taken and no refusal shows. Owned (`fax_shops_owned`):
 
 | Item | Kept by | Owned when |
 |---|---|---|
+| A weapon, armor, shield or spell (#165) | (one of each is all he can use) | He has that one: equipped (`SelectedWeapon` and on, `$03BD-$03C0`, in no list), or in its list |
 | Wing Boots, Hour Glass | Recharging items | He has it: selected, or in the Items list |
 | The A, K, Q, J and Jo keys, the Mattock | Reusable tools | He has it |
 | Elixir | Recharging items | Charged (its `SpecialItems` bit) or spent |
@@ -3820,8 +3986,15 @@ a second. Shops sell only the J, Q and K keys; the A and Jo keys are in the
 rule for completeness. OWNED is five letters, in the five cells `Shop_Draw`
 gives a price (column 23, an entry's second row, right-aligned), painted over
 the price as an unsellable item's is. In the sell list an owned item is not for
-sale (above). Weapons, armor, shields and spells the hero has are not marked:
-the game refuses them ("You can't carry any more."), as before.
+sale (above), but gear he owns is not kept for good: it still sells, a second
+copy bought before #165 too, and once sold it is for sale again (the rule reads
+his lists as they are). A different piece is never owned: a Hand Dagger is for
+sale to a hero with the Long Sword. Before #165 the game itself refused gear he
+had, with `Shop_GetPlayerHasSelectedItem` and the misleading "You can't carry
+any more." (checked in the game: a Hand Dagger bought at Eolis, then A on it
+again, said it and took nothing; Deluge the same), so OWNED shows what the
+refusal meant. Consumables are never owned: a Red Potion buys again and
+again, the list staying up, until the Items list is full.
 
 ## Doors and keys
 
@@ -4891,7 +5064,16 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   `WEAPON_STRENGTHS[Y]` and the Pendant bit before the Glove adds its bonus.
   It keeps no state, so it also runs in Seamless's isolated rooms, where the
   hero's swing at a room's edge can hit a neighbouring room's actor in that
-  room's copy (its `hits` count only the live game's).
+  room's copy (its `hits` count only the live game's). A punch reaches it with
+  Y `$FF`, and takes Punches' strength (2) instead of `WEAPON_STRENGTHS[$FF]`.
+- **Punches** (`fax_punch.c`, #180). Without a weapon the hero's fist does 2
+  damage, the Glove adding 1, with the Hand Dagger's reach as Taller dagger
+  serves it (`fax_dagger_reach_y()`). Three hooks in bank 14, none shared:
+  `Player_DrawWeapon`'s no-weapon `BMI` (`$B7DE`), which places the fist
+  during a swing; `Player_HitSpriteWithWeapon`'s (`$8817`), which lets the
+  punch on; and the Glove's `STA Temp_00` (`$888F`). The strength comes in at
+  the Pendant fix's hook. See *Punches*. It keeps no state: the box is the
+  machine's RAM.
 - **Battle Suit and Dragon Slayer fix** (`fax_inventory.c`). Each of the
   two pickups adds the item at its own list's count. It hooks each routine's
   `CPX #$04` (`$C6FA`, `$C73A`), right after the `LDX` that read the other
@@ -5067,53 +5249,6 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   times the hall's Fire and twice Daybreak's Tilte (15000), the dearest
   thing a shop sells: a late-game purchase, since he teaches only after the
   hall.
-- **Potion Sellers** (`fax_potions.c`, #127). The seven meat shops sell a
-  Red Potion instead of their dried meat, each at the price its town's tool
-  shop asked (Eolis 160, Forepaw 400, Mascon 600, Victim 800, Conflate 1000,
-  Daybreak 1200, Dartmoor 2000), and the tool shops stop selling them. The
-  meat shops' scripts (*The meat shops*) are steered at
-  `IScripts_InvokeNextAction`, as the Magician's lesson steers his, through
-  Guru travel's steps and message `$C3`'s slot, served with the same bytes:
-  - at the first action (base + 1, the question), his line, "A Red Potion
-    to / restore you for / 160 Golds." with his town's price, at Guru
-    travel's ASK step (`$AE03`): the game adds its flashing "?", as to the
-    original's question. B goes on to `$AE07`, which goes to the SAY step's
-    END (`$AE02`): the box closes.
-  - A (the script at the SAY step, `$AE00`): with the Items list full
-    (`NumberOfItems` 8, `MAX_INVENTORY_SLOTS`), the hook handles the call and
-    enters `IScripts_ShowFinalMessage` (`$837E`) by return with A = 6: the
-    game's "You can't carry any more.", then the end, as a tool shop refuses
-    a ninth item. The room is checked before the gold, as a tool shop does.
-    Else his own pay step (base + 3). A hook in `IScriptAction_SpendGold` at
-    `$8367` (after the Magician's lesson's site there) makes his meat's price
-    the potion's in `Temp_0202/3`, so the game takes it 10 a frame, or says
-    "This is not enough Golds." and ends the script.
-  - Paid (the script at base + 6, his `ADD_HP`): the hook points the script
-    at his thanks (base + 10) and handles the call, entering
-    `IScriptAction_AddInventoryItem` after its `IScripts_LoadByte` (`$83A2`)
-    with A = `$90`, the Red Potion: `Player_AddToInventory` adds it, and the
-    game's item box shows it, its picture and "RED POTION", until A, as a
-    gift's does. Then "Thank you for shopping." and the end. No HP, no MP.
-
-  It acts only in a conversation of his, which it forgets when any script
-  begins (`IScriptOffset` 1); its site at `$826E` is after the Magician's
-  lesson's and before Recharging items', which its two handled calls skip
-  (that site acts only at a Guru's first action). It checks each script's
-  bytes before steering it; one that differs, or a line that cannot be
-  served, leaves the dried meat for the session, and then
-  `fax_potions_selling()` is false and the tool shops keep their potions.
-  Quick shops asks it at `OpenShop`'s `JSR Shop_Draw` (`$83F7`, after
-  `Shop_Populate`): while it is true, a buy list loses its Red Potion and the
-  entries after it move up (`fax_shops_without`), so the cursor, OWNED and
-  "Not for sale" work as before. Nine tool shops sold one, "After Mascon"'s
-  (300) among them. Selling a Red Potion is unchanged: half the shop's own
-  price from its list in the ROM (Eolis 80, Dartmoor 1000), or at a key shop
-  half the lowest (80). The save-state record (3 bytes: version, phase,
-  shop) puts his question back in the slot after a load
-  (`fax_potions_loaded`). `potions_state` over TCP. The gold counts down on
-  the status bar as he is paid, as at any counter: Seamless takes the band
-  live through conversations (#132; until then it kept the band of the frame
-  before one, and the new amount showed only once it ended).
 - **Double gold** (`fax_gold.c`, #102, #104). The King gives 3000 instead of
   1500, counted in the original's 150 frames, and once a game; every coin a
   monster leaves pays twice its value. Five hooks, each returning 0, with no
@@ -5206,7 +5341,7 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   While a portrait's frame is on screen, the speaker's name sits on a tab
   above the dialogue box, at its left edge (tiles 10, 13-15), in the game's
   font and frame; on a shop's list it moves up onto the list (rows 5-7). The
-  Meat Salesman is the Potion Seller (he sells Red Potions). The King and the
+  Meat Salesman, whom no one names, is the Meat Seller. The King and the
   Gurus are "of" a place: a temple's town by temple number (so
   the Guru whose door opens on the Mist is Mascon's, as in Guru travel), else
   the zone at the building's door (`Area_SavedArea`, `Area_SavedScreen`),
@@ -5660,43 +5795,52 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   Drawn after Sugata's band, so it does not grey them, and before the zone
   banner, which covers them. Its save-state record holds the numbers (16 bytes
   each), and a state loaded with the remaster off restores none.
-- **Quick shops** (`fax_shops.c`). Up on a shopkeeper opens his buy list at
-  once, Select switches to the sell list and back, a purchase or a sale keeps
-  the list up with the cursor where it was, and B leaves. A shop buys
-  anything carried (see *Shops*), 8 to a page: Up from the top or Down from
-  the bottom turns the page. No ROM and no read overrides. It steers the
-  script at `IScripts_InvokeNextAction` (its first action goes to BUY; BUY + 3
-  and SELL + 3 go back to their list) and jumps by return at eight sites of
-  its own: OpenShop's entry, past "What would you like?" to `$83EA`;
-  `$8463`, past the purchase's close; `$86BC`, where it replaces the sell
-  scan's list with a page of everything carried and goes on at `Shop_Draw`
-  (`$86D8`), past "Which one would like to sell?", or, with nothing to sell
-  and a list open, through `Maybe_Shop_DrawTextBox` first; `$86E0`, back to
-  the wait for an item not for sale (one no shop buys, or one the hero owns);
-  `$86F8`, past the sale's close;
-  `$84F0`, in `IScripts_WaitForMenuInput` before the menu update, where it
-  puts the cursor back, Select or a page turn goes through
-  `Sound_PlayEffect` (`$0B`) to the other step, and B goes through
-  `Maybe_Shop_DrawTextBox` to `IScriptAction_EndScript`, so the list is closed
-  when the script ends, as after the original's purchase, and a line Block
-  adds there (its tutorial, after the first shield) shows in the dialogue box;
-  `$838E`, where a shop's message goes back to the list; and `$8402`, the buy
-  list's A, back to the wait (`$83FA`) for an item the hero owns (see
-  *Shops*), which it asks reusable tools and recharging items about
-  (`fax_reusable_tools_on`, `fax_recharge_on`, `fax_recharge_elixir_spent`),
-  as it does for the sell list's. A ninth site, at `$83F7` (`JSR Shop_Draw`,
-  after `Shop_Populate`), only writes the list: while the Potion Sellers sell
-  the Red Potions (`fax_potions_selling`), a tool shop's without it, and while
-  Found items is on (`fax_found_on`), without the Wing Boots, the Hour Glass
+- **Quick shops** (`fax_shops.c`). A shopkeeper talks as the original's
+  does: his greeting, the Buy/Sell menu, the list's line, the list (#163). A
+  purchase or a sale keeps the list up with the cursor where it was, and B
+  leaves, after "Thank you for shopping." if anything was bought or sold (see
+  *Shops*, "The conversation, with Quick shops"). A shop buys anything carried
+  (see *Shops*), 8 to a page: Up from the top or Down from the bottom turns
+  the page. No ROM and no read overrides. It notes a shop's script at its
+  first action, `IScripts_InvokeNextAction` with `IScriptOffset` 1 (the session
+  starts; nothing is redirected), and there sends BUY + 3 and SELL + 3, the
+  thank-you steps the original took after a purchase or a sale, back to their
+  list (unless B is leaving through them). It jumps by return at these sites
+  of its own: OpenShop's entry, past "What would you like?" to `$83EA` once
+  the line has been said in the visit; `$8463`, past the purchase's close;
+  `$86BC`, where it replaces the sell scan's list with a page of everything
+  carried and goes on at `Shop_Draw` (`$86D8`) once "Which one would like to
+  sell?" has been said, or, with nothing to sell and a list open, through
+  `Maybe_Shop_DrawTextBox` first; `$86E0`, back to the wait for an item not
+  for sale (one no shop buys, or one the hero owns); `$86F8`, past the sale's
+  close; `$84F0`, in `IScripts_WaitForMenuInput` before the menu update, where
+  it puts the cursor back and a page turn goes through `Sound_PlayEffect`
+  (`$0B`) to the sell step again; `$838E`, where a shop's message goes back to
+  the list; `$8402`, the buy list's A, back to the wait (`$83FA`) for an item
+  the hero owns (see *Shops*: gear he has, and what he has for good), which
+  it asks reusable tools and recharging items about (`fax_reusable_tools_on`, `fax_recharge_on`,
+  `fax_recharge_elixir_spent`), as it does for the sell list's; `$83FF` and
+  `$8701`, the list actions' `JMP IScriptAction_EndScript` (B), where with
+  something bought or sold it points the script at the thank-you step and
+  goes there, through `Maybe_Shop_DrawTextBox` if the list is up, so a line
+  Block adds at the end (its tutorial, after the first shield) follows it in
+  the dialogue box; and `$8477`, `Maybe_Shop_DrawTextBox`'s `JSR
+  TextBox_Close`, skipped in a shop (on to its `JMP TextBox_OpenForNPC` at
+  `$847A`), so the dialogue box opens over the list and Seamless never shows
+  a frame without the portrait (*The text box*). A site at `$83F7` (`JSR
+  Shop_Draw`, after `Shop_Populate`) only writes the list: while Found items
+  is on (`fax_found_on`), a tool shop's without the Wing Boots, the Hour Glass
   and the Elixir (`fax_found_unsold`), the entries after each moving up
-  (`fax_shops_without`).
+  (`fax_shops_without`). The sell list's prices are `fax_shops_sell_price`'s:
+  a Red Potion 80 at every shop (*Shops*).
   Presses while a list is drawn, or the gold counts, are lost, as in the
   original: the game reads the pad only in the list's wait. The hint line
-  ("Select to sell", "Select to buy", "Not for sale", "Already owned") is drawn
-  on the list's row 26 and the page ("1 of 2") on row 9, at present time,
-  while the list's four frame corners show; an unsellable item's price cells
-  are painted the box's inside, and an owned item's too, with OWNED in them.
-  Its save-state record holds the conversation (17 bytes).
+  ("Not for sale", "Already owned", while the cursor is on such an entry) is
+  drawn on the list's row 26 and the page ("1 of 2") on row 9, at present
+  time, while the list is the box last opened and its four frame corners
+  show; an unsellable item's price cells are painted the box's inside, and an
+  owned item's too, with OWNED in them. Its save-state record holds the
+  conversation (20 bytes; the 17 of version 1, before #163, still load).
 - **Zone respawn** (`fax_respawn.c`). Dying comes back at the last entrance
   into the zone (tower, castle, town or region) the hero died in, after the
   Guru's words, instead of at the temple. A hook at `Screen_SetupNew` records

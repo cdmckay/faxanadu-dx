@@ -111,9 +111,6 @@ cmake --build "$OUT/mana" -j"$JOBS" >/dev/null
 cmake -S tests/lesson -B "$OUT/lesson" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/lesson" -j"$JOBS" >/dev/null
 "$OUT/lesson/lesson_test"
-cmake -S tests/potions -B "$OUT/potions" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-cmake --build "$OUT/potions" -j"$JOBS" >/dev/null
-"$OUT/potions/potions_test"
 cmake -S tests/gold -B "$OUT/gold" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/gold" -j"$JOBS" >/dev/null
 "$OUT/gold/gold_test"
@@ -171,6 +168,9 @@ cmake --build "$OUT/controls" -j"$JOBS" >/dev/null
 cmake -S tests/seams -B "$OUT/seams" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/seams" -j"$JOBS" >/dev/null
 "$OUT/seams/seams_test"
+cmake -S tests/punches -B "$OUT/punches" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/punches" -j"$JOBS" >/dev/null
+"$OUT/punches/punch_test"
 
 echo "== the game, 600 frames headless"
 build-cycle/FaxanaduRecomp "$ROM" --frames 600 --no-save | grep "mode="
@@ -230,7 +230,6 @@ E2E=(
   "item-box     tests/item_box/item_box.py --parts"
   "mana         tests/mana/mp_from_kills.py --parts"
   "lesson       tests/lesson/magician_lesson.py --parts"
-  "potions      tests/potions/potion_sellers.py --parts"
   "gold         tests/gold/double_gold.py --parts"
   "switch       tests/dx/one_switch.py"
   "title        tests/title/title_dx.py"
@@ -257,6 +256,8 @@ E2E=(
   "back-out     tests/controls/b_backs_out.py --parts"
   "seams        tests/seams/seams_lose_nothing.py --parts"
   "open-ground  tests/seams/open_ground.py --parts"
+  "punches      tests/punches/punches.py"
+  "vsync        tests/vsync/vsync_default.py"
 )
 # At most E2E_JOBS runs play at once (default: one a hardware thread; 0: all
 # at once): a game is uncapped and takes a whole thread, and more of them

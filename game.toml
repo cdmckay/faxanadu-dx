@@ -513,10 +513,12 @@ bytes = "ad c7 03 10 fa ad c8 03 30 f5 a5 a7"
 
 # Quick shops (fax_shops.c): a shop's script and its two list actions,
 # IScriptAction_OpenShop and IScriptAction_ShowSellMenu, steered at their
-# steps: the first action, "What would you like?", the list kept up after a
+# steps: the script's actions, "What would you like?", the list kept up after a
 # purchase or a sale, the sell list's contents, each list's A, the menu's
-# input each frame, the end of a shop's message, and the buy list before it is
-# drawn (without the Red Potion while the Potion Sellers sell it).
+# input each frame, the end of a shop's message, the buy list before it is
+# drawn (without the Wing Boots, the Hour Glass and the Elixir while Found
+# items is on), each list action's end (B), and Maybe_Shop_DrawTextBox's close
+# of the list.
 
 [[mod_function_hook]]
 id = "faxanadu.shops.next-action"
@@ -578,6 +580,24 @@ addr = 0x83f7
 bank = 12
 bytes = "20 f8 99 20 ed 84 90 03 4c b4 82 20"   # IScriptAction_OpenShop, after JSR Shop_Populate: JSR Shop_Draw
 
+[[mod_function_hook]]
+id = "faxanadu.shops.buy-end"
+addr = 0x83ff
+bank = 12
+bytes = "4c b4 82 20 82 84 b0 62 ae 1e 02 bd"   # IScriptAction_OpenShop's @_endScript: JMP IScriptAction_EndScript
+
+[[mod_function_hook]]
+id = "faxanadu.shops.sell-end"
+addr = 0x8701
+bank = 12
+bytes = "4c b4 82 a0 00 b1 ec c9 ff f0 0a 8a"   # IScriptAction_ShowSellMenu's @_endScript: JMP IScriptAction_EndScript
+
+[[mod_function_hook]]
+id = "faxanadu.shops.keep"
+addr = 0x8477
+bank = 12
+bytes = "20 02 90 4c e2 81 04 04 04 04 08 ae"   # Maybe_Shop_DrawTextBox: JSR TextBox_Close, JMP TextBox_OpenForNPC
+
 # Zone respawn (fax_respawn.c): every screen load (the way into a zone), the
 # death path after the Guru's words, Player_Spawn's JSR Game_SpawnInTemple,
 # which a death with a checkpoint skips, and Game_SetupEnterBuilding, which it
@@ -631,24 +651,6 @@ id = "faxanadu.lesson.pay"
 addr = 0x8347
 bank = 12
 bytes = "20 a5 f9 4c 21 83 ce 03 02 a9 3c 8d"   # JSR Player_SubtractGold, JMP IScripts_ProgressivelySubtractGold, DEC Temp_0203, LDA #$3C, STA
-
-# Potion Sellers (fax_potions.c): the meat shops' scripts, steered at each
-# interaction-script action (after the Magician's lesson's site and before
-# Recharging items', which stays last), and the potion's price, at
-# IScriptAction_SpendGold once it has read the meat's, after the lesson's site
-# there.
-
-[[mod_function_hook]]
-id = "faxanadu.potions.next-action"
-addr = 0x826e
-bank = 12
-bytes = "20 a4 87 aa bd 93 82 48 bd 7b 82 48"   # IScripts_InvokeNextAction: his question, the room, his pay step, the potion
-
-[[mod_function_hook]]
-id = "faxanadu.potions.price"
-addr = 0x8367
-bank = 12
-bytes = "ad 02 02 85 ec ad 03 02 85 ed 20 dc"   # LDA Temp_0202, STA Temp_Int24, LDA Temp_0203, STA Temp_Int24_M, JSR IScripts_CheckEnoughMoney
 
 # MP from kills (fax_mana.c): the routine both kills (a weapon's, a spell's)
 # call to give the enemy's experience, X its slot. It only observes.
@@ -1203,3 +1205,26 @@ id = "faxanadu.seams.load"
 addr = 0xc1b4
 bank = 15
 bytes = "ad 00 01 48 a2 0b 20 1a cc 20 54 c1"   # Screen_LoadSpriteInfo: LDA $0100, PHA, LDX #$0B, JSR MMC1_UpdateROMBank, JSR Screen_LoadAllScreenInfo
+
+# Punches (fax_punch.c, #180): without a weapon, Player_DrawWeapon's BMI after
+# LDA Player_CurWeapon (the fist placed, with the Hand Dagger's reach),
+# Player_HitSpriteWithWeapon's (the punch goes on), and the Glove's STA
+# Temp_00 (the fist's bonus in place of a code byte read past the table).
+
+[[mod_function_hook]]
+id = "faxanadu.punches.draw"
+addr = 0xb7de
+bank = 14
+bytes = "30 f5 a5 a7 29 01 85 00 20 4b ba 0a"   # BMI RETURN_B7D5, LDA Player_ArmorLookupIndex, AND #$01, STA Temp_00, JSR Player_GetNormalizedWeaponID
+
+[[mod_function_hook]]
+id = "faxanadu.punches.hit"
+addr = 0x8817
+bank = 14
+bytes = "30 b1 ae 78 03 bc cc 02 b9 44 b5 f0"   # BMI RETURN_87CA, LDX CurrentSpriteIndex, LDY CurrentSprites_Entities,X, LDA SPRITE_CATEGORIES_BY_ENTITY,Y
+
+[[mod_function_hook]]
+id = "faxanadu.punches.glove"
+addr = 0x888f
+bank = 14
+bytes = "85 00 bd 44 03 38 e5 00 9d 44 03 b0"   # STA Temp_00, then @_updateSpriteHP: LDA CurrentSprites_HP,X, SEC, SBC Temp_00, STA

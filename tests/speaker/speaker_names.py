@@ -9,13 +9,13 @@ each run takes a free TCP port, and any number can go in parallel.
 Copies the build to OUT (so the faxanadu_gurus.txt sidecar stays there), starts
 a new game over TCP, walks through Eolis's gate into the meat shop and saves a
 state there. It relaunches with the Gurus of Eolis and Apolune visited (as
-tests/travel/guru_travel.py does), then talks to the Potion Seller. For each
+tests/travel/guru_travel.py does), then talks to the Meat Seller. For each
 other Eolis building it edits where the shop's door leads (save-state RAM, an
 external prerequisite, as tests/zones/zone_names.py does), walks out onto that
 building's door and goes in: the Guru (twice: the Ring of Elf, then Guru
 travel's offer), the King, the King's guard outside (no portrait, no name), the
 Martial Artist, and the Tool Seller on his shop's list, which Quick shops
-opens at once. Last, the shop's door leads to the Castle of Fraternal's temple,
+opens after his greeting, Buy and its line, as the original does. Last, the shop's door leads to the Castle of Fraternal's temple,
 for the longest name, "Guru of Fraternal". Each conversation is screenshot in
 OUT, and the tab is checked in the picture itself: its corner is the game's own
 frame tile, and it holds a line of text.
@@ -27,7 +27,7 @@ import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 from fax_e2e import (PAGE_FRAMES, Game, act, fixture, frame, hold, hold_a, hurry_page, let_go, page_through,  # noqa: E402
-                     page_to, parse_args, ram, step_toward, tcp, type_out, typed, until, wait, walk)
+                     page_to, parse_args, ram, shop_list, step_toward, tcp, type_out, typed, until, wait, walk)
 
 AREA, SCREEN, PLAYER_X = 0x24, 0x63, 0x9E
 TEXTBOX_CLOSED, MESSAGE_ID, TEXTBOX_PAUSED = 0x20C, 0x213, 0x215
@@ -99,7 +99,7 @@ def check_tab(path, row, length, inside):
     assert len(set(lit)) == 1 and len(lit) >= 8 * length, f"{path.name}: no line of text in the tab"
 
 
-PARTS = ("potion-seller", "guru", "king", "martial-artist", "tool-seller", "fraternal")   # each its own game
+PARTS = ("meat-seller", "guru", "king", "martial-artist", "tool-seller", "fraternal")   # each its own game
 
 
 def main():
@@ -226,12 +226,12 @@ def main():
         state = speaker()
         assert state["enabled"] and not state["shown"] and state["name"] is None, state
 
-        if args.wants("potion-seller"):
-            # 1. The Potion Seller's question; B declines it.
+        if args.wants("meat-seller"):
+            # 1. The Meat Seller's question; B declines it.
             talk()
-            tab("Potion Seller")
+            tab("Meat Seller")
             finish("b")
-            print("ok: the Potion Seller is named through his question, and the tab goes with him")
+            print("ok: the Meat Seller is named through his question, and the tab goes with him")
 
         if args.wants("guru"):
             # 2. Eolis's Guru: the Ring of Elf, then Guru travel's offer.
@@ -295,14 +295,14 @@ def main():
             print("ok: the Martial Artist is named")
 
         if args.wants("tool-seller"):
-            # 6. The Tool Seller, on his shop's list, which Quick shops (on by
-            # default) opens at once.
+            # 6. The Tool Seller, on his shop's list (Quick shops, on by
+            # default: after his greeting, Buy and its line).
             go_in(shop, "tool-shop", 3, 0x9A)
-            talk(line=False)
+            walk("left")                                        # to the counter
+            shop_list("buy")
             until("the shop's list", lambda: speaker()["shown"] and speaker()["row"] == 5, 600)
-            wait(20)
             tab("Tool Seller", row=5, label="tool-seller-list", line=False)
-            act("b", 6, 14)                                     # leave the list: the end
+            act("b", 6, 14)                                     # leave the list, nothing bought: the end
             finish("b")
             print("ok: the Tool Seller is named, on his shop's list as well")
 

@@ -126,6 +126,9 @@ opens it too. The game holds still underneath, but the music plays on.
 - **A taller dagger.** The Hand Dagger's swing reaches as low as the swords',
   so it hits low enemies like the Zozura outside Eolis. It keeps its short
   reach.
+- **Punches.** Before your first weapon your fists hurt: 2 a punch, half the
+  Hand Dagger's, with its reach, so the Zozuras and Monodrons outside Eolis
+  fall to five or six. The Glove adds 1.
 - **Sugata's flash, made fair.** Sugata, in the Mist, blinks before it flashes
   and dims the band of the screen the flash will reach, and the flash hurts
   only there, where it used to hit you anywhere, Ointment or not. With the
@@ -191,13 +194,14 @@ opens it too. The game holds still underneath, but the music plays on.
   see when it saves you. And while the Wing Boots or the Hour Glass in your
   item box is running, the box's brackets turn gold, and go back to white
   the moment it stops.
-- **Quick shops.** Up on a shopkeeper opens his list at once, Select switches
-  between buying and selling, and you stay in the list after each sale. Any
-  shop buys what you carry, except what you own for good, like a key or the
-  Mattock: it says OWNED and isn't for sale.
-- **Potion Sellers.** The meat shops sell Red Potions instead of dried meat,
-  each at the price its town's tool shop charged, and the tool shops no longer
-  stock them. They still buy one back.
+- **Quick shops.** Shopkeepers talk as they always did, but after you buy or
+  sell you stay in the list until you're done, so a few Red Potions are a
+  few presses of A, and B thanks you on your way out. A weapon, armor, shield
+  or spell you already have says OWNED, so you never buy a copy you can't
+  use. Any shop buys what you carry, except what you own for good, like a key
+  or the Mattock: it says OWNED and isn't for sale. Every shop pays 80 for a
+  Red Potion, half the cheapest price, so potions bought in Eolis no longer
+  sell for 1000 in Dartmoor.
 - **Double gold.** The King gives you 3000 Golds instead of 1500, counted out
   in the same 2.5 seconds, but only once: come back broke and he has nothing
   more for you. Every coin a monster drops is worth twice as much. Selling

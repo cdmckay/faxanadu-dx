@@ -31,7 +31,6 @@
 #include "fax_item_box.h"
 #include "fax_mana.h"
 #include "fax_lesson.h"
-#include "fax_potions.h"
 #include "fax_gold.h"
 #include "fax_slain.h"
 #include "fax_indoor.h"
@@ -51,6 +50,7 @@
 #include "fax_controls.h"
 #include "fax_use_item.h"
 #include "fax_seams.h"
+#include "fax_punch.h"
 #ifdef CYC_WITH_SDL
 #include "cyc_tcp.h"
 #include <SDL.h>
@@ -215,7 +215,6 @@ static void tcp_setup(void *ctx) {
     fax_item_box_tcp_setup();
     fax_mana_tcp_setup();
     fax_lesson_tcp_setup();
-    fax_potions_tcp_setup();
     fax_gold_tcp_setup();
     fax_slain_tcp_setup();
     fax_indoor_tcp_setup();
@@ -235,6 +234,7 @@ static void tcp_setup(void *ctx) {
     fax_controls_tcp_setup();
     fax_use_item_tcp_setup();
     fax_seams_tcp_setup();
+    fax_punch_tcp_setup();
 }
 #endif
 static const uint32_t *present(void *ctx,int *w,int *h) {
@@ -299,7 +299,7 @@ static RecompRuntimeUiItem menu_rows[] = {
 static int menu_row_enabled(void *ctx, const RecompRuntimeUiItem *it) { (void)ctx; (void)it; return 0; }
 static const RecompRuntimeUiCallbacks menu_callbacks = { .is_enabled = menu_row_enabled };
 #endif
-static void state_loaded(void *ctx) {(void)ctx;fax_world_loaded();fax_block_loaded();fax_files_state_loaded();fax_quests_loaded();fax_recharge_loaded();fax_gold_loaded();fax_lesson_loaded();fax_potions_loaded();}
+static void state_loaded(void *ctx) {(void)ctx;fax_world_loaded();fax_block_loaded();fax_files_state_loaded();fax_quests_loaded();fax_recharge_loaded();fax_gold_loaded();fax_lesson_loaded();}
 const CycHostExtras *cyc_host_extras(void) {
     static const CycHostOption options[] = {
         { "--text-overrides", true, "Text replacement JSON, with hot reload" },

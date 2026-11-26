@@ -18,7 +18,7 @@ menu      From Eolis town, a Hand Dagger in his weapons and a Red Potion
           Each B is a back press and none a press of Use item: the potion
           stays. B held as the menu closes stays up in play: no item, no
           sword, until it is let go; the next press uses the potion.
-shop      In Eolis's meat shop: B on the Potion Seller's question closes it,
+shop      In Eolis's meat shop: B on the Meat Seller's question closes it,
           nothing taken, and so does X. Next door, B leaves the key shop's buy
           list, and so does X.
 title     From power-on, on the title's menu: A opens NEW GAME's pick of
@@ -44,8 +44,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "movement"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "keys"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "travel"))
-from fax_e2e import (FILES_NEW, FILES_TOP, act, batch, box_open, hold, page_to, parse_args, ram, tcp,  # noqa: E402
-                     title_menu, type_out, until, wait, walk)
+from fax_e2e import (FILES_NEW, FILES_TOP, act, batch, box_open, hold, page_to, parse_args, ram, shop_list,  # noqa: E402
+                     tcp, title_menu, type_out, until, wait, walk)
 import auto_and_reusable_keys  # noqa: E402,F401  (registers the fixture "keys-eolis-exit")
 import guru_travel  # noqa: E402,F401  (registers the fixture "travel-conflate-temple")
 from play import Game  # noqa: E402  (fax_e2e's, with headless runs)
@@ -61,7 +61,7 @@ ATTACKING = 0x80                                                     # Player_Fl
 HAND_DAGGER, RED_POTION, DELUGE, NO_ITEM, NO_SPELL, NO_PORTRAIT = 0x00, 0x10, 0, 0xFF, 0xFF, 0xFF
 BUILDINGS, KEY_SHOP_DOOR = 4, 0x9D
 MENU_WIDTH, LIST_WIDTH, PLAYER_WIDTH = 0x0A, 0x14, 0x1A              # PlayerMenu_Show's, _ShowSubmenu's, _ShowStatusMenu's
-SLOT_ID, MARK_OF_JACK = 0xC3, 0x29                                   # the Potion Seller's question; the J door's line
+DRIED_MEAT_50, MARK_OF_JACK = 0x07, 0x29                             # the Meat Seller's question; the J door's line
 MEDITATE_WITH_YOU, OFFER, CONFLATE_TEMPLE = 0x22, 1, 0x2B            # the Guru's greeting; fax_travel.c's offer
 PACKAGE = ("faxanadu.dx", "dx")
 PARTS = ("menu", "shop", "title", "guru", "play", "door", "original")
@@ -196,24 +196,22 @@ def main():
                 for _ in range(5):                                      # Up counts only on the frame it goes down
                     act("up", 4, 10)
                     try:
-                        until("the Potion Seller", lambda: ram(PORTRAIT) != NO_PORTRAIT, 120)
+                        until("the Meat Seller", lambda: ram(PORTRAIT) != NO_PORTRAIT, 120)
                         break
                     except AssertionError:
                         pass
                 else:
-                    raise AssertionError("the Potion Seller does not answer")
-                until("his question", lambda: ram(MESSAGE_ID) == SLOT_ID, 300)
+                    raise AssertionError("the Meat Seller does not answer")
+                until("his question", lambda: ram(MESSAGE_ID) == DRIED_MEAT_50, 300)
                 type_out("his question", 900, pauses=False)
 
-            for n, button in enumerate(("b", "x"), 1):
+            for button in ("b", "x"):
                 question()
                 press(button)
                 until("the box to close", done_talking, 300)
-                s = tcp("potions_state")
-                assert s["declined"] == n and s["sold"] == 0, s
-                assert int.from_bytes(ram(GOLD, 3), "little") == 500
+                assert int.from_bytes(ram(GOLD, 3), "little") == 500, "nothing taken"
             counts(1)
-            print("ok: B on the Potion Seller's question closes it, nothing taken, and so does X")
+            print("ok: B on the Meat Seller's question closes it, nothing taken, and so does X")
 
             # The key shop next door (screen 3, its door at block $9D): out of the meat shop onto it, and in.
             game.poke({AREA_SAVED_SCREEN: 3, PLAYER_SAVED_POS: KEY_SHOP_DOOR})
@@ -237,18 +235,7 @@ def main():
             walk("left", lambda: ram(PLAYER_X) <= 80)                   # he stands at block $84, x 64
 
             def buy_list():
-                for _ in range(5):                                      # Up counts only on the frame it goes down
-                    act("up", 4, 10)
-                    try:
-                        until("the buy list", lambda: (lambda s: s["shown"] == "buy" and s["list_up"])(
-                            tcp("shops_state")), 120)
-                        break
-                    except AssertionError:
-                        pass
-                else:
-                    raise AssertionError("the Key Seller does not answer")
-                waits = tcp("shops_state")["waits"]
-                until("the list to wait for a button", lambda: tcp("shops_state")["waits"] > waits, 300)
+                shop_list("buy")                                        # his greeting, Buy, its line (Quick shops)
                 wait(2)
 
             for button in ("b", "x"):

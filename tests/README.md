@@ -30,6 +30,18 @@ copies. `install()` also writes `faxanadu_recharge.txt` with the Wing Boots'
 and the Hour Glass's lessons learned (`LEARNED`), so their first Down+B
 shows no box, as every later one (#151); a test of the lessons deletes it.
 
+A hidden window opens only its virtual controller, the one `pad` drives,
+never a real pad on the machine (#168). Before, a hidden window took input
+without focus from every controller, so whoever played on the machine
+pressed buttons in every test game, and in the fixtures saved then: a
+checkout whose suite ran while a pad was in use deletes `build-tests/fixtures`
+once.
+
+VSync is on in a test game's `config.ini`, as in a player's (#181: the
+engine turns it on in the file `install()` writes), but a hidden window
+never waits on it, and an uncapped one turns it off anyway: no test game is
+paced by the display, at normal speed (`--realtime`) or uncapped.
+
 ## End-to-end tests and `e2e/fax_e2e.py`
 
 An end-to-end test plays a feature in a hidden window and drives it over TCP.

@@ -21,8 +21,8 @@ and the weapon in hand.
 2. A swing at the Tool Seller across the counter, headless: the hero swings,
    the sword is drawn every frame it can hit, its box overlaps the seller's by
    the game's own test, and the seller's slot, HP and hit counter never change.
-   Then Up still opens his list, and Select's sell list (Quick shops) offers
-   the Hand Dagger the sword replaced, in the same visit.
+   Then Up still talks to him, and his sell list (Quick shops) offers the
+   Hand Dagger the sword replaced, in the same visit.
 3. Eolis's temple: the same swing at the Guru, then Up runs his script to the
    end (the Ring of Elf, the first time).
 4. The room behind the door on the Mist's screen 6 (building $1D), one of the
@@ -45,7 +45,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 import fax_e2e  # noqa: E402
 from fax_e2e import (Game, act, dissolve, features_toml, fixture, hold, menu_row, page_through,  # noqa: E402
-                     parse_args, ram, step_toward, tcp, until, wait)
+                     parse_args, ram, shop_list, step_toward, tcp, until, wait)
 
 AREA, SCREEN, PLAYER_X, PLAYER_Y = 0x24, 0x63, 0x9E, 0xA1
 PLAYER_FLAGS, ATTACK_PHASE = 0xA4, 0xAE                             # Player_Flags, Player_AttackPhaseAnimFrame
@@ -290,16 +290,16 @@ def main():
         return shops()
 
     def leave_shop():
+        """B in the list: the end, after his thanks if something was bought or sold."""
         act("b", 4, 6)
-        until("the conversation's end", lambda: ram(PORTRAIT) == NO_PORTRAIT and ram(TEXTBOX_CLOSED) != 0, 300)
+        converse()
         wait(20)
 
     def buy_long_sword():
-        """Up at the Tool Seller (Quick shops: straight to his list), A on the
-        Long Sword, its top entry, and B."""
+        """Up at the Tool Seller, his greeting, Buy and its line (Quick shops),
+        A on the Long Sword, its top entry, and B."""
         weapons_before = weapons()
-        act("up", 4, 6)
-        state = list_up("buy")
+        state = shop_list("buy")
         assert state["list"][0] == LONG_SWORD, state
         act("a", 4, 6)
         until("the purchase", lambda: tcp("shops_state")["bought"] == state["bought"] + 1, 1200)
@@ -357,10 +357,7 @@ def main():
             tcp("load_state", path=str(counter))
             wait(5)
             act("b", 4, 30)
-            act("up", 4, 6)
-            list_up("buy")
-            act("select", 4, 6)
-            state = list_up("sell")
+            state = shop_list("sell")
             assert state["list"] == [HAND_DAGGER] and state["prices"] == [200], state       # half of Eolis's 400
             leave_shop()
             print("ok: the Long Sword swings through the Tool Seller (in its reach) and does nothing; he still "
