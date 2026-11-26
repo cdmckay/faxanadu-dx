@@ -178,6 +178,17 @@ static void the_same_rule_in_seamless_rooms_uncounted(void) {
     CHECK(damage(LONG_SWORD, false, false, true) == base[LONG_SWORD] && hits == 1);
 }
 
+static void the_fist(void) {
+    /* A punch (fax_punch.c) reaches the hook with Y $FF, no weapon, where
+     * WEAPON_STRENGTHS has no entry: Punches' strength, by the same rule. (The
+     * Glove's bonus for it is Punches' own, after the hook.) */
+    setup();
+    CHECK(damage(0xFF, false, false, true) == FAX_PUNCH_STRENGTH);
+    CHECK(last_weapon == 0xFF && last_strength == FAX_PUNCH_STRENGTH && !last_pendant && last_damage == 2);
+    CHECK(damage(0xFF, true, false, true) == 2 && last_pendant);    /* a quarter of 2 is 0 */
+    CHECK(hits == 2);
+}
+
 static void off_means_off(void) {
     setup();
     damage(DRAGON_SLAYER, true, false, true);
@@ -193,6 +204,7 @@ int main(void) {
     with_the_pendant_the_originals_damage();
     the_same_rule_in_seamless_rooms_uncounted();
     it_kills_as_the_game_does();
+    the_fist();
     off_means_off();
     printf("pendant_test: %u checks passed\n", checks);
     return 0;

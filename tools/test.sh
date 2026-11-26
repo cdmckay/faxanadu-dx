@@ -171,6 +171,9 @@ cmake --build "$OUT/controls" -j"$JOBS" >/dev/null
 cmake -S tests/seams -B "$OUT/seams" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/seams" -j"$JOBS" >/dev/null
 "$OUT/seams/seams_test"
+cmake -S tests/punches -B "$OUT/punches" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
+cmake --build "$OUT/punches" -j"$JOBS" >/dev/null
+"$OUT/punches/punch_test"
 
 echo "== the game, 600 frames headless"
 build-cycle/FaxanaduRecomp "$ROM" --frames 600 --no-save | grep "mode="
@@ -256,6 +259,7 @@ E2E=(
   "controls     tests/controls/controller_layout.py --parts"
   "back-out     tests/controls/b_backs_out.py --parts"
   "seams        tests/seams/seams_lose_nothing.py --parts"
+  "punches      tests/punches/punches.py"
 )
 # At most E2E_JOBS runs play at once (default: one a hardware thread; 0: all
 # at once): a game is uncapped and takes a whole thread, and more of them

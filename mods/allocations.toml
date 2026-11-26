@@ -81,6 +81,8 @@ hooks = "faxanadu.pendant-fix."
 rom = []
 # Hooks only @_checkGlove ($8884, bank 14), which no other feature hooks, and
 # writes only Temp_00 there, which the routine sets for this hit just before.
+# A punch reaches it with Y $FF (Punches, below): its strength is Punches'
+# FAX_PUNCH_STRENGTH, not the pointer byte at WEAPON_STRENGTHS + $FF.
 
 [[feature]]
 id = "magic-button"
@@ -1028,3 +1030,22 @@ rom = []
 # ticks (fax_world_ticking()), returning at once, so the touch hooks behind
 # it (Kept finds', the map's and Found items' at $88FB, Block's at $8999)
 # never fire there. No ROM, no read overrides, no save-state record.
+
+[[feature]]
+id = "punches"
+package = "faxanadu.dx"
+plugin = "faxanadu.punches"
+source = "src/fax_punch.c"
+hooks = "faxanadu.punches."
+rom = []
+# Hooks three instructions in bank 14 that no other feature hooks:
+# Player_DrawWeapon's BMI RETURN_B7D5 ($B7DE), where without a weapon and
+# while a swing lasts it writes the weapon's box as the routine writes the Hand
+# Dagger's (PlayerPosXPlus10 and Maybe_Something_WeaponPosX, $CE-$CF, and on
+# the screen $D0-$D3), which only Sprites_IsSpriteOutOfWeaponRange reads;
+# Player_HitSpriteWithWeapon's BMI RETURN_87CA ($8817), where it clears N,
+# which the LDX after it sets again; and the Glove's STA Temp_00 ($888F),
+# where with Y $FF it writes A, whose ADC flags nothing reads. The fist's
+# Y reach is Taller dagger's served byte (fax_dagger_reach_y), and its
+# strength comes in through the Pendant fix's hook. No ROM, no read
+# overrides, no save-state record.

@@ -12,8 +12,12 @@
  * is exactly the original's damage without it, and without the Pendant it is
  * the base strength. The Glove's bonus and the enemy's HP follow as before.
  * The damage is worked out from the machine each hit, so there is nothing to
- * save or clear. See docs/GAME_INTERNALS.md. */
+ * save or clear. A punch (fax_punch.c) comes here too, with Y $FF, no weapon:
+ * the fist's strength is Punches' FAX_PUNCH_STRENGTH, since WEAPON_STRENGTHS
+ * has no entry for it ($B7A5 + $FF is a pointer byte), and the same rule
+ * follows. See docs/GAME_INTERNALS.md. */
 #include "fax_pendant.h"
+#include "fax_punch.h"
 #include "cyc_mod.h"
 #include "mod_runtime.h"
 #include "mod_function_hooks.h"
@@ -48,13 +52,14 @@ static uint8_t pendant_damage(uint8_t strength, uint8_t special_items) {
 /* @_checkGlove, reached from both sides of the Pendant branch. Only Temp_00
  * carries the damage on from here: the next instruction loads A and N/Z, and
  * C is set (CLC, SEC) before anything reads it. Y is the weapon, as the
- * Glove's lookup right after uses it. Bank 14 is mapped, so a peek reads the
- * table the game just read. */
+ * Glove's lookup right after uses it, or $FF for the fist. Bank 14 is mapped,
+ * so a peek reads the table the game just read. */
 static int check_glove_hook(uint16_t addr) {
     (void)addr;
     CycModRegs regs;
     cyc_mod_regs(&regs);
-    uint8_t strength = cyc_mod_peek((uint16_t)(WEAPON_STRENGTHS + regs.y));
+    uint8_t strength = regs.y & FAX_PUNCH_NO_WEAPON ? (uint8_t)FAX_PUNCH_STRENGTH
+                                                    : cyc_mod_peek((uint16_t)(WEAPON_STRENGTHS + regs.y));
     uint8_t special = cyc_mod_peek(SPECIAL_ITEMS);
     uint8_t damage = pendant_damage(strength, special);
     cyc_mod_poke(TEMP_00, damage);

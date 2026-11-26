@@ -1137,3 +1137,26 @@ id = "faxanadu.seams.touch"
 addr = 0x890a
 bank = 14
 bytes = "ae 78 03 bd cc 02 c9 ff f0 f5 20 c8"   # CurrentSprite_CheckHitPlayer: LDX CurrentSpriteIndex, LDA CurrentSprites_Entities,X, CMP #$FF, BEQ RETURN_8909, JSR Sprites_IsSpriteHidden
+
+# Punches (fax_punch.c, #180): without a weapon, Player_DrawWeapon's BMI after
+# LDA Player_CurWeapon (the fist placed, with the Hand Dagger's reach),
+# Player_HitSpriteWithWeapon's (the punch goes on), and the Glove's STA
+# Temp_00 (the fist's bonus in place of a code byte read past the table).
+
+[[mod_function_hook]]
+id = "faxanadu.punches.draw"
+addr = 0xb7de
+bank = 14
+bytes = "30 f5 a5 a7 29 01 85 00 20 4b ba 0a"   # BMI RETURN_B7D5, LDA Player_ArmorLookupIndex, AND #$01, STA Temp_00, JSR Player_GetNormalizedWeaponID
+
+[[mod_function_hook]]
+id = "faxanadu.punches.hit"
+addr = 0x8817
+bank = 14
+bytes = "30 b1 ae 78 03 bc cc 02 b9 44 b5 f0"   # BMI RETURN_87CA, LDX CurrentSpriteIndex, LDY CurrentSprites_Entities,X, LDA SPRITE_CATEGORIES_BY_ENTITY,Y
+
+[[mod_function_hook]]
+id = "faxanadu.punches.glove"
+addr = 0x888f
+bank = 14
+bytes = "85 00 bd 44 03 38 e5 00 9d 44 03 b0"   # STA Temp_00, then @_updateSpriteHP: LDA CurrentSprites_HP,X, SEC, SBC Temp_00, STA

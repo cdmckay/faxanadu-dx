@@ -1,0 +1,15 @@
+cmake_minimum_required(VERSION 3.20)
+project(FaxanaduPunchTests C)
+set(CMAKE_C_STANDARD 11)
+if(NOT NESRECOMP_ROOT)
+    message(FATAL_ERROR "Set NESRECOMP_ROOT to the game's cycle engine checkout")
+endif()
+# fax_punch.c is included by the test, against a model of the machine; the
+# Pendant fix, whose hook gives the fist its strength, is linked beside it.
+add_executable(punch_test punch_test.c ../../src/fax_pendant.c)
+target_include_directories(punch_test PRIVATE ../../src ${NESRECOMP_ROOT}/runner/include ${NESRECOMP_ROOT}/runner/cyc)
+if(NOT MSVC)
+    target_compile_options(punch_test PRIVATE -Wall -Wextra)
+endif()
+enable_testing()
+add_test(NAME punch_unit COMMAND punch_test)

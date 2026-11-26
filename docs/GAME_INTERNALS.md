@@ -1227,8 +1227,10 @@ and starts a new line unless that is `$FF` (the end: `MessageID` 0) or `$FC`
 The sprite loop calls `Player_HitSpriteWithWeapon` (`$8804`) for each live
 sprite every frame, except while the sprite's hit counter counts down. It
 lands a hit while `Player_AttackPhaseAnimFrame` is 1 or 2, on a visible enemy
-in reach (`Sprites_IsSpriteOutOfWeaponRange`; see *Weapon reach* below). A
-hit builds its damage in `Temp_00` (`$00`):
+in reach (`Sprites_IsSpriteOutOfWeaponRange`; see *Weapon reach* below), and
+only with a weapon in hand: `$8814` `LDA Player_CurWeapon`, `$8817` `BMI
+RETURN_87CA` returns for `$FF`, no weapon (see *Punches* for the remaster's
+fist). A hit builds its damage in `Temp_00` (`$00`):
 
 | Address | Code | Does |
 |---|---|---|
@@ -1259,6 +1261,11 @@ and the Glove adds its bonus after either.
   still `Player_CurWeapon`, and X the sprite being hit.
 - `WEAPON_STRENGTHS` is read only here. Magic damage is another routine
   (`Player_HitEnemyWithMagic`), where the Magical Rod adds 50%.
+- Neither table has an entry for no weapon. With Y `$FF` the two reads land
+  past them: `WEAPON_STRENGTHS,Y` on `$B8A4`, the high byte of
+  `PTR_ARRAY_PRG14__b89f`'s third pointer (`$B8`, 184), and
+  `WEAPON_TO_GLOVE_STRENGTH,Y` on `$89C6`, code (`$02`). The original never
+  gets there without a weapon; Punches does, and replaces both (*Punches*).
 
 | Address | Name | Notes |
 |---|---|---|
@@ -1350,8 +1357,12 @@ reach:
   | Long Sword, Giant Blade, Dragon Slayer | `$10` | `$08` |
 
   It returns before loading them when a portrait is up, when there is no
-  weapon (`Player_CurWeapon` `$FF`), or when the weapon is off the screen, so
-  `$D2`/`$D3` then keep the last weapon's values. Off the screen
+  weapon (`Player_CurWeapon` `$FF`, `$B7DB` `LDA`, `$B7DE` `BMI`), or when
+  the weapon is off the screen, so `$D2`/`$D3` then keep the last weapon's
+  values: in a new game, unarmed, they are 0. Past the no-weapon check,
+  `Player_GetNormalizedWeaponID` (`$BA4B`) already answers the Hand Dagger
+  (0) for `$FF`, but the Y table, the reach and the picture index by
+  `Player_CurWeapon` itself. Off the screen
   `Maybe_Something_WeaponPosY` (`$D0`) keeps its last value too: only the X
   (`$CE`, and its high byte `$CF`) is this frame's. A hero who walked to a
   screen's edge keeps the Y of the last frame that had the weapon on the
@@ -1426,6 +1437,63 @@ itself, with A, Y, `Temp_00` and the flags as the X test's failure leaves
 them; otherwise the original runs. The one caller, `$8838`
 (`Player_HitSpriteWithWeapon`), reads only C. A real hit at a screen's edge,
 the box half off it, is the original's.
+
+## Punches (bank 14)
+
+A new game starts unarmed (`PlayerDeath_ResetSelectedItemState`: `SelectedWeapon`
+and `Player_CurWeapon` `$FF`), and a weapon in hand can't be sold or taken
+off, so the hero is unarmed only before his first weapon (400 Golds for the
+Hand Dagger in Eolis), and, in the original, in buildings. He swings all the
+same: `Player_CheckHandleAttack` checks only climbing, and the body takes the
+swing's poses, an arm thrust out. In the original nothing lands: the two
+routines that need the weapon return on `Player_CurWeapon`'s `BMI`
+(*Weapon damage*, *Weapon reach*).
+
+With the remaster (`fax_punch.c`, #180) the fist is a weapon of its own:
+
+| | Fist | Hand Dagger |
+|---|---|---|
+| Strength | 2 | 4 |
+| With the Pendant (+25%, rounded down) | 2 | 5 |
+| The Glove adds | 1 | 2 |
+| Reach (X, Y) | `$08`, `$08` | `$08`, `$08` (Taller dagger) |
+| Where, in the hit poses | the dagger's (*Weapon reach*) | |
+
+So a Zozura (9 HP) takes 5 punches, 4 with the Glove; a Monodron (10 HP)
+6, since 10 to 0 leaves it alive, and 4 with the Glove.
+
+| Address | Code | Hook |
+|---|---|---|
+| `$B7DE` | `Player_DrawWeapon`'s `BMI RETURN_B7D5`, after `LDA Player_CurWeapon` | N set and a swing on (`Player_Flags` `$80`): writes the box as the routine writes the dagger's, then the `BMI` returns, nothing drawn |
+| `$8817` | `Player_HitSpriteWithWeapon`'s `BMI RETURN_87CA`, after the same `LDA` | N set: N cleared, so the routine goes on. The `LDX CurrentSpriteIndex` after it sets N and Z again |
+| `$8884` | `@_checkGlove` (the Pendant fix's hook) | Y `$FF`: the strength is 2, not the byte at `$B8A4` |
+| `$888F` | `STA Temp_00`, after `LDA Temp_00`, `CLC`, `ADC WEAPON_TO_GLOVE_STRENGTH,Y`, only while the Glove runs | Y `$FF`: A becomes `Temp_00` + 1, in place of the code byte at `$89C6`. Nothing reads the `ADC`'s flags: `@_updateSpriteHP`'s `LDA` and `SEC` set N, Z and C first |
+
+- **The box.** `Player_DrawWeapon` runs once a frame in `Game_MainLoop`,
+  after `GameLoop_UpdatePlayer` and before `Sprites_UpdateAll`, so the hit
+  test reads the box of the same frame. The hook works out what the routine
+  would for the Hand Dagger: the pose from `Maybe_Player_CalcAnimFrame`'s
+  rule for an attacking hero (`BYTE_ARRAY_PRG14__b97b` by phase, 4 5 6; the
+  climb's 7 only while `Player_IsClimbing`, which can't start a swing), the
+  X offset from `PTR_ARRAY_PRG14__b89f`'s dagger tables (`$B8AF`, with a
+  shield `$B8BF`) by pose and facing, in 16 bits against
+  `Screen_Maybe_ScrollXCounter` (`$CE`, `$CF`), and on the screen the Y from
+  `$B917` (`$D0`, `$D1`) and the reach (`$D2` from `$B897`, `$D3` the
+  Taller dagger's served byte, which `cyc_mod_peek` would read as the stock
+  `$04`). Off the screen only the X is written, as for a weapon. Only
+  `Sprites_IsSpriteOutOfWeaponRange` reads the box, and only during a swing,
+  so outside one nothing is written. Facing left on the ground, the first
+  hit phase puts the fist 8 pixels left of the hero and 8 down, and it hits
+  a Zozura whose X is 0-23 pixels left of his (`tests/punches/punches.py`).
+- **Everything after the damage** is any hit's: the hit sound, the hit
+  counter and knockback, the damage number, the kill, its experience and
+  MP from kills, Seams lose nothing's 16-bit X test on the way. Townsfolk
+  are never hit (`SPRITE_CATEGORIES_BY_ENTITY`).
+- **A hit turns a Zozura round.** It sets bit 0 of `CurrentSprites_Flags`
+  from the hero's facing, for the knockback (2 pixels a frame for the 8
+  frames of the hit counter), and the same bit is the Zozura's crawl
+  direction: struck from the right it crawls away left afterwards, so a
+  fist, which needs five hits, has to follow it.
 
 ## The Select menu (bank 12)
 
@@ -1522,7 +1590,10 @@ Nothing else is gated.
 - **The hero swings indoors, bare-handed.** `Player_CheckHandleAttack` checks
   only climbing. `Player_DrawWeapon` and `Player_HitSpriteWithWeapon` return
   at once without `Player_CurWeapon`, so nothing is drawn or hit. Magic
-  (`Player_CastMagic`) is not gated at all.
+  (`Player_CastMagic`) is not gated at all. With the remaster the weapon
+  stays in hand (Weapons indoors), and a hero without one punches
+  (*Punches*), indoors as out: the enemies in the rooms below take it,
+  townsfolk never.
 - **The weapon's tiles have room.** `Player_LoadWeaponTilesToPPU` loads them
   to PPU `$0380` (`$0340` for the Dragon Slayer, whose set has no shield), from
   `Screen_SetupNew`'s `Player_DrawSpriteImmediately` and from
@@ -4792,7 +4863,16 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   `WEAPON_STRENGTHS[Y]` and the Pendant bit before the Glove adds its bonus.
   It keeps no state, so it also runs in Seamless's isolated rooms, where the
   hero's swing at a room's edge can hit a neighbouring room's actor in that
-  room's copy (its `hits` count only the live game's).
+  room's copy (its `hits` count only the live game's). A punch reaches it with
+  Y `$FF`, and takes Punches' strength (2) instead of `WEAPON_STRENGTHS[$FF]`.
+- **Punches** (`fax_punch.c`, #180). Without a weapon the hero's fist does 2
+  damage, the Glove adding 1, with the Hand Dagger's reach as Taller dagger
+  serves it (`fax_dagger_reach_y()`). Three hooks in bank 14, none shared:
+  `Player_DrawWeapon`'s no-weapon `BMI` (`$B7DE`), which places the fist
+  during a swing; `Player_HitSpriteWithWeapon`'s (`$8817`), which lets the
+  punch on; and the Glove's `STA Temp_00` (`$888F`). The strength comes in at
+  the Pendant fix's hook. See *Punches*. It keeps no state: the box is the
+  machine's RAM.
 - **Battle Suit and Dragon Slayer fix** (`fax_inventory.c`). Each of the
   two pickups adds the item at its own list's count. It hooks each routine's
   `CPX #$04` (`$C6FA`, `$C73A`), right after the `LDX` that read the other

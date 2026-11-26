@@ -113,11 +113,12 @@ class Game(fax_e2e.Game):
         """The frame a save state continues at: the uint32 at its offset 28."""
         return struct.unpack_from("<I", Path(state).read_bytes(), 28)[0]
 
-    def headless(self, state, schedule, frames, mods, screenshot=None, save=None, picture=None):
+    def headless(self, state, schedule, frames, mods, screenshot=None, save=None, picture=None, saves=()):
         """Run from `state` for `frames` frames, holding buttons on a schedule
         of (frame, buttons) pairs counted from the state's frame ("RIGHT+A",
         "-" for none). Returns each frame's CPU RAM, after the frame. With
-        `save`, (frame, path): also save a state after that frame. With
+        `save`, (frame, path): also save a state after that frame; `saves`,
+        more of them. With
         `picture`, a path: also what the window would show after the last
         frame, with the remaster's drawing (--present-out), where
         `screenshot` is the game's own picture."""
@@ -131,8 +132,8 @@ class Game(fax_e2e.Game):
                 "--frame-log-frames", f"{start}:{start + frames - 1}", "--mods-root", str(mods), "--no-save"]
         if screenshot:
             args += ["--screenshot", str(screenshot)]
-        if save:
-            args += ["--save-state", f"{start + save[0]}:{save[1]}"]
+        for at, path in ([save] if save else []) + list(saves):
+            args += ["--save-state", f"{start + at}:{path}"]
         if picture:
             args += ["--present-out", str(picture)]
         done = subprocess.run(args, capture_output=True, text=True)
