@@ -143,8 +143,8 @@ def cli(rom):
     sugata_first = 'hooks = ["faxanadu.sugata.hit", "faxanadu.block.flash"]'
     broken(sugata_first, 'hooks = ["faxanadu.block.flash", "faxanadu.sugata.hit"]', "in the order they run")
     broken(sugata_first, 'hooks = []', "lists , but the sites")
-    shared_rom = 'features = ["guru-travel", "save-files", "block", "quest-log", "recharging-items", "magician-lesson",'
-    broken(shared_rom, 'features = ["guru-travel", "save-files", "quest-log", "recharging-items", "magician-lesson",',
+    shared_rom = 'features = ["guru-travel", "save-files", "block", "quest-log", "recharging-items", "magician-lesson"]'
+    broken(shared_rom, 'features = ["guru-travel", "save-files", "quest-log", "recharging-items", "magician-lesson"]',
            "(block: message $C3, the line slot")
     feature = re.search(r'\[\[feature\]\]\nid = "pendant-fix".*?(?=\n\[\[)', text, re.S).group(0)
     err = broken(feature, "", "faxanadu.dx's plugin faxanadu.pendant-fix belongs to no feature")

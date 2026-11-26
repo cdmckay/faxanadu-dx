@@ -13,10 +13,13 @@ void fax_shops_tcp_setup(void);
  * speaker names; returns the picture to show. */
 const uint32_t *fax_shops_present(const uint32_t *picture, int *w, int *h);
 
+enum { FAX_SHOPS_RED_POTION = 0x90 };   /* the Red Potion as shops list it: the Items' $10, category 4 */
+
 /* What a shop pays for an item (its full ID, category in the top 3 bits):
  * half what this shop asks for it (`here`, 0 if it does not sell it), else
  * half the lowest price any shop asks (`lowest`, 0 if none does), else 100.
- * 0 for an item no shop buys at all. */
+ * The Red Potion, which the tool shops sell from 160 to 2000, pays half the
+ * lowest at every shop: 80. 0 for an item no shop buys at all. */
 uint16_t fax_shops_sell_price(uint8_t id, uint16_t here, uint16_t lowest);
 /* Items no shop buys: the Dragon Slayer, the Battle Suit and Helmet, and the
  * SpecialItems bits (the rings, the Magical Rod, the Elixir, the Pendant, the
@@ -53,7 +56,7 @@ bool fax_shops_not_for_sale(uint8_t id, const FaxShopsHero *hero);
 
 /* A buy list of `n` entries (items[i] at prices[i]) without the `drops` items
  * in `drop` (full IDs): the entries after each one dropped move up, in order.
- * Returns the entries kept. The tool shops' lists lose the Red Potion this way
- * while the Potion Sellers sell it (fax_potions.h), and the Wing Boots, the
- * Hour Glass and the Elixir, which are found, not bought (fax_found.h). */
+ * Returns the entries kept. The tool shops' lists lose the Wing Boots, the
+ * Hour Glass and the Elixir this way, which are found, not bought
+ * (fax_found.h). */
 unsigned fax_shops_without(const uint8_t drop[], unsigned drops, uint8_t items[], uint16_t prices[], unsigned n);

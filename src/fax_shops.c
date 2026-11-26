@@ -74,14 +74,16 @@
  *   owns still sells, a second copy bought before too) is listed
  *   without a price, the hint says "Not for sale" while the cursor is on it,
  *   and A on it is ignored.
- * - The meat shops sell the Red Potions (Potion Sellers, fax_potions.h), so
- *   while they do, a tool shop's buy list loses its Red Potion: after
- *   Shop_Populate has copied the list, before Shop_Draw draws it, the entries
- *   after the potion move up (fax_shops_without). The shop still buys one,
- *   at half the price its own list in the ROM gives. The Wing Boots, the Hour
- *   Glass and the Elixir are found, not bought (Found items, fax_found.h), so
- *   while it is on their lines go the same way: Eolis's Elixir, Forepaw's and
- *   Conflate's Wing Boots, the shop after Mascon's Hour Glass and Elixir.
+ * - A Red Potion sells for 80 at every shop, half the lowest price any shop
+ *   asks for one (Eolis's 160), where the original paid half the shop's own
+ *   price, up to 1000 at Dartmoor's 2000. With Guru travel, potions bought in
+ *   Eolis and sold in Dartmoor were a loop of gold for menu work (#176).
+ * - The Wing Boots, the Hour Glass and the Elixir are found, not bought (Found
+ *   items, fax_found.h), so while it is on a tool shop's buy list loses their
+ *   lines: after Shop_Populate has copied the list, before Shop_Draw draws it,
+ *   the entries after each move up (fax_shops_without): Eolis's Elixir,
+ *   Forepaw's and Conflate's Wing Boots, the shop after Mascon's Hour Glass and
+ *   Elixir.
  *
  * A step is entered "by return": a hook writes the address it wants on the
  * stack where the routine's RTS will pull it, or pushes a chain of them, and
@@ -96,7 +98,6 @@
 #include "fax_shops.h"
 #include "fax_found.h"
 #include "fax_keys.h"
-#include "fax_potions.h"
 #include "fax_recharge.h"
 #include "fax_text.h"
 #include "cyc_mod.h"
@@ -232,6 +233,8 @@ bool fax_shops_never_buys(uint8_t id) {
 uint16_t fax_shops_sell_price(uint8_t id, uint16_t here, uint16_t lowest_price) {
     enum { FLAT = 100 };   /* for what no shop sells, as the 40th Anniversary Edition pays */
     if (fax_shops_never_buys(id)) return 0;
+    /* The Red Potion: half the lowest price, whatever this shop asks (#176). */
+    if (id == FAX_SHOPS_RED_POTION && lowest_price) here = 0;
     /* IScriptAction_ShowSellMenu halves the shop's price (LSR, ROR). The gold
      * counts by 10s (IScripts_ProgressivelyAddGold), and every price in the
      * game is a multiple of 20, so this never rounds. */
@@ -505,19 +508,13 @@ unsigned fax_shops_without(const uint8_t drop[], unsigned drops, uint8_t items[]
 }
 
 /* OpenShop, its list copied (Shop_Populate) and not yet drawn: the list
- * without its Red Potion while the Potion Sellers sell them, and without the
- * Wing Boots, the Hour Glass and the Elixir while Found items is on. A list of
- * nothing else (no shop's) would be kept. */
+ * without the Wing Boots, the Hour Glass and the Elixir while Found items is
+ * on. A list of nothing else (no shop's) would be kept. */
 static int drawing_hook(uint16_t addr) {
     (void)addr;
     if (!here() || !in_step(BUY, 3)) return 0;
     shop.shown = BUY;
-    uint8_t drop[1 + FAX_FOUND_UNSOLD];
-    unsigned drops = 0;
-    if (fax_potions_selling()) drop[drops++] = FAX_POTIONS_RED_POTION;
-    if (fax_found_on())
-        for (unsigned k = 0; k < FAX_FOUND_UNSOLD; ++k) drop[drops++] = fax_found_unsold[k];
-    if (!drops) return 0;
+    if (!fax_found_on()) return 0;
     uint8_t items[PAGE];
     uint16_t prices[PAGE];
     unsigned n = q(ARG_STRINGS_COUNT);
@@ -526,7 +523,7 @@ static int drawing_hook(uint16_t addr) {
         items[i] = q((uint16_t)(DATA_ARRAY + i));
         prices[i] = (uint16_t)(q((uint16_t)(SHOP_ITEM_COSTS_L + i)) | q((uint16_t)(SHOP_ITEM_COSTS_U + i)) << 8);
     }
-    unsigned kept = fax_shops_without(drop, drops, items, prices, n);
+    unsigned kept = fax_shops_without(fax_found_unsold, FAX_FOUND_UNSOLD, items, prices, n);
     if (kept == n || kept == 0) return 0;
     for (unsigned i = 0; i < kept; ++i) {
         p((uint16_t)(DATA_ARRAY + i), items[i]);

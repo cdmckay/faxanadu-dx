@@ -256,8 +256,7 @@ overrides = [
 bank = 13
 start = 0xB45B
 end = 0xB48B
-features = ["guru-travel", "save-files", "block", "quest-log", "recharging-items", "magician-lesson",
-            "potion-sellers"]
+features = ["guru-travel", "save-files", "block", "quest-log", "recharging-items", "magician-lesson"]
 why = """Message $C3, one line slot for the lines the remaster adds to \
 scripts. Each feature writes its line there just before the step that shows \
 it, and none shows a line while another's is up: Recharging items' Elixir \
@@ -270,32 +269,30 @@ IScriptAction_EndScript comes second), and come only at the end of a script \
 that gave or completed a quest, which no temple Guru's does, so never with \
 Save files' or Guru travel's. The Magician's lesson speaks only in Eolis's \
 Magician's script, where no other feature speaks until it ends (it gives \
-no shield and no quest), and its last line is read before that end. The \
-Potion Sellers' question is asked only in a meat shop's script, which gives \
-no shield and no quest either, and is read before the script goes on. Every \
+no shield and no quest), and its last line is read before that end. Every \
 feature writes its own line again before each one it says. After a save \
 state loads, Save files puts its line back in state_loaded, after Guru \
 travel's record has restored its own, and Block, the quest log, Recharging \
-items, the Magician's lesson and the Potion Sellers put back theirs, after \
-it, if they were saying them."""
+items and the Magician's lesson put back theirs, after it, if they were \
+saying them."""
 
 [[shared_rom]]
 bank = 12
 start = 0xAE00
 end = 0xAE07
-features = ["guru-travel", "block", "quest-log", "recharging-items", "magician-lesson", "potion-sellers"]
+features = ["guru-travel", "block", "quest-log", "recharging-items", "magician-lesson"]
 why = """Guru travel's SAY step, $AE00-$AE02: SHOW_MESSAGE $C3, END. Block, \
 the quest log and Recharging items serve the same three bytes there to show \
 their lines from message $C3, so whichever served them last, the step is the \
-same. The Magician's lesson and the Potion Sellers serve all seven, the SAY \
-step and Guru travel's ASK step ($AE03-$AE06: QUESTION_JUMP_IF_ACCEPTED $C3 \
-to SAY), with the same bytes as Guru travel; no one else touches ASK."""
+same. The Magician's lesson serves all seven, the SAY step and Guru travel's \
+ASK step ($AE03-$AE06: QUESTION_JUMP_IF_ACCEPTED $C3 to SAY), with the same \
+bytes as Guru travel; no one else touches ASK."""
 
 [[shared_site]]
 addr = 0x826E   # IScripts_InvokeNextAction
 hooks = ["faxanadu.travel.next-action", "faxanadu.files.next-action", "faxanadu.shops.next-action",
-         "faxanadu.lesson.next-action", "faxanadu.potions.next-action", "faxanadu.recharge.guru"]
-why = """None but the Potion Sellers handles the call; Save files, Guru travel and Quick shops only \
+         "faxanadu.lesson.next-action", "faxanadu.recharge.guru"]
+why = """None handles the call; Save files, Guru travel and Quick shops only \
 steer the interpreter by writing IScriptOrCHRAddr. None redirects to an \
 address another acts on: with a file in play Guru travel leaves the script's \
 ends to Save files (fax_files_guru_choice), Save files acts on the Gurus' own \
@@ -332,20 +329,8 @@ any script begins (IScriptOffset 1, which it sees before Recharging items \
 moves anything), and Guru travel's conversation, Save files' choice and \
 Recharging items' line are never under way in his script, so they do nothing \
 there. In the magic hall's Magician's script ($A368), likewise no Guru's and \
-no shop's, it only reads where the script stands. The Potion Sellers act on \
-the seven meat shops' scripts ($A4A1-$A4EF), which have neither a Guru's \
-actions nor the shops' layout nor the Magician's address, the same way: at \
-the first action they point the script at Guru travel's ASK step, then at \
-their own pay step or the SAY step's END, in a conversation of theirs they \
-forget when any script begins. Twice they handle the call, entering the \
-game's own code by return: IScripts_ShowFinalMessage (a full Items list) at \
-the SAY step, and IScriptAction_AddInventoryItem (the potion, paid for) at \
-the shop's ADD_HP step. Both happen only in a meat shop's conversation, \
-after the others' sites have seen the step and done nothing there (none has \
-a conversation under way in a meat shop's script), and the one skipped, \
-Recharging items', acts only at a Guru's first action. The next action after \
-either, an END or the shop's thanks, comes back through here with every site \
-firing. So the six may run in this order."""
+no shop's, it only reads where the script stands. So the five may run in this \
+order."""
 
 [[feature]]
 id = "block"
@@ -429,10 +414,9 @@ rom = []
 # fax_recharge.h), to show what the hero owns; its buy list's A ($8402) skips
 # the game's checks for an owned item. Its site at OpenShop's JSR Shop_Draw
 # ($83F7), which no other feature hooks and which returns 0, writes the buy
-# list (DataArray, ShopItemCostsL/U, Arg_StringsCount) without the Red Potion
-# while the Potion Sellers sell it (fax_potions_selling, which it reads), and
-# without the Wing Boots, the Hour Glass and the Elixir while Found items is
-# on (fax_found_on, which it reads).
+# list (DataArray, ShopItemCostsL/U, Arg_StringsCount) without the Wing Boots,
+# the Hour Glass and the Elixir while Found items is on (fax_found_on, which it
+# reads).
 
 [[feature]]
 id = "zone-respawn"
@@ -563,7 +547,7 @@ rom = [
 # IScriptOrCHRAddr and IScriptOffset; in the magic hall's Magician's script
 # ($A368) it only notes, at the step that gives Fire ($A372), that the hero
 # has studied there, and writes nothing. Its site in IScriptAction_SpendGold
-# ($8367, bank 12), shared with the Potion Sellers (below), which returns 0, writes
+# ($8367, bank 12), which no other feature hooks and which returns 0, writes
 # Temp_0202/3, the amount the next instructions copy to Temp_Int24 to check
 # and take: on his pay step, while his lesson is being bought, 200 becomes
 # the lesson's price. Its site at IScripts_ProgressivelySubtractGold's JSR
@@ -575,39 +559,6 @@ rom = [
 # when Save files has one, and reads the core field spells for a file from
 # before lesson.studied. MP from kills reads learned (fax_lesson_learned) to
 # double a kill's MP.
-
-[[feature]]
-id = "potion-sellers"
-package = "faxanadu.dx"
-plugin = "faxanadu.potion-sellers"
-source = "src/fax_potions.c"
-hooks = "faxanadu.potions."
-# Borrowed from Guru travel (fax_travel.h) and served through the same read
-# overrides, with the same bytes, as the Magician's lesson does: the override
-# budget is full.
-rom = [
-    { bank = 12, start = 0xAE00, end = 0xAE07, use = "Guru travel's SAY and ASK steps, to ask the Potion Seller's question" },
-    { bank = 13, start = 0xB45B, end = 0xB48B, use = "message $C3, the line slot, for his question" },
-]
-# Its site at IScripts_InvokeNextAction ($826E, shared, above) acts only in
-# the seven meat shops' scripts and the steps it sends them to, and writes
-# IScriptOrCHRAddr and IScriptOffset; twice it enters the game's own code by
-# return (the stack, as a JSR would, and A: message 6 for
-# IScripts_ShowFinalMessage, the Red Potion for
-# IScriptAction_AddInventoryItem after its IScripts_LoadByte, $83A2). Its site
-# in IScriptAction_SpendGold ($8367, shared with the Magician's lesson, below),
-# which returns 0, writes Temp_0202/3 on a meat shop's pay step while his
-# potion is being bought: the meat's price becomes the potion's. Quick shops
-# reads fax_potions_selling to drop the Red Potion from the tool shops' lists.
-
-[[shared_site]]
-addr = 0x8367   # IScriptAction_SpendGold, after it has read the amount
-hooks = ["faxanadu.lesson.price", "faxanadu.potions.price"]
-why = """Neither handles the call; each writes Temp_0202/3 only in its own \
-conversation's pay step, told by the script's address: the Magician's lesson \
-at Eolis's Magician's ($A363 next, 200 read), the Potion Sellers at a meat \
-shop's ($A4A7-$A4F5 next, its meat's price read). One script stands there at \
-a time, so at most one writes, and the order does not matter."""
 
 [[feature]]
 id = "double-gold"

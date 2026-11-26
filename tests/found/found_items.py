@@ -14,10 +14,10 @@ the check is), what the hero holds, Quests, a screen's enemies cleared, the
 random-item visit counter, and the Elixir spent (Recharging items' record).
 
 shops      No tool shop lists the Wing Boots, the Hour Glass or the Elixir:
-           Eolis's (Hand Dagger, Deluge), Forepaw's (Long Sword, Studded
-           Mail, Small Shield), the one after Mascon on Mist $0D (Death) and
-           Conflate's (Giant Blade, Magic Shield), each its own list less
-           those three and its Red Potion.
+           Eolis's (Hand Dagger, Red Potion, Deluge), Forepaw's (Long Sword,
+           Studded Mail, Small Shield, Red Potion), the one after Mascon on
+           Mist $0D (Death, Red Potion) and Conflate's (Giant Blade, Magic
+           Shield, Red Potion), each its own list less those three.
 boots      Trunk $2D, where a pair lay one counted visit in four, has none on
            8 visits, at every count, and the count stays put; the map has no
            dot for it. Zorugeriru's pair still drops: with him gone, they lie
@@ -238,12 +238,13 @@ def main():
             if part == "shops":
                 lists = (
                     ("eolis", EOLIS, 3, 0x9A, 0x04, PALETTE_EOLIS, REGION_EOLIS,
-                     [HAND_DAGGER, DELUGE], [400, 400]),
+                     [HAND_DAGGER, ITEM | RED_POTION, DELUGE], [400, 160, 400]),
                     ("forepaw", TOWNS, 0x02, 0x9D, 0x0F, PALETTE_TOWN, REGION_TRUNK,
-                     [LONG_SWORD, STUDDED_MAIL, SMALL_SHIELD], [1600, 2500, 1100]),
-                    ("after-mascon", MIST, 0x0D, 0x7C, 0x20, PALETTE_MIST, REGION_MIST, [DEATH], [9800]),
+                     [LONG_SWORD, STUDDED_MAIL, SMALL_SHIELD, ITEM | RED_POTION], [1600, 2500, 1100, 400]),
+                    ("after-mascon", MIST, 0x0D, 0x7C, 0x20, PALETTE_MIST, REGION_MIST,
+                     [DEATH, ITEM | RED_POTION], [9800, 300]),
                     ("conflate", TOWNS, 0x09, 0x99, 0x2D, PALETTE_TOWN, REGION_BRANCH,
-                     [GIANT_BLADE, MAGIC_SHIELD], [8500, 9800]),
+                     [GIANT_BLADE, MAGIC_SHIELD, ITEM | RED_POTION], [8500, 9800, 1000]),
                 )
                 for name, area, screen, door, building, palette, region, want, prices in lists:
                     enter_shop(shop, name, area, screen, door, building, palette, region)

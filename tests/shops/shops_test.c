@@ -16,10 +16,9 @@
  * count presses as a player would (the greeting, the Buy/Sell menu, the
  * list's line, the list), and check what the hero ends up with, what the
  * game said, which boxes it drew, and that the stack is where it started. The hint, and an owned item's OWNED, are drawn on a model
- * picture. Reusable tools and recharging items are switches here, and so are
- * whether the Potion Sellers sell the Red Potions (fax_potions.h) and whether
- * Found items is on (fax_found.h): off but in potion_sellers() and
- * found_items(), so the other tests have the tool shops' own lists. */
+ * picture. Reusable tools and recharging items are switches here, and so is
+ * whether Found items is on (fax_found.h): off but in found_items(), so the
+ * other tests have the tool shops' own lists. */
 #include <stdio.h>
 static char logged[160];
 #define FAX_SHOPS_LOG(...) snprintf(logged, sizeof logged, __VA_ARGS__)
@@ -37,9 +36,6 @@ static bool reusable_on = true, recharging_on = true, spent;
 bool fax_reusable_tools_on(void) { return reusable_on; }
 bool fax_recharge_on(void) { return recharging_on; }
 bool fax_recharge_elixir_spent(void) { return recharging_on && spent; }
-/* The Potion Sellers (fax_potions.c), as a switch. */
-static bool potions_on;
-bool fax_potions_selling(void) { return potions_on; }
 /* Found items (fax_found.c), as a switch, with its list (found_test.c checks
  * fax_found.c's own). */
 static bool found_on;
@@ -486,12 +482,19 @@ static bool listed(const uint8_t *ids, const uint16_t *prices, unsigned n) {
 static void prices(void) {
     /* Half this shop's price where it sells the item, as ShowSellMenu
      * halves it; else half the lowest any shop asks; else 100. */
-    CHECK(fax_shops_sell_price(RED_POTION, 160, 160) == 80);
-    CHECK(fax_shops_sell_price(RED_POTION, 2000, 160) == 1000);
+    CHECK(fax_shops_sell_price(KEY_J, 140, 100) == 70);
     CHECK(fax_shops_sell_price(KEY_J, 0, 100) == 50);
     CHECK(fax_shops_sell_price(KEY_A, 0, 0) == 100);
     CHECK(fax_shops_sell_price(FIRE, 0, 0) == 100);
+    CHECK(fax_shops_sell_price(LONG_SWORD, 1600, 1600) == 800);
+    CHECK(fax_shops_sell_price(DEATH, 12500, 9800) == 6250);
+    /* The Red Potion: half the lowest, whatever this shop asks (#176). */
+    CHECK(fax_shops_sell_price(RED_POTION, 160, 160) == 80);
+    CHECK(fax_shops_sell_price(RED_POTION, 2000, 160) == 80);
+    CHECK(fax_shops_sell_price(RED_POTION, 0, 160) == 80);
     CHECK(fax_shops_sell_price(RED_POTION, 0, 165) == 80);   /* the gold counts by 10s */
+    CHECK(fax_shops_sell_price(RED_POTION, 300, 0) == 150);  /* no lowest (no shop's): this shop's half */
+    CHECK(fax_shops_sell_price(POISON, 0, 0) == 100);        /* the Items' next: no such rule */
     /* Never: the last fight's gear, and every SpecialItems bit. */
     static const uint8_t never[] = { DRAGON_SLAYER, BATTLE_SUIT, BATTLE_HELMET, 0x80, 0x81, 0x82, 0x83,
                                      MAGICAL_ROD, ELIXIR, PENDANT, BLACK_ONYX };
@@ -521,10 +524,13 @@ static void prices(void) {
     }
     CHECK(found == SHOPS);
 
-    /* No new way to make gold: selling at a shop that does not sell the item
-     * never pays what any shop asks for it. (Where a shop does sell it, the
-     * price is the original's half of that shop's, Red Potions bought in
-     * Eolis and sold in Dartmoor included.) Every price is a multiple of 10. */
+    /* No way to make gold by trading: no shop pays for an item what any shop
+     * asks for it. Not the keys, which a key shop buys for half its own price,
+     * more than Eolis's asks, but which reusable tools keep for good, so no
+     * shop buys them (fax_shops_not_for_sale). The Red Potion, which a tool
+     * shop asks 160 to 2000 for, pays 80 at every shop, where the original
+     * paid up to 1000 (#176). Every price is a multiple of 10. */
+    unsigned potions = 0;
     for (unsigned s = 0; s < SHOPS; ++s)
         for (unsigned t = 0; t < SHOPS; ++t)
             for (unsigned j = 0; j < 5 && shops[t].list[j].price; ++j) {
@@ -534,8 +540,10 @@ static void prices(void) {
                     if (shops[s].list[k].id == id) here = shops[s].list[k].price;
                 uint16_t pay = fax_shops_sell_price(id, here, lowest[id]);
                 CHECK(pay % 10 == 0);
-                if (!here) CHECK(pay < shops[t].list[j].price);
+                if (id < KEY_A || id > KEY_JO) CHECK(pay < shops[t].list[j].price);
+                if (id == RED_POTION) { CHECK(pay == 80); ++potions; }
             }
+    CHECK(potions == SHOPS * 9);                                      /* nine tool shops sell one */
 }
 
 /* The presses to a list: A on the greeting, the Buy/Sell menu's choice (A on
@@ -935,17 +943,17 @@ static void selling(void) {
     talk(shops[EOLIS_TOOLS].index);
     CHECK(gold() == 150 && count_of(KEY_J) == 0 && refused == 0 && !stuck);
     reusable_on = recharging_on = true;
-    /* At a key shop, a Red Potion sells at half the lowest tool shop's
-     * price. Then nothing is left: the original's line, and buying. */
+    /* At a key shop, a Red Potion sells for 80, as at every shop. Then
+     * nothing is left: the original's line, and buying. */
     carry(0, (const uint8_t[]){ RED_POTION }, 1);
     press(TO_SELL "AAABA");
     talk(shops[EOLIS_KEYS].index);
     CHECK(gold() == 80 && count_of(RED_POTION) == 0 && said_count == 6 && said[0] == I_SELL_KEYS && said[3] == 0x12);
-    /* At Dartmoor's, at half its own, as the original pays. */
+    /* At Dartmoor's too, which asks 2000 for one (#176). */
     carry(0, (const uint8_t[]){ RED_POTION }, 1);
     press(TO_SELL "AAABA");
     talk(shops[DARTMOOR_TOOLS].index);
-    CHECK(gold() == 1000 && !stuck);
+    CHECK(gold() == 80 && !stuck);
     /* A special item that somehow sits in a list is never sold, so its
      * SpecialItems bit (Player_RemoveItem clears that) stays. */
     carry(0, NULL, 0);
@@ -1044,140 +1052,102 @@ static void off(void) {
     talk(shops[EOLIS_KEYS].index);
     CHECK(said_count == 4 && said[0] == I_SELL_KEYS && said[2] == 0x13 && said[3] == 0x02);
     CHECK(gold() == 50 && count_of(KEY_J) == 0 && !stuck);
+    /* Dartmoor's tool shop buys a Red Potion for half its own 2000, as the
+     * original does. */
+    carry(0, (const uint8_t[]){ RED_POTION }, 1);
+    press("AdAAA" "A");
+    talk(shops[DARTMOOR_TOOLS].index);
+    CHECK(gold() == 1000 && count_of(RED_POTION) == 0 && said[said_count - 1] == 0x02 && !stuck);
     on(true);
 }
 
-/* While the Potion Sellers sell the Red Potions, the tool shops' buy lists
- * lose theirs: the entries after it move up, and buy as before. A shop still
- * buys one, at half its own old price. */
-static void potion_sellers(void) {
-    /* On plain values: every entry of the item goes, the rest keep their order. */
-    static const uint8_t potion[] = { RED_POTION };
-    uint8_t ids[] = { HAND_DAGGER, RED_POTION, ELIXIR, RED_POTION, DELUGE };
-    uint16_t costs[] = { 400, 160, 320, 300, 400 };
-    CHECK(fax_shops_without(potion, 1, ids, costs, 5) == 3);
-    CHECK(ids[0] == HAND_DAGGER && ids[1] == ELIXIR && ids[2] == DELUGE);
-    CHECK(costs[0] == 400 && costs[1] == 320 && costs[2] == 400);
-    CHECK(fax_shops_without(potion, 1, ids, costs, 3) == 3 && fax_shops_without(potion, 1, ids, costs, 0) == 0);
-    CHECK(fax_shops_without(potion, 0, ids, costs, 3) == 3 && ids[1] == ELIXIR);   /* nothing to drop */
-
-    on(true);
-    potions_on = true;
-    /* Every shop: its own list, less its Red Potion; nine tool shops sold
-     * one, "After Mascon"'s (300) among them. */
-    unsigned lost = 0;
+/* The Red Potion: every tool shop that lists one sells it, at its own
+ * price, as often as there is room, the list staying up; and every shop, a
+ * key shop too, buys one for 80 (#176). */
+static void red_potions(void) {
+    unsigned selling = 0;
     for (unsigned k = 0; k < SHOPS; ++k) {
-        uint8_t want[5];
-        uint16_t want_costs[5];
-        unsigned n = 0, had = 0;
-        for (unsigned j = 0; j < 5 && shops[k].list[j].price; ++j, ++had)
-            if (shops[k].list[j].id != RED_POTION) want[n] = shops[k].list[j].id, want_costs[n++] = shops[k].list[j].price;
-        carry(0, NULL, 0);
-        press(TO_BUY "B");
-        talk(shops[k].index);
-        CHECK(listed(want, want_costs, n) && draws == 1 && !stuck);
-        lost += had - n;
-    }
-    CHECK(lost == 9);
-    /* Eolis's: Hand Dagger, Elixir, Deluge. Down, A: the Elixir; Up from the
-     * top wraps to the Deluge, the last of three. */
-    carry(1000, (const uint8_t[]){ KEY_J }, 1);
-    press(TO_BUY "dABA");
-    talk(shops[EOLIS_TOOLS].index);
-    CHECK(gold() == 1000 - 320 && (ram[SPECIAL_ITEMS] & 0x08) && count_of(RED_POTION) == 0);
-    carry(1000, (const uint8_t[]){ KEY_J }, 1);
-    press(TO_BUY "uABA");
-    talk(shops[EOLIS_TOOLS].index);
-    CHECK(gold() == 1000 - 400 && count_of(DELUGE) == 1 && count_of(RED_POTION) == 0);
-    /* Bought again, the list is drawn again without it, the cursor kept. */
-    carry(2000, NULL, 0);
-    press(TO_BUY "ddAAABA");                                              /* the Deluge, again: owned, A ignored */
-    talk(shops[EOLIS_TOOLS].index);
-    CHECK(gold() == 2000 - 400 && count_of(DELUGE) == 1 && said_count == 4 && said[3] == 0x02 && draws == 2);
-    CHECK(listed((const uint8_t[]){ HAND_DAGGER, ELIXIR, DELUGE }, (const uint16_t[]){ 400, 320, 400 }, 3));
-    /* Selling a Red Potion: half the shop's own price, from its list. */
-    static const struct { unsigned shop; uint16_t pays; } sales[] = {
-        { EOLIS_TOOLS, 80 }, { APOLUNE_TOOLS, 150 }, { FOREPAW_TOOLS, 200 }, { 5, 150 }, { DARTMOOR_TOOLS, 1000 },
-        { EOLIS_KEYS, 80 } };                                         /* a key shop: half the lowest, 160 */
-    for (unsigned i = 0; i < sizeof sales / sizeof sales[0]; ++i) {
+        on(true);                                                    /* the counts from 0 */
+        unsigned row = 5;
+        for (unsigned j = 0; j < 5 && shops[k].list[j].price; ++j)
+            if (shops[k].list[j].id == RED_POTION) row = j;
+        /* Bought: down to it, A twice, B and the thanks. */
+        if (row < 5) {
+            char buttons[16] = TO_BUY;
+            for (unsigned d = 0; d < row; ++d) strcat(buttons, "d");
+            strcat(buttons, "AABA");
+            uint16_t cost = shops[k].list[row].price;
+            carry(2u * cost, NULL, 0);
+            press(buttons);
+            talk(shops[k].index);
+            CHECK(gold() == 0 && count_of(RED_POTION) == 2 && bought == 2 && thanked == 1 && !stuck);
+            CHECK(ram[DATA_ARRAY + row] == RED_POTION && price(row) == cost && ram[MENU_CURSOR_POS] == row);
+            ++selling;
+        }
+        /* Sold: the sell list offers it at 80, and A pays that. */
+        on(true);
         carry(0, (const uint8_t[]){ RED_POTION, RED_POTION }, 2);
+        press(TO_SELL "B");
+        talk(shops[k].index);
+        CHECK(listed((const uint8_t[]){ RED_POTION, RED_POTION }, (const uint16_t[]){ 80, 80 }, 2) && !stuck);
         press(TO_SELL "ABA");
-        talk(shops[sales[i].shop].index);
-        CHECK(gold() == sales[i].pays && count_of(RED_POTION) == 1 && !stuck);
+        talk(shops[k].index);
+        CHECK(gold() == 80 && count_of(RED_POTION) == 1 && sold == 1 && !stuck);
     }
-    /* Not selling them (his line could not be supplied): the lists as they were. */
-    potions_on = false;
-    press(TO_BUY "B");
-    talk(shops[EOLIS_TOOLS].index);
-    CHECK(listed((const uint8_t[]){ HAND_DAGGER, RED_POTION, ELIXIR, DELUGE }, (const uint16_t[]){ 400, 160, 320, 400 }, 4));
-    /* Nor with Quick shops off, or in Seamless's isolated scope. */
-    potions_on = true;
-    isolated = true;
-    carry(700, NULL, 0);
-    press("AAAB");                                                     /* the greeting, Buy, the question, the list */
-    talk(shops[EOLIS_TOOLS].index);
-    isolated = false;
-    CHECK(listed((const uint8_t[]){ HAND_DAGGER, RED_POTION, ELIXIR, DELUGE }, (const uint16_t[]){ 400, 160, 320, 400 }, 4));
-    on(false);
-    carry(700, NULL, 0);
-    press("AAAB");
-    talk(shops[EOLIS_TOOLS].index);
-    CHECK(listed((const uint8_t[]){ HAND_DAGGER, RED_POTION, ELIXIR, DELUGE }, (const uint16_t[]){ 400, 160, 320, 400 }, 4));
-    potions_on = false;
-    on(true);
+    CHECK(selling == 9);
 }
 
 /* With Found items on, no tool shop sells the Wing Boots, the Hour Glass or
  * the Elixir: their lines go as the Red Potion's do, with it or without it,
  * and what is left buys as before. */
 static void found_items(void) {
-    /* On plain values: the three, and the Red Potion beside them. */
-    static const uint8_t drops[] = { WING_BOOTS, HOUR_GLASS, ELIXIR, RED_POTION };
-    uint8_t ids[] = { DEATH, HOUR_GLASS, ELIXIR, RED_POTION };          /* the shop after Mascon's */
-    uint16_t costs[] = { 9800, 5600, 4300, 300 };
-    CHECK(fax_shops_without(drops, 3, ids, costs, 4) == 2 && ids[0] == DEATH && ids[1] == RED_POTION);
+    /* On plain values: every entry of the three goes, the rest keep their order. */
+    static const uint8_t drops[] = { WING_BOOTS, HOUR_GLASS, ELIXIR };
+    uint8_t ids[] = { DEATH, HOUR_GLASS, ELIXIR, RED_POTION, ELIXIR };    /* the shop after Mascon's, an Elixir more */
+    uint16_t costs[] = { 9800, 5600, 4300, 300, 320 };
+    CHECK(fax_shops_without(drops, 3, ids, costs, 5) == 2 && ids[0] == DEATH && ids[1] == RED_POTION);
     CHECK(costs[0] == 9800 && costs[1] == 300);
-    CHECK(fax_shops_without(drops, 4, ids, costs, 2) == 1 && ids[0] == DEATH && costs[0] == 9800);
+    CHECK(fax_shops_without(drops, 3, ids, costs, 2) == 2 && fax_shops_without(drops, 3, ids, costs, 0) == 0);
+    CHECK(fax_shops_without(drops, 0, ids, costs, 2) == 2 && ids[1] == RED_POTION);   /* nothing to drop */
 
     on(true);
-    for (int potions = 0; potions <= 1; ++potions) {
-        potions_on = potions;
-        found_on = true;
-        /* Every shop: its own list, less the three (and its Red Potion). Two
-         * sold the Wing Boots, one the Hour Glass, two the Elixir. */
-        unsigned lost = 0;
-        for (unsigned k = 0; k < SHOPS; ++k) {
-            uint8_t want[5];
-            uint16_t want_costs[5];
-            unsigned n = 0, had = 0;
-            for (unsigned j = 0; j < 5 && shops[k].list[j].price; ++j, ++had) {
-                uint8_t id = shops[k].list[j].id;
-                if (id == WING_BOOTS || id == HOUR_GLASS || id == ELIXIR || (potions && id == RED_POTION)) continue;
-                want[n] = id, want_costs[n++] = shops[k].list[j].price;
-            }
-            carry(0, NULL, 0);
-            press(TO_BUY "B");
-            talk(shops[k].index);
-            CHECK(listed(want, want_costs, n) && draws == 1 && !stuck);
-            lost += had - n;
+    found_on = true;
+    /* Every shop: its own list, less the three. Two sold the Wing Boots, one
+     * the Hour Glass, two the Elixir; the Red Potions stay. */
+    unsigned lost = 0;
+    for (unsigned k = 0; k < SHOPS; ++k) {
+        uint8_t want[5];
+        uint16_t want_costs[5];
+        unsigned n = 0, had = 0;
+        for (unsigned j = 0; j < 5 && shops[k].list[j].price; ++j, ++had) {
+            uint8_t id = shops[k].list[j].id;
+            if (id == WING_BOOTS || id == HOUR_GLASS || id == ELIXIR) continue;
+            want[n] = id, want_costs[n++] = shops[k].list[j].price;
         }
-        CHECK(lost == (potions ? 5u + 9u : 5u));
+        carry(0, NULL, 0);
+        press(TO_BUY "B");
+        talk(shops[k].index);
+        CHECK(listed(want, want_costs, n) && draws == 1 && !stuck);
+        lost += had - n;
     }
-    /* Eolis's: the Hand Dagger and Deluge. Down, A: the Deluge. */
+    CHECK(lost == 5);
+    /* Eolis's: the Hand Dagger, the Red Potion and the Deluge. Down twice,
+     * A: the Deluge. */
     carry(1000, (const uint8_t[]){ KEY_J }, 1);
-    press(TO_BUY "dABA");
+    press(TO_BUY "ddABA");
     talk(shops[EOLIS_TOOLS].index);
     CHECK(gold() == 1000 - 400 && count_of(DELUGE) == 1 && !(ram[SPECIAL_ITEMS] & 0x08));
-    CHECK(listed((const uint8_t[]){ HAND_DAGGER, DELUGE }, (const uint16_t[]){ 400, 400 }, 2));
-    /* Forepaw's: the Long Sword, the Studded Mail and the Small Shield; Up
-     * from the top wraps to the shield, the last of three. */
+    CHECK(listed((const uint8_t[]){ HAND_DAGGER, RED_POTION, DELUGE }, (const uint16_t[]){ 400, 160, 400 }, 3));
+    /* Forepaw's: the Long Sword, the Studded Mail, the Small Shield and the
+     * Red Potion; Up from the top wraps to the potion, the last of four. */
     carry(2000, NULL, 0);
     press(TO_BUY "uABA");
     talk(shops[FOREPAW_TOOLS].index);
-    CHECK(gold() == 2000 - 1100 && count_of(WING_BOOTS) == 0 && !stuck);
-    CHECK(listed((const uint8_t[]){ LONG_SWORD, STUDDED_MAIL, SMALL_SHIELD }, (const uint16_t[]){ 1600, 2500, 1100 }, 3));
+    CHECK(gold() == 2000 - 400 && count_of(RED_POTION) == 1 && count_of(WING_BOOTS) == 0 && !stuck);
+    CHECK(listed((const uint8_t[]){ LONG_SWORD, STUDDED_MAIL, SMALL_SHIELD, RED_POTION },
+                 (const uint16_t[]){ 1600, 2500, 1100, 400 }, 4));
     /* Off (the original's lists), or Quick shops off: the lists as they were. */
-    found_on = potions_on = false;
+    found_on = false;
     carry(0, NULL, 0);
     press(TO_BUY "B");
     talk(shops[FOREPAW_TOOLS].index);
@@ -1385,7 +1355,7 @@ int main(void) {
     off();
     isolated_and_saved();
     the_hint();
-    potion_sellers();
+    red_potions();
     found_items();
     printf("shops_test: %u checks passed (%u hook calls)\n", checks, fired);
     return 0;
