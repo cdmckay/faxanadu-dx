@@ -190,9 +190,15 @@ def main():
                 print(f"ok: {part}: out by its door and back in by {DOOR_OUT:#04x}'s, the original's load brings "
                       f"the boss back, and the room is an arena again")
                 continue
+            # With Seams (#166) the room beside, refreshed by the scroll's
+            # load, has its monsters back, and once seen they come at him: one
+            # that knocks him back over the seam is a second handoff. Send the
+            # neighbours' monsters away, as tests/fixes/small_fixes.py does.
+            g.poke({}, fax_e2e.quiet_neighbours(g.save(f"{part}-out")))
+            before = world()
             walk("left" if side == RIGHT else "right", lambda: g.where() == (area, screen), "the room beside")
             out = world()
-            assert out["handoffs"] == joined["handoffs"] + 1 and out["portals"] == joined["portals"], (joined, out)
+            assert out["handoffs"] == before["handoffs"] + 1 and out["portals"] == before["portals"], (before, out)
             print(f"ok: {part}: back out to {screen:#04x} by a Seamless handoff, no scroll")
 
         if args.wants("zenis-00"):
