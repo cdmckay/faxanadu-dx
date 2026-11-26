@@ -33,7 +33,8 @@ extern uint32_t hw_palette_argb[512];
 
 /* The view is fixed at 424x240, whatever the window: the original's full
  * 240 lines (its 32-line HUD and a room's 208), 53 of its 8-pixel tiles
- * wide, as Sonic Mania widens its own. The host scales it to the window. */
+ * wide, as Sonic Mania widens its own. The host scales it to the window by
+ * its one fixed rule, sharp at 1080p's 4.5x (#107: fax_world_composed). */
 enum { MAX_ROOMS=83, RW=256, RH=208, HUD=32, VIEW_W=424, VIEW_H=240 };
 typedef struct {
     uint8_t ram[2048],chr[8192],palette[32];
@@ -69,6 +70,8 @@ static int origin_x,origin_y;static bool origin_valid;
 static int hud_x=-1,hud_w; /* where the status bar's column 0 went in the last picture, and its width */
 static uint32_t *canvas;
 static size_t capacity;
+/* The last fax_world_present composed the canvas (fax_world_composed). */
+static bool composed;
 /* The status bar band (the native picture's top 32 lines) of the last frame
  * that showed it, live in play and through conversations (fax_world_step). */
 static uint32_t hud_band[RW*HUD];
@@ -557,7 +560,7 @@ const uint32_t *fax_world_present(int *w,int *h,const uint32_t *native){
     /* Start pauses native simulation, not the expanded picture. Select's
      * native inventory is composited over the frozen world at the same scale.
      * Never show a cached region while an original portal is replacing it. */
-    origin_valid=false;
+    origin_valid=composed=false;
     if(!enabled||!supported())return NULL;
     uint64_t start=SDL_GetPerformanceCounter();*w=VIEW_W;*h=VIEW_H;
     bool same=active>=0&&area==q(0x24)&&active==q(0x63);
@@ -566,6 +569,7 @@ const uint32_t *fax_world_present(int *w,int *h,const uint32_t *native){
         if(atlas){*w=clamp((r-l+1)*RW,128,4096);*h=clamp((b-t+1)*RH+HUD,96,2048);}}
     int width=*w,height=*h;size_t n=(size_t)width*height;
     if(n>capacity){uint32_t *v=realloc(canvas,n*sizeof *v);if(!v)return NULL;canvas=v;capacity=n;}
+    composed=true;
     for(size_t i=0;i<n;i++)canvas[i]=0xff000000;
     /* Native scripts and region loaders keep their original image, centred
      * in the same fixed canvas, with its status bar band where play has it.
@@ -618,6 +622,7 @@ finished:
 }
 void fax_world_reset(void){hud_x=-1;hud_w=0;make_mask();memset(rooms,0,sizeof rooms);memset(raster_valid,0,sizeof raster_valid);area=active=-1;pending=-1;events_area=-1;fighting=false;rom_ok=false;hud_valid=death_mode=script_mode=false;ticks=last_tick=handoffs=failures=portals=0;player_tick=collision_active=false;screen_loaded=view_ok=false;tick_id=-1;cyc_mod_set_ram_read_hook(NULL);}
 bool fax_world_ticking(void){return ticking;}
+bool fax_world_composed(void){return composed;}
 static bool on_map(int id){return enabled&&area>=0&&id>=0&&id<(int)counts[area]&&rooms[id].owned;}
 int fax_world_seams_room(void){if(!enabled||active<0)return -1;return ticking?tick_id:cyc_mod_isolated()?-1:active;}
 int fax_world_active_room(void){return enabled?active:-1;}

@@ -49,6 +49,7 @@ cmake --build "$OUT/text_speed" -j"$JOBS" >/dev/null
 "$OUT/text_speed/text_speed_test"
 cmake -S tests/world -B "$OUT/world" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/world" -j"$JOBS" >/dev/null && echo "fax_world.c compiles without SDL"
+"$OUT/world/present_fit_test" | tail -4
 cmake -S tests/death -B "$OUT/death" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/death" -j"$JOBS" >/dev/null
 "$OUT/death/death_test"

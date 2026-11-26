@@ -38,7 +38,10 @@ them, then come for you, and a monster that has seen you follows you on,
 up to a town's edge: towns stay safe, and their people stay in them. A coin
 or anything else lying at a room's edge waits there for you to walk in. The
 view is always 424x240, the original's full height and 53 tiles wide, scaled
-to your window.
+to fill your window or screen and keep its shape: 3x at 720p, 6x at 1440p and
+9x at 4K, with every pixel square and crisp. At 1080p, 4.5x, the pixels stay
+crisp too, with no blur but a one-pixel blend at some of their edges (sharp
+scaling, as Shovel Knight does).
 F4 shows the region you're in. Doors and region changes keep the original's
 own transitions, and so does each boss's room: while its boss lives, the
 room stays apart and you fight on that one screen, as in the original; once
