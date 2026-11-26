@@ -590,6 +590,17 @@ What a feature can rely on, and the traps:
   half pressed, and takes the first value it sees for where an axis rests, so
   one first seen pushed never lets go. The attach opens the controllers and
   drops their hot-plug event, which would open them again after the press.
+- **A hidden window opens only virtual controllers** (#168). It lets
+  controller input through without focus
+  (`SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS`, `cyc_sdl.c`), for the TCP
+  pad, so a real pad it opened reached the game whenever anyone used it:
+  while Cameron played on potato with an Xbox Series X controller, an idle
+  test game saw his buttons, full runs failed in unrelated parts, and the
+  fixtures saved then kept the stray input (`entrances.edges-mist` failed
+  every time until `build-tests/fixtures` was deleted). `open_pads` asks
+  `cyc_input_opens_pad`: a visible window opens every game controller, a
+  hidden one only those `SDL_JoystickIsVirtual` reports, and logs each real
+  one it leaves closed ("controller not opened (hidden window)").
 - **Controllers by position.** The game links sdl2-compat, which maps a
   Nintendo-layout pad (a Switch Pro, an 8BitDo in Switch mode) by its printed
   letters, as SDL2 did, unless `SDL_HINT_GAMECONTROLLER_USE_BUTTON_LABELS` is
