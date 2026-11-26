@@ -1120,3 +1120,20 @@ id = "faxanadu.select-menu.choose"
 addr = 0x8af0
 bank = 12
 bytes = "ae 1e 02 e0 05 d0 03 4c 5a 8d a9 04"   # @_loadMenuIDs: LDX Menu_CursorPos, CPX #$05, BNE, JMP
+
+# Seams lose nothing (fax_seams.c, #166's slice 0): the weapon's X test in 16
+# bits, refusing a match the 8-bit test finds only by wrapping round the
+# screen; and the sprite loop's touch of the hero, skipped in Seamless's
+# neighbouring rooms' copies.
+
+[[mod_function_hook]]
+id = "faxanadu.seams.reach"
+addr = 0x88cb
+bank = 14
+bytes = "bd cc 02 0a a8 b9 07 b4 18 65 d2 85"   # Sprites_IsSpriteOutOfWeaponRange: LDA CurrentSprites_Entities,X, ASL A, TAY, LDA MAYBE_SPRITE_EXTENTS,Y, CLC, ADC Maybe_WeaponRange_X, STA
+
+[[mod_function_hook]]
+id = "faxanadu.seams.touch"
+addr = 0x890a
+bank = 14
+bytes = "ae 78 03 bd cc 02 c9 ff f0 f5 20 c8"   # CurrentSprite_CheckHitPlayer: LDX CurrentSpriteIndex, LDA CurrentSprites_Entities,X, CMP #$FF, BEQ RETURN_8909, JSR Sprites_IsSpriteHidden

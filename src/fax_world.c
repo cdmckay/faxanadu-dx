@@ -50,6 +50,9 @@ static int pending_y;
 static unsigned ticks,last_tick,handoffs,failures,portals;
 static bool player_tick;
 static bool collision_active;
+/* Inside tick_room's isolated pass of a neighbour's sprite loop, where its
+ * actors meet the projected hero (shadow()): fax_world_ticking(). */
+static bool ticking;
 static bool death_mode,script_mode;
 static int camera_x,camera_y,picture_w,picture_h;
 static int origin_x,origin_y;static bool origin_valid;
@@ -279,7 +282,7 @@ static void tick_room(unsigned id){
     load(id);shadow(id);p(0x54,255);p(0xc,0);p(0xd,0);p(0x57,0);p(0x58,0);p(0x59,0);p(0x9f,0);p(0xa2,0);
     for(unsigned i=0x700;i<0x800;i+=4)p(i,0xf0);
     transfer=r;speculative=true;cyc_mod_allow_isolated_hooks(true);p(0x1f,0);p(0x20,0);
-    bool ok=bank(14)&&call(0xcb17,0,0)&&call(0x8000,0,0);
+    ticking=true;bool ok=bank(14)&&call(0xcb17,0,0)&&call(0x8000,0,0);ticking=false;
     drain();speculative=false;transfer=NULL;
     if(ok){capture(id,false);r->ticks++;}
     cyc_mod_isolate_end();if(!ok)failures++;
@@ -546,6 +549,7 @@ finished:
     picture_w=width;picture_h=height;render_ms=(SDL_GetPerformanceCounter()-start)*1000.0/SDL_GetPerformanceFrequency();return canvas;
 }
 void fax_world_reset(void){hud_x=-1;hud_w=0;make_mask();memset(rooms,0,sizeof rooms);memset(raster_valid,0,sizeof raster_valid);area=active=-1;pending=-1;events_area=-1;fighting=false;rom_ok=false;hud_valid=death_mode=script_mode=false;ticks=last_tick=handoffs=failures=portals=0;player_tick=collision_active=false;cyc_mod_set_ram_read_hook(NULL);}
+bool fax_world_ticking(void){return ticking;}
 bool fax_world_origin(int *x,int *y){if(!origin_valid)return false;*x=origin_x;*y=origin_y;return true;}
 bool fax_world_room_origin(int a,int id,int *x,int *y){if(!origin_valid||a!=area||id<0||id>=(int)counts[area]||!rooms[id].owned)return false;*x=rooms[id].x*RW-camera_x;*y=HUD+rooms[id].y*RH-camera_y;return true;}
 const uint8_t *fax_world_room_ram(int a,int id){if(!enabled||!origin_valid||a!=area||id<0||id>=(int)counts[area]||id==active||!rooms[id].owned||!rooms[id].live)return NULL;return rooms[id].ram;}
