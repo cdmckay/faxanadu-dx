@@ -4585,7 +4585,7 @@ Seamless's seams.
 - **What crossing changes.** A Zozura (`BSCRIPTS_ENEMY_ZOZURA`: face the hero,
   walk 60 ticks at `$60`/256 pixels a frame, again) that has seen him comes
   room after room. From Eolis `$05` four Zozuras followed him through `$04`
-  into `$03`, the town's last screen: Seamless joins the town to the screens
+  into `$03`, the left end of the town: Seamless joins the town to the screens
   past it, so monsters can now follow him into it. Shots fly on through a
   seam and go once wholly out of the view by 16 pixels.
 
