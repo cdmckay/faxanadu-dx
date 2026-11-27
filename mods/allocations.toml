@@ -92,10 +92,25 @@ source = "src/fax_magic.c"
 hooks = "faxanadu.magic-button."
 rom = []
 # Hooks Player_CastMagic ($BA5B, bank 14) and GameLoop_CheckUseCurrentItem
-# ($C478), which no other feature hooks, and never handles either. Writes only
-# the joypad masks ($16, $18, $19) between the two calls, and puts back what
-# it found. A feature that later hooks $C478 and handles it must sit after
-# this one in game.toml, or the real masks are never restored.
+# ($C478), both shared with Seams (below), and never handles either. Writes
+# only the joypad masks ($16, $18, $19) between the two calls, and puts back
+# what it found. A feature that later hooks $C478 and handles it must sit
+# after this one in game.toml, or the real masks are never restored.
+
+[[shared_site]]
+addr = 0xBA5B   # Player_CastMagic
+hooks = ["faxanadu.magic-button.cast", "faxanadu.seams.cast"]
+why = """Neither handles the call, so both always run, and neither reads \
+what the other writes. The Magic button writes only the joypad masks; Seams \
+reads CastMagic_Type and Player_PosX_Block and writes nothing of the \
+machine's (its spell's side, and that the draws to come are the spell's)."""
+
+[[shared_site]]
+addr = 0xC478   # GameLoop_CheckUseCurrentItem
+hooks = ["faxanadu.magic-button.restore", "faxanadu.seams.cast-done"]
+why = """Neither handles the call. The Magic button puts the real joypad \
+masks back; Seams only notes that Player_CastMagic is over and touches no \
+memory, so either order leaves the same machine."""
 
 [[feature]]
 id = "zone-names"
@@ -1023,6 +1038,23 @@ rom = []
 # and the sounds still to play are its own record ("faxanadu.seams",
 # version 1); Sugata's flash waiting for the live game is a bit per slot in
 # its block.
+# Slice 3, the spell flies on, hooks Player_CastMagic's entry ($BA5B) and
+# GameLoop_CheckUseCurrentItem's ($C478, bank 15), both shared with the Magic
+# button (above) and only observed; CastMagic_CheckDirection's entry ($BD8F)
+# and CastMagic_UpdateXPosition's two off-screen CMPs ($BCD1, $BCF2, bank 14),
+# and CastMagic_CalculateVisibility's entry ($C315, bank 15), which no other
+# feature hooks. Handles $BD8F moving sideways in the live game, leaving
+# Blocks_Result, Arg_PixelPosX/Y, Temp_00 and the registers as the routine
+# does, with the blocks of the room the spell's pixel lies in; handles the
+# CMPs there, returning from CastMagic_UpdateXPosition with A the X byte and
+# C set once the spell passes the view's edge or a side with nothing joined
+# (or its type's own limit); handles $C315 only when the spell's pixels lie
+# past his room's side, writing MovingSpriteVisibility,
+# Temp_MovingSpriteVisibility, Arg_PixelPosX/Y and Temp_00 as the routine
+# does. Its draw hooks move a spell's draw a screen over by its side
+# (Sprite_TileInfo_OffsetX). Seamless's adopt() asks it whether a crossing
+# keeps the spell; up or down it writes CastMagic_Type $FF, as Seamless did.
+# The spell's side is in its record, now version 2 (version 1 still loads).
 
 [[feature]]
 id = "punches"

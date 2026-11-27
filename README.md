@@ -39,8 +39,10 @@ up to a town's edge: towns stay safe, and their people stay in them. Fights
 go on across the edges too: your sword or fist reaches a monster in the next
 room, a monster or its shot there can hurt you, a coin or bread lying across
 the edge is yours for the touch, you hear what happens next door, and a
-Sugata's flash reaches you from the room beside. Anything else lying at a
-room's edge waits there for you to walk in. The
+Sugata's flash reaches you from the room beside. Your spells fly on into the
+next room, even as you cross after them, and end at the edge of the view, so
+they hit only what you can see. Anything else lying at a room's edge waits
+there for you to walk in. The
 view is always 424x240, the original's full height and 53 tiles wide, scaled
 to fill your window or screen and keep its shape: 3x at 720p, 6x at 1440p and
 9x at 4K, with every pixel square and crisp. At 1080p, 4.5x, the pixels stay

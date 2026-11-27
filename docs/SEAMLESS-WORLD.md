@@ -151,6 +151,15 @@ in the live game; a neighbour's Sugata warns and flashes there, and the live
 game takes its flash when he is in its reach. The pass and the sounds still
 to play are Seams' own record (`faxanadu.seams`).
 
+**The spell flies on** (`fax_seams.c`, #166's slice 3). His spell stays the
+live game's, and Seams keeps its side, the room it is in beside his: it
+flies on through a side-by-side seam, ends at a wall of the room it is in,
+and meets that room's monsters as visitors. Every spell ends at the edge of
+the view, in his own room too, or at a side with nothing joined, so it never
+reaches a monster he hasn't seen. It is drawn on its side, behind that
+room's foreground, and a crossing keeps it (`adopt()` asks Seams; up or down
+it still ends). Its side is in Seams' record, version 2.
+
 The original player starts a right scroll when his right edge crosses at
 x=241. This adapter retains the source until his origin wraps, preserving
 continuous position. Wrapped floor/ladder samples read the correct neighboring
@@ -215,8 +224,9 @@ risks a playtest must cover):
   [SEAMLESS-COMBAT.md](SEAMLESS-COMBAT.md)). Since slice 1 monsters, shots
   and walking people go through side-by-side seams, dormant until first
   seen, and are drawn whole across them; since slice 2 they fight him across
-  side-by-side seams. Still open: a spell ends at the seam, and one in
-  flight vanishes when he crosses; seams one above the other are walls. Encounters change most: a monster he has seen follows
+  side-by-side seams, and since slice 3 his spell flies on through them and
+  ends at the view's edge. Still open: seams one above the other are walls,
+  for spells too. Encounters change most: a monster he has seen follows
   him room after room, Eolis's Zozuras into its town, and towns are busier;
   that wants a playtest. Fixed by slice 0 (Seams lose nothing, #177): the
   live game's ghost hit at the far side of his own room, the drops a copy

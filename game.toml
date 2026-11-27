@@ -1246,6 +1246,52 @@ addr = 0xd0e4
 bank = 15
 bytes = "8d 36 04 8a 48 98 48 ad 36 04 20 6f"   # Sound_PlayEffect: STA Temp_SoundIDToPlay, TXA, PHA, TYA, PHA, LDA Temp_SoundIDToPlay, JSR SoundEffect_SetCurrent
 
+# The spell flies on (fax_seams.c, #166's slice 3): Player_CastMagic's entry
+# (a cast starts in his room; its draws are the spell's) and
+# GameLoop_CheckUseCurrentItem's, next in both main loops (they are over),
+# both observed only and shared with the Magic button's; CastMagic_CheckDirection's
+# entry (its walls in the room it is in) and CastMagic_CalculateVisibility's
+# (its behind-the-background bits there); and CastMagic_UpdateXPosition's two
+# off-screen CMPs (the view's edge), mid-routine sites after a JSR's return
+# in a routine called by JSR, so a hook that handles one returns from
+# CastMagic_UpdateXPosition.
+
+[[mod_function_hook]]
+id = "faxanadu.seams.cast"
+addr = 0xba5b
+bank = 14
+bytes = "ad b3 02 10 79 20 f6 ec b0 73 a5 16"   # Player_CastMagic: LDA CastMagic_Type, BPL CastMagic_RunSpellHandler, JSR Player_IsClimbing, BCS, LDA Joy1_ButtonMask
+
+[[mod_function_hook]]
+id = "faxanadu.seams.cast-done"
+addr = 0xc478
+bank = 15
+bytes = "a5 a4 29 05 d0 1e a5 16 29 04 f0 18"   # GameLoop_CheckUseCurrentItem: LDA Player_Flags, AND #$05, BNE GameLoop_UseItem_Return, LDA Joy1_ButtonMask
+
+[[mod_function_hook]]
+id = "faxanadu.seams.spell-direction"
+addr = 0xbd8f
+bank = 14
+bytes = "8a f0 aa ca f0 b5 ca f0 00 a9 00 85"   # CastMagic_CheckDirection: TXA, BEQ _Left, DEX, BEQ _Right, DEX, BEQ, LDA #$00, STA Blocks_Result
+
+[[mod_function_hook]]
+id = "faxanadu.seams.spell-left"
+addr = 0xbcd1
+bank = 14
+bytes = "c9 f0 60 ad b5 02 18 6d 74 03 8d b5"   # CastMagic_UpdateXPosition moving left: CMP #$F0, RTS; @_isRight: LDA CastMagic_XPos_Frac, CLC, ADC Arg_DeltaX_Frac
+
+[[mod_function_hook]]
+id = "faxanadu.seams.spell-right"
+addr = 0xbcf2
+bank = 14
+bytes = "dd f6 bc 60 f0 f0 e0 f0 f0 ad b4 02"   # moving right: CMP CAST_MAGIC_MAX_SCREEN_WIDTHS,X, RTS; the table ($F0 $F0 $E0 $F0 $F0)
+
+[[mod_function_hook]]
+id = "faxanadu.seams.spell-visibility"
+addr = 0xc315
+bank = 15
+bytes = "a9 00 85 b8 ad b8 02 85 b6 ad b6 02"   # CastMagic_CalculateVisibility: LDA #$00, STA Temp_MovingSpriteVisibility, LDA CastMagic_YPos_Full, STA Arg_PixelPosY, LDA CastMagic_XPos_Full
+
 # Punches (fax_punch.c, #180): without a weapon, Player_DrawWeapon's BMI after
 # LDA Player_CurWeapon (the fist placed, with the Hand Dagger's reach),
 # Player_HitSpriteWithWeapon's (the punch goes on), and the Glove's STA

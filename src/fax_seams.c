@@ -128,14 +128,44 @@
  *     place, waits at its damage ($AB44) for the live game: the next pass
  *     takes that Sugata as a visitor and enters $AB44 for it first.
  *
- * Each room's state is a block in Seamless's record (version 5); the pass
- * and the sounds still to play are this feature's own record, since a frame
- * can end inside the pass (the main loop lags on a busy screen): then,
- * between frames, the machine shows the live slots as the game has them, the
- * pass's kept until the next frame begins. All of it is part of the remaster: with it off,
- * the original's walls and its ghost hit stay. See docs/GAME_INTERNALS.md,
- * "Weapon reach" and "Seams: actors across rooms", and "Features and what
- * they use". */
+ * Slice 3, the spell flies on. The spell (CastMagic_*) stays the live
+ * game's; Seams keeps its side, the room it is in, -1, 0 or 1 from his, worked
+ * out from its X byte's moves (a few pixels a frame) since the cast, when
+ * Player_CastMagic ($BA5B) finds no spell and the next one starts at his X:
+ *
+ *   - **Walls in the room it is in.** CastMagic_CheckDirection ($BD8F) is
+ *     done in C for the sideways moves: the blocks at its X (moving left) or
+ *     X plus its width (right), in the room that pixel lies in, the rows
+ *     CastMagic_CheckDirection_CheckImpassable tests; past a side with no
+ *     room joined it disperses, as at the original's screen edge.
+ *   - **It ends at the view's edge,** in his own room too (Cameron's call on
+ *     #166): CastMagic_UpdateXPosition's two off-screen tests ($BCD1, $BCF2)
+ *     set C once its leading edge passes the view (the 424-wide picture,
+ *     worked out again at the cast's entry, from his place this frame) or a
+ *     side with nothing joined. So it never reaches a monster that is still
+ *     dormant, which wakes 16 pixels before the view; and as a second guard
+ *     Sprite_CheckHitByCastMagic refuses a dormant sleeper. Thunder's and
+ *     Fire's after a first hit keep the original's own rule too, a byte read
+ *     past CAST_MAGIC_MAX_SCREEN_WIDTHS ($B4, $02).
+ *   - **Hits.** Its X in 16 bits for the told-apart test and for choosing
+ *     visitors: across a seam it meets that room's actors as visitors.
+ *   - **Drawn on its side.** Its draw (inside Player_CastMagic, before the
+ *     sprite loop) is drawn a screen over by its side, and slice 1's replay
+ *     marks its OAM cells as the spell's and keeps those past the side.
+ *     CastMagic_CalculateVisibility ($C315), its behind-the-background bits,
+ *     reads the blocks of the room each of its two pixels lies in.
+ *   - **A crossing keeps it.** Seamless's adopt() asks fax_seams_adopted(),
+ *     which moves its side by the rooms' places; a crossing up or down still
+ *     ends it.
+ *
+ * Each room's state is a block in Seamless's record (version 5); the pass,
+ * the sounds still to play and the spell's side are this feature's own
+ * record (version 2), since a frame can end inside the pass (the main loop
+ * lags on a busy screen): then, between frames, the machine shows the live
+ * slots as the game has them, the pass's kept until the next frame begins.
+ * All of it is part of the remaster: with it off, the original's walls and
+ * its ghost hit stay. See docs/GAME_INTERNALS.md, "Weapon reach" and "Seams:
+ * actors across rooms", and "Features and what they use". */
 #include "fax_seams.h"
 #include "fax_world.h"
 #include "fax_zone.h"
@@ -160,6 +190,19 @@
 #define CHECK_MAGIC           0x8ADCu   /* Sprite_CheckHitByCastMagic: LDA CastMagic_Type, CMP #$05, BCS RETURN_8AD7,
                                            LDX CurrentSpriteIndex */
 #define CAST_WIDTHS           0x8B73u   /* CAST_MAGIC_HIT_WIDTHS: a spell's width, by CastMagic_Type */
+#define CAST_HEIGHTS_HIT      0x8B78u   /* CAST_MAGIC_HIT_HEIGHTS: its height */
+#define PLAYER_CAST_MAGIC     0xBA5Bu   /* Player_CastMagic: LDA CastMagic_Type, BPL CastMagic_RunSpellHandler,
+                                           JSR Player_IsClimbing */
+#define CAST_LEFT_EDGE        0xBCD1u   /* CastMagic_UpdateXPosition moving left, after JSR CastMagic_CheckDirection
+                                           and LDA CastMagic_XPos_Full: CMP #$F0, RTS */
+#define CAST_RIGHT_EDGE       0xBCF2u   /* moving right, after LDX CastMagic_Type, LDA CastMagic_XPos_Full:
+                                           CMP CAST_MAGIC_MAX_SCREEN_WIDTHS,X, RTS */
+#define CAST_MAX_WIDTHS       0xBCF6u   /* CAST_MAGIC_MAX_SCREEN_WIDTHS: $F0 $F0 $E0 $F0 $F0, then
+                                           CastMagic_UpdateYPosition's code, read for the types past 4 */
+#define CAST_CHECK_DIRECTION  0xBD8Fu   /* CastMagic_CheckDirection: TXA, BEQ _Left, DEX, BEQ _Right (X 0 left,
+                                           1 right; 2 and 3, up and down, give 0) */
+#define CAST_MOVE_WIDTHS      0xBD9Du   /* CAST_MAGIC_WIDTHS: a spell's width less 1, by CastMagic_Type (12) */
+#define CAST_HEIGHTS          0xBDA9u   /* CAST_MAGIC_HEIGHTS: its height less 1 (12) */
 #define FLASH_HIT             0xAB44u   /* SpriteBehavior_FlashScreenHitPlayer's damage: LDA #$04, JSR Sound_PlayEffect */
 #define WEAPON_OFF_SCREEN     0xB81Au   /* Player_DrawWeapon: BNE RETURN_B7D5, after STA Maybe_Something_WeaponPosX,
                                            CMP Screen_Maybe_ScrollXCounter; then the Y and the reach */
@@ -187,6 +230,10 @@
 #define AREA_SPRITE_ADDRESSES 0x8210u   /* per area, a pointer to its screens' sprite lists, a word a screen */
 /* Bank 15 */
 #define LOAD_SPRITE_INFO      0xC1B4u   /* Screen_LoadSpriteInfo: LDA $0100, PHA, LDX #$0B, JSR MMC1_UpdateROMBank */
+#define CAST_VISIBILITY       0xC315u   /* CastMagic_CalculateVisibility: LDA #$00, STA Temp_MovingSpriteVisibility,
+                                           LDA CastMagic_YPos_Full, STA Arg_PixelPosY */
+#define CHECK_USE_ITEM        0xC478u   /* GameLoop_CheckUseCurrentItem: LDA Player_Flags, AND #$05, BNE; both main
+                                           loops call it right after Player_CastMagic */
 #define SOUND_PLAY_EFFECT     0xD0E4u   /* Sound_PlayEffect: STA Temp_SoundIDToPlay, ...: A the effect; keeps X and Y,
                                            memory only */
 #define MAIN_LOOP_COUNTDOWN   0xDB68u   /* Game_MainLoop: JSR GameLoop_CountdownItems, after JSR Sprites_UpdateAll */
@@ -218,13 +265,15 @@
 #define PIXEL_X               0x00B5u   /* Arg_PixelPosX */
 #define PIXEL_Y               0x00B6u   /* Arg_PixelPosY */
 #define BLOCKS_RESULT         0x00B7u   /* Blocks_Result: nonzero, blocked */
+#define TEMP_VISIBILITY       0x00B8u   /* Temp_MovingSpriteVisibility */
 #define SLOT_X                0x00BAu   /* CurrentSprites_XPos_Full, 8 slots */
 #define SLOT_Y                0x00C2u   /* CurrentSprites_YPos */
 #define WEAPON_X              0x00CEu   /* PlayerPosXPlus10: the weapon's X, low byte */
 #define WEAPON_X_HIGH         0x00CFu   /* Maybe_Something_WeaponPosX: its high byte */
 #define WEAPON_RANGE_X        0x00D2u   /* Maybe_WeaponRange_X */
 #define CURRENT_ROM_BANK      0x0100u   /* CurrentROMBank */
-#define CAST_TYPE             0x02B3u   /* CastMagic_Type: 0-4 a spell on, $FF none */
+#define CAST_TYPE             0x02B3u   /* CastMagic_Type: 0-4 a spell on, 5-11 one after its first hit, $FF none */
+#define CAST_FLAGS            0x02B4u   /* CastMagic_Flags: $40 moving right */
 #define CAST_X                0x02B6u   /* CastMagic_XPos_Full */
 #define CAST_Y                0x02B8u   /* CastMagic_YPos_Full */
 #define SLOT_ARRAYS           0x02BCu   /* CurrentSprites_XPos_Frac ... CurrentSprites_Values: 23 arrays of 8, to $0373 */
@@ -265,6 +314,9 @@ enum {
     TOUCH_PAD = 11, SHIELD_PAD = 7,         /* what CurrentSprite_CheckHitPlayer and Player_CheckShieldHitByMagic add */
     SUGATA = 0x18, BEHAVIOR_FLASH = 0x1F, BEHAVIOR_READY = 0x40,
     HEARD = 8,                              /* a frame's neighbours' sounds kept at most */
+    SPELL = FAX_SEAMS_SPELL,                /* the owner, less 1, of the spell's OAM cells and cells past a side */
+    SPELL_TYPES = 12,                       /* CastMagic_Type's values, each spell and its after-hit kinds */
+    MOVING_RIGHT = 0x40, HIDDEN = 0x10,     /* CastMagic_Flags; CurrentSprites_Flags (Sprites_IsSpriteHidden) */
 };
 
 /* A room's block in Seamless's record. */
@@ -318,6 +370,21 @@ static unsigned touch_refused, magic_refused, shield_refused, shield_skipped, we
 static int visit_log[LOG][6];                         /* the last visits: room, slot, live slot, entity, after, step */
 static int sound_log[HEARD][4];                       /* the last sounds played: room, slot, effect, step */
 static int live_shift(unsigned s);
+
+/* Slice 3: the spell's side, the room it is in less his (-1, 0 or 1), with
+ * its X byte when last seen (so its X in 16 bits is side * 256 + byte); in
+ * this feature's record. resync: take the byte as his room's at the next look
+ * (a record of version 1). casting: Player_CastMagic is under way, so a draw
+ * is the spell's. */
+static struct { int8_t side; uint8_t last, resync, casting; } spell = {0, 0, 1, 0};
+static Drawn spell_drawn;                             /* what the spell drew this frame, for his room's capture */
+/* Slice 3's counts, for the TCP command. */
+static unsigned spell_walls, spell_view_ends, spell_side_ends, spell_crossed, spell_cleared, magic_dormant;
+static unsigned spell_visibility, spell_drawn_abroad;
+static int spell_end[5] = {0, 0, 0, -1, -1};          /* the last end: its X in 16 bits, the edge, why (1 the view,
+                                                         2 a side with nothing joined, 3 its own rule), step, right */
+static int spell_x16(void);
+static bool dormant(unsigned s);
 
 /* ---- slice 0 ---- */
 
@@ -500,12 +567,15 @@ static bool in_view(int room, unsigned s, int pad) {
 /* ScreenBuffer_IsBlockImpassable for the block at `index` of a room: its
  * block id's property nibble, through BLOCK_PROPERTY_IMPASSABLE_MAP. With
  * `ladder`, Area_IsBlockImpassableOrLadder: a ladder (property 2) too. */
-static uint8_t solid(int room, unsigned index, bool ladder) {
+static uint8_t property(int room, unsigned index) {     /* ScreenBuffer_LoadBlockProperty */
     uint8_t id = rd(room, SCREEN_BUFFER + (index & 0xFF));
     uint8_t bits = rd(room, BLOCK_PROPERTIES + (id >> 1));
-    uint8_t property = id & 1 ? bits >> 4 : bits & 15;
-    if (ladder && property == 2) return 1;
-    return rom15(BLOCK_IMPASSABLE + property);
+    return id & 1 ? bits >> 4 : bits & 15;
+}
+static uint8_t solid(int room, unsigned index, bool ladder) {
+    uint8_t property_ = property(room, index);
+    if (ladder && property_ == 2) return 1;
+    return rom15(BLOCK_IMPASSABLE + property_);
 }
 /* The room pixel column `px` lies in, from `room`'s left edge: the room
  * joined left below 0, right from 256; -1 for none. */
@@ -606,7 +676,7 @@ static int loop_hook(uint16_t addr) {
     (void)addr;
     unsigned c = cyc_mod_isolated();
     if (!c && pass.open) { ++broken; swap_in(); pass_end(); }   /* never: the pass ends at its own site */
-    if (!c) fax_world_update_view();
+    if (!c) fax_world_update_view(), spell.casting = 0;
     looping[c] = true;
     loop_room[c] = running();
     memset(&drawn[c], 0, sizeof drawn[c]);
@@ -815,9 +885,20 @@ static void play_draw(Drawn *d, unsigned s, bool flipped) {
 }
 /* Sprite_Draw_Standard's and Sprite_Draw_FlippedHoriz's entries, in a sprite
  * loop: a slot whose origin is across a side is drawn a screen over, then
- * the loop is played for its cells. */
+ * the loop is played for its cells. Inside Player_CastMagic (slice 3) the
+ * draw is the spell's: drawn a screen over by its side, its cells kept as
+ * the spell's. */
 static int draw_hook(uint16_t addr) {
     unsigned c = cyc_mod_isolated();
+    if (!c && spell.casting && !looping[0] && fax_world_active_room() >= 0) {
+        spell_x16();
+        if (spell.side) {
+            cyc_mod_poke(OFFSET_X, (uint8_t)(cyc_mod_peek(OFFSET_X) + (uint8_t)spell.side));
+            ++spell_drawn_abroad;
+        }
+        play_draw(&spell_drawn, SPELL, addr == DRAW_FLIPPED);
+        return 0;
+    }
     if (!looping[c]) return 0;
     Block *b = loop_room[c] >= 0 ? block(loop_room[c]) : NULL;
     if (!b) return 0;
@@ -831,7 +912,7 @@ static int draw_hook(uint16_t addr) {
 /* Screen_LoadSpriteInfo in play: a screen loads its list. */
 static int load_hook(uint16_t addr) {
     (void)addr;
-    if (!cyc_mod_isolated()) fax_world_screen_loaded();
+    if (!cyc_mod_isolated()) fax_world_screen_loaded(), spell.side = 0;   /* a spell left on is in the room loaded */
     return 0;
 }
 
@@ -986,21 +1067,31 @@ bool fax_seams_flash(void) {
 /* ---- slice 2: told apart ---- */
 
 /* Sprite_CheckHitByCastMagic's entry: its X test (the spell's X plus its
- * width, less the sprite's X, below the two widths) in 16 bits, the spell
- * being the live room's (0-255). A refusal leaves what the X test's failure
+ * width, less the sprite's X, below the two widths) in 16 bits, the spell's
+ * X from its side (slice 3). A refusal leaves what the X test's failure
  * leaves: X the slot, A the difference, C set (Sprite_GetBounds, next in the
- * loop, reads X). Neighbours' copies have no spell. */
+ * loop, reads X). It also refuses a hit on a sleeper not yet seen, which the
+ * view's edge keeps the spell from anyway (slice 3's second guard).
+ * Neighbours' copies have no spell. */
 static int magic_hook(uint16_t addr) {
     (void)addr;
     uint8_t type = cyc_mod_peek(CAST_TYPE);
     if (cyc_mod_isolated() || type >= 5) return 0;
     unsigned s = cyc_mod_peek(CURRENT_SPRITE_INDEX) & 7u, c = category(cyc_mod_peek((uint16_t)(ENTITIES + s)));
     if (c != 0 && c != BIG) return 0;
-    uint8_t width = rom14(CAST_WIDTHS + type), hb = cyc_mod_peek((uint16_t)(HITBOX + s));
-    int x = fax_seams_x16(s), at = cyc_mod_peek(CAST_X);
-    if (!wrapped(at, x, rom14(HITBOX_WIDTHS + hb), width)) return 0;    /* SPRITE_HITBOX_WIDTHS,Y as the game reads it */
+    uint8_t width = rom14(CAST_WIDTHS + type), hb = cyc_mod_peek((uint16_t)(HITBOX + s)), sw = rom14(HITBOX_WIDTHS + hb);
+    int x = fax_seams_x16(s), at = spell_x16();
+    bool wrap = wrapped(at, x, sw, width);                              /* SPRITE_HITBOX_WIDTHS,Y as the game reads it */
+    if (!wrap) {
+        /* The game's own test, which would hit: then only a sleeper not yet seen is refused. */
+        uint8_t height = rom14(CAST_HEIGHTS_HIT + type), sh = rom14(HITBOX_HEIGHTS + hb);
+        uint8_t dy = (uint8_t)(cyc_mod_peek(CAST_Y) + height - cyc_mod_peek((uint16_t)(SLOT_Y + s)));
+        bool hits = (uint8_t)(at + width - x) < (uint8_t)(sw + width) && dy < (uint8_t)(sh + height) &&
+                    !(cyc_mod_peek((uint16_t)(FLAGS + s)) & HIDDEN);
+        if (!hits || !dormant(s)) return 0;
+    }
     leave(s, (uint8_t)(at + width - x), 1);
-    ++magic_refused;
+    ++*(wrap ? &magic_refused : &magic_dormant);
     return 1;
 }
 /* Player_CheckShieldHitByMagic's entry. In a neighbour's tick it returns at
@@ -1101,7 +1192,7 @@ static int pass_begin(void) {
         return 0;
     int hx = cyc_mod_peek(HERO_X), hy = cyc_mod_peek(HERO_Y);
     bool spell = cyc_mod_peek(CAST_TYPE) < 5;
-    int cx = cyc_mod_peek(CAST_X), cy = cyc_mod_peek(CAST_Y);
+    int cx = spell ? spell_x16() : 0, cy = cyc_mod_peek(CAST_Y);
     Candidate c[16];
     unsigned n = 0;
     for (int side = 0; side < 2; side++) {
@@ -1228,10 +1319,202 @@ static void swap_in(void) {
 }
 void fax_seams_frame_begin(void) { swap_in(); }
 
+/* ---- slice 3: the spell flies on ---- */
+
+/* The spell's X in 16 bits from his room's left edge: its side and its byte,
+ * which moves a few pixels a frame (4 at most), so the byte's change since
+ * the last look is its move, and a wrap past 0 or 255 changes its side. */
+static int spell_x16(void) {
+    uint8_t b = cyc_mod_peek(CAST_X);
+    if (spell.resync) spell.side = 0, spell.last = b, spell.resync = 0;
+    int x = spell.side * 256 + spell.last + (int8_t)(uint8_t)(b - spell.last);
+    spell.side = (int8_t)((x + 1024) / 256 - 4);                  /* floor(x / 256) */
+    spell.last = b;
+    return x;
+}
+/* The room pixel column `px` (from his room's left edge) lies in: his, or
+ * the one joined on that side; -1 for none, or further than one room. */
+static int spell_room(int px) {
+    int active = fax_world_active_room();
+    if (px >= 0 && px < 256) return active;
+    if (px >= -256 && px < 0) return fax_world_joined(active, 0);
+    return px >= 256 && px < 512 ? fax_world_joined(active, 1) : -1;
+}
+/* In the live game, with Seamless's view of this frame. */
+static bool spell_live(void) {
+    int x, y;
+    return enabled && !cyc_mod_isolated() && fax_world_active_room() >= 0 && fax_world_view(&x, &y);
+}
+/* A sleeper not yet seen in live slot s: the room's own, or a visitor (its
+ * wake is its room's). */
+static bool dormant(unsigned s) {
+    if (!sleeper(cyc_mod_peek((uint16_t)(ENTITIES + s)))) return false;
+    int v = visitor_of(s);
+    const Block *b = block(v >= 0 ? pass.v[v].room : fax_world_active_room());
+    return b && !(b->awake >> (v >= 0 ? pass.v[v].slot : s) & 1);
+}
+
+/* Player_CastMagic's entry, in the live game: the view of this frame (he has
+ * moved; the spell moves next), the draws to come are the spell's, and with
+ * no spell on (CastMagic_Type $FF) a cast starts at his X, in his room: its
+ * side 0, its byte his X (the cast's ADC adds 0, or 1 with C). */
+static int cast_hook(uint16_t addr) {
+    (void)addr;
+    if (cyc_mod_isolated()) return 0;
+    fax_world_update_view();
+    spell.casting = 1;
+    memset(&spell_drawn, 0, sizeof spell_drawn);
+    if (cyc_mod_peek(CAST_TYPE) & 0x80) spell.side = 0, spell.last = cyc_mod_peek(HERO_X), spell.resync = 0;
+    return 0;
+}
+/* GameLoop_CheckUseCurrentItem's entry: Player_CastMagic is over (an item's
+ * use draws the hero again, Game_DrawScreenInFrozenState). */
+static int cast_done_hook(uint16_t addr) {
+    (void)addr;
+    if (!cyc_mod_isolated()) spell.casting = 0;
+    return 0;
+}
+
+/* CastMagic_CheckDirection, moving left (X 0) or right (X 1), in C: its
+ * pixel is the spell's X moving left and X plus its width (CAST_MAGIC_WIDTHS)
+ * moving right, in 16 bits. Past a side with no room joined (or further than
+ * one room) it disperses (Blocks_Result 1), as CastMagic_SetShouldDisperse
+ * does at the original's screen edge; otherwise
+ * CastMagic_CheckDirection_CheckImpassable's rows, in the room the pixel lies
+ * in: at its Y, one row down if CAST_MAGIC_HEIGHTS is 16 or more, then one
+ * more if Y is off a block's edge, until one is solid. It leaves what the
+ * game's leaves: Blocks_Result and A the result, Arg_PixelPosX and _Y,
+ * Temp_00, X the last block's index. Up and down are the original's (0). */
+static int direction_hook(uint16_t addr) {
+    (void)addr;
+    CycModRegs regs;
+    cyc_mod_regs(&regs);
+    uint8_t type = cyc_mod_peek(CAST_TYPE);
+    if (regs.x > 1 || type >= SPELL_TYPES || !spell_live()) return 0;
+    int x = spell_x16(), px = regs.x ? x + rom14(CAST_MOVE_WIDTHS + type) : x;
+    uint8_t y = cyc_mod_peek(CAST_Y), result = 1;
+    unsigned index = ((y & 0xF0u) | (((unsigned)px & 0xFF) >> 4)) & 0xFF;
+    int room = spell_room(px);
+    cyc_mod_poke(PIXEL_X, (uint8_t)px);
+    if (room >= 0) {
+        cyc_mod_poke(PIXEL_Y, y);
+        cyc_mod_poke(TEMP_00, (uint8_t)(y & 0xF0));
+        result = solid(room, index, false);
+        if (!result && rom14(CAST_HEIGHTS + type) >= 0x10) result = solid(room, index = (index + 16) & 0xFF, false);
+        if (!result && (y & 15)) result = solid(room, index = (index + 16) & 0xFF, false);
+        if (result && room != fax_world_active_room()) ++spell_walls;
+    }
+    cyc_mod_poke(BLOCKS_RESULT, result);
+    regs.a = result;
+    regs.x = (uint8_t)index;
+    regs.p = (uint8_t)((regs.p & ~(FLAG_Z | FLAG_N)) | (result ? 0 : FLAG_Z));
+    cyc_mod_set_regs(&regs);
+    return 1;
+}
+
+/* CastMagic_UpdateXPosition's off-screen test, after the move and the
+ * direction check, moving left ($BCD1, CMP #$F0) or right ($BCF2, CMP
+ * CAST_MAGIC_MAX_SCREEN_WIDTHS,X): C set ends the spell (every update
+ * handler then clears it). In one big world its edge is the view's: moving
+ * left, once its X is left of the view's left edge, and moving right once
+ * its X plus its width reaches the view's right edge, as the original's
+ * ends once X wraps past 0 or X plus its width reaches 256. A side with no
+ * room joined is the original's edge still. And Thunder's and Fire's after
+ * a first hit (types 6 and 7) keep the original's own rule moving right, a
+ * byte read past the table ($B4, $02 of CastMagic_UpdateYPosition's code):
+ * Thunder ends at x 180 of the room it is in, Fire at once. Returns from the
+ * routine with A the X byte and C as decided. */
+static int edge_hook(uint16_t addr) {
+    uint8_t type = cyc_mod_peek(CAST_TYPE);
+    if (type >= SPELL_TYPES || !spell_live()) return 0;
+    int active = fax_world_active_room(), vx, vy, px, py;
+    fax_world_view(&vx, &vy);
+    fax_world_place(active, &px, &py);
+    bool right = addr == CAST_RIGHT_EDGE;
+    int x = spell_x16(), w = rom14(CAST_MOVE_WIDTHS + type) + 1;
+    uint8_t byte = cyc_mod_peek(CAST_X), limit = right ? rom14(CAST_MAX_WIDTHS + type) : 0xF0;
+    int why = 0, edge = 0;
+    if (right) {
+        edge = vx + VIEW_W - px;
+        if (x + w >= 256 && fax_world_joined(active, 1) < 0) why = 2, edge = 256;
+        else if (x + w >= edge || x + w >= 512) why = 1;
+        else if (type >= 5 && byte >= limit) why = 3, edge = limit;
+    } else {
+        edge = vx - px;
+        if (x < 0 && fax_world_joined(active, 0) < 0) why = 2, edge = 0;
+        else if (x < edge || x < -256) why = 1;
+    }
+    if (why) {
+        ++*(why == 1 ? &spell_view_ends : &spell_side_ends);
+        int note[5] = {x, edge, why, (int)steps, right};
+        memcpy(spell_end, note, sizeof note);
+    }
+    CycModRegs regs;
+    cyc_mod_regs(&regs);
+    uint8_t d = (uint8_t)(byte - limit);
+    regs.a = byte;
+    regs.p = (uint8_t)((regs.p & ~(FLAG_C | FLAG_Z | FLAG_N)) | (why ? FLAG_C : 0) | (why && !d ? FLAG_Z : 0) |
+                       (d & FLAG_N));
+    cyc_mod_set_regs(&regs);
+    return 1;
+}
+
+/* CastMagic_CalculateVisibility's entry: MovingSpriteVisibility, the spell's
+ * behind-the-background bits, from the block properties at X + 4 (bit 0 for
+ * 4, 9 or $0D) and X + 12 (bit 1 for 4 alone: the routine's BNE skips the
+ * other two), swapped moving right. When either pixel is past his room's
+ * side, in the room it lies in (none there: in front), else the original's.
+ * It leaves the routine's registers and its temps. */
+static int visibility_hook(uint16_t addr) {
+    (void)addr;
+    uint8_t type = cyc_mod_peek(CAST_TYPE);
+    if (type >= SPELL_TYPES || !spell_live()) return 0;
+    int x = spell_x16(), at[2] = {x + 4, x + 12};
+    if (at[0] >= 0 && at[1] < 256) return 0;
+    uint8_t y = cyc_mod_peek(CAST_Y), v = 0;
+    for (unsigned k = 0; k < 2; k++) {
+        int room = spell_room(at[k]);
+        uint8_t p = room < 0 ? 0 : property(room, (y & 0xF0u) | (((unsigned)at[k] & 0xFF) >> 4));
+        if (p == 4 || (!k && (p == 9 || p == 0x0D))) v |= (uint8_t)(1u << k);
+    }
+    cyc_mod_poke(TEMP_VISIBILITY, v);
+    if ((cyc_mod_peek(CAST_FLAGS) & MOVING_RIGHT) && v && v != 3) v ^= 3;
+    cyc_mod_poke(MOVING_VISIBILITY, v);
+    cyc_mod_poke(PIXEL_X, (uint8_t)at[1]);
+    cyc_mod_poke(PIXEL_Y, y);
+    cyc_mod_poke(TEMP_00, (uint8_t)(y & 0xF0));
+    leave(cyc_mod_peek(CURRENT_SPRITE_INDEX), v, -1);
+    CycModRegs regs;
+    cyc_mod_regs(&regs);
+    regs.p = (uint8_t)((regs.p & ~(FLAG_Z | FLAG_N)) | (v ? 0 : FLAG_Z));   /* STA MovingSpriteVisibility's A */
+    cyc_mod_set_regs(&regs);
+    ++spell_visibility;
+    return 1;
+}
+
+void fax_seams_adopted(int from, int to) {
+    bool on = cyc_mod_peek(CAST_TYPE) < 0x80;
+    if (!enabled) { cyc_mod_poke(CAST_TYPE, 0xFF); return; }   /* the plan's slices off: as Seamless always did */
+    spell_x16();
+    int fx, fy, tx, ty;
+    fax_world_place(from, &fx, &fy);
+    fax_world_place(to, &tx, &ty);
+    int side = spell.side + (fx - tx) / 256;
+    if (fy != ty || side < -1 || side > 1) {          /* up or down, or too far: it ends, as it did */
+        cyc_mod_poke(CAST_TYPE, 0xFF);
+        spell.side = 0;
+        spell_cleared += on;
+        return;
+    }
+    spell.side = (int8_t)side;
+    spell_crossed += on;
+}
+
 /* ---- slice 2: this feature's record ---- */
 
-enum { RECORD_VERSION = 1, RECORD_VISITOR = 6,
-       RECORD = 5 + 8 * RECORD_VISITOR + 2 * 8 * SLOT_BYTES + HEARD * 3 };
+enum { RECORD_VERSION = 2, RECORD_VISITOR = 6,
+       RECORD_V1 = 5 + 8 * RECORD_VISITOR + 2 * 8 * SLOT_BYTES + HEARD * 3,
+       RECORD = RECORD_V1 + 4 };                       /* version 2: the spell's side, last byte, resync, casting */
 static int state_get(uint8_t *buf, int cap) {
     if (!enabled) return 0;
     if (cap < RECORD) return -1;
@@ -1252,13 +1535,19 @@ static int state_get(uint8_t *buf, int cap) {
     memcpy(p, pass.view, sizeof pass.view);
     p += sizeof pass.view;
     for (unsigned i = 0; i < HEARD; i++, p += 3) p[0] = pending[i].effect, p[1] = pending[i].room, p[2] = pending[i].slot;
+    p[0] = (uint8_t)spell.side, p[1] = spell.last, p[2] = spell.resync, p[3] = spell.casting;
     return RECORD;
 }
 static int state_validate(const uint8_t *buf, int len) {
     if (!len) return 1;
-    if (!buf || len != RECORD || buf[0] != RECORD_VERSION || buf[1] > 1 || buf[2] > 8 || buf[3] > HEARD ||
-        buf[4] > buf[1])
+    /* Version 1 (slice 2) had no spell: a spell on then is in his room. */
+    if (!buf || (!(len == RECORD && buf[0] == RECORD_VERSION) && !(len == RECORD_V1 && buf[0] == 1)) || buf[1] > 1 ||
+        buf[2] > 8 || buf[3] > HEARD || buf[4] > buf[1])
         return 0;
+    if (len == RECORD) {
+        const uint8_t *q = buf + RECORD_V1;
+        if ((int8_t)q[0] < -1 || (int8_t)q[0] > 1 || q[2] > 1 || q[3] > 1) return 0;
+    }
     for (unsigned i = 0; i < buf[2]; i++) {
         const uint8_t *p = buf + 5 + i * RECORD_VISITOR;
         int16_t shift = (int16_t)(p[4] | p[5] << 8);
@@ -1272,9 +1561,14 @@ static void clear_pass(void) {
     memset(&pass, 0, sizeof pass);
     heard_count = pending_count = 0;
 }
+static void clear_spell(void) {
+    spell.side = 0, spell.last = 0, spell.resync = 1, spell.casting = 0;
+    memset(&spell_drawn, 0, sizeof spell_drawn);
+}
 static int state_set(const uint8_t *buf, int len) {
     if (!state_validate(buf, len)) return 0;
     clear_pass();
+    clear_spell();
     if (!len) return 1;
     pass.open = buf[1];
     pass.count = buf[2];
@@ -1288,6 +1582,7 @@ static int state_set(const uint8_t *buf, int len) {
     memcpy(pass.view, p, sizeof pass.view);
     p += sizeof pass.view;
     for (unsigned i = 0; i < HEARD; i++, p += 3) pending[i] = (Sound){p[0], p[1], p[2]};
+    if (len == RECORD) spell.side = (int8_t)p[0], spell.last = p[1], spell.resync = p[2], spell.casting = p[3];
     return 1;
 }
 
@@ -1307,6 +1602,10 @@ void fax_seams_captured(uint8_t *bytes, int how) {
     memcpy(b->drawn_tiles, drawn[c].tiles, sizeof b->drawn_tiles);
     b->count = drawn[c].count;
     memcpy(b->cell, drawn[c].cell, sizeof b->cell);
+    if (c || b != block(fax_world_active_room())) return;
+    /* His room's: the spell's draw too, before the sprite loop's. */
+    for (unsigned k = 0; k < 64; k++) if (spell_drawn.owner[k]) b->owner[k] = spell_drawn.owner[k];
+    for (unsigned k = 0; k < spell_drawn.count && b->count < CELLS; k++) b->cell[b->count++] = spell_drawn.cell[k];
 }
 unsigned fax_seams_cells(const uint8_t *bytes, const FaxSeamsCell **cells) {
     const Block *b = (const Block *)bytes;
@@ -1326,8 +1625,8 @@ bool fax_seams_valid(const uint8_t *bytes, unsigned rooms) {
     if (b->count > CELLS) return false;
     for (unsigned s = 0; s < 8; s++)
         if (b->through[s] > THROUGH_RIGHT || b->tiles[s] > rooms || b->drawn_tiles[s] > rooms) return false;
-    for (unsigned k = 0; k < 64; k++) if (b->owner[k] > 8) return false;
-    for (unsigned k = 0; k < b->count; k++) if (b->cell[k].slot > 7) return false;
+    for (unsigned k = 0; k < 64; k++) if (b->owner[k] > SPELL + 1) return false;
+    for (unsigned k = 0; k < b->count; k++) if (b->cell[k].slot > SPELL) return false;
     return true;
 }
 void fax_seams_describe(const uint8_t *bytes, char *out, size_t size) {
@@ -1362,6 +1661,12 @@ static const struct { const char *id; uint16_t addr; NESModFunctionEntryCallback
     {"faxanadu.seams.shield", CHECK_SHIELD, shield_hook},
     {"faxanadu.seams.weapon", WEAPON_OFF_SCREEN, weapon_hook},
     {"faxanadu.seams.sound", SOUND_PLAY_EFFECT, sound_hook},
+    {"faxanadu.seams.cast", PLAYER_CAST_MAGIC, cast_hook},
+    {"faxanadu.seams.cast-done", CHECK_USE_ITEM, cast_done_hook},
+    {"faxanadu.seams.spell-direction", CAST_CHECK_DIRECTION, direction_hook},
+    {"faxanadu.seams.spell-left", CAST_LEFT_EDGE, edge_hook},
+    {"faxanadu.seams.spell-right", CAST_RIGHT_EDGE, edge_hook},
+    {"faxanadu.seams.spell-visibility", CAST_VISIBILITY, visibility_hook},
 };
 enum { HOOKS = sizeof hooks / sizeof hooks[0] };
 
@@ -1379,6 +1684,11 @@ static void deactivate(void) {
     touch_refused = magic_refused = shield_refused = shield_skipped = weapon_placed = heard_total = played = 0;
     memset(visit_log, 0, sizeof visit_log);
     memset(sound_log, 0, sizeof sound_log);
+    clear_spell();
+    spell_walls = spell_view_ends = spell_side_ends = spell_crossed = spell_cleared = magic_dormant = 0;
+    spell_visibility = spell_drawn_abroad = 0;
+    memset(spell_end, 0, sizeof spell_end);
+    spell_end[3] = spell_end[4] = -1;
     looping[0] = looping[1] = false;
     loop_room[0] = loop_room[1] = -1;
     for (unsigned i = 0; i < HOOKS; i++) nes_mod_set_function_hook_enabled(hooks[i].id, 0);
@@ -1404,9 +1714,11 @@ static size_t ring_json(char *out, size_t cap, const int *ring, unsigned n, unsi
 }
 static void seams_state(int id, const char *line) {
     (void)line;
-    char fields[3200], log[700], visit[700], sound[300];
+    char fields[3800], log[700], visit[700], sound[300];
     int vx = 0, vy = 0;
     bool view = fax_world_view(&vx, &vy);
+    uint8_t type = cyc_mod_peek(CAST_TYPE), byte = cyc_mod_peek(CAST_X);
+    int x16 = spell.resync ? byte : spell.side * 256 + spell.last + (int8_t)(uint8_t)(byte - spell.last);
     ring_json(log, sizeof log, &move_log[0][0], 6, LOG, moves);
     ring_json(visit, sizeof visit, &visit_log[0][0], 6, LOG, visits);
     ring_json(sound, sizeof sound, &sound_log[0][0], 4, HEARD, played);
@@ -1416,12 +1728,18 @@ static void seams_state(int id, const char *line) {
              "\"view\":[%d,%d,%s],\"last_woken\":[%d,%d,%d,%d],\"log\":[%s],"
              "\"passes\":%u,\"visits\":%u,\"waited\":%u,\"visiting\":%s,\"broken\":%u,\"flashes_due\":%u,\"flash_runs\":%u,"
              "\"touch_refused\":%u,\"magic_refused\":%u,\"shield_refused\":%u,\"shield_skipped\":%u,\"weapon_placed\":%u,"
-             "\"heard\":%u,\"played\":%u,\"pending\":%u,\"visit_log\":[%s],\"sound_log\":[%s]",
+             "\"heard\":%u,\"played\":%u,\"pending\":%u,\"visit_log\":[%s],\"sound_log\":[%s],"
+             "\"spell\":[%u,%u,%d,%d],\"spell_walls\":%u,\"spell_view_ends\":%u,\"spell_side_ends\":%u,"
+             "\"spell_end\":[%d,%d,%d,%d,%d],\"spell_crossed\":%u,\"spell_cleared\":%u,\"magic_dormant\":%u,"
+             "\"spell_visibility\":%u,\"spell_drawn_abroad\":%u,\"casting\":%s",
              enabled ? "true" : "false", skipped, refused, last_weapon_x, last_sprite_x, last_entity, steps, moves,
              kept_out, town_edge, pushed_back, removed, woken, frozen, vx, vy, view ? "true" : "false", last_woken[0],
              last_woken[1], last_woken[2], last_woken[3], log, passes, visits, waited, pass.open ? "true" : "false",
              broken, flashes_due, flash_runs, touch_refused, magic_refused, shield_refused, shield_skipped,
-             weapon_placed, heard_total, played, pending_count, visit, sound);
+             weapon_placed, heard_total, played, pending_count, visit, sound, type, byte, x16 >= 256 ? 1 : x16 < 0 ? -1 : 0,
+             x16, spell_walls, spell_view_ends, spell_side_ends, spell_end[0], spell_end[1], spell_end[2], spell_end[3],
+             spell_end[4], spell_crossed, spell_cleared, magic_dormant, spell_visibility, spell_drawn_abroad,
+             spell.casting ? "true" : "false");
     cyc_tcp_ok(id, fields);
 }
 void fax_seams_tcp_setup(void) {
@@ -1430,7 +1748,9 @@ void fax_seams_tcp_setup(void) {
                      "screen; actors moved through seams, kept out of full rooms, kept at a town's edge, shots gone "
                      "out of the view, "
                      "sleepers woken and kept frozen, the view, the last move and wake; visitors' passes, visits and "
-                     "their outcomes, matches refused for wrapping, neighbours' sounds heard and played",
+                     "their outcomes, matches refused for wrapping, neighbours' sounds heard and played; the spell "
+                     "(type, X byte, side, X in 16 bits), its walls across a seam, its ends at the view's edge and at "
+                     "a side, the last end, crossings kept, dormant sleepers it was kept from",
                      seams_state);
 }
 #else

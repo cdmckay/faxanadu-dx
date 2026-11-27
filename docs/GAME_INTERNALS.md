@@ -2319,7 +2319,48 @@ jump a few updates after stepping off, as A from the hang itself would.
   It hits only the screen's own slots: `Sprite_CheckHitByCastMagic` (`$8ADC`)
   runs for each slot in `Sprites_UpdateAll`. Checked in the game (Seamless):
   Deluge cast left from x 43 starts at x 40, moves 3 pixels a frame, is last
-  at x 1, and is gone (`CastMagic_Type` `$FF`) the frame after.
+  at x 1, and is gone (`CastMagic_Type` `$FF`) the frame after. With the
+  remaster the edge is the view's, and a spell flies on through a seam
+  (*Seams: actors across rooms*, slice 3).
+- **The cast and the flight, step by step** (found building Seams' slice 3).
+  A new cast happens only when `CastMagic_Type` is `$FF` at
+  `Player_CastMagic`'s entry; its update handler then runs in the same
+  frame, so the spell is already a move from the hero on the first frame it
+  shows. It starts at `Player_PosX_Block` + `CAST_MAGIC_START_X` (`$BAF2`,
+  all 0), but that `ADC` has no `CLC`: the carry `Sound_PlayEffect` left can
+  make it a pixel further (Deluge cast left from x 60 first shows at 57).
+  Its Y is `Player_PosY` + `CAST_MAGIC_START_Y` (`$BAED`: Deluge, Death and
+  Tilte 8, Thunder and Fire 0). It moves 3 pixels a frame (Deluge), 2
+  (Thunder, Death), 4 (Fire), and Tilte 1 sideways on a gravity arc
+  (`CastMagic_UpdateYPosition`, `$BCFB`), then 4 diagonally.
+  `CastMagic_CheckDirection_CheckImpassable` (`$BD58`) tests the block at
+  `Arg_PixelPosX` (X moving left, X + `CAST_MAGIC_WIDTHS` moving right) on
+  the spell's row, the row below when `CAST_MAGIC_HEIGHTS` (`$BDA9`) is 16
+  or more (Thunder's `$1F`), and one more when its Y is off a block's edge.
+  Deluge and Fire end on a wall with sound `$0A`; Thunder, Death and Tilte
+  never read `Blocks_Result` and fly through. `CheckDirection`'s up and down
+  paths always give 0.
+- **After a first hit.** Deluge's hit handler (`CastMagic_HitHandler_Deluge`,
+  `$BB6B`) sets `$FF` (its counter 4 and the sprite's X go unused: an
+  unused hit effect), Death's too; Thunder goes on as type 6 for 24 frames,
+  Fire as type 7 for 255 (it never gets that far), Tilte as type 11's
+  burst. `Sprite_CheckHitByCastMagic` returns at once for a type of 5 and up,
+  so a spell hits one monster at most. `CastMagic_UpdateXPosition`'s right
+  test reads `CAST_MAGIC_MAX_SCREEN_WIDTHS` (`$BCF6`, five entries) by type,
+  so types 6 and 7 read `CastMagic_UpdateYPosition`'s code bytes after it:
+  `$B4` and `$02`. So moving right Thunder after a hit ends at x 180, and Fire
+  after a hit at once; moving left (`CMP #$F0`) both fly on to the edge.
+- **Drawn outside any sprite loop.** `Game_MainLoop` runs `Player_CastMagic`
+  after `Player_DrawWeapon` and before `GameLoop_CheckUseCurrentItem` and
+  `Sprites_UpdateAll`; the update handler returns through
+  `CastMagic_RunUpdateSpellHandler` (`$C2E9`, pushed), which runs
+  `CastMagic_CalculateVisibility` (`$C315`) and the type's finish handler,
+  drawing from `Arg_DrawSprite_PosX` = the X byte through `Sprite_Draw`. The
+  visibility, `MovingSpriteVisibility`'s behind-the-background bits, reads
+  the block properties at X + 4 (bit 0 for 4, 9 or `$0D`) and X + 12 (bit 1,
+  but its `BNE` after `CMP #$04` makes 4 the only one), swapped (`EOR #$03`)
+  moving right. A spell is cleared at a spawn (`Player_ClearVisibleMagic`,
+  from `Game_InitStateForSpawn`) and at `Area_ScrollTo`.
 - **Up+B is clumsy by design.** The sword swings on the same new B, so the
   stock combo always swings and casts. At a door the new Up goes through it
   first, in `GameLoop_UpdatePlayer`, and `Game_SetupEnterScreen` waits for the
@@ -4691,7 +4732,9 @@ flights on MP):
 - **The Fire spell flickers by design**: `CastMagic_FinishHandler_Fire` draws
   it only when `InterruptCounter` has bit 1 set, 2 frames in 4, and picks its
   frame from bit 2, so each frame shows 2 frames in 8. Thunder draws on the
-  other two (bit 1 clear). The remaster keeps it: it draws what OAM holds.
+  other two (bit 1 clear). The remaster keeps it: it draws what OAM holds,
+  and across a seam the cells it keeps for the spell are only those it drew
+  (the RAM after a frame has the `InterruptCounter` it drew by).
 
 ### The shadow OAM, a frame at a time
 
@@ -4928,6 +4971,58 @@ What slice 2 (fights across a seam) builds on:
   run from the live game by entering `$AB44` with `CurrentSpriteIndex` the
   slot: it ends in `JMP Sprite_FinishBehavior`, whose `RTS` goes on wherever
   the stack says.
+
+What slice 3 (the spell flies on) builds on (*Input and casting* has the
+spell's own code):
+
+- **Its side, from its byte.** The spell's X is one byte, `CastMagic_XPos_Full`,
+  and moves at most 4 pixels a frame, so the change of the byte since the
+  last look is its move, and Seams keeps its side (the room it is in, -1, 0
+  or 1 from his) as the byte wraps. A cast starts at his X in his room:
+  `Player_CastMagic`'s entry with `CastMagic_Type` `$FF` takes his X as the
+  byte, and the cast's own move follows from it (from x 255 with the carry
+  its byte is 0, the next room's).
+- **The read hook is off by then.** Seamless's `collision_read` serves the
+  hero's floor tests a neighbour's blocks, but its `Player_DrawShield` hook
+  clears the RAM read hook before `Player_CastMagic` runs, so the spell's
+  wall test reads the live `ScreenBuffer` only. Seams does
+  `CastMagic_CheckDirection` (`$BD8F`) in C for the sideways moves instead,
+  with slice 1's block test in the room the pixel lies in, and the same
+  rows; past a side with nothing joined it disperses as the original's does
+  at the screen's edge.
+- **Where its edge is.** `CastMagic_UpdateXPosition`'s two compares (`$BCD1`
+  `CMP #$F0` moving left, `$BCF2` `CMP CAST_MAGIC_MAX_SCREEN_WIDTHS,X` moving
+  right, each followed by its `RTS`) are where the screen's edge ends a
+  spell: C set, and every update handler clears it. Seams answers there:
+  past the view's edge (its X left of the view moving left, its X plus its
+  width at or past the view's right edge moving right) or a side with
+  nothing joined, and types 6 and 7 moving right by their own bytes. The
+  view is worked out again at `Player_CastMagic`'s entry, after he has moved
+  this frame. In Seamless before slice 3 a cast from x 243 or more moving
+  left (its X `$F0` and up after its move) or 237 or more moving right ended
+  on its first frame: the hero stands at x 241-255 before he crosses.
+- **The dormant hole.** A sleeper not yet seen stands still, but the sprite
+  loop still runs its interactions: a spell reaching it hit it. In his own
+  room the view leaves up to 50 pixels of the room unseen at a seam, and a
+  spell flew there: from x 238, a Deluge would fly to x 0 and hit a Zozura
+  there that the view (from x 34) had never shown. Now it ends at x 34; and
+  `Sprite_CheckHitByCastMagic`'s hook refuses a hit on a sleeper not yet
+  seen anyway.
+- **Its picture.** The spell draws inside `Player_CastMagic`, outside any
+  sprite loop, so slice 1's draw hooks didn't know it. From
+  `Player_CastMagic`'s entry to `GameLoop_CheckUseCurrentItem`'s (next in
+  both main loops; an item's use can draw the hero again,
+  `Game_DrawScreenInFrozenState`) a draw is the spell's: moved a screen over
+  by its side (`Sprite_TileInfo_OffsetX`), its cells past the side kept and
+  its OAM cells marked as the spell's (`FAX_SEAMS_SPELL`), so Seamless
+  paints them where it is and not where the hero's own wrapped cells go.
+  `CastMagic_CalculateVisibility` reads the room each of its pixels lies in:
+  Deluge passing room 5's tower (property 4) from room 4 is hidden behind
+  it, where read in room 4 it showed in front.
+- **A crossing.** Seamless's `adopt()` cleared `CastMagic_Type`. Now a spell
+  keeps flying, its side moved by the rooms' places (Deluge cast right from
+  room 4's x 240 was through the seam on its fifth frame, and flew on through
+  room 3 and into room 2 after he crossed); up or down it still ends.
 
 ## Graphics bugs
 
@@ -5195,11 +5290,21 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   damage numbers' room), `fax_seams_box_left()` (Block's front),
   `fax_seams_hero_x()` and `fax_seams_flash()` (Sugata's flash). The pass
   and the sounds still to play are its record (`faxanadu.seams`, version
-  1, 477 bytes), since a frame can end inside the pass: then the host's
+  2, 481 bytes with slice 3's spell; version 1's 477 still load), since a
+  frame can end inside the pass: then the host's
   frame end shows the live slots as the game has them and keeps the pass's
   until the next frame begins, and Seamless's step waits for the pass
-  (`fax_seams_visiting()`). Slice 0, seams lose nothing, is two hooks in bank
-  14's sprite loop:
+  (`fax_seams_visiting()`). Slice 3, the spell flies on: its side (the room
+  it is in beside his) from its byte's moves since the cast; hooks at
+  `Player_CastMagic`'s entry (`$BA5B`, shared with the Magic button) and
+  `GameLoop_CheckUseCurrentItem`'s (`$C478`, shared too), both observed
+  only; `CastMagic_CheckDirection`'s entry (`$BD8F`, its walls in the room
+  it is in), `CastMagic_UpdateXPosition`'s two off-screen compares (`$BCD1`,
+  `$BCF2`: the view's edge) and `CastMagic_CalculateVisibility`'s entry
+  (`$C315`); the spell's X in 16 bits for the told-apart spell test and for
+  choosing visitors; its draw moved a screen over by its side, its cells the
+  spell's; `fax_seams_adopted()` for Seamless's `adopt()`. Slice 0, seams
+  lose nothing, is two hooks in bank 14's sprite loop:
   - `CurrentSprite_CheckHitPlayer`'s entry (`$890A`) returns at once in a
     neighbouring room's tick, with X the current slot as its first `LDX
     CurrentSpriteIndex` leaves it; `CurrentSprite_UpdateState`, next in the
