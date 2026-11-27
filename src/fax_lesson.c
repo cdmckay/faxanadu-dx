@@ -3,7 +3,7 @@
  * Eolis's Magician (building $05) sold 40 MP for 200 Golds. MP comes from
  * kills (fax_mana.c), and a Guru fills it, so instead he teaches the hero,
  * once, for PRICE, to recover it faster: every kill gives twice its MP
- * (fax_mana.c's TAUGHT), a Zozura 6 rather than 3 and a boss the whole bar.
+ * (fax_mana.c's TAUGHT), a Zozura 2 rather than 1 and a boss half the bar.
  * The Wing Boots and the Hour Glass run on MP (fax_recharge.c), so it means
  * flying and freezing longer on the same fights too. His lines say what he
  * teaches as they always did. He teaches only a hero who has

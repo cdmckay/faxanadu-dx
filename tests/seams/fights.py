@@ -19,7 +19,7 @@ visit_log: room, slot, live slot, entity, what it was after).
 
 1. kill: the Long Sword swung from room 4's x 4 facing left, a room 5 Zozura
    at its x 236 with 7 HP (one blow: 8, with the Pendant fixed). It dies in room 5 (the death effect, $13, in room 5's
-   record) while he stands in room 4: its 30 experience and its 3 MP (MP
+   record) while he stands in room 4: its 30 experience and its 1 MP (MP
    from kills) are his on the swing, and room 5's tick plays its death and
    leaves its drop there: bread, a Zozura's (SPRITE_ENTITY_DROP_VALUES_INDEX
    $32, Sprite_ReplaceWithBreadDrop, which plays no sound).
@@ -81,7 +81,7 @@ EXPERIENCE, GOLD, MP = 0x390, 0x392, 0x39A
 SELECTED_WEAPON, PLAYER_CUR_WEAPON, OINTMENT, HP = 0x3BD, 0x3C8, 0x427, 0x431
 ZOZURA, MONODRON, SUGATA, COIN, BREAD, DEATH, EMPTY = 0x47, 0x2A, 0x18, 0x02, 0x01, 0x13, 0xFF
 LONG_SWORD, NO_WEAPON = 1, 0xFF
-ZOZURA_XP, ZOZURA_MP = 30, 3                                     # ENEMY_EXPERIENCE; fax_mana.c's experience² / 256
+ZOZURA_XP, ZOZURA_MP = 30, 1                                     # ENEMY_EXPERIENCE; fax_mana.c's experience² / 512
 COIN_SOUND = 0x10
 THROUGH_RIGHT = 2
 MIST, MIST_30, MIST_31, PALETTE_MIST, REGION_MIST = 2, 0x1E, 0x1F, 0x0A, 2

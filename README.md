@@ -131,7 +131,7 @@ opens it too. The game holds still underneath, but the music plays on.
   your sword.
 - **MP from kills.** As hearts do in Castlevania, every enemy you kill, by
   sword or spell, gives MP back: a little for the weak ones, more for the
-  tough, 40 for a boss. It no longer comes back by waiting, and talking to
+  tough, 20 for a boss. It no longer comes back by waiting, and talking to
   any Guru fills your HP and MP. Eolis's Magician no longer sells MP: once
   you have learned Fire at the magic hall in the Mist, he teaches you, once,
   for 30000 Golds, to draw twice as much from every kill, which keeps the

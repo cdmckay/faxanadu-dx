@@ -28,7 +28,7 @@ X at the cast; the view's left edge comes from seams_state's view and room
    from the view's edge.
 3. kill: a room 5 Zozura at its x 200, awake, with 1 HP: the Deluge kills it
    in room 5 while he stands in room 4 (its death in room 5's record, the
-   visit in seams_state's visit_log), for its 30 experience and 3 MP back.
+   visit in seams_state's visit_log), for its 30 experience and 1 MP back.
 4. dormant: Cameron's check. A room 5 Zozura at its x 80, never seen, its
    box 26 pixels past the view's left edge (more than the 16 it wakes at):
    the Deluge cast toward it ends on the first frame past the view's edge
@@ -82,7 +82,7 @@ OINTMENT = 0x427
 SCREEN_BUFFER, BLOCK_PROPERTIES, IMPASSABLE = 0x600, 0x43C, 0xE8D9   # a room's; BLOCK_PROPERTY_IMPASSABLE_MAP (bank 15)
 DELUGE, FIRE, NONE = 0, 2, 0xFF
 ZOZURA, SPELL_DEATH, EMPTY = 0x47, 0x14, 0xFF                        # Sprite_SetDeathEntity: $14 for a spell's kill
-ZOZURA_XP, ZOZURA_MP, DELUGE_MP = 30, 3, 2
+ZOZURA_XP, ZOZURA_MP, DELUGE_MP = 30, 1, 2                           # ENEMY_EXPERIENCE; fax_mana.c's experience² / 512
 DELUGE_STEP, FIRE_STEP, DELUGE_W, FIRE_W = 3, 4, 16, 32               # pixels a frame; widths (CAST_MAGIC_WIDTHS + 1)
 VIEW_W, HUD, ROOM_W = 424, 32, 256
 SPELL_ROWS = (9, 10)                                                 # his Y 144 + 8: rows 9, and 10 (Y off a block's edge)
