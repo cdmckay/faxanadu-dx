@@ -59,30 +59,30 @@
 #include <string.h>
 
 /* RAM */
-#define SCREEN_READY_STATE   0x000Eu   /* Screen_ReadyState: 0 once a screen has loaded */
-#define INTERRUPTS_ON        0x0013u   /* Game_InterruptHandlersEnabled */
-#define PPU_BUFFER_READ      0x001Fu   /* PPUBuffer_ReadOffset */
-#define PPU_BUFFER_WRITE     0x0020u   /* PPUBuffer_WriteOffset: the buffer is $0500-$05FF, circular */
-#define SCROLL_DIRECTION     0x0054u   /* Screen_ScrollDirection: $FF not scrolling (0 on the title) */
-#define CURRENT_SPRITES_ENTITIES 0x02CCu   /* 8 slots, $FF empty */
-#define PLAYER_MP            0x039Au   /* at most 80 */
-#define PLAYER_HP_U          0x0431u   /* whole HP, at most 80; Player_HP_L ($0432) the 256ths */
-#define BAR_WIDTH            0x04EEu   /* UI_MPAndHPBarWidth: 10 tiles, set by UI_DrawHUDSprites */
+#define SCREEN_READY_STATE       0x000Eu /* Screen_ReadyState: 0 once a screen has loaded */
+#define INTERRUPTS_ON            0x0013u /* Game_InterruptHandlersEnabled */
+#define PPU_BUFFER_READ          0x001Fu /* PPUBuffer_ReadOffset */
+#define PPU_BUFFER_WRITE         0x0020u /* PPUBuffer_WriteOffset: the buffer is $0500-$05FF, circular */
+#define SCROLL_DIRECTION         0x0054u /* Screen_ScrollDirection: $FF not scrolling (0 on the title) */
+#define CURRENT_SPRITES_ENTITIES 0x02CCu /* 8 slots, $FF empty */
+#define PLAYER_MP                0x039Au /* at most 80 */
+#define PLAYER_HP_U              0x0431u /* whole HP, at most 80; Player_HP_L ($0432) the 256ths */
+#define BAR_WIDTH                0x04EEu /* UI_MPAndHPBarWidth: 10 tiles, set by UI_DrawHUDSprites */
 /* Bank 14 */
 /* Player_AddExperienceFromSprite: LDY CurrentSprites_Entities,X,
  * LDA ENEMY_EXPERIENCE,Y, STA Temp_Int24, ..., JSR Player_UpdateExperience;
  * from both kills, before the death's sound or effect */
-#define ADD_EXPERIENCE       0x8B87u
-#define SPRITE_CATEGORIES    0xB544u   /* SPRITE_CATEGORIES_BY_ENTITY: 0 an enemy, 7 a boss, ... */
+#define ADD_EXPERIENCE           0x8B87u
+#define SPRITE_CATEGORIES        0xB544u /* SPRITE_CATEGORIES_BY_ENTITY: 0 an enemy, 7 a boss, ... */
 /* experience by entity: 10-65 for an enemy, 75-158 for a boss (0 for the
  * last two) */
-#define ENEMY_EXPERIENCE     0xB60Eu
+#define ENEMY_EXPERIENCE         0xB60Eu
 /* Fixed bank */
 /* LDA Player_HP_U, JMP UI_DrawPlayerHPValue: caps at 80, stores, then
  * UI_SetHUDBarValue with Y = 0 draws the Power bar */
-#define UI_DRAW_PLAYER_HP    0xC0BDu
-#define PLAYER_SET_MP        0xFA85u   /* CMP #$51, BCC, LDA #$50, STA Player_MP, LDY #$01: draws the Magic bar */
-#define WAIT_FOR_NEXT_FRAME  0xCA25u   /* LDA #$00, STA Game_InterruptsHandledLatch, then LDA, BEQ until the NMI */
+#define UI_DRAW_PLAYER_HP        0xC0BDu
+#define PLAYER_SET_MP            0xFA85u /* CMP #$51, BCC, LDA #$50, STA Player_MP, LDY #$01: draws the Magic bar */
+#define WAIT_FOR_NEXT_FRAME      0xCA25u /* LDA #$00, STA Game_InterruptsHandledLatch, then LDA, BEQ until the NMI */
 /* Values */
 enum { MP_MAX = 80, HP_MAX = 80, CATEGORY_BOSS = 7, JSR = 0x20, NOT_SCROLLING = 0xFF };
 /* PPUBuffer_HasCapacity: room (ReadOffset - WriteOffset) is 0 (empty) or at
@@ -123,12 +123,12 @@ enum { BAR_HP = 1, BAR_MP = 2, BARS = BAR_HP | BAR_MP };
 static bool enabled;
 static uint8_t bars;
 typedef struct {
-    unsigned kills, bosses, gained;      /* kills, of them bosses, and the MP they gave (after the cap) */
-    unsigned restores;                   /* Gurus who filled HP and MP */
-    unsigned drawn, deferred;            /* bars drawn; and frames one waited for room */
-    uint8_t entity, experience, mp;      /* the last kill: whom, its experience, its MP before the cap */
+    unsigned kills, bosses, gained; /* kills, of them bosses, and the MP they gave (after the cap) */
+    unsigned restores;              /* Gurus who filled HP and MP */
+    unsigned drawn, deferred;       /* bars drawn; and frames one waited for room */
+    uint8_t entity, experience, mp; /* the last kill: whom, its experience, its MP before the cap */
 } Seen;
-static Seen seen;                        /* for TCP */
+static Seen seen; /* for TCP */
 
 /* ---- the machine ---- */
 
@@ -260,7 +260,7 @@ static void deactivate(void) {
 static void activate(void) {
     enabled = true;
     nes_mod_set_function_hook_enabled(HOOK_KILL, 1);
-    nes_mod_set_local_only("MP from kills", 1);   /* a peer without it would play other rules */
+    nes_mod_set_local_only("MP from kills", 1); /* a peer without it would play other rules */
 }
 
 #ifdef CYC_WITH_SDL
@@ -293,5 +293,6 @@ NES_MOD_CONSTRUCTOR(register_mana) {
         !nes_mod_register_reset_callback(deactivate) ||
         !nes_mod_register_activation_plugin("faxanadu.mana-refill", activate) ||
         !nes_mod_register_savestate_hook("faxanadu.mana-refill", state_get, state_set) ||
-        !nes_mod_register_savestate_validator("faxanadu.mana-refill", state_validate)) abort();
+        !nes_mod_register_savestate_validator("faxanadu.mana-refill", state_validate))
+        abort();
 }

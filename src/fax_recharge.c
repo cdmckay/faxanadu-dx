@@ -164,99 +164,99 @@
 #include <string.h>
 
 /* Fixed bank */
-#define PLAYER_USE_ELIXIR       0xC4CAu  /* LDA SpecialItems, AND #$F7, STA SpecialItems: Player_ReduceHP's revive */
-#define PLAYER_USE_WING_BOOTS   0xC579u  /* LDA #$83, JSR MMC1_LoadBankAndJump: the "used Wing Boots" script */
+#define PLAYER_USE_ELIXIR           0xC4CAu /* LDA SpecialItems, AND #$F7, STA SpecialItems: Player_ReduceHP's revive */
+#define PLAYER_USE_WING_BOOTS       0xC579u /* LDA #$83, JSR MMC1_LoadBankAndJump: the "used Wing Boots" script */
 /* @_afterFarJump, after the script: JSR Player_ClearSelectedItem, then
  * LDA #$1A, JSR Sound_PlayEffect */
-#define BOOTS_USED              0xC581u
+#define BOOTS_USED                  0xC581u
 /* STA DurationWingBoots, after LDA TITLE_TO_WINGBOOTS_DURATION,X;
  * then JSR UI_DrawTimeValue draws A */
-#define WING_BOOTS_SET_FLIGHT   0xC592u
+#define WING_BOOTS_SET_FLIGHT       0xC592u
 /* Game_DecWingBootsDuration, running, after it sets Player_StatusFlag's $80:
  * LDA InterruptCounter, AND #$3F, BNE @_return (not the game's second) */
-#define BOOTS_SECOND            0xC5A8u
+#define BOOTS_SECOND                0xC5A8u
 /* DEC DurationWingBoots, LDA, BMI @_wingBootsDone ("... is gone"), else
  * JMP UI_DrawTimeValue */
-#define BOOTS_SECOND_DEC        0xC5AEu
+#define BOOTS_SECOND_DEC            0xC5AEu
 /* @_wingBootsDone, Player_StatusFlag's $80 cleared: LDA #$96, JSR
  * MMC1_LoadBankAndJump, "The power of the Wing Boots is gone.", then RTS */
-#define BOOTS_GONE              0xC5BFu
-#define PLAYER_USE_HOUR_GLASS   0xC5C8u  /* LDA #$82, JSR MMC1_LoadBankAndJump: the "used Hour Glass" script */
+#define BOOTS_GONE                  0xC5BFu
+#define PLAYER_USE_HOUR_GLASS       0xC5C8u /* LDA #$82, JSR MMC1_LoadBankAndJump: the "used Hour Glass" script */
 /* @_afterFarJump, after the script: JSR Player_ClearSelectedItem, then
  * LDA #$1A, JSR Sound_PlayEffect */
-#define GLASS_USED              0xC5D0u
-#define HOUR_GLASS_COST         0xC5D8u  /* LSR Player_HP_U, ROR Player_HP_L: the original's half of HP */
-#define HOUR_GLASS_DRAW_HP      0xC5DEu  /* JSR UI_DrawPlayerHP, then LDA #$0F, STA DurationHourGlass, the music */
+#define GLASS_USED                  0xC5D0u
+#define HOUR_GLASS_COST             0xC5D8u /* LSR Player_HP_U, ROR Player_HP_L: the original's half of HP */
+#define HOUR_GLASS_DRAW_HP          0xC5DEu /* JSR UI_DrawPlayerHP, then LDA #$0F, STA DurationHourGlass, the music */
 /* Game_DecHourGlassDuration, running: LDA InterruptCounter, AND #$3F,
  * BNE @_return */
-#define GLASS_SECOND            0xC5F0u
+#define GLASS_SECOND                0xC5F0u
 /* DEC DurationHourGlass, BPL @_return, else "... is gone" and
  * Areas_DefaultMusic */
-#define GLASS_SECOND_DEC        0xC5F6u
+#define GLASS_SECOND_DEC            0xC5F6u
 /* it wrapped: LDA #$97, JSR MMC1_LoadBankAndJump, "The power of the Hour
  * Glass is gone." */
-#define GLASS_GONE              0xC5FBu
-#define GLASS_GONE_MUSIC        0xC603u  /* @_afterFarJump: LDA Areas_DefaultMusic, STA Music_Current, RTS */
-#define GAME_CLEAR_TIMED_ITEMS  0xC6AFu  /* LDA #$FF, STA DurationGlove, ...: from Game_Start and Player_Spawn */
-#define GAME_LOOP_COUNTDOWN     0xC88Fu  /* GameLoop_CountdownItems: JSR Game_DecHourGlassDuration, ... */
-#define PLAYER_PICK_UP_ITEM     0xC8CDu  /* LDX NumberOfItems, CPX #$08, BCS: A is the item */
-#define SOUND_PLAY_EFFECT       0xD0E4u  /* STA Temp_SoundIDToPlay, ...: queues sound A, keeps X and Y */
-#define PLAYER_SET_MP           0xFA85u  /* CMP #$51, BCC, LDA #$50, STA Player_MP, LDY #$01: draws the MP bar */
-#define GAME_SHOW_START_SCREEN  0xFC65u  /* LDX #$FF, TXS: the title, from Game_InitStateForStartScreen only */
+#define GLASS_GONE                  0xC5FBu
+#define GLASS_GONE_MUSIC            0xC603u /* @_afterFarJump: LDA Areas_DefaultMusic, STA Music_Current, RTS */
+#define GAME_CLEAR_TIMED_ITEMS      0xC6AFu /* LDA #$FF, STA DurationGlove, ...: from Game_Start and Player_Spawn */
+#define GAME_LOOP_COUNTDOWN         0xC88Fu /* GameLoop_CountdownItems: JSR Game_DecHourGlassDuration, ... */
+#define PLAYER_PICK_UP_ITEM         0xC8CDu /* LDX NumberOfItems, CPX #$08, BCS: A is the item */
+#define SOUND_PLAY_EFFECT           0xD0E4u /* STA Temp_SoundIDToPlay, ...: queues sound A, keeps X and Y */
+#define PLAYER_SET_MP               0xFA85u /* CMP #$51, BCC, LDA #$50, STA Player_MP, LDY #$01: draws the MP bar */
+#define GAME_SHOW_START_SCREEN      0xFC65u /* LDX #$FF, TXS: the title, from Game_InitStateForStartScreen only */
 /* Bank 12 */
-#define ISCRIPTS_INVOKE_NEXT_ACTION 0x826Eu  /* JSR IScripts_LoadByte: the action at IScriptOrCHRAddr + IScriptOffset */
-#define EOLIS_GURU_FIRST        0xA0BDu  /* ISCRIPT_EOLIS_GURU's first action: CHECK_FOR_ITEM Ring of Elf */
+#define ISCRIPTS_INVOKE_NEXT_ACTION 0x826Eu /* JSR IScripts_LoadByte: the action at IScriptOrCHRAddr + IScriptOffset */
+#define EOLIS_GURU_FIRST            0xA0BDu /* ISCRIPT_EOLIS_GURU's first action: CHECK_FOR_ITEM Ring of Elf */
 /* ISCRIPT_SPRING_OF_TRUNK ($A1AB): 00, 0B 01 A1C0 (done: on), 02 59, 12 92 A1B9 (the Elixir: on), 03 5B, 00. Its
  * CHECK_FOR_ITEM jumps (IScripts_JumpToNextAddr: IScriptOrCHRAddr $A1B9, IScriptOffset 0) to
  * @_ISCRIPT_SPRING_OF_TRUNK_HAS_ELIXIR: 01 5A ("2 more springs"), then this: */
-#define SPRING_CONSUME          0xA1BBu  /* 10 92, CONSUME_ITEM the Elixir; then 0E 01, SET_QUEST 1, and 00 */
+#define SPRING_CONSUME              0xA1BBu /* 10 92, CONSUME_ITEM the Elixir; then 0E 01, SET_QUEST 1, and 00 */
 /* ISCRIPT_USED_HOURGLASS ($A670) and ISCRIPT_USED_WINGBOOTS ($A674), scripts $82 and $83: 00 (GENERIC), 01 AC or 01
  * AD (SHOW_UNSKIPPABLE_MESSAGE "I've used ..."), 00. IScripts_Begin starts each at IScriptOffset 1, the message: */
-#define GLASS_USED_LINE         0xA671u
-#define BOOTS_USED_LINE         0xA675u
-#define SAY                     FAX_TRAVEL_SAY      /* $AE00, Guru travel's step: 03 C3 00, show the slot, then END */
+#define GLASS_USED_LINE             0xA671u
+#define BOOTS_USED_LINE             0xA675u
+#define SAY                         FAX_TRAVEL_SAY /* $AE00, Guru travel's step: 03 C3 00, show the slot, then END */
 /* Bank 13 */
-#define SLOT                    FAX_TRAVEL_SLOT     /* $B45B: message $C3, the line slot */
+#define SLOT                        FAX_TRAVEL_SLOT /* $B45B: message $C3, the line slot */
 /* RAM */
-#define INTERRUPT_COUNTER       0x001Au  /* +1 each NMI; the game's second is when & $3F == 0 */
-#define ISCRIPT_ADDR            0x00DBu  /* IScriptOrCHRAddr; the next action is at it + IScriptOffset ($DD) */
-#define ISCRIPT_OFFSET          0x00DDu
-#define PPU_BUFFER_READ         0x001Fu  /* PPUBuffer_ReadOffset */
-#define PPU_BUFFER_WRITE        0x0020u  /* PPUBuffer_WriteOffset */
-#define JOY1_BUTTON_MASK        0x0016u  /* Joy1_ButtonMask: held, read in the NMI; A $80 */
-#define PLAYER_MP               0x039Au  /* at most 80 */
-#define ITEM_INVENTORY          0x03ADu
-#define SELECTED_ITEM           0x03C1u
-#define NUMBER_OF_ITEMS         0x03C6u
-#define DURATION_WING_BOOTS     0x0429u  /* $FF when not running */
-#define DURATION_HOUR_GLASS     0x042Au
-#define SPECIAL_ITEMS           0x042Cu
-#define PLAYER_TITLE            0x0437u  /* 0-15 */
-#define PLAYER_IS_DEAD          0x0438u
-#define BAR_WIDTH               0x04EEu  /* UI_MPAndHPBarWidth: 10 tiles, set by UI_DrawHUDSprites */
-#define PPU_BUFFER              0x0500u  /* 256 bytes, circular: [length][addr hi][addr lo][tiles] */
+#define INTERRUPT_COUNTER           0x001Au /* +1 each NMI; the game's second is when & $3F == 0 */
+#define ISCRIPT_ADDR                0x00DBu /* IScriptOrCHRAddr; the next action is at it + IScriptOffset ($DD) */
+#define ISCRIPT_OFFSET              0x00DDu
+#define PPU_BUFFER_READ             0x001Fu /* PPUBuffer_ReadOffset */
+#define PPU_BUFFER_WRITE            0x0020u /* PPUBuffer_WriteOffset */
+#define JOY1_BUTTON_MASK            0x0016u /* Joy1_ButtonMask: held, read in the NMI; A $80 */
+#define PLAYER_MP                   0x039Au /* at most 80 */
+#define ITEM_INVENTORY              0x03ADu
+#define SELECTED_ITEM               0x03C1u
+#define NUMBER_OF_ITEMS             0x03C6u
+#define DURATION_WING_BOOTS         0x0429u /* $FF when not running */
+#define DURATION_HOUR_GLASS         0x042Au
+#define SPECIAL_ITEMS               0x042Cu
+#define PLAYER_TITLE                0x0437u /* 0-15 */
+#define PLAYER_IS_DEAD              0x0438u
+#define BAR_WIDTH                   0x04EEu /* UI_MPAndHPBarWidth: 10 tiles, set by UI_DrawHUDSprites */
+#define PPU_BUFFER                  0x0500u /* 256 bytes, circular: [length][addr hi][addr lo][tiles] */
 /* Values */
-#define BIT_ELIXIR              0x08u
-#define BUTTON_A                0x80u    /* Joy1_ButtonMask's A: with Player_StatusFlag's $80, flying */
-#define SOUND_INVALID_CHOICE    0x0Du
-#define SOUND_ITEM              0x1Au    /* the two routines' "special item sound", after their scripts */
-#define HUD_TIME                0x2058u  /* UI_DrawTimeValue's two digits */
-#define PPU_BUFFER_ROOM         0x24u    /* PPUBuffer_HasCapacity: at least 36 bytes free, or empty */
-#define BAR_COMMAND             3u       /* a PPU buffer command's length and address */
-#define MAX_ITEMS               8
+#define BIT_ELIXIR                  0x08u
+#define BUTTON_A                    0x80u /* Joy1_ButtonMask's A: with Player_StatusFlag's $80, flying */
+#define SOUND_INVALID_CHOICE        0x0Du
+#define SOUND_ITEM                  0x1Au   /* the two routines' "special item sound", after their scripts */
+#define HUD_TIME                    0x2058u /* UI_DrawTimeValue's two digits */
+#define PPU_BUFFER_ROOM             0x24u   /* PPUBuffer_HasCapacity: at least 36 bytes free, or empty */
+#define BAR_COMMAND                 3u      /* a PPU buffer command's length and address */
+#define MAX_ITEMS                   8
 /* 06 temple: each temple Guru's first action (Conflate's after a
  * CHECK_FOR_ITEM); CHECK_UPDATE_PLAYER_TITLE follows it */
-#define ISCRIPT_SET_SPAWN_POINT 0x06u
-#define ISCRIPT_SHOW_MESSAGE    0x03u
-#define SHOW_MESSAGE_LEN        2u       /* 01 or 03, and the message */
-#define ISCRIPT_END             0x00u
-#define ISCRIPT_CONSUME_ITEM    0x10u
-#define SPECIAL_ELIXIR          0x92u    /* the Elixir's full item ID */
-#define TEMPLES                 8
+#define ISCRIPT_SET_SPAWN_POINT     0x06u
+#define ISCRIPT_SHOW_MESSAGE        0x03u
+#define SHOW_MESSAGE_LEN            2u /* 01 or 03, and the message */
+#define ISCRIPT_END                 0x00u
+#define ISCRIPT_CONSUME_ITEM        0x10u
+#define SPECIAL_ELIXIR              0x92u /* the Elixir's full item ID */
+#define TEMPLES                     8
 enum { SLOT_LEN = FAX_TRAVEL_SLOT_LEN, SLOT_ID = FAX_TRAVEL_SLOT_ID };
 
-enum { BOOTS = FAX_RECHARGE_BOOTS, GLASS = FAX_RECHARGE_GLASS, TIMED };   /* the two timed items */
-enum { BANDS = 4 };             /* title bands: PlayerTitle / 4 */
+enum { BOOTS = FAX_RECHARGE_BOOTS, GLASS = FAX_RECHARGE_GLASS, TIMED }; /* the two timed items */
+enum { BANDS = 4 };                                                     /* title bands: PlayerTitle / 4 */
 
 /* What the two cost, decided in #124 as starting points for Cameron's
  * playtest: retuning means changing these and nothing else. Times are in
@@ -272,41 +272,41 @@ enum { BANDS = 4 };             /* title bands: PlayerTitle / 4 */
  * every 3 s), where the original took half his HP at use. */
 enum { SECOND = 64 };
 static const uint8_t FRAMES_PER_MP[BANDS] = {
-    32,     /* Novice to Fighter: 2 MP a second, 40 s on a full bar */
-    40,     /* Adept to Warrior: 1.6 MP a second, 50 s */
-    48,     /* Swordman to Myrmidon: 1.33 MP a second, 60 s */
-    64,     /* Champion to Lord: 1 MP a second, 80 s */
+    32, /* Novice to Fighter: 2 MP a second, 40 s on a full bar */
+    40, /* Adept to Warrior: 1.6 MP a second, 50 s */
+    48, /* Swordman to Myrmidon: 1.33 MP a second, 60 s */
+    64, /* Champion to Lord: 1 MP a second, 80 s */
 };
-enum { GLASS_FRAMES_PER_MP = 24 };   /* 2.67 MP a second: 40 MP for the 15 s */
+enum { GLASS_FRAMES_PER_MP = 24 }; /* 2.67 MP a second: 40 MP for the 15 s */
 enum { FREEZE_SECONDS = 15, FREEZE = FREEZE_SECONDS * SECOND };
-enum { MOST_SECONDS = 99 };     /* T: has two digits */
+enum { MOST_SECONDS = 99 }; /* T: has two digits */
 
 static const uint8_t ITEM_ID[TIMED] = { FAX_ITEM_WING_BOOTS, FAX_ITEM_HOUR_GLASS };
 
 /* A flight: running, and the played frames with A held until it takes the
  * next MP. */
 typedef struct {
-    uint8_t running;           /* begun, and neither out of MP nor ended */
-    uint8_t next;              /* played frames with A held until the next MP goes, 1-64 */
-    uint8_t land;              /* used again: it ends at this frame's countdown */
+    uint8_t running; /* begun, and neither out of MP nor ended */
+    uint8_t next;    /* played frames with A held until the next MP goes, 1-64 */
+    uint8_t land;    /* used again: it ends at this frame's countdown */
 } Flight;
 /* A freeze: how far it has run, and the played frames until it takes the
  * next MP. */
 typedef struct {
-    uint8_t running;           /* begun, and neither over, out of MP nor ended */
-    uint8_t land;              /* used again: it ends at this frame's countdown */
-    uint16_t played;           /* played frames of it so far, 0-FREEZE */
-    uint8_t next;              /* played frames until the next MP goes, 1-GLASS_FRAMES_PER_MP */
-    uint8_t shown;             /* DurationHourGlass as this module last set it: another value is the game's */
+    uint8_t running; /* begun, and neither over, out of MP nor ended */
+    uint8_t land;    /* used again: it ends at this frame's countdown */
+    uint16_t played; /* played frames of it so far, 0-FREEZE */
+    uint8_t next;    /* played frames until the next MP goes, 1-GLASS_FRAMES_PER_MP */
+    uint8_t shown;   /* DurationHourGlass as this module last set it: another value is the game's */
 } Freeze;
 /* The state: everything a save state or a save slot must keep. */
 typedef struct {
     Flight flight;
     Freeze freeze;
-    uint8_t bar;               /* MP taken, and its bar still to draw (the PPU buffer was full) */
-    uint8_t elixir_spent;      /* it revived the hero; a Guru charges it again */
-    uint8_t elixir_told;       /* a Guru has said that he restores it (either line) */
-    uint8_t ending[TIMED];     /* why each run is ending (ENDED_*), for its end's notice: noted as this module
+    uint8_t bar;           /* MP taken, and its bar still to draw (the PPU buffer was full) */
+    uint8_t elixir_spent;  /* it revived the hero; a Guru charges it again */
+    uint8_t elixir_told;   /* a Guru has said that he restores it (either line) */
+    uint8_t ending[TIMED]; /* why each run is ending (ENDED_*), for its end's notice: noted as this module
                                   ends it, or at LimitItemDurations' cut, which the game's second ends */
 } Charge;
 
@@ -314,17 +314,18 @@ typedef struct {
  * lesson at its first use, in its use script's: 16 columns, 4 lines; '\n'
  * breaks a line. */
 enum { LINE_NONE, LINE_RESTORED, LINE_CAN, LINE_BOOTS, LINE_GLASS, LINES };
-static const char *const line_text[LINES] = {
-    "", "Your Elixir is\nrestored. Come\nback when used.", "If your Elixir\nis used, a Guru\nwill restore it.",
-    "Hold A to fly.\nFlying uses\nyour magic.", "Time stops for\nenemies, using\nyour magic." };
+static const char *const line_text[LINES] = { "", "Your Elixir is\nrestored. Come\nback when used.",
+                                              "If your Elixir\nis used, a Guru\nwill restore it.",
+                                              "Hold A to fly.\nFlying uses\nyour magic.",
+                                              "Time stops for\nenemies, using\nyour magic." };
 /* One conversation's line: a Guru's waits for the action it goes before, an
  * item's lesson for the message it takes the place of (PENDING), then shows
  * (SAYING) with the script parked at `resume`. */
 enum { TALK_IDLE, TALK_PENDING, TALK_SAYING, TALK_PHASES };
 typedef struct {
     uint8_t phase, line;
-    uint16_t at;               /* PENDING: the action the line goes before, or a lesson takes the place of */
-    uint16_t resume;           /* SAYING: IScriptOrCHRAddr and IScriptOffset to go back to */
+    uint16_t at;     /* PENDING: the action the line goes before, or a lesson takes the place of */
+    uint16_t resume; /* SAYING: IScriptOrCHRAddr and IScriptOffset to go back to */
     uint8_t offset;
 } Talk;
 
@@ -336,14 +337,14 @@ enum { ENDED_NONE, ENDED_BY_HAND, ENDED_MAGIC, ENDED_TIME, ENDED_BOSS, ENDINGS }
  * box, as play goes on. The last, the game's own timer for the Wing Boots,
  * comes only from a save state made before Recharging items. */
 enum { NOTICE_NONE, NOTICE_MAGIC, NOTICE_GLASS_TIME, NOTICE_BOSS, NOTICE_BOOTS_TIME, NOTICES };
-static const char *const notice_text[NOTICES] = {
-    "", "Out of magic", "The Hour Glass ran out", "Bosses end the Hour Glass", "The Wing Boots ran out" };
+static const char *const notice_text[NOTICES] = { "", "Out of magic", "The Hour Glass ran out",
+                                                  "Bosses end the Hour Glass", "The Wing Boots ran out" };
 /* Played frames (main-loop passes, so it holds through a pause, a box or a
  * menu): fade in, hold, fade out, as Zone names'. */
 enum { NOTICE_IN = 8, NOTICE_HOLD = 120, NOTICE_OUT = 32, NOTICE_SHOWN = NOTICE_IN + NOTICE_HOLD + NOTICE_OUT };
 typedef struct {
-    uint8_t line;              /* NOTICE_* */
-    uint8_t age;               /* played frames it has shown, 0-NOTICE_SHOWN */
+    uint8_t line; /* NOTICE_* */
+    uint8_t age;  /* played frames it has shown, 0-NOTICE_SHOWN */
 } Notice;
 /* The lessons are learned once, ever: a field each in faxanadu_recharge.txt. */
 #define SIDECAR "faxanadu_recharge.txt"
@@ -351,20 +352,20 @@ static const char *const LEARNED[TIMED] = { "recharge.boots_taught", "recharge.g
 
 static bool enabled;
 static Charge charge;
-static unsigned drawn;             /* what this module last queued on T: */
+static unsigned drawn; /* what this module last queued on T: */
 static bool drawn_valid;
 static Talk talk;
 static Notice notice;
-static bool taught[TIMED];         /* the item's lesson has been said (remembered beside the game) */
-static bool notice_drawn;          /* TCP: the last present drew the notice */
-static bool lines_failed;          /* the line could not be supplied: the Gurus charge it silently, and a
+static bool taught[TIMED]; /* the item's lesson has been said (remembered beside the game) */
+static bool notice_drawn;  /* TCP: the last present drew the notice */
+static bool lines_failed;  /* the line could not be supplied: the Gurus charge it silently, and a
                                       first use shows the game's own line */
-static bool legacy;                /* the record loaded was from before #124: adopt its runs once RAM is in */
-static unsigned flights, freezes, refused, kept, pickups, revives, guru_recharges, spawns, cuts, springs;   /* TCP */
+static bool legacy;        /* the record loaded was from before #124: adopt its runs once RAM is in */
+static unsigned flights, freezes, refused, kept, pickups, revives, guru_recharges, spawns, cuts, springs; /* TCP */
 static unsigned landings[TIMED], lines_said[LINES];
-static unsigned quiet_uses, gones_skipped, notices[NOTICES];   /* TCP: turned on with no box; "... is gone" not shown */
-static unsigned lift_frames, rest_frames;   /* TCP: a flight's played frames with A held, and without */
-static bool lifting;                        /* TCP: A held at the flight's last frame */
+static unsigned quiet_uses, gones_skipped, notices[NOTICES]; /* TCP: turned on with no box; "... is gone" not shown */
+static unsigned lift_frames, rest_frames; /* TCP: a flight's played frames with A held, and without */
+static bool lifting;                      /* TCP: A held at the flight's last frame */
 /* For TCP: the frame boundaries the last freeze and the last flight were over at, as ping counts them. A run
  * ends inside a frame, whose number is cyc_ring_frame (the frames completed) while it runs, so this is the
  * next. A test reads its end here: a read that finds it over can come any number of frames later on a loaded
@@ -398,11 +399,18 @@ static unsigned to_empty(const Charge *c, uint8_t mp, uint8_t title) {
     unsigned fly_at = f->running ? f->next : NEVER, step = frames_per_mp(title);
     unsigned freeze_end = z->running && z->played < FREEZE ? (unsigned)(FREEZE - z->played) : 0u;
     unsigned glass_at = z->running && z->next <= freeze_end ? z->next : NEVER;
-    for (unsigned left = mp; left; ) {
+    for (unsigned left = mp; left;) {
         unsigned t = fly_at < glass_at ? fly_at : glass_at;
         if (t == NEVER) return NEVER;
-        if (t == fly_at) { --left; fly_at += step; }
-        if (t == glass_at && left) { --left; glass_at += GLASS_FRAMES_PER_MP; if (glass_at > freeze_end) glass_at = NEVER; }
+        if (t == fly_at) {
+            --left;
+            fly_at += step;
+        }
+        if (t == glass_at && left) {
+            --left;
+            glass_at += GLASS_FRAMES_PER_MP;
+            if (glass_at > freeze_end) glass_at = NEVER;
+        }
         if (!left) return t;
     }
     return 0;
@@ -428,7 +436,10 @@ static unsigned freeze_left(const Charge *c, uint8_t mp, uint8_t title) {
 static bool fly(Flight *f, uint8_t *mp, uint8_t title, bool lift) {
     if (f->land || !*mp) return true;
     if (!lift) return false;
-    if (f->next > 1) { --f->next; return false; }
+    if (f->next > 1) {
+        --f->next;
+        return false;
+    }
     f->next = frames_per_mp(title);
     return --*mp == 0;
 }
@@ -438,7 +449,10 @@ static bool freeze_frame(Freeze *z, uint8_t *mp) {
     if (z->land || !*mp) return true;
     ++z->played;
     if (z->next > 1) --z->next;
-    else { z->next = GLASS_FRAMES_PER_MP; --*mp; }
+    else {
+        z->next = GLASS_FRAMES_PER_MP;
+        --*mp;
+    }
     return !*mp || z->played >= FREEZE;
 }
 
@@ -479,10 +493,14 @@ static int freeze_ending(const Freeze *z) {
  * timer (ENDED_NONE: a run from a save state made before this feature). */
 static int notice_for(int item, int why) {
     switch (why) {
-    case ENDED_BY_HAND: return NOTICE_NONE;
-    case ENDED_MAGIC: return NOTICE_MAGIC;
-    case ENDED_BOSS: return NOTICE_BOSS;
-    default: return item == GLASS ? NOTICE_GLASS_TIME : NOTICE_BOOTS_TIME;
+    case ENDED_BY_HAND:
+        return NOTICE_NONE;
+    case ENDED_MAGIC:
+        return NOTICE_MAGIC;
+    case ENDED_BOSS:
+        return NOTICE_BOSS;
+    default:
+        return item == GLASS ? NOTICE_GLASS_TIME : NOTICE_BOOTS_TIME;
     }
 }
 /* The notice's strength, 0-255, at `age` played frames. */
@@ -515,7 +533,8 @@ static bool encode(const char *s, uint8_t out[SLOT_LEN]) {
 
 static uint8_t q(uint16_t addr) { return cyc_mod_peek(addr); }
 static int timed_index(uint8_t item) {
-    for (int i = 0; i < TIMED; ++i) if (ITEM_ID[i] == item) return i;
+    for (int i = 0; i < TIMED; ++i)
+        if (ITEM_ID[i] == item) return i;
     return -1;
 }
 /* The hero has `item`: selected, or in the first NumberOfItems slots
@@ -524,7 +543,8 @@ static bool owns(uint8_t item) {
     if (q(SELECTED_ITEM) == item) return true;
     unsigned n = q(NUMBER_OF_ITEMS);
     if (n > MAX_ITEMS) n = MAX_ITEMS;
-    for (unsigned i = 0; i < n; ++i) if (q((uint16_t)(ITEM_INVENTORY + i)) == item) return true;
+    for (unsigned i = 0; i < n; ++i)
+        if (q((uint16_t)(ITEM_INVENTORY + i)) == item) return true;
     return false;
 }
 
@@ -547,7 +567,10 @@ static void draw_hud(bool refresh) {
     unsigned v = hud_value(&charge, q(SELECTED_ITEM), q(PLAYER_MP), q(PLAYER_TITLE));
     bool changed = !drawn_valid || v != drawn;
     refresh = refresh && v > 0 && (q(INTERRUPT_COUNTER) & 0x0F) == 0;
-    if ((changed || refresh) && queue_time(v)) { drawn = v; drawn_valid = true; }
+    if ((changed || refresh) && queue_time(v)) {
+        drawn = v;
+        drawn_valid = true;
+    }
 }
 
 /* The MP bar. Player_SetMP draws it as two PPU buffer commands that wait
@@ -585,8 +608,10 @@ static int return_via(uint16_t to) {
     CycModRegs regs;
     cyc_mod_regs(&regs);
     uint16_t r = (uint16_t)(to - 1);
-    cyc_mod_poke((uint16_t)(0x100u | regs.s), (uint8_t)(r >> 8)); regs.s = (uint8_t)(regs.s - 1);
-    cyc_mod_poke((uint16_t)(0x100u | regs.s), (uint8_t)r);        regs.s = (uint8_t)(regs.s - 1);
+    cyc_mod_poke((uint16_t)(0x100u | regs.s), (uint8_t)(r >> 8));
+    regs.s = (uint8_t)(regs.s - 1);
+    cyc_mod_poke((uint16_t)(0x100u | regs.s), (uint8_t)r);
+    regs.s = (uint8_t)(regs.s - 1);
     cyc_mod_set_regs(&regs);
     return 1;
 }
@@ -596,9 +621,9 @@ static int return_via(uint16_t to) {
 static int tick_hook(uint16_t addr) {
     (void)addr;
     if (cyc_mod_isolated()) return 0;
-    if (charge.flight.running && q(DURATION_WING_BOOTS) >= 0x80) charge.flight = (Flight){ 0 };   /* gone already */
+    if (charge.flight.running && q(DURATION_WING_BOOTS) >= 0x80) charge.flight = (Flight){ 0 }; /* gone already */
     if (charge.freeze.running && q(DURATION_HOUR_GLASS) >= 0x80) charge.freeze = (Freeze){ 0 };
-    if (charge.elixir_spent && (q(SPECIAL_ITEMS) & BIT_ELIXIR)) charge.elixir_spent = 0;   /* found */
+    if (charge.elixir_spent && (q(SPECIAL_ITEMS) & BIT_ELIXIR)) charge.elixir_spent = 0; /* found */
     if (notice.line != NOTICE_NONE && notice.age < NOTICE_SHOWN) ++notice.age;           /* a played frame of it */
     draw_bar();
     draw_hud(true);
@@ -704,12 +729,12 @@ static int glass_second_hook(uint16_t addr) {
         *z = (Freeze){ 0 };
         cyc_mod_poke(DURATION_HOUR_GLASS, 0);
         draw_hud(false);
-        return return_via(GLASS_SECOND_DEC);   /* 0 wraps: the game's end (gone_hook) */
+        return return_via(GLASS_SECOND_DEC); /* 0 wraps: the game's end (gone_hook) */
     }
     z->shown = (uint8_t)seconds(freeze_left(&charge, mp, q(PLAYER_TITLE)));
     cyc_mod_poke(DURATION_HOUR_GLASS, z->shown);
     draw_hud(false);
-    return 1;                                  /* not the game's second: RTS */
+    return 1; /* not the game's second: RTS */
 }
 
 /* Game_DecWingBootsDuration's LDA InterruptCounter, once a main-loop frame
@@ -732,11 +757,11 @@ static int boots_second_hook(uint16_t addr) {
         charge.flight = (Flight){ 0 };
         cyc_mod_poke(DURATION_WING_BOOTS, 0);
         draw_hud(false);
-        return return_via(BOOTS_SECOND_DEC);   /* 0 wraps: the game's end (gone_hook) */
+        return return_via(BOOTS_SECOND_DEC); /* 0 wraps: the game's end (gone_hook) */
     }
     cyc_mod_poke(DURATION_WING_BOOTS, (uint8_t)seconds(flight_left(&charge, mp, title)));
     draw_hud(false);
-    return 1;                                  /* not the game's second: RTS */
+    return 1; /* not the game's second: RTS */
 }
 
 /* A notice below the HUD: it takes the banner's place, as Slain by does. Out
@@ -863,7 +888,10 @@ static void lines_lost(void) {
  * and either tells the hero; an item's lesson takes the place of its use
  * script's message, so the script goes on past it, and is learned for good. */
 static void say(int which) {
-    if (!serve_line(which)) { lines_lost(); return; }
+    if (!serve_line(which)) {
+        lines_lost();
+        return;
+    }
     uint8_t resume = (uint8_t)(q(ISCRIPT_OFFSET) + (lesson(which) ? SHOW_MESSAGE_LEN : 0));
     talk = (Talk){ TALK_SAYING, (uint8_t)which, 0, word(ISCRIPT_ADDR), resume };
     go(SAY, 0);
@@ -893,12 +921,12 @@ static int guru_hook(uint16_t addr) {
     if (cyc_mod_isolated()) return 0;
     uint16_t at = (uint16_t)(word(ISCRIPT_ADDR) + q(ISCRIPT_OFFSET));
     if (spring_spends(at, q(at), q((uint16_t)(at + 1)), q(SPECIAL_ITEMS))) {
-        charge.elixir_spent = 1;                /* the step clears the bit: spent, as after a revive */
+        charge.elixir_spent = 1; /* the step clears the bit: spent, as after a revive */
         ++springs;
     }
     Talk was = talk;
     talk = (Talk){ 0 };
-    if (was.phase == TALK_SAYING && at == SAY + 2) {        /* his line has been read: back to his script */
+    if (was.phase == TALK_SAYING && at == SAY + 2) { /* his line has been read: back to his script */
         go(was.resume, was.offset);
         return 0;
     }
@@ -928,7 +956,8 @@ bool fax_recharge_elixir_spent(void) { return enabled && charge.elixir_spent; }
 /* For the status bar (fax_charges.c). A spent Elixir found again has its bit
  * set before tick_hook forgets that it was spent, so the bit decides first. */
 static FaxCharge charge_of(const Charge *c, int item, bool owned, bool elixir_bit) {
-    if (item == FAX_RECHARGE_ELIXIR) return elixir_bit ? FAX_CHARGE_READY : c->elixir_spent ? FAX_CHARGE_USED : FAX_CHARGE_NONE;
+    if (item == FAX_RECHARGE_ELIXIR)
+        return elixir_bit ? FAX_CHARGE_READY : c->elixir_spent ? FAX_CHARGE_USED : FAX_CHARGE_NONE;
     if (!owned) return FAX_CHARGE_NONE;
     return ready(c, item) ? FAX_CHARGE_READY : FAX_CHARGE_USED;
 }
@@ -948,7 +977,7 @@ FaxCharge fax_recharge_charge(int item) {
  * next write drops them from the file. */
 static const char *const OLD_FIELD[TIMED] = { "recharge.wingboots", "recharge.hourglass" };
 #define FIELD_ELIXIR "recharge.elixir"
-#define FIELD_TOLD "recharge.elixir_told"
+#define FIELD_TOLD   "recharge.elixir_told"
 
 static void on_save(FaxSaveEvent event) {
     if (!enabled) return;
@@ -1003,15 +1032,34 @@ static int state_get(uint8_t *buf, int cap) {
     if (cap < RECORD) return -1;
     const Flight *f = &charge.flight;
     const Freeze *z = &charge.freeze;
-    const uint8_t rec[RECORD] = { RECORD_VERSION, f->running, f->next, f->land, z->running, z->land,
-                                  (uint8_t)z->played, (uint8_t)(z->played >> 8), z->next, z->shown, charge.bar,
-                                  charge.elixir_spent, charge.elixir_told, talk.phase, talk.line, (uint8_t)talk.at,
-                                  (uint8_t)(talk.at >> 8), (uint8_t)talk.resume, (uint8_t)(talk.resume >> 8),
-                                  talk.offset, charge.ending[BOOTS], charge.ending[GLASS], notice.line, notice.age };
+    const uint8_t rec[RECORD] = { RECORD_VERSION,
+                                  f->running,
+                                  f->next,
+                                  f->land,
+                                  z->running,
+                                  z->land,
+                                  (uint8_t)z->played,
+                                  (uint8_t)(z->played >> 8),
+                                  z->next,
+                                  z->shown,
+                                  charge.bar,
+                                  charge.elixir_spent,
+                                  charge.elixir_told,
+                                  talk.phase,
+                                  talk.line,
+                                  (uint8_t)talk.at,
+                                  (uint8_t)(talk.at >> 8),
+                                  (uint8_t)talk.resume,
+                                  (uint8_t)(talk.resume >> 8),
+                                  talk.offset,
+                                  charge.ending[BOOTS],
+                                  charge.ending[GLASS],
+                                  notice.line,
+                                  notice.age };
     memcpy(buf, rec, sizeof rec);
     return RECORD;
 }
-static bool talk_valid(const uint8_t *t) {   /* told, phase, line */
+static bool talk_valid(const uint8_t *t) { /* told, phase, line */
     return t[0] <= 1 && t[1] < TALK_PHASES && t[2] < LINES && (t[1] == TALK_IDLE) == (t[2] == LINE_NONE);
 }
 static int record_validate(const uint8_t *buf, int len) {
@@ -1021,8 +1069,8 @@ static int record_validate(const uint8_t *buf, int len) {
         bool v3 = buf[1] <= 1 && buf[2] <= SECOND && (!buf[1] || buf[2] >= 1) && buf[3] <= 1 && buf[4] <= 1 &&
                   buf[5] <= 1 && played <= FREEZE && buf[8] <= GLASS_FRAMES_PER_MP && (!buf[4] || buf[8] >= 1) &&
                   buf[9] <= FREEZE_SECONDS && buf[10] <= 1 && buf[11] <= 1 && talk_valid(buf + 12);
-        return v3 && (len == RECORD_V3 || (buf[20] < ENDINGS && buf[21] < ENDINGS && buf[22] < NOTICES &&
-                                           buf[23] <= NOTICE_SHOWN));
+        return v3 && (len == RECORD_V3 ||
+                      (buf[20] < ENDINGS && buf[21] < ENDINGS && buf[22] < NOTICES && buf[23] <= NOTICE_SHOWN));
     }
     bool v1 = len == RECORD_V1 && buf[0] == 1, v2 = len == RECORD_V2 && buf[0] == 2;
     if (!v1 && !v2) return 0;
@@ -1060,10 +1108,10 @@ static int state_set(const uint8_t *buf, int len) {
     }
     if (told) {
         charge.elixir_told = told[0];
-        talk = (Talk){ told[1], told[2], (uint16_t)(told[3] | told[4] << 8), (uint16_t)(told[5] | told[6] << 8),
-                       told[7] };
+        talk =
+            (Talk){ told[1], told[2], (uint16_t)(told[3] | told[4] << 8), (uint16_t)(told[5] | told[6] << 8), told[7] };
     }
-    drawn_valid = false;                           /* the loaded picture has its own T: */
+    drawn_valid = false; /* the loaded picture has its own T: */
     return 1;
 }
 
@@ -1075,7 +1123,10 @@ static void adopt(void) {
     uint8_t boots = q(DURATION_WING_BOOTS), glass = q(DURATION_HOUR_GLASS);
     if (charge.flight.running) charge.flight = boots < 0x80 ? take_off(q(PLAYER_TITLE)) : (Flight){ 0 };
     if (!charge.freeze.running) return;
-    if (glass >= 0x80) { charge.freeze = (Freeze){ 0 }; return; }
+    if (glass >= 0x80) {
+        charge.freeze = (Freeze){ 0 };
+        return;
+    }
     unsigned left = glass > FREEZE_SECONDS ? FREEZE_SECONDS * SECOND : glass ? glass * SECOND : 1u;
     charge.freeze = (Freeze){ 1, 0, (uint16_t)(FREEZE - left), GLASS_FRAMES_PER_MP,
                               glass > FREEZE_SECONDS ? FREEZE_SECONDS : glass };
@@ -1087,7 +1138,10 @@ static void adopt(void) {
  * have put its own last line back in the slot. */
 void fax_recharge_loaded(void) {
     if (!enabled) return;
-    if (legacy) { legacy = false; adopt(); }
+    if (legacy) {
+        legacy = false;
+        adopt();
+    }
     if (talk.phase != TALK_SAYING || lines_failed || serve_line(talk.line)) return;
     lines_lost();
 }
@@ -1095,13 +1149,15 @@ void fax_recharge_loaded(void) {
 /* ---- activation ---- */
 
 static const char *const hook_ids[] = {
-    "faxanadu.recharge.elixir", "faxanadu.recharge.keep", "faxanadu.recharge.use-boots",
-    "faxanadu.recharge.flight", "faxanadu.recharge.boots-second", "faxanadu.recharge.use-glass",
+    "faxanadu.recharge.elixir",     "faxanadu.recharge.keep",         "faxanadu.recharge.use-boots",
+    "faxanadu.recharge.flight",     "faxanadu.recharge.boots-second", "faxanadu.recharge.use-glass",
     "faxanadu.recharge.glass-cost", "faxanadu.recharge.glass-second", "faxanadu.recharge.spawn",
-    "faxanadu.recharge.tick", "faxanadu.recharge.pick-up", "faxanadu.recharge.title", "faxanadu.recharge.guru",
-    "faxanadu.recharge.boots-gone", "faxanadu.recharge.glass-gone" };
+    "faxanadu.recharge.tick",       "faxanadu.recharge.pick-up",      "faxanadu.recharge.title",
+    "faxanadu.recharge.guru",       "faxanadu.recharge.boots-gone",   "faxanadu.recharge.glass-gone"
+};
 static void hooks(bool on) {
-    for (unsigned i = 0; i < sizeof hook_ids / sizeof hook_ids[0]; ++i) nes_mod_set_function_hook_enabled(hook_ids[i], on);
+    for (unsigned i = 0; i < sizeof hook_ids / sizeof hook_ids[0]; ++i)
+        nes_mod_set_function_hook_enabled(hook_ids[i], on);
 }
 static void deactivate(void) {
     enabled = false;
@@ -1139,31 +1195,30 @@ static void recharge_state(int id, const char *line) {
     /* lift_frames and rest_frames count every flight's played frames, with A held (they take MP) and without;
      * lifting is whether A was held at the last. */
     int n = snprintf(fields, sizeof fields,
-             "\"enabled\":%s,\"boots_ready\":%s,\"boots_running\":%u,\"glass_ready\":%s,\"glass_running\":%u,"
-             "\"flight_next\":%u,\"flight_left\":%u,\"flight_seconds\":%u,\"frames_per_mp\":%u,"
-             "\"freeze_played\":%u,\"freeze_next\":%u,\"freeze_left\":%u,\"freeze_seconds\":%u,"
-             "\"glass_frames_per_mp\":%u,\"glass_shown\":%u,\"bar\":%u,\"flights\":%u,\"freezes\":%u,"
-             "\"refused\":%u,\"boots_landed\":%u,\"glass_landed\":%u,\"cuts\":%u,\"kept\":%u,\"pickups\":%u,"
-             "\"revives\":%u,\"guru_recharges\":%u,\"spawns\":%u,\"hud\":%u,\"hud_drawn\":%d,"
-             "\"lift_frames\":%u,\"rest_frames\":%u,\"lifting\":%s",
-             enabled ? "true" : "false", ready(&charge, BOOTS) ? "true" : "false", f->running,
-             ready(&charge, GLASS) ? "true" : "false", z->running, f->next, left, seconds(left), frames_per_mp(title),
-             z->played, z->next, frozen, seconds(frozen), (unsigned)GLASS_FRAMES_PER_MP, z->shown, charge.bar, flights,
-             freezes, refused, landings[BOOTS], landings[GLASS], cuts, kept, pickups, revives, guru_recharges, spawns,
-             hud_value(&charge, q(SELECTED_ITEM), mp, title), drawn_valid ? (int)drawn : -1, lift_frames,
-             rest_frames, lifting ? "true" : "false");
+                     "\"enabled\":%s,\"boots_ready\":%s,\"boots_running\":%u,\"glass_ready\":%s,\"glass_running\":%u,"
+                     "\"flight_next\":%u,\"flight_left\":%u,\"flight_seconds\":%u,\"frames_per_mp\":%u,"
+                     "\"freeze_played\":%u,\"freeze_next\":%u,\"freeze_left\":%u,\"freeze_seconds\":%u,"
+                     "\"glass_frames_per_mp\":%u,\"glass_shown\":%u,\"bar\":%u,\"flights\":%u,\"freezes\":%u,"
+                     "\"refused\":%u,\"boots_landed\":%u,\"glass_landed\":%u,\"cuts\":%u,\"kept\":%u,\"pickups\":%u,"
+                     "\"revives\":%u,\"guru_recharges\":%u,\"spawns\":%u,\"hud\":%u,\"hud_drawn\":%d,"
+                     "\"lift_frames\":%u,\"rest_frames\":%u,\"lifting\":%s",
+                     enabled ? "true" : "false", ready(&charge, BOOTS) ? "true" : "false", f->running,
+                     ready(&charge, GLASS) ? "true" : "false", z->running, f->next, left, seconds(left),
+                     frames_per_mp(title), z->played, z->next, frozen, seconds(frozen), (unsigned)GLASS_FRAMES_PER_MP,
+                     z->shown, charge.bar, flights, freezes, refused, landings[BOOTS], landings[GLASS], cuts, kept,
+                     pickups, revives, guru_recharges, spawns, hud_value(&charge, q(SELECTED_ITEM), mp, title),
+                     drawn_valid ? (int)drawn : -1, lift_frames, rest_frames, lifting ? "true" : "false");
     /* The Elixir: spent, charged; the Guru's line: told, talk (0 none, 1 waiting, 2 showing), line (0 none, 1
      * restored, 2 can), how many of each he has said, and whether the lines are off (their overrides could not
      * be set); the Elixirs the Spring of Trunk has spent; the frames the last freeze and the last flight were
      * over at (0: none yet). */
     n += snprintf(fields + n, sizeof fields - (size_t)n,
-             ",\"elixir_spent\":%s,\"elixir_charged\":%s,\"elixir_told\":%s,\"talk\":%u,\"line\":%u,"
-             "\"restored_lines\":%u,\"can_lines\":%u,\"lines_failed\":%s,\"springs\":%u,\"freeze_ended\":%lu,"
-             "\"flight_ended\":%lu",
-             charge.elixir_spent ? "true" : "false", q(SPECIAL_ITEMS) & BIT_ELIXIR ? "true" : "false",
-             charge.elixir_told ? "true" : "false", talk.phase, talk.line, lines_said[LINE_RESTORED],
-             lines_said[LINE_CAN], lines_failed ? "true" : "false", springs, freeze_ended,
-             flight_ended);
+                  ",\"elixir_spent\":%s,\"elixir_charged\":%s,\"elixir_told\":%s,\"talk\":%u,\"line\":%u,"
+                  "\"restored_lines\":%u,\"can_lines\":%u,\"lines_failed\":%s,\"springs\":%u,\"freeze_ended\":%lu,"
+                  "\"flight_ended\":%lu",
+                  charge.elixir_spent ? "true" : "false", q(SPECIAL_ITEMS) & BIT_ELIXIR ? "true" : "false",
+                  charge.elixir_told ? "true" : "false", talk.phase, talk.line, lines_said[LINE_RESTORED],
+                  lines_said[LINE_CAN], lines_failed ? "true" : "false", springs, freeze_ended, flight_ended);
     /* No box (#151): the uses that turned an item on without one, and the "... is gone" boxes not shown; each
      * item's lesson learned (remembered beside the game) and said this session (line 3 the boots', 4 the
      * glass's); the notice below the HUD: its line (null for none, or once shown out), its age in played frames
@@ -1191,14 +1246,24 @@ void fax_recharge_tcp_setup(void) {}
 #endif
 
 NES_MOD_CONSTRUCTOR(register_recharge) {
-    static const struct { uint16_t addr; NESModFunctionEntryCallback cb; } sites[] = {
-        { PLAYER_USE_ELIXIR, elixir_hook }, { FAX_PLAYER_CLEAR_SELECTED_ITEM, keep_hook },
-        { PLAYER_USE_WING_BOOTS, use_hook }, { WING_BOOTS_SET_FLIGHT, flight_hook },
-        { BOOTS_SECOND, boots_second_hook }, { PLAYER_USE_HOUR_GLASS, use_hook },
-        { HOUR_GLASS_COST, cost_hook }, { GLASS_SECOND, glass_second_hook },
-        { GAME_CLEAR_TIMED_ITEMS, spawn_hook }, { GAME_LOOP_COUNTDOWN, tick_hook },
-        { PLAYER_PICK_UP_ITEM, pick_up_hook }, { GAME_SHOW_START_SCREEN, title_hook },
-        { ISCRIPTS_INVOKE_NEXT_ACTION, guru_hook }, { BOOTS_GONE, gone_hook }, { GLASS_GONE, gone_hook } };
+    static const struct {
+        uint16_t addr;
+        NESModFunctionEntryCallback cb;
+    } sites[] = { { PLAYER_USE_ELIXIR, elixir_hook },
+                  { FAX_PLAYER_CLEAR_SELECTED_ITEM, keep_hook },
+                  { PLAYER_USE_WING_BOOTS, use_hook },
+                  { WING_BOOTS_SET_FLIGHT, flight_hook },
+                  { BOOTS_SECOND, boots_second_hook },
+                  { PLAYER_USE_HOUR_GLASS, use_hook },
+                  { HOUR_GLASS_COST, cost_hook },
+                  { GLASS_SECOND, glass_second_hook },
+                  { GAME_CLEAR_TIMED_ITEMS, spawn_hook },
+                  { GAME_LOOP_COUNTDOWN, tick_hook },
+                  { PLAYER_PICK_UP_ITEM, pick_up_hook },
+                  { GAME_SHOW_START_SCREEN, title_hook },
+                  { ISCRIPTS_INVOKE_NEXT_ACTION, guru_hook },
+                  { BOOTS_GONE, gone_hook },
+                  { GLASS_GONE, gone_hook } };
     _Static_assert(sizeof sites / sizeof sites[0] == sizeof hook_ids / sizeof hook_ids[0], "a site for each id");
     for (unsigned i = 0; i < sizeof sites / sizeof sites[0]; ++i)
         if (!nes_mod_register_function_entry_plugin(hook_ids[i], sites[i].addr, sites[i].cb)) abort();

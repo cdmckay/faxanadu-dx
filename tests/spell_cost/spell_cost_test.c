@@ -11,10 +11,17 @@ static char logged[128];
 #include "fax_spell_cost.c"
 
 static unsigned checks;
-#define CHECK(test) do{++checks;if(!(test)){fprintf(stderr,"FAIL line %u: %s\n",__LINE__,#test);exit(1);}}while(0)
+#define CHECK(test)                                                                                                    \
+    do {                                                                                                               \
+        ++checks;                                                                                                      \
+        if (!(test)) {                                                                                                 \
+            fprintf(stderr, "FAIL line %u: %s\n", __LINE__, #test);                                                    \
+            exit(1);                                                                                                   \
+        }                                                                                                              \
+    } while (0)
 
 /* ---- the machine ---- */
-enum { HUD_X = 92 };                        /* Seamless's status bar band at 424 wide, with the Elixir left of it */
+enum { HUD_X = 92 }; /* Seamless's status bar band at 424 wide, with the Elixir left of it */
 enum { W = 424, H = 240, BAR = HUD_X + 24, MAX = 80 };
 enum { DELUGE, THUNDER, FIRE, DEATH, TILTE, NO_SPELL = 0xFF };
 static const uint8_t COSTS[5] = { 2, 4, 6, 10, 16 };
@@ -22,7 +29,7 @@ static uint8_t ram[0x800];
 static uint8_t cart[16 * 16384];
 static size_t cart_size = sizeof cart;
 static uint8_t palette_ram[32];
-static uint8_t mask = 0x1E;                 /* PPUMASK: background and sprites on, no emphasis */
+static uint8_t mask = 0x1E; /* PPUMASK: background and sprites on, no emphasis */
 static bool hud_up = true;
 static int world_x = HUD_X;
 static uint32_t native[256 * 240];
@@ -36,22 +43,35 @@ size_t cyc_mod_copy_cart_payload(uint8_t *out, size_t capacity) {
     if (out && capacity >= cart_size) memcpy(out, cart, cart_size);
     return cart_size;
 }
-uint8_t cyc_render_line_mask(int y) { CHECK(y >= 16 && y < 32); return mask; }   /* a status bar line */
+uint8_t cyc_render_line_mask(int y) {
+    CHECK(y >= 16 && y < 32);
+    return mask;
+} /* a status bar line */
 uint8_t cyc_render_palette(int e) { return palette_ram[e & 31]; }
-const uint32_t *cyc_render_present(int *w, int *h) { ++presents; *w = 256; *h = 240; return native; }
+const uint32_t *cyc_render_present(int *w, int *h) {
+    ++presents;
+    *w = 256;
+    *h = 240;
+    return native;
+}
 
 static NESModActivationCallback reset_cb, plugin_cb;
-int nes_mod_register_reset_callback(NESModActivationCallback cb) { reset_cb = cb; return 1; }
+int nes_mod_register_reset_callback(NESModActivationCallback cb) {
+    reset_cb = cb;
+    return 1;
+}
 int nes_mod_register_activation_plugin(const char *id, NESModActivationCallback cb) {
     CHECK(!strcmp(id, "faxanadu.spell-cost"));
     plugin_cb = cb;
     return 1;
 }
 
-#define BACKDROP 0xFF123456u                /* what Seamless drew around the status bar: anything */
+#define BACKDROP 0xFF123456u /* what Seamless drew around the status bar: anything */
 static uint32_t color(uint8_t nes) { return hw_palette_argb[nes]; }
 /* A color as the PPU draws it with the status bar's mask: its greyscale and emphasis. */
-static uint32_t drawn(uint8_t nes) { return hw_palette_argb[((nes & (mask & 1 ? 0x30 : 0x3F)) | (mask >> 5) << 6) & 511]; }
+static uint32_t drawn(uint8_t nes) {
+    return hw_palette_argb[((nes & (mask & 1 ? 0x30 : 0x3F)) | (mask >> 5) << 6) & 511];
+}
 
 /* Bank 14 as the game has it: MAGIC_COSTS at $B7A9. */
 static void make_cart(void) {
@@ -71,11 +91,12 @@ static void eolis_palette(void) {
 static void power_on(bool on) {
     reset_cb();
     memset(ram, 0, sizeof ram);
-    ram[0x04EE] = 10;                       /* UI_MPAndHPBarWidth, as UI_DrawHUDSprites sets it */
+    ram[0x04EE] = 10; /* UI_MPAndHPBarWidth, as UI_DrawHUDSprites sets it */
     ram[0x03C0] = NO_SPELL;
     eolis_palette();
     mask = 0x1E;
-    hud_up = true; world_x = HUD_X;
+    hud_up = true;
+    world_x = HUD_X;
     loaded = failed = false;
     make_cart();
     if (on) plugin_cb();
@@ -91,13 +112,17 @@ static void draw_bar(uint32_t *px, int w, int x, unsigned mp) {
     for (int i = 0; i <= MAX; ++i)
         for (int y = 17; y <= 22; ++y) {
             uint32_t c = i == MAX || y == 17 || y == 22 ? drawn(palette_ram[p * 4 + 3])
-                       : (unsigned)i < mp ? drawn(palette_ram[p * 4 + 2]) : drawn(palette_ram[0]);
+                         : (unsigned)i < mp             ? drawn(palette_ram[p * 4 + 2])
+                                                        : drawn(palette_ram[0]);
             px[y * w + x + i] = c;
         }
 }
-static unsigned bar_shows;                  /* the MP the bar was last drawn for (Player_SetMP) */
-static void set_mp(unsigned mp) { ram[0x039A] = (uint8_t)mp; bar_shows = mp; }   /* the game's way: drawn */
-static void poke_mp(unsigned mp) { ram[0x039A] = (uint8_t)mp; }                   /* not drawn yet */
+static unsigned bar_shows; /* the MP the bar was last drawn for (Player_SetMP) */
+static void set_mp(unsigned mp) {
+    ram[0x039A] = (uint8_t)mp;
+    bar_shows = mp;
+} /* the game's way: drawn */
+static void poke_mp(unsigned mp) { ram[0x039A] = (uint8_t)mp; } /* not drawn yet */
 static void select_spell(uint8_t s) { ram[0x03C0] = s; }
 
 static void model(uint32_t *px) {
@@ -106,7 +131,8 @@ static void model(uint32_t *px) {
 }
 static const uint32_t *present(int *w, int *h) {
     model(seamless);
-    *w = W; *h = H;
+    *w = W;
+    *h = H;
     return fax_spell_cost_present(seamless, w, h);
 }
 static bool untouched(const uint32_t *px) { return px == seamless; }
@@ -124,9 +150,7 @@ static bool shows(const uint32_t *px, unsigned from, unsigned to, uint8_t shade)
 }
 
 /* ---- tests ---- */
-static void registers(void) {
-    CHECK(reset_cb && plugin_cb);
-}
+static void registers(void) { CHECK(reset_cb && plugin_cb); }
 
 static void spans(void) {
     FaxSpellCostSpan s;
@@ -150,14 +174,15 @@ static void spans(void) {
     CHECK(s.kind == FAX_SPELL_COST_NONE && s.to == 0);
     /* No spell selected ($FF), or anything Player_CastMagic would not cast (5 and up): the bar as it is. */
     static const uint8_t none[] = { NO_SPELL, 5, 6, 0x80, 0xFE };
-    for (unsigned i = 0; i < sizeof none; ++i) CHECK(fax_spell_cost_span(40, none[i], COSTS, MAX).kind == FAX_SPELL_COST_NONE);
+    for (unsigned i = 0; i < sizeof none; ++i)
+        CHECK(fax_spell_cost_span(40, none[i], COSTS, MAX).kind == FAX_SPELL_COST_NONE);
     /* Full: the last pixels of all 80. */
     s = fax_spell_cost_span(80, TILTE, COSTS, MAX);
     CHECK(s.kind == FAX_SPELL_COST_CAST && s.from == 64 && s.to == 80);
     /* More than the bar holds (a poke past Player_SetMP's cap): the game draws 80, and the cost ends there. */
     s = fax_spell_cost_span(90, DELUGE, COSTS, MAX);
     CHECK(s.kind == FAX_SPELL_COST_CAST && s.from == 78 && s.to == 80);
-    CHECK(fax_spell_cost_span(40, DELUGE, COSTS, 0).kind == FAX_SPELL_COST_NONE);   /* no bar */
+    CHECK(fax_spell_cost_span(40, DELUGE, COSTS, 0).kind == FAX_SPELL_COST_NONE); /* no bar */
 }
 
 static void shades(void) {
@@ -171,7 +196,8 @@ static void shades(void) {
         CHECK(fax_spell_cost_darker(0x10 | hue) == hue && fax_spell_cost_darker(hue) == 0x0F);
     }
     /* The greys of hue $D: light to dark grey, and dark grey down to black. */
-    CHECK(fax_spell_cost_lighter(0x2D) == 0x3D && fax_spell_cost_darker(0x3D) == 0x2D && fax_spell_cost_darker(0x2D) == 0x0F);
+    CHECK(fax_spell_cost_lighter(0x2D) == 0x3D && fax_spell_cost_darker(0x3D) == 0x2D &&
+          fax_spell_cost_darker(0x2D) == 0x0F);
     /* The blacks stay black. */
     static const uint8_t blacks[] = { 0x0D, 0x1D, 0x0E, 0x1E, 0x2E, 0x3E, 0x0F, 0x1F, 0x2F, 0x3F };
     for (unsigned i = 0; i < sizeof blacks; ++i)
@@ -185,7 +211,7 @@ static void each_spell(void) {
     /* No spell selected: the picture is Seamless's, untouched. */
     const uint32_t *px = present(&w, &h);
     CHECK(untouched(px) && !shown && bar_x == BAR && last.kind == FAX_SPELL_COST_NONE);
-    CHECK(loaded && !memcmp(costs, COSTS, sizeof costs));   /* MAGIC_COSTS, from the cart's bank 14 */
+    CHECK(loaded && !memcmp(costs, COSTS, sizeof costs)); /* MAGIC_COSTS, from the cart's bank 14 */
     /* Each spell: its cost's pixels at the fill's end a step lighter, $29, and nothing else changed. */
     for (int k = 0; k < 5; ++k) {
         select_spell((uint8_t)k);
@@ -245,9 +271,11 @@ static void tracks_mp(void) {
     set_mp(40);
     model(seamless);
     seamless[19 * W + BAR + 37] = 0xFFABCDEFu;
-    w = W; h = H;
+    w = W;
+    h = H;
     px = fax_spell_cost_present(seamless, &w, &h);
-    CHECK(px[19 * W + BAR + 37] == 0xFFABCDEFu && px[19 * W + BAR + 36] == color(0x29) && px[18 * W + BAR + 37] == color(0x29));
+    CHECK(px[19 * W + BAR + 37] == 0xFFABCDEFu && px[19 * W + BAR + 36] == color(0x29) &&
+          px[18 * W + BAR + 37] == color(0x29));
 }
 
 static void palettes(void) {
@@ -278,7 +306,7 @@ static void palettes(void) {
     set_mp(4);
     CHECK(untouched(present(&w, &h)));
     set_mp(40);
-    CHECK(shows(present(&w, &h), 30, 40, 0x19));   /* lighter still shows */
+    CHECK(shows(present(&w, &h), 30, 40, 0x19)); /* lighter still shows */
     eolis_palette();
 }
 
@@ -290,9 +318,11 @@ static void where_it_shows(void) {
     /* Wherever Seamless put the status bar band. */
     world_x = 84;
     model(seamless);
-    for (int y = 17; y <= 22; ++y) for (int i = 0; i <= MAX; ++i) seamless[y * W + BAR + i] = BACKDROP;
+    for (int y = 17; y <= 22; ++y)
+        for (int i = 0; i <= MAX; ++i) seamless[y * W + BAR + i] = BACKDROP;
     draw_bar(seamless, W, 84 + 24, 40);
-    w = W; h = H;
+    w = W;
+    h = H;
     const uint32_t *px = fax_spell_cost_present(seamless, &w, &h);
     CHECK(bar_x == 84 + 24 && px[19 * W + 84 + 24 + 37] == color(0x29) && px[19 * W + 84 + 24 + 35] == color(0x19));
     world_x = HUD_X;
@@ -307,7 +337,9 @@ static void where_it_shows(void) {
     /* No room for the bar in a narrower picture: nothing. */
     static uint32_t narrow[100 * 240];
     for (int i = 0; i < 100 * 240; ++i) narrow[i] = BACKDROP;
-    w = 100; h = 240; world_x = 2;
+    w = 100;
+    h = 240;
+    world_x = 2;
     CHECK(fax_spell_cost_present(narrow, &w, &h) == narrow && bar_x == -1);
     world_x = HUD_X;
     /* Only while the status bar shows: not on the title, nor with the screen off. */
@@ -327,11 +359,11 @@ static void no_costs(void) {
     int w, h;
     set_mp(40);
     select_spell(FIRE);
-    cart_size = 14 * 16384;                 /* no bank 14 */
+    cart_size = 14 * 16384; /* no bank 14 */
     logged[0] = 0;
     CHECK(untouched(present(&w, &h)) && failed && strstr(logged, "cannot read MAGIC_COSTS"));
     cart_size = sizeof cart;
-    CHECK(untouched(present(&w, &h)));      /* off until the next power-on */
+    CHECK(untouched(present(&w, &h))); /* off until the next power-on */
     power_on(true);
     set_mp(40);
     select_spell(FIRE);
@@ -345,7 +377,7 @@ static void no_costs(void) {
 }
 
 int main(void) {
-    for (int i = 0; i < 512; ++i) hw_palette_argb[i] = 0xFF000000u | (uint32_t)i << 8;   /* a color tells its index */
+    for (int i = 0; i < 512; ++i) hw_palette_argb[i] = 0xFF000000u | (uint32_t)i << 8; /* a color tells its index */
     registers();
     spans();
     shades();

@@ -33,20 +33,31 @@
 enum { W = FAX_CAMERA_W, H = FAX_CAMERA_H, RW = FAX_CAMERA_ROOM_W, RH = FAX_CAMERA_ROOM_H, MAX = 96 };
 
 static int failures, checks;
-#define CHECK(cond, ...) do { ++checks; if (!(cond)) { ++failures; if (failures < 40) { printf("FAIL %s:%d: ", __FILE__, __LINE__); printf(__VA_ARGS__); printf("\n"); } } } while (0)
+#define CHECK(cond, ...)                                                                                               \
+    do {                                                                                                               \
+        ++checks;                                                                                                      \
+        if (!(cond)) {                                                                                                 \
+            ++failures;                                                                                                \
+            if (failures < 40) {                                                                                       \
+                printf("FAIL %s:%d: ", __FILE__, __LINE__);                                                            \
+                printf(__VA_ARGS__);                                                                                   \
+                printf("\n");                                                                                          \
+            }                                                                                                          \
+        }                                                                                                              \
+    } while (0)
 
 /* ---- a map ---- */
 
 typedef struct {
     const char *name;
     int n, col[MAX], row[MAX];
-    int up[MAX];          /* the room joined above room i, or -1 */
-    int id[MAX];          /* its screen, on a real map */
+    int up[MAX]; /* the room joined above room i, or -1 */
+    int id[MAX]; /* its screen, on a real map */
 } Map;
 static Map map;
-static int open_at = -1;  /* the block column of every opening between rooms one above the other; -1 none */
+static int open_at = -1; /* the block column of every opening between rooms one above the other; -1 none */
 enum { SPAN = 200 };
-static short grid[SPAN][SPAN];   /* room index + 1 at (col, row) + SPAN / 2 */
+static short grid[SPAN][SPAN]; /* room index + 1 at (col, row) + SPAN / 2 */
 
 static int at(int col, int row) {
     col += SPAN / 2, row += SPAN / 2;
@@ -56,7 +67,10 @@ static void index_map(void) {
     memset(grid, 0, sizeof grid);
     for (int i = 0; i < map.n; ++i) grid[map.row[i] + SPAN / 2][map.col[i] + SPAN / 2] = (short)(i + 1);
 }
-static bool room_cb(void *ctx, int col, int row) { (void)ctx; return at(col, row) >= 0; }
+static bool room_cb(void *ctx, int col, int row) {
+    (void)ctx;
+    return at(col, row) >= 0;
+}
 static unsigned openings_cb(void *ctx, int col, int row) {
     (void)ctx;
     int d = at(col, row), u = at(col, row - 1);
@@ -73,7 +87,13 @@ static void draw(const char *name, const char *const *lines, int count) {
     for (int l = 0; l < count; ++l) {
         const char *s = lines[l];
         if (strchr(s, '|')) continue;
-        for (int c = 0; s[c]; ++c) if (s[c] == '#') { map.col[map.n] = c; map.row[map.n] = row; map.up[map.n] = -1; ++map.n; }
+        for (int c = 0; s[c]; ++c)
+            if (s[c] == '#') {
+                map.col[map.n] = c;
+                map.row[map.n] = row;
+                map.up[map.n] = -1;
+                ++map.n;
+            }
         ++row;
     }
     index_map();
@@ -81,11 +101,15 @@ static void draw(const char *name, const char *const *lines, int count) {
     row = 0;
     for (int l = 0; l < count; ++l) {
         const char *s = lines[l];
-        if (!strchr(s, '|')) { ++row; continue; }
-        for (int c = 0; s[c]; ++c) if (s[c] == '|') {
-            int d = at(c, row), u = at(c, row - 1);
-            if (d >= 0 && u >= 0) map.up[d] = u;
+        if (!strchr(s, '|')) {
+            ++row;
+            continue;
         }
+        for (int c = 0; s[c]; ++c)
+            if (s[c] == '|') {
+                int d = at(c, row), u = at(c, row - 1);
+                if (d >= 0 && u >= 0) map.up[d] = u;
+            }
     }
 }
 
@@ -135,7 +159,7 @@ static char worst_walk_at[96], worst_climb_at[96], worst_straddle_at[96];
 static void walk_rows(void) {
     for (int i = 0; i < map.n; ++i) {
         int c = map.col[i], r = map.row[i];
-        if (at(c - 1, r) >= 0) continue;              /* from each run's left end */
+        if (at(c - 1, r) >= 0) continue; /* from each run's left end */
         int last = c;
         while (at(last + 1, r) >= 0) ++last;
         for (int hy = 0; hy <= 176; hy += 8) {
@@ -148,8 +172,9 @@ static void walk_rows(void) {
                           map.name, r, hy, hx, x, y);
                 if (hx > c * RW) {
                     int moved = abs(x - px) > abs(y - py) ? abs(x - px) : abs(y - py);
-                    if (open_at >= 0) { if (moved > worst_open_walk) worst_open_walk = moved; }
-                    else if (moved > worst_walk) {
+                    if (open_at >= 0) {
+                        if (moved > worst_open_walk) worst_open_walk = moved;
+                    } else if (moved > worst_walk) {
                         worst_walk = moved;
                         snprintf(worst_walk_at, sizeof worst_walk_at, "%s row %d y %d x %d", map.name, r, hy, hx);
                     }
@@ -179,14 +204,17 @@ static void climb_seams(void) {
                 if (!across) {
                     bool alone = at(c - 1, fdiv(hy + 16, RH)) < 0 && at(c + 1, fdiv(hy + 16, RH)) < 0;
                     if (!alone)
-                        CHECK(!black(x, y), "%s: climbing at column %d x %d, y %d: black at (%d, %d), not across the seam",
-                              map.name, c, lx, hy, x, y);
+                        CHECK(!black(x, y),
+                              "%s: climbing at column %d x %d, y %d: black at (%d, %d), not across the seam", map.name,
+                              c, lx, hy, x, y);
                 } else {
                     ++straddle_steps;
                     if (black(x, y)) {
                         ++straddle_black;
-                        CHECK(!clean_across(hx, hy, dn), "%s: climbing at column %d x %d, y %d: black at (%d, %d) though a view over rooms shows him",
-                              map.name, c, lx, hy, x, y);
+                        CHECK(
+                            !clean_across(hx, hy, dn),
+                            "%s: climbing at column %d x %d, y %d: black at (%d, %d) though a view over rooms shows him",
+                            map.name, c, lx, hy, x, y);
                     }
                 }
                 if (hy < dn * RH + 88) {
@@ -207,7 +235,7 @@ static void climb_seams(void) {
 
 static void walk_map(void) {
     walk_rows();
-    for (open_at = 0; open_at < 16; open_at += 5) walk_rows();   /* under an opening, too */
+    for (open_at = 0; open_at < 16; open_at += 5) walk_rows(); /* under an opening, too */
     open_at = -1;
     climb_seams();
 }
@@ -227,38 +255,41 @@ static void old_camera(int hx, int hy, int *x, int *y) {
 }
 
 static void test_shapes(void) {
-    {   /* Eolis: a row, nothing above or below. As before. */
+    { /* Eolis: a row, nothing above or below. As before. */
         const char *m[] = { "#########" };
         draw("a row", m, 1);
-        for (int hx = 0; hx < 9 * RW - 16; hx += 3) for (int hy = 0; hy <= 176; hy += 11) {
-            int x, y, ox, oy;
-            place(hx, hy, &x, &y);
-            old_camera(hx, hy, &ox, &oy);
-            CHECK(x == ox && y == oy, "a row: (%d, %d) at (%d, %d), before (%d, %d)", hx, hy, x, y, ox, oy);
-        }
+        for (int hx = 0; hx < 9 * RW - 16; hx += 3)
+            for (int hy = 0; hy <= 176; hy += 11) {
+                int x, y, ox, oy;
+                place(hx, hy, &x, &y);
+                old_camera(hx, hy, &ox, &oy);
+                CHECK(x == ox && y == oy, "a row: (%d, %d) at (%d, %d), before (%d, %d)", hx, hy, x, y, ox, oy);
+            }
         walk_map();
     }
-    {   /* A block of rooms with no empty place: as before, following him up and down too. */
+    { /* A block of rooms with no empty place: as before, following him up and down too. */
         const char *m[] = { "####", "|..|", "####", ".|..", "####" };
         draw("a block", m, 5);
-        for (int hx = 0; hx < 4 * RW - 16; hx += 5) for (int hy = 0; hy < 3 * RH - 32; hy += 7) {
-            int x, y, ox, oy;
-            place(hx, hy, &x, &y);
-            old_camera(hx, hy, &ox, &oy);
-            CHECK(x == ox && y == oy, "a block: (%d, %d) at (%d, %d), before (%d, %d)", hx, hy, x, y, ox, oy);
-        }
+        for (int hx = 0; hx < 4 * RW - 16; hx += 5)
+            for (int hy = 0; hy < 3 * RH - 32; hy += 7) {
+                int x, y, ox, oy;
+                place(hx, hy, &x, &y);
+                old_camera(hx, hy, &ox, &oy);
+                CHECK(x == ox && y == oy, "a block: (%d, %d) at (%d, %d), before (%d, %d)", hx, hy, x, y, ox, oy);
+            }
         walk_map();
     }
-    {   /* An arena: alone, centred, black at its sides, as before. */
+    { /* An arena: alone, centred, black at its sides, as before. */
         const char *m[] = { "#" };
         draw("an arena", m, 1);
-        for (int hx = 0; hx <= 240; hx += 10) for (int hy = 0; hy <= 176; hy += 16) {
-            int x, y;
-            place(hx, hy, &x, &y);
-            CHECK(x == (RW - W) / 2 && y == 0, "an arena: (%d, %d) at (%d, %d)", hx, hy, x, y);
-        }
+        for (int hx = 0; hx <= 240; hx += 10)
+            for (int hy = 0; hy <= 176; hy += 16) {
+                int x, y;
+                place(hx, hy, &x, &y);
+                CHECK(x == (RW - W) / 2 && y == 0, "an arena: (%d, %d) at (%d, %d)", hx, hy, x, y);
+            }
     }
-    {   /* The Tower of Trunk from $0D: $10-$11-$12 between rows that share
+    { /* The Tower of Trunk from $0D: $10-$11-$12 between rows that share
          * a column with it at each end only ($0F under $10, $13 over $12). */
         const char *m[] = { "....##", "....|.", "..###.", "..|...", "###..." };
         draw("Trunk from $0D", m, 5);
@@ -269,17 +300,17 @@ static void test_shapes(void) {
         CHECK(black(ox, oy) && !black(x, y) && x == 2 * RW && y == RH, "$10: (%d, %d), before (%d, %d)", x, y, ox, oy);
         walk_map();
     }
-    {   /* The Mist from $30: a corner of the row above empty, and of the row below. */
+    { /* The Mist from $30: a corner of the row above empty, and of the row below. */
         const char *m[] = { "####..", "||||..", "######", "|||...", "###...", ".|....", ".#...." };
         draw("Mist from $30", m, 7);
         walk_map();
     }
-    {   /* A ladder up from a row's end (Mist $10 under $07): the view moves onto the two columns both rows hold. */
+    { /* A ladder up from a row's end (Mist $10 under $07): the view moves onto the two columns both rows hold. */
         const char *m[] = { "###", "|..", "##." };
         draw("an end", m, 3);
         walk_map();
     }
-    {   /* Shafts: a room alone in its row, between wider rows. */
+    { /* Shafts: a room alone in its row, between wider rows. */
         const char *m[] = { "###", ".|.", ".#.", ".|.", "###" };
         draw("a shaft", m, 5);
         walk_map();
@@ -297,18 +328,25 @@ static const char *const areas[8] = { "Eolis", "Trunk", "Mist", "towns", "buildi
  * the final boss's), arenas while the boss lives: they join nothing. */
 static bool boss(unsigned a, unsigned s) {
     switch (a) {
-    case 1: return s == 0x15 || s == 0x3B;
-    case 2: return s == 0x34 || s == 0x4C;
-    case 5: return s == 0x07 || s == 0x1D;
-    case 6: return s == 0x15;
-    case 7: return s == 0x00;
-    default: return false;
+    case 1:
+        return s == 0x15 || s == 0x3B;
+    case 2:
+        return s == 0x34 || s == 0x4C;
+    case 5:
+        return s == 0x07 || s == 0x1D;
+    case 6:
+        return s == 0x15;
+    case 7:
+        return s == 0x00;
+    default:
+        return false;
     }
 }
 /* topology(): from `current`, every room joined both ways, placed by its
  * joins, none on a place another holds. */
 static void lay_out(unsigned a, unsigned current, char *name, size_t size) {
-    unsigned tables = 0x8000u + word(3, 0x8000), data = 0x8000u + word(3, tables + 2 * a), scroll = 0x8000u + word(3, data + 4);
+    unsigned tables = 0x8000u + word(3, 0x8000), data = 0x8000u + word(3, tables + 2 * a),
+             scroll = 0x8000u + word(3, data + 4);
     unsigned n = counts[a], queue[MAX], head = 0, tail = 0, reverse[4] = { 1, 0, 3, 2 };
     int dx[4] = { -1, 1, 0, 0 }, dy[4] = { 0, 0, -1, 1 }, of[MAX];
     bool owned[MAX] = { false };
@@ -317,8 +355,12 @@ static void lay_out(unsigned a, unsigned current, char *name, size_t size) {
     snprintf(name, size, "%s from $%02X", areas[a], current);
     map.name = name;
     for (unsigned i = 0; i < MAX; ++i) of[i] = -1;
-    owned[current] = true; of[current] = map.n; map.id[map.n] = (int)current;
-    map.col[map.n] = 0; map.row[map.n] = 0; map.up[map.n++] = -1;
+    owned[current] = true;
+    of[current] = map.n;
+    map.id[map.n] = (int)current;
+    map.col[map.n] = 0;
+    map.row[map.n] = 0;
+    map.up[map.n++] = -1;
     index_map();
     queue[tail++] = current;
     while (head < tail) {
@@ -331,8 +373,12 @@ static void lay_out(unsigned a, unsigned current, char *name, size_t size) {
             int there = at(x, y);
             if (there >= 0 && there != of[next]) continue;
             if (!owned[next]) {
-                owned[next] = true; of[next] = map.n; map.id[map.n] = (int)next;
-                map.col[map.n] = x; map.row[map.n] = y; map.up[map.n++] = -1;
+                owned[next] = true;
+                of[next] = map.n;
+                map.id[map.n] = (int)next;
+                map.col[map.n] = x;
+                map.row[map.n] = y;
+                map.up[map.n++] = -1;
                 index_map();
                 queue[tail++] = next;
             }
@@ -343,13 +389,25 @@ static void lay_out(unsigned a, unsigned current, char *name, size_t size) {
 
 static void test_rom(const char *path) {
     FILE *f = fopen(path, "rb");
-    if (!f) { printf("FAIL: cannot open %s\n", path); ++failures; return; }
+    if (!f) {
+        printf("FAIL: cannot open %s\n", path);
+        ++failures;
+        return;
+    }
     uint8_t header[16];
-    if (fread(header, 1, 16, f) != 16) { fclose(f); ++failures; return; }
+    if (fread(header, 1, 16, f) != 16) {
+        fclose(f);
+        ++failures;
+        return;
+    }
     if (header[6] & 4) fseek(f, 512, SEEK_CUR);
     size_t got = fread(prg, 1, sizeof prg, f);
     fclose(f);
-    if (got != sizeof prg) { printf("FAIL: short ROM\n"); ++failures; return; }
+    if (got != sizeof prg) {
+        printf("FAIL: short ROM\n");
+        ++failures;
+        return;
+    }
     static char names[8][MAX][32];
     /* Each room's place, from the room laid out first, in every map walked:
      * a map laid out the same from another of its rooms is walked once. */
@@ -363,8 +421,10 @@ static void test_rom(const char *path) {
             ++layouts;
             int col[MAX], row[MAX], first = 0;
             for (int i = 0; i < MAX; ++i) col[i] = row[i] = 9999;
-            for (int i = 1; i < map.n; ++i) if (map.id[i] < map.id[first]) first = i;
-            for (int i = 0; i < map.n; ++i) col[map.id[i]] = map.col[i] - map.col[first], row[map.id[i]] = map.row[i] - map.row[first];
+            for (int i = 1; i < map.n; ++i)
+                if (map.id[i] < map.id[first]) first = i;
+            for (int i = 0; i < map.n; ++i)
+                col[map.id[i]] = map.col[i] - map.col[first], row[map.id[i]] = map.row[i] - map.row[first];
             bool again = false;
             for (unsigned k = 0; k < seen && !again; ++k)
                 again = !memcmp(seen_col[k], col, sizeof col) && !memcmp(seen_row[k], row, sizeof row);
@@ -380,8 +440,9 @@ static void test_rom(const char *path) {
 int main(int argc, char **argv) {
     test_shapes();
     if (argc > 1) test_rom(argv[1]);
-    printf("the most the view moved for a pixel of his: walking %d (%s), under an opening %d, climbing %d (%s), across a seam %d (%s)\n",
-           worst_walk, worst_walk_at, worst_open_walk, worst_climb, worst_climb_at, worst_straddle, worst_straddle_at);
+    printf(
+        "the most the view moved for a pixel of his: walking %d (%s), under an opening %d, climbing %d (%s), across a seam %d (%s)\n",
+        worst_walk, worst_walk_at, worst_open_walk, worst_climb, worst_climb_at, worst_straddle, worst_straddle_at);
     printf("steps across a seam one above the other: %d, %d of them with black that no view over rooms avoids\n",
            straddle_steps, straddle_black);
     CHECK(worst_walk <= 1, "walking, the view moved %d pixels for one of his", worst_walk);

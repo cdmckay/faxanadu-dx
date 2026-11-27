@@ -58,13 +58,13 @@
  * through: LDA PlayerMenu_SelectedInventory and the outdoor checks */
 #define MENU_CHECK        0x8B88u
 /* RAM */
-#define AREA              0x0024u  /* Area_CurrentArea: 4 in a building */
+#define AREA              0x0024u /* Area_CurrentArea: 4 in a building */
 #define SELECTED_WEAPON   0x03BDu
-#define PLAYER_CUR_WEAPON 0x03C8u  /* The weapon in hand, $FF for none */
+#define PLAYER_CUR_WEAPON 0x03C8u /* The weapon in hand, $FF for none */
 #define P_Z               0x02u
 
 static bool enabled;
-static unsigned entered, weapons_set, menu_choices;  /* times each site sent the game on as outdoors */
+static unsigned entered, weapons_set, menu_choices; /* times each site sent the game on as outdoors */
 
 /* Into a building: the weapon stays in hand. SelectedWeapon is $FF without
  * one, which is the original's value here. */
@@ -98,10 +98,13 @@ static int menu_hook(uint16_t addr) {
 }
 
 static const char *const hook_ids[] = {
-    "faxanadu.indoor-equip.enter", "faxanadu.indoor-equip.set-weapon", "faxanadu.indoor-equip.menu",
+    "faxanadu.indoor-equip.enter",
+    "faxanadu.indoor-equip.set-weapon",
+    "faxanadu.indoor-equip.menu",
 };
 static void hooks(int on) {
-    for (unsigned i = 0; i < sizeof hook_ids / sizeof hook_ids[0]; i++) nes_mod_set_function_hook_enabled(hook_ids[i], on);
+    for (unsigned i = 0; i < sizeof hook_ids / sizeof hook_ids[0]; i++)
+        nes_mod_set_function_hook_enabled(hook_ids[i], on);
 }
 static void deactivate(void) {
     enabled = false;
@@ -111,7 +114,7 @@ static void deactivate(void) {
 static void activate(void) {
     enabled = true;
     hooks(1);
-    nes_mod_set_local_only("Equip indoors", 1);   /* a peer without it would play other rules */
+    nes_mod_set_local_only("Equip indoors", 1); /* a peer without it would play other rules */
 }
 
 #ifdef CYC_WITH_SDL
@@ -139,5 +142,6 @@ NES_MOD_CONSTRUCTOR(register_indoor) {
         !nes_mod_register_function_entry_plugin(hook_ids[1], SET_WEAPON_CHECK, set_weapon_hook) ||
         !nes_mod_register_function_entry_plugin(hook_ids[2], MENU_CHECK, menu_hook) ||
         !nes_mod_register_reset_callback(deactivate) ||
-        !nes_mod_register_activation_plugin("faxanadu.indoor-equip", activate)) abort();
+        !nes_mod_register_activation_plugin("faxanadu.indoor-equip", activate))
+        abort();
 }

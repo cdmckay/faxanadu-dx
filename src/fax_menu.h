@@ -17,6 +17,6 @@ unsigned fax_menu_height(void);
  * (PLAYER_TOP_MENU_ITEM_STRINGS' row; 6 and 7, past the table's end, are
  * served by the feature) and its text. */
 enum { FAX_MENU_ROWS = 8, FAX_MENU_STOCK_ROWS = 6, FAX_MENU_ADDED = FAX_MENU_ROWS - FAX_MENU_STOCK_ROWS };
-enum { FAX_MENU_QUESTS, FAX_MENU_MAP };   /* the added rows, at the top */
+enum { FAX_MENU_QUESTS, FAX_MENU_MAP }; /* the added rows, at the top */
 extern const unsigned char fax_menu_strings[FAX_MENU_ROWS];
-const char *fax_menu_text(unsigned string);   /* "QUESTS" for 6, "MAP" for 7, NULL for the table's own */
+const char *fax_menu_text(unsigned string); /* "QUESTS" for 6, "MAP" for 7, NULL for the table's own */

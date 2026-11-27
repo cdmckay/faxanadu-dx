@@ -45,20 +45,20 @@
 #endif
 
 /* Fixed bank */
-#define PLAYER_REDUCE_HP   0xC08Eu   /* Player_ReduceHP: LDA Player_HP_L, SEC, SBC Arg_PlayerHealthDelta_L */
-#define POISON_RESUME      0xC860u   /* Player_PickUpPoison's LDX CurrentSpriteIndex, after its JSR Player_ReduceHP */
+#define PLAYER_REDUCE_HP   0xC08Eu /* Player_ReduceHP: LDA Player_HP_L, SEC, SBC Arg_PlayerHealthDelta_L */
+#define POISON_RESUME      0xC860u /* Player_PickUpPoison's LDX CurrentSpriteIndex, after its JSR Player_ReduceHP */
 /* Bank 14 */
-#define SPRITE_RESET_STATE 0xA202u   /* Sprite_Maybe_ResetState: TXA, PHA. X the spawner, Y the slot spawned */
+#define SPRITE_RESET_STATE 0xA202u /* Sprite_Maybe_ResetState: TXA, PHA. X the spawner, Y the slot spawned */
 /* SpriteBehavior_FlashScreenHitPlayer's LDX CurrentSpriteIndex, after its JSR
  * Player_ReduceHP */
 #define FLASH_RESUME       0xAB60u
 /* RAM */
-#define SPRITE_ENTITIES    0x02CCu   /* CurrentSprites_Entities: 8 slots, $FF empty */
-#define CURRENT_SPRITE     0x0378u   /* CurrentSpriteIndex */
-#define SPECIAL_ITEMS      0x042Cu   /* bit $08: the Elixir, which Player_ReduceHP uses instead of a death */
-#define PLAYER_HP_U        0x0431u   /* whole HP */
-#define PLAYER_HP_L        0x0432u   /* its fraction */
-#define HEALTH_DELTA_L     0x04BCu   /* Arg_PlayerHealthDelta_L */
+#define SPRITE_ENTITIES    0x02CCu /* CurrentSprites_Entities: 8 slots, $FF empty */
+#define CURRENT_SPRITE     0x0378u /* CurrentSpriteIndex */
+#define SPECIAL_ITEMS      0x042Cu /* bit $08: the Elixir, which Player_ReduceHP uses instead of a death */
+#define PLAYER_HP_U        0x0431u /* whole HP */
+#define PLAYER_HP_L        0x0432u /* its fraction */
+#define HEALTH_DELTA_L     0x04BCu /* Arg_PlayerHealthDelta_L */
 #define HEALTH_DELTA_U     0x04BDu
 
 enum { SLOTS = 8, ENTITY_COUNT = 0x65, NO_ONE = 0xFF, POISON = 0xFE, ELIXIR = 0x08 };
@@ -72,42 +72,41 @@ enum { FADE_IN = 8, HOLD = 200, FADE_OUT = 40, SHOWN = FADE_IN + HOLD + FADE_OUT
  * with no name are NPCs, items, effects, the unused enemies, and the shots
  * and rocks below. */
 static const char *const NAMES[ENTITY_COUNT] = {
-    [0x04] = "a Raiden",           [0x05] = "a Necron Aide",      [0x06] = "a Zombie",
-    [0x07] = "a Hornet",           [0x08] = "a Bihoruda",         [0x09] = "a Lilith",
-    [0x0B] = "a Yuinaru",          [0x0C] = "a Snowman",          [0x0D] = "a Nash",
-    [0x0E] = "a Fire Giant",       [0x0F] = "an Ishiisu",         [0x10] = "an Execution Hood",
-    [0x11] = "a Rokusutahn",       [0x15] = "a Charron",          [0x17] = "a Geributa",
-    [0x18] = "a Sugata",           [0x19] = "a Grimlock",         [0x1A] = "a Giant Bee",
-    [0x1B] = "a Myconid",          [0x1C] = "a Naga",             [0x1E] = "a Giant Strider",
-    [0x1F] = "a Sir Gawaine",      [0x20] = "a Maskman",          [0x21] = "a Wolfman",
-    [0x22] = "a Yareeka",          [0x23] = "a Magman",           [0x26] = "an Ikeda",
-    [0x28] = "a Lamprey",          [0x2A] = "a Monodron",         [0x2C] = "a Tamazutsu",
-    [0x2D] = "a Ripasheiku",       [0x2E] = "a Zoradohna",        [0x2F] = "a Borabohra",
-    [0x30] = "a Pakukame",         [0x31] = "a Zorugeriru",       [0x32] = "King Grieve",
-    [0x33] = "Shadow Eura",        [0x47] = "a Zozura",
+    [0x04] = "a Raiden",        [0x05] = "a Necron Aide", [0x06] = "a Zombie",     [0x07] = "a Hornet",
+    [0x08] = "a Bihoruda",      [0x09] = "a Lilith",      [0x0B] = "a Yuinaru",    [0x0C] = "a Snowman",
+    [0x0D] = "a Nash",          [0x0E] = "a Fire Giant",  [0x0F] = "an Ishiisu",   [0x10] = "an Execution Hood",
+    [0x11] = "a Rokusutahn",    [0x15] = "a Charron",     [0x17] = "a Geributa",   [0x18] = "a Sugata",
+    [0x19] = "a Grimlock",      [0x1A] = "a Giant Bee",   [0x1B] = "a Myconid",    [0x1C] = "a Naga",
+    [0x1E] = "a Giant Strider", [0x1F] = "a Sir Gawaine", [0x20] = "a Maskman",    [0x21] = "a Wolfman",
+    [0x22] = "a Yareeka",       [0x23] = "a Magman",      [0x26] = "an Ikeda",     [0x28] = "a Lamprey",
+    [0x2A] = "a Monodron",      [0x2C] = "a Tamazutsu",   [0x2D] = "a Ripasheiku", [0x2E] = "a Zoradohna",
+    [0x2F] = "a Borabohra",     [0x30] = "a Pakukame",    [0x31] = "a Zorugeriru", [0x32] = "King Grieve",
+    [0x33] = "Shadow Eura",     [0x47] = "a Zozura",
 };
 
 /* Shots and rocks, and the only sprites that spawn each (from the code that
  * stores the entity before its JMP Sprite_Maybe_ResetState). */
-static const struct { uint8_t spawned, by[3]; } SPAWNED[] = {
-    { 0x03, { 0x31, NO_ONE, NO_ONE } },   /* falling rock: SpriteBehavior_Zorugeriru__9e13 */
-    { 0x0A, { 0x2D, 0x32, NO_ONE } },     /* fire: Sprite_CastMagic, from Ripasheiku's and King Grieve's behaviors */
-    { 0x51, { 0x0D, 0x0F, 0x10 } },       /* shot: FUN_PRG14__a0a0 (Nash, Ishiisu), SpriteBehavior_ExecutionHood__a0ad */
-    { 0x53, { 0x33, NO_ONE, NO_ONE } },   /* fire: SpriteBehavior_ShadowEura__a12d */
-    { 0x54, { 0x15, NO_ONE, NO_ONE } },   /* fireball: BScript_Action_CastMagic, in Charron's script (FUN_PRG14__a1cc,
+static const struct {
+    uint8_t spawned, by[3];
+} SPAWNED[] = {
+    { 0x03, { 0x31, NO_ONE, NO_ONE } }, /* falling rock: SpriteBehavior_Zorugeriru__9e13 */
+    { 0x0A, { 0x2D, 0x32, NO_ONE } },   /* fire: Sprite_CastMagic, from Ripasheiku's and King Grieve's behaviors */
+    { 0x51, { 0x0D, 0x0F, 0x10 } },     /* shot: FUN_PRG14__a0a0 (Nash, Ishiisu), SpriteBehavior_ExecutionHood__a0ad */
+    { 0x53, { 0x33, NO_ONE, NO_ONE } }, /* fire: SpriteBehavior_ShadowEura__a12d */
+    { 0x54, { 0x15, NO_ONE, NO_ONE } }, /* fireball: BScript_Action_CastMagic, in Charron's script (FUN_PRG14__a1cc,
                                              the other, has no caller) */
 };
 
 typedef struct {
-    uint8_t child[SLOTS], parent[SLOTS];   /* each slot's spawn: what it is, and its spawner's entity */
-    uint8_t named, how;                    /* the line: who (an entity, or POISON), and how it hit */
-    uint16_t age;                          /* frames it has shown; SHOWN when none shows */
+    uint8_t child[SLOTS], parent[SLOTS]; /* each slot's spawn: what it is, and its spawner's entity */
+    uint8_t named, how;                  /* the line: who (an entity, or POISON), and how it hit */
+    uint16_t age;                        /* frames it has shown; SHOWN when none shows */
 } Slain;
 
 static bool enabled, font_failed;
 static Slain s;
-static unsigned deaths, unnamed, spawns;   /* since power-on: deaths named, deaths not, spawns seen */
-static char last[40];                      /* the last line said */
+static unsigned deaths, unnamed, spawns; /* since power-on: deaths named, deaths not, spawns seen */
+static char last[40];                    /* the last line said */
 
 static uint8_t q(uint16_t addr) { return cyc_mod_peek(addr); }
 
@@ -136,7 +135,7 @@ static int spawned_index(uint8_t entity) {
         if (SPAWNED[i].spawned == entity) return (int)i;
     return -1;
 }
-static bool spawns_it(int kind, uint8_t entity) {   /* an empty slot ($FF) is no one */
+static bool spawns_it(int kind, uint8_t entity) { /* an empty slot ($FF) is no one */
     for (unsigned j = 0; j < 3; ++j)
         if (entity != NO_ONE && SPAWNED[kind].by[j] == entity) return true;
     return false;
@@ -152,7 +151,7 @@ static uint8_t spawner(uint8_t slot, uint8_t entity) {
     for (uint8_t i = 0; i < SLOTS; ++i) {
         uint8_t e = q((uint16_t)(SPRITE_ENTITIES + i));
         if (i == slot || !spawns_it(kind, e)) continue;
-        if (found != NO_ONE && found != e) return NO_ONE;   /* two kinds cast it: no telling which */
+        if (found != NO_ONE && found != e) return NO_ONE; /* two kinds cast it: no telling which */
         found = e;
     }
     return found;
@@ -162,9 +161,15 @@ static uint8_t spawner(uint8_t slot, uint8_t entity) {
  * word at S + 1, + 1) tells the Poison and the flash; anything else is the
  * sprite at CurrentSpriteIndex, or what spawned it. */
 static uint8_t attacker(uint16_t resume, uint8_t *how) {
-    if (resume == POISON_RESUME) { *how = HOW_POISON; return POISON; }
+    if (resume == POISON_RESUME) {
+        *how = HOW_POISON;
+        return POISON;
+    }
     uint8_t slot = q(CURRENT_SPRITE);
-    if (slot >= SLOTS) { *how = HOW_NONE; return NO_ONE; }
+    if (slot >= SLOTS) {
+        *how = HOW_NONE;
+        return NO_ONE;
+    }
     uint8_t e = q((uint16_t)(SPRITE_ENTITIES + slot));
     if (resume == FLASH_RESUME) *how = HOW_FLASH;
     else *how = spawned_index(e) >= 0 ? HOW_SHOT : HOW_TOUCH;
@@ -180,25 +185,30 @@ static bool kills(void) {
     return hp < delta && !(q(SPECIAL_ITEMS) & ELIXIR);
 }
 
-static uint16_t stack_word(uint8_t sp, unsigned at) {   /* the 6502 stack wraps within page 1 */
+static uint16_t stack_word(uint8_t sp, unsigned at) { /* the 6502 stack wraps within page 1 */
     return (uint16_t)(q((uint16_t)(0x100u | (uint8_t)(sp + at))) | q((uint16_t)(0x100u | (uint8_t)(sp + at + 1))) << 8);
 }
 
 static void say(uint8_t who, uint8_t how) {
     char line[40];
     s.how = how;
-    if (!line_for(who, line)) { ++unnamed; s.named = NO_ONE; s.age = SHOWN; return; }
+    if (!line_for(who, line)) {
+        ++unnamed;
+        s.named = NO_ONE;
+        s.age = SHOWN;
+        return;
+    }
     ++deaths;
     s.named = who;
     s.age = 0;
     snprintf(last, sizeof last, "%s", line);
-    fax_banner_hide();   /* the line takes the banner's place */
+    fax_banner_hide(); /* the line takes the banner's place */
 }
 
 /* Player_ReduceHP: a hit that kills names what it came from. */
 static int reduce_hp_hook(uint16_t addr) {
     (void)addr;
-    if (!enabled || cyc_mod_isolated() || !kills()) return 0;   /* Seamless's neighboring rooms keep no state */
+    if (!enabled || cyc_mod_isolated() || !kills()) return 0; /* Seamless's neighboring rooms keep no state */
     CycModRegs regs;
     cyc_mod_regs(&regs);
     uint8_t how;
@@ -222,7 +232,7 @@ static int spawn_hook(uint16_t addr) {
 
 void fax_slain_frame_end(void) {
     if (!enabled) return;
-    for (uint8_t i = 0; i < SLOTS; ++i)   /* a slot whose spawn is gone forgets its spawner */
+    for (uint8_t i = 0; i < SLOTS; ++i) /* a slot whose spawn is gone forgets its spawner */
         if (s.child[i] != NO_ONE && q((uint16_t)(SPRITE_ENTITIES + i)) != s.child[i]) s.child[i] = s.parent[i] = NO_ONE;
     if (s.age >= SHOWN) return;
     if (!fax_text_loaded() && !font_failed && !fax_text_load()) {
@@ -268,7 +278,7 @@ static int state_validate(const uint8_t *buf, int len) {
 static int state_set(const uint8_t *buf, int len) {
     if (!state_validate(buf, len)) return 0;
     forget();
-    if (!len) return 1;   /* saved without the feature: no line, no spawners */
+    if (!len) return 1; /* saved without the feature: no line, no spawners */
     s.named = buf[1];
     s.how = buf[2];
     s.age = (uint16_t)(buf[3] | buf[4] << 8);
@@ -285,13 +295,14 @@ static void slain_state(int id, const char *cmd) {
     const char *showing = s.age < SHOWN ? line_for(s.named, line) : NULL;
     int n = 0;
     for (unsigned i = 0; i < SLOTS; ++i)
-        n += snprintf(parents + n, sizeof parents - (size_t)n, "%s%u", i ? "," : "", s.child[i] == NO_ONE ? 255u : s.parent[i]);
+        n += snprintf(parents + n, sizeof parents - (size_t)n, "%s%u", i ? "," : "",
+                      s.child[i] == NO_ONE ? 255u : s.parent[i]);
     snprintf(fields, sizeof fields,
              "\"enabled\":%s,\"showing\":%s%s%s,\"alpha\":%u,\"age\":%u,\"how\":\"%s\",\"deaths\":%u,"
              "\"unnamed\":%u,\"spawns\":%u,\"spawners\":[%s],\"last\":%s%s%s",
              enabled ? "true" : "false", showing ? "\"" : "", showing ? showing : "null", showing ? "\"" : "",
-             showing ? alpha_at(s.age) : 0u, s.age, HOW[s.how], deaths, unnamed, spawns, parents,
-             last[0] ? "\"" : "", last[0] ? last : "null", last[0] ? "\"" : "");
+             showing ? alpha_at(s.age) : 0u, s.age, HOW[s.how], deaths, unnamed, spawns, parents, last[0] ? "\"" : "",
+             last[0] ? last : "null", last[0] ? "\"" : "");
     cyc_tcp_ok(id, fields);
 }
 void fax_slain_tcp_setup(void) {
@@ -304,7 +315,8 @@ void fax_slain_tcp_setup(void) {}
 
 static const char *const hook_ids[] = { "faxanadu.slain-by.reduce-hp", "faxanadu.slain-by.spawn" };
 static void hooks(bool on) {
-    for (unsigned i = 0; i < sizeof hook_ids / sizeof hook_ids[0]; ++i) nes_mod_set_function_hook_enabled(hook_ids[i], on);
+    for (unsigned i = 0; i < sizeof hook_ids / sizeof hook_ids[0]; ++i)
+        nes_mod_set_function_hook_enabled(hook_ids[i], on);
 }
 static void deactivate(void) {
     enabled = font_failed = false;
@@ -325,5 +337,6 @@ NES_MOD_CONSTRUCTOR(register_slain_by) {
         !nes_mod_register_reset_callback(deactivate) ||
         !nes_mod_register_activation_plugin("faxanadu.slain-by", activate) ||
         !nes_mod_register_savestate_hook("faxanadu.slain-by", state_get, state_set) ||
-        !nes_mod_register_savestate_validator("faxanadu.slain-by", state_validate)) abort();
+        !nes_mod_register_savestate_validator("faxanadu.slain-by", state_validate))
+        abort();
 }

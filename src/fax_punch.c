@@ -53,45 +53,45 @@
 #include <stdlib.h>
 
 /* Bank 14 */
-#define DRAW_NO_WEAPON   0xB7DEu   /* Player_DrawWeapon's BMI RETURN_B7D5, after LDA Player_CurWeapon ($B7DB) */
+#define DRAW_NO_WEAPON  0xB7DEu /* Player_DrawWeapon's BMI RETURN_B7D5, after LDA Player_CurWeapon ($B7DB) */
 /* Player_HitSpriteWithWeapon's BMI RETURN_87CA, after LDA Player_CurWeapon
  * ($8814). Falling through: LDX CurrentSpriteIndex, LDY ..., LDA
  * SPRITE_CATEGORIES_BY_ENTITY,Y */
-#define HIT_NO_WEAPON    0x8817u
+#define HIT_NO_WEAPON   0x8817u
 /* STA Temp_00, after LDA Temp_00, CLC, ADC WEAPON_TO_GLOVE_STRENGTH,Y ($8889).
  * Then @_updateSpriteHP ($8891): LDA CurrentSprites_HP,X, SEC, SBC Temp_00 */
-#define GLOVE_STORE      0x888Fu
-#define WEAPON_RANGES    0xB897u   /* MAYBE_WEAPON_RANGES: (X, Y) per weapon, the Hand Dagger's first: 08 04 */
+#define GLOVE_STORE     0x888Fu
+#define WEAPON_RANGES   0xB897u /* MAYBE_WEAPON_RANGES: (X, Y) per weapon, the Hand Dagger's first: 08 04 */
 /* PTR_ARRAY_PRG14__b89f: per weapon, without and with a shield, the X offset
  * by pose and facing (left, right). The dagger's: $B8AF, $B8BF */
-#define WEAPON_X_TABLES  0xB89Fu
-#define WEAPON_Y_TABLES  0xB90Fu   /* PTR_ARRAY_PRG14__b90f: per weapon, the Y offset by pose. The dagger's: $B917 */
-#define ATTACK_POSES     0xB97Bu   /* BYTE_ARRAY_PRG14__b97b: the poses of a swing's phases, 4 5 6 */
+#define WEAPON_X_TABLES 0xB89Fu
+#define WEAPON_Y_TABLES 0xB90Fu /* PTR_ARRAY_PRG14__b90f: per weapon, the Y offset by pose. The dagger's: $B917 */
+#define ATTACK_POSES    0xB97Bu /* BYTE_ARRAY_PRG14__b97b: the poses of a swing's phases, 4 5 6 */
 /* RAM */
-#define TEMP_00          0x0000u   /* the hit's damage, so far */
-#define HERO_X           0x009Eu   /* Player_PosX_Block */
-#define SCROLL_X         0x009Fu   /* Screen_Maybe_ScrollXCounter: the screen's high byte of X */
-#define HERO_Y           0x00A1u   /* Player_PosY */
-#define SCROLL_Y         0x00A2u   /* Player_Something_ScrollPosY: the high byte Player_DrawWeapon adds to */
-#define PLAYER_FLAGS     0x00A4u
-#define ARMOR_INDEX      0x00A7u   /* Player_ArmorLookupIndex: bit 0, a shield */
-#define ATTACK_PHASE     0x00AEu   /* Player_AttackPhaseAnimFrame: 0, 1, 2 */
-#define WEAPON_X         0x00CEu   /* PlayerPosXPlus10, low byte */
-#define WEAPON_X_HIGH    0x00CFu   /* Maybe_Something_WeaponPosX: its high byte */
-#define WEAPON_Y         0x00D0u   /* Maybe_Something_WeaponPosY */
-#define WEAPON_Y_HIGH    0x00D1u   /* DrawWeapon_Unused_00D1: its high byte, which nothing reads */
-#define REACH_X          0x00D2u   /* Maybe_WeaponRange_X */
-#define REACH_Y          0x00D3u   /* Maybe_WeaponRange_Y */
+#define TEMP_00         0x0000u /* the hit's damage, so far */
+#define HERO_X          0x009Eu /* Player_PosX_Block */
+#define SCROLL_X        0x009Fu /* Screen_Maybe_ScrollXCounter: the screen's high byte of X */
+#define HERO_Y          0x00A1u /* Player_PosY */
+#define SCROLL_Y        0x00A2u /* Player_Something_ScrollPosY: the high byte Player_DrawWeapon adds to */
+#define PLAYER_FLAGS    0x00A4u
+#define ARMOR_INDEX     0x00A7u /* Player_ArmorLookupIndex: bit 0, a shield */
+#define ATTACK_PHASE    0x00AEu /* Player_AttackPhaseAnimFrame: 0, 1, 2 */
+#define WEAPON_X        0x00CEu /* PlayerPosXPlus10, low byte */
+#define WEAPON_X_HIGH   0x00CFu /* Maybe_Something_WeaponPosX: its high byte */
+#define WEAPON_Y        0x00D0u /* Maybe_Something_WeaponPosY */
+#define WEAPON_Y_HIGH   0x00D1u /* DrawWeapon_Unused_00D1: its high byte, which nothing reads */
+#define REACH_X         0x00D2u /* Maybe_WeaponRange_X */
+#define REACH_Y         0x00D3u /* Maybe_WeaponRange_Y */
 /* Player_Flags */
-#define JUMPING          0x01u
-#define FALLING          0x04u
-#define CAN_CLIMB        0x08u
-#define CLIMBING         0x10u
-#define FACING_RIGHT     0x40u
-#define ATTACKING        0x80u
-#define SHIELD           0x01u
-#define CLIMB_POSE       7u
-#define P_N              0x80u
+#define JUMPING         0x01u
+#define FALLING         0x04u
+#define CAN_CLIMB       0x08u
+#define CLIMBING        0x10u
+#define FACING_RIGHT    0x40u
+#define ATTACKING       0x80u
+#define SHIELD          0x01u
+#define CLIMB_POSE      7u
+#define P_N             0x80u
 enum { DAGGER = 0 };
 
 /* Where the fist is this frame and how far it reaches: what Player_DrawWeapon
@@ -104,7 +104,7 @@ typedef struct {
 } FistBox;
 
 static bool enabled;
-static unsigned placed, gloved;     /* frames the fist was placed, Glove bonuses given (live game) */
+static unsigned placed, gloved; /* frames the fist was placed, Glove bonuses given (live game) */
 static FistBox last;
 
 static uint8_t peek(uint16_t addr) { return cyc_mod_peek(addr); }
@@ -129,10 +129,10 @@ static uint8_t attack_pose(uint8_t flags, uint8_t x, uint8_t phase) {
 static FistBox fist_box(void) {
     uint8_t flags = peek(PLAYER_FLAGS), x = peek(HERO_X), scroll = peek(SCROLL_X);
     uint8_t pose = attack_pose(flags, x, peek(ATTACK_PHASE));
-    unsigned table = (DAGGER << 1 | (peek(ARMOR_INDEX) & SHIELD)) << 1;   /* ASL, ORA, ASL */
+    unsigned table = (DAGGER << 1 | (peek(ARMOR_INDEX) & SHIELD)) << 1; /* ASL, ORA, ASL */
     uint16_t xs = peek16((uint16_t)(WEAPON_X_TABLES + table));
     int8_t offset = (int8_t)peek((uint16_t)(xs + pose * 2 + (flags & FACING_RIGHT ? 1 : 0)));
-    unsigned sum = (unsigned)x + (uint8_t)offset;                       /* Player_CalcValueAndFFForNeg's */
+    unsigned sum = (unsigned)x + (uint8_t)offset; /* Player_CalcValueAndFFForNeg's */
     FistBox box = last;
     box.x = (uint8_t)sum;
     box.x_high = (uint8_t)(scroll + (offset < 0 ? 0xFF : 0) + (sum >> 8));
@@ -163,7 +163,7 @@ static int draw_hook(uint16_t addr) {
         ++placed;
         last = box;
     }
-    return 0;                       /* the BMI returns: nothing to draw */
+    return 0; /* the BMI returns: nothing to draw */
 }
 
 /* Player_HitSpriteWithWeapon's BMI after the same load: the next instruction
@@ -193,20 +193,22 @@ static int glove_hook(uint16_t addr) {
 }
 
 static const char *const hook_ids[] = {
-    "faxanadu.punches.draw", "faxanadu.punches.hit", "faxanadu.punches.glove",
+    "faxanadu.punches.draw",
+    "faxanadu.punches.hit",
+    "faxanadu.punches.glove",
 };
 enum { HOOKS = sizeof hook_ids / sizeof hook_ids[0] };
 
 static void deactivate(void) {
     enabled = false;
     placed = gloved = 0;
-    last = (FistBox){0};
+    last = (FistBox){ 0 };
     for (unsigned i = 0; i < HOOKS; ++i) nes_mod_set_function_hook_enabled(hook_ids[i], 0);
 }
 static void activate(void) {
     enabled = true;
     for (unsigned i = 0; i < HOOKS; ++i) nes_mod_set_function_hook_enabled(hook_ids[i], 1);
-    nes_mod_set_local_only("Punches", 1);   /* a peer without it would play other rules */
+    nes_mod_set_local_only("Punches", 1); /* a peer without it would play other rules */
 }
 
 #ifdef CYC_WITH_SDL
@@ -234,5 +236,6 @@ NES_MOD_CONSTRUCTOR(register_punches) {
         !nes_mod_register_function_entry_plugin(hook_ids[1], HIT_NO_WEAPON, hit_hook) ||
         !nes_mod_register_function_entry_plugin(hook_ids[2], GLOVE_STORE, glove_hook) ||
         !nes_mod_register_reset_callback(deactivate) ||
-        !nes_mod_register_activation_plugin("faxanadu.punches", activate)) abort();
+        !nes_mod_register_activation_plugin("faxanadu.punches", activate))
+        abort();
 }

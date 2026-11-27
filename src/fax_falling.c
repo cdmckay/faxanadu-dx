@@ -33,7 +33,7 @@
 #include <stdlib.h>
 
 /* Bank 15 */
-#define GET_BODY_FRAME  0xECACu   /* Player_GetBodySpriteFrameOffset: LDA Player_Flags, LSR A, BCC */
+#define GET_BODY_FRAME  0xECACu /* Player_GetBodySpriteFrameOffset: LDA Player_Flags, LSR A, BCC */
 /* Player_HandleVertLadderOrJump's @_setFalling: LDA Player_Flags,
  * ORA #PLAYER_FALLING_OFF. Every frame in the air without jumping */
 #define SET_FALLING     0xE3D1u
@@ -41,12 +41,12 @@
  * (down) following the fall step. Z clear: he landed */
 #define CAP_FALL        0xE423u
 /* Bank 14 */
-#define CALC_ANIM_FRAME 0xB927u   /* Maybe_Player_CalcAnimFrame, the same rule for the weapon and shield */
+#define CALC_ANIM_FRAME 0xB927u /* Maybe_Player_CalcAnimFrame, the same rule for the weapon and shield */
 /* RAM */
-#define PLAYER_POS_X    0x009Eu   /* Player_PosX_Block */
+#define PLAYER_POS_X    0x009Eu /* Player_PosX_Block */
 #define PLAYER_FLAGS    0x00A4u
-#define JUMPING         0x01u     /* PLAYER_JUMPING */
-#define FALLING_OFF     0x04u     /* PLAYER_FALLING_OFF */
+#define JUMPING         0x01u /* PLAYER_JUMPING */
+#define FALLING_OFF     0x04u /* PLAYER_FALLING_OFF */
 #define CAN_CLIMB       0x08u
 #define CLIMBING        0x10u
 #define ATTACKING       0x80u
@@ -55,8 +55,8 @@
 #define P_N             0x80u
 
 static bool enabled;
-static bool landed;               /* the last fall step put him on a block */
-static unsigned body, gear;       /* pose calls answered with the jump pose */
+static bool landed;         /* the last fall step put him on a block */
+static unsigned body, gear; /* pose calls answered with the jump pose */
 
 /* Player_IsClimbing, as the game has it. */
 static bool climbing(uint8_t flags, uint8_t x) {
@@ -114,11 +114,14 @@ static int state_set(const uint8_t *buf, int len) {
 }
 
 static const char *const hook_ids[] = {
-    "faxanadu.falling-pose.body", "faxanadu.falling-pose.gear",
-    "faxanadu.falling-pose.set-falling", "faxanadu.falling-pose.cap-fall",
+    "faxanadu.falling-pose.body",
+    "faxanadu.falling-pose.gear",
+    "faxanadu.falling-pose.set-falling",
+    "faxanadu.falling-pose.cap-fall",
 };
 static void hooks(int on) {
-    for (unsigned i = 0; i < sizeof hook_ids / sizeof hook_ids[0]; i++) nes_mod_set_function_hook_enabled(hook_ids[i], on);
+    for (unsigned i = 0; i < sizeof hook_ids / sizeof hook_ids[0]; i++)
+        nes_mod_set_function_hook_enabled(hook_ids[i], on);
 }
 static void deactivate(void) {
     enabled = landed = false;
@@ -154,5 +157,6 @@ NES_MOD_CONSTRUCTOR(register_falling) {
         !nes_mod_register_savestate_hook("faxanadu.falling-pose", state_get, state_set) ||
         !nes_mod_register_savestate_validator("faxanadu.falling-pose", state_validate) ||
         !nes_mod_register_reset_callback(deactivate) ||
-        !nes_mod_register_activation_plugin("faxanadu.falling-pose", activate)) abort();
+        !nes_mod_register_activation_plugin("faxanadu.falling-pose", activate))
+        abort();
 }

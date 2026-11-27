@@ -8,7 +8,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-enum { FAX_TEXT_CELL = 8 };   /* a character or a frame tile is 8x8 pixels */
+enum { FAX_TEXT_CELL = 8 }; /* a character or a frame tile is 8x8 pixels */
 
 /* Read the glyphs from the loaded cart, once; false if they are not there. */
 bool fax_text_load(void);

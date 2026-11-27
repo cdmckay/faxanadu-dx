@@ -36,39 +36,37 @@
 #endif
 
 /* RAM */
-#define SCREEN_READY_STATE      0x000Eu   /* 0 once a screen is set up */
-#define INTERRUPT_HANDLERS_ON   0x0013u   /* Game_InterruptHandlersEnabled */
+#define SCREEN_READY_STATE      0x000Eu /* 0 once a screen is set up */
+#define INTERRUPT_HANDLERS_ON   0x0013u /* Game_InterruptHandlersEnabled */
 #define AREA_CURRENT_AREA       0x0024u
-#define SCREEN_SCROLL_DIRECTION 0x0054u   /* $FF unless scrolling to the next screen */
+#define SCREEN_SCROLL_DIRECTION 0x0054u /* $FF unless scrolling to the next screen */
 #define AREA_CURRENT_SCREEN     0x0063u
-#define GAME_PAUSED_STATE       0x0120u   /* 1 while Start has the game paused */
-#define AREA_SAVED_AREA         0x03D5u   /* where a building's way out leads */
+#define GAME_PAUSED_STATE       0x0120u /* 1 while Start has the game paused */
+#define AREA_SAVED_AREA         0x03D5u /* where a building's way out leads */
 #define AREA_SAVED_SCREEN       0x03D6u
 
 /* Frames: fade in, hold, fade out. */
 enum { FADE_IN = 8, HOLD = 120, FADE_OUT = 32, SHOWN = FADE_IN + HOLD + FADE_OUT };
-enum { HUD = 32, PAD = 1 };       /* the HUD's height; a blank cell either side of the name */
+enum { HUD = 32, PAD = 1 }; /* the HUD's height; a blank cell either side of the name */
 
 typedef struct {
-    int8_t here;       /* the zone the hero is in; FAX_ZONE_NONE in a building */
-    int8_t named;      /* the zone whose name was shown last */
-    int8_t showing;    /* the zone on the banner */
-    uint8_t age;       /* frames the banner has been up */
-    uint8_t out_area, out_screen, out_known;   /* the last place outside a building */
+    int8_t here;                             /* the zone the hero is in; FAX_ZONE_NONE in a building */
+    int8_t named;                            /* the zone whose name was shown last */
+    int8_t showing;                          /* the zone on the banner */
+    uint8_t age;                             /* frames the banner has been up */
+    uint8_t out_area, out_screen, out_known; /* the last place outside a building */
 } Track;
 
 static bool enabled, failed;
 static Track t = { FAX_ZONE_NONE, FAX_ZONE_NONE, FAX_ZONE_NONE, 0, 0, 0, 0 };
-static unsigned banners;                       /* names shown since power-on */
+static unsigned banners; /* names shown since power-on */
 static const char *last_name;
 static uint32_t *canvas;
 static size_t capacity;
 
 static uint8_t q(uint16_t addr) { return cyc_mod_peek(addr); }
 
-static void forget(void) {
-    t = (Track){ FAX_ZONE_NONE, FAX_ZONE_NONE, FAX_ZONE_NONE, 0, 0, 0, 0 };
-}
+static void forget(void) { t = (Track){ FAX_ZONE_NONE, FAX_ZONE_NONE, FAX_ZONE_NONE, 0, 0, 0, 0 }; }
 void fax_banner_reset(void) {
     forget();
     banners = 0;
@@ -90,7 +88,10 @@ static unsigned alpha_at(unsigned age) {
 
 static void arrive(int zone) {
     t.here = (int8_t)zone;
-    if (zone == FAX_ZONE_NONE) { t.showing = FAX_ZONE_NONE; return; }   /* a building: put it away */
+    if (zone == FAX_ZONE_NONE) {
+        t.showing = FAX_ZONE_NONE;
+        return;
+    } /* a building: put it away */
     const char *name = fax_zone(zone)->name;
     bool same = t.named != FAX_ZONE_NONE && !strcmp(fax_zone(t.named)->name, name);
     t.named = (int8_t)zone;
@@ -109,9 +110,11 @@ static void observe(void) {
         uint8_t back_area = q(AREA_SAVED_AREA), back_screen = q(AREA_SAVED_SCREEN);
         /* A door leads back where the hero stood; a respawn or a journey does not. */
         if (t.out_known && (back_area != t.out_area || back_screen != t.out_screen)) t.named = FAX_ZONE_NONE;
-        t.out_area = back_area; t.out_screen = back_screen;
+        t.out_area = back_area;
+        t.out_screen = back_screen;
     } else {
-        t.out_area = (uint8_t)area; t.out_screen = (uint8_t)screen;
+        t.out_area = (uint8_t)area;
+        t.out_screen = (uint8_t)screen;
         zone = fax_zone_at(area, screen);
     }
     t.out_known = 1;
@@ -137,11 +140,12 @@ const uint32_t *fax_banner_draw(const uint32_t *picture, int *w, int *h, const c
     else from = cyc_render_present(&width, &height);
     if (!from || width <= 0 || height <= 0) return picture;
     size_t n = (size_t)width * (size_t)height;
-    if (from != canvas) {   /* a banner already drawn this frame is drawn over */
+    if (from != canvas) { /* a banner already drawn this frame is drawn over */
         if (n > capacity) {
             uint32_t *grown = realloc(canvas, n * sizeof *grown);
             if (!grown) return picture;
-            canvas = grown; capacity = n;
+            canvas = grown;
+            capacity = n;
         }
         memcpy(canvas, from, n * sizeof *canvas);
     }
@@ -152,7 +156,8 @@ const uint32_t *fax_banner_draw(const uint32_t *picture, int *w, int *h, const c
     int x = (width - box_w) / 2, y = hud + FAX_TEXT_CELL;
     fax_text_box(canvas, width, height, x, y, cols, 1, alpha);
     fax_text_draw(canvas, width, height, x + (1 + PAD) * FAX_TEXT_CELL, y + FAX_TEXT_CELL, line, alpha);
-    *w = width; *h = height;
+    *w = width;
+    *h = height;
     return canvas;
 }
 
@@ -169,8 +174,8 @@ enum { RECORD = 8, VERSION = 1 };
 static bool zone_ok(int8_t z) { return z == FAX_ZONE_NONE || (z >= 0 && z < FAX_ZONE_COUNT); }
 static int state_get(uint8_t *buf, int cap) {
     if (cap < RECORD) return -1;
-    const uint8_t rec[RECORD] = { VERSION, (uint8_t)t.here, (uint8_t)t.named, (uint8_t)t.showing, t.age,
-                                  t.out_area, t.out_screen, t.out_known };
+    const uint8_t rec[RECORD] = { VERSION, (uint8_t)t.here, (uint8_t)t.named, (uint8_t)t.showing,
+                                  t.age,   t.out_area,      t.out_screen,     t.out_known };
     memcpy(buf, rec, RECORD);
     return RECORD;
 }
@@ -180,7 +185,10 @@ static int state_validate(const uint8_t *buf, int len) {
 }
 static int state_set(const uint8_t *buf, int len) {
     if (!state_validate(buf, len)) return 0;
-    if (!len) { forget(); return 1; }   /* saved without zone names: name the zone again */
+    if (!len) {
+        forget();
+        return 1;
+    } /* saved without zone names: name the zone again */
     t = (Track){ (int8_t)buf[1], (int8_t)buf[2], (int8_t)buf[3], buf[4], buf[5], buf[6], buf[7] };
     return 1;
 }
@@ -195,12 +203,10 @@ static void zone_state(int id, const char *line) {
     snprintf(fields, sizeof fields,
              "\"enabled\":%s,\"font\":%s,\"area\":%u,\"screen\":%u,\"zone\":%s%s%s,\"here\":%s%s%s,"
              "\"showing\":%s%s%s,\"alpha\":%u,\"age\":%u,\"banners\":%u,\"last\":%s%s%s,\"box\":%s",
-             enabled ? "true" : "false", fax_text_loaded() ? "true" : "false", area, screen,
-             at ? "\"" : "", at ? at->name : "null", at ? "\"" : "",
-             here ? "\"" : "", here ? here->name : "null", here ? "\"" : "",
-             showing ? "\"" : "", showing ? showing->name : "null", showing ? "\"" : "",
-             showing ? alpha_at(t.age) : 0u, t.age, banners,
-             last_name ? "\"" : "", last_name ? last_name : "null", last_name ? "\"" : "",
+             enabled ? "true" : "false", fax_text_loaded() ? "true" : "false", area, screen, at ? "\"" : "",
+             at ? at->name : "null", at ? "\"" : "", here ? "\"" : "", here ? here->name : "null", here ? "\"" : "",
+             showing ? "\"" : "", showing ? showing->name : "null", showing ? "\"" : "", showing ? alpha_at(t.age) : 0u,
+             t.age, banners, last_name ? "\"" : "", last_name ? last_name : "null", last_name ? "\"" : "",
              fax_text_box_showing() ? "true" : "false");
     cyc_tcp_ok(id, fields);
 }
@@ -222,5 +228,6 @@ NES_MOD_CONSTRUCTOR(register_zone_names) {
     if (!nes_mod_register_reset_callback(deactivate) ||
         !nes_mod_register_activation_plugin("faxanadu.zone-names", activate) ||
         !nes_mod_register_savestate_hook("faxanadu.zone-names", state_get, state_set) ||
-        !nes_mod_register_savestate_validator("faxanadu.zone-names", state_validate)) abort();
+        !nes_mod_register_savestate_validator("faxanadu.zone-names", state_validate))
+        abort();
 }

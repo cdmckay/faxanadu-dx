@@ -21,22 +21,40 @@
 
 uint32_t hw_palette_argb[512];
 static uint32_t native[256 * 240];
-const uint32_t *cyc_render_present(int *width, int *height) { *width = 256; *height = 240; return native; }
+const uint32_t *cyc_render_present(int *width, int *height) {
+    *width = 256;
+    *height = 240;
+    return native;
+}
 bool fax_text_load(void) { return true; }
 bool fax_text_loaded(void) { return true; }
 int fax_text_width(const char *s) { return (int)strlen(s) * FAX_TEXT_CELL; }
 static unsigned boxes_drawn, lines_drawn;
 static char last_line[64];
 void fax_text_box(uint32_t *px, int w, int h, int x, int y, int cols, int rows, unsigned alpha) {
-    (void)px; (void)w; (void)h; (void)x; (void)y; (void)cols; (void)rows; (void)alpha; ++boxes_drawn;
+    (void)px;
+    (void)w;
+    (void)h;
+    (void)x;
+    (void)y;
+    (void)cols;
+    (void)rows;
+    (void)alpha;
+    ++boxes_drawn;
 }
 void fax_text_draw(uint32_t *px, int w, int h, int x, int y, const char *s, unsigned alpha) {
-    (void)px; (void)w; (void)h; (void)x; (void)y; (void)alpha; ++lines_drawn;
+    (void)px;
+    (void)w;
+    (void)h;
+    (void)x;
+    (void)y;
+    (void)alpha;
+    ++lines_drawn;
     snprintf(last_line, sizeof last_line, "%s", s);
 }
-static uint8_t gurus = 1;   /* Guru travel's visited Gurus: Eolis's from the start */
+static uint8_t gurus = 1; /* Guru travel's visited Gurus: Eolis's from the start */
 uint8_t fax_travel_visited(void) { return gurus; }
-static bool quests_open;   /* the quest log */
+static bool quests_open; /* the quest log */
 bool fax_quests_showing(void) { return quests_open; }
 /* Found items (fax_found.c): on or off, and whether the fixed Hour Glass lies
  * there; its rule, fax_found_spawn, is the header's own. */
@@ -46,26 +64,43 @@ bool fax_found_glass_there(void) { return glass_there; }
 
 /* Save files: the file in play's fields, a small key-value list. */
 static FaxSaveListener save_listener;
-static struct { char key[32], value[96]; } fields[16];
+static struct {
+    char key[32], value[96];
+} fields[16];
 static unsigned field_count;
 static bool file_in_play = true;
-bool fax_save_listen(FaxSaveListener listener) { save_listener = listener; return true; }
+bool fax_save_listen(FaxSaveListener listener) {
+    save_listener = listener;
+    return true;
+}
 static int field_at(const char *key) {
-    for (unsigned i = 0; i < field_count; ++i) if (!strcmp(fields[i].key, key)) return (int)i;
+    for (unsigned i = 0; i < field_count; ++i)
+        if (!strcmp(fields[i].key, key)) return (int)i;
     return -1;
 }
-const char *fax_save_get(const char *key) { int i = field_at(key); return file_in_play && i >= 0 ? fields[i].value : NULL; }
+const char *fax_save_get(const char *key) {
+    int i = field_at(key);
+    return file_in_play && i >= 0 ? fields[i].value : NULL;
+}
 bool fax_save_set(const char *key, const char *value) {
     if (!file_in_play) return false;
     int i = field_at(key);
-    if (!value) { if (i >= 0) fields[i] = fields[--field_count]; return true; }
+    if (!value) {
+        if (i >= 0) fields[i] = fields[--field_count];
+        return true;
+    }
     CHECK(strlen(value) < 96 && fax_save_value_ok(value));
-    if (i < 0) { CHECK(field_count < 16); i = (int)field_count++; snprintf(fields[i].key, 32, "%s", key); }
+    if (i < 0) {
+        CHECK(field_count < 16);
+        i = (int)field_count++;
+        snprintf(fields[i].key, 32, "%s", key);
+    }
     snprintf(fields[i].value, 96, "%s", value);
     return true;
 }
 bool fax_save_value_ok(const char *value) {
-    for (const char *c = value; *c; ++c) if (*c < 0x20 || *c > 0x7E) return false;
+    for (const char *c = value; *c; ++c)
+        if (*c < 0x20 || *c > 0x7E) return false;
     return strlen(value) <= 95;
 }
 
@@ -81,14 +116,22 @@ size_t cyc_mod_copy_cart_payload(uint8_t *out, size_t capacity) {
 enum { L = FAX_MAP_LEFT, R = FAX_MAP_RIGHT, U = FAX_MAP_UP, D = FAX_MAP_DOWN };
 static const unsigned counts[8] = { 9, 64, 83, 14, 10, 40, 32, 20 };
 static uint8_t links[8][83][4];
-static struct { uint8_t screen, block, index, start, to, palette, key; } doors[8][48];
+static struct {
+    uint8_t screen, block, index, start, to, palette, key;
+} doors[8][48];
 static unsigned door_counts[8];
-static struct { uint8_t from, area, to, start, palette; } edges[8][8];
+static struct {
+    uint8_t from, area, to, start, palette;
+} edges[8][8];
 static unsigned edge_counts[8];
-typedef struct { uint8_t from, to, start; } Climb;
+typedef struct {
+    uint8_t from, to, start;
+} Climb;
 static Climb climbs[4];
 static unsigned climb_count;
-typedef struct { uint8_t area, screen, entity, block; } Sprite;
+typedef struct {
+    uint8_t area, screen, entity, block;
+} Sprite;
 static Sprite sprites[32];
 static unsigned sprite_count;
 static void sprite(unsigned a, unsigned screen, unsigned entity, unsigned block) {
@@ -98,23 +141,34 @@ static void sprite(unsigned a, unsigned screen, unsigned entity, unsigned block)
 static void link1(unsigned a, unsigned s, unsigned d, unsigned t) { links[a][s][d] = (uint8_t)t; }
 static void link2(unsigned a, unsigned s, unsigned d, unsigned t) {
     static const unsigned back[4] = { R, L, D, U };
-    links[a][s][d] = (uint8_t)t; links[a][t][back[d]] = (uint8_t)s;
+    links[a][s][d] = (uint8_t)t;
+    links[a][t][back[d]] = (uint8_t)s;
 }
 static void door(unsigned a, unsigned screen, unsigned block, unsigned index, unsigned start, unsigned to,
                  unsigned palette) {
     unsigned i = door_counts[a]++;
-    doors[a][i].screen = (uint8_t)screen; doors[a][i].block = (uint8_t)block; doors[a][i].index = (uint8_t)index;
-    doors[a][i].start = (uint8_t)start; doors[a][i].to = (uint8_t)to; doors[a][i].palette = (uint8_t)palette;
+    doors[a][i].screen = (uint8_t)screen;
+    doors[a][i].block = (uint8_t)block;
+    doors[a][i].index = (uint8_t)index;
+    doors[a][i].start = (uint8_t)start;
+    doors[a][i].to = (uint8_t)to;
+    doors[a][i].palette = (uint8_t)palette;
 }
 static void edge(unsigned a, unsigned from, unsigned area, unsigned to, unsigned start) {
     unsigned i = edge_counts[a]++;
-    edges[a][i].from = (uint8_t)from; edges[a][i].area = (uint8_t)area; edges[a][i].to = (uint8_t)to;
-    edges[a][i].start = (uint8_t)start; edges[a][i].palette = 0x1B;
+    edges[a][i].from = (uint8_t)from;
+    edges[a][i].area = (uint8_t)area;
+    edges[a][i].to = (uint8_t)to;
+    edges[a][i].start = (uint8_t)start;
+    edges[a][i].palette = 0x1B;
 }
 static uint8_t *b3(unsigned addr) { return payload + 3 * 0x4000 + (addr - 0x8000); }
 static uint8_t *b15(unsigned addr) { return payload + 15 * 0x4000 + (addr - 0xC000); }
 static uint8_t *b11(unsigned addr) { return payload + 11 * 0x4000 + (addr - 0x8000); }
-static void put16(uint8_t *p, unsigned v) { p[0] = (uint8_t)v; p[1] = (uint8_t)(v >> 8); }
+static void put16(uint8_t *p, unsigned v) {
+    p[0] = (uint8_t)v;
+    p[1] = (uint8_t)(v >> 8);
+}
 
 /* Bank 3 as the original lays it out: AREAS_TABLE_PTR, AREA_TABLES, then per
  * area its five offsets, its scroll data and right after it its door
@@ -131,15 +185,22 @@ static void build(void) {
         at += 10;
         unsigned scroll = at, locations = scroll + 4 * counts[a];
         unsigned dests = locations + 4 * door_counts[a] + 1;
-        put16(b3(data + 4), scroll - 0x8000); put16(b3(data + 6), locations - 0x8000); put16(b3(data + 8), dests - 0x8000);
+        put16(b3(data + 4), scroll - 0x8000);
+        put16(b3(data + 6), locations - 0x8000);
+        put16(b3(data + 8), dests - 0x8000);
         for (unsigned s = 0; s < counts[a]; ++s) memcpy(b3(scroll + 4 * s), links[a][s], 4);
         for (unsigned i = 0; i < door_counts[a]; ++i) {
             uint8_t *p = b3(locations + 4 * i);
-            p[0] = doors[a][i].screen; p[1] = doors[a][i].block; p[2] = doors[a][i].index; p[3] = doors[a][i].start;
+            p[0] = doors[a][i].screen;
+            p[1] = doors[a][i].block;
+            p[2] = doors[a][i].index;
+            p[3] = doors[a][i].start;
             if (doors[a][i].index < 0xFE) {
                 unsigned k = a == FAX_MAP_TOWNS ? doors[a][i].index - 0x20u : doors[a][i].index;
                 uint8_t *dst = b3(dests + 4 * k);
-                dst[0] = doors[a][i].to; dst[1] = doors[a][i].palette; dst[2] = 0;
+                dst[0] = doors[a][i].to;
+                dst[1] = doors[a][i].palette;
+                dst[2] = 0;
             }
         }
         *b3(locations + 4 * door_counts[a]) = 0xFF;
@@ -150,7 +211,10 @@ static void build(void) {
         put16(b15(0xEA9C + 2 * a), list);
         for (unsigned i = 0; i < edge_counts[a]; ++i, list += 5) {
             uint8_t *p = b15(list);
-            p[0] = edges[a][i].from; p[1] = edges[a][i].area; p[2] = edges[a][i].to; p[3] = edges[a][i].start;
+            p[0] = edges[a][i].from;
+            p[1] = edges[a][i].area;
+            p[2] = edges[a][i].to;
+            p[3] = edges[a][i].start;
             p[4] = edges[a][i].palette;
         }
         *b15(list++) = 0xFF;
@@ -160,7 +224,10 @@ static void build(void) {
     *b15(0xF400) = 0xFF;
     for (unsigned i = 0; i < climb_count; ++i) {
         uint8_t *p = b15(0xF410 + 4 * i);
-        p[0] = climbs[i].from; p[1] = climbs[i].to; p[2] = climbs[i].start; p[3] = 0x06;
+        p[0] = climbs[i].from;
+        p[1] = climbs[i].to;
+        p[2] = climbs[i].start;
+        p[3] = 0x06;
     }
     *b15(0xF410 + 4 * climb_count) = 0xFF;
     /* Bank 11: AREA_SPRITE_ADDRESSES, a word a screen (a building's by its number), and each screen's list:
@@ -171,14 +238,19 @@ static void build(void) {
         unsigned n = a == FAX_MAP_BUILDINGS ? 0x40 : counts[a], table = at11;
         put16(b11(0x8210 + 2 * a), table);
         at11 += 2 * n;
-        if (a == FAX_MAP_ZENIS) { put16(b11(table), 0xFF00); continue; }
+        if (a == FAX_MAP_ZENIS) {
+            put16(b11(table), 0xFF00);
+            continue;
+        }
         for (unsigned screen = 0; screen < n; ++screen) {
             put16(b11(table + 2 * screen), at11);
             for (unsigned i = 0; i < sprite_count; ++i)
                 if (sprites[i].area == a && sprites[i].screen == screen) {
-                    *b11(at11++) = sprites[i].entity; *b11(at11++) = sprites[i].block;
+                    *b11(at11++) = sprites[i].entity;
+                    *b11(at11++) = sprites[i].block;
                 }
-            *b11(at11++) = 0xFF; *b11(at11++) = 0xFF;
+            *b11(at11++) = 0xFF;
+            *b11(at11++) = 0xFF;
         }
     }
 }
@@ -187,29 +259,36 @@ static void build(void) {
 enum { TOOL_SHOP_05 = 0x05, APOLUNE_TEMPLE = 0x0B };
 static void world(void) {
     memset(links, 0xFF, sizeof links);
-    memset(door_counts, 0, sizeof door_counts); memset(edge_counts, 0, sizeof edge_counts); climb_count = 0;
+    memset(door_counts, 0, sizeof door_counts);
+    memset(edge_counts, 0, sizeof edge_counts);
+    climb_count = 0;
     /* Eolis: 03 02 01 left to right; the gate (screen 0) has a door to 01 and nothing leads to it; 04-08
      * lead nowhere and nothing leads to them. */
-    link2(FAX_MAP_EOLIS, 1, L, 2); link2(FAX_MAP_EOLIS, 2, L, 3);
+    link2(FAX_MAP_EOLIS, 1, L, 2);
+    link2(FAX_MAP_EOLIS, 2, L, 3);
     door(FAX_MAP_EOLIS, 0, 0x9C, 0x00, 0x99, 1, 0);
-    door(FAX_MAP_EOLIS, 2, 0x95, 0x22, 0x00, 0x02, FAX_MAP_TEMPLE);   /* Eolis's temple */
+    door(FAX_MAP_EOLIS, 2, 0x95, 0x22, 0x00, 0x02, FAX_MAP_TEMPLE); /* Eolis's temple */
     /* The Trunk: 00 01, Apolune (towns 00 01) off 01's right edge and back to 08's left, 08 09; 09 climbs
      * to 16, beside 17. A door on 00 to the tower (0D 0E) and back, and a tool shop; a door on 08 to the
      * spring (3E 3F) in the same zone. 01 links up to 20, one way only. 21 links to 01, one way, and
      * nothing leads to it. 09 has a door to another region. */
-    link2(FAX_MAP_TRUNK, 0x00, R, 0x01); link2(FAX_MAP_TRUNK, 0x08, R, 0x09); link2(FAX_MAP_TRUNK, 0x16, R, 0x17);
-    link2(FAX_MAP_TRUNK, 0x0D, R, 0x0E); link2(FAX_MAP_TRUNK, 0x3E, R, 0x3F);
-    link1(FAX_MAP_TRUNK, 0x01, U, 0x20); link1(FAX_MAP_TRUNK, 0x21, L, 0x01);
+    link2(FAX_MAP_TRUNK, 0x00, R, 0x01);
+    link2(FAX_MAP_TRUNK, 0x08, R, 0x09);
+    link2(FAX_MAP_TRUNK, 0x16, R, 0x17);
+    link2(FAX_MAP_TRUNK, 0x0D, R, 0x0E);
+    link2(FAX_MAP_TRUNK, 0x3E, R, 0x3F);
+    link1(FAX_MAP_TRUNK, 0x01, U, 0x20);
+    link1(FAX_MAP_TRUNK, 0x21, L, 0x01);
     door(FAX_MAP_TRUNK, 0x00, 0xA9, 0x00, 0x91, 0x0D, 0x07);
     door(FAX_MAP_TRUNK, 0x00, 0x95, 0x20, 0x9E, TOOL_SHOP_05, FAX_MAP_TOOL_SHOP);
     door(FAX_MAP_TRUNK, 0x0D, 0x90, 0x01, 0xA9, 0x00, 0x06);
     door(FAX_MAP_TRUNK, 0x08, 0x9D, 0x02, 0x92, 0x3E, 0x07);
     door(FAX_MAP_TRUNK, 0x09, 0x9C, 0xFF, 0x9E, 0, 0);
-    climbs[climb_count++] = (Climb){ 0x09, 0x16, 0xB3 };   /* starts low on 16: it is above */
+    climbs[climb_count++] = (Climb){ 0x09, 0x16, 0xB3 }; /* starts low on 16: it is above */
     climbs[climb_count++] = (Climb){ 0x16, 0x09, 0x2D };
     link2(FAX_MAP_TOWNS, 0x00, R, 0x01);
-    edge(FAX_MAP_TRUNK, 0x00, FAX_MAP_TOWNS, 0x03, 0x92);   /* the original's dead first entry: no way back */
-    edge(FAX_MAP_TRUNK, 0x01, FAX_MAP_TOWNS, 0x00, 0x92);   /* starts at the town's left: it is to the right */
+    edge(FAX_MAP_TRUNK, 0x00, FAX_MAP_TOWNS, 0x03, 0x92); /* the original's dead first entry: no way back */
+    edge(FAX_MAP_TRUNK, 0x01, FAX_MAP_TOWNS, 0x00, 0x92); /* starts at the town's left: it is to the right */
     edge(FAX_MAP_TRUNK, 0x08, FAX_MAP_TOWNS, 0x01, 0x9E);
     edge(FAX_MAP_TOWNS, 0x00, FAX_MAP_TRUNK, 0x01, 0x7E);
     edge(FAX_MAP_TOWNS, 0x01, FAX_MAP_TRUNK, 0x08, 0x71);
@@ -217,11 +296,18 @@ static void world(void) {
     /* The Mist: 00 01 02 in a row, 01 up to 03, 03 06 07 09 along the top and 09 down to 0A, which takes
      * the second cell Mascon (towns 04 05) would need off 02's right edge: the town goes elsewhere whole.
      * Its other side leads to 0B. 00 down to the loop 0C 0D 0E 0F, whose 0F up to 10 lands on 0C's cell. */
-    link2(FAX_MAP_MIST, 0x00, R, 0x01); link2(FAX_MAP_MIST, 0x01, R, 0x02); link2(FAX_MAP_MIST, 0x01, U, 0x03);
-    link2(FAX_MAP_MIST, 0x03, R, 0x06); link2(FAX_MAP_MIST, 0x06, R, 0x07); link2(FAX_MAP_MIST, 0x07, R, 0x09);
+    link2(FAX_MAP_MIST, 0x00, R, 0x01);
+    link2(FAX_MAP_MIST, 0x01, R, 0x02);
+    link2(FAX_MAP_MIST, 0x01, U, 0x03);
+    link2(FAX_MAP_MIST, 0x03, R, 0x06);
+    link2(FAX_MAP_MIST, 0x06, R, 0x07);
+    link2(FAX_MAP_MIST, 0x07, R, 0x09);
     link2(FAX_MAP_MIST, 0x09, D, 0x0A);
-    link2(FAX_MAP_MIST, 0x00, D, 0x0C); link2(FAX_MAP_MIST, 0x0C, R, 0x0D); link2(FAX_MAP_MIST, 0x0D, D, 0x0E);
-    link2(FAX_MAP_MIST, 0x0E, L, 0x0F); link2(FAX_MAP_MIST, 0x0F, U, 0x10);
+    link2(FAX_MAP_MIST, 0x00, D, 0x0C);
+    link2(FAX_MAP_MIST, 0x0C, R, 0x0D);
+    link2(FAX_MAP_MIST, 0x0D, D, 0x0E);
+    link2(FAX_MAP_MIST, 0x0E, L, 0x0F);
+    link2(FAX_MAP_MIST, 0x0F, U, 0x10);
     door(FAX_MAP_MIST, 0x00, 0x9A, 0xFE, 0x11, 0, 0);
     link2(FAX_MAP_TOWNS, 0x04, R, 0x05);
     edge(FAX_MAP_MIST, 0x02, FAX_MAP_TOWNS, 0x04, 0x91);
@@ -230,17 +316,17 @@ static void world(void) {
     edge(FAX_MAP_TOWNS, 0x05, FAX_MAP_MIST, 0x0B, 0x71);
     /* The items: one of each kind, a building's, and sprites that are none (a Zozura, Poison). */
     sprite_count = 0;
-    sprite(FAX_MAP_TRUNK, 0x00, 0x47, 0xA9);           /* a Zozura */
-    sprite(FAX_MAP_TRUNK, 0x00, 0x4D, 0x3B);           /* item 0: an Elixir, at every visit */
-    sprite(FAX_MAP_TRUNK, 0x01, 0x55, 0x41);           /* item 1: Wing Boots, one visit in four */
-    sprite(FAX_MAP_TRUNK, 0x08, 0x4C, 0x31);           /* Poison */
-    sprite(FAX_MAP_TRUNK, 0x08, 0x4A, 0x9E);           /* item 2: the Pendant, until SpecialItems has it */
-    sprite(FAX_MAP_TRUNK, 0x09, 0x48, 0x52);           /* item 3: a Glove, unless one is running */
-    sprite(FAX_MAP_MIST, 0x00, 0x58, 0xBD);            /* item 4: the Battle Suit, until he holds it */
-    sprite(FAX_MAP_MIST, 0x30, 0x56, 0x32);            /* item 5: the Hour Glass, one visit in four */
-    sprite(FAX_MAP_BUILDINGS, TOOL_SHOP_05, 0x5D, 0x98);   /* item 5: a Red Potion in the shop on Trunk 00 */
-    sprite(FAX_MAP_BUILDINGS, 0x30, 0x4D, 0x98);       /* in a building no door leads to: none */
-    sprite(FAX_MAP_ZENIS, 0x00, 0x4D, 0x98);           /* in an area that loads nothing: none */
+    sprite(FAX_MAP_TRUNK, 0x00, 0x47, 0xA9);             /* a Zozura */
+    sprite(FAX_MAP_TRUNK, 0x00, 0x4D, 0x3B);             /* item 0: an Elixir, at every visit */
+    sprite(FAX_MAP_TRUNK, 0x01, 0x55, 0x41);             /* item 1: Wing Boots, one visit in four */
+    sprite(FAX_MAP_TRUNK, 0x08, 0x4C, 0x31);             /* Poison */
+    sprite(FAX_MAP_TRUNK, 0x08, 0x4A, 0x9E);             /* item 2: the Pendant, until SpecialItems has it */
+    sprite(FAX_MAP_TRUNK, 0x09, 0x48, 0x52);             /* item 3: a Glove, unless one is running */
+    sprite(FAX_MAP_MIST, 0x00, 0x58, 0xBD);              /* item 4: the Battle Suit, until he holds it */
+    sprite(FAX_MAP_MIST, 0x30, 0x56, 0x32);              /* item 5: the Hour Glass, one visit in four */
+    sprite(FAX_MAP_BUILDINGS, TOOL_SHOP_05, 0x5D, 0x98); /* item 5: a Red Potion in the shop on Trunk 00 */
+    sprite(FAX_MAP_BUILDINGS, 0x30, 0x4D, 0x98);         /* in a building no door leads to: none */
+    sprite(FAX_MAP_ZENIS, 0x00, 0x4D, 0x98);             /* in an area that loads nothing: none */
     build();
 }
 
@@ -295,13 +381,14 @@ static void test_layout(void) {
 
     /* The Trunk: Apolune whole between 01 and 08, the climb up from 09, the spring below the door to it,
      * the one-way link's screen set down apart, not above 01; 21 left off. */
-    CHECK(got.edge_count == 4);   /* the dead entry is not an edge */
+    CHECK(got.edge_count == 4); /* the dead entry is not an edge */
     CHECK(beside(1, 0x00, 1, 0, 1, 0x01) && beside(1, 0x01, 1, 0, 3, 0x00) && beside(3, 0x00, 1, 0, 3, 0x01));
     CHECK(beside(3, 0x01, 1, 0, 1, 0x08) && beside(1, 0x08, 1, 0, 1, 0x09));
     CHECK(beside(1, 0x09, 0, -1, 1, 0x16) && beside(1, 0x16, 1, 0, 1, 0x17));
     CHECK(beside(1, 0x08, 0, 2, 1, 0x3E) && beside(1, 0x3E, 1, 0, 1, 0x3F));
     CHECK(apart(FAX_MAP_PAGE_TRUNK, (const uint8_t[][2]){ { 1, 0x3E }, { 1, 0x3F } }, 2));
-    CHECK(cell(1, 0x20) && !beside(1, 0x01, 0, -1, 1, 0x20) && apart(FAX_MAP_PAGE_TRUNK, (const uint8_t[][2]){ { 1, 0x20 } }, 1));
+    CHECK(cell(1, 0x20) && !beside(1, 0x01, 0, -1, 1, 0x20) &&
+          apart(FAX_MAP_PAGE_TRUNK, (const uint8_t[][2]){ { 1, 0x20 } }, 1));
     CHECK(beside(1, 0x01, 0, 2, 1, 0x20));
     CHECK(!cell(1, 0x21));
     CHECK(fax_map_page_of(&got, FAX_MAP_TOWNS, 0x00) == FAX_MAP_PAGE_TRUNK);
@@ -311,7 +398,7 @@ static void test_layout(void) {
     CHECK(fax_map_joined(&got, 1, 0x09, U, &ta, &ts) && ta == 1 && ts == 0x16);
     CHECK(fax_map_joined(&got, 1, 0x16, D, &ta, &ts) && ta == 1 && ts == 0x09);
     CHECK(fax_map_joined(&got, 3, 0x00, L, &ta, &ts) && ta == 1 && ts == 0x01);
-    CHECK(!fax_map_joined(&got, 1, 0x01, U, &ta, &ts));   /* one way */
+    CHECK(!fax_map_joined(&got, 1, 0x01, U, &ta, &ts)); /* one way */
 
     /* The tower is its own page, behind the door. */
     const FaxMapPage *tower = &got.page[FAX_MAP_PAGE_TOWER_OF_TRUNK];
@@ -339,7 +426,8 @@ static void test_layout(void) {
     CHECK(trunk->door_count == 5 && trunk->door[0].kind == FAX_MAP_DOOR_SCREEN && trunk->door[0].to == 0x0D);
     CHECK(trunk->door[1].kind == FAX_MAP_DOOR_BUILDING && trunk->door[1].palette == FAX_MAP_TOOL_SHOP);
     CHECK(trunk->door[4].kind == FAX_MAP_DOOR_REGION);
-    CHECK(got.area[FAX_MAP_TOWNS].door[0].to == APOLUNE_TEMPLE && got.area[FAX_MAP_TOWNS].door[0].palette == FAX_MAP_TEMPLE);
+    CHECK(got.area[FAX_MAP_TOWNS].door[0].to == APOLUNE_TEMPLE &&
+          got.area[FAX_MAP_TOWNS].door[0].palette == FAX_MAP_TEMPLE);
 
     /* The items: in the lists' order, a building's marked at its door. */
     CHECK(got.item_count == 7);
@@ -354,7 +442,8 @@ static void test_layout(void) {
     };
     for (unsigned i = 0; i < 7; ++i) {
         const FaxMapItem *it = &got.item[i];
-        CHECK(it->area == want[i][0] && it->screen == want[i][1] && it->entity == want[i][2] && it->block == want[i][3]);
+        CHECK(it->area == want[i][0] && it->screen == want[i][1] && it->entity == want[i][2] &&
+              it->block == want[i][3]);
         CHECK(it->kind == want[i][4] && it->map_area == want[i][5] && it->map_screen == want[i][6] &&
               it->map_block == want[i][7]);
     }
@@ -365,7 +454,7 @@ static void test_layout(void) {
     CHECK(!fax_map_decode(&got, payload, sizeof payload));
     world();
     memset(b11(0xA000), 0x47, 40);
-    put16(b11(0x8220), 0xA000);   /* Eolis's first screen: 20 Zozuras and on */
+    put16(b11(0x8220), 0xA000); /* Eolis's first screen: 20 Zozuras and on */
     CHECK(!fax_map_decode(&got, payload, sizeof payload));
     world();
     /* Door locations not right after the scroll data. */
@@ -378,20 +467,27 @@ static void test_layout(void) {
 
 /* ---- the feature ---- */
 
-#define AREA 0x24
+#define AREA   0x24
 #define SCREEN 0x63
 static void settle_at(unsigned area, unsigned screen) {
-    ram[SCREEN_READY_STATE] = 0; ram[INTERRUPT_HANDLERS_ON] = 1; ram[SCREEN_SCROLL_DIRECTION] = 0xFF;
-    ram[AREA] = (uint8_t)area; ram[SCREEN] = (uint8_t)screen;
+    ram[SCREEN_READY_STATE] = 0;
+    ram[INTERRUPT_HANDLERS_ON] = 1;
+    ram[SCREEN_SCROLL_DIRECTION] = 0xFF;
+    ram[AREA] = (uint8_t)area;
+    ram[SCREEN] = (uint8_t)screen;
     fax_map_frame_end();
 }
 static void inside(unsigned building, unsigned from_area, unsigned from_screen) {
-    ram[AREA_SAVED_AREA] = (uint8_t)from_area; ram[AREA_SAVED_SCREEN] = (uint8_t)from_screen;
+    ram[AREA_SAVED_AREA] = (uint8_t)from_area;
+    ram[AREA_SAVED_SCREEN] = (uint8_t)from_screen;
     settle_at(FAX_MAP_BUILDINGS, building);
 }
 static bool seen(unsigned area, unsigned screen) { return bit(v.seen[area], screen); }
 static bool used(unsigned area, unsigned door) { return bit(v.doors[area], door); }
-static const char *field_value(const char *key) { int i = field_at(key); return i >= 0 ? fields[i].value : NULL; }
+static const char *field_value(const char *key) {
+    int i = field_at(key);
+    return i >= 0 ? fields[i].value : NULL;
+}
 
 /* GameLoop_CheckPauseGame, as the game runs it: LDA Joy1_ChangedButtonMask, AND #$10, then the BEQ. */
 static void and_start(void) {
@@ -436,49 +532,61 @@ static void test_visits(void) {
     gurus = 1;
     save_listener(FAX_SAVE_NEW_GAME);
     CHECK(decoded);
-    ram[GAME_PAUSED_STATE] = 0; ram[PLAYER_IS_DEAD] = 0;
+    ram[GAME_PAUSED_STATE] = 0;
+    ram[PLAYER_IS_DEAD] = 0;
 
     /* A new game: the gate, then Eolis through its door. Eolis's Guru counts from the start in Guru
      * travel, but not on the map until the hero goes in. */
     settle_at(0, 0);
     CHECK(seen(0, 0) && !seen(0, 1) && !seen(0, 2));
     settle_at(0, 1);
-    CHECK(seen(0, 1) && used(0, 0));   /* 00 to 01 is no link: the gate's door */
+    CHECK(seen(0, 1) && used(0, 0)); /* 00 to 01 is no link: the gate's door */
     CHECK(!used(0, 1));
     /* Not settled, or paused: nothing. */
-    ram[SCREEN_SCROLL_DIRECTION] = 0; ram[SCREEN] = 2; fax_map_frame_end();
+    ram[SCREEN_SCROLL_DIRECTION] = 0;
+    ram[SCREEN] = 2;
+    fax_map_frame_end();
     CHECK(!seen(0, 2));
-    ram[SCREEN_SCROLL_DIRECTION] = 0xFF; ram[GAME_PAUSED_STATE] = 1; fax_map_frame_end();
+    ram[SCREEN_SCROLL_DIRECTION] = 0xFF;
+    ram[GAME_PAUSED_STATE] = 1;
+    fax_map_frame_end();
     CHECK(!seen(0, 2));
     ram[GAME_PAUSED_STATE] = 0;
     settle_at(0, 2);
-    CHECK(seen(0, 2) && !used(0, 1));   /* walked: no door */
+    CHECK(seen(0, 2) && !used(0, 1)); /* walked: no door */
     inside(0x02, 0, 2);
-    CHECK(used(0, 1));                  /* Eolis's temple */
+    CHECK(used(0, 1)); /* Eolis's temple */
 
     /* The Trunk: a shop, then out and on; across Apolune; the climb up and down; the tower's door both
      * ways; another region's door. */
-    settle_at(1, 0);   /* (from a building: no move) */
+    settle_at(1, 0); /* (from a building: no move) */
     CHECK(seen(1, 0) && !used(1, 0) && !used(1, 4));
     inside(TOOL_SHOP_05, 1, 0);
     CHECK(used(1, 1));
-    settle_at(1, 0); settle_at(1, 1); settle_at(3, 0); settle_at(3, 1); settle_at(1, 8); settle_at(1, 9);
+    settle_at(1, 0);
+    settle_at(1, 1);
+    settle_at(3, 0);
+    settle_at(3, 1);
+    settle_at(1, 8);
+    settle_at(1, 9);
     CHECK(seen(3, 0) && seen(3, 1) && seen(1, 8) && seen(1, 9) && !used(1, 4));
     settle_at(1, 0x16);
     CHECK(bit(v.up[1], 0x09) && !bit(v.down[1], 0x16));
     settle_at(1, 0x09);
     CHECK(bit(v.down[1], 0x16));
-    settle_at(2, 0x00);                 /* through 09's door into the Mist, arriving at 00's */
+    settle_at(2, 0x00); /* through 09's door into the Mist, arriving at 00's */
     CHECK(used(1, 4) && used(2, 0));
     settle_at(2, 0x0C);
     CHECK(bit(v.down[2], 0x00) && !bit(v.up[2], 0x0C));
-    settle_at(1, 0x00); settle_at(1, 0x0D);
-    CHECK(used(1, 0) && used(1, 2));    /* the door in, and the one he arrives at, back */
+    settle_at(1, 0x00);
+    settle_at(1, 0x0D);
+    CHECK(used(1, 0) && used(1, 2)); /* the door in, and the one he arrives at, back */
     CHECK(!used(1, 3));
 
     /* A death, and zone respawn brings him back to 0C's neighbour above: no ladder for that. */
     settle_at(2, 0x0C);
-    ram[PLAYER_IS_DEAD] = 1; fax_map_frame_end();
+    ram[PLAYER_IS_DEAD] = 1;
+    fax_map_frame_end();
     ram[PLAYER_IS_DEAD] = 0;
     memset(v.down[2], 0, sizeof v.down[2]);
     settle_at(2, 0x00);
@@ -490,15 +598,17 @@ static void test_visits(void) {
     inside(APOLUNE_TEMPLE, 3, 1);
     CHECK(used(3, 0));
     /* Guru travel's Gurus count as their temples; Eolis's never does by itself. */
-    memset(v.doors[3], 0, sizeof v.doors[3]); v.seen[3][0] = 0;
-    gurus = 1 | 2; fax_map_frame_end();
+    memset(v.doors[3], 0, sizeof v.doors[3]);
+    v.seen[3][0] = 0;
+    gurus = 1 | 2;
+    fax_map_frame_end();
     CHECK(used(3, 0) && seen(3, 1) && !seen(3, 0));
     gurus = 1;
 
     /* The file: one field an area, written when the file is; read back when it continues. */
     field_count = 0;
     save_listener(FAX_SAVE_WRITING);
-    CHECK(!field_value("map.buildings") && !field_value("map.branch"));   /* nothing there */
+    CHECK(!field_value("map.buildings") && !field_value("map.branch")); /* nothing there */
     /* Eolis: screens 0-2 (9 screens: 3 digits, the first for 0-3), no ladders, both doors. */
     CHECK(field_value("map.eolis") && !strcmp(field_value("map.eolis"), "700 000 000 3"));
     /* The Trunk: screens 0, 1, 8, 9, $0D, $16; up from 9, down from $16; doors 0, 1, 2 and 4. */
@@ -534,15 +644,16 @@ static void test_visits(void) {
     rec[0] = 9;
     CHECK(!model_state_set("faxanadu.map", rec, n));
     CHECK(!model_state_set("faxanadu.map", rec, n - 1));
-    CHECK(model_state_set("faxanadu.map", rec, 0) && !seen(0, 1));   /* saved without the map */
+    CHECK(model_state_set("faxanadu.map", rec, 0) && !seen(0, 1)); /* saved without the map */
 }
 
 /* The items: where each shows, the pickups, the file. */
 static void no_sprites(void) { memset(&ram[SPRITE_ENTITIES], 0xFF, SLOTS); }
 /* Player_HandleTouchItem as the game runs it: the item in slot `slot`, then the slot emptied. */
 static void touch(unsigned slot, unsigned entity) {
-    ram[SPRITE_ENTITIES + slot] = (uint8_t)entity; cpu.x = (uint8_t)slot;
-    CHECK(SITES(PLAYER_HANDLE_TOUCH_ITEM, "faxanadu.map.touch"));   /* it only observes */
+    ram[SPRITE_ENTITIES + slot] = (uint8_t)entity;
+    cpu.x = (uint8_t)slot;
+    CHECK(SITES(PLAYER_HANDLE_TOUCH_ITEM, "faxanadu.map.touch")); /* it only observes */
     ram[SPRITE_ENTITIES + slot] = 0xFF;
 }
 enum { ELIXIR, BOOTS, PENDANT, GLOVE, SUIT, GLASS, SHOP_POTION };
@@ -554,26 +665,29 @@ static void test_items(void) {
     CHECK(hook_enabled("faxanadu.map.touch"));
     gurus = 1;
     save_listener(FAX_SAVE_NEW_GAME);
-    ram[GAME_PAUSED_STATE] = 0; ram[PLAYER_IS_DEAD] = 0;
+    ram[GAME_PAUSED_STATE] = 0;
+    ram[PLAYER_IS_DEAD] = 0;
     ram[DURATION_GLOVE] = ram[DURATION_OINTMENT] = 0xFF;
     ram[SPECIAL_ITEMS] = ram[QUESTS] = 0;
-    ram[SELECTED_ARMOR] = 0; ram[NUMBER_OF_ARMORS] = 0; memset(&ram[ARMOR_INVENTORY], 0, 4);
+    ram[SELECTED_ARMOR] = 0;
+    ram[NUMBER_OF_ARMORS] = 0;
+    memset(&ram[ARMOR_INVENTORY], 0, 4);
     no_sprites();
-    for (unsigned i = 0; i < atlas.item_count; ++i) CHECK(!item_shown(i));   /* nothing seen */
+    for (unsigned i = 0; i < atlas.item_count; ++i) CHECK(!item_shown(i)); /* nothing seen */
 
     /* On its screen an item is there if its sprite is; elsewhere, by its kind. */
     settle_at(1, 0x00);
     CHECK(!item_shown(ELIXIR));
     ram[SPRITE_ENTITIES + 2] = 0x4D;
-    CHECK(item_shown(ELIXIR) && !item_shown(SHOP_POTION));   /* the shop's: one visit in four, and he is not in */
+    CHECK(item_shown(ELIXIR) && !item_shown(SHOP_POTION)); /* the shop's: one visit in four, and he is not in */
     no_sprites();
     settle_at(1, 0x01);
-    CHECK(item_shown(ELIXIR));                               /* at every visit */
+    CHECK(item_shown(ELIXIR)); /* at every visit */
     CHECK(!item_shown(BOOTS));
     ram[SPRITE_ENTITIES + 5] = 0x55;
-    CHECK(item_shown(BOOTS));                                /* this visit's */
+    CHECK(item_shown(BOOTS)); /* this visit's */
     settle_at(1, 0x00);
-    CHECK(!item_shown(BOOTS) && seen(1, 0x01));              /* another's: not counted on */
+    CHECK(!item_shown(BOOTS) && seen(1, 0x01)); /* another's: not counted on */
 
     /* Touched, the Elixir is taken and stays gone; the Wing Boots come back when they do. */
     touch(3, 0x4D);
@@ -585,11 +699,14 @@ static void test_items(void) {
     ram[SPRITE_ENTITIES + 5] = 0x55;
     CHECK(item_shown(BOOTS));
     no_sprites();
-    touch(1, 0x02);                                          /* a coin: no item of the list */
-    touch(1, 0x4D);                                          /* an Elixir, but not this screen's */
+    touch(1, 0x02); /* a coin: no item of the list */
+    touch(1, 0x4D); /* an Elixir, but not this screen's */
     CHECK(pickups == 2);
-    isolated_scope = true; settle_at(1, 0x00); touch(3, 0x4D); isolated_scope = false;
-    CHECK(pickups == 2);                                     /* in an isolated machine: nothing */
+    isolated_scope = true;
+    settle_at(1, 0x00);
+    touch(3, 0x4D);
+    isolated_scope = false;
+    CHECK(pickups == 2); /* in an isolated machine: nothing */
 
     /* The Pendant: until SpecialItems has it. On its screen, its sprite (hidden till the boss is gone). */
     settle_at(1, 0x08);
@@ -597,24 +714,27 @@ static void test_items(void) {
     CHECK(item_shown(PENDANT));
     no_sprites();
     settle_at(1, 0x09);
-    CHECK(item_shown(PENDANT) && !item_shown(GLOVE));        /* the Glove: here, and no sprite */
+    CHECK(item_shown(PENDANT) && !item_shown(GLOVE)); /* the Glove: here, and no sprite */
     ram[SPECIAL_ITEMS] = 0x02;
     CHECK(!item_shown(PENDANT));
     ram[SPECIAL_ITEMS] = 0;
     settle_at(1, 0x08);
     CHECK(item_shown(GLOVE));
-    ram[DURATION_GLOVE] = 10;                                /* a Glove running: it is not there */
+    ram[DURATION_GLOVE] = 10; /* a Glove running: it is not there */
     CHECK(!item_shown(GLOVE));
     ram[DURATION_GLOVE] = 0xFF;
     CHECK(item_shown(GLOVE));
 
     /* The Battle Suit: until he wears it, or it is in his list's first entries. */
-    settle_at(2, 0x00); settle_at(2, 0x01);
+    settle_at(2, 0x00);
+    settle_at(2, 0x01);
     CHECK(item_shown(SUIT));
     ram[SELECTED_ARMOR] = 3;
     CHECK(!item_shown(SUIT));
-    ram[SELECTED_ARMOR] = 0; ram[ARMOR_INVENTORY + 1] = 3; ram[NUMBER_OF_ARMORS] = 1;
-    CHECK(item_shown(SUIT));                                 /* past the count: a stale byte */
+    ram[SELECTED_ARMOR] = 0;
+    ram[ARMOR_INVENTORY + 1] = 3;
+    ram[NUMBER_OF_ARMORS] = 1;
+    CHECK(item_shown(SUIT)); /* past the count: a stale byte */
     ram[NUMBER_OF_ARMORS] = 2;
     CHECK(!item_shown(SUIT));
     ram[NUMBER_OF_ARMORS] = 0;
@@ -633,18 +753,18 @@ static void test_items(void) {
      * on its screen as its sprite says. Off, they are the original's. */
     settle_at(2, 0x30);
     settle_at(1, 0x01);
-    CHECK(!item_shown(GLASS));                               /* off: one visit in four, he is not there */
+    CHECK(!item_shown(GLASS)); /* off: one visit in four, he is not there */
     found_on = true;
     glass_there = true;
-    CHECK(item_shown(GLASS));                                /* there until taken, he is not there */
+    CHECK(item_shown(GLASS)); /* there until taken, he is not there */
     ram[SPRITE_ENTITIES + 5] = 0x55;
-    CHECK(!item_shown(BOOTS));                               /* gone, even with a sprite */
+    CHECK(!item_shown(BOOTS)); /* gone, even with a sprite */
     no_sprites();
     glass_there = false;
-    CHECK(!item_shown(GLASS));                               /* taken */
+    CHECK(!item_shown(GLASS)); /* taken */
     glass_there = true;
     settle_at(2, 0x30);
-    CHECK(!item_shown(GLASS));                               /* he is there: its sprite is not */
+    CHECK(!item_shown(GLASS)); /* he is there: its sprite is not */
     ram[SPRITE_ENTITIES + 7] = 0x56;
     CHECK(item_shown(GLASS));
     no_sprites();
@@ -659,17 +779,17 @@ static void test_items(void) {
     CHECK(!bit(picked, ELIXIR));
     save_listener(FAX_SAVE_CONTINUED);
     CHECK(bit(picked, ELIXIR) && picked[0] == 1);
-    snprintf(fields[field_at("map.items")].value, 96, "fff");   /* past the items: dropped */
+    snprintf(fields[field_at("map.items")].value, 96, "fff"); /* past the items: dropped */
     save_listener(FAX_SAVE_CONTINUED);
     CHECK(picked[0] == 0x7F && picked[1] == 0);
-    snprintf(fields[field_at("map.items")].value, 96, "1z");    /* damaged: every item shows again */
+    snprintf(fields[field_at("map.items")].value, 96, "1z"); /* damaged: every item shows again */
     save_listener(FAX_SAVE_CONTINUED);
     CHECK(!bit(picked, ELIXIR) && seen(1, 0x01));
     save_listener(FAX_SAVE_WRITING);
-    CHECK(!field_value("map.items"));                        /* none taken: no field */
+    CHECK(!field_value("map.items")); /* none taken: no field */
     set_bit(picked, ELIXIR);
     save_listener(FAX_SAVE_CONTINUED);
-    CHECK(!bit(picked, ELIXIR));                              /* a file from before the items: none picked */
+    CHECK(!bit(picked, ELIXIR)); /* a file from before the items: none picked */
 
     /* Save states keep what is taken; a record from before the items loads with none. */
     set_bit(picked, ELIXIR);
@@ -696,22 +816,28 @@ static void test_map(void) {
     for (unsigned i = 0; i < 64; ++i) hw_palette_argb[i] = 0x010000u * i + 0x0101u;
     gurus = 1;
     save_listener(FAX_SAVE_NEW_GAME);
-    ram[GAME_PAUSED_STATE] = 0; ram[PLAYER_IS_DEAD] = 0;
-    ram[DURATION_GLOVE] = ram[DURATION_OINTMENT] = 0xFF; ram[SPECIAL_ITEMS] = ram[QUESTS] = 0;
+    ram[GAME_PAUSED_STATE] = 0;
+    ram[PLAYER_IS_DEAD] = 0;
+    ram[DURATION_GLOVE] = ram[DURATION_OINTMENT] = 0xFF;
+    ram[SPECIAL_ITEMS] = ram[QUESTS] = 0;
     no_sprites();
-    settle_at(1, 0x00); settle_at(1, 0x01); settle_at(3, 0x00); settle_at(3, 0x01); settle_at(1, 0x08);
+    settle_at(1, 0x00);
+    settle_at(1, 0x01);
+    settle_at(3, 0x00);
+    settle_at(3, 0x01);
+    settle_at(1, 0x08);
     settle_at(1, 0x09);
-    settle_at(1, 0x16);   /* the climb */
+    settle_at(1, 0x16); /* the climb */
     settle_at(1, 0x17);
-    settle_at(0, 0x01);   /* (a door would take him here; it does not matter) */
+    settle_at(0, 0x01); /* (a door would take him here; it does not matter) */
     settle_at(1, 0x00);
 
     /* Not pressed: the check does what the game's does. */
     ram[JOY1_CHANGED] = 0;
     CHECK(!check() && !open);
     ram[JOY1_CHANGED] = BUTTON_START;
-    CHECK(check() && !open);   /* Start pauses as ever, */
-    CHECK(!music_tick() && ram[GAME_PAUSED_STATE] == 0x81 && !music_tick());   /* the music muted and held */
+    CHECK(check() && !open);                                                 /* Start pauses as ever, */
+    CHECK(!music_tick() && ram[GAME_PAUSED_STATE] == 0x81 && !music_tick()); /* the music muted and held */
     CHECK(pause_frame(BUTTON_START) && !open);
     CHECK(music_tick());
 
@@ -720,25 +846,28 @@ static void test_map(void) {
     CHECK(want && !open);
     ram[JOY1_CHANGED] = 0;
     CHECK(check() && open && shown == FAX_MAP_PAGE_TRUNK && cpu.a == BUTTON_START);
-    CHECK(!pause_frame(0) && open);           /* it stays paused */
+    CHECK(!pause_frame(0) && open); /* it stays paused */
     /* The music plays on, every frame, and the game stays paused as the pause left it. */
     CHECK(music_tick() && music_tick() && ram[GAME_PAUSED_STATE] == 1 && open);
     CHECK(!pause_frame(BUTTON_LEFT | 0x80) && shown == FAX_MAP_PAGE_EOLIS && turns == 1);
-    CHECK(!pause_frame(BUTTON_LEFT) && shown == FAX_MAP_PAGE_TRUNK);   /* round: only two pages seen */
+    CHECK(!pause_frame(BUTTON_LEFT) && shown == FAX_MAP_PAGE_TRUNK); /* round: only two pages seen */
     CHECK(!pause_frame(BUTTON_RIGHT) && shown == FAX_MAP_PAGE_EOLIS);
     CHECK(!pause_frame(BUTTON_RIGHT) && shown == FAX_MAP_PAGE_TRUNK);
-    CHECK(pause_frame(BUTTON_B) && !open && closes == 1);   /* B closes it and unpauses */
+    CHECK(pause_frame(BUTTON_B) && !open && closes == 1); /* B closes it and unpauses */
     CHECK(!ram[GAME_PAUSED_STATE] && music_tick());
     /* The quest log, open through the same pause: the music plays on there too, and not once it closes. */
-    ram[GAME_PAUSED_STATE] = 1; quests_open = true;
+    ram[GAME_PAUSED_STATE] = 1;
+    quests_open = true;
     CHECK(music_tick() && ram[GAME_PAUSED_STATE] == 1);
     quests_open = false;
     CHECK(!music_tick() && ram[GAME_PAUSED_STATE] == 0x81);
     ram[GAME_PAUSED_STATE] = 0;
-    press(); CHECK(check() && open);
-    CHECK(pause_frame(BUTTON_START) && !open);              /* so does Start */
-    press(); CHECK(check() && open);
-    press();                                                /* and Map */
+    press();
+    CHECK(check() && open);
+    CHECK(pause_frame(BUTTON_START) && !open); /* so does Start */
+    press();
+    CHECK(check() && open);
+    press(); /* and Map */
     CHECK(closing && pause_frame(0) && !open);
 
     /* The Select menu's MAP row: as a press, not counted as one, the check
@@ -759,7 +888,10 @@ static void test_map(void) {
     unsigned kept_last = last.valid, kept_gurus = gurus_merged;
     forget();
     CHECK(pages_seen() == 0 && !fax_map_request() && !want && requests == 1);
-    v = seen; memcpy(picked, kept, sizeof kept); last.valid = (uint8_t)kept_last; gurus_merged = (uint8_t)kept_gurus;
+    v = seen;
+    memcpy(picked, kept, sizeof kept);
+    last.valid = (uint8_t)kept_last;
+    gurus_merged = (uint8_t)kept_gurus;
     CHECK(pages_seen() == 2);
 
     /* A press waits for the check a while (the menu, a conversation or a scroll may hold it), then goes. */
@@ -769,29 +901,41 @@ static void test_map(void) {
     for (unsigned i = 0; i < 4; ++i) fax_map_frame_end();
     CHECK(!want && !check());
     /* In the game's own pause, it opens there, and the held music plays on; closing it unpauses. */
-    ram[JOY1_CHANGED] = BUTTON_START; CHECK(check() && !open);
+    ram[JOY1_CHANGED] = BUTTON_START;
+    CHECK(check() && !open);
     CHECK(!pause_frame(0) && !music_tick() && ram[GAME_PAUSED_STATE] == 0x81);
     press();
     CHECK(!pause_frame(0) && open && music_tick());
     CHECK(pause_frame(BUTTON_B) && !open);
     /* Inside an isolated machine nothing happens. */
-    press(); isolated_scope = true; ram[JOY1_CHANGED] = 0;
+    press();
+    isolated_scope = true;
+    ram[JOY1_CHANGED] = 0;
     CHECK(!check() && !open);
     isolated_scope = false;
     CHECK(check() && open);
-    isolated_scope = true; CHECK(!music_tick()); isolated_scope = false;
+    isolated_scope = true;
+    CHECK(!music_tick());
+    isolated_scope = false;
     ram[GAME_PAUSED_STATE] = 1;
     /* In a building: the page of the screen he went in from. */
     CHECK(pause_frame(BUTTON_B));
-    ram[AREA] = FAX_MAP_BUILDINGS; ram[SCREEN] = TOOL_SHOP_05; ram[AREA_SAVED_AREA] = 0; ram[AREA_SAVED_SCREEN] = 1;
-    press(); CHECK(check() && open && shown == FAX_MAP_PAGE_EOLIS);
+    ram[AREA] = FAX_MAP_BUILDINGS;
+    ram[SCREEN] = TOOL_SHOP_05;
+    ram[AREA_SAVED_AREA] = 0;
+    ram[AREA_SAVED_SCREEN] = 1;
+    press();
+    CHECK(check() && open && shown == FAX_MAP_PAGE_EOLIS);
     CHECK(pause_frame(BUTTON_B));
-    ram[AREA] = 1; ram[SCREEN] = 0;
+    ram[AREA] = 1;
+    ram[SCREEN] = 0;
 
     /* The picture, after a visit to the shop on 00. */
-    inside(TOOL_SHOP_05, 1, 0); settle_at(1, 0);
+    inside(TOOL_SHOP_05, 1, 0);
+    settle_at(1, 0);
     CHECK(used(1, 1));
-    press(); CHECK(check() && open && shown == FAX_MAP_PAGE_TRUNK);
+    press();
+    CHECK(check() && open && shown == FAX_MAP_PAGE_TRUNK);
     age = 0;
     int w = 256, h = 240;
     const uint32_t *pic = fax_map_present(native, &w, &h);
@@ -829,10 +973,11 @@ static void test_map(void) {
     int ex = b0->x + 1 + 11 * (b0->w - 5) / 15, ey = b0->y + 1 + 3 * (b0->h - 5) / 12;
     CHECK(px_at(pic, ex, ey) != nes(ITEM) && dot_count == 2 && dots[0].item == PENDANT && dots[1].item == GLOVE);
     CHECK(dots[0].x == px8 && dots[0].y == py8);
-    ram[SPRITE_ENTITIES + 4] = 0x4D;                         /* there after all */
+    ram[SPRITE_ENTITIES + 4] = 0x4D; /* there after all */
     pic = fax_map_present(native, &w, &h);
     CHECK(px_at(pic, ex, ey) == nes(ITEM) && dot_count == 3);
-    ram[SPRITE_ENTITIES + 4] = 0xFF; ram[DURATION_GLOVE] = 3;
+    ram[SPRITE_ENTITIES + 4] = 0xFF;
+    ram[DURATION_GLOVE] = 3;
     pic = fax_map_present(native, &w, &h);
     CHECK(px_at(pic, px9, py9) == nes(ROOM) && dot_count == 1);
     ram[DURATION_GLOVE] = 0xFF;
@@ -847,14 +992,16 @@ static void test_map(void) {
     /* A wider picture (Seamless): the native map, centered, black around it. */
     static uint32_t wide[400 * 240];
     int x1 = b1->x, y1 = b1->y;
-    w = 400; h = 240;
+    w = 400;
+    h = 240;
     const uint32_t *wpic = fax_map_present(wide, &w, &h);
     b1 = box(1, 1);
     CHECK(w == 400 && b1->x == x1 + 72 && b1->y == y1);
     CHECK(wpic[(b1->y + 5) * 400 + b1->x + 5] == nes(ROOM) && wpic[0] == nes(BLACK) && wpic[399] == nes(BLACK));
     CHECK(pause_frame(BUTTON_B));
-    w = 256; h = 240;
-    CHECK(fax_map_present(native, &w, &h) == native);   /* closed: the picture as it was */
+    w = 256;
+    h = 240;
+    CHECK(fax_map_present(native, &w, &h) == native); /* closed: the picture as it was */
     /* Off: nothing at all. */
     model_reset();
     CHECK(!enabled && !hook_enabled("faxanadu.map.check") && fax_map_present(native, &w, &h) == native);
@@ -875,7 +1022,7 @@ static void test_rom(const char *path) {
     for (unsigned p = 0; p < FAX_MAP_PAGES; ++p) {
         const FaxMapPage *page = &got.page[p];
         CHECK(page->count > 0 && distinct(page));
-        CHECK(page->w * 10 <= GRID_W && page->h * 8 <= GRID_H);   /* 10 x 8 a screen or larger */
+        CHECK(page->w * 10 <= GRID_W && page->h * 8 <= GRID_H); /* 10 x 8 a screen or larger */
         printf("  %-20s %2u screens, %2u x %u\n", page->name, page->count, page->w, page->h);
     }
     for (unsigned a = 0; a < FAX_MAP_AREAS; ++a)
@@ -883,12 +1030,13 @@ static void test_rom(const char *path) {
             if (led[a][s] && a != FAX_MAP_BUILDINGS) CHECK(cell(a, s));
     /* What the doc says. */
     CHECK(got.edge_count == 12);
-    CHECK(beside(1, 0x07, 1, 0, 3, 0x00) && beside(3, 0x01, 1, 0, 1, 0x08));   /* Apolune */
-    CHECK(beside(1, 0x0C, 0, -1, 1, 0x16));                                     /* the climb */
-    CHECK(beside(1, 0x1A, 1, 0, 3, 0x02) && beside(3, 0x03, 1, 0, 1, 0x1D));   /* Forepaw */
-    CHECK(fax_map_page_of(&got, 3, 0x0C) == FAX_MAP_PAGE_DARTMOOR && fax_map_page_of(&got, 3, 0x09) == FAX_MAP_PAGE_BRANCH);
-    CHECK(!cell(1, 0x1B) && !cell(2, 0x0A) && !cell(2, 0x23) && !cell(6, 0x0F));   /* linked to nothing */
-    CHECK(cell(0, 0) && cell(7, 0));                                            /* the gate; the last boss */
+    CHECK(beside(1, 0x07, 1, 0, 3, 0x00) && beside(3, 0x01, 1, 0, 1, 0x08)); /* Apolune */
+    CHECK(beside(1, 0x0C, 0, -1, 1, 0x16));                                  /* the climb */
+    CHECK(beside(1, 0x1A, 1, 0, 3, 0x02) && beside(3, 0x03, 1, 0, 1, 0x1D)); /* Forepaw */
+    CHECK(fax_map_page_of(&got, 3, 0x0C) == FAX_MAP_PAGE_DARTMOOR &&
+          fax_map_page_of(&got, 3, 0x09) == FAX_MAP_PAGE_BRANCH);
+    CHECK(!cell(1, 0x1B) && !cell(2, 0x0A) && !cell(2, 0x23) && !cell(6, 0x0F)); /* linked to nothing */
+    CHECK(cell(0, 0) && cell(7, 0));                                             /* the gate; the last boss */
     CHECK(got.page[FAX_MAP_PAGE_TOWER_OF_FORTRESS].w == 6 && got.page[FAX_MAP_PAGE_TOWER_OF_FORTRESS].h == 4);
     unsigned temples = 0;
     for (unsigned a = 0; a < FAX_MAP_AREAS; ++a)
@@ -911,7 +1059,7 @@ static void test_rom(const char *path) {
     const FaxMapItem *elixir = &got.item[11], *boots = &got.item[22], *slayer = &got.item[39];
     CHECK(elixir->area == 1 && elixir->screen == 0x3C && elixir->entity == 0x4D && elixir->block == 0x32);
     CHECK(boots->area == 4 && boots->screen == 0x1F && boots->entity == 0x55 && boots->map_area == 2 &&
-          boots->map_screen == 0x06 && boots->map_block == 0x9B);   /* the Wing Boots in a house off Mist $06 */
+          boots->map_screen == 0x06 && boots->map_block == 0x9B); /* the Wing Boots in a house off Mist $06 */
     CHECK(slayer->area == 6 && slayer->screen == 0x15 && slayer->entity == 0x5A && slayer->kind == FAX_MAP_ITEM_ONCE);
     /* Found items: the 7 Wing Boots and 4 of the 5 Hour Glasses that show one visit in four are gone; the
      * Hour Glass on Mist $30 ($32) is kept, and every other item is as it is. */
@@ -919,8 +1067,14 @@ static void test_rom(const char *path) {
     for (unsigned i = 0; i < got.item_count; ++i) {
         const FaxMapItem *it = &got.item[i];
         FaxFoundSpawn rule = fax_found_spawn(it->area, it->screen, it->entity);
-        if (rule == FAX_FOUND_GONE) { ++gone; CHECK(it->kind == FAX_MAP_ITEM_SOMETIMES); }
-        if (rule == FAX_FOUND_FIXED) { ++fixed; CHECK(it->area == 2 && it->block == 0x32 && it->entity == 0x56); }
+        if (rule == FAX_FOUND_GONE) {
+            ++gone;
+            CHECK(it->kind == FAX_MAP_ITEM_SOMETIMES);
+        }
+        if (rule == FAX_FOUND_FIXED) {
+            ++fixed;
+            CHECK(it->area == 2 && it->block == 0x32 && it->entity == 0x56);
+        }
     }
     CHECK(gone == 11 && fixed == 1);
     /* Every area's field fits a save file's value with everything seen and used. */
@@ -934,7 +1088,7 @@ static void test_rom(const char *path) {
     char text[FAX_SAVE_VALUE];
     memset(picked, 0xFF, sizeof picked);
     put_set(text, picked, got.item_count);
-    CHECK(strlen(text) == 11);   /* map.items, every item taken */
+    CHECK(strlen(text) == 11); /* map.items, every item taken */
     memset(picked, 0, sizeof picked);
 }
 

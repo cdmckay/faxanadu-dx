@@ -33,14 +33,14 @@
 /* Player_HitSpriteWithWeapon's @_checkGlove: LDA DurationGlove,
  * BMI @_updateSpriteHP. Y holds Player_CurWeapon (LDY at $886C) */
 #define CHECK_GLOVE      0x8884u
-#define WEAPON_STRENGTHS 0xB7A5u   /* Hand Dagger 4, Long Sword 8, Giant Blade 12, Dragon Slayer 16 */
+#define WEAPON_STRENGTHS 0xB7A5u /* Hand Dagger 4, Long Sword 8, Giant Blade 12, Dragon Slayer 16 */
 /* RAM */
-#define TEMP_00          0x0000u   /* Temp_00: the hit's damage, so far */
+#define TEMP_00          0x0000u /* Temp_00: the hit's damage, so far */
 #define SPECIAL_ITEMS    0x042Cu
 #define BIT_PENDANT      0x02u
 
 static bool enabled;
-static unsigned hits;                                    /* hits whose damage the hook set */
+static unsigned hits; /* hits whose damage the hook set */
 static uint8_t last_weapon = 0xFF, last_strength, last_damage;
 static bool last_pendant;
 
@@ -64,7 +64,7 @@ static int check_glove_hook(uint16_t addr) {
     uint8_t special = cyc_mod_peek(SPECIAL_ITEMS);
     uint8_t damage = pendant_damage(strength, special);
     cyc_mod_poke(TEMP_00, damage);
-    if (cyc_mod_isolated()) return 0;   /* Seamless's neighbouring rooms: the same rule, not counted */
+    if (cyc_mod_isolated()) return 0; /* Seamless's neighbouring rooms: the same rule, not counted */
     ++hits;
     last_weapon = regs.y;
     last_strength = strength;
@@ -92,10 +92,9 @@ static void activate(void) {
 static void pendant_state(int id, const char *line) {
     (void)line;
     char fields[160];
-    snprintf(fields, sizeof fields,
-             "\"enabled\":%s,\"hits\":%u,\"weapon\":%u,\"strength\":%u,\"pendant\":%s,\"damage\":%u",
-             enabled ? "true" : "false", hits, last_weapon, last_strength, last_pendant ? "true" : "false",
-             last_damage);
+    snprintf(
+        fields, sizeof fields, "\"enabled\":%s,\"hits\":%u,\"weapon\":%u,\"strength\":%u,\"pendant\":%s,\"damage\":%u",
+        enabled ? "true" : "false", hits, last_weapon, last_strength, last_pendant ? "true" : "false", last_damage);
     cyc_tcp_ok(id, fields);
 }
 void fax_pendant_tcp_setup(void) {
@@ -109,5 +108,6 @@ void fax_pendant_tcp_setup(void) {}
 NES_MOD_CONSTRUCTOR(register_pendant) {
     if (!nes_mod_register_function_entry_plugin(hook_id, CHECK_GLOVE, check_glove_hook) ||
         !nes_mod_register_reset_callback(deactivate) ||
-        !nes_mod_register_activation_plugin("faxanadu.pendant-fix", activate)) abort();
+        !nes_mod_register_activation_plugin("faxanadu.pendant-fix", activate))
+        abort();
 }

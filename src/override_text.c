@@ -31,7 +31,7 @@ static uint8_t *runner_get_prg_bank_rw(int bank) {
 }
 static void text_ram_store(uint16_t addr, uint8_t value) { cyc_mod_poke(addr, value); }
 #else
-#include "nes_runtime.h"   /* g_ram[], runner_get_prg_bank_rw() */
+#include "nes_runtime.h" /* g_ram[], runner_get_prg_bank_rw() */
 static void text_ram_store(uint16_t addr, uint8_t value) { g_ram[addr] = value; }
 #endif
 
@@ -42,55 +42,55 @@ static void text_ram_store(uint16_t addr, uint8_t value) { g_ram[addr] = value; 
 /* ---- Platform stat() -------------------------------------------------- */
 
 #ifdef _WIN32
-#  include <sys/stat.h>
-   typedef struct _stat StatBuf;
-#  define stat_call(path, buf) _stat((path), (buf))
+#include <sys/stat.h>
+typedef struct _stat StatBuf;
+#define stat_call(path, buf) _stat((path), (buf))
 #else
-#  include <sys/stat.h>
-   typedef struct stat StatBuf;
-#  define stat_call(path, buf) stat((path), (buf))
+#include <sys/stat.h>
+typedef struct stat StatBuf;
+#define stat_call(path, buf) stat((path), (buf))
 #endif
 
 /* ---- NES DMA buffer constants ----------------------------------------- */
 
-#define BUF_BASE      0x500u  /* base address of PPU DMA buffer in RAM     */
-#define BUF_RD_PTR    0x1Fu   /* RAM address: current read  pointer (1 byte) */
-#define BUF_WR_PTR    0x20u   /* RAM address: current write pointer (1 byte) */
-#define SPACE_TILE    0x20u   /* tile byte for ASCII space — used as pad     */
-#define SPECIAL_FIRST 0xFAu   /* first special-command opcode (skip)        */
+#define BUF_BASE      0x500u /* base address of PPU DMA buffer in RAM     */
+#define BUF_RD_PTR    0x1Fu  /* RAM address: current read  pointer (1 byte) */
+#define BUF_WR_PTR    0x20u  /* RAM address: current write pointer (1 byte) */
+#define SPACE_TILE    0x20u  /* tile byte for ASCII space — used as pad     */
+#define SPECIAL_FIRST 0xFAu  /* first special-command opcode (skip)        */
 
 /* ---- $0500 buffer scanner table --------------------------------------- */
 
 typedef struct {
     uint8_t pattern[TEXT_OVERRIDE_MAX_LEN];
     uint8_t replacement[TEXT_OVERRIDE_MAX_LEN];
-    int     pattern_len;
-    int     replacement_len;
-    int     hit_count;
+    int pattern_len;
+    int replacement_len;
+    int hit_count;
 } TextOverride;
 
 static TextOverride s_overrides[TEXT_OVERRIDE_MAX];
-static int          s_num_overrides = 0;
+static int s_num_overrides = 0;
 
 /* ---- Encoding registry ----------------------------------------------- */
 
 typedef struct {
-    char           name[32];
+    char name[32];
     tile_encode_fn fn;
-    uint8_t        terminator;
+    uint8_t terminator;
 } EncEntry;
 
 static EncEntry s_encodings[TEXT_OVERRIDE_MAX_ENC];
-static int      s_num_encodings = 0;
+static int s_num_encodings = 0;
 
 /* ---- JSON hot-reload state -------------------------------------------- */
 
-static char   s_json_path[512];
-static int    s_json_path_set = 0;
-static time_t s_json_mtime    = 0;
-static int    s_reload_ticks  = 0;
+static char s_json_path[512];
+static int s_json_path_set = 0;
+static time_t s_json_mtime = 0;
+static int s_reload_ticks = 0;
 
-#define RELOAD_INTERVAL 60  /* check mtime every 60 calls (~1 s at 60 fps) */
+#define RELOAD_INTERVAL 60 /* check mtime every 60 calls (~1 s at 60 fps) */
 
 /* ======================================================================
  * Lifecycle
@@ -100,16 +100,15 @@ void text_override_init(void) {
     s_num_overrides = 0;
     s_num_encodings = 0;
     s_json_path_set = 0;
-    s_json_mtime    = 0;
-    s_reload_ticks  = 0;
+    s_json_mtime = 0;
+    s_reload_ticks = 0;
 }
 
 /* ======================================================================
  * Encoding registry
  * ====================================================================== */
 
-void text_override_register_encoding(const char *name, tile_encode_fn fn,
-                                      uint8_t terminator) {
+void text_override_register_encoding(const char *name, tile_encode_fn fn, uint8_t terminator) {
     if (s_num_encodings >= TEXT_OVERRIDE_MAX_ENC) {
         fprintf(stderr, "[TextOverride] encoding table full\n");
         return;
@@ -123,8 +122,7 @@ void text_override_register_encoding(const char *name, tile_encode_fn fn,
 
 tile_encode_fn text_override_find_encoding(const char *name) {
     for (int i = 0; i < s_num_encodings; i++) {
-        if (strcmp(s_encodings[i].name, name) == 0)
-            return s_encodings[i].fn;
+        if (strcmp(s_encodings[i].name, name) == 0) return s_encodings[i].fn;
     }
     return NULL;
 }
@@ -132,8 +130,7 @@ tile_encode_fn text_override_find_encoding(const char *name) {
 /* Look up a registered encoding's terminator byte. Returns 0x00 if not found. */
 static uint8_t find_terminator(const char *name) {
     for (int i = 0; i < s_num_encodings; i++) {
-        if (strcmp(s_encodings[i].name, name) == 0)
-            return s_encodings[i].terminator;
+        if (strcmp(s_encodings[i].name, name) == 0) return s_encodings[i].terminator;
     }
     return 0x00;
 }
@@ -142,16 +139,14 @@ static uint8_t find_terminator(const char *name) {
  * PRG ROM patching (raw)
  * ====================================================================== */
 
-void text_override_patch_prg(int bank, uint16_t prg_addr,
-                              const uint8_t *replacement, int rep_len) {
+void text_override_patch_prg(int bank, uint16_t prg_addr, const uint8_t *replacement, int rep_len) {
     uint8_t *bank_ptr = runner_get_prg_bank_rw(bank);
     if (!bank_ptr) {
         fprintf(stderr, "[TextOverride] patch_prg: bank %d not available\n", bank);
         return;
     }
     if (prg_addr < 0x8000 || prg_addr > 0xBFFF) {
-        fprintf(stderr, "[TextOverride] patch_prg: addr $%04X out of $8000-$BFFF range\n",
-                prg_addr);
+        fprintf(stderr, "[TextOverride] patch_prg: addr $%04X out of $8000-$BFFF range\n", prg_addr);
         return;
     }
     int offset = prg_addr - 0x8000;
@@ -164,12 +159,11 @@ void text_override_patch_prg(int bank, uint16_t prg_addr,
 
 /* ---- ASCII + encoder, fixed original_len ------------------------------ */
 
-int text_override_patch_prg_ascii(int bank, uint16_t prg_addr,
-                                   const char *replacement,
-                                   tile_encode_fn encode, uint8_t terminator) {
+int text_override_patch_prg_ascii(int bank, uint16_t prg_addr, const char *replacement, tile_encode_fn encode,
+                                  uint8_t terminator) {
     /* +1 for the terminator byte we always append. */
     uint8_t buf[TEXT_OVERRIDE_MAX_LEN + 1];
-    int     rep_len = 0;
+    int rep_len = 0;
 
     for (const char *p = replacement; *p; p++) {
         if (rep_len >= TEXT_OVERRIDE_MAX_LEN) return 0;
@@ -179,7 +173,7 @@ int text_override_patch_prg_ascii(int bank, uint16_t prg_addr,
     }
     if (rep_len == 0) return 0;
 
-    buf[rep_len] = terminator;  /* encoding-specific terminator */
+    buf[rep_len] = terminator; /* encoding-specific terminator */
 
 #ifndef NDEBUG
     /* Warn if replacement is longer than what was stored at this address.
@@ -188,16 +182,16 @@ int text_override_patch_prg_ascii(int bank, uint16_t prg_addr,
     {
         uint8_t *bank_ptr = runner_get_prg_bank_rw(bank);
         if (bank_ptr && prg_addr >= 0x8000 && prg_addr <= 0xBFFF) {
-            int offset   = prg_addr - 0x8000;
-            int src_len  = 0;
-            while (src_len < TEXT_OVERRIDE_MAX_LEN && offset + src_len < 0x4000
-                   && bank_ptr[offset + src_len] != terminator)
+            int offset = prg_addr - 0x8000;
+            int src_len = 0;
+            while (src_len < TEXT_OVERRIDE_MAX_LEN && offset + src_len < 0x4000 &&
+                   bank_ptr[offset + src_len] != terminator)
                 src_len++;
             if (rep_len > src_len)
                 fprintf(stderr,
-                    "[TextOverride] WARN bank%d $%04X: replacement len %d > source len %d"
-                    " -- adjacent data will be overwritten\n",
-                    bank, prg_addr, rep_len, src_len);
+                        "[TextOverride] WARN bank%d $%04X: replacement len %d > source len %d"
+                        " -- adjacent data will be overwritten\n",
+                        bank, prg_addr, rep_len, src_len);
         }
     }
 #endif
@@ -208,9 +202,8 @@ int text_override_patch_prg_ascii(int bank, uint16_t prg_addr,
 
 /* ---- ASCII + encoder, _auto variant (addr only, no length needed) ----- */
 
-int text_override_patch_prg_auto(int bank, uint16_t prg_addr,
-                                  const char *replacement,
-                                  tile_encode_fn encode, uint8_t terminator) {
+int text_override_patch_prg_auto(int bank, uint16_t prg_addr, const char *replacement, tile_encode_fn encode,
+                                 uint8_t terminator) {
     return text_override_patch_prg_ascii(bank, prg_addr, replacement, encode, terminator);
 }
 
@@ -235,13 +228,26 @@ static const char *json_read_str(const char *p, char *buf, int buflen) {
             if (!*p) return NULL;
             char ch = *p;
             switch (ch) {
-                case 'n':  ch = '\n'; break;
-                case 'r':  ch = '\r'; break;
-                case 't':  ch = '\t'; break;
-                case '\\': ch = '\\'; break;
-                case '"':  ch = '"';  break;
-                case '/':  ch = '/';  break;
-                default:   break;  /* emit as-is for unknown escapes */
+            case 'n':
+                ch = '\n';
+                break;
+            case 'r':
+                ch = '\r';
+                break;
+            case 't':
+                ch = '\t';
+                break;
+            case '\\':
+                ch = '\\';
+                break;
+            case '"':
+                ch = '"';
+                break;
+            case '/':
+                ch = '/';
+                break;
+            default:
+                break; /* emit as-is for unknown escapes */
             }
             if (i < buflen - 1) buf[i++] = ch;
             p++;
@@ -325,16 +331,22 @@ static int json_parse_entry(const char **pp) {
     if (*p != '{') return 0;
     p++;
 
-    int      bank     = -1;
-    uint16_t addr     = 0;
-    char     enc_name[32]                    = {0};
-    char     replacement[TEXT_OVERRIDE_MAX_LEN] = {0};
-    int      have_bank = 0, have_addr = 0, have_enc = 0, have_rep = 0;
+    int bank = -1;
+    uint16_t addr = 0;
+    char enc_name[32] = { 0 };
+    char replacement[TEXT_OVERRIDE_MAX_LEN] = { 0 };
+    int have_bank = 0, have_addr = 0, have_enc = 0, have_rep = 0;
 
     while (1) {
         p = json_skip_ws(p);
-        if (*p == '}') { p++; break; }
-        if (*p == ',') { p++; continue; }
+        if (*p == '}') {
+            p++;
+            break;
+        }
+        if (*p == ',') {
+            p++;
+            continue;
+        }
         if (*p == '\0') return 0;
 
         char key[32];
@@ -350,7 +362,7 @@ static int json_parse_entry(const char **pp) {
             if (!p) return 0;
             have_bank = 1;
         } else if (strcmp(key, "addr") == 0) {
-            char hex[8] = {0};
+            char hex[8] = { 0 };
             p = json_read_str(p, hex, sizeof(hex));
             if (!p) return 0;
             addr = (uint16_t)strtoul(hex, NULL, 16);
@@ -377,8 +389,7 @@ static int json_parse_entry(const char **pp) {
     }
 
     /* Empty replacement = skip this entry (template placeholder). */
-    if (replacement[0] == '\0')
-        return 0;
+    if (replacement[0] == '\0') return 0;
 
     tile_encode_fn encode = text_override_find_encoding(enc_name);
     if (!encode) {
@@ -388,8 +399,7 @@ static int json_parse_entry(const char **pp) {
     uint8_t terminator = find_terminator(enc_name);
 
     if (!text_override_patch_prg_auto(bank, addr, replacement, encode, terminator)) {
-        fprintf(stderr, "[TextOverride] JSON: patch failed bank%d $%04X \"%s\"\n",
-                bank, addr, replacement);
+        fprintf(stderr, "[TextOverride] JSON: patch failed bank%d $%04X \"%s\"\n", bank, addr, replacement);
         return 0;
     }
 
@@ -417,7 +427,10 @@ int text_override_load_json(const char *path) {
     }
 
     char *buf = (char *)malloc((size_t)fsize + 1);
-    if (!buf) { fclose(f); return -1; }
+    if (!buf) {
+        fclose(f);
+        return -1;
+    }
     size_t nread = fread(buf, 1, (size_t)fsize, f);
     fclose(f);
     buf[nread] = '\0';
@@ -428,8 +441,7 @@ int text_override_load_json(const char *path) {
     s_json_path_set = 1;
 
     StatBuf st;
-    if (stat_call(path, &st) == 0)
-        s_json_mtime = st.st_mtime;
+    if (stat_call(path, &st) == 0) s_json_mtime = st.st_mtime;
 
     /* Parse: expect a top-level array. */
     const char *p = json_skip_ws(buf);
@@ -444,13 +456,15 @@ int text_override_load_json(const char *path) {
     while (1) {
         p = json_skip_ws(p);
         if (*p == ']' || *p == '\0') break;
-        if (*p == ',') { p++; continue; }
+        if (*p == ',') {
+            p++;
+            continue;
+        }
         if (*p != '{') {
             fprintf(stderr, "[TextOverride] JSON: expected '{' or ']'\n");
             break;
         }
-        if (json_parse_entry(&p))
-            count++;
+        if (json_parse_entry(&p)) count++;
     }
 
     free(buf);
@@ -479,30 +493,28 @@ void text_override_reload_if_changed(void) {
  * $0500 DMA buffer — pattern registration
  * ====================================================================== */
 
-void text_override_register(const uint8_t *pattern,     int pattern_len,
-                             const uint8_t *replacement, int replacement_len) {
+void text_override_register(const uint8_t *pattern, int pattern_len, const uint8_t *replacement, int replacement_len) {
     if (s_num_overrides >= TEXT_OVERRIDE_MAX) {
         fprintf(stderr, "[TextOverride] table full, cannot register pattern\n");
         return;
     }
-    if (pattern_len <= 0 || pattern_len > TEXT_OVERRIDE_MAX_LEN ||
-        replacement_len <= 0 || replacement_len > TEXT_OVERRIDE_MAX_LEN) {
+    if (pattern_len <= 0 || pattern_len > TEXT_OVERRIDE_MAX_LEN || replacement_len <= 0 ||
+        replacement_len > TEXT_OVERRIDE_MAX_LEN) {
         fprintf(stderr, "[TextOverride] invalid pattern/replacement length\n");
         return;
     }
     TextOverride *o = &s_overrides[s_num_overrides++];
-    memcpy(o->pattern,     pattern,     (size_t)pattern_len);
+    memcpy(o->pattern, pattern, (size_t)pattern_len);
     memcpy(o->replacement, replacement, (size_t)replacement_len);
-    o->pattern_len     = pattern_len;
+    o->pattern_len = pattern_len;
     o->replacement_len = replacement_len;
-    o->hit_count       = 0;
+    o->hit_count = 0;
 }
 
-int text_override_register_ascii(const char *original, const char *override_str,
-                                  tile_encode_fn encode) {
+int text_override_register_ascii(const char *original, const char *override_str, tile_encode_fn encode) {
     uint8_t pat[TEXT_OVERRIDE_MAX_LEN];
     uint8_t rep[TEXT_OVERRIDE_MAX_LEN];
-    int     pat_len = 0, rep_len = 0;
+    int pat_len = 0, rep_len = 0;
 
     for (const char *p = original; *p; p++) {
         if (pat_len >= TEXT_OVERRIDE_MAX_LEN) return 0;
@@ -526,9 +538,7 @@ int text_override_register_ascii(const char *original, const char *override_str,
  * $0500 DMA buffer — apply overrides
  * ====================================================================== */
 
-static inline uint8_t buf_advance(uint8_t ptr, uint8_t n) {
-    return (uint8_t)(ptr + n);
-}
+static inline uint8_t buf_advance(uint8_t ptr, uint8_t n) { return (uint8_t)(ptr + n); }
 
 /*
  * Walk every packet in the $0500 buffer between the current read and write
@@ -546,8 +556,8 @@ void text_override_apply(void) {
     uint8_t wr = g_ram[BUF_WR_PTR];
     if (rd == wr) return;
 
-    uint8_t pos      = rd;
-    int     max_iter = 256;
+    uint8_t pos = rd;
+    int max_iter = 256;
 
     while (pos != wr && max_iter-- > 0) {
         uint8_t count_raw = g_ram[BUF_BASE + pos];
@@ -566,8 +576,8 @@ void text_override_apply(void) {
         uint8_t tile_base = buf_advance(pos, 3);
 
         for (int oi = 0; oi < s_num_overrides; oi++) {
-            TextOverride *o    = &s_overrides[oi];
-            int           plen = o->pattern_len;
+            TextOverride *o = &s_overrides[oi];
+            int plen = o->pattern_len;
             if (plen > (int)count) continue;
 
             for (int t = 0; t <= (int)count - plen; t++) {
@@ -575,12 +585,11 @@ void text_override_apply(void) {
 
                 int match = 1;
                 for (int k = 0; k < plen && match; k++) {
-                    if (g_ram[BUF_BASE + buf_advance(tile_pos, (uint8_t)k)] != o->pattern[k])
-                        match = 0;
+                    if (g_ram[BUF_BASE + buf_advance(tile_pos, (uint8_t)k)] != o->pattern[k]) match = 0;
                 }
                 if (!match) continue;
 
-                int rlen  = o->replacement_len;
+                int rlen = o->replacement_len;
                 int write = (rlen < plen) ? rlen : plen;
                 for (int k = 0; k < write; k++)
                     text_ram_store(BUF_BASE + buf_advance(tile_pos, (uint8_t)k), o->replacement[k]);
@@ -611,33 +620,30 @@ void text_override_dump_buffer(tile_encode_fn encode) {
         return;
     }
 
-    uint8_t pos   = rd;
-    int     idx   = 0;
-    int     limit = 256;
+    uint8_t pos = rd;
+    int idx = 0;
+    int limit = 256;
 
     while (pos != wr && limit-- > 0) {
         uint8_t count_raw = g_ram[BUF_BASE + pos];
 
         if (count_raw >= SPECIAL_FIRST) {
-            printf("[TextOverride]   [%d] SPECIAL 0x%02x param=0x%02x,0x%02x\n",
-                   idx, count_raw,
-                   g_ram[BUF_BASE + buf_advance(pos, 1)],
-                   g_ram[BUF_BASE + buf_advance(pos, 2)]);
+            printf("[TextOverride]   [%d] SPECIAL 0x%02x param=0x%02x,0x%02x\n", idx, count_raw,
+                   g_ram[BUF_BASE + buf_advance(pos, 1)], g_ram[BUF_BASE + buf_advance(pos, 2)]);
             pos = buf_advance(pos, 3);
             idx++;
             continue;
         }
 
-        uint8_t count   = count_raw & 0x7Fu;
+        uint8_t count = count_raw & 0x7Fu;
         uint8_t addr_hi = g_ram[BUF_BASE + buf_advance(pos, 1)];
         uint8_t addr_lo = g_ram[BUF_BASE + buf_advance(pos, 2)];
 
-        printf("[TextOverride]   [%d] TILES count=%u ppu=0x%04x flags=0x%02x tiles=",
-               idx, count, ((uint16_t)addr_hi << 8) | addr_lo, count_raw & 0x80u);
+        printf("[TextOverride]   [%d] TILES count=%u ppu=0x%04x flags=0x%02x tiles=", idx, count,
+               ((uint16_t)addr_hi << 8) | addr_lo, count_raw & 0x80u);
 
         uint8_t tile_pos = buf_advance(pos, 3);
-        for (uint8_t k = 0; k < count; k++)
-            printf("%02x ", g_ram[BUF_BASE + buf_advance(tile_pos, k)]);
+        for (uint8_t k = 0; k < count; k++) printf("%02x ", g_ram[BUF_BASE + buf_advance(tile_pos, k)]);
         printf("\n");
 
         pos = buf_advance(pos, (uint8_t)(3 + count));

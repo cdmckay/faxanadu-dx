@@ -69,8 +69,7 @@ void text_override_apply(void);
  * fn:         the game-specific encoder function.
  * terminator: byte value written after encoded replacement (0x00 for null-
  *             terminated encodings like FAXANADU_1, 0xFF for FAXANADU_DIALOGUE). */
-void text_override_register_encoding(const char *name, tile_encode_fn fn,
-                                      uint8_t terminator);
+void text_override_register_encoding(const char *name, tile_encode_fn fn, uint8_t terminator);
 
 /* Look up a registered encoder by name.  Returns NULL if not found. */
 tile_encode_fn text_override_find_encoding(const char *name);
@@ -115,8 +114,7 @@ void text_override_reload_if_changed(void);
  * replacement: tile bytes to write.
  * rep_len:     number of bytes.
  * Call from game_on_init() or text_override_load_json(). */
-void text_override_patch_prg(int bank, uint16_t prg_addr,
-                              const uint8_t *replacement, int rep_len);
+void text_override_patch_prg(int bank, uint16_t prg_addr, const uint8_t *replacement, int rep_len);
 
 /* Patch from an ASCII string + encoder.
  * Encodes replacement and writes it followed by the encoding's terminator byte.
@@ -124,26 +122,22 @@ void text_override_patch_prg(int bank, uint16_t prg_addr,
  * the terminator, so extra characters render if the nametable has room.  Writing
  * past adjacent ROM data is the caller's responsibility.
  * Returns 1 on success, 0 on encode error. */
-int text_override_patch_prg_ascii(int bank, uint16_t prg_addr,
-                                   const char *replacement,
-                                   tile_encode_fn encode, uint8_t terminator);
+int text_override_patch_prg_ascii(int bank, uint16_t prg_addr, const char *replacement, tile_encode_fn encode,
+                                  uint8_t terminator);
 
 /* Identical to text_override_patch_prg_ascii — kept for JSON loader symmetry. */
-int text_override_patch_prg_auto(int bank, uint16_t prg_addr,
-                                  const char *replacement,
-                                  tile_encode_fn encode, uint8_t terminator);
+int text_override_patch_prg_auto(int bank, uint16_t prg_addr, const char *replacement, tile_encode_fn encode,
+                                 uint8_t terminator);
 
 /* =========================================================================
  * PPU DMA buffer pattern registration (for $0500 path)
  * ====================================================================== */
 
 /* Register a raw tile-byte pattern override for the $0500 buffer scanner. */
-void text_override_register(const uint8_t *pattern,     int pattern_len,
-                             const uint8_t *replacement, int replacement_len);
+void text_override_register(const uint8_t *pattern, int pattern_len, const uint8_t *replacement, int replacement_len);
 
 /* Register a buffer-scan override from ASCII strings + encoder. */
-int text_override_register_ascii(const char *original, const char *override_str,
-                                  tile_encode_fn encode);
+int text_override_register_ascii(const char *original, const char *override_str, tile_encode_fn encode);
 
 /* =========================================================================
  * Diagnostics

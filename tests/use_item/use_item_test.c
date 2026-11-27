@@ -8,12 +8,19 @@
 #include "fax_use_item.c"
 
 static unsigned checks;
-#define CHECK(test) do{++checks;if(!(test)){fprintf(stderr,"FAIL line %u: %s\n",__LINE__,#test);exit(1);}}while(0)
+#define CHECK(test)                                                                                                    \
+    do {                                                                                                               \
+        ++checks;                                                                                                      \
+        if (!(test)) {                                                                                                 \
+            fprintf(stderr, "FAIL line %u: %s\n", __LINE__, #test);                                                    \
+            exit(1);                                                                                                   \
+        }                                                                                                              \
+    } while (0)
 
 /* ---- the machine ---- */
 static uint8_t ram[0x800];
 static CycModRegs cpu = { .s = 0xFD };
-static int hook_on[4] = { -1, -1, -1, -1 };      /* each hook's enabled state, as last set */
+static int hook_on[4] = { -1, -1, -1, -1 }; /* each hook's enabled state, as last set */
 
 uint8_t cyc_mod_peek(uint16_t addr) { return addr < 0x2000 ? ram[addr & 0x7FF] : 0; }
 bool cyc_mod_poke(uint16_t addr, uint8_t value) {
@@ -32,22 +39,34 @@ int nes_mod_register_function_entry_plugin(const char *id, uint16_t addr, NESMod
 }
 int nes_mod_set_function_hook_enabled(const char *id, int on) {
     for (int i = 0; i < 4; ++i)
-        if (!strcmp(id, hook_ids[i])) { hook_on[i] = on; return 1; }
+        if (!strcmp(id, hook_ids[i])) {
+            hook_on[i] = on;
+            return 1;
+        }
     return 0;
 }
 int nes_mod_register_reset_callback(NESModActivationCallback cb) { return cb == deactivate; }
 int nes_mod_register_activation_plugin(const char *id, NESModActivationCallback cb) {
     return !strcmp(id, "faxanadu.use-item") && cb == activate;
 }
-void nes_mod_set_local_only(const char *name, int required) { (void)name; (void)required; }
+void nes_mod_set_local_only(const char *name, int required) {
+    (void)name;
+    (void)required;
+}
 
 enum { A = 0x80, B = 0x40, UP = 0x08, DOWN = 0x04, LEFT = 0x02, RIGHT = 0x01 };
-enum { JUMPING = 0x01, FALLING = 0x04, CLIMBING = 0x10, LADDER = 0x08, WINGS = 0x80 };   /* Player_Flags; Player_StatusFlag */
-#define HELD    ram[0x16]                        /* Joy1_ButtonMask */
-#define PREV    ram[0x18]                        /* Joy1_PrevButtonMask */
-#define CHANGED ram[0x19]                        /* Joy1_ChangedButtonMask */
-#define FLAGS   ram[0xA4]                        /* Player_Flags */
-#define STATUS  ram[0xA5]                        /* Player_StatusFlag */
+enum {
+    JUMPING = 0x01,
+    FALLING = 0x04,
+    CLIMBING = 0x10,
+    LADDER = 0x08,
+    WINGS = 0x80
+}; /* Player_Flags; Player_StatusFlag */
+#define HELD    ram[0x16] /* Joy1_ButtonMask */
+#define PREV    ram[0x18] /* Joy1_PrevButtonMask */
+#define CHANGED ram[0x19] /* Joy1_ChangedButtonMask */
+#define FLAGS   ram[0xA4] /* Player_Flags */
+#define STATUS  ram[0xA5] /* Player_StatusFlag */
 
 /* Input_HandleOnInterrupt, in the NMI that starts each frame. */
 static void nmi(uint8_t pad) {
@@ -60,18 +79,20 @@ static void nmi(uint8_t pad) {
  * $DB62, EndGame_MainLoop's $DC0E): true when it reaches the item's routine. */
 static bool check_use_current_item(uint16_t jsr) {
     uint16_t pushed = (uint16_t)(jsr + 2);
-    ram[0x100 | cpu.s] = (uint8_t)(pushed >> 8); cpu.s = (uint8_t)(cpu.s - 1);
-    ram[0x100 | cpu.s] = (uint8_t)pushed;        cpu.s = (uint8_t)(cpu.s - 1);
+    ram[0x100 | cpu.s] = (uint8_t)(pushed >> 8);
+    cpu.s = (uint8_t)(cpu.s - 1);
+    ram[0x100 | cpu.s] = (uint8_t)pushed;
+    cpu.s = (uint8_t)(cpu.s - 1);
     bool used = false;
-    cpu.a = FLAGS;                               /* LDA Player_Flags */
+    cpu.a = FLAGS; /* LDA Player_Flags */
     CHECK(air_hook(0xC47A) == 0);
-    if (!(cpu.a & 0x05)) {                       /* AND #$05, BNE return */
-        cpu.a = HELD;                            /* LDA Joy1_ButtonMask */
+    if (!(cpu.a & 0x05)) { /* AND #$05, BNE return */
+        cpu.a = HELD;      /* LDA Joy1_ButtonMask */
         CHECK(down_hook(0xC480) == 0);
-        if (cpu.a & 0x04) {                      /* AND #$04, BEQ return */
-            cpu.a = CHANGED;                     /* LDA a:Joy1_ChangedButtonMask */
+        if (cpu.a & 0x04) {  /* AND #$04, BEQ return */
+            cpu.a = CHANGED; /* LDA a:Joy1_ChangedButtonMask */
             CHECK(b_hook(0xC487) == 0);
-            used = (cpu.a & 0x40) != 0;          /* AND #$40, BEQ return */
+            used = (cpu.a & 0x40) != 0; /* AND #$40, BEQ return */
         }
     }
     cpu.s = (uint8_t)(cpu.s + 2);
@@ -79,21 +100,23 @@ static bool check_use_current_item(uint16_t jsr) {
 }
 
 /* What the main loop's readers of the pad decide, each as its code tests. */
-typedef struct { bool sword, climb_down, cast, item, talk; } Seen;
+typedef struct {
+    bool sword, climb_down, cast, item, talk;
+} Seen;
 static Seen seen;
 /* A pass of Game_MainLoop after its pad read. `inside`, when given, runs in
  * GameLoop_UpdatePlayer (a door's line, with reads of its own). */
 static Seen pass(void (*inside)(void)) {
     memset(&seen, 0, sizeof seen);
-    seen.sword = (CHANGED & B) && !(FLAGS & CLIMBING);        /* Player_CheckHandleAttack */
-    seen.climb_down = (FLAGS & LADDER) && (HELD & DOWN);      /* Player_CheckHandleVertMovement */
-    if ((STATUS & WINGS) && (HELD & A) && (HELD & DOWN))      /* ... flying: Down is a climb down, */
-        FLAGS &= 0xDA;                                         /* AND #$DA: no longer jumping or falling */
-    if (inside) inside();                                      /* Player_CheckHandleEnterDoor */
-    CHECK(back_hook(0xDB5F) == 0);                             /* JSR Player_CastMagic */
+    seen.sword = (CHANGED & B) && !(FLAGS & CLIMBING);   /* Player_CheckHandleAttack */
+    seen.climb_down = (FLAGS & LADDER) && (HELD & DOWN); /* Player_CheckHandleVertMovement */
+    if ((STATUS & WINGS) && (HELD & A) && (HELD & DOWN)) /* ... flying: Down is a climb down, */
+        FLAGS &= 0xDA;                                   /* AND #$DA: no longer jumping or falling */
+    if (inside) inside();                                /* Player_CheckHandleEnterDoor */
+    CHECK(back_hook(0xDB5F) == 0);                       /* JSR Player_CastMagic */
     seen.cast = (HELD & UP) && (CHANGED & B);
     seen.item = check_use_current_item(0xDB62);
-    seen.talk = CHANGED == UP;                                 /* Player_CheckHandlePressUpOnNPC */
+    seen.talk = CHANGED == UP; /* Player_CheckHandlePressUpOnNPC */
     fax_use_item_frame_end();
     return seen;
 }
@@ -103,7 +126,8 @@ static Seen frame(uint8_t pad) {
     return pass(NULL);
 }
 static void fresh(void) {
-    deactivate(); activate();
+    deactivate();
+    activate();
     memset(ram, 0, sizeof ram);
     cpu = (CycModRegs){ .s = 0xFD };
 }
@@ -116,9 +140,9 @@ static void the_item_alone(void) {
     Seen s = frame(0);
     /* The item check sees Down and a new B; nothing else sees either. */
     CHECK(s.item && !s.sword && !s.climb_down && !s.talk);
-    CHECK(HELD == 0 && CHANGED == 0 && PREV == 0);   /* the masks are the pad's */
+    CHECK(HELD == 0 && CHANGED == 0 && PREV == 0); /* the masks are the pad's */
     CHECK(presses == 1 && shown == 1 && lapsed == 0);
-    CHECK(!frame(0).item);                           /* one press, one use */
+    CHECK(!frame(0).item); /* one press, one use */
     /* At a ladder: Down+B would climb down; the button only uses the item. */
     FLAGS = LADDER;
     press();
@@ -150,7 +174,7 @@ static void the_games_rule(void) {
     frame(A);
     press();
     Seen s = frame(A);
-    CHECK(s.item && flights == 1 && FLAGS == JUMPING);   /* only A saw the flags differently */
+    CHECK(s.item && flights == 1 && FLAGS == JUMPING); /* only A saw the flags differently */
     /* The Wing Boots spent: A held is a jump again. */
     STATUS = 0;
     FLAGS = JUMPING;
@@ -187,7 +211,8 @@ static void a_press_lasts_one_frame(void) {
     fax_use_item_frame_end();
     CHECK(lapsed == 1 && !frame(0).item);
     /* Two presses in one frame are one use. */
-    press(); press();
+    press();
+    press();
     CHECK(frame(0).item && presses == 3 && shown == 1);
     CHECK(!frame(0).item);
 }
@@ -224,19 +249,28 @@ static void off_means_off(void) {
 
 /* ---- the controller's press: where the game waits for its frame ---- */
 
-#define LATCH    ram[0x10]                       /* Game_InterruptsHandledLatch */
-#define HANDLERS ram[0x13]                       /* Game_InterruptHandlersEnabled */
-#define BANK     ram[0x100]                      /* CurrentROMBank */
+#define LATCH    ram[0x10]  /* Game_InterruptsHandledLatch */
+#define HANDLERS ram[0x13]  /* Game_InterruptHandlersEnabled */
+#define BANK     ram[0x100] /* CurrentROMBank */
 /* The JSRs to WaitForNextFrame, as the ROM has them. */
 enum {
-    MAIN_LOOP = 0xDB4D, SCROLL = 0xDBC4,         /* Game_MainLoop's, at the top of a pass and in a scroll */
-    ENTER_SCREEN = 0xDAA9, FILL_HP = 0xC4E7,     /* Game_SetupEnterScreen's, Player_FillHPAndMP's */
-    DEATH = 0xD941, ENDING = 0xDBF6, START = 0xDB3F,   /* Player_HandleDeath's, EndGame_MainLoop's, Game_Start's */
-    SPLASH = 0xA7AE,                             /* SplashAnimation_RunIntro's (bank 12) */
-    TEXT = 0x87B0, MENU = 0x8ADD, EMPTY_LIST = 0x8B41, LIST = 0x8B71, PLAYER = 0x8E41,   /* bank 12 */
-    PAUSE = 0xE036, TITLE = 0xFC6E,
+    MAIN_LOOP = 0xDB4D,
+    SCROLL = 0xDBC4, /* Game_MainLoop's, at the top of a pass and in a scroll */
+    ENTER_SCREEN = 0xDAA9,
+    FILL_HP = 0xC4E7, /* Game_SetupEnterScreen's, Player_FillHPAndMP's */
+    DEATH = 0xD941,
+    ENDING = 0xDBF6,
+    START = 0xDB3F,  /* Player_HandleDeath's, EndGame_MainLoop's, Game_Start's */
+    SPLASH = 0xA7AE, /* SplashAnimation_RunIntro's (bank 12) */
+    TEXT = 0x87B0,
+    MENU = 0x8ADD,
+    EMPTY_LIST = 0x8B41,
+    LIST = 0x8B71,
+    PLAYER = 0x8E41, /* bank 12 */
+    PAUSE = 0xE036,
+    TITLE = 0xFC6E,
 };
-enum { LOGIC = 14, MENUS = 12 };                 /* the bank Game_MainLoop keeps; bank 12 */
+enum { LOGIC = 14, MENUS = 12 }; /* the bank Game_MainLoop keeps; bank 12 */
 
 /* The main thread spins in WaitForNextFrame, called by the JSR at `jsr` with
  * `bank` at $8000: the NMI that starts the next frame reads the pad. */
@@ -245,7 +279,7 @@ static void waits_at(uint16_t jsr, uint8_t bank) {
     cpu.s = 0xFD;
     ram[0x1FE] = (uint8_t)pushed;
     ram[0x1FF] = (uint8_t)(pushed >> 8);
-    cpu.pc = 0xCA29;                             /* @_loop: LDA Game_InterruptsHandledLatch */
+    cpu.pc = 0xCA29; /* @_loop: LDA Game_InterruptsHandledLatch */
     HANDLERS = 1;
     LATCH = 0;
     BANK = bank;
@@ -267,7 +301,7 @@ static uint8_t host_frame(uint8_t pad) {
     }
     return bytes[0];
 }
-static uint8_t reads_at(uint16_t jsr, uint8_t bank) {   /* next_read() for that wait */
+static uint8_t reads_at(uint16_t jsr, uint8_t bank) { /* next_read() for that wait */
     waits_at(jsr, bank);
     return next_read();
 }
@@ -330,7 +364,7 @@ static void b_backs_out_of_a_menu(void) {
     Seen s = pass(NULL);
     CHECK(!s.sword && !s.item && !s.cast && pad_press == PAD_DONE);
     waits_at(TEXT, MENUS);
-    CHECK(host_frame(0) == 0);                    /* a text box later: not again */
+    CHECK(host_frame(0) == 0); /* a text box later: not again */
     waits_at(MAIN_LOOP, LOGIC);
     CHECK(host_frame(0) == 0 && !pass(NULL).item);
     pad_released();
@@ -452,7 +486,7 @@ static void a_line_it_closes_is_all(void) {
     host_frame(UP | DOWN);
     Seen s = pass(doors_line);
     CHECK(!s.sword && !s.cast && !s.item && kept == 1 && presses == 0 && backs == 1);
-    CHECK(CHANGED == 0 && HELD == (UP | DOWN | B));   /* the held mask is the pad's */
+    CHECK(CHANGED == 0 && HELD == (UP | DOWN | B)); /* the held mask is the pad's */
     /* The next pass: play's read lets it go. */
     waits_at(MAIN_LOOP, LOGIC);
     CHECK(host_frame(UP | DOWN) == (UP | DOWN));

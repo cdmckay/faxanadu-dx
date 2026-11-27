@@ -45,9 +45,9 @@
 #include <stdlib.h>
 
 /* Fixed bank */
-#define GAME_RUN_DOOR_REQUIREMENT_HANDLER 0xEB2Fu  /* LDA CurrentDoor_KeyRequirement, BEQ RETURN_EB3E, ASL A */
-#define UI_CLEAR_SELECTED_ITEM_PIC        0xC8DCu  /* LDA #$13, STA PPU_TargetAddr_U: blank the HUD's item picture */
-#define PLAYER_CLEAR_SELECTED_ITEM        0xC4BFu  /* PHA, LDA #$FF, STA SelectedItem, JSR UI_ClearSelectedItemPic */
+#define GAME_RUN_DOOR_REQUIREMENT_HANDLER 0xEB2Fu /* LDA CurrentDoor_KeyRequirement, BEQ RETURN_EB3E, ASL A */
+#define UI_CLEAR_SELECTED_ITEM_PIC        0xC8DCu /* LDA #$13, STA PPU_TargetAddr_U: blank the HUD's item picture */
+#define PLAYER_CLEAR_SELECTED_ITEM        0xC4BFu /* PHA, LDA #$FF, STA SelectedItem, JSR UI_ClearSelectedItemPic */
 /* Game_UnlockDoorWithUsableItem: JSR UI_ClearSelectedItemPic,
  * after the "used key" script and STA SelectedItem #$FF */
 #define UNLOCK_CLEARS_PICTURE             0xEBDEu
@@ -55,23 +55,26 @@
  * after the "used Mattock" script */
 #define MATTOCK_CLEARS_ITEM               0xC64Cu
 /* RAM */
-#define ITEM_INVENTORY               0x03ADu   /* the unselected items, NumberOfItems of them */
-#define SELECTED_ITEM                0x03C1u   /* $FF for none */
-#define NUMBER_OF_ITEMS              0x03C6u
-#define CURRENT_DOOR_KEY_REQUIREMENT 0x042Bu   /* 1-5 the A, K, Q, J, Jo keys; 6-8 the rings */
+#define ITEM_INVENTORY                    0x03ADu /* the unselected items, NumberOfItems of them */
+#define SELECTED_ITEM                     0x03C1u /* $FF for none */
+#define NUMBER_OF_ITEMS                   0x03C6u
+#define CURRENT_DOOR_KEY_REQUIREMENT      0x042Bu /* 1-5 the A, K, Q, J, Jo keys; 6-8 the rings */
 /* Values */
-#define MAX_ITEMS     8                        /* MAX_INVENTORY_SLOTS[INVENTORY_ITEM] */
-#define DOOR_A_KEY    1
-#define DOOR_JO_KEY   5
-#define ITEM_KEY_A    0x04                     /* ITEMINVENTORY_KEY_A; K, Q, J, Jo follow */
-#define ITEM_MATTOCK  0x09
-#define NO_ITEM       0xFF
+#define MAX_ITEMS                         8 /* MAX_INVENTORY_SLOTS[INVENTORY_ITEM] */
+#define DOOR_A_KEY                        1
+#define DOOR_JO_KEY                       5
+#define ITEM_KEY_A                        0x04 /* ITEMINVENTORY_KEY_A; K, Q, J, Jo follow */
+#define ITEM_MATTOCK                      0x09
+#define NO_ITEM                           0xFF
 
 static bool auto_on, reuse_on;
 /* Auto keys: the key lent to SelectedItem for one door, and what it replaced. */
-typedef struct { bool active; uint8_t key, prev; } Lend;
+typedef struct {
+    bool active;
+    uint8_t key, prev;
+} Lend;
 static Lend lend;
-static unsigned auto_opened, keys_kept, mattock_kept;   /* for the TCP state */
+static unsigned auto_opened, keys_kept, mattock_kept; /* for the TCP state */
 
 /* The slot of `item` in ItemInventory, or -1. Only the first NumberOfItems
  * slots hold items; the game leaves stale bytes after them. */
@@ -113,7 +116,7 @@ static int door_hook(uint16_t addr) {
     (void)addr;
     lend.active = false;
     uint8_t key = door_key(), selected = cyc_mod_peek(SELECTED_ITEM);
-    if (!key || selected == key || inventory_find(key) < 0) return 0;   /* the game's own check decides */
+    if (!key || selected == key || inventory_find(key) < 0) return 0; /* the game's own check decides */
     lend = (Lend){ true, key, selected };
     cyc_mod_poke(SELECTED_ITEM, key);
     return 0;
@@ -131,13 +134,13 @@ static int unlocked_hook(uint16_t addr) {
         lend.active = false;
         if (key && lend.key == key) {
             if (reuse_on) ++keys_kept;
-            else inventory_remove(inventory_find(key));   /* used up, as if it had been selected */
-            cyc_mod_poke(SELECTED_ITEM, lend.prev);       /* the HUD still shows it */
+            else inventory_remove(inventory_find(key)); /* used up, as if it had been selected */
+            cyc_mod_poke(SELECTED_ITEM, lend.prev);     /* the HUD still shows it */
             ++auto_opened;
             return 1;
         }
     }
-    if (reuse_on && key) {                                /* a selected key: keep it selected */
+    if (reuse_on && key) { /* a selected key: keep it selected */
         cyc_mod_poke(SELECTED_ITEM, key);
         ++keys_kept;
         return 1;
@@ -190,7 +193,9 @@ static void activate_reuse(void) {
 /* A save state taken during the "used key" message holds a lent key. */
 static int state_get(uint8_t *buf, int cap) {
     if (cap < 3) return -1;
-    buf[0] = lend.active; buf[1] = lend.key; buf[2] = lend.prev;
+    buf[0] = lend.active;
+    buf[1] = lend.key;
+    buf[2] = lend.prev;
     return 3;
 }
 static int state_validate(const uint8_t *buf, int len) {
@@ -230,5 +235,6 @@ NES_MOD_CONSTRUCTOR(register_keys) {
         !nes_mod_register_activation_plugin("faxanadu.auto-keys", activate_auto) ||
         !nes_mod_register_activation_plugin("faxanadu.reusable-tools", activate_reuse) ||
         !nes_mod_register_savestate_hook("faxanadu.keys", state_get, state_set) ||
-        !nes_mod_register_savestate_validator("faxanadu.keys", state_validate)) abort();
+        !nes_mod_register_savestate_validator("faxanadu.keys", state_validate))
+        abort();
 }

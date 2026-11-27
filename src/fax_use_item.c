@@ -57,47 +57,47 @@
 /* Game_InterruptsHandledLatch: WaitForNextFrame stores 0, the NMI that
  * reads the pad 1; an NMI that finds it 1 reads nothing (a lag frame) */
 #define INTERRUPTS_HANDLED_LATCH   0x0010u
-#define INTERRUPT_HANDLERS_ENABLED 0x0013u   /* Game_InterruptHandlersEnabled: 0, the NMI does none of its work */
-#define JOY1_BUTTON_MASK   0x0016u   /* held: A $80, B $40, Select $20, Start $10, Up $08, Down $04, Left $02, Right $01 */
-#define JOY1_CHANGED_BUTTON_MASK 0x0019u   /* newly pressed: held now and not at the read before */
-#define PLAYER_FLAGS       0x00A4u   /* $04 falling, $01 jumping */
-#define PLAYER_STATUS_FLAG 0x00A5u   /* $80 while the Wing Boots fly */
-#define CURRENT_ROM_BANK   0x0100u   /* CurrentROMBank: the bank at $8000 */
-#define BUTTON_A    0x80u
-#define BUTTON_B    0x40u
-#define BUTTON_DOWN 0x04u
-#define IN_THE_AIR  0x05u   /* Player_Flags: jumping or falling, what $C47A refuses */
-#define FLYING      0x80u
+#define INTERRUPT_HANDLERS_ENABLED 0x0013u /* Game_InterruptHandlersEnabled: 0, the NMI does none of its work */
+#define JOY1_BUTTON_MASK 0x0016u /* held: A $80, B $40, Select $20, Start $10, Up $08, Down $04, Left $02, Right $01 */
+#define JOY1_CHANGED_BUTTON_MASK 0x0019u /* newly pressed: held now and not at the read before */
+#define PLAYER_FLAGS             0x00A4u /* $04 falling, $01 jumping */
+#define PLAYER_STATUS_FLAG       0x00A5u /* $80 while the Wing Boots fly */
+#define CURRENT_ROM_BANK         0x0100u /* CurrentROMBank: the bank at $8000 */
+#define BUTTON_A                 0x80u
+#define BUTTON_B                 0x40u
+#define BUTTON_DOWN              0x04u
+#define IN_THE_AIR               0x05u /* Player_Flags: jumping or falling, what $C47A refuses */
+#define FLYING                   0x80u
 /* Fixed bank: GameLoop_CheckUseCurrentItem ($C478): LDA Player_Flags, $C47A AND #$05, BNE return, LDA
  * Joy1_ButtonMask, $C480 AND #$04, BEQ return, LDA a:Joy1_ChangedButtonMask, $C487 AND #$40, BEQ return, then
  * the selected item's routine. Each site is the AND after a load: A is the loaded byte, and the AND sets N and
  * Z again from what it leaves. */
-#define CHECK_IN_THE_AIR 0xC47Au
-#define CHECK_DOWN       0xC480u
-#define CHECK_B          0xC487u
+#define CHECK_IN_THE_AIR         0xC47Au
+#define CHECK_DOWN               0xC480u
+#define CHECK_B                  0xC487u
 /* Game_MainLoop's JSR GameLoop_CheckUseCurrentItem ($DB62) pushes the
  * address of its last byte; EndGame_MainLoop's ($DC0E), which plays
  * scripted buttons, pushes $DC10 */
-#define MAIN_LOOP_ITEM_PUSHED 0xDB64u
+#define MAIN_LOOP_ITEM_PUSHED    0xDB64u
 /* Game_MainLoop: JSR Player_CastMagic, JSR GameLoop_CheckUseCurrentItem, after
  * GameLoop_UpdatePlayer and the hero's three sprites */
-#define MAIN_LOOP_CAST 0xDB5Fu
-#define WAIT_FOR_NEXT_FRAME     0xCA25u   /* LDA #$00, STA Game_InterruptsHandledLatch, $CA29 @_loop: LDA it, */
-#define WAIT_FOR_NEXT_FRAME_RTS 0xCA2Du   /* BEQ @_loop, $CA2D RTS */
-#define MENU_BANK 12u
+#define MAIN_LOOP_CAST           0xDB5Fu
+#define WAIT_FOR_NEXT_FRAME      0xCA25u /* LDA #$00, STA Game_InterruptsHandledLatch, $CA29 @_loop: LDA it, */
+#define WAIT_FOR_NEXT_FRAME_RTS  0xCA2Du /* BEQ @_loop, $CA2D RTS */
+#define MENU_BANK                12u
 
 /* The JSRs to WaitForNextFrame whose frame's pad read a text box or a menu
  * takes, by the address each pushes (the JSR's, plus 2). Bank 12's need it
  * mapped; no other switched bank calls WaitForNextFrame. */
 static const uint16_t MENU_WAITS[] = {
-    0x87B2u,   /* IScripts_UpdatePortraitAnimation ($87B0), once a frame in every script's message, question and
+    0x87B2u, /* IScripts_UpdatePortraitAnimation ($87B0), once a frame in every script's message, question and
                   shop loop: the text, the questions, the shops' lists, Guru travel and saving */
-    0x8ADFu,   /* PlayerMenu_Show's @_inputLoop ($8ADD): the Select menu */
-    0x8B43u,   /* PlayerMenu_ShowSubmenu's @_inputLoop ($8B41): a list with nothing in it */
-    0x8B73u,   /* PlayerMenu_HandleInventoryMenuInput ($8B71): a list */
-    0x8E43u,   /* PlayerMenu_ShowStatusMenu's @_waitForInputLoop ($8E41): the PLAYER page */
-    0xE038u,   /* GameLoop_CheckPauseGame's @_waitForUnpause ($E036): the map and the quest log, which pause */
-    0xFC70u,   /* Game_ShowStartScreen's @_waitForInput ($FC6E): the title and its file picks */
+    0x8ADFu, /* PlayerMenu_Show's @_inputLoop ($8ADD): the Select menu */
+    0x8B43u, /* PlayerMenu_ShowSubmenu's @_inputLoop ($8B41): a list with nothing in it */
+    0x8B73u, /* PlayerMenu_HandleInventoryMenuInput ($8B71): a list */
+    0x8E43u, /* PlayerMenu_ShowStatusMenu's @_waitForInputLoop ($8E41): the PLAYER page */
+    0xE038u, /* GameLoop_CheckPauseGame's @_waitForUnpause ($E036): the map and the quest log, which pause */
+    0xFC70u, /* Game_ShowStartScreen's @_waitForInput ($FC6E): the title and its file picks */
 };
 
 /* The defaults as SDL numbers them: SDL_SCANCODE_S, and SDL_CONTROLLER_BUTTON_B
@@ -106,20 +106,20 @@ static const uint16_t MENU_WAITS[] = {
 enum { DEFAULT_KEY = 22, DEFAULT_PAD = 1 + 1, AXIS_PRESS = 16384 };
 
 static bool enabled;
-static bool pressed;              /* Use item went down since the last frame ended */
-static bool axis_down;            /* a stick or trigger binding is past its press point */
+static bool pressed;   /* Use item went down since the last frame ended */
+static bool axis_down; /* a stick or trigger binding is past its press point */
 static unsigned presses, shown, lapsed, flights;
 
 /* The controller binding's press, from its going down to its letting go. */
 enum { PAD_UP, PAD_NEW, PAD_BACK, PAD_DONE };
-enum { READ_NONE, READ_PLAY, READ_MENU };   /* what a frame's pad read is */
-static uint8_t pad_press = PAD_UP;   /* PAD_NEW until a read decides it, PAD_BACK while it is the NES B, then
+enum { READ_NONE, READ_PLAY, READ_MENU }; /* what a frame's pad read is */
+static uint8_t pad_press = PAD_UP;        /* PAD_NEW until a read decides it, PAD_BACK while it is the NES B, then
                                         PAD_DONE (used, or the NES B let go) until the button is up */
-static bool pad_down;                /* the button is down; a press let go before any read stays PAD_NEW */
-static bool back_read;               /* the last pad read had the NES B from a back press alone */
+static bool pad_down;                     /* the button is down; a press let go before any read stays PAD_NEW */
+static bool back_read;                    /* the last pad read had the NES B from a back press alone */
 static uint8_t last_read = READ_NONE;
-static unsigned backs, kept;         /* presses that were the NES B; their B kept from play at $DB5F */
-static char label[80] = "Use item: S / B";   /* the Controls row; the bindings follow "Use item: " */
+static unsigned backs, kept;               /* presses that were the NES B; their B kept from play at $DB5F */
+static char label[80] = "Use item: S / B"; /* the Controls row; the bindings follow "Use item: " */
 
 /* A press of Use item. Like a button the NMI reads, it lasts one frame: if
  * the item check does not get that far in that frame (in the air, a menu, a
@@ -130,7 +130,7 @@ static void press(void) {
     ++presses;
 }
 
-static bool from_main_loop(void) {   /* the JSR that entered GameLoop_CheckUseCurrentItem: Game_MainLoop's */
+static bool from_main_loop(void) { /* the JSR that entered GameLoop_CheckUseCurrentItem: Game_MainLoop's */
     CycModRegs r;
     cyc_mod_regs(&r);
     uint16_t pushed = (uint16_t)(cyc_mod_peek((uint16_t)(0x100u | (uint8_t)(r.s + 1))) |
@@ -138,7 +138,7 @@ static bool from_main_loop(void) {   /* the JSR that entered GameLoop_CheckUseCu
     return pushed == MAIN_LOOP_ITEM_PUSHED;
 }
 static bool wanted(void) { return enabled && pressed && !cyc_mod_isolated() && from_main_loop(); }
-static void or_into_a(uint8_t bits, bool clear) {   /* A as the load left it, with `bits` set (or cleared) */
+static void or_into_a(uint8_t bits, bool clear) { /* A as the load left it, with `bits` set (or cleared) */
     CycModRegs r;
     cyc_mod_regs(&r);
     r.a = clear ? (uint8_t)(r.a & ~bits) : (uint8_t)(r.a | bits);
@@ -188,7 +188,7 @@ static uint8_t next_read(void) {
     if (!cyc_mod_peek(INTERRUPT_HANDLERS_ENABLED) || cyc_mod_peek(INTERRUPTS_HANDLED_LATCH)) return READ_NONE;
     CycModRegs r;
     cyc_mod_regs(&r);
-    if (r.pc < WAIT_FOR_NEXT_FRAME || r.pc > WAIT_FOR_NEXT_FRAME_RTS) return READ_PLAY;   /* the latch's other store */
+    if (r.pc < WAIT_FOR_NEXT_FRAME || r.pc > WAIT_FOR_NEXT_FRAME_RTS) return READ_PLAY; /* the latch's other store */
     uint16_t pushed = (uint16_t)(cyc_mod_peek((uint16_t)(0x100u | (uint8_t)(r.s + 1))) |
                                  cyc_mod_peek((uint16_t)(0x100u | (uint8_t)(r.s + 2))) << 8);
     if (pushed < 0xC000u && cyc_mod_peek(CURRENT_ROM_BANK) != MENU_BANK) return READ_PLAY;
@@ -204,7 +204,7 @@ static void pad_pressed(void) {
 }
 static void pad_released(void) {
     pad_down = false;
-    if (pad_press != PAD_NEW) pad_press = PAD_UP;   /* a tap no read has seen yet: the next frame decides it */
+    if (pad_press != PAD_NEW) pad_press = PAD_UP; /* a tap no read has seen yet: the next frame decides it */
 }
 
 static void pad_sync(void);
@@ -218,7 +218,7 @@ void fax_use_item_input(uint8_t buttons[2]) {
     if (read != READ_NONE) last_read = read;
     if (pad_press == PAD_NEW) {
         if (read == READ_NONE) {
-            if (!pad_down) pad_press = PAD_UP;     /* a tap between two reads, as an NES button's would be */
+            if (!pad_down) pad_press = PAD_UP; /* a tap between two reads, as an NES button's would be */
         } else if (read == READ_MENU) {
             pad_press = PAD_BACK;
             ++backs;
@@ -227,12 +227,12 @@ void fax_use_item_input(uint8_t buttons[2]) {
             press();
         }
     } else if (pad_press == PAD_BACK && read == READ_PLAY) {
-        pad_press = PAD_DONE;                      /* play reads the pad: the NES B lets go */
+        pad_press = PAD_DONE; /* play reads the pad: the NES B lets go */
     }
     bool back = pad_press == PAD_BACK;
     if (read != READ_NONE) back_read = back && !(buttons[0] & BUTTON_B);
     if (back) buttons[0] |= BUTTON_B;
-    if (!pad_down && pad_press != PAD_NEW) pad_press = PAD_UP;   /* a tap: this one frame */
+    if (!pad_down && pad_press != PAD_NEW) pad_press = PAD_UP; /* a tap: this one frame */
 }
 
 /* Game_MainLoop's JSR Player_CastMagic: a back press's B that a read in
@@ -251,7 +251,8 @@ static int back_hook(uint16_t addr) {
 static const char *const hook_ids[] = { "faxanadu.use-item.air", "faxanadu.use-item.down", "faxanadu.use-item.b",
                                         "faxanadu.use-item.back" };
 static void hooks(int on) {
-    for (unsigned i = 0; i < sizeof hook_ids / sizeof hook_ids[0]; ++i) nes_mod_set_function_hook_enabled(hook_ids[i], on);
+    for (unsigned i = 0; i < sizeof hook_ids / sizeof hook_ids[0]; ++i)
+        nes_mod_set_function_hook_enabled(hook_ids[i], on);
 }
 static void deactivate(void) {
     enabled = pressed = axis_down = pad_down = back_read = false;
@@ -263,7 +264,7 @@ static void deactivate(void) {
 static void activate(void) {
     enabled = true;
     hooks(1);
-    nes_mod_set_local_only("Use item button", 1);   /* host input the other side would not see */
+    nes_mod_set_local_only("Use item button", 1); /* host input the other side would not see */
 }
 
 /* ---- the bindings (config.ini [Game]) ---- */
@@ -271,9 +272,9 @@ static void activate(void) {
 const char *fax_use_item_controls_label(void) { return label; }
 
 #ifdef CYC_WITH_SDL
-static int key = DEFAULT_KEY, pad = DEFAULT_PAD;   /* 0: unbound */
+static int key = DEFAULT_KEY, pad = DEFAULT_PAD; /* 0: unbound */
 
-static void describe(void) {   /* as the host shows its own shortcuts: "S / B" */
+static void describe(void) { /* as the host shows its own shortcuts: "S / B" */
     char hint[64] = "unbound";
     CycBinding both = { key, pad };
     if (key || pad) cyc_binding_hint(&both, hint, sizeof hint);
@@ -292,7 +293,10 @@ bool fax_use_item_load_setting(const char *name, const char *value) {
         else fprintf(stderr, "[use item] UseItemKey: SDL has no key named \"%s\"; keeping the default\n", value);
     } else if (!strcmp(name, "UseItemButton")) {
         if (cyc_pad_parse(value, &v) && !CYC_PAD_IS_COMBO(v)) pad = v;
-        else fprintf(stderr, "[use item] UseItemButton: \"%s\" is not one controller button or axis; keeping the default\n", value);
+        else
+            fprintf(stderr,
+                    "[use item] UseItemButton: \"%s\" is not one controller button or axis; keeping the default\n",
+                    value);
     } else {
         return false;
     }
@@ -359,7 +363,11 @@ void fax_use_item_tcp_setup(void) {
 #else
 static void pad_sync(void) {}
 const CycHostBinding *fax_use_item_binding(void) { return NULL; }
-bool fax_use_item_load_setting(const char *name, const char *value) { (void)name; (void)value; return false; }
+bool fax_use_item_load_setting(const char *name, const char *value) {
+    (void)name;
+    (void)value;
+    return false;
+}
 void fax_use_item_save_settings(FILE *f) { (void)f; }
 void fax_use_item_event(const void *ev) { (void)ev; }
 void fax_use_item_tcp_setup(void) {}
@@ -371,5 +379,6 @@ NES_MOD_CONSTRUCTOR(register_use_item) {
         !nes_mod_register_function_entry_plugin(hook_ids[2], CHECK_B, b_hook) ||
         !nes_mod_register_function_entry_plugin(hook_ids[3], MAIN_LOOP_CAST, back_hook) ||
         !nes_mod_register_reset_callback(deactivate) ||
-        !nes_mod_register_activation_plugin("faxanadu.use-item", activate)) abort();
+        !nes_mod_register_activation_plugin("faxanadu.use-item", activate))
+        abort();
 }

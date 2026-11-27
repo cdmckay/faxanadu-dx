@@ -7,12 +7,19 @@
 #include "fax_magic.c"
 
 static unsigned checks;
-#define CHECK(test) do{++checks;if(!(test)){fprintf(stderr,"FAIL line %u: %s\n",__LINE__,#test);exit(1);}}while(0)
+#define CHECK(test)                                                                                                    \
+    do {                                                                                                               \
+        ++checks;                                                                                                      \
+        if (!(test)) {                                                                                                 \
+            fprintf(stderr, "FAIL line %u: %s\n", __LINE__, #test);                                                    \
+            exit(1);                                                                                                   \
+        }                                                                                                              \
+    } while (0)
 
 /* ---- the machine ---- */
 static uint8_t ram[0x800];
 static CycModRegs cpu = { .s = 0xFD };
-static int hook_on[2] = { -1, -1 };              /* each hook's enabled state, as last set */
+static int hook_on[2] = { -1, -1 }; /* each hook's enabled state, as last set */
 
 uint8_t cyc_mod_peek(uint16_t addr) { return addr < 0x2000 ? ram[addr & 0x7FF] : 0; }
 bool cyc_mod_poke(uint16_t addr, uint8_t value) {
@@ -27,14 +34,20 @@ int nes_mod_register_function_entry_plugin(const char *id, uint16_t addr, NESMod
 }
 int nes_mod_set_function_hook_enabled(const char *id, int on) {
     for (int i = 0; i < 2; ++i)
-        if (!strcmp(id, hook_ids[i])) { hook_on[i] = on; return 1; }
+        if (!strcmp(id, hook_ids[i])) {
+            hook_on[i] = on;
+            return 1;
+        }
     return 0;
 }
 int nes_mod_register_reset_callback(NESModActivationCallback cb) { return cb == deactivate; }
 int nes_mod_register_activation_plugin(const char *id, NESModActivationCallback cb) {
     return !strcmp(id, "faxanadu.magic-button") && cb == activate;
 }
-void nes_mod_set_local_only(const char *name, int required) { (void)name; (void)required; }
+void nes_mod_set_local_only(const char *name, int required) {
+    (void)name;
+    (void)required;
+}
 int nes_mod_register_savestate_hook(const char *id, NESModSavestateGet get, NESModSavestateSet set) {
     return !strcmp(id, "faxanadu.magic-button") && get == state_get && set == state_set;
 }
@@ -43,9 +56,9 @@ int nes_mod_register_savestate_validator(const char *id, NESModSavestateValidate
 }
 
 enum { A = 0x80, B = 0x40, START = 0x10, UP = 0x08, DOWN = 0x04, LEFT = 0x02, RIGHT = 0x01 };
-#define HELD    ram[0x16]                        /* Joy1_ButtonMask */
-#define PREV    ram[0x18]                        /* Joy1_PrevButtonMask */
-#define CHANGED ram[0x19]                        /* Joy1_ChangedButtonMask */
+#define HELD    ram[0x16] /* Joy1_ButtonMask */
+#define PREV    ram[0x18] /* Joy1_PrevButtonMask */
+#define CHANGED ram[0x19] /* Joy1_ChangedButtonMask */
 
 /* Input_HandleOnInterrupt, in the NMI that starts each frame. */
 static void nmi(uint8_t pad) {
@@ -58,27 +71,31 @@ static void nmi(uint8_t pad) {
  * JSR's return address on the stack, and never handles the call. */
 static void call(uint16_t jsr, int (*hook)(uint16_t), uint16_t entry) {
     uint16_t pushed = (uint16_t)(jsr + 2);
-    ram[0x100 | cpu.s] = (uint8_t)(pushed >> 8); cpu.s = (uint8_t)(cpu.s - 1);
-    ram[0x100 | cpu.s] = (uint8_t)pushed;        cpu.s = (uint8_t)(cpu.s - 1);
+    ram[0x100 | cpu.s] = (uint8_t)(pushed >> 8);
+    cpu.s = (uint8_t)(cpu.s - 1);
+    ram[0x100 | cpu.s] = (uint8_t)pushed;
+    cpu.s = (uint8_t)(cpu.s - 1);
     CHECK(hook(entry) == 0);
     cpu.s = (uint8_t)(cpu.s + 2);
 }
 
 /* What the main loop's readers of the masks decide, each as its code tests. */
-typedef struct { bool door, sword, cast, item, talk; } Seen;
+typedef struct {
+    bool door, sword, cast, item, talk;
+} Seen;
 static Seen seen;
-static void update_player(void) {                /* GameLoop_UpdatePlayer */
-    seen.sword = CHANGED & B;                    /* Player_CheckHandleAttack */
-    seen.door = CHANGED & UP;                    /* Player_CheckHandleEnterDoor, standing at a door */
+static void update_player(void) { /* GameLoop_UpdatePlayer */
+    seen.sword = CHANGED & B;     /* Player_CheckHandleAttack */
+    seen.door = CHANGED & UP;     /* Player_CheckHandleEnterDoor, standing at a door */
 }
-static void cast_magic(void) {                   /* JSR Player_CastMagic at $DB5F */
+static void cast_magic(void) { /* JSR Player_CastMagic at $DB5F */
     call(0xDB5F, cast_hook, PLAYER_CAST_MAGIC);
     seen.cast = (HELD & UP) && (CHANGED & B);
 }
-static void use_item_and_on(void) {              /* JSR GameLoop_CheckUseCurrentItem at $DB62 */
+static void use_item_and_on(void) { /* JSR GameLoop_CheckUseCurrentItem at $DB62 */
     call(0xDB62, restore_hook, GAME_LOOP_CHECK_USE_CURRENT_ITEM);
     seen.item = (HELD & DOWN) && (CHANGED & B);
-    seen.talk = CHANGED == UP;                   /* Player_CheckHandlePressUpOnNPC, in Sprites_UpdateAll */
+    seen.talk = CHANGED == UP; /* Player_CheckHandlePressUpOnNPC, in Sprites_UpdateAll */
 }
 /* One frame of Game_MainLoop with the pad as given. */
 static Seen frame(uint8_t pad) {
@@ -92,7 +109,8 @@ static Seen frame(uint8_t pad) {
 }
 static bool nothing(Seen s) { return !s.door && !s.sword && !s.cast && !s.item && !s.talk; }
 static void fresh(void) {
-    deactivate(); activate();
+    deactivate();
+    activate();
     memset(ram, 0, sizeof ram);
     cpu.s = 0xFD;
 }
@@ -107,7 +125,7 @@ static void magic_casts_alone(void) {
     CHECK(s.cast && !s.door && !s.sword && !s.item && !s.talk);
     CHECK(HELD == 0 && CHANGED == 0 && PREV == 0);
     CHECK(presses == 1 && presented == 1 && restored == 1 && reread == 0 && !swap.injected);
-    CHECK(nothing(frame(0)));                     /* one press, one cast */
+    CHECK(nothing(frame(0))); /* one press, one cast */
 }
 
 static void the_player_buttons_pass_through(void) {
@@ -133,9 +151,9 @@ static void the_player_buttons_pass_through(void) {
 static void up_b_still_casts(void) {
     fresh();
     Seen s = frame(UP);
-    CHECK(s.door && s.talk && !s.cast);          /* Up alone: a door or an NPC, as ever */
+    CHECK(s.door && s.talk && !s.cast); /* Up alone: a door or an NPC, as ever */
     s = frame(UP | B);
-    CHECK(s.cast && s.sword && !s.door);         /* the stock combo swings and casts */
+    CHECK(s.cast && s.sword && !s.door); /* the stock combo swings and casts */
     CHECK(presented == 0 && restored == 0);
 }
 
@@ -158,7 +176,8 @@ static void a_press_lasts_one_frame(void) {
     fax_magic_frame_end();
     CHECK(nothing(frame(0)) && presented == 0);
     /* Two presses before one frame are one press. */
-    press(); press();
+    press();
+    press();
     CHECK(frame(0).cast && presses == 3 && presented == 1);
     CHECK(!frame(0).cast);
 }
@@ -191,12 +210,12 @@ static void a_pad_read_in_between(void) {
     cast_magic();
     CHECK(seen.cast && swap.injected);
     nmi(RIGHT | B);
-    CHECK(CHANGED == 0);                         /* against ours, the read lost the new B */
+    CHECK(CHANGED == 0); /* against ours, the read lost the new B */
     use_item_and_on();
     CHECK(HELD == (RIGHT | B) && CHANGED == B && PREV == RIGHT);
     CHECK(reread == 1 && restored == 1 && !swap.injected);
     nmi(RIGHT | B);
-    CHECK(CHANGED == 0);                         /* held, not new again */
+    CHECK(CHANGED == 0); /* held, not new again */
     /* Two reads in between: the last one compared real with real. */
     fresh();
     press();
@@ -224,8 +243,8 @@ static void a_save_state_in_between(void) {
     memcpy(ram, machine, sizeof ram);
     CHECK(state_set(record, n) && swap.injected);
     use_item_and_on();
-    CHECK(HELD == DOWN && CHANGED == DOWN && !seen.item);   /* Down+B would have used the item */
-    CHECK(state_get(record, (int)sizeof record) == 0);       /* no record between swaps */
+    CHECK(HELD == DOWN && CHANGED == DOWN && !seen.item); /* Down+B would have used the item */
+    CHECK(state_get(record, (int)sizeof record) == 0);    /* no record between swaps */
     /* No record, or a bad one. */
     CHECK(state_set(NULL, 0) && !swap.injected);
     uint8_t bad[3] = { 0, 1, 2 };

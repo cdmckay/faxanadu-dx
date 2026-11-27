@@ -6,9 +6,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-void fax_files_power_on(void);       /* from the extras' power_on */
-void fax_files_frame_end(void);      /* from the extras' frame_end */
-void fax_files_state_loaded(void);   /* from the extras' state_loaded */
+void fax_files_power_on(void);     /* from the extras' power_on */
+void fax_files_frame_end(void);    /* from the extras' frame_end */
+void fax_files_state_loaded(void); /* from the extras' state_loaded */
 /* The title's menu, drawn over the title screen's picture. */
 const uint32_t *fax_files_present(const uint32_t *picture, int *w, int *h);
 void fax_files_tcp_setup(void);

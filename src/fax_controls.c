@@ -63,29 +63,29 @@
 #include <string.h>
 
 /* Zero page */
-#define JOY1_CHANGED_BUTTON_MASK 0x0019u   /* newly pressed: A $80, B $40, Select $20, Start $10 */
-#define BUTTON_A      0x80u
-#define BUTTON_B      0x40u
-#define BUTTON_SELECT 0x20u
-#define BUTTON_START  0x10u
-#define P_Z 0x02u
-#define P_N 0x80u
+#define JOY1_CHANGED_BUTTON_MASK 0x0019u /* newly pressed: A $80, B $40, Select $20, Start $10 */
+#define BUTTON_A                 0x80u
+#define BUTTON_B                 0x40u
+#define BUTTON_SELECT            0x20u
+#define BUTTON_START             0x10u
+#define P_Z                      0x02u
+#define P_N                      0x80u
 /* Fixed bank: GameLoop_CheckShowPlayerMenu: LDA Area_CurrentArea, BNE, LDA Area_CurrentScreen, BEQ return
  * (no menu outside Eolis's gate), LDA Joy1_ChangedButtonMask, AND #$20, BEQ return, far-call PlayerMenu_Show.
  * GameLoop_CheckPauseGame ($E02B): LDA Joy1_ChangedButtonMask, $E02D AND #$10, BEQ return, then the pause. */
-#define CHECK_SHOW_PLAYER_MENU 0xE016u
-#define CHECK_PAUSE_START      0xE02Du
+#define CHECK_SHOW_PLAYER_MENU   0xE016u
+#define CHECK_PAUSE_START        0xE02Du
 /* Bank 12: PlayerMenu_Show's @_inputLoop: ..., JSR Menu_UpdateAndDraw, LDA Joy1_ChangedButtonMask, $8AE8 BMI
  * @_loadMenuIDs (A), ASL A, BPL @_inputLoop, JMP TextBox_Close (B). */
-#define MENU_INPUT_BRANCH 0x8AE8u
+#define MENU_INPUT_BRANCH        0x8AE8u
 
-enum { LAYOUT = 2 };   /* ControlsLayout: 1 before #147 (none written) */
+enum { LAYOUT = 2 }; /* ControlsLayout: 1 before #147 (none written) */
 
 static bool enabled;
-static unsigned starts, closes, unpaused;  /* Starts shown as Select, that closed the menu, kept from the pause */
-static unsigned kept;                      /* Selects taken out as the Map button's */
-static int file_layout;                    /* the layout config.ini said, 0 none read yet */
-static unsigned moved, unbound;            /* bindings the last load moved, and of those unbound */
+static unsigned starts, closes, unpaused; /* Starts shown as Select, that closed the menu, kept from the pause */
+static unsigned kept;                     /* Selects taken out as the Map button's */
+static int file_layout;                   /* the layout config.ini said, 0 none read yet */
+static unsigned moved, unbound;           /* bindings the last load moved, and of those unbound */
 static char menu_label[80] = "Select menu: RETURN / START";
 
 static uint8_t q(uint16_t a) { return cyc_mod_peek(a); }
@@ -131,15 +131,17 @@ static int close_hook(uint16_t addr) {
     cyc_mod_regs(&r);
     if (!(r.a & BUTTON_START) || (r.a & BUTTON_A)) return 0;
     r.a |= BUTTON_B;
-    r.p = (uint8_t)((r.p & ~(P_N | P_Z)) | (r.a & P_N));   /* as the load leaves them: nonzero, N bit 7 */
+    r.p = (uint8_t)((r.p & ~(P_N | P_Z)) | (r.a & P_N)); /* as the load leaves them: nonzero, N bit 7 */
     cyc_mod_set_regs(&r);
     ++closes;
     return 0;
 }
 
-static const char *const hook_ids[] = { "faxanadu.controls.menu", "faxanadu.controls.pause", "faxanadu.controls.close" };
+static const char *const hook_ids[] = { "faxanadu.controls.menu", "faxanadu.controls.pause",
+                                        "faxanadu.controls.close" };
 static void hooks(int on) {
-    for (unsigned i = 0; i < sizeof hook_ids / sizeof hook_ids[0]; ++i) nes_mod_set_function_hook_enabled(hook_ids[i], on);
+    for (unsigned i = 0; i < sizeof hook_ids / sizeof hook_ids[0]; ++i)
+        nes_mod_set_function_hook_enabled(hook_ids[i], on);
 }
 static void deactivate(void) {
     enabled = false;
@@ -149,7 +151,7 @@ static void deactivate(void) {
 static void activate(void) {
     enabled = true;
     hooks(1);
-    nes_mod_set_local_only("Controller layout", 1);   /* a peer without it would play other rules */
+    nes_mod_set_local_only("Controller layout", 1); /* a peer without it would play other rules */
 }
 
 /* ---- config.ini [Game] ---- */
@@ -158,7 +160,8 @@ bool fax_controls_load_setting(const char *name, const char *value) {
     if (strcmp(name, "ControlsLayout")) return false;
     char *end;
     long v = strtol(value, &end, 10);
-    if (end == value || v < 1) fprintf(stderr, "[controls] ControlsLayout: \"%s\" is not a layout; reading it as 1\n", value);
+    if (end == value || v < 1)
+        fprintf(stderr, "[controls] ControlsLayout: \"%s\" is not a layout; reading it as 1\n", value);
     else file_layout = (int)v;
     return true;
 }
@@ -170,7 +173,10 @@ const char *fax_controls_menu_label(void) { return menu_label; }
 
 #ifdef CYC_WITH_SDL
 /* Layout 1's controller defaults, of the bindings layout 2 moved. */
-static const struct { const CycHostBinding *(*binding)(void); int pad; } LAYOUT1[] = {
+static const struct {
+    const CycHostBinding *(*binding)(void);
+    int pad;
+} LAYOUT1[] = {
     { fax_block_binding, CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_B) },
     { fax_map_binding, CYC_PAD_AXIS(SDL_CONTROLLER_AXIS_TRIGGERLEFT, 1) },
     { fax_quests_binding, CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_RIGHTSTICK) },
@@ -215,11 +221,14 @@ bool fax_controls_settings_loaded(void) {
     /* A moved one gives way to a button the player kept for something else. */
     for (unsigned m = 0; m < moved; ++m) {
         /* clang-tidy's analyzer cannot tell that no callback here changes `moved`. */
-        const CycHostBinding *b = moved_ones[m];   /* NOLINT(clang-analyzer-core.uninitialized.Assign) */
-        if (*b->pad && kept_elsewhere(*b->pad, moved_ones, moved)) { *b->pad = 0; ++unbound; }
+        const CycHostBinding *b = moved_ones[m]; /* NOLINT(clang-analyzer-core.uninitialized.Assign) */
+        if (*b->pad && kept_elsewhere(*b->pad, moved_ones, moved)) {
+            *b->pad = 0;
+            ++unbound;
+        }
         if (b->changed) b->changed();
     }
-    return true;   /* written now with this layout, moved or not */
+    return true; /* written now with this layout, moved or not */
 }
 
 /* ---- Back is the map's in play ---- */
@@ -243,14 +252,14 @@ bool fax_controls_pad_held(int pad) {
  * NES Select (Back), and held. */
 static bool select_is_the_maps(void) {
     const CycHostBinding *map = fax_map_binding();
-    int select = cyc_window_bindings()->button[0][2].pad;   /* cyc_input.h: A B Select Start ... */
+    int select = cyc_window_bindings()->button[0][2].pad; /* cyc_input.h: A B Select Start ... */
     return map && *map->pad && *map->pad == select && fax_controls_pad_held(select);
 }
 
 void fax_controls_power_on(void) {
     const CycBindings *bind = cyc_window_bindings();
     char hint[64] = "unbound";
-    const CycBinding *start = &bind->button[0][3];   /* cyc_input.h: A B Select Start ... */
+    const CycBinding *start = &bind->button[0][3]; /* cyc_input.h: A B Select Start ... */
     if (start->key || start->pad) cyc_binding_hint(start, hint, sizeof hint);
     snprintf(menu_label, sizeof menu_label, "Select menu: %s", hint);
 }
@@ -287,5 +296,6 @@ NES_MOD_CONSTRUCTOR(register_controls) {
         !nes_mod_register_function_entry_plugin(hook_ids[1], CHECK_PAUSE_START, pause_hook) ||
         !nes_mod_register_function_entry_plugin(hook_ids[2], MENU_INPUT_BRANCH, close_hook) ||
         !nes_mod_register_reset_callback(deactivate) ||
-        !nes_mod_register_activation_plugin("faxanadu.controls", activate)) abort();
+        !nes_mod_register_activation_plugin("faxanadu.controls", activate))
+        abort();
 }

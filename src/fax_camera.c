@@ -32,18 +32,22 @@
 #include <stdlib.h>
 
 enum {
-    W = FAX_CAMERA_W, H = FAX_CAMERA_H, RW = FAX_CAMERA_ROOM_W, RH = FAX_CAMERA_ROOM_H,
-    ONE = 256,           /* a weight's whole */
-    REACH = 3,           /* rooms looked at each side of his */
-    K = 1,               /* lines into the other row for each pixel of its clearance */
-    STRADDLE = 16,       /* his middle this near a row's edge: his body reaches across it */
-    NEAR = 16, FAR = 48, /* onto both rows' columns: wholly with his body at the edge, not at all 32 from it */
-    OPEN_FALL = 96,      /* ... and not at all this far from where he can pass */
-    ROOM = 96,           /* ... all the way where those views span this many pixels or more, and
+    W = FAX_CAMERA_W,
+    H = FAX_CAMERA_H,
+    RW = FAX_CAMERA_ROOM_W,
+    RH = FAX_CAMERA_ROOM_H,
+    ONE = 256,     /* a weight's whole */
+    REACH = 3,     /* rooms looked at each side of his */
+    K = 1,         /* lines into the other row for each pixel of its clearance */
+    STRADDLE = 16, /* his middle this near a row's edge: his body reaches across it */
+    NEAR = 16,
+    FAR = 48,       /* onto both rows' columns: wholly with his body at the edge, not at all 32 from it */
+    OPEN_FALL = 96, /* ... and not at all this far from where he can pass */
+    ROOM = 96,      /* ... all the way where those views span this many pixels or more, and
                             short of them in proportion where they span fewer: as they run out the
                             view goes back to his row's at most 4 pixels for each of his, and
                             never goes to one that would show him at its very side */
-    INSET = 32,          /* ... and that far inside them where they span twice that */
+    INSET = 32,     /* ... and that far inside them where they span twice that */
 };
 
 static int fdiv(int a, int b) { return a >= 0 ? a / b : -((b - 1 - a) / b); }
@@ -87,7 +91,10 @@ static int along(const FaxCameraMap *m, int row, int c, int cx) {
 static bool both(const FaxCameraMap *m, int up, int dn, int X, int cx, int *lo, int *hi) {
     int c = fdiv(X, RW), first = X + 8 - W, last = X - 8, best = -1;
     for (int j = c - REACH; j <= c + REACH;) {
-        if (!room(m, j, up) || !room(m, j, dn)) { ++j; continue; }
+        if (!room(m, j, up) || !room(m, j, dn)) {
+            ++j;
+            continue;
+        }
         int a = j;
         while (j <= c + REACH && room(m, j, up) && room(m, j, dn)) ++j;
         if (j - a < 2) continue;
@@ -121,7 +128,7 @@ static int opening(const FaxCameraMap *m, int dn, int X) {
  * the views on both rows' columns that show him. */
 static int toward(int x, int lo, int hi, int near) {
     int room = hi - lo, inset = room / 2 < INSET ? room / 2 : INSET;
-    int give = room < ROOM ? (ROOM - room) * (W / 2 - 8) / ROOM : 0;   /* the most the way there can be, at none */
+    int give = room < ROOM ? (ROOM - room) * (W / 2 - 8) / ROOM : 0; /* the most the way there can be, at none */
     return mix(x, clampi(x, lo + inset - give, hi - inset + give), near);
 }
 

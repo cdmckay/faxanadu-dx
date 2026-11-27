@@ -16,7 +16,14 @@
 #include "cyc_settings.h"
 
 static unsigned checks;
-#define CHECK(test) do{++checks;if(!(test)){fprintf(stderr,"FAIL line %u: %s\n",__LINE__,#test);exit(1);}}while(0)
+#define CHECK(test)                                                                                                    \
+    do {                                                                                                               \
+        ++checks;                                                                                                      \
+        if (!(test)) {                                                                                                 \
+            fprintf(stderr, "FAIL line %u: %s\n", __LINE__, #test);                                                    \
+            exit(1);                                                                                                   \
+        }                                                                                                              \
+    } while (0)
 
 /* ---- the machine ---- */
 static uint8_t ram[0x800];
@@ -39,24 +46,42 @@ int nes_mod_register_function_entry_plugin(const char *id, uint16_t addr, NESMod
 }
 int nes_mod_set_function_hook_enabled(const char *id, int on) {
     for (int i = 0; i < 3; ++i)
-        if (!strcmp(id, hook_ids[i])) { hook_on[i] = on; return 1; }
+        if (!strcmp(id, hook_ids[i])) {
+            hook_on[i] = on;
+            return 1;
+        }
     return 0;
 }
 int nes_mod_register_reset_callback(NESModActivationCallback cb) { return cb == deactivate; }
 int nes_mod_register_activation_plugin(const char *id, NESModActivationCallback cb) {
     return !strcmp(id, "faxanadu.controls") && cb == activate;
 }
-void nes_mod_set_local_only(const char *name, int required) { (void)name; (void)required; }
-void cyc_tcp_register(const char *name, const char *help, void (*fn)(int, const char *)) { (void)name; (void)help; (void)fn; }
-void cyc_tcp_ok(int id, const char *fields) { (void)id; (void)fields; }
+void nes_mod_set_local_only(const char *name, int required) {
+    (void)name;
+    (void)required;
+}
+void cyc_tcp_register(const char *name, const char *help, void (*fn)(int, const char *)) {
+    (void)name;
+    (void)help;
+    (void)fn;
+}
+void cyc_tcp_ok(int id, const char *fields) {
+    (void)id;
+    (void)fields;
+}
 void cyc_tcp_quote(const char *in, char *out, size_t n) { snprintf(out, n, "\"%s\"", in); }
 
 /* ---- the window's bindings, and the features' as each feature keeps them ---- */
 static CycBindings window;
-static const CycBindings *window_now = &window;   /* during a load, the settings being loaded, as the window's are */
+static const CycBindings *window_now = &window; /* during a load, the settings being loaded, as the window's are */
 const CycBindings *cyc_window_bindings(void) { return window_now; }
 
-typedef struct { const char *name, *key_name, *pad_name; int key, pad; unsigned changes; CycHostBinding b; } Action;
+typedef struct {
+    const char *name, *key_name, *pad_name;
+    int key, pad;
+    unsigned changes;
+    CycHostBinding b;
+} Action;
 static void changed(void);
 static Action actions[5] = {
     { "Magic", "MagicKey", "MagicButton", 0, 0, 0, { 0 } },
@@ -107,14 +132,18 @@ static void game_save(void *ctx, FILE *f) {
         fprintf(f, "%s = %s\n%s = %s\n", actions[i].key_name, k, actions[i].pad_name, p);
     }
 }
-static bool game_loaded(void *ctx) { (void)ctx; return fax_controls_settings_loaded(); }
+static bool game_loaded(void *ctx) {
+    (void)ctx;
+    return fax_controls_settings_loaded();
+}
 static const CycSettingsGame GAME = { NULL, game_load, game_save, game_loaded };
 
-enum { A = 0x80, B = 0x40, SELECT = 0x20, START = 0x10, UP = 0x08, DOWN = 0x04 };   /* P_N and P_Z: fax_controls.c */
+enum { A = 0x80, B = 0x40, SELECT = 0x20, START = 0x10, UP = 0x08, DOWN = 0x04 }; /* P_N and P_Z: fax_controls.c */
 #define CHANGED ram[0x19]
 
 static void fresh(void) {
-    deactivate(); activate();
+    deactivate();
+    activate();
     memset(ram, 0, sizeof ram);
     cpu = (CycModRegs){ .s = 0xFD };
     defaults();
@@ -157,10 +186,10 @@ static void start_closes_the_menu(void) {
     fresh();
     /* @_inputLoop: LDA Joy1_ChangedButtonMask, the hook, BMI (A), ASL A, BPL (no B), JMP TextBox_Close. */
     cpu.a = START;
-    cpu.p = P_Z;                                 /* whatever the load left, the hook leaves a load's flags */
+    cpu.p = P_Z; /* whatever the load left, the hook leaves a load's flags */
     CHECK(close_hook(0x8AE8) == 0);
-    CHECK(!(cpu.p & P_N) && !(cpu.p & P_Z));     /* BMI not taken */
-    CHECK((uint8_t)(cpu.a << 1) & 0x80);         /* ASL: B in bit 7, BPL not taken: the menu closes */
+    CHECK(!(cpu.p & P_N) && !(cpu.p & P_Z)); /* BMI not taken */
+    CHECK((uint8_t)(cpu.a << 1) & 0x80);     /* ASL: B in bit 7, BPL not taken: the menu closes */
     CHECK(closes == 1);
     /* A with Start: A chooses, as the game decides; nothing changed. */
     cpu.a = A | START;
@@ -194,7 +223,7 @@ static void back_is_the_maps(void) {
     }
     fresh();
     defaults();
-    cyc_bindings_default(&window);               /* the NES Select on Back, as the host has it */
+    cyc_bindings_default(&window); /* the NES Select on Back, as the host has it */
     SDL_VirtualJoystickDesc desc;
     SDL_zero(desc);
     desc.version = SDL_VIRTUAL_JOYSTICK_DESC_VERSION;
@@ -283,12 +312,12 @@ static void an_old_config(const char *dir) {
     window_now = &s.bind;
     cyc_settings_default(&s);
     CHECK(cyc_settings_load(&s, path, stderr, &GAME));
-    CHECK(s.migrated);                           /* the host saves it at once */
+    CHECK(s.migrated); /* the host saves it at once */
     /* The game's: each still on its old default moved; the player's Magic on LB stays. */
-    CHECK(actions[2].pad == CYC_PAD_AXIS(SDL_CONTROLLER_AXIS_TRIGGERRIGHT, 1));     /* Block: B -> RT */
-    CHECK(actions[3].pad == CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_BACK));            /* Map: LT -> Back */
-    CHECK(actions[4].pad == CYC_PAD_AXIS(SDL_CONTROLLER_AXIS_TRIGGERLEFT, 1));      /* Quest log: R3 -> LT */
-    CHECK(actions[0].pad == CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_LEFTSHOULDER));    /* Magic: the player's */
+    CHECK(actions[2].pad == CYC_PAD_AXIS(SDL_CONTROLLER_AXIS_TRIGGERRIGHT, 1));  /* Block: B -> RT */
+    CHECK(actions[3].pad == CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_BACK));         /* Map: LT -> Back */
+    CHECK(actions[4].pad == CYC_PAD_AXIS(SDL_CONTROLLER_AXIS_TRIGGERLEFT, 1));   /* Quest log: R3 -> LT */
+    CHECK(actions[0].pad == CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_LEFTSHOULDER)); /* Magic: the player's */
     CHECK(actions[1].key == SDL_SCANCODE_S && actions[1].pad == CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_B));
     for (int i = 0; i < 5; ++i) CHECK(actions[i].key == actions[i].b.default_key);
     CHECK(moved == 3 && changes == 3 && unbound == 0);
@@ -342,7 +371,8 @@ static void an_old_config(const char *dir) {
      * the controller; the NES B on the right trigger, so Block does too. The quest log moves as ever. */
     f = fopen(path, "w");
     fputs("[Gamepad.Player1]\nb = righttrigger+\n[Game]\nMagicButton = back\nBlockButton = b\n"
-          "MapButton = lefttrigger+\nQuestLogButton = rightstick\n", f);
+          "MapButton = lefttrigger+\nQuestLogButton = rightstick\n",
+          f);
     fclose(f);
     defaults();
     cyc_settings_default(&s);

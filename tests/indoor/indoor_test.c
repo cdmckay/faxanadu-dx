@@ -10,30 +10,37 @@
 #include <string.h>
 
 static unsigned checks;
-#define CHECK(test) do{++checks;if(!(test)){fprintf(stderr,"FAIL line %u: %s\n",__LINE__,#test);exit(1);}}while(0)
+#define CHECK(test)                                                                                                    \
+    do {                                                                                                               \
+        ++checks;                                                                                                      \
+        if (!(test)) {                                                                                                 \
+            fprintf(stderr, "FAIL line %u: %s\n", __LINE__, #test);                                                    \
+            exit(1);                                                                                                   \
+        }                                                                                                              \
+    } while (0)
 
 /* RAM the model reads besides the module's */
-#define MENU_SELECTED_INVENTORY 0x020Eu   /* PlayerMenu_SelectedInventory: 0 weapons ... 3 magic, 4 items */
-#define MENU_CURSOR             0x021Eu   /* Menu_CursorPos */
-#define DATA_ARRAY              0x0220u   /* the list's entries */
-#define WEAPON_INVENTORY        0x039Du   /* armor $03A1, shields $03A5: 4 entries each */
-#define NUMBER_OF_WEAPONS       0x03C2u   /* armor $03C3, shields $03C4 */
+#define MENU_SELECTED_INVENTORY 0x020Eu /* PlayerMenu_SelectedInventory: 0 weapons ... 3 magic, 4 items */
+#define MENU_CURSOR             0x021Eu /* Menu_CursorPos */
+#define DATA_ARRAY              0x0220u /* the list's entries */
+#define WEAPON_INVENTORY        0x039Du /* armor $03A1, shields $03A5: 4 entries each */
+#define NUMBER_OF_WEAPONS       0x03C2u /* armor $03C3, shields $03C4 */
 #define P_C                     0x01u
 #define P_N                     0x80u
 enum { DAGGER, LONG_SWORD, GIANT_BLADE, DRAGON_SLAYER, NO_WEAPON = 0xFF };
 enum { OUTDOORS = 0, BUILDINGS = 4 };
-enum { INVALID, EQUIP, EQUIP_ALL };               /* what A on a menu entry does */
+enum { INVALID, EQUIP, EQUIP_ALL }; /* what A on a menu entry does */
 enum { ENTER, SET_WEAPON, MENU, SITES };
 
 /* ---- the machine ---- */
 static uint8_t ram[0x800];
 static CycModRegs cpu;
 static bool isolated;
-static int hook_on[SITES] = {-1, -1, -1};          /* each hook's enabled state, as last set */
+static int hook_on[SITES] = { -1, -1, -1 }; /* each hook's enabled state, as last set */
 static NESModFunctionEntryCallback callbacks[SITES];
 static uint16_t sites[SITES];
 static NESModActivationCallback on_activate, on_reset;
-static unsigned draws;                            /* Player_DrawSprite calls */
+static unsigned draws; /* Player_DrawSprite calls */
 
 uint8_t cyc_mod_peek(uint16_t addr) { return addr < 0x2000 ? ram[addr & 0x7FF] : 0; }
 bool cyc_mod_poke(uint16_t addr, uint8_t value) {
@@ -77,7 +84,10 @@ int nes_mod_register_activation_plugin(const char *id, NESModActivationCallback 
     on_activate = cb;
     return 1;
 }
-void nes_mod_set_local_only(const char *name, int required) { (void)name; (void)required; }
+void nes_mod_set_local_only(const char *name, int required) {
+    (void)name;
+    (void)required;
+}
 
 static void set_nz(uint8_t v) { cpu.p = (uint8_t)((cpu.p & ~(P_N | P_Z)) | (v & P_N) | (v ? 0 : P_Z)); }
 static void cmp(uint8_t m) {
@@ -96,30 +106,30 @@ static void site(int i, bool z_only) {
 
 /* Game_EnterBuilding's first lines. Returns Player_CurWeapon after the site. */
 static uint8_t enter_building(void) {
-    cpu.a = 0xFF;                                         /* $DE06 LDA #$FF */
+    cpu.a = 0xFF; /* $DE06 LDA #$FF */
     set_nz(cpu.a);
-    ram[PLAYER_CUR_WEAPON] = cpu.a;                       /* $DE08 STA Player_CurWeapon */
-    site(ENTER, false);                                   /* $DE0B LDA Areas_DefaultMusic, ... */
+    ram[PLAYER_CUR_WEAPON] = cpu.a; /* $DE08 STA Player_CurWeapon */
+    site(ENTER, false);             /* $DE0B LDA Areas_DefaultMusic, ... */
     return ram[PLAYER_CUR_WEAPON];
 }
 
 /* Player_SetWeapon with A = the weapon, as Player_Equip jumps to it. */
 static void set_weapon(uint8_t weapon) {
     cpu.a = weapon;
-    uint8_t pushed = cpu.a;                               /* $EDEC PHA */
-    cpu.a = ram[AREA];                                    /* $EDED LDA Area_CurrentArea */
+    uint8_t pushed = cpu.a; /* $EDEC PHA */
+    cpu.a = ram[AREA];      /* $EDED LDA Area_CurrentArea */
     set_nz(cpu.a);
-    cmp(0x04);                                            /* $EDEF CMP #$04 */
+    cmp(0x04); /* $EDEF CMP #$04 */
     site(SET_WEAPON, true);
-    bool refused = cpu.p & P_Z;                           /* $EDF1 BEQ @_cannotEquip */
-    cpu.a = pushed;                                       /* PLA, on either path */
+    bool refused = cpu.p & P_Z; /* $EDF1 BEQ @_cannotEquip */
+    cpu.a = pushed;             /* PLA, on either path */
     set_nz(cpu.a);
-    ram[SELECTED_WEAPON] = cpu.a;                         /* STA SelectedWeapon */
+    ram[SELECTED_WEAPON] = cpu.a; /* STA SelectedWeapon */
     if (!refused) {
-        ram[PLAYER_CUR_WEAPON] = cpu.a;                   /* STA Player_CurWeapon */
-        ++draws;                                          /* JSR Player_DrawSprite */
+        ram[PLAYER_CUR_WEAPON] = cpu.a; /* STA Player_CurWeapon */
+        ++draws;                        /* JSR Player_DrawSprite */
     }
-    cpu.p &= (uint8_t)~P_C;                               /* CLC, RTS */
+    cpu.p &= (uint8_t)~P_C; /* CLC, RTS */
 }
 
 /* Player_LacksItem: the item (category in the top 3 bits) is neither selected
@@ -136,21 +146,21 @@ static bool lacks(uint8_t item) {
 /* A on the cursor's entry of the Select menu's list:
  * PlayerMenu_HandleInventoryMenuInput from @_hasInput. */
 static int choose(void) {
-    cpu.a = ram[AREA];                                    /* $8B83 LDA Area_CurrentArea */
+    cpu.a = ram[AREA]; /* $8B83 LDA Area_CurrentArea */
     set_nz(cpu.a);
-    cmp(0x04);                                            /* $8B86 CMP #$04 */
+    cmp(0x04); /* $8B86 CMP #$04 */
     site(MENU, true);
-    if (cpu.p & P_Z) return INVALID;                      /* $8B88 BEQ PlayerMenu_HandleInvalidChoice */
-    cpu.a = ram[MENU_SELECTED_INVENTORY];                 /* $8B8A LDA PlayerMenu_SelectedInventory */
-    cmp(0x03);                                            /* CMP #$03 */
-    if (cpu.p & P_C) return EQUIP;                        /* BCS PlayerMenu_EquipItem: magic and items */
-    cpu.a = ram[SELECTED_WEAPON];                         /* LDA SelectedWeapon */
+    if (cpu.p & P_Z) return INVALID;      /* $8B88 BEQ PlayerMenu_HandleInvalidChoice */
+    cpu.a = ram[MENU_SELECTED_INVENTORY]; /* $8B8A LDA PlayerMenu_SelectedInventory */
+    cmp(0x03);                            /* CMP #$03 */
+    if (cpu.p & P_C) return EQUIP;        /* BCS PlayerMenu_EquipItem: magic and items */
+    cpu.a = ram[SELECTED_WEAPON];         /* LDA SelectedWeapon */
     cmp(DRAGON_SLAYER);
-    if (cpu.p & P_Z) return INVALID;                      /* BEQ: the Dragon Slayer's set stays on */
-    cpu.a = ram[DATA_ARRAY + ram[MENU_CURSOR]];           /* LDX Menu_CursorPos, LDA DataArray,X */
+    if (cpu.p & P_Z) return INVALID;            /* BEQ: the Dragon Slayer's set stays on */
+    cpu.a = ram[DATA_ARRAY + ram[MENU_CURSOR]]; /* LDX Menu_CursorPos, LDA DataArray,X */
     cmp(DRAGON_SLAYER);
-    if (!(cpu.p & P_Z)) return EQUIP;                     /* BNE PlayerMenu_EquipItem */
-    if (lacks(0x03) || lacks(0x23) || lacks(0x43)) return INVALID;   /* the sword, suit and helmet */
+    if (!(cpu.p & P_Z)) return EQUIP;                              /* BNE PlayerMenu_EquipItem */
+    if (lacks(0x03) || lacks(0x23) || lacks(0x43)) return INVALID; /* the sword, suit and helmet */
     return EQUIP_ALL;
 }
 
@@ -181,7 +191,7 @@ int main(void) {
     CHECK(enabled && entered == 0 && weapons_set == 0 && menu_choices == 0);
 
     /* Into a building: the weapon selected stays in hand, or none. */
-    const uint8_t held[] = {DAGGER, LONG_SWORD, GIANT_BLADE, DRAGON_SLAYER, NO_WEAPON};
+    const uint8_t held[] = { DAGGER, LONG_SWORD, GIANT_BLADE, DRAGON_SLAYER, NO_WEAPON };
     for (unsigned i = 0; i < sizeof held; i++) {
         ram[SELECTED_WEAPON] = held[i];
         CHECK(enter_building() == held[i]);
@@ -212,9 +222,9 @@ int main(void) {
                 for (unsigned full_set = 0; full_set < 2; full_set++) {
                     memset(ram + WEAPON_INVENTORY, 0, 12);
                     memset(ram + NUMBER_OF_WEAPONS, 0, 3);
-                    ram[SELECTED_WEAPON] = (uint8_t[]){DAGGER, LONG_SWORD, DRAGON_SLAYER, NO_WEAPON}[in_hand];
-                    ram[SELECTED_WEAPON + 1] = full_set ? 3 : 0;        /* the Battle Suit, or Leather */
-                    ram[SELECTED_WEAPON + 2] = full_set ? 3 : 0xFF;     /* the Battle Helmet, or none */
+                    ram[SELECTED_WEAPON] = (uint8_t[]){ DAGGER, LONG_SWORD, DRAGON_SLAYER, NO_WEAPON }[in_hand];
+                    ram[SELECTED_WEAPON + 1] = full_set ? 3 : 0;    /* the Battle Suit, or Leather */
+                    ram[SELECTED_WEAPON + 2] = full_set ? 3 : 0xFF; /* the Battle Helmet, or none */
                     if (full_set && ram[SELECTED_WEAPON] != DRAGON_SLAYER) {
                         ram[WEAPON_INVENTORY] = DRAGON_SLAYER;
                         ram[NUMBER_OF_WEAPONS] = 1;
@@ -226,9 +236,9 @@ int main(void) {
                     on_reset();
                     int stock = choose();
                     on_activate();
-                    CHECK(choose() == stock);                             /* outdoors, nothing changes */
+                    CHECK(choose() == stock); /* outdoors, nothing changes */
                     ram[AREA] = BUILDINGS;
-                    CHECK(choose() == stock);                             /* a building is outdoors now */
+                    CHECK(choose() == stock); /* a building is outdoors now */
                     CHECK(menu_choices == 1);
                     ++cases;
                     equips += stock != INVALID;

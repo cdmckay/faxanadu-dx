@@ -52,48 +52,48 @@
 /* Bank 12 */
 /* PlayerMenu_Show: LDA #$18, JSR Sound_PlayEffect, JSR TextBox_Open, after
  * LDA #$0E, STA TextBox_Height (and X 2, Y 6, width 10) */
-#define MENU_OPEN          0x8AB1u
+#define MENU_OPEN         0x8AB1u
 /* PlayerMenu_Show: JSR PlayerMenu_DrawStringLines, after Temp_Int24 =
  * PLAYER_TOP_MENU_ITEM_STRINGS and DataArray 0-5 = 0-5 */
-#define MENU_ROWS          0x8ADAu
+#define MENU_ROWS         0x8ADAu
 /* @_inputLoop: JSR WaitForNextFrame, ..., JSR Menu_UpdateAndDraw, A to
  * @_loadMenuIDs, B to JMP TextBox_Close ($8AED) */
-#define MENU_INPUT_LOOP    0x8ADDu
+#define MENU_INPUT_LOOP   0x8ADDu
 /* @_loadMenuIDs: LDX Menu_CursorPos, CPX #$05, BNE PlayerMenu_ShowSubmenu,
  * JMP PlayerMenu_ShowStatusMenu */
-#define MENU_CHOOSE        0x8AF0u
-#define DRAW_LENGTH        0x8E9Du  /* UI_DrawString: STA Temp_Int24_U, after LDA (Temp_Int24),Y (the length) */
+#define MENU_CHOOSE       0x8AF0u
+#define DRAW_LENGTH       0x8E9Du /* UI_DrawString: STA Temp_Int24_U, after LDA (Temp_Int24),Y (the length) */
 /* UI_DrawString's @_drawLoop: JSR Strings_ASCIIToIndex, after
  * LDA (Temp_Int24),Y (a letter); it begins CMP #$20 */
-#define DRAW_LETTER        0x8EA5u
-#define TEXTBOX_CLOSE      0x9002u  /* TextBox_Close: the box at TextBox_X/Y/Width/Height, put back */
+#define DRAW_LETTER       0x8EA5u
+#define TEXTBOX_CLOSE     0x9002u /* TextBox_Close: the box at TextBox_X/Y/Width/Height, put back */
 /* PLAYER_TOP_MENU_ITEM_STRINGS: WEAPON ... PLAYER, 16 bytes a row; the
  * PLAYER page's PLAYER_STATUS_MENU_STRINGS follow at $88D3 */
-#define TOP_MENU_STRINGS   0x8873u
+#define TOP_MENU_STRINGS  0x8873u
 /* Bank 15 */
-#define SOUND_PLAY_EFFECT  0xD0E4u  /* A the sound; keeps X and Y */
+#define SOUND_PLAY_EFFECT 0xD0E4u /* A the sound; keeps X and Y */
 /* RAM */
-#define TEMP_INT24         0x00ECu  /* the strings' address, low byte first (Temp_Int24, Temp_Int24_M) */
-#define TEXTBOX_HEIGHT     0x020Bu
-#define MENU_CURSOR_POS    0x021Eu
-#define ARG_STRINGS_COUNT  0x021Fu
-#define DATA_ARRAY         0x0220u  /* DataArray: 8 entries, then the shops' costs at $0228 */
+#define TEMP_INT24        0x00ECu /* the strings' address, low byte first (Temp_Int24, Temp_Int24_M) */
+#define TEXTBOX_HEIGHT    0x020Bu
+#define MENU_CURSOR_POS   0x021Eu
+#define ARG_STRINGS_COUNT 0x021Fu
+#define DATA_ARRAY        0x0220u /* DataArray: 8 entries, then the shops' costs at $0228 */
 /* Values */
 enum { HEIGHT = 18, STOCK_HEIGHT = 14, SOUND_INVALID = 0x0D };
-enum { STRING_QUESTS = FAX_MENU_STOCK_ROWS, STRING_MAP };   /* the table's rows 6 and 7 */
+enum { STRING_QUESTS = FAX_MENU_STOCK_ROWS, STRING_MAP }; /* the table's rows 6 and 7 */
 enum { P_Z = 0x02, P_N = 0x80 };
 
 const unsigned char fax_menu_strings[FAX_MENU_ROWS] = { STRING_QUESTS, STRING_MAP, 0, 1, 2, 3, 4, 5 };
-static const char *const added_text[FAX_MENU_ADDED] = { "QUESTS", "MAP" };   /* 7 letters fit a row */
+static const char *const added_text[FAX_MENU_ADDED] = { "QUESTS", "MAP" }; /* 7 letters fit a row */
 
 const char *fax_menu_text(unsigned string) {
     return string >= STRING_QUESTS && string < STRING_QUESTS + FAX_MENU_ADDED ? added_text[string - STRING_QUESTS]
-                                                                                : NULL;
+                                                                              : NULL;
 }
 
 static bool enabled;
-static unsigned opened, served, quests, maps, originals, refused;   /* for TCP */
-static int last_row = -1;                                           /* the row chosen last, 0-7 */
+static unsigned opened, served, quests, maps, originals, refused; /* for TCP */
+static int last_row = -1;                                         /* the row chosen last, 0-7 */
 
 static uint8_t q(uint16_t a) { return cyc_mod_peek(a); }
 static void p(uint16_t a, uint8_t v) { cyc_mod_poke(a, v); }
@@ -127,7 +127,7 @@ static const char *added_at(uint8_t y, unsigned *at) {
     *at = y & 15u;
     return fax_menu_text(y >> 4);
 }
-static void load(CycModRegs *r, uint8_t value) {   /* A as LDA leaves it: N and Z too */
+static void load(CycModRegs *r, uint8_t value) { /* A as LDA leaves it: N and Z too */
     r->a = value;
     r->p = (uint8_t)((r->p & ~(P_N | P_Z)) | (value & P_N) | (value ? 0 : P_Z));
     cyc_mod_set_regs(r);
@@ -165,10 +165,12 @@ static int go(uint16_t to, uint16_t then, int a) {
     cyc_mod_regs(&r);
     uint8_t s = r.s;
     uint16_t chain[2] = { then, to };
-    for (unsigned i = then ? 0 : 1; i < 2; ++i) {   /* pushed as a JSR would: high byte first; `to` on top */
+    for (unsigned i = then ? 0 : 1; i < 2; ++i) { /* pushed as a JSR would: high byte first; `to` on top */
         uint16_t v = (uint16_t)(chain[i] - 1);
-        p((uint16_t)(0x100u | s), (uint8_t)(v >> 8)); s = (uint8_t)(s - 1);
-        p((uint16_t)(0x100u | s), (uint8_t)v);        s = (uint8_t)(s - 1);
+        p((uint16_t)(0x100u | s), (uint8_t)(v >> 8));
+        s = (uint8_t)(s - 1);
+        p((uint16_t)(0x100u | s), (uint8_t)v);
+        s = (uint8_t)(s - 1);
     }
     r.s = s;
     if (a >= 0) r.a = (uint8_t)a;
@@ -183,7 +185,7 @@ static int choose_hook(uint16_t addr) {
     uint8_t row = q(MENU_CURSOR_POS);
     if (row >= FAX_MENU_ROWS) return 0;
     last_row = row;
-    if (row >= FAX_MENU_ADDED) {                 /* the original's row: its own cursor */
+    if (row >= FAX_MENU_ADDED) { /* the original's row: its own cursor */
         p(MENU_CURSOR_POS, (uint8_t)(row - FAX_MENU_ADDED));
         ++originals;
         return 0;
@@ -195,17 +197,18 @@ static int choose_hook(uint16_t addr) {
     }
     if (row == FAX_MENU_QUESTS) ++quests;
     else ++maps;
-    return go(TEXTBOX_CLOSE, 0, -1);             /* as B: JMP TextBox_Close */
+    return go(TEXTBOX_CLOSE, 0, -1); /* as B: JMP TextBox_Close */
 }
 
 /* ---- activation ---- */
 
 static const char *const hook_ids[] = {
-    "faxanadu.select-menu.open", "faxanadu.select-menu.rows", "faxanadu.select-menu.length",
+    "faxanadu.select-menu.open",   "faxanadu.select-menu.rows",   "faxanadu.select-menu.length",
     "faxanadu.select-menu.letter", "faxanadu.select-menu.choose",
 };
 static void hooks(int on) {
-    for (unsigned i = 0; i < sizeof hook_ids / sizeof hook_ids[0]; ++i) nes_mod_set_function_hook_enabled(hook_ids[i], on);
+    for (unsigned i = 0; i < sizeof hook_ids / sizeof hook_ids[0]; ++i)
+        nes_mod_set_function_hook_enabled(hook_ids[i], on);
 }
 static void deactivate(void) {
     enabled = false;
@@ -216,7 +219,7 @@ static void deactivate(void) {
 static void activate(void) {
     enabled = true;
     hooks(1);
-    nes_mod_set_local_only("Select menu", 1);   /* a peer without it would choose other rows */
+    nes_mod_set_local_only("Select menu", 1); /* a peer without it would choose other rows */
 }
 
 #ifdef CYC_WITH_SDL
@@ -250,5 +253,6 @@ NES_MOD_CONSTRUCTOR(register_menu) {
         !nes_mod_register_function_entry_plugin(hook_ids[3], DRAW_LETTER, letter_hook) ||
         !nes_mod_register_function_entry_plugin(hook_ids[4], MENU_CHOOSE, choose_hook) ||
         !nes_mod_register_reset_callback(deactivate) ||
-        !nes_mod_register_activation_plugin("faxanadu.select-menu", activate)) abort();
+        !nes_mod_register_activation_plugin("faxanadu.select-menu", activate))
+        abort();
 }

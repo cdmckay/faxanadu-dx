@@ -23,8 +23,13 @@ uint16_t fax_travel_begin(bool towns);
  * one line. It speaks only at the end of a shop's or a gift's script, never
  * during a Guru's, and Guru travel writes the slot again before each of its
  * own lines. Eolis's Magician (fax_lesson.c) asks his offer at the ASK step. */
-enum { FAX_TRAVEL_SAY = 0xAE00, FAX_TRAVEL_ASK = 0xAE03, FAX_TRAVEL_SLOT = 0xB45B, FAX_TRAVEL_SLOT_ID = 0xC3,
-       FAX_TRAVEL_SLOT_LEN = 48 };
+enum {
+    FAX_TRAVEL_SAY = 0xAE00,
+    FAX_TRAVEL_ASK = 0xAE03,
+    FAX_TRAVEL_SLOT = 0xB45B,
+    FAX_TRAVEL_SLOT_ID = 0xC3,
+    FAX_TRAVEL_SLOT_LEN = 48
+};
 
 /* The Gurus this playthrough has visited, a bit per temple (0 Eolis ... 7
  * Dartmoor); Eolis's is set from the start of every game. 0 with Guru travel

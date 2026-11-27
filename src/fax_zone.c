@@ -13,27 +13,30 @@
 #include <stddef.h>
 
 static const FaxZone zones[FAX_ZONE_COUNT] = {
-    [FAX_ZONE_EOLIS] = { "Eolis", FAX_ZONE_TOWN },                       /* $2A "the Elf town of Eolis" */
-    [FAX_ZONE_TRUNK] = { "Trunk", FAX_ZONE_REGION },                     /* $59 "the spring of Trunk" */
-    [FAX_ZONE_TOWER_OF_TRUNK] = { "Tower of Trunk", FAX_ZONE_TOWER },    /* $3D */
+    [FAX_ZONE_EOLIS] = { "Eolis", FAX_ZONE_TOWN },                          /* $2A "the Elf town of Eolis" */
+    [FAX_ZONE_TRUNK] = { "Trunk", FAX_ZONE_REGION },                        /* $59 "the spring of Trunk" */
+    [FAX_ZONE_TOWER_OF_TRUNK] = { "Tower of Trunk", FAX_ZONE_TOWER },       /* $3D */
     [FAX_ZONE_TOWER_OF_FORTRESS] = { "Tower of Fortress", FAX_ZONE_TOWER }, /* $48, $50 */
-    [FAX_ZONE_APOLUNE] = { "Apolune", FAX_ZONE_TOWN },                   /* $3B "the town of Apolune" */
-    [FAX_ZONE_FOREPAW] = { "Forepaw", FAX_ZONE_TOWN },                   /* $4A "the town of Forepaw" */
-    [FAX_ZONE_MIST] = { "Mist", FAX_ZONE_REGION },                       /* $6D, $7D "the Tower of Mist" */
-    [FAX_ZONE_TOWER_OF_SUFFER] = { "Tower of Suffer", FAX_ZONE_TOWER },  /* $66, $67 */
-    [FAX_ZONE_TOWER_OF_MIST] = { "Tower of Mist", FAX_ZONE_TOWER },      /* $6D, $7D */
-    [FAX_ZONE_MASCON] = { "Mascon", FAX_ZONE_TOWN },                     /* $60 "the misty town of Mascon" */
-    [FAX_ZONE_VICTIM] = { "Victim", FAX_ZONE_TOWN },                     /* $70 "the Town of Victim" */
-    [FAX_ZONE_BRANCH] = { "Branch", FAX_ZONE_REGION },                   /* $81 "the World of Branch" */
-    [FAX_ZONE_CONFLATE] = { "Conflate", FAX_ZONE_TOWN },                 /* $80 "a trading town called Conflate" */
-    [FAX_ZONE_DAYBREAK] = { "Daybreak", FAX_ZONE_TOWN },                 /* $8D spells it "Daydreak" */
-    [FAX_ZONE_DARTMOOR] = { "Dartmoor", FAX_ZONE_REGION },               /* $8C "the door to Dartmoor" */
-    [FAX_ZONE_DARTMOOR_TOWN] = { "Dartmoor", FAX_ZONE_TOWN },            /* $99 "the town of Dartmoor" */
+    [FAX_ZONE_APOLUNE] = { "Apolune", FAX_ZONE_TOWN },                      /* $3B "the town of Apolune" */
+    [FAX_ZONE_FOREPAW] = { "Forepaw", FAX_ZONE_TOWN },                      /* $4A "the town of Forepaw" */
+    [FAX_ZONE_MIST] = { "Mist", FAX_ZONE_REGION },                          /* $6D, $7D "the Tower of Mist" */
+    [FAX_ZONE_TOWER_OF_SUFFER] = { "Tower of Suffer", FAX_ZONE_TOWER },     /* $66, $67 */
+    [FAX_ZONE_TOWER_OF_MIST] = { "Tower of Mist", FAX_ZONE_TOWER },         /* $6D, $7D */
+    [FAX_ZONE_MASCON] = { "Mascon", FAX_ZONE_TOWN },                        /* $60 "the misty town of Mascon" */
+    [FAX_ZONE_VICTIM] = { "Victim", FAX_ZONE_TOWN },                        /* $70 "the Town of Victim" */
+    [FAX_ZONE_BRANCH] = { "Branch", FAX_ZONE_REGION },                      /* $81 "the World of Branch" */
+    [FAX_ZONE_CONFLATE] = { "Conflate", FAX_ZONE_TOWN },                    /* $80 "a trading town called Conflate" */
+    [FAX_ZONE_DAYBREAK] = { "Daybreak", FAX_ZONE_TOWN },                    /* $8D spells it "Daydreak" */
+    [FAX_ZONE_DARTMOOR] = { "Dartmoor", FAX_ZONE_REGION },                  /* $8C "the door to Dartmoor" */
+    [FAX_ZONE_DARTMOOR_TOWN] = { "Dartmoor", FAX_ZONE_TOWN },               /* $99 "the town of Dartmoor" */
     [FAX_ZONE_CASTLE_OF_FRATERNAL] = { "Castle of Fraternal", FAX_ZONE_CASTLE }, /* $99, $9D */
     [FAX_ZONE_FORTRESS_OF_ZENIS] = { "Fortress of Zenis", FAX_ZONE_CASTLE },     /* $9A "the fortress of Zenis" */
 };
 
-typedef struct { uint8_t area, first, last; int8_t zone; } Span;
+typedef struct {
+    uint8_t area, first, last;
+    int8_t zone;
+} Span;
 
 static const Span spans[] = {
     /* Screen 0 is outside the gate, where the intro plays. */
@@ -86,9 +89,7 @@ static const Span spans[] = {
 int fax_zone_at(unsigned area, unsigned screen) {
     for (size_t i = 0; i < sizeof spans / sizeof spans[0]; ++i)
         if (spans[i].area == area && screen >= spans[i].first && screen <= spans[i].last) return spans[i].zone;
-    return FAX_ZONE_NONE;   /* AREA_BUILDINGS, Eolis's gate, or no such screen */
+    return FAX_ZONE_NONE; /* AREA_BUILDINGS, Eolis's gate, or no such screen */
 }
 
-const FaxZone *fax_zone(int zone) {
-    return zone >= 0 && zone < FAX_ZONE_COUNT ? &zones[zone] : NULL;
-}
+const FaxZone *fax_zone(int zone) { return zone >= 0 && zone < FAX_ZONE_COUNT ? &zones[zone] : NULL; }

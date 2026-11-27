@@ -14,19 +14,26 @@
 #include "fax_gold.c"
 
 static unsigned checks;
-#define CHECK(test) do{++checks;if(!(test)){fprintf(stderr,"FAIL line %u: %s\n",__LINE__,#test);exit(1);}}while(0)
+#define CHECK(test)                                                                                                    \
+    do {                                                                                                               \
+        ++checks;                                                                                                      \
+        if (!(test)) {                                                                                                 \
+            fprintf(stderr, "FAIL line %u: %s\n", __LINE__, #test);                                                    \
+            exit(1);                                                                                                   \
+        }                                                                                                              \
+    } while (0)
 
-#define KING_SCRIPT 0xA350u         /* ISCRIPT_EOLIS_KING */
-#define PLEA_START  0x8BB6u         /* message $35 in bank 13 */
-#define OTHER_GIFT  0xAE00u         /* a script elsewhere (unused ROM), for an ADD_GOLD that is not the King's */
+#define KING_SCRIPT 0xA350u /* ISCRIPT_EOLIS_KING */
+#define PLEA_START  0x8BB6u /* message $35 in bank 13 */
+#define OTHER_GIFT  0xAE00u /* a script elsewhere (unused ROM), for an ADD_GOLD that is not the King's */
 #define PLEA        MESSAGE_KING_EXPOSITION
 
 /* ---- the machine ---- */
 static uint8_t ram[0x800];
-static uint8_t rom[0x10000];        /* what the CPU reads at $8000-$FFFF, for the routines modelled here */
+static uint8_t rom[0x10000]; /* what the CPU reads at $8000-$FFFF, for the routines modelled here */
 static CycModRegs cpu;
 static bool isolated;
-static int king_on = -1, count_on = -1, once_on = -1, coin_on = -1, line_on = -1;   /* the hooks' enabled
+static int king_on = -1, count_on = -1, once_on = -1, coin_on = -1, line_on = -1; /* the hooks' enabled
                                                                                       states, as last set */
 
 uint8_t cyc_mod_peek(uint16_t addr) { return addr < 0x2000 ? ram[addr & 0x7FF] : addr >= 0x8000 ? rom[addr] : 0; }
@@ -36,7 +43,11 @@ bool cyc_mod_poke(uint16_t addr, uint8_t value) {
     return true;
 }
 void cyc_mod_regs(CycModRegs *out) { *out = cpu; }
-void cyc_mod_set_regs(const CycModRegs *in) { uint16_t pc = cpu.pc; cpu = *in; cpu.pc = pc; }
+void cyc_mod_set_regs(const CycModRegs *in) {
+    uint16_t pc = cpu.pc;
+    cpu = *in;
+    cpu.pc = pc;
+}
 bool cyc_mod_isolated(void) { return isolated; }
 int nes_mod_register_function_entry_plugin(const char *id, uint16_t addr, NESModFunctionEntryCallback cb) {
     return (!strcmp(id, king_id) && addr == ADD_GOLD_PAY && cb == king_hook) ||
@@ -58,7 +69,10 @@ int nes_mod_register_reset_callback(NESModActivationCallback cb) { return cb == 
 int nes_mod_register_activation_plugin(const char *id, NESModActivationCallback cb) {
     return !strcmp(id, "faxanadu.double-gold") && cb == activate;
 }
-void nes_mod_set_local_only(const char *name, int required) { (void)name; (void)required; }
+void nes_mod_set_local_only(const char *name, int required) {
+    (void)name;
+    (void)required;
+}
 int nes_mod_register_savestate_hook(const char *id, NESModSavestateGet get, NESModSavestateSet set) {
     return !strcmp(id, "faxanadu.double-gold") && get == state_get && set == state_set;
 }
@@ -67,11 +81,14 @@ int nes_mod_register_savestate_validator(const char *id, NESModSavestateValidate
 }
 
 /* The file in play: one field, ours, and the quest log's answers. */
-static bool in_play;                /* a file is in play */
-static char field[FAX_SAVE_VALUE];  /* gold.king_given's value, "" without it */
-static bool plea_in_file, plea_given;   /* fax_quests_given_in_file / fax_quests_given for The King's Plea */
+static bool in_play;                  /* a file is in play */
+static char field[FAX_SAVE_VALUE];    /* gold.king_given's value, "" without it */
+static bool plea_in_file, plea_given; /* fax_quests_given_in_file / fax_quests_given for The King's Plea */
 static FaxSaveListener listener;
-bool fax_save_listen(FaxSaveListener l) { listener = l; return l == on_save; }
+bool fax_save_listen(FaxSaveListener l) {
+    listener = l;
+    return l == on_save;
+}
 const char *fax_save_get(const char *key) { return in_play && !strcmp(key, FIELD_GIVEN) && field[0] ? field : NULL; }
 bool fax_save_set(const char *key, const char *value) {
     if (!in_play || strcmp(key, FIELD_GIVEN)) return false;
@@ -82,11 +99,15 @@ bool fax_quests_given_in_file(unsigned quest) { return quest == FAX_QUEST_KING &
 bool fax_quests_given(unsigned quest) { return quest == FAX_QUEST_KING && plea_given; }
 
 static uint32_t gold_now(void) { return ram[GOLD] | ram[GOLD + 1] << 8 | (uint32_t)ram[GOLD + 2] << 16; }
-static void set_gold_to(uint32_t g) { ram[GOLD] = (uint8_t)g; ram[GOLD + 1] = (uint8_t)(g >> 8); ram[GOLD + 2] = (uint8_t)(g >> 16); }
+static void set_gold_to(uint32_t g) {
+    ram[GOLD] = (uint8_t)g;
+    ram[GOLD + 1] = (uint8_t)(g >> 8);
+    ram[GOLD + 2] = (uint8_t)(g >> 16);
+}
 
 static void reset(void) {
     memset(ram, 0, sizeof ram);
-    cpu = (CycModRegs){.a = 0x5A, .x = 0x77, .y = 0x33, .s = 0xF0, .p = 0x24};
+    cpu = (CycModRegs){ .a = 0x5A, .x = 0x77, .y = 0x33, .s = 0xF0, .p = 0x24 };
     isolated = false;
     in_play = plea_in_file = plea_given = false;
     field[0] = 0;
@@ -119,14 +140,14 @@ static void touch_coin(unsigned slot, uint8_t value) {
 }
 
 /* ---- IScriptAction_AddGold, and what it calls ---- */
-static uint8_t load_byte(void) {                    /* IScripts_LoadByte */
+static uint8_t load_byte(void) { /* IScripts_LoadByte */
     uint16_t base = (uint16_t)(ram[ISCRIPT_ADDR] | ram[ISCRIPT_ADDR + 1] << 8);
     uint8_t y = ram[ISCRIPT_OFFSET], value = rom[(uint16_t)(base + y)];
     if (++y == 0) ++ram[ISCRIPT_ADDR + 1];
     ram[ISCRIPT_OFFSET] = y;
     return value;
 }
-static void add_gold(void) {                        /* Player_AddGold: Temp_Int24/_M, the upper byte of the add 0 */
+static void add_gold(void) { /* Player_AddGold: Temp_Int24/_M, the upper byte of the add 0 */
     unsigned sum = ram[GOLD] + ram[TEMP_INT24];
     ram[GOLD] = (uint8_t)sum;
     sum = ram[GOLD + 1] + ram[TEMP_INT24 + 1] + (sum >> 8);
@@ -138,20 +159,22 @@ static void add_gold(void) {                        /* Player_AddGold: Temp_Int2
 /* IScripts_ProgressivelyAddGold: 10 Golds a frame while the amount is above
  * 0 (its bit 15 clear), then a 60-frame wait. The frames it took, those
  * that paid, and the least and most a frame paid. */
-typedef struct { unsigned frames, pays, least, most; } Count;
+typedef struct {
+    unsigned frames, pays, least, most;
+} Count;
 static Count progressively_add_gold(void) {
     Count c = { 0, 0, ~0u, 0 };
     for (;;) {
-        ++c.frames;                                 /* IScripts_UpdatePortraitAnimation waits for the frame */
+        ++c.frames; /* IScripts_UpdatePortraitAnimation waits for the frame */
         uint8_t hi = ram[TEMP_0202 + 1];
         if (!(hi & 0x80)) {
             if (hi | ram[TEMP_0202]) {
-                unsigned left = (unsigned)(ram[TEMP_0202] | hi << 8) - 10u;   /* SEC, SBC #$0A, SBC #$00 */
+                unsigned left = (unsigned)(ram[TEMP_0202] | hi << 8) - 10u; /* SEC, SBC #$0A, SBC #$00 */
                 ram[TEMP_0202] = (uint8_t)left;
                 ram[TEMP_0202 + 1] = (uint8_t)(left >> 8);
-                ram[TEMP_INT24] = 10;               /* LDA #$0A, STA Temp_Int24, LDA #$00, STA Temp_Int24_M */
+                ram[TEMP_INT24] = 10; /* LDA #$0A, STA Temp_Int24, LDA #$00, STA Temp_Int24_M */
                 ram[TEMP_INT24 + 1] = 0;
-                if (count_on == 1) CHECK(count_hook(COUNT_PAY) == 0);   /* JSR Player_AddGold */
+                if (count_on == 1) CHECK(count_hook(COUNT_PAY) == 0); /* JSR Player_AddGold */
                 uint32_t before = gold_now();
                 add_gold();
                 unsigned paid = gold_now() - before;
@@ -160,7 +183,7 @@ static Count progressively_add_gold(void) {
                 if (paid > c.most) c.most = paid;
                 continue;
             }
-            --ram[TEMP_0202 + 1];                   /* $FF: the wait */
+            --ram[TEMP_0202 + 1]; /* $FF: the wait */
             ram[TEMP_0202] = 0x3C;
         }
         if (--ram[TEMP_0202] == 0) return c;
@@ -174,12 +197,12 @@ static Count run_add_gold(uint16_t script, uint16_t at) {
     ram[ISCRIPT_ADDR + 1] = (uint8_t)(script >> 8);
     ram[ISCRIPT_OFFSET] = 0;
     while ((uint16_t)(script + ram[ISCRIPT_OFFSET]) <= at) load_byte();
-    CHECK(rom[at] == 0x09);                          /* ADD_GOLD */
+    CHECK(rom[at] == 0x09); /* ADD_GOLD */
     ram[TEMP_0202] = load_byte();
     ram[TEMP_0202 + 1] = load_byte();
-    if (king_on == 1) CHECK(king_hook(ADD_GOLD_PAY) == 0);     /* JSR IScripts_ProgressivelyAddGold */
+    if (king_on == 1) CHECK(king_hook(ADD_GOLD_PAY) == 0); /* JSR IScripts_ProgressivelyAddGold */
     Count c = progressively_add_gold();
-    CHECK(load_byte() == 0x00);                      /* IScripts_InvokeNextAction: the END */
+    CHECK(load_byte() == 0x00); /* IScripts_InvokeNextAction: the END */
     return c;
 }
 
@@ -189,13 +212,17 @@ static Count run_add_gold(uint16_t script, uint16_t at) {
  * and with none reaches the hook site at $862A, then
  * IScripts_SkipAddrAndInvoke; the messages ($01, $03) are kept, in order;
  * AddGold ($09) as run_add_gold; END ($00) ends it. */
-typedef struct { uint8_t said[4]; unsigned lines; Count paid; } Talk;
+typedef struct {
+    uint8_t said[4];
+    unsigned lines;
+    Count paid;
+} Talk;
 static Talk talk_to_king(void) {
-    Talk t = { {0}, 0, {0, 0, 0, 0} };
+    Talk t = { { 0 }, 0, { 0, 0, 0, 0 } };
     ram[ISCRIPT_ADDR] = (uint8_t)KING_SCRIPT;
     ram[ISCRIPT_ADDR + 1] = (uint8_t)(KING_SCRIPT >> 8);
     ram[ISCRIPT_OFFSET] = 0;
-    CHECK(load_byte() == 0x80);                      /* the King's portrait */
+    CHECK(load_byte() == 0x80); /* the King's portrait */
     for (unsigned steps = 0; steps < 16; ++steps) {
         uint8_t action = load_byte(), lo, hi;
         switch (action) {
@@ -207,12 +234,13 @@ static Talk talk_to_king(void) {
                 ram[ISCRIPT_ADDR + 1] = hi;
                 ram[ISCRIPT_OFFSET] = 0;
             } else {
-                if (once_on == 1) CHECK(once_hook(NO_GOLD_SKIP) == 0);   /* JMP IScripts_SkipAddrAndInvoke */
+                if (once_on == 1) CHECK(once_hook(NO_GOLD_SKIP) == 0); /* JMP IScripts_SkipAddrAndInvoke */
                 load_byte();
                 load_byte();
             }
             break;
-        case 0x01: case 0x03:
+        case 0x01:
+        case 0x03:
             lo = load_byte();
             if (t.lines < sizeof t.said) t.said[t.lines++] = lo;
             break;
@@ -262,7 +290,8 @@ static void type_message(uint8_t id, uint16_t start, uint8_t bank, char *out, si
 
 /* The game's own data, where the routines read it. */
 static void encode(uint16_t at, const char *text) {
-    for (; *text; ++text, ++at) rom[at] = *text == ' ' ? 0xFD : *text == '/' ? 0xFE : *text == '|' ? 0xFC : (uint8_t)*text;
+    for (; *text; ++text, ++at)
+        rom[at] = *text == ' ' ? 0xFD : *text == '/' ? 0xFE : *text == '|' ? 0xFC : (uint8_t)*text;
     rom[at] = 0xFF;
 }
 static const char plea[] =
@@ -273,16 +302,17 @@ static void load_rom(void) {
     memset(rom, 0xFF, sizeof rom);
     static const uint8_t king[] = { 0x80, 0x0D, 0x5A, 0xA3, 0x01, 0x35, 0x09, 0xDC, 0x05, 0x00, 0x03, 0x36, 0x00 };
     memcpy(rom + KING_SCRIPT, king, sizeof king);
-    static const uint8_t other[] = { 0x00, 0x09, 0xDC, 0x05, 0x00 };   /* no portrait, ADD_GOLD 1500, END */
+    static const uint8_t other[] = { 0x00, 0x09, 0xDC, 0x05, 0x00 }; /* no portrait, ADD_GOLD 1500, END */
     memcpy(rom + OTHER_GIFT, other, sizeof other);
     encode(PLEA_START, plea);
 }
 
 /* ---- the tests ---- */
 static void the_script_and_the_line_are_where_the_module_looks(void) {
-    CHECK(KING_SCRIPT + 6 == 0xA356u && rom[0xA356] == 0x09);                 /* ADD_GOLD $05DC, then END */
+    CHECK(KING_SCRIPT + 6 == 0xA356u && rom[0xA356] == 0x09); /* ADD_GOLD $05DC, then END */
     CHECK(KING_GIFT_END == KING_SCRIPT + 9 && rom[KING_GIFT_END] == 0x00);
-    CHECK(rom[KING_CHECK_GOLD - 1] == 0x0D && (rom[KING_CHECK_GOLD] | rom[KING_CHECK_GOLD + 1] << 8) == KING_NOTHING_MORE);
+    CHECK(rom[KING_CHECK_GOLD - 1] == 0x0D &&
+          (rom[KING_CHECK_GOLD] | rom[KING_CHECK_GOLD + 1] << 8) == KING_NOTHING_MORE);
     CHECK(rom[KING_NOTHING_MORE] == 0x03 && rom[KING_NOTHING_MORE + 1] == 0x36 && rom[KING_NOTHING_MORE + 2] == 0x00);
     CHECK(!memcmp(rom + KING_DIGITS, "1500", 4) && !memcmp(rom + KING_DIGITS - 3, "you", 3));
     CHECK(rom[KING_DIGITS + 4] == 0xFD);
@@ -292,13 +322,13 @@ static void the_after_coin_rule(void) {
     CHECK(fax_gold_after_coin(0, 59) == 118);
     CHECK(fax_gold_after_coin(1000, 250) == 1500);
     CHECK(fax_gold_after_coin(0, 0) == 0);
-    CHECK(fax_gold_after_coin(FAX_GOLD_MAX - 118, 59) == FAX_GOLD_MAX);           /* exactly to the cap */
-    CHECK(fax_gold_after_coin(FAX_GOLD_MAX - 117, 59) == FAX_GOLD_MAX);           /* held there */
+    CHECK(fax_gold_after_coin(FAX_GOLD_MAX - 118, 59) == FAX_GOLD_MAX); /* exactly to the cap */
+    CHECK(fax_gold_after_coin(FAX_GOLD_MAX - 117, 59) == FAX_GOLD_MAX); /* held there */
     CHECK(fax_gold_after_coin(FAX_GOLD_MAX, 250) == FAX_GOLD_MAX);
 }
 
 static void coins_pay_double(void) {
-    static const uint8_t values[] = { 10, 15, 59, 128, 200, 250 };   /* SPRITE_DROP_VALUES' range */
+    static const uint8_t values[] = { 10, 15, 59, 128, 200, 250 }; /* SPRITE_DROP_VALUES' range */
     for (size_t i = 0; i < sizeof values; ++i) {
         reset();
         on();
@@ -328,12 +358,12 @@ static void coins_stop_at_the_cap(void) {
     touch_coin(0, 59);
     CHECK(gold_now() == FAX_GOLD_MAX);
     CHECK(seen.capped == 1 && seen.coin_gold == 50);
-    touch_coin(1, 250);                                   /* at the cap: no wrap */
+    touch_coin(1, 250); /* at the cap: no wrap */
     CHECK(gold_now() == FAX_GOLD_MAX);
     CHECK(seen.capped == 2 && seen.coin_gold == 50 && seen.coins == 2);
     reset();
     on();
-    set_gold_to(FAX_GOLD_MAX - 118);                      /* to the cap exactly is not past it */
+    set_gold_to(FAX_GOLD_MAX - 118); /* to the cap exactly is not past it */
     touch_coin(0, 59);
     CHECK(gold_now() == FAX_GOLD_MAX && seen.capped == 0);
 }
@@ -346,14 +376,14 @@ static void the_original_pays_the_value_and_wraps(void) {
     CHECK(gold_now() == 1234u + 59u);
     set_gold_to(FAX_GOLD_MAX - 50);
     touch_coin(0, 59);
-    CHECK(gold_now() == 8);                               /* the original's add has no cap */
+    CHECK(gold_now() == 8); /* the original's add has no cap */
     CHECK(seen.coins == 0);
 }
 
 static void isolated_coins_double_but_do_not_count(void) {
     reset();
     on();
-    isolated = true;                                      /* a Seamless neighbouring room's scratch machine */
+    isolated = true; /* a Seamless neighbouring room's scratch machine */
     touch_coin(0, 59);
     CHECK(gold_now() == 118);
     CHECK(seen.coins == 0 && seen.coin_gold == 0);
@@ -364,8 +394,8 @@ static void the_king_pays_3000_in_150_frames(void) {
     on();
     Count c = run_add_gold(KING_SCRIPT, 0xA356);
     CHECK(gold_now() == 3000);
-    CHECK(c.pays == 150 && c.least == 20 && c.most == 20);    /* 20 a frame: 150 frames, as the original's 1500 */
-    CHECK(c.frames == 150 + 60);                              /* then the routine's wait */
+    CHECK(c.pays == 150 && c.least == 20 && c.most == 20); /* 20 a frame: 150 frames, as the original's 1500 */
+    CHECK(c.frames == 150 + 60);                           /* then the routine's wait */
     CHECK(seen.kings == 1 && seen.king_pays == 150 && given);
     reset();
     off();
@@ -393,7 +423,7 @@ static void only_the_kings_step(void) {
     reset();
     on();
     rom[0xA357] = 0xF2;
-    rom[0xA358] = 0x03;                                   /* 1010 */
+    rom[0xA358] = 0x03; /* 1010 */
     c = run_add_gold(KING_SCRIPT, 0xA356);
     CHECK(gold_now() == 1010 && seen.kings == 0 && !given);
     CHECK(c.pays == 51 && c.least == 10 && c.most == 20 && seen.king_pays == 50);
@@ -404,9 +434,9 @@ static void only_the_kings_step(void) {
     reset();
     on();
     ram[ISCRIPT_ADDR] = 0x40;
-    ram[ISCRIPT_ADDR + 1] = 0xA4;                         /* a shop's script, somewhere else in bank 12 */
+    ram[ISCRIPT_ADDR + 1] = 0xA4; /* a shop's script, somewhere else in bank 12 */
     ram[TEMP_0202] = 0x2C;
-    ram[TEMP_0202 + 1] = 0x01;                            /* 300, half a Red Potion's 600 */
+    ram[TEMP_0202 + 1] = 0x01; /* 300, half a Red Potion's 600 */
     c = progressively_add_gold();
     CHECK(gold_now() == 300 && c.pays == 30 && c.least == 10 && c.most == 10 && c.frames == 30 + 60);
     CHECK(seen.kings == 0 && seen.king_pays == 0 && !given);
@@ -415,15 +445,15 @@ static void only_the_kings_step(void) {
 static void the_king_gives_once(void) {
     reset();
     on();
-    Talk t = talk_to_king();                              /* no gold: his plea, and the gift */
+    Talk t = talk_to_king(); /* no gold: his plea, and the gift */
     CHECK(said_only(&t, 0x35) && gold_now() == 3000 && t.paid.pays == 150 && given);
-    set_gold_to(0);                                       /* all spent */
+    set_gold_to(0); /* all spent */
     t = talk_to_king();
-    CHECK(said_only(&t, 0x36) && gold_now() == 0 && t.paid.pays == 0);   /* "nothing more" */
+    CHECK(said_only(&t, 0x36) && gold_now() == 0 && t.paid.pays == 0); /* "nothing more" */
     CHECK(seen.kings == 1 && seen.nothing_more == 1);
-    t = talk_to_king();                                   /* and again */
+    t = talk_to_king(); /* and again */
     CHECK(said_only(&t, 0x36) && gold_now() == 0 && seen.kings == 1 && seen.nothing_more == 2);
-    set_gold_to(50);                                      /* with gold, the game's own jump */
+    set_gold_to(50); /* with gold, the game's own jump */
     t = talk_to_king();
     CHECK(said_only(&t, 0x36) && gold_now() == 50 && seen.nothing_more == 2);
     /* A hero who comes with gold first hears "nothing more" and has not been
@@ -501,16 +531,16 @@ static void an_old_file_is_inferred_from_the_kings_plea(void) {
     reset();
     on();
     in_play = true;
-    plea_in_file = true;                                  /* no field; The King's Plea in quests.given */
+    plea_in_file = true; /* no field; The King's Plea in quests.given */
     listener(FAX_SAVE_CONTINUED);
     CHECK(given);
     Talk t = talk_to_king();
     CHECK(said_only(&t, 0x36) && gold_now() == 0);
-    listener(FAX_SAVE_WRITING);                           /* and the field from then on */
+    listener(FAX_SAVE_WRITING); /* and the field from then on */
     CHECK(!strcmp(field, "yes"));
     reset();
     on();
-    in_play = true;                                       /* neither: not given */
+    in_play = true; /* neither: not given */
     listener(FAX_SAVE_CONTINUED);
     CHECK(!given);
     t = talk_to_king();
@@ -518,7 +548,7 @@ static void an_old_file_is_inferred_from_the_kings_plea(void) {
     reset();
     on();
     in_play = plea_in_file = true;
-    strcpy(field, "maybe");                               /* damaged: as if missing */
+    strcpy(field, "maybe"); /* damaged: as if missing */
     listener(FAX_SAVE_CONTINUED);
     CHECK(given);
     /* With the remaster off nothing is read or written. */
@@ -543,7 +573,7 @@ static void given_is_kept_in_save_states(void) {
     CHECK(!given);
     CHECK(state_set(buf, RECORD) == 1 && given);
     fax_gold_loaded();
-    CHECK(given);                                         /* a record: nothing inferred */
+    CHECK(given); /* a record: nothing inferred */
     const uint8_t no[] = { RECORD_VERSION, 0 };
     plea_given = true;
     CHECK(state_set(no, RECORD) == 1 && !given);
@@ -565,13 +595,13 @@ static void given_is_kept_in_save_states(void) {
     fax_gold_loaded();
     CHECK(!given);
     plea_given = true;
-    fax_gold_loaded();                                    /* asked once, at the load */
+    fax_gold_loaded(); /* asked once, at the load */
     CHECK(!given);
     off();
     plea_given = true;
     CHECK(state_set(NULL, 0) == 1);
     fax_gold_loaded();
-    CHECK(!given);                                        /* the original: never given */
+    CHECK(!given); /* the original: never given */
 }
 
 static void the_plea_names_the_gift(void) {
@@ -581,7 +611,7 @@ static void the_plea_names_the_gift(void) {
     type_message(PLEA, PLEA_START, MESSAGE_BANK, text, sizeof text);
     CHECK(strstr(text, "I shall give you3000 Golds.|") != NULL);
     CHECK(!strstr(text, "1500"));
-    CHECK(seen.line == 2);                                /* "15" served as "30"; "00" is the stock */
+    CHECK(seen.line == 2); /* "15" served as "30"; "00" is the stock */
     CHECK(strlen(text) == strlen(plea));
     /* Everything else as written. */
     char want[sizeof plea];
@@ -638,13 +668,13 @@ static void the_typed_digits(void) {
 }
 
 static void registers(void) {
-    register_gold();                                      /* aborts if any registration is refused */
+    register_gold(); /* aborts if any registration is refused */
     CHECK(listener == on_save);
     activate();
     seen.coins = 3;
     given = true;
     deactivate();
-    CHECK(!enabled && seen.coins == 0 && !given);         /* a reset: a new game's */
+    CHECK(!enabled && seen.coins == 0 && !given); /* a reset: a new game's */
 }
 
 int main(void) {

@@ -6,7 +6,7 @@
  * save states. */
 #include <stdint.h>
 
-#define FAX_GOLD_MAX 0xFFFFFFu   /* Player_AddGold's cap: all three bytes $FF */
+#define FAX_GOLD_MAX 0xFFFFFFu /* Player_AddGold's cap: all three bytes $FF */
 
 /* Gold after a coin of `value` is picked up with the remaster: twice the
  * value added, held at FAX_GOLD_MAX. */

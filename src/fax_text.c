@@ -27,17 +27,24 @@
 #include <string.h>
 
 /* Bank 13 */
-#define TILE_GLYPHS_START 0x8000u   /* TILE_GLYPH_SPACE, then one glyph per character to $7F */
+#define TILE_GLYPHS_START       0x8000u /* TILE_GLYPH_SPACE, then one glyph per character to $7F */
 /* RAM */
-#define TEXT_BOX_CLOSED         0x020Cu   /* TextBox_Closed: 0 while a box or the menu is open, or a tile */
-#define UI_ATTRIBUTE_DATA_INDEX 0x038Du   /* the HUD and text box palette, 0-3 */
+#define TEXT_BOX_CLOSED         0x020Cu /* TextBox_Closed: 0 while a box or the menu is open, or a tile */
+#define UI_ATTRIBUTE_DATA_INDEX 0x038Du /* the HUD and text box palette, 0-3 */
 
 enum { GLYPH_BANK = 13, BANK_SIZE = 16384, FIRST = 0x20, GLYPHS = 0x60 };
 /* TextBox_Open's frame tiles */
-enum { TILE_INSIDE = 0, TILE_TOP_LEFT = 1, TILE_TOP = 2, TILE_TOP_RIGHT = 3, TILE_SIDE = 4,
-       TILE_BOTTOM_LEFT = 5, TILE_BOTTOM_RIGHT = 6 };
-#define TEXT_BOX_LINE 64   /* a playfield line, to find the background pattern table boxes are drawn from */
-enum { TEXT_COLS = 32, TEXT_ROWS = 30, TEXT_HUD_ROWS = 4 };   /* the picture in cells; the HUD's rows */
+enum {
+    TILE_INSIDE = 0,
+    TILE_TOP_LEFT = 1,
+    TILE_TOP = 2,
+    TILE_TOP_RIGHT = 3,
+    TILE_SIDE = 4,
+    TILE_BOTTOM_LEFT = 5,
+    TILE_BOTTOM_RIGHT = 6
+};
+#define TEXT_BOX_LINE 64 /* a playfield line, to find the background pattern table boxes are drawn from */
+enum { TEXT_COLS = 32, TEXT_ROWS = 30, TEXT_HUD_ROWS = 4 }; /* the picture in cells; the HUD's rows */
 /* UI_DrawHUDSprites' "P:" at PPU $2061 (UI_STATUS_SYMBOL_PPU_ADDR_L), from UI_STATUS_TILES */
 enum { HUD_P_COL = 1, HUD_P_ROW = 3, TILE_HUD_P = 0x1F, TILE_HUD_COLON = 0x0A };
 #define PPUMASK_BACKGROUND 0x08u
@@ -100,9 +107,14 @@ void fax_text_box(uint32_t *px, int w, int h, int x, int y, int cols, int rows, 
     for (int r = 0; r < rows + 2; ++r)
         for (int c = 0; c < cols + 2; ++c) {
             bool top = r == 0, bottom = r == rows + 1, left = c == 0, right = c == cols + 1;
-            unsigned t = top ? (left ? TILE_TOP_LEFT : right ? TILE_TOP_RIGHT : TILE_TOP)
-                       : bottom ? (left ? TILE_BOTTOM_LEFT : right ? TILE_BOTTOM_RIGHT : TILE_TOP)
-                       : left || right ? TILE_SIDE : TILE_INSIDE;
+            unsigned t = top             ? (left    ? TILE_TOP_LEFT
+                                            : right ? TILE_TOP_RIGHT
+                                                    : TILE_TOP)
+                         : bottom        ? (left    ? TILE_BOTTOM_LEFT
+                                            : right ? TILE_BOTTOM_RIGHT
+                                                    : TILE_TOP)
+                         : left || right ? TILE_SIDE
+                                         : TILE_INSIDE;
             tile(px, w, h, x + c * FAX_TEXT_CELL, y + r * FAX_TEXT_CELL, t, alpha);
         }
 }
@@ -147,9 +159,14 @@ void fax_text_box_rom(uint32_t *px, int w, int h, int x, int y, int cols, int ro
     for (int r = 0; r < rows + 2; ++r)
         for (int c = 0; c < cols + 2; ++c) {
             bool top = r == 0, bottom = r == rows + 1, left = c == 0, right = c == cols + 1;
-            unsigned t = top ? (left ? TILE_TOP_LEFT : right ? TILE_TOP_RIGHT : TILE_TOP)
-                       : bottom ? (left ? TILE_BOTTOM_LEFT : right ? TILE_BOTTOM_RIGHT : TILE_TOP)
-                       : left || right ? TILE_SIDE : TILE_INSIDE;
+            unsigned t = top             ? (left    ? TILE_TOP_LEFT
+                                            : right ? TILE_TOP_RIGHT
+                                                    : TILE_TOP)
+                         : bottom        ? (left    ? TILE_BOTTOM_LEFT
+                                            : right ? TILE_BOTTOM_RIGHT
+                                                    : TILE_TOP)
+                         : left || right ? TILE_SIDE
+                                         : TILE_INSIDE;
             for (int py = 0; py < 8; ++py) {
                 uint8_t lo = rom_frame[t][py], hi = rom_frame[t][py + 8];
                 for (int pc = 0; pc < 8; ++pc) {
@@ -204,6 +221,7 @@ bool fax_text_box_showing(void) {
 
 bool fax_text_hud_showing(void) {
     int line = HUD_P_ROW * FAX_TEXT_CELL + FAX_TEXT_CELL / 2;
-    return (cyc_render_line_mask(line) & PPUMASK_BACKGROUND) && fax_text_shown_tile(HUD_P_COL, HUD_P_ROW) == TILE_HUD_P &&
+    return (cyc_render_line_mask(line) & PPUMASK_BACKGROUND) &&
+           fax_text_shown_tile(HUD_P_COL, HUD_P_ROW) == TILE_HUD_P &&
            fax_text_shown_tile(HUD_P_COL + 1, HUD_P_ROW) == TILE_HUD_COLON;
 }

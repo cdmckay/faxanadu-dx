@@ -12,11 +12,18 @@
 #include <string.h>
 
 static unsigned checks;
-#define CHECK(test) do{++checks;if(!(test)){fprintf(stderr,"FAIL line %u: %s\n",__LINE__,#test);exit(1);}}while(0)
+#define CHECK(test)                                                                                                    \
+    do {                                                                                                               \
+        ++checks;                                                                                                      \
+        if (!(test)) {                                                                                                 \
+            fprintf(stderr, "FAIL line %u: %s\n", __LINE__, #test);                                                    \
+            exit(1);                                                                                                   \
+        }                                                                                                              \
+    } while (0)
 
-#define QUESTS          0x042Du
+#define QUESTS           0x042Du
 #define QUEST_WING_BOOTS 0x08u
-#define QUEST_MATTOCK   0x10u
+#define QUEST_MATTOCK    0x10u
 
 /* ---- the machine ---- */
 static uint8_t ram[0x800];
@@ -32,7 +39,11 @@ bool cyc_mod_poke(uint16_t addr, uint8_t value) {
     return true;
 }
 void cyc_mod_regs(CycModRegs *out) { *out = cpu; }
-void cyc_mod_set_regs(const CycModRegs *in) { uint16_t pc = cpu.pc; cpu = *in; cpu.pc = pc; }
+void cyc_mod_set_regs(const CycModRegs *in) {
+    uint16_t pc = cpu.pc;
+    cpu = *in;
+    cpu.pc = pc;
+}
 bool cyc_mod_isolated(void) { return isolated; }
 bool cyc_mod_call_commit(uint16_t addr, CycModRegs *regs) {
     if (addr != SOUND_PLAY_EFFECT) return false;
@@ -52,14 +63,18 @@ int nes_mod_register_reset_callback(NESModActivationCallback cb) { return cb == 
 int nes_mod_register_activation_plugin(const char *id, NESModActivationCallback cb) {
     return !strcmp(id, "faxanadu.kept-finds") && cb == activate;
 }
-void nes_mod_set_local_only(const char *name, int required) { (void)name; (void)required; }
+void nes_mod_set_local_only(const char *name, int required) {
+    (void)name;
+    (void)required;
+}
 
 /* Player_PickUpItem ($C8CD): LDX NumberOfItems, CPX #$08, BCS return, STA
  * ItemInventory,X, INX, STX NumberOfItems. Recharging items' hook at its
  * entry takes Wing Boots or an Hour Glass the hero holds (readies his). */
 static void pick_up_item(uint8_t item) {
     if (recharge && (item == ITEM_WING_BOOTS || item == ITEM_HOUR_GLASS) &&
-        holds(item, ram[SELECTED_ITEM], &ram[ITEM_INVENTORY], ram[NUMBER_OF_ITEMS])) return;
+        holds(item, ram[SELECTED_ITEM], &ram[ITEM_INVENTORY], ram[NUMBER_OF_ITEMS]))
+        return;
     uint8_t x = ram[NUMBER_OF_ITEMS];
     if (x >= 8) return;
     ram[ITEM_INVENTORY + x] = item;
@@ -79,7 +94,7 @@ static void pick_up(uint8_t entity) {
 /* Player_HandleTouchItem ($88FB) with X the slot, the hook at its entry. */
 static void touch(uint8_t slot) {
     cpu.x = slot;
-    ram[0x0378] = slot;                                     /* CurrentSpriteIndex */
+    ram[0x0378] = slot; /* CurrentSpriteIndex */
     if (touch_on == 1 && touch_hook(HANDLE_TOUCH_ITEM)) return;
     pick_up(ram[ENTITIES + slot]);
     ram[ENTITIES + slot] = 0xFF;
@@ -114,18 +129,18 @@ int main(void) {
     CHECK(would_lose(MATTOCK_QUEST_FIND, 8, ITEM_NONE, full, true));
     CHECK(would_lose(MATTOCK_FIND, 8, ITEM_NONE, full, true));
     CHECK(would_lose(RED_POTION_FIND, 8, ITEM_RED_POTION, full, true));
-    CHECK(!would_lose(MATTOCK_QUEST_FIND, 7, ITEM_NONE, full, true));      /* room */
-    CHECK(!would_lose(0x58, 8, ITEM_NONE, full, true));                     /* the Battle Suit: its own list */
-    CHECK(!would_lose(0x57, 8, ITEM_NONE, full, true));                     /* the Magical Rod: a bit */
-    CHECK(!would_lose(0x5E, 8, ITEM_NONE, full, true));                     /* the Poison: never added */
-    CHECK(!would_lose(0x5F, 8, ITEM_NONE, full, true));                     /* the Glove: timed */
-    CHECK(would_lose(WING_BOOTS_QUEST_FIND, 8, ITEM_NONE, full, true));    /* none held */
-    CHECK(!would_lose(WING_BOOTS_QUEST_FIND, 8, ITEM_WING_BOOTS, full, true));   /* held: Recharging takes it */
+    CHECK(!would_lose(MATTOCK_QUEST_FIND, 7, ITEM_NONE, full, true));          /* room */
+    CHECK(!would_lose(0x58, 8, ITEM_NONE, full, true));                        /* the Battle Suit: its own list */
+    CHECK(!would_lose(0x57, 8, ITEM_NONE, full, true));                        /* the Magical Rod: a bit */
+    CHECK(!would_lose(0x5E, 8, ITEM_NONE, full, true));                        /* the Poison: never added */
+    CHECK(!would_lose(0x5F, 8, ITEM_NONE, full, true));                        /* the Glove: timed */
+    CHECK(would_lose(WING_BOOTS_QUEST_FIND, 8, ITEM_NONE, full, true));        /* none held */
+    CHECK(!would_lose(WING_BOOTS_QUEST_FIND, 8, ITEM_WING_BOOTS, full, true)); /* held: Recharging takes it */
     uint8_t boots_listed[8] = { 0x10, 0x10, 0x10, ITEM_WING_BOOTS, 0x10, 0x10, 0x10, 0x10 };
     CHECK(!would_lose(WING_BOOTS_FIND, 8, ITEM_NONE, boots_listed, true));
-    CHECK(would_lose(WING_BOOTS_FIND, 8, ITEM_NONE, boots_listed, false));  /* no Recharging: lost */
+    CHECK(would_lose(WING_BOOTS_FIND, 8, ITEM_NONE, boots_listed, false)); /* no Recharging: lost */
     CHECK(!would_lose(HOUR_GLASS_FIND, 8, ITEM_HOUR_GLASS, full, true));
-    CHECK(would_lose(HOUR_GLASS_FIND, 8, ITEM_WING_BOOTS, full, true));     /* boots held, not a glass */
+    CHECK(would_lose(HOUR_GLASS_FIND, 8, ITEM_WING_BOOTS, full, true)); /* boots held, not a glass */
 
     /* The original: Ripasheiku's Mattock with 8 listed is said, its bit set,
      * and nothing added; the sprite is gone. */
@@ -141,7 +156,7 @@ int main(void) {
     setup(8, ITEM_RED_POTION);
     ram[ENTITIES + 3] = MATTOCK_QUEST_FIND;
     for (unsigned f = 0; f < 30; ++f) {
-        ram[INTERRUPT_COUNTER] = (uint8_t)(0xF0 + f);           /* wraps, as the counter does */
+        ram[INTERRUPT_COUNTER] = (uint8_t)(0xF0 + f); /* wraps, as the counter does */
         touch(3);
     }
     CHECK(lines == 0 && ram[QUESTS] == 0 && ram[ENTITIES + 3] == MATTOCK_QUEST_FIND && listed(ITEM_MATTOCK) == 0);
@@ -172,8 +187,8 @@ int main(void) {
     setup(8, ITEM_WING_BOOTS);
     ram[ENTITIES + 1] = WING_BOOTS_QUEST_FIND;
     touch(1);
-    CHECK(lines == 1 && ram[QUESTS] == QUEST_WING_BOOTS && listed(ITEM_WING_BOOTS) == 0 &&
-          ram[ENTITIES + 1] == 0xFF && invalid_sounds == 0);
+    CHECK(lines == 1 && ram[QUESTS] == QUEST_WING_BOOTS && listed(ITEM_WING_BOOTS) == 0 && ram[ENTITIES + 1] == 0xFF &&
+          invalid_sounds == 0);
 
     /* Not full: every find goes in, untouched by the hook. */
     setup(5, ITEM_NONE);

@@ -15,7 +15,8 @@ static const char *const LADDER[13] = {
     "........H.......", "........H.......", "........H.......", "................", "................",
     "................", "................", "################",
 };
-static const char *const HIGH[13] = {      /* a ledge high enough that a jump's arc ends in the air */
+static const char *const HIGH[13] = {
+    /* a ledge high enough that a jump's arc ends in the air */
     "................", "................", "................", "................", "................",
     "####............", "................", "................", "................", "................",
     "................", "................", "################",
@@ -25,14 +26,16 @@ static void feature(bool on) {
     reset_cb();
     if (on) activate_cb();
 }
-typedef struct { Frame f[FRAMES]; } Trace;
+typedef struct {
+    Frame f[FRAMES];
+} Trace;
 typedef uint8_t (*Input)(int frame);
-static uint8_t start_iframes;                       /* Player_InvincibilityPhase at the start */
+static uint8_t start_iframes; /* Player_InvincibilityPhase at the start */
 
 /* The same play with the feature off and on. Whatever the feature does, the
  * hero goes the same way: it only answers the pose routines. */
-static void play(const char *const *rows, uint8_t x, uint8_t y, uint8_t flags, uint8_t status, Input input,
-                 Trace *off, Trace *on) {
+static void play(const char *const *rows, uint8_t x, uint8_t y, uint8_t flags, uint8_t status, Input input, Trace *off,
+                 Trace *on) {
     for (int pass = 0; pass < 2; pass++) {
         Trace *t = pass ? on : off;
         load_screen(rows);
@@ -72,14 +75,16 @@ static void the_rule(void) {
                         ram[M_ATTACK_FRAME] = 1;
                         feature(false);
                         uint8_t body = body_frame(), gear = gear_frame();
-                        CHECK(body == gear);                       /* the two copies agree */
+                        CHECK(body == gear); /* the two copies agree */
                         feature(true);
                         landed = on_block;
-                        bool climbing = (flags & F_CAN_CLIMB) && (aligned || !(flags & F_FALLING)) && (flags & F_CLIMBING);
-                        bool rule = (flags & F_FALLING) && !(flags & (F_JUMPING | F_ATTACKING)) && !climbing && !on_block;
+                        bool climbing =
+                            (flags & F_CAN_CLIMB) && (aligned || !(flags & F_FALLING)) && (flags & F_CLIMBING);
+                        bool rule =
+                            (flags & F_FALLING) && !(flags & (F_JUMPING | F_ATTACKING)) && !climbing && !on_block;
                         cpu.p = 0x27;
                         uint8_t hooked_body = body_frame();
-                        if (rule) CHECK(!(cpu.p & (FLAG_N | FLAG_Z)) && (cpu.p & FLAG_C));   /* as LDA #$03 leaves them */
+                        if (rule) CHECK(!(cpu.p & (FLAG_N | FLAG_Z)) && (cpu.p & FLAG_C)); /* as LDA #$03 leaves them */
                         uint8_t hooked_gear = gear_frame();
                         CHECK(hooked_body == (rule ? JUMP : body) && hooked_gear == (rule ? JUMP : gear));
                         if (rule && body != JUMP) ++changed;
@@ -87,8 +92,11 @@ static void the_rule(void) {
     CHECK(changed > 0);
 }
 
-static uint8_t walk_right(int i) { (void)i; return B_RIGHT; }
-static int W;                                       /* walking right from x=8, the first frame off the ledge */
+static uint8_t walk_right(int i) {
+    (void)i;
+    return B_RIGHT;
+}
+static int W; /* walking right from x=8, the first frame off the ledge */
 static void walking_off_a_ledge(void) {
     Trace off, on;
     play(LEDGE, 8, 64, F_RIGHT, 0, walk_right, &off, &on);
@@ -98,13 +106,13 @@ static void walking_off_a_ledge(void) {
     for (int i = 0; i < FRAMES; i++) {
         if (falls(&off, i)) {
             ++fell;
-            CHECK(off.f[i].body != JUMP && off.f[i].gear != JUMP);  /* the original: mid-step, on air */
+            CHECK(off.f[i].body != JUMP && off.f[i].gear != JUMP); /* the original: mid-step, on air */
             CHECK(on.f[i].body == JUMP && on.f[i].gear == JUMP);
         } else {
             CHECK(on.f[i].body == off.f[i].body && on.f[i].gear == off.f[i].gear);
         }
     }
-    CHECK(fell == 11);                                              /* 96 pixels, 8 a frame; the 12th lands */
+    CHECK(fell == 11); /* 96 pixels, 8 a frame; the 12th lands */
     /* The landing frame still has PLAYER_FALLING_OFF, and gets the game's pose */
     int land = 0;
     while (!(off.f[land].y == 160)) land++;
@@ -143,8 +151,10 @@ static void ladders(void) {
     int climbing = 0, fell = 0;
     for (int i = 0; i < FRAMES; i++) {
         if (off.f[i].body == CLIMB) ++climbing;
-        if (falls(&off, i)) { ++fell; CHECK(on.f[i].body == JUMP); }
-        else CHECK(on.f[i].body == off.f[i].body && on.f[i].gear == off.f[i].gear);
+        if (falls(&off, i)) {
+            ++fell;
+            CHECK(on.f[i].body == JUMP);
+        } else CHECK(on.f[i].body == off.f[i].body && on.f[i].gear == off.f[i].gear);
     }
     CHECK(climbing > 5 && fell == 9);
     play(LADDER, 128, 80, F_RIGHT | F_CAN_CLIMB | F_CLIMBING, 0, climb_up_then_off, &off, &on);
@@ -178,14 +188,19 @@ static void wing_boots(void) {
     play(LEDGE, 8, 64, F_RIGHT, S_WING_BOOTS, hover, &off, &on);
     int flying = 0;
     for (int i = 0; i < FRAMES; i++) {
-        if (i >= W + 2 && i < W + 26 && (off.f[i].flags & F_FALLING)) { ++flying; CHECK(off.f[i].body == JUMP && on.f[i].body == JUMP); }
-        else if (falls(&off, i)) CHECK(on.f[i].body == JUMP);
+        if (i >= W + 2 && i < W + 26 && (off.f[i].flags & F_FALLING)) {
+            ++flying;
+            CHECK(off.f[i].body == JUMP && on.f[i].body == JUMP);
+        } else if (falls(&off, i)) CHECK(on.f[i].body == JUMP);
         else CHECK(on.f[i].body == off.f[i].body);
     }
     CHECK(flying > 10);
 }
 
-static uint8_t nothing(int i) { (void)i; return 0; }
+static uint8_t nothing(int i) {
+    (void)i;
+    return 0;
+}
 static void knockback(void) {
     /* Knocked back on the ground: as before. Knocked off a ledge: a fall. A
      * hit starts the invincibility phase at $3C; the push lasts 3 frames. */
@@ -196,10 +211,12 @@ static void knockback(void) {
     play(LEDGE, 52, 64, 0, S_KNOCKBACK, nothing, &off, &on);
     int fell = 0;
     for (int i = 0; i < FRAMES; i++) {
-        if (falls(&off, i)) { ++fell; CHECK(on.f[i].body == JUMP); }
-        else CHECK(on.f[i].body == off.f[i].body);
+        if (falls(&off, i)) {
+            ++fell;
+            CHECK(on.f[i].body == JUMP);
+        } else CHECK(on.f[i].body == off.f[i].body);
     }
-    CHECK(fell > 0 && off.f[1].y > 64 && off.f[3].x > off.f[1].x);   /* the push drops PLAYER_FALLING_OFF itself */
+    CHECK(fell > 0 && off.f[1].y > 64 && off.f[3].x > off.f[1].x); /* the push drops PLAYER_FALLING_OFF itself */
     start_iframes = 0;
 }
 

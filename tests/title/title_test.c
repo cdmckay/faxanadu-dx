@@ -10,7 +10,14 @@ static char logged[128];
 #include "fax_title.c"
 
 static unsigned checks;
-#define CHECK(test) do{++checks;if(!(test)){fprintf(stderr,"FAIL line %u: %s\n",__LINE__,#test);exit(1);}}while(0)
+#define CHECK(test)                                                                                                    \
+    do {                                                                                                               \
+        ++checks;                                                                                                      \
+        if (!(test)) {                                                                                                 \
+            fprintf(stderr, "FAIL line %u: %s\n", __LINE__, #test);                                                    \
+            exit(1);                                                                                                   \
+        }                                                                                                              \
+    } while (0)
 
 /* ---- the machine ---- */
 enum { BLACK = 0xFF000000u, LOGO = 0xFF845024u, TEXT = 0xFFFFFFFFu };
@@ -24,17 +31,37 @@ size_t cyc_mod_copy_cart_payload(uint8_t *out, size_t capacity) {
     if (out && capacity >= sizeof cart) memcpy(out, cart, sizeof cart);
     return sizeof cart;
 }
-uint16_t cyc_render_line_bg_table(int y) { (void)y; return 0x1000; }
-uint8_t cyc_render_line_mask(int y) { (void)y; return 0x1E; }   /* fax_text.c's HUD test: rendering on */
-uint8_t cyc_render_chr(uint16_t a) { (void)a; return 0; }
+uint16_t cyc_render_line_bg_table(int y) {
+    (void)y;
+    return 0x1000;
+}
+uint8_t cyc_render_line_mask(int y) {
+    (void)y;
+    return 0x1E;
+} /* fax_text.c's HUD test: rendering on */
+uint8_t cyc_render_chr(uint16_t a) {
+    (void)a;
+    return 0;
+}
 /* fax_text.c's nametable reads, which the title does not use. */
-int cyc_render_line_scroll_x(int y) { (void)y; return 0; }
+int cyc_render_line_scroll_x(int y) {
+    (void)y;
+    return 0;
+}
 int cyc_render_line_scroll_y(int y) { return y; }
-uint8_t cyc_render_nametable(uint16_t a) { (void)a; return 0; }
+uint8_t cyc_render_nametable(uint16_t a) {
+    (void)a;
+    return 0;
+}
 /* Palette entry e as a color whose blue byte is e, so a pixel tells its entry. */
 uint32_t cyc_render_color(int e) { return 0xFF000000u | 0x00400000u | (uint32_t)(e & 31); }
-const uint32_t *cyc_render_present(int *w, int *h) { ++presents; *w = 256; *h = 240; return native; }
-static int origin = -1;   /* what a compositor declared, or -1: centered */
+const uint32_t *cyc_render_present(int *w, int *h) {
+    ++presents;
+    *w = 256;
+    *h = 240;
+    return native;
+}
+static int origin = -1; /* what a compositor declared, or -1: centered */
 int cyc_render_native_origin(int width) { return origin >= 0 ? origin : width <= 256 ? 0 : (width - 256) / 2; }
 
 /* Registration. */
@@ -43,7 +70,8 @@ static uint16_t hook_addr;
 static int hook_on = -1;
 int nes_mod_register_function_entry_plugin(const char *id, uint16_t addr, NESModFunctionEntryCallback cb) {
     if (strcmp(id, "faxanadu.title-remastered.loop")) return 0;
-    hook = cb; hook_addr = addr;
+    hook = cb;
+    hook_addr = addr;
     return 1;
 }
 int nes_mod_set_function_hook_enabled(const char *id, int on) {
@@ -76,22 +104,29 @@ static void font(void) {
  * notices on 184-222, black between. */
 static void title_picture(uint32_t *px, int w, int h, int x0) {
     for (int i = 0; i < w * h; ++i) px[i] = BLACK;
-    for (int y = 16; y < 144; ++y) for (int x = 16; x < 240; ++x) px[y * w + x0 + x] = LOGO;
-    for (int y = 160; y < 167; ++y) for (int x = 52; x < 191; ++x) px[y * w + x0 + x] = TEXT;
-    for (int y = 184; y < 223; ++y) for (int x = 32; x < 231; ++x) px[y * w + x0 + x] = TEXT;
+    for (int y = 16; y < 144; ++y)
+        for (int x = 16; x < 240; ++x) px[y * w + x0 + x] = LOGO;
+    for (int y = 160; y < 167; ++y)
+        for (int x = 52; x < 191; ++x) px[y * w + x0 + x] = TEXT;
+    for (int y = 184; y < 223; ++y)
+        for (int x = 32; x < 231; ++x) px[y * w + x0 + x] = TEXT;
 }
 
 /* One machine frame: the title's loop runs (or not), then the frame ends. */
 static void frame(bool loop) {
-    if (loop && hook_on == 1) CHECK(hook(TITLE_LOOP) == 0);   /* it only observes */
+    if (loop && hook_on == 1) CHECK(hook(TITLE_LOOP) == 0); /* it only observes */
     fax_title_frame_end();
 }
-static void power_on(void) { deactivate(); fax_title_power_on(); activate(); }
+static void power_on(void) {
+    deactivate();
+    fax_title_power_on();
+    activate();
+}
 
 /* ---- the tests ---- */
 
 static void registration(void) {
-    CHECK(hook && hook_addr == 0xFC7A);   /* @_afterCheckHandleInputFarJump */
+    CHECK(hook && hook_addr == 0xFC7A); /* @_afterCheckHandleInputFarJump */
     deactivate();
     CHECK(hook_on == 0);
     activate();
@@ -111,13 +146,15 @@ static bool lit_at(int x0, int y0, int x, int y) {
  * neighbours, diagonals too); everything else is the picture as it was, the
  * logo included. */
 static void the_word(void) {
-    font(); power_on(); title_picture(native, 256, 240, 0);
+    font();
+    power_on();
+    title_picture(native, 256, 240, 0);
     frame(true);
     int w = 0, h = 0;
     presents = 0;
     const uint32_t *out = fax_title_present(NULL, &w, &h);
     CHECK(out && out != native && presents == 1 && w == 256 && h == 240);
-    int x0 = 120, y0 = 116;   /* 16 wide, centred on the logo (16-239), on the trunk under FAXANADU */
+    int x0 = 120, y0 = 116; /* 16 wide, centred on the logo (16-239), on the trunk under FAXANADU */
     CHECK(fax_text_width(WORD) == 16 && !strcmp(WORD, "DX"));
     int top = 240, bottom = -1, left = 256, right = -1, outlined = 0, letters = 0;
     for (int y = 0; y < 240; ++y)
@@ -134,9 +171,9 @@ static void the_word(void) {
                 if (x < left) left = x;
                 if (x > right) right = x;
             } else if (near) {
-                CHECK(is == cyc_render_color(0));   /* the outline: the title's black */
+                CHECK(is == cyc_render_color(0)); /* the outline: the title's black */
                 ++outlined;
-            } else CHECK(is == was);                /* the logo shows everywhere else */
+            } else CHECK(is == was); /* the logo shows everywhere else */
         }
     /* On the logo, just under its letters (on the trunk, the logo's rows
      * 116-122), and the outline too. */
@@ -144,25 +181,26 @@ static void the_word(void) {
     CHECK(left >= 120 && right <= 135 && (left - 16) - (239 - right) <= 8 && (239 - right) - (left - 16) <= 8);
     CHECK(letters > 20 && outlined > letters);
     /* The outline is a pixel wide: nothing two away from a letter changed. */
-    for (int x = x0 - 2; x < x0 + 18; ++x)
-        CHECK(out[(y0 - 2) * 256 + x] == LOGO && out[(y0 + 8) * 256 + x] == LOGO);
+    for (int x = x0 - 2; x < x0 + 18; ++x) CHECK(out[(y0 - 2) * 256 + x] == LOGO && out[(y0 + 8) * 256 + x] == LOGO);
     for (int y = y0 - 2; y < y0 + 10; ++y) CHECK(out[y * 256 + x0 - 2] == LOGO && out[y * 256 + x0 + 17] == LOGO);
-    CHECK(fax_title_present(native, &w, &h) != native);   /* a composed picture is drawn over too */
+    CHECK(fax_title_present(native, &w, &h) != native); /* a composed picture is drawn over too */
 }
 
 /* Only while the title's loop runs: the frame it ran, and no other. */
 static void only_on_the_title(void) {
-    font(); power_on(); title_picture(native, 256, 240, 0);
+    font();
+    power_on();
+    title_picture(native, 256, 240, 0);
     int w = 256, h = 240;
-    CHECK(fax_title_present(native, &w, &h) == native);   /* power-on: not yet */
+    CHECK(fax_title_present(native, &w, &h) == native); /* power-on: not yet */
     frame(false);
     CHECK(fax_title_present(native, &w, &h) == native);
     frame(true);
     CHECK(fax_title_present(native, &w, &h) != native);
-    CHECK(fax_title_present(native, &w, &h) != native);   /* every present of that frame */
+    CHECK(fax_title_present(native, &w, &h) != native); /* every present of that frame */
     frame(true);
     CHECK(fax_title_present(native, &w, &h) != native);
-    frame(false);                                         /* Start: the intro, or a saved game */
+    frame(false); /* Start: the intro, or a saved game */
     CHECK(fax_title_present(native, &w, &h) == native);
     for (int i = 0; i < 300; ++i) frame(false);
     CHECK(fax_title_present(native, &w, &h) == native && seen == 255);
@@ -179,7 +217,8 @@ static void only_on_the_title(void) {
 /* Wider pictures (Seamless, the wide modes): on the logo wherever the
  * native picture sits; a picture smaller than the native one is left alone. */
 static void wider_pictures(void) {
-    font(); power_on();
+    font();
+    power_on();
     static uint32_t wide[512 * 320];
     title_picture(wide, 512, 320, 128);
     frame(true);
@@ -188,21 +227,28 @@ static void wider_pictures(void) {
     CHECK(out != wide && w == 512 && h == 320);
     int changed = 0, minx = 512;
     for (int i = 0; i < 512 * 320; ++i)
-        if (out[i] != wide[i]) { ++changed; if (i % 512 < minx) minx = i % 512; CHECK(i / 512 >= 115 && i / 512 < 124); }
+        if (out[i] != wide[i]) {
+            ++changed;
+            if (i % 512 < minx) minx = i % 512;
+            CHECK(i / 512 >= 115 && i / 512 < 124);
+        }
     CHECK(changed > 0 && minx >= 128 + 119 && minx < 128 + 128);
-    origin = 40;   /* a compositor that put the native picture elsewhere */
+    origin = 40; /* a compositor that put the native picture elsewhere */
     title_picture(wide, 512, 320, 40);
     out = fax_title_present(wide, &w, &h);
     minx = 512;
-    for (int i = 0; i < 512 * 320; ++i) if (out[i] != wide[i] && i % 512 < minx) minx = i % 512;
+    for (int i = 0; i < 512 * 320; ++i)
+        if (out[i] != wide[i] && i % 512 < minx) minx = i % 512;
     CHECK(minx >= 40 + 119 && minx < 40 + 128);
     origin = -1;
-    w = 200; h = 188;   /* scaled down into a small window */
+    w = 200;
+    h = 188; /* scaled down into a small window */
     CHECK(fax_title_present(wide, &w, &h) == wide && w == 200 && h == 188);
 }
 
 static void save_states(void) {
-    font(); power_on();
+    font();
+    power_on();
     uint8_t rec[8];
     CHECK(state_get(rec, 1) == -1);
     frame(true);
@@ -212,9 +258,9 @@ static void save_states(void) {
     int w = 256, h = 240;
     title_picture(native, 256, 240, 0);
     CHECK(fax_title_present(native, &w, &h) == native);
-    CHECK(state_set(rec, n) == 1);   /* a state saved on the title: the word, before a frame runs */
+    CHECK(state_set(rec, n) == 1); /* a state saved on the title: the word, before a frame runs */
     CHECK(fax_title_present(native, &w, &h) != native);
-    CHECK(state_set(rec, 0) == 1);   /* saved without the feature: wait for the loop */
+    CHECK(state_set(rec, 0) == 1); /* saved without the feature: wait for the loop */
     CHECK(fax_title_present(native, &w, &h) == native);
     rec[0] = 2;
     CHECK(!state_validate(rec, n) && state_set(rec, n) == 0);
@@ -222,7 +268,7 @@ static void save_states(void) {
 }
 
 static void without_the_font(void) {
-    memset(cart, 0, sizeof cart);   /* no glyphs: no letters */
+    memset(cart, 0, sizeof cart); /* no glyphs: no letters */
     fax_text_unload();
     power_on();
     logged[0] = 0;

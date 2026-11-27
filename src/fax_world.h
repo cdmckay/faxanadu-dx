@@ -4,9 +4,9 @@
 void fax_world_reset(void);
 void fax_world_loaded(void);
 void fax_world_step(void);
-bool fax_world_option(const char *name,const char *value);
+bool fax_world_option(const char *name, const char *value);
 void fax_world_event(const void *event);
-const uint32_t *fax_world_present(int *w,int *h,const uint32_t *native);
+const uint32_t *fax_world_present(int *w, int *h, const uint32_t *native);
 /* The last fax_world_present returned Seamless's view (the remaster on):
  * the window then scales the picture by the host's one fixed rule
  * (cyc_host_extras.h sharp_scale), whatever the player's Display settings. */
@@ -15,16 +15,16 @@ void fax_world_tcp_setup(void);
 /* Where the active room's top-left (native column 0, the first line under
  * the HUD) sat in the last picture fax_world_present composed of the world;
  * false when it presented none (off, or a scene it shows as the original's). */
-bool fax_world_origin(int *x,int *y);
+bool fax_world_origin(int *x, int *y);
 /* The same for any room of `area` placed in the map around the active one:
  * where its top-left sat in that picture. False when the picture showed no
  * world, or showed another area, or the room is not on its map. */
-bool fax_world_room_origin(int area,int room,int *x,int *y);
+bool fax_world_room_origin(int area, int room, int *x, int *y);
 /* The CPU RAM of a neighbouring room of `area` whose actors Seamless keeps
  * running (its sprite slots, as CurrentSprites_* hold them): NULL for the
  * active room, a room not on the map around it, or one not running. For the
  * quest log's marks over the people next door. */
-const uint8_t *fax_world_room_ram(int area,int room);
+const uint8_t *fax_world_room_ram(int area, int room);
 /* True while a neighbouring room's actors run their tick on its isolated
  * copy of the machine (Sprites_UpdateAll, with hooks allowed), against the
  * hero projected to that room's edge, invincible, not swinging and with no
@@ -37,7 +37,7 @@ bool fax_world_ticking(void);
  * ScreenBuffer at $600) once Area_LoadBlocks or Area_LoadScrollData has
  * filled it, before the room is drawn, collided with or adopted. NULL for
  * none. The graphics fixes (fax_graphics.c) set it. */
-void fax_world_set_room_fixup(void (*fixup)(uint8_t area,uint8_t screen,uint8_t *ram));
+void fax_world_set_room_fixup(void (*fixup)(uint8_t area, uint8_t screen, uint8_t *ram));
 /* ---- for Seams (fax_seams.c, #166) ----
  * Rooms are numbered by their screen in the current area. A room's place is
  * in world pixels: its top-left on the map Seamless lays out around the

@@ -24,19 +24,19 @@
 #include <string.h>
 
 /* Zero page. Input_HandleOnInterrupt, in the NMI, reads the pad once a frame. */
-#define JOY1_BUTTON_MASK         0x0016u   /* held: A $80, B $40, Select $20, Start $10, Up $08, Down $04, Left $02, Right $01 */
-#define JOY1_PREV_BUTTON_MASK    0x0018u   /* the held mask at the read before */
-#define JOY1_CHANGED_BUTTON_MASK 0x0019u   /* newly pressed: held now and not at the read before */
-#define BUTTON_B  0x40u
-#define BUTTON_UP 0x08u
+#define JOY1_BUTTON_MASK 0x0016u /* held: A $80, B $40, Select $20, Start $10, Up $08, Down $04, Left $02, Right $01 */
+#define JOY1_PREV_BUTTON_MASK    0x0018u /* the held mask at the read before */
+#define JOY1_CHANGED_BUTTON_MASK 0x0019u /* newly pressed: held now and not at the read before */
+#define BUTTON_B                 0x40u
+#define BUTTON_UP                0x08u
 /* Bank 14 */
-#define PLAYER_CAST_MAGIC 0xBA5Bu   /* LDA CastMagic_Type, BPL CastMagic_RunSpellHandler, JSR Player_IsClimbing */
+#define PLAYER_CAST_MAGIC        0xBA5Bu /* LDA CastMagic_Type, BPL CastMagic_RunSpellHandler, JSR Player_IsClimbing */
 /* Fixed bank */
-#define GAME_LOOP_CHECK_USE_CURRENT_ITEM 0xC478u   /* LDA Player_Flags, AND #$05, BNE GameLoop_UseItem_Return */
+#define GAME_LOOP_CHECK_USE_CURRENT_ITEM 0xC478u /* LDA Player_Flags, AND #$05, BNE GameLoop_UseItem_Return */
 /* Game_MainLoop's JSR Player_CastMagic ($DB5F) pushes the address of its
  * last byte. EndGame_MainLoop's ($DC0B), which plays scripted buttons,
  * pushes $DC0D. */
-#define MAIN_LOOP_CAST_PUSHED 0xDB61u
+#define MAIN_LOOP_CAST_PUSHED            0xDB61u
 
 /* The defaults as SDL numbers them: SDL_SCANCODE_C, and SDL_CONTROLLER_BUTTON_Y
  * in the host's binding encoding (cyc_input.h CYC_PAD_BUTTON: 1 + the button). */
@@ -44,14 +44,16 @@ enum { DEFAULT_KEY = 6, DEFAULT_PAD = 1 + 3, AXIS_PRESS = 16384 };
 
 /* The real masks while Up+B stands in for them, between the two hooks. Saved
  * with the machine, in case a save state lands in between (a lag frame). */
-typedef struct { uint8_t injected, held, changed; } Swap;
+typedef struct {
+    uint8_t injected, held, changed;
+} Swap;
 
 static bool enabled;
-static bool pressed;              /* Magic went down since the last frame ended */
+static bool pressed; /* Magic went down since the last frame ended */
 static Swap swap;
-static bool axis_down;            /* a stick or trigger binding is past its press point */
+static bool axis_down; /* a stick or trigger binding is past its press point */
 static unsigned presses, presented, restored, reread;
-static char label[80] = "Magic: C / Y";   /* the Controls row; the bindings follow "Magic: " */
+static char label[80] = "Magic: C / Y"; /* the Controls row; the bindings follow "Magic: " */
 
 /* A press of the Magic button. Like a button the NMI reads, it lasts one
  * frame: if Player_CastMagic does not run in that frame (a menu, a
@@ -62,7 +64,7 @@ static void press(void) {
     ++presses;
 }
 
-static uint16_t jsr_pushed(uint8_t s) {   /* what the JSR that entered this routine pushed */
+static uint16_t jsr_pushed(uint8_t s) { /* what the JSR that entered this routine pushed */
     return (uint16_t)(cyc_mod_peek((uint16_t)(0x100u | (uint8_t)(s + 1))) |
                       cyc_mod_peek((uint16_t)(0x100u | (uint8_t)(s + 2))) << 8);
 }
@@ -114,7 +116,8 @@ void fax_magic_frame_end(void) { pressed = false; }
 
 static const char *const hook_ids[] = { "faxanadu.magic-button.cast", "faxanadu.magic-button.restore" };
 static void hooks(int on) {
-    for (unsigned i = 0; i < sizeof hook_ids / sizeof hook_ids[0]; ++i) nes_mod_set_function_hook_enabled(hook_ids[i], on);
+    for (unsigned i = 0; i < sizeof hook_ids / sizeof hook_ids[0]; ++i)
+        nes_mod_set_function_hook_enabled(hook_ids[i], on);
 }
 static void deactivate(void) {
     if (swap.injected) restore();
@@ -125,23 +128,23 @@ static void deactivate(void) {
 static void activate(void) {
     enabled = true;
     hooks(1);
-    nes_mod_set_local_only("Magic button", 1);   /* host input the other side would not see */
+    nes_mod_set_local_only("Magic button", 1); /* host input the other side would not see */
 }
 
 static int state_get(uint8_t *buf, int cap) {
     if (!swap.injected) return 0;
     if (cap < 3) return -1;
-    buf[0] = swap.injected; buf[1] = swap.held; buf[2] = swap.changed;
+    buf[0] = swap.injected;
+    buf[1] = swap.held;
+    buf[2] = swap.changed;
     return 3;
 }
-static int state_validate(const uint8_t *buf, int len) {
-    return len == 0 || (len == 3 && buf[0] == 1);
-}
+static int state_validate(const uint8_t *buf, int len) { return len == 0 || (len == 3 && buf[0] == 1); }
 static int state_set(const uint8_t *buf, int len) {
     if (!state_validate(buf, len)) return 0;
     swap = len ? (Swap){ buf[0], buf[1], buf[2] } : (Swap){ 0 };
     pressed = false;
-    if (swap.injected && !enabled) restore();   /* turned off since: no hook will */
+    if (swap.injected && !enabled) restore(); /* turned off since: no hook will */
     return 1;
 }
 
@@ -150,9 +153,9 @@ static int state_set(const uint8_t *buf, int len) {
 const char *fax_magic_controls_label(void) { return label; }
 
 #ifdef CYC_WITH_SDL
-static int key = DEFAULT_KEY, pad = DEFAULT_PAD;   /* 0: unbound */
+static int key = DEFAULT_KEY, pad = DEFAULT_PAD; /* 0: unbound */
 
-static void describe(void) {   /* as the host shows its own shortcuts: "C / Y" */
+static void describe(void) { /* as the host shows its own shortcuts: "C / Y" */
     char hint[64] = "unbound";
     CycBinding both = { key, pad };
     if (key || pad) cyc_binding_hint(&both, hint, sizeof hint);
@@ -171,7 +174,9 @@ bool fax_magic_load_setting(const char *name, const char *value) {
         else fprintf(stderr, "[magic] MagicKey: SDL has no key named \"%s\"; keeping the default\n", value);
     } else if (!strcmp(name, "MagicButton")) {
         if (cyc_pad_parse(value, &v) && !CYC_PAD_IS_COMBO(v)) pad = v;
-        else fprintf(stderr, "[magic] MagicButton: \"%s\" is not one controller button or axis; keeping the default\n", value);
+        else
+            fprintf(stderr, "[magic] MagicButton: \"%s\" is not one controller button or axis; keeping the default\n",
+                    value);
     } else {
         return false;
     }
@@ -206,8 +211,7 @@ static void magic_state(int id, const char *line) {
     snprintf(fields, sizeof fields,
              "\"enabled\":%s,\"binding\":%s,\"presses\":%u,\"presented\":%u,\"restored\":%u,\"reread\":%u,"
              "\"injected\":%s",
-             enabled ? "true" : "false", text, presses, presented, restored, reread,
-             swap.injected ? "true" : "false");
+             enabled ? "true" : "false", text, presses, presented, restored, reread, swap.injected ? "true" : "false");
     cyc_tcp_ok(id, fields);
 }
 void fax_magic_tcp_setup(void) {
@@ -216,7 +220,11 @@ void fax_magic_tcp_setup(void) {
 }
 #else
 const CycHostBinding *fax_magic_binding(void) { return NULL; }
-bool fax_magic_load_setting(const char *name, const char *value) { (void)name; (void)value; return false; }
+bool fax_magic_load_setting(const char *name, const char *value) {
+    (void)name;
+    (void)value;
+    return false;
+}
 void fax_magic_save_settings(FILE *f) { (void)f; }
 void fax_magic_event(const void *ev) { (void)ev; }
 void fax_magic_tcp_setup(void) {}
@@ -228,5 +236,6 @@ NES_MOD_CONSTRUCTOR(register_magic) {
         !nes_mod_register_reset_callback(deactivate) ||
         !nes_mod_register_activation_plugin("faxanadu.magic-button", activate) ||
         !nes_mod_register_savestate_hook("faxanadu.magic-button", state_get, state_set) ||
-        !nes_mod_register_savestate_validator("faxanadu.magic-button", state_validate)) abort();
+        !nes_mod_register_savestate_validator("faxanadu.magic-button", state_validate))
+        abort();
 }

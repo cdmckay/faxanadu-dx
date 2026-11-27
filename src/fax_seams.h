@@ -16,7 +16,10 @@ void fax_seams_tcp_setup(void);
  * skips (Sprite_Draw_Standard, Sprite_Draw_FlippedHoriz): x from the room's
  * left edge in pixels (below 0 or 256 and up), y as OAM Y, its tile and
  * attributes as the game would have put them in OAM, and the actor's slot. */
-typedef struct { int16_t x; uint8_t y, tile, attr, slot; } FaxSeamsCell;
+typedef struct {
+    int16_t x;
+    uint8_t y, tile, attr, slot;
+} FaxSeamsCell;
 
 /* The slot, past the actors' 0-7, that the hero's spell's cells are told by
  * (slice 3): in his room's OAM and its cells past a side. */

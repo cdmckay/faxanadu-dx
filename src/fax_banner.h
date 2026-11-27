@@ -6,8 +6,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-void fax_banner_reset(void);   /* the machine powered on */
-void fax_banner_step(void);    /* the end of each machine frame */
+void fax_banner_reset(void); /* the machine powered on */
+void fax_banner_step(void);  /* the end of each machine frame */
 /* The picture to present: `picture` (or, if NULL, the engine's own) with the
  * banner over it while one shows; otherwise `picture` itself. */
 const uint32_t *fax_banner_present(const uint32_t *picture, int *w, int *h);

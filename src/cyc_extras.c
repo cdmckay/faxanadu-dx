@@ -93,7 +93,8 @@ bool faxanadu_replace_file(const char *from, const char *to) {
 #endif
 
 static void power_on(void *ctx) {
-    (void)ctx; frame = 0;
+    (void)ctx;
+    frame = 0;
     fax_world_reset();
     fax_travel_step();
     fax_banner_reset();
@@ -116,7 +117,10 @@ static void power_on(void *ctx) {
         char path[1100];
         if (sidecar_path("tiles/manifest.json", path)) {
             FILE *f = fopen(path, "r");
-            if (f) { fclose(f); tiles_enabled = sidecar_path("tiles", tiles_path); }
+            if (f) {
+                fclose(f);
+                tiles_enabled = sidecar_path("tiles", tiles_path);
+            }
         }
     }
     if (tiles_enabled || tile_dump) {
@@ -127,9 +131,12 @@ static void power_on(void *ctx) {
 }
 static void frame_begin(void *ctx) {
     (void)ctx;
-    if (text_enabled) { text_override_reload_if_changed(); text_override_apply(); }
+    if (text_enabled) {
+        text_override_reload_if_changed();
+        text_override_apply();
+    }
     if (tiles_enabled) chr_override_reload_if_changed();
-    fax_seams_frame_begin();   /* last: the machine runs on from here */
+    fax_seams_frame_begin(); /* last: the machine runs on from here */
 }
 #ifdef CYC_WITH_SDL
 /* The end-to-end tests' frame-exact wait (tests/e2e/fax_e2e.py's wait()):
@@ -141,9 +148,16 @@ static long wait_left;
 static void tcp_wait(int id, const char *line) {
     long n = 1;
     cyc_tcp_long(line, "frames", &n);
-    if (wait_id >= 0) { cyc_tcp_err(id, "wait: another wait is running"); return; }
-    if (n < 1 || n > 36000) { cyc_tcp_err(id, "wait: frames is 1-36000"); return; }
-    wait_id = id; wait_left = n;
+    if (wait_id >= 0) {
+        cyc_tcp_err(id, "wait: another wait is running");
+        return;
+    }
+    if (n < 1 || n > 36000) {
+        cyc_tcp_err(id, "wait: frames is 1-36000");
+        return;
+    }
+    wait_id = id;
+    wait_left = n;
 }
 static void wait_frame_end(void) {
     if (wait_id < 0 || --wait_left > 0) return;
@@ -153,8 +167,9 @@ static void wait_frame_end(void) {
 }
 #endif
 static void frame_end(void *ctx) {
-    (void)ctx; ++frame;
-    fax_seams_frame_end();     /* first: everything after sees the room, not a visitors' pass */
+    (void)ctx;
+    ++frame;
+    fax_seams_frame_end(); /* first: everything after sees the room, not a visitors' pass */
 #ifdef CYC_WITH_SDL
     wait_frame_end();
 #endif
@@ -178,12 +193,19 @@ static void frame_end(void *ctx) {
 }
 static bool option(void *ctx, const char *name, const char *value) {
     (void)ctx;
-    if(!strncmp(name,"--world-",8))return fax_world_option(name,value);
+    if (!strncmp(name, "--world-", 8)) return fax_world_option(name, value);
     char *path = NULL;
-    if (!strcmp(name, "--text-overrides")) { path = text_path; text_enabled = true; }
-    else if (!strcmp(name, "--tiles")) { path = tiles_path; tiles_enabled = true; }
-    else if (!strcmp(name, "--tile-compile")) path = compile_path;
-    else if (!strcmp(name, "--tile-dump")) { tile_dump = true; return true; }
+    if (!strcmp(name, "--text-overrides")) {
+        path = text_path;
+        text_enabled = true;
+    } else if (!strcmp(name, "--tiles")) {
+        path = tiles_path;
+        tiles_enabled = true;
+    } else if (!strcmp(name, "--tile-compile")) path = compile_path;
+    else if (!strcmp(name, "--tile-dump")) {
+        tile_dump = true;
+        return true;
+    }
     if (!path || !value || strlen(value) >= 1100) return false;
     snprintf(path, 1100, "%s", value);
     return true;
@@ -239,18 +261,37 @@ static void tcp_setup(void *ctx) {
     fax_punch_tcp_setup();
 }
 #endif
-static const uint32_t *present(void *ctx,int *w,int *h) {
+static const uint32_t *present(void *ctx, int *w, int *h) {
     (void)ctx;
-    const uint32_t *picture=fax_quests_marks_present(fax_damage_present(fax_sugata_present(fax_spell_cost_present(fax_item_box_present(fax_charges_present(fax_world_present(w,h,cyc_frame_argb()),w,h),w,h),w,h),w,h),w,h),w,h);
-    picture=fax_files_present(fax_title_present(fax_speaker_present(fax_recharge_present(fax_quests_banner_present(fax_slain_present(fax_banner_present(picture,w,h),w,h),w,h),w,h),w,h),w,h),w,h);
-    return fax_quests_log_present(fax_map_present(fax_shops_present(picture,w,h),w,h),w,h);
+    const uint32_t *picture = fax_quests_marks_present(
+        fax_damage_present(
+            fax_sugata_present(
+                fax_spell_cost_present(
+                    fax_item_box_present(fax_charges_present(fax_world_present(w, h, cyc_frame_argb()), w, h), w, h), w,
+                    h),
+                w, h),
+            w, h),
+        w, h);
+    picture = fax_files_present(
+        fax_title_present(
+            fax_speaker_present(
+                fax_recharge_present(
+                    fax_quests_banner_present(fax_slain_present(fax_banner_present(picture, w, h), w, h), w, h), w, h),
+                w, h),
+            w, h),
+        w, h);
+    return fax_quests_log_present(fax_map_present(fax_shops_present(picture, w, h), w, h), w, h);
 }
 /* Seamless's fixed 424x240 view is scaled by the host's one rule (#107):
  * the largest fit, sharp at 1080p's 4.5x. The original's picture (the
  * remaster off) keeps the player's Display settings. */
-static bool sharp_scale(void *ctx) {(void)ctx;return fax_world_composed();}
-static void event(void *ctx,const void *e,int player) {
-    (void)ctx;(void)player;
+static bool sharp_scale(void *ctx) {
+    (void)ctx;
+    return fax_world_composed();
+}
+static void event(void *ctx, const void *e, int player) {
+    (void)ctx;
+    (void)player;
     fax_world_event(e);
     fax_magic_event(e);
     fax_use_item_event(e);
@@ -258,7 +299,11 @@ static void event(void *ctx,const void *e,int player) {
     fax_map_event(e);
     fax_quests_event(e);
 }
-static void input(void *ctx, uint8_t buttons[2]) { (void)ctx; fax_block_input(buttons); fax_use_item_input(buttons); }
+static void input(void *ctx, uint8_t buttons[2]) {
+    (void)ctx;
+    fax_block_input(buttons);
+    fax_use_item_input(buttons);
+}
 static void load_setting(void *ctx, const char *key, const char *value) {
     (void)ctx;
     if (!fax_controls_load_setting(key, value) && !fax_magic_load_setting(key, value) &&
@@ -269,10 +314,16 @@ static void load_setting(void *ctx, const char *key, const char *value) {
 static void save_settings(void *ctx, FILE *f) {
     (void)ctx;
     fax_controls_save_settings(f);
-    fax_magic_save_settings(f); fax_use_item_save_settings(f); fax_block_save_settings(f);
-    fax_map_save_settings(f); fax_quests_save_settings(f);
+    fax_magic_save_settings(f);
+    fax_use_item_save_settings(f);
+    fax_block_save_settings(f);
+    fax_map_save_settings(f);
+    fax_quests_save_settings(f);
 }
-static bool settings_loaded(void *ctx) { (void)ctx; return fax_controls_settings_loaded(); }
+static bool settings_loaded(void *ctx) {
+    (void)ctx;
+    return fax_controls_settings_loaded();
+}
 /* The launcher's Controls page lists these after the host's shortcuts (a
  * window build: each feature's binding is there). */
 static CycHostBinding bindings[5];
@@ -291,8 +342,8 @@ static void list_bindings(void) {
 static RecompRuntimeUiItem menu_rows[] = {
     { "faxanadu.select-menu", "Controls", "Select menu", "Opens QUESTS, MAP and your gear. Rebind it in the launcher.",
       RECOMP_RUNTIME_UI_ACTION, 0, 0, 0, NULL, 0, NULL },
-    { "faxanadu.magic", "Controls", "Magic", "Casts like Up+B. Rebind it in the launcher.",
-      RECOMP_RUNTIME_UI_ACTION, 0, 0, 0, NULL, 0, NULL },
+    { "faxanadu.magic", "Controls", "Magic", "Casts like Up+B. Rebind it in the launcher.", RECOMP_RUNTIME_UI_ACTION, 0,
+      0, 0, NULL, 0, NULL },
     { "faxanadu.use-item", "Controls", "Use item", "Uses your item like Down+B. Rebind it in the launcher.",
       RECOMP_RUNTIME_UI_ACTION, 0, 0, 0, NULL, 0, NULL },
     { "faxanadu.block", "Controls", "Block", "Hold with a shield to stop magic. Rebind it in the launcher.",
@@ -302,10 +353,23 @@ static RecompRuntimeUiItem menu_rows[] = {
     { "faxanadu.quests", "Controls", "Quest log", "Lists your quests. Rebind it in the launcher.",
       RECOMP_RUNTIME_UI_ACTION, 0, 0, 0, NULL, 0, NULL },
 };
-static int menu_row_enabled(void *ctx, const RecompRuntimeUiItem *it) { (void)ctx; (void)it; return 0; }
+static int menu_row_enabled(void *ctx, const RecompRuntimeUiItem *it) {
+    (void)ctx;
+    (void)it;
+    return 0;
+}
 static const RecompRuntimeUiCallbacks menu_callbacks = { .is_enabled = menu_row_enabled };
 #endif
-static void state_loaded(void *ctx) {(void)ctx;fax_world_loaded();fax_block_loaded();fax_files_state_loaded();fax_quests_loaded();fax_recharge_loaded();fax_gold_loaded();fax_lesson_loaded();}
+static void state_loaded(void *ctx) {
+    (void)ctx;
+    fax_world_loaded();
+    fax_block_loaded();
+    fax_files_state_loaded();
+    fax_quests_loaded();
+    fax_recharge_loaded();
+    fax_gold_loaded();
+    fax_lesson_loaded();
+}
 const CycHostExtras *cyc_host_extras(void) {
     static const CycHostOption options[] = {
         { "--text-overrides", true, "Text replacement JSON, with hot reload" },
@@ -324,16 +388,27 @@ const CycHostExtras *cyc_host_extras(void) {
 #endif
     list_bindings();
     static const CycHostExtras extras = {
-        .present=present,.sharp_scale=sharp_scale,.event=event,.input=input,
-        .load_setting = load_setting, .save_settings = save_settings, .settings_loaded = settings_loaded,
-        .bindings = bindings, .binding_count = sizeof bindings / sizeof bindings[0],
+        .present = present,
+        .sharp_scale = sharp_scale,
+        .event = event,
+        .input = input,
+        .load_setting = load_setting,
+        .save_settings = save_settings,
+        .settings_loaded = settings_loaded,
+        .bindings = bindings,
+        .binding_count = sizeof bindings / sizeof bindings[0],
 #ifdef CYC_WITH_RECOMP_UI
-        .menu_items = menu_rows, .menu_item_count = sizeof(menu_rows) / sizeof(menu_rows[0]),
+        .menu_items = menu_rows,
+        .menu_item_count = sizeof(menu_rows) / sizeof(menu_rows[0]),
         .menu_callbacks = &menu_callbacks,
 #endif
-        .state_loaded=state_loaded,
-        .power_on = power_on, .frame_begin = frame_begin, .frame_end = frame_end,
-        .options = options, .option_count = sizeof(options) / sizeof(options[0]), .option = option,
+        .state_loaded = state_loaded,
+        .power_on = power_on,
+        .frame_begin = frame_begin,
+        .frame_end = frame_end,
+        .options = options,
+        .option_count = sizeof(options) / sizeof(options[0]),
+        .option = option,
 #ifdef CYC_WITH_SDL
         .tcp_setup = tcp_setup,
 #endif

@@ -15,22 +15,28 @@
 
 /* ---- what fax_menu.c uses besides the machine ---- */
 
-static bool quests_ok = true, map_ok = true;   /* whether each screen would open */
+static bool quests_ok = true, map_ok = true; /* whether each screen would open */
 static unsigned quests_asked, map_asked;
-bool fax_quests_request(void) { ++quests_asked; return quests_ok; }
-bool fax_map_request(void) { ++map_asked; return map_ok; }
+bool fax_quests_request(void) {
+    ++quests_asked;
+    return quests_ok;
+}
+bool fax_map_request(void) {
+    ++map_asked;
+    return map_ok;
+}
 
 /* ---- the game's code around the sites ---- */
 
-#define TEXTBOX_X        0x0208u
-#define TEXTBOX_Y        0x0209u
-#define TEXTBOX_WIDTH    0x020Au
-#define SELECTED_INVENTORY 0x020Eu   /* PlayerMenu_SelectedInventory */
-#define TEMP_INT24_U     0x00EEu
-#define STATUS_STRINGS   0x88D3u     /* PLAYER_STATUS_MENU_STRINGS, right after the top menu's six rows */
-#define NO_ITEM_STRINGS  0x8A43u     /* NO_INVENTORY_ITEM_STRINGS ("NO WEAPON" ...) */
+#define TEXTBOX_X          0x0208u
+#define TEXTBOX_Y          0x0209u
+#define TEXTBOX_WIDTH      0x020Au
+#define SELECTED_INVENTORY 0x020Eu /* PlayerMenu_SelectedInventory */
+#define TEMP_INT24_U       0x00EEu
+#define STATUS_STRINGS     0x88D3u /* PLAYER_STATUS_MENU_STRINGS, right after the top menu's six rows */
+#define NO_ITEM_STRINGS    0x8A43u /* NO_INVENTORY_ITEM_STRINGS ("NO WEAPON" ...) */
 enum { UP = 0x08, DOWN = 0x04, SOUND_MENU = 0x18 };
-enum { OPENS_LIST, OPENS_PLAYER, CLOSES, WAITS };   /* where a choice goes */
+enum { OPENS_LIST, OPENS_PLAYER, CLOSES, WAITS }; /* where a choice goes */
 
 /* Bank 12's strings, as the disassembly lays them out: a length, then the text, 16 bytes a row. */
 static void put_strings(uint16_t at, const char *const *rows, unsigned n) {
@@ -43,8 +49,8 @@ static void put_strings(uint16_t at, const char *const *rows, unsigned n) {
 }
 static const char *const top_rows[] = { "WEAPON", "ARMOR", "SHIELD", "MAGIC", "ITEM", "PLAYER" };
 /* The PLAYER page's strings and the lists' "NO ..." are all 9 long, padded with spaces. */
-static const char *const status_rows[] = { "    RANK:", "NEXT EXP:", "WEAPON:  ", " ARMOR:  ", "SHIELD:  ", " MAGIC:  ",
-                                           "  ITEM:  " };
+static const char *const status_rows[] = { "    RANK:", "NEXT EXP:", "WEAPON:  ", " ARMOR:  ",
+                                           "SHIELD:  ", " MAGIC:  ", "  ITEM:  " };
 static const char *const no_item_rows[] = { "NO WEAPON", "NO ARMOR ", "NO SHIELD", "NO MAGIC ", "NO ITEM  " };
 static void cart(void) {
     put_strings(TOP_MENU_STRINGS, top_rows, 6);
@@ -52,13 +58,15 @@ static void cart(void) {
     put_strings(NO_ITEM_STRINGS, no_item_rows, 5);
 }
 
-static void load_a(uint8_t v) {   /* LDA: A, N and Z */
+static void load_a(uint8_t v) { /* LDA: A, N and Z */
     cpu.a = v;
     cpu.p = (uint8_t)((cpu.p & ~(P_N | P_Z)) | (v & P_N) | (v ? 0 : P_Z));
 }
 
 /* What TextBox_Open drew, and the rows drawn into it: their text and tile row. */
-static struct { uint8_t x, y, w, h; } box;
+static struct {
+    uint8_t x, y, w, h;
+} box;
 static char rows[16][16];
 static unsigned row_y[16], row_count;
 
@@ -66,19 +74,19 @@ static unsigned row_y[16], row_count;
 static void ui_draw_string(uint8_t y, unsigned tile_y) {
     uint16_t base = (uint16_t)(ram[TEMP_INT24] | ram[TEMP_INT24 + 1] << 8);
     cpu.y = y;
-    load_a(rom_read(12, (uint16_t)(base + cpu.y)));           /* LDA (Temp_Int24),Y */
+    load_a(rom_read(12, (uint16_t)(base + cpu.y))); /* LDA (Temp_Int24),Y */
     CHECK(SITES(DRAW_LENGTH, "faxanadu.select-menu.length"));
-    ram[TEMP_INT24_U] = cpu.a;                                 /* STA Temp_Int24_U */
-    cpu.y++;                                                   /* INY, JSR PPUBuffer_QueueCommandOrLength */
+    ram[TEMP_INT24_U] = cpu.a; /* STA Temp_Int24_U */
+    cpu.y++;                   /* INY, JSR PPUBuffer_QueueCommandOrLength */
     char *text = rows[row_count];
     unsigned n = 0;
     do {
-        load_a(rom_read(12, (uint16_t)(base + cpu.y)));       /* @_drawLoop: LDA (Temp_Int24),Y */
+        load_a(rom_read(12, (uint16_t)(base + cpu.y))); /* @_drawLoop: LDA (Temp_Int24),Y */
         CHECK(SITES(DRAW_LETTER, "faxanadu.select-menu.letter"));
         CHECK(n < 15);
-        text[n++] = (char)cpu.a;                               /* JSR Strings_ASCIIToIndex, its tile */
+        text[n++] = (char)cpu.a; /* JSR Strings_ASCIIToIndex, its tile */
         cpu.y++;
-        ram[TEMP_INT24_U]--;                                   /* DEC Temp_Int24_U, BNE */
+        ram[TEMP_INT24_U]--; /* DEC Temp_Int24_U, BNE */
     } while (ram[TEMP_INT24_U]);
     text[n] = 0;
     row_y[row_count++] = tile_y;
@@ -96,18 +104,24 @@ static void draw_string_lines(void) {
 /* PlayerMenu_Show, from its entry to @_inputLoop. */
 static void player_menu_show(void) {
     row_count = 0;
-    ram[ARG_STRINGS_COUNT] = 6;                                /* LDA #$06, STA Arg_StringsCount */
+    ram[ARG_STRINGS_COUNT] = 6; /* LDA #$06, STA Arg_StringsCount */
     ram[MENU_CURSOR_POS] = 0;
-    ram[TEXTBOX_X] = 2; ram[TEXTBOX_Y] = 6; ram[TEXTBOX_WIDTH] = 0x0A;
+    ram[TEXTBOX_X] = 2;
+    ram[TEXTBOX_Y] = 6;
+    ram[TEXTBOX_WIDTH] = 0x0A;
     load_a(0x0E);
-    ram[TEXTBOX_HEIGHT] = cpu.a;                               /* LDA #$0E, STA TextBox_Height */
-    CHECK(SITES(MENU_OPEN, "faxanadu.select-menu.open"));     /* LDA #$18, JSR Sound_PlayEffect */
+    ram[TEXTBOX_HEIGHT] = cpu.a;                          /* LDA #$0E, STA TextBox_Height */
+    CHECK(SITES(MENU_OPEN, "faxanadu.select-menu.open")); /* LDA #$18, JSR Sound_PlayEffect */
     sounds[sound_count++] = SOUND_MENU;
-    box.x = ram[TEXTBOX_X]; box.y = ram[TEXTBOX_Y]; box.w = ram[TEXTBOX_WIDTH]; box.h = ram[TEXTBOX_HEIGHT];
-    ram[TEMP_INT24] = 0x73; ram[TEMP_INT24 + 1] = 0x88;       /* JSR TextBox_Open, Temp_Int24 = the table */
-    for (cpu.x = 0; cpu.x < 6; ++cpu.x) ram[DATA_ARRAY + cpu.x] = cpu.x;   /* LDX #$00, STX DataArray ... INX */
+    box.x = ram[TEXTBOX_X];
+    box.y = ram[TEXTBOX_Y];
+    box.w = ram[TEXTBOX_WIDTH];
+    box.h = ram[TEXTBOX_HEIGHT];
+    ram[TEMP_INT24] = 0x73;
+    ram[TEMP_INT24 + 1] = 0x88;                                          /* JSR TextBox_Open, Temp_Int24 = the table */
+    for (cpu.x = 0; cpu.x < 6; ++cpu.x) ram[DATA_ARRAY + cpu.x] = cpu.x; /* LDX #$00, STX DataArray ... INX */
     --cpu.x;
-    CHECK(SITES(MENU_ROWS, "faxanadu.select-menu.rows"));     /* JSR PlayerMenu_DrawStringLines */
+    CHECK(SITES(MENU_ROWS, "faxanadu.select-menu.rows")); /* JSR PlayerMenu_DrawStringLines */
     draw_string_lines();
 }
 
@@ -121,12 +135,17 @@ static void menu_update(uint8_t changed) {
 
 /* Where a returned-into address leads: TextBox_Close, Sound_PlayEffect, @_inputLoop. */
 static int went;
-static struct { uint8_t x, y, w, h; } closed;
+static struct {
+    uint8_t x, y, w, h;
+} closed;
 static void textbox_close(void) {
     went = CLOSES;
-    closed.x = ram[TEXTBOX_X]; closed.y = ram[TEXTBOX_Y]; closed.w = ram[TEXTBOX_WIDTH]; closed.h = ram[TEXTBOX_HEIGHT];
+    closed.x = ram[TEXTBOX_X];
+    closed.y = ram[TEXTBOX_Y];
+    closed.w = ram[TEXTBOX_WIDTH];
+    closed.h = ram[TEXTBOX_HEIGHT];
 }
-static void play_effect(void) { sounds[sound_count++] = cpu.a; }   /* keeps X and Y */
+static void play_effect(void) { sounds[sound_count++] = cpu.a; } /* keeps X and Y */
 static void input_loop(void) { went = WAITS; }
 
 /* A on the cursor's row: @_loadMenuIDs, entered by BMI with A the new buttons (A down). Returns where it goes;
@@ -135,11 +154,14 @@ static int choose(uint8_t *list) {
     went = -1;
     load_a(0x80);
     uint8_t s = cpu.s;
-    if (!SITES(MENU_CHOOSE, "faxanadu.select-menu.choose")) { CHECK(cpu.s == s); return went; }
-    cpu.x = ram[MENU_CURSOR_POS];                              /* LDX Menu_CursorPos, CPX #$05 */
-    if (cpu.x == 5) return OPENS_PLAYER;                       /* JMP PlayerMenu_ShowStatusMenu */
-    cpu.x = ram[MENU_CURSOR_POS];                              /* PlayerMenu_ShowSubmenu: LDX Menu_CursorPos */
-    ram[SELECTED_INVENTORY] = cpu.x;                           /* STX PlayerMenu_SelectedInventory */
+    if (!SITES(MENU_CHOOSE, "faxanadu.select-menu.choose")) {
+        CHECK(cpu.s == s);
+        return went;
+    }
+    cpu.x = ram[MENU_CURSOR_POS];        /* LDX Menu_CursorPos, CPX #$05 */
+    if (cpu.x == 5) return OPENS_PLAYER; /* JMP PlayerMenu_ShowStatusMenu */
+    cpu.x = ram[MENU_CURSOR_POS];        /* PlayerMenu_ShowSubmenu: LDX Menu_CursorPos */
+    ram[SELECTED_INVENTORY] = cpu.x;     /* STX PlayerMenu_SelectedInventory */
     *list = cpu.x;
     return OPENS_LIST;
 }
@@ -191,7 +213,7 @@ int main(void) {
         CHECK(stock[r] == (r == 5 ? OPENS_PLAYER : OPENS_LIST) && (r == 5 || list == r));
     }
     player_menu_show();
-    menu_update(UP);                                           /* from the top, Up wraps to the last of six */
+    menu_update(UP); /* from the top, Up wraps to the last of six */
     CHECK(ram[MENU_CURSOR_POS] == 5);
 
     /* On: 18 tall, the eight rows, the cursor on QUESTS. */
@@ -204,7 +226,7 @@ int main(void) {
     static const char *const eight[] = { "QUESTS", "MAP", "WEAPON", "ARMOR", "SHIELD", "MAGIC", "ITEM", "PLAYER" };
     CHECK(row_count == 8);
     for (unsigned i = 0; i < 8; ++i) CHECK(!strcmp(rows[i], eight[i]) && row_y[i] == 8 + 2 * i);
-    CHECK(row_y[7] + 1 == box.y + box.h - 1);                  /* the last row just inside the frame, as the original's */
+    CHECK(row_y[7] + 1 == box.y + box.h - 1); /* the last row just inside the frame, as the original's */
     CHECK(opened == 1 && served == 2);
     /* The cursor goes round all eight. */
     menu_update(UP);
@@ -237,30 +259,34 @@ int main(void) {
     CHECK(open_and_choose(1, &list) == WAITS && map_asked == 2 && maps == 1 && refused == 1);
     CHECK(sound_count == 2 && sounds[1] == SOUND_INVALID);
     CHECK(ram[MENU_CURSOR_POS] == 1 && ram[ARG_STRINGS_COUNT] == 8);
-    menu_update(UP);                                           /* still the eight-row menu */
+    menu_update(UP); /* still the eight-row menu */
     CHECK(choose(&list) == CLOSES && quests_asked == 2);
     quests_ok = false;
     player_menu_show();
     CHECK(choose(&list) == WAITS && refused == 2 && sounds[sound_count - 1] == SOUND_INVALID);
-    menu_update(DOWN); menu_update(DOWN);
-    CHECK(choose(&list) == OPENS_LIST && list == 0);           /* and WEAPON still opens its list */
+    menu_update(DOWN);
+    menu_update(DOWN);
+    CHECK(choose(&list) == OPENS_LIST && list == 0); /* and WEAPON still opens its list */
     quests_ok = map_ok = true;
 
     /* UI_DrawString for anything else draws what the ROM holds: the PLAYER page's strings (from $88D3, rows 0-6:
      * 6 and 7 from the menu's table are its first two), a list's "NO WEAPON", and the menu's own six rows. */
-    ram[TEMP_INT24] = STATUS_STRINGS & 0xFF; ram[TEMP_INT24 + 1] = STATUS_STRINGS >> 8;
+    ram[TEMP_INT24] = STATUS_STRINGS & 0xFF;
+    ram[TEMP_INT24 + 1] = STATUS_STRINGS >> 8;
     row_count = 0;
     for (unsigned i = 0; i < 7; ++i) ui_draw_string((uint8_t)(i << 4), 0);
     for (unsigned i = 0; i < 7; ++i) CHECK(!strcmp(rows[i], status_rows[i]));
-    ram[TEMP_INT24] = NO_ITEM_STRINGS & 0xFF; ram[TEMP_INT24 + 1] = NO_ITEM_STRINGS >> 8;
+    ram[TEMP_INT24] = NO_ITEM_STRINGS & 0xFF;
+    ram[TEMP_INT24 + 1] = NO_ITEM_STRINGS >> 8;
     row_count = 0;
     for (unsigned i = 0; i < 5; ++i) ui_draw_string((uint8_t)(i << 4), 0);
     for (unsigned i = 0; i < 5; ++i) CHECK(!strcmp(rows[i], no_item_rows[i]));
-    ram[TEMP_INT24] = 0x73; ram[TEMP_INT24 + 1] = 0x88;
+    ram[TEMP_INT24] = 0x73;
+    ram[TEMP_INT24 + 1] = 0x88;
     row_count = 0;
     for (unsigned i = 0; i < 6; ++i) ui_draw_string((uint8_t)(i << 4), 0);
     for (unsigned i = 0; i < 6; ++i) CHECK(!strcmp(rows[i], top_rows[i]));
-    CHECK(served == 2 * opened);                               /* only the menus' QUESTS and MAP */
+    CHECK(served == 2 * opened); /* only the menus' QUESTS and MAP */
 
     /* A box the feature did not make (its height not 18 at the rows: the menu opened before the feature was
      * on) keeps the original's six rows, and so does a choice in a menu of six. */

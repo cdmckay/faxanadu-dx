@@ -8,9 +8,9 @@
 #include <stdint.h>
 
 typedef enum {
-    RUN_MODE_NATIVE   = 0,  /* Pure recompiled code (default) */
-    RUN_MODE_VERIFY   = 1,  /* Both paths, compare results */
-    RUN_MODE_EMULATED = 2,  /* Pure FCEUX oracle, no recompiled code */
+    RUN_MODE_NATIVE = 0,   /* Pure recompiled code (default) */
+    RUN_MODE_VERIFY = 1,   /* Both paths, compare results */
+    RUN_MODE_EMULATED = 2, /* Pure FCEUX oracle, no recompiled code */
 } RunMode;
 
 /* Current run mode (set via --verify or --emulated CLI flags). */

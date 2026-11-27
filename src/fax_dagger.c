@@ -25,8 +25,8 @@
 /* Bank 14: MAYBE_WEAPON_RANGES, an (X, Y) reach per weapon, read only by
  * Player_DrawWeapon. Stock: dagger 08 04, Long Sword, Giant Blade and Dragon
  * Slayer 10 08. */
-#define WEAPON_RANGES 0xB897u
-#define DAGGER_REACH_Y (WEAPON_RANGES + 1)   /* $B898 */
+#define WEAPON_RANGES  0xB897u
+#define DAGGER_REACH_Y (WEAPON_RANGES + 1) /* $B898 */
 enum { STOCK_REACH_Y = 0x04, TALL_REACH_Y = 0x08 };
 
 static bool enabled, served, failed;
@@ -36,17 +36,16 @@ static uint32_t prg(unsigned bank, uint16_t addr) { return bank * 16384u + (addr
 /* The override matches only bank 14's byte, and only while it holds the stock
  * value, so another ROM layout is refused rather than patched. */
 static bool serve(bool tall) {
-    return cyc_mod_set_prg_read_override(prg(14, DAGGER_REACH_Y), STOCK_REACH_Y,
-                                         tall ? TALL_REACH_Y : STOCK_REACH_Y);
+    return cyc_mod_set_prg_read_override(prg(14, DAGGER_REACH_Y), STOCK_REACH_Y, tall ? TALL_REACH_Y : STOCK_REACH_Y);
 }
 
 static void deactivate(void) {
-    if (served) serve(false);   /* back to the stock byte: overrides cannot be removed one at a time */
+    if (served) serve(false); /* back to the stock byte: overrides cannot be removed one at a time */
     enabled = served = failed = false;
 }
 static void activate(void) {
     enabled = true;
-    nes_mod_set_local_only("Taller dagger", 1);   /* a peer without it would play other rules */
+    nes_mod_set_local_only("Taller dagger", 1); /* a peer without it would play other rules */
 }
 
 /* Serve the reach once the cart is loaded: at power-on, before any save state
@@ -68,13 +67,21 @@ uint8_t fax_dagger_reach_y(void) { return served ? TALL_REACH_Y : STOCK_REACH_Y;
 /* The feature keeps no state of its own, so its record is empty. A load calls
  * the setter whether or not the save has a record, and that is where the
  * reach is served again. */
-static int state_get(uint8_t *buf, int cap) { (void)buf; (void)cap; return 0; }
-static int state_validate(const uint8_t *buf, int len) { (void)buf; return len == 0; }
+static int state_get(uint8_t *buf, int cap) {
+    (void)buf;
+    (void)cap;
+    return 0;
+}
+static int state_validate(const uint8_t *buf, int len) {
+    (void)buf;
+    return len == 0;
+}
 static int state_set(const uint8_t *buf, int len) {
     if (!state_validate(buf, len)) return 0;
     if (served && !serve(true)) {
         fprintf(stderr, "[dagger] could not serve the reach after a load; the taller dagger is off\n");
-        served = false; failed = true;
+        served = false;
+        failed = true;
     }
     return 1;
 }
@@ -83,8 +90,8 @@ static int state_set(const uint8_t *buf, int len) {
 static void dagger_state(int id, const char *line) {
     (void)line;
     char fields[96];
-    snprintf(fields, sizeof fields, "\"enabled\":%s,\"served\":%s,\"failed\":%s",
-             enabled ? "true" : "false", served ? "true" : "false", failed ? "true" : "false");
+    snprintf(fields, sizeof fields, "\"enabled\":%s,\"served\":%s,\"failed\":%s", enabled ? "true" : "false",
+             served ? "true" : "false", failed ? "true" : "false");
     cyc_tcp_ok(id, fields);
 }
 void fax_dagger_tcp_setup(void) {
@@ -98,5 +105,6 @@ NES_MOD_CONSTRUCTOR(register_dagger) {
     if (!nes_mod_register_reset_callback(deactivate) ||
         !nes_mod_register_activation_plugin("faxanadu.taller-dagger", activate) ||
         !nes_mod_register_savestate_hook("faxanadu.taller-dagger", state_get, state_set) ||
-        !nes_mod_register_savestate_validator("faxanadu.taller-dagger", state_validate)) abort();
+        !nes_mod_register_savestate_validator("faxanadu.taller-dagger", state_validate))
+        abort();
 }

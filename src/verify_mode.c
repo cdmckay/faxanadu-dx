@@ -20,7 +20,7 @@
 #include "nestopia_bridge.h"
 #endif
 
-RunMode  g_run_mode = RUN_MODE_NATIVE;
+RunMode g_run_mode = RUN_MODE_NATIVE;
 static uint64_t s_divergence_count = 0;
 static int s_emu_initialized = 0;
 
@@ -98,8 +98,7 @@ int verify_mode_run_nmi(void) {
     if (!passed) {
         s_divergence_count++;
         fprintf(stderr, "[verify] DIVERGE frame %llu: %d bytes differ | first: $%04X native=0x%02X emu=0x%02X\n",
-                (unsigned long long)g_frame_count, diff_count,
-                first_diff_addr, first_native, first_emu);
+                (unsigned long long)g_frame_count, diff_count, first_diff_addr, first_native, first_emu);
     }
 
     return passed;
@@ -109,6 +108,4 @@ int verify_mode_run_nmi(void) {
 #endif
 }
 
-uint64_t verify_mode_get_divergence_count(void) {
-    return s_divergence_count;
-}
+uint64_t verify_mode_get_divergence_count(void) { return s_divergence_count; }

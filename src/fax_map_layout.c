@@ -30,18 +30,20 @@
 
 enum { BANK = 0x4000, PRG_BANKS = 16 };
 /* Bank 3 */
-#define AREAS_TABLE_PTR 0x8000u
+#define AREAS_TABLE_PTR            0x8000u
 /* Bank 15 */
 #define AREA_TOWN_TRANSITIONS_DATA 0xEA9Cu
 #define AREA_SCREEN_COMPARATORS    0xEA37u
 /* Bank 11 */
 #define AREA_SPRITE_ADDRESSES      0x8210u
-enum { LIST_MAX = 16 };   /* sprites a list may hold here: the original's longest has 5 (8 slots fill) */
+enum { LIST_MAX = 16 }; /* sprites a list may hold here: the original's longest has 5 (8 slots fill) */
 
 /* Screens per area (the scroll data's length / 4), as the doc's table has them. */
 static const uint8_t screens[FAX_MAP_AREAS] = { 9, 64, 83, 14, 10, 40, 32, 20 };
 
-typedef struct { const uint8_t *prg; } Rom;
+typedef struct {
+    const uint8_t *prg;
+} Rom;
 static unsigned rd(const Rom *r, unsigned bank, unsigned addr) { return r->prg[bank * BANK + (addr & (BANK - 1))]; }
 static unsigned word(const Rom *r, unsigned bank, unsigned addr) {
     return rd(r, bank, addr) | rd(r, bank, addr + 1) << 8;
@@ -62,13 +64,20 @@ static bool decode_area(const Rom *r, unsigned a, FaxMapArea *out) {
     for (unsigned at = doors; rd(r, 3, at) != 0xFF; at += 4) {
         if (out->door_count == FAX_MAP_DOORS || at >= 0xC000u) return false;
         FaxMapDoor *d = &out->door[out->door_count++];
-        d->screen = (uint8_t)rd(r, 3, at); d->block = (uint8_t)rd(r, 3, at + 1);
-        d->index = (uint8_t)rd(r, 3, at + 2); d->start = (uint8_t)rd(r, 3, at + 3);
+        d->screen = (uint8_t)rd(r, 3, at);
+        d->block = (uint8_t)rd(r, 3, at + 1);
+        d->index = (uint8_t)rd(r, 3, at + 2);
+        d->start = (uint8_t)rd(r, 3, at + 3);
         if (d->screen >= out->count) return false;
-        if (d->index >= 0xFE) { d->kind = FAX_MAP_DOOR_REGION; d->to = d->palette = d->key = 0; continue; }
+        if (d->index >= 0xFE) {
+            d->kind = FAX_MAP_DOOR_REGION;
+            d->to = d->palette = d->key = 0;
+            continue;
+        }
         unsigned i = a == FAX_MAP_TOWNS ? (unsigned)d->index - 0x20u : d->index;
         if (i > 0x3F) return false;
-        d->to = (uint8_t)rd(r, 3, dests + 4 * i); d->palette = (uint8_t)rd(r, 3, dests + 4 * i + 1);
+        d->to = (uint8_t)rd(r, 3, dests + 4 * i);
+        d->palette = (uint8_t)rd(r, 3, dests + 4 * i + 1);
         d->key = (uint8_t)rd(r, 3, dests + 4 * i + 2);
         d->kind = d->index < 0x20 ? FAX_MAP_DOOR_SCREEN : FAX_MAP_DOOR_BUILDING;
         if (d->kind == FAX_MAP_DOOR_SCREEN && d->to >= out->count) return false;
@@ -91,8 +100,8 @@ static void decode_edges(const Rom *r, FaxMapAtlas *atlas) {
             unsigned side = (rd(r, 15, e + 3) & 0x0F) < 8 ? FAX_MAP_RIGHT : FAX_MAP_LEFT;
             if (atlas->edge_count < FAX_MAP_TOWN_EDGES && screen < atlas->area[area].count &&
                 town < atlas->area[FAX_MAP_TOWNS].count)
-                atlas->edge[atlas->edge_count++] = (FaxMapTownEdge){ (uint8_t)area, (uint8_t)screen, (uint8_t)side,
-                                                                     (uint8_t)town };
+                atlas->edge[atlas->edge_count++] =
+                    (FaxMapTownEdge){ (uint8_t)area, (uint8_t)screen, (uint8_t)side, (uint8_t)town };
             break;
         }
     }
@@ -115,18 +124,29 @@ static void decode_climbs(const Rom *r, FaxMapAtlas *atlas) {
 /* By entity, its behavior's verdict (SPRITE_BSCRIPTS, bank 14). */
 int fax_map_item_kind(unsigned entity) {
     switch (entity) {
-    case 0x4B: case 0x4D:     /* Red Potion, Elixir: BSCRIPTS_OBJ_POTIONLIKE, SpriteBehavior_Fall */
-    case 0x48: case 0x4E:     /* Glove, Ointment: SpriteBehavior_Glove/_Ointment, gone while one runs */
+    case 0x4B:
+    case 0x4D: /* Red Potion, Elixir: BSCRIPTS_OBJ_POTIONLIKE, SpriteBehavior_Fall */
+    case 0x48:
+    case 0x4E: /* Glove, Ointment: SpriteBehavior_Glove/_Ointment, gone while one runs */
         return FAX_MAP_ITEM_ALWAYS;
-    case 0x50: case 0x55: case 0x56: case 0x5D: case 0x5F: case 0x60:
+    case 0x50:
+    case 0x55:
+    case 0x56:
+    case 0x5D:
+    case 0x5F:
+    case 0x60:
         /* Mattock, Wing Boots, Hour Glass, Red Potion, Glove, Ointment: SpriteBehavior_RandomlyShowItem_* */
         return FAX_MAP_ITEM_SOMETIMES;
-    case 0x49: case 0x4A:     /* Black Onyx, Pendant: SpecialItems $01, $02 */
-    case 0x57:                /* Magical Rod: SpecialItems $04 */
-    case 0x58: case 0x59: case 0x5A:   /* Battle Suit, Battle Helmet, Dragon Slayer: held (item 3 of its list) */
-    case 0x5B: case 0x5C:     /* Ripasheiku's Mattock, Zorugeriru's Wing Boots: Quests $10, $08 */
+    case 0x49:
+    case 0x4A: /* Black Onyx, Pendant: SpecialItems $01, $02 */
+    case 0x57: /* Magical Rod: SpecialItems $04 */
+    case 0x58:
+    case 0x59:
+    case 0x5A: /* Battle Suit, Battle Helmet, Dragon Slayer: held (item 3 of its list) */
+    case 0x5B:
+    case 0x5C: /* Ripasheiku's Mattock, Zorugeriru's Wing Boots: Quests $10, $08 */
         return FAX_MAP_ITEM_ONCE;
-    default:                  /* not an item, or Poison ($4C, $5E) */
+    default: /* not an item, or Poison ($4C, $5E) */
         return -1;
     }
 }
@@ -136,7 +156,10 @@ static const FaxMapDoor *door_to(const FaxMapAtlas *atlas, unsigned b, unsigned 
     for (unsigned a = 0; a < FAX_MAP_AREAS; ++a)
         for (unsigned i = 0; i < atlas->area[a].door_count; ++i) {
             const FaxMapDoor *d = &atlas->area[a].door[i];
-            if (d->kind == FAX_MAP_DOOR_BUILDING && d->to == b) { *area = a; return d; }
+            if (d->kind == FAX_MAP_DOOR_BUILDING && d->to == b) {
+                *area = a;
+                return d;
+            }
         }
     return NULL;
 }
@@ -151,11 +174,13 @@ static bool decode_list(const Rom *r, FaxMapAtlas *atlas, unsigned area, unsigne
         unsigned entity = rd(r, 11, list + 2 * n), block = rd(r, 11, list + 2 * n + 1);
         int kind = fax_map_item_kind(entity);
         if (kind < 0) continue;
-        FaxMapItem it = { (uint8_t)area, (uint8_t)screen, (uint8_t)entity, (uint8_t)block, (uint8_t)kind,
-                          (uint8_t)area, (uint8_t)screen, (uint8_t)block };
-        if (area == FAX_MAP_BUILDINGS) {   /* marked at the door that leads in */
+        FaxMapItem it = { (uint8_t)area, (uint8_t)screen, (uint8_t)entity, (uint8_t)block,
+                          (uint8_t)kind, (uint8_t)area,   (uint8_t)screen, (uint8_t)block };
+        if (area == FAX_MAP_BUILDINGS) { /* marked at the door that leads in */
             if (!door && !(door = door_to(atlas, screen, &door_area))) continue;
-            it.map_area = (uint8_t)door_area; it.map_screen = door->screen; it.map_block = door->block;
+            it.map_area = (uint8_t)door_area;
+            it.map_screen = door->screen;
+            it.map_block = door->block;
         }
         if (atlas->item_count == FAX_MAP_ITEMS) return false;
         atlas->item[atlas->item_count++] = it;
@@ -168,7 +193,7 @@ static bool decode_items(const Rom *r, FaxMapAtlas *atlas) {
     for (unsigned a = 0; a < FAX_MAP_AREAS; ++a) {
         unsigned base = word(r, 11, AREA_SPRITE_ADDRESSES + 2 * a);
         if (base < 0x8000u || base >= 0xC000u) return false;
-        if (rd(r, 11, base + 1) == 0xFF) continue;   /* Screen_LoadAllScreenInfo: nothing to load */
+        if (rd(r, 11, base + 1) == 0xFF) continue; /* Screen_LoadAllScreenInfo: nothing to load */
         if (a != FAX_MAP_BUILDINGS) {
             for (unsigned s = 0; s < atlas->area[a].count; ++s)
                 if (!decode_list(r, atlas, a, s, word(r, 11, base + 2 * s))) return false;
@@ -186,23 +211,31 @@ static bool decode_items(const Rom *r, FaxMapAtlas *atlas) {
 /* ---- pages ---- */
 
 static const int8_t page_zone[FAX_MAP_PAGES] = {
-    FAX_ZONE_EOLIS, FAX_ZONE_TRUNK, FAX_ZONE_TOWER_OF_TRUNK, FAX_ZONE_TOWER_OF_FORTRESS, FAX_ZONE_MIST,
-    FAX_ZONE_TOWER_OF_SUFFER, FAX_ZONE_TOWER_OF_MIST, FAX_ZONE_BRANCH, FAX_ZONE_DARTMOOR,
-    FAX_ZONE_CASTLE_OF_FRATERNAL, FAX_ZONE_FORTRESS_OF_ZENIS,
+    FAX_ZONE_EOLIS,
+    FAX_ZONE_TRUNK,
+    FAX_ZONE_TOWER_OF_TRUNK,
+    FAX_ZONE_TOWER_OF_FORTRESS,
+    FAX_ZONE_MIST,
+    FAX_ZONE_TOWER_OF_SUFFER,
+    FAX_ZONE_TOWER_OF_MIST,
+    FAX_ZONE_BRANCH,
+    FAX_ZONE_DARTMOOR,
+    FAX_ZONE_CASTLE_OF_FRATERNAL,
+    FAX_ZONE_FORTRESS_OF_ZENIS,
 };
 static const uint8_t page_area[FAX_MAP_PAGES] = {
-    FAX_MAP_EOLIS, FAX_MAP_TRUNK, FAX_MAP_TRUNK, FAX_MAP_TRUNK, FAX_MAP_MIST, FAX_MAP_MIST, FAX_MAP_MIST,
-    FAX_MAP_BRANCH, FAX_MAP_DARTMOOR, FAX_MAP_DARTMOOR, FAX_MAP_ZENIS,
+    FAX_MAP_EOLIS, FAX_MAP_TRUNK,  FAX_MAP_TRUNK,    FAX_MAP_TRUNK,    FAX_MAP_MIST,  FAX_MAP_MIST,
+    FAX_MAP_MIST,  FAX_MAP_BRANCH, FAX_MAP_DARTMOOR, FAX_MAP_DARTMOOR, FAX_MAP_ZENIS,
 };
 
-static unsigned town_pair(const FaxMapAtlas *atlas, unsigned town) {   /* the town's other screen */
+static unsigned town_pair(const FaxMapAtlas *atlas, unsigned town) { /* the town's other screen */
     const uint8_t *l = atlas->area[FAX_MAP_TOWNS].link[town];
     return l[FAX_MAP_LEFT] != FAX_MAP_NONE ? l[FAX_MAP_LEFT] : l[FAX_MAP_RIGHT];
 }
 
 int fax_map_page_of(const FaxMapAtlas *atlas, unsigned area, unsigned screen) {
     if (area >= FAX_MAP_AREAS || screen >= atlas->area[area].count) return -1;
-    if (area == FAX_MAP_EOLIS) return FAX_MAP_PAGE_EOLIS;   /* screen 0, outside the gate, too */
+    if (area == FAX_MAP_EOLIS) return FAX_MAP_PAGE_EOLIS; /* screen 0, outside the gate, too */
     if (area == FAX_MAP_TOWNS) {
         unsigned other = town_pair(atlas, screen);
         for (unsigned e = 0; e < atlas->edge_count; ++e)
@@ -211,7 +244,8 @@ int fax_map_page_of(const FaxMapAtlas *atlas, unsigned area, unsigned screen) {
         return -1;
     }
     int zone = fax_zone_at(area, screen);
-    for (int p = 0; p < FAX_MAP_PAGES; ++p) if (page_zone[p] == zone && page_area[p] == area) return p;
+    for (int p = 0; p < FAX_MAP_PAGES; ++p)
+        if (page_zone[p] == zone && page_area[p] == area) return p;
     return -1;
 }
 
@@ -233,7 +267,8 @@ static void leads(const FaxMapAtlas *atlas, bool led[FAX_MAP_AREAS][FAX_MAP_SCRE
         led[FAX_MAP_TOWNS][atlas->edge[e].town] = true;
     }
     for (unsigned s = 0; s < FAX_MAP_SCREENS; ++s)
-        for (unsigned d = 0; d < 2; ++d) if (atlas->climb[s][d] != FAX_MAP_NONE) led[FAX_MAP_TRUNK][atlas->climb[s][d]] = true;
+        for (unsigned d = 0; d < 2; ++d)
+            if (atlas->climb[s][d] != FAX_MAP_NONE) led[FAX_MAP_TRUNK][atlas->climb[s][d]] = true;
 }
 
 /* A page's places as nodes: its own area's screens 0..82, its towns' 100.. */
@@ -245,10 +280,10 @@ static unsigned node(unsigned area, unsigned screen) { return area == FAX_MAP_TO
 typedef struct {
     const FaxMapAtlas *atlas;
     FaxMapPage *page;
-    bool member[NODES];       /* on this page */
-    bool placed[NODES];       /* by an earlier component, or this one */
+    bool member[NODES]; /* on this page */
+    bool placed[NODES]; /* by an earlier component, or this one */
     int x[NODES], y[NODES];
-    unsigned order[NODES], count;   /* this component's nodes, as placed */
+    unsigned order[NODES], count; /* this component's nodes, as placed */
 } Walk;
 
 static const int dx[4] = { -1, 1, 0, 0 }, dy[4] = { 0, 0, -1, 1 };
@@ -259,31 +294,45 @@ bool fax_map_joined(const FaxMapAtlas *atlas, unsigned area, unsigned screen, un
     if (area >= FAX_MAP_AREAS || screen >= atlas->area[area].count || dir > 3) return false;
     const FaxMapArea *a = &atlas->area[area];
     unsigned t = a->link[screen][dir];
-    if (t < a->count && a->link[t][reverse[dir]] == screen) { *to_area = area; *to_screen = t; return true; }
+    if (t < a->count && a->link[t][reverse[dir]] == screen) {
+        *to_area = area;
+        *to_screen = t;
+        return true;
+    }
     for (unsigned e = 0; e < atlas->edge_count; ++e) {
         const FaxMapTownEdge *edge = &atlas->edge[e];
         if (area == edge->area && screen == edge->screen && dir == edge->side) {
-            *to_area = FAX_MAP_TOWNS; *to_screen = edge->town; return true;
+            *to_area = FAX_MAP_TOWNS;
+            *to_screen = edge->town;
+            return true;
         }
         if (area == FAX_MAP_TOWNS && screen == edge->town && dir == reverse[edge->side]) {
-            *to_area = edge->area; *to_screen = edge->screen; return true;
+            *to_area = edge->area;
+            *to_screen = edge->screen;
+            return true;
         }
     }
     if (area == FAX_MAP_TRUNK && (dir == FAX_MAP_UP || dir == FAX_MAP_DOWN) &&
         atlas->climb[screen][dir - FAX_MAP_UP] != FAX_MAP_NONE) {
-        *to_area = area; *to_screen = atlas->climb[screen][dir - FAX_MAP_UP]; return true;
+        *to_area = area;
+        *to_screen = atlas->climb[screen][dir - FAX_MAP_UP];
+        return true;
     }
     return false;
 }
 
 static bool taken(const Walk *w, int x, int y) {
-    for (unsigned i = 0; i < w->count; ++i) if (w->x[w->order[i]] == x && w->y[w->order[i]] == y) return true;
+    for (unsigned i = 0; i < w->count; ++i)
+        if (w->x[w->order[i]] == x && w->y[w->order[i]] == y) return true;
     return false;
 }
 static void put(Walk *w, unsigned n, int x, int y, unsigned *queue, unsigned *tail, unsigned *later, unsigned *ltail) {
-    w->placed[n] = true; w->x[n] = x; w->y[n] = y;
+    w->placed[n] = true;
+    w->x[n] = x;
+    w->y[n] = y;
     w->order[w->count++] = n;
-    queue[(*tail)++] = n; later[(*ltail)++] = n;
+    queue[(*tail)++] = n;
+    later[(*ltail)++] = n;
 }
 
 /* One component from `root`, in its own coordinates: scroll links first, then
@@ -301,7 +350,7 @@ static void walk(Walk *w, unsigned root) {
             unsigned va, vs;
             if (!fax_map_joined(w->atlas, ua, us, d, &va, &vs)) continue;
             bool special = va != ua || w->atlas->area[ua].link[us][d] != vs;
-            if (special == scroll) continue;   /* scroll links now, the rest later */
+            if (special == scroll) continue; /* scroll links now, the rest later */
             unsigned v = node(va, vs);
             if (v >= NODES || !w->member[v] || w->placed[v]) continue;
             int x = w->x[u] + dx[d], y = w->y[u] + dy[d];
@@ -326,7 +375,8 @@ static bool connected(const Walk *w, unsigned u, unsigned v) {
     unsigned ua = node_area(w->page, u), us = node_screen(u), va = node_area(w->page, v), vs = node_screen(v);
     if (ua == va) {
         const FaxMapArea *a = &w->atlas->area[ua];
-        for (unsigned d = 0; d < 4; ++d) if (a->link[us][d] == vs || a->link[vs][d] == us) return true;
+        for (unsigned d = 0; d < 4; ++d)
+            if (a->link[us][d] == vs || a->link[vs][d] == us) return true;
         for (unsigned i = 0; i < a->door_count; ++i)
             if (a->door[i].kind == FAX_MAP_DOOR_SCREEN &&
                 ((a->door[i].screen == us && a->door[i].to == vs) || (a->door[i].screen == vs && a->door[i].to == us)))
@@ -348,12 +398,17 @@ static void settle(Walk *w, const unsigned *done, unsigned done_count) {
         for (unsigned j = 0; j < done_count && !anchored; ++j)
             if (connected(w, done[j], w->order[i])) {
                 anchored = true;
-                ax = w->x[done[j]]; ay = w->y[done[j]]; vx = w->x[w->order[i]]; vy = w->y[w->order[i]];
+                ax = w->x[done[j]];
+                ay = w->y[done[j]];
+                vx = w->x[w->order[i]];
+                vy = w->y[w->order[i]];
             }
-    if (!anchored) {   /* nothing on the page leads to it: to the right of it all */
+    if (!anchored) { /* nothing on the page leads to it: to the right of it all */
         int right = 0;
-        for (unsigned j = 0; j < done_count; ++j) if (w->x[done[j]] > right) right = w->x[done[j]];
-        ax = right + 2; ay = 0;
+        for (unsigned j = 0; j < done_count; ++j)
+            if (w->x[done[j]] > right) right = w->x[done[j]];
+        ax = right + 2;
+        ay = 0;
     }
     int best_x = 0, best_y = 0;
     long best = -1;
@@ -361,17 +416,25 @@ static void settle(Walk *w, const unsigned *done, unsigned done_count) {
         for (int oy = -r; oy <= r; ++oy)
             for (int ox = -r; ox <= r; ++ox) {
                 if ((abs(ox) > abs(oy) ? abs(ox) : abs(oy)) != r) continue;
-                int sx = ax + ox - vx, sy = ay + oy - vy;   /* the shift that puts v at the anchor + offset */
+                int sx = ax + ox - vx, sy = ay + oy - vy; /* the shift that puts v at the anchor + offset */
                 bool clear = true;
                 for (unsigned i = 0; i < w->count && clear; ++i)
                     for (unsigned j = 0; j < done_count && clear; ++j)
                         if (abs(w->x[w->order[i]] + sx - w->x[done[j]]) <= 1 &&
-                            abs(w->y[w->order[i]] + sy - w->y[done[j]]) <= 1) clear = false;
+                            abs(w->y[w->order[i]] + sy - w->y[done[j]]) <= 1)
+                            clear = false;
                 if (!clear) continue;
                 long key = (long)(abs(ox) + abs(oy)) * 64 + (oy < 0) * 32 + (oy == 0) * 16 + abs(ox) * 2 + (ox < 0);
-                if (best < 0 || key < best) { best = key; best_x = sx; best_y = sy; }
+                if (best < 0 || key < best) {
+                    best = key;
+                    best_x = sx;
+                    best_y = sy;
+                }
             }
-    for (unsigned i = 0; i < w->count; ++i) { w->x[w->order[i]] += best_x; w->y[w->order[i]] += best_y; }
+    for (unsigned i = 0; i < w->count; ++i) {
+        w->x[w->order[i]] += best_x;
+        w->y[w->order[i]] += best_y;
+    }
 }
 
 static bool lay_out(FaxMapAtlas *atlas, unsigned p, bool led[FAX_MAP_AREAS][FAX_MAP_SCREENS]) {
@@ -381,7 +444,8 @@ static bool lay_out(FaxMapAtlas *atlas, unsigned p, bool led[FAX_MAP_AREAS][FAX_
     page->area = page_area[p];
     Walk *w = calloc(1, sizeof *w);
     if (!w) return false;
-    w->atlas = atlas; w->page = page;
+    w->atlas = atlas;
+    w->page = page;
     for (unsigned s = 0; s < atlas->area[page->area].count; ++s)
         w->member[s] = led[page->area][s] && fax_map_page_of(atlas, page->area, s) == (int)p;
     for (unsigned t = 0; t < atlas->area[FAX_MAP_TOWNS].count; ++t)
@@ -394,7 +458,7 @@ static bool lay_out(FaxMapAtlas *atlas, unsigned p, bool led[FAX_MAP_AREAS][FAX_
         for (unsigned i = 0; i < w->count; ++i) done[done_count++] = w->order[i];
     }
     bool ok = done_count <= FAX_MAP_CELLS;
-    if (ok && done_count) {   /* a page nothing leads to stays empty, 0 x 0 */
+    if (ok && done_count) { /* a page nothing leads to stays empty, 0 x 0 */
         int x0 = w->x[done[0]], y0 = w->y[done[0]], x1 = x0, y1 = y0;
         for (unsigned i = 0; i < done_count; ++i) {
             unsigned n = done[i];
@@ -404,7 +468,8 @@ static bool lay_out(FaxMapAtlas *atlas, unsigned p, bool led[FAX_MAP_AREAS][FAX_
             if (w->y[n] > y1) y1 = w->y[n];
         }
         ok = x1 - x0 < 127 && y1 - y0 < 127;
-        page->w = (uint8_t)(x1 - x0 + 1); page->h = (uint8_t)(y1 - y0 + 1);
+        page->w = (uint8_t)(x1 - x0 + 1);
+        page->h = (uint8_t)(y1 - y0 + 1);
         /* Cells in the order of the area's screens, then its towns'. */
         for (unsigned n = 0; ok && n < NODES; ++n) {
             if (!w->member[n]) continue;
@@ -420,7 +485,8 @@ bool fax_map_decode(FaxMapAtlas *atlas, const uint8_t *prg, size_t size) {
     if (!atlas || !prg || size < (size_t)PRG_BANKS * BANK) return false;
     memset(atlas, 0, sizeof *atlas);
     Rom r = { prg };
-    for (unsigned a = 0; a < FAX_MAP_AREAS; ++a) if (!decode_area(&r, a, &atlas->area[a])) return false;
+    for (unsigned a = 0; a < FAX_MAP_AREAS; ++a)
+        if (!decode_area(&r, a, &atlas->area[a])) return false;
     decode_edges(&r, atlas);
     decode_climbs(&r, atlas);
     if (!decode_items(&r, atlas)) return false;

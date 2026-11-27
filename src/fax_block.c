@@ -56,60 +56,60 @@
 #include <string.h>
 
 /* RAM */
-#define PLAYER_POS_X          0x009Eu   /* Player_PosX_Block: the hero's left edge; he is 16 pixels wide */
-#define PLAYER_FLAGS          0x00A4u   /* $40: facing right */
-#define ISCRIPT_ADDR          0x00DBu   /* IScriptOrCHRAddr; the next action is at it + IScriptOffset */
-#define ISCRIPT_OFFSET        0x00DDu
-#define CURRENT_SPRITE_INDEX  0x0378u
-#define SHIELD_INVENTORY      0x03A5u   /* the shields not in hand, NumberOfShields of them */
-#define SELECTED_SHIELD       0x03BFu   /* 0 Small, 1 Large, 2 Magic Shield, 3 Battle Helmet, $FF none */
-#define NUMBER_OF_SHIELDS     0x03C4u
+#define PLAYER_POS_X               0x009Eu /* Player_PosX_Block: the hero's left edge; he is 16 pixels wide */
+#define PLAYER_FLAGS               0x00A4u /* $40: facing right */
+#define ISCRIPT_ADDR               0x00DBu /* IScriptOrCHRAddr; the next action is at it + IScriptOffset */
+#define ISCRIPT_OFFSET             0x00DDu
+#define CURRENT_SPRITE_INDEX       0x0378u
+#define SHIELD_INVENTORY           0x03A5u /* the shields not in hand, NumberOfShields of them */
+#define SELECTED_SHIELD            0x03BFu /* 0 Small, 1 Large, 2 Magic Shield, 3 Battle Helmet, $FF none */
+#define NUMBER_OF_SHIELDS          0x03C4u
 /* Sprite_GetBounds: the current sprite's box, this frame (8 bits;
  * fax_seams_box_left() gives it in 16) */
-#define SPRITE_BOX_LEFT       0x03E2u
-#define SPRITE_BOX_WIDTH      0x03E4u
-#define PLAYER_IS_DEAD        0x0438u
-#define SPRITES_START_SLOT_RANGE 0x001Cu   /* Sprite_Draw writes slot * 4 EOR it */
-#define SPRITES_SPRITE_SLOT   0x0025u   /* the next sprite slot Sprite_Draw writes */
-#define SHADOW_OAM            0x0700u   /* SPRITE_0_RANGE_1_START: Y, tile, attributes (palette in bits 0-1), X */
+#define SPRITE_BOX_LEFT            0x03E2u
+#define SPRITE_BOX_WIDTH           0x03E4u
+#define PLAYER_IS_DEAD             0x0438u
+#define SPRITES_START_SLOT_RANGE   0x001Cu /* Sprite_Draw writes slot * 4 EOR it */
+#define SPRITES_SPRITE_SLOT        0x0025u /* the next sprite slot Sprite_Draw writes */
+#define SHADOW_OAM                 0x0700u /* SPRITE_0_RANGE_1_START: Y, tile, attributes (palette in bits 0-1), X */
 /* Bank 14 */
 /* LDX CurrentSpriteIndex, LDY CurrentSprites_Entities,X,
  * LDA SPRITE_ENTITY_DAMAGES,Y, LDY SelectedShield */
-#define PLAYER_HANDLE_HIT_BY_MAGIC      0x87DCu
+#define PLAYER_HANDLE_HIT_BY_MAGIC 0x87DCu
 /* Player_HandleShieldHitByMagic after JSR Player_HandleHitByMagic:
  * LDX CurrentSpriteIndex, LDA #$FF, STA CurrentSprites_Entities,X,
  * LDA #$0C, JSR Sound_PlayEffect, RTS */
-#define SHIELD_STOPS_MAGIC              0x87CEu
+#define SHIELD_STOPS_MAGIC         0x87CEu
 /* LDA Player_InvincibilityPhase, BNE RETURN_89AD,
  * LDA DurationOintment, BPL RETURN_89AD */
 #define PLAYER_HANDLE_TOUCH_ENEMY_MAGIC 0x8999u
 /* SpriteBehavior_FlashScreenHitPlayer, greyscale just cleared:
  * LDA #$04, JSR Sound_PlayEffect, iframes, knockback, 10 HP */
 #define FLASH_HIT                       0xAB44u
-#define FLASH_FINISH                    0xAB60u  /* LDX CurrentSpriteIndex, JMP Sprite_FinishBehavior */
+#define FLASH_FINISH                    0xAB60u /* LDX CurrentSpriteIndex, JMP Sprite_FinishBehavior */
 /* Player_DrawWeapon: LDA IScript_PortraitID, BPL return. The main
  * loops and Game_DrawScreenInFrozenState call it right after
  * Player_DrawBody */
 #define DRAW_WEAPON                     0xB7D6u
 /* Bank 12 */
-#define ISCRIPTS_INVOKE_NEXT_ACTION     0x826Eu  /* reads the action at IScriptOrCHRAddr + IScriptOffset */
-#define ISCRIPT_ACTION_END_SCRIPT       0x82B4u  /* JSR IScripts_UpdatePortraitAnimation, LDA Temp_0201: close the box */
+#define ISCRIPTS_INVOKE_NEXT_ACTION     0x826Eu /* reads the action at IScriptOrCHRAddr + IScriptOffset */
+#define ISCRIPT_ACTION_END_SCRIPT       0x82B4u /* JSR IScripts_UpdatePortraitAnimation, LDA Temp_0201: close the box */
 /* IScript $8C, from Player_PickUpBattleHelmet before it adds the
  * helmet: GENERIC, SHOW_UNSKIPPABLE_MESSAGE $B6, END */
 #define ISCRIPT_GOT_BATTLE_HELMET       0xA698u
 /* Fixed bank */
-#define DRAW_BODY                       0xEBEEu  /* Player_DrawBody: LDA IScript_PortraitID, BMI, RTS */
-#define GAME_LOOP_COUNTDOWN_ITEMS       0xC88Fu  /* JSR, JSR, JSR, JMP: the timed items */
+#define DRAW_BODY                       0xEBEEu /* Player_DrawBody: LDA IScript_PortraitID, BMI, RTS */
+#define GAME_LOOP_COUNTDOWN_ITEMS       0xC88Fu /* JSR, JSR, JSR, JMP: the timed items */
 /* Game_MainLoop's JSR GameLoop_CountdownItems ($DB68), after
  * Sprites_UpdateAll: a pass of the main loop got this far */
 #define MAIN_LOOP_COUNTDOWN_PUSHED      0xDB6Au
-#define SOUND_PLAY_EFFECT               0xD0E4u  /* A: the sound. Keeps X and Y; memory only */
-#define SOUND_SHIELD                    0x0Cu    /* what Player_HandleShieldHitByMagic plays */
+#define SOUND_PLAY_EFFECT               0xD0E4u /* A: the sound. Keeps X and Y; memory only */
+#define SOUND_SHIELD                    0x0Cu   /* what Player_HandleShieldHitByMagic plays */
 /* Values */
-#define FACING_RIGHT  0x40u
-#define BATTLE_HELMET 3u
+#define FACING_RIGHT                    0x40u
+#define BATTLE_HELMET                   3u
 /* What the hero cannot do while he blocks: A, B, Up, Down, Left, Right. */
-#define STAND_STILL   0xCFu
+#define STAND_STILL                     0xCFu
 
 /* The defaults as SDL numbers them: SDL_SCANCODE_V, and the right trigger
  * (SDL_CONTROLLER_AXIS_TRIGGERRIGHT, 5) pressed, in the host's binding encoding
@@ -123,12 +123,12 @@ enum { QUIET, SAYING };
 
 static bool enabled, failed;
 static bool key_held, pad_held, axis_held;
-static uint64_t frames;                 /* machine frames ended */
-static uint64_t pass;                   /* 1 + the frame in which a main-loop pass got to its timed items */
-static bool owned;                      /* a shield-slot item, when the main loop last ran */
+static uint64_t frames; /* machine frames ended */
+static uint64_t pass;   /* 1 + the frame in which a main-loop pass got to its timed items */
+static bool owned;      /* a shield-slot item, when the main loop last ran */
 static uint8_t phase = QUIET;
-static bool taught;                     /* remembered("block.taught") */
-static char line[80];                   /* the tutorial's line, '\n' between rows */
+static bool taught;   /* remembered("block.taught") */
+static char line[80]; /* the tutorial's line, '\n' between rows */
 static unsigned magic_blocked, shield_saved, flashes_blocked, tutorials, stood;
 static char label[80] = "Block: V / RT";
 
@@ -179,9 +179,11 @@ void fax_block_input(uint8_t buttons[2]) {
 void fax_block_return_via(uint16_t to) {
     CycModRegs regs;
     cyc_mod_regs(&regs);
-    uint16_t r = (uint16_t)(to - 1);                 /* an RTS adds one */
-    cyc_mod_poke((uint16_t)(0x100u | regs.s), (uint8_t)(r >> 8)); regs.s = (uint8_t)(regs.s - 1);
-    cyc_mod_poke((uint16_t)(0x100u | regs.s), (uint8_t)r);        regs.s = (uint8_t)(regs.s - 1);
+    uint16_t r = (uint16_t)(to - 1); /* an RTS adds one */
+    cyc_mod_poke((uint16_t)(0x100u | regs.s), (uint8_t)(r >> 8));
+    regs.s = (uint8_t)(regs.s - 1);
+    cyc_mod_poke((uint16_t)(0x100u | regs.s), (uint8_t)r);
+    regs.s = (uint8_t)(regs.s - 1);
     cyc_mod_set_regs(&regs);
 }
 
@@ -195,7 +197,7 @@ bool fax_block_play_sound(uint8_t sound) {
     return ok;
 }
 
-static uint16_t jsr_pushed(uint8_t s) {   /* what the JSR that entered this routine pushed */
+static uint16_t jsr_pushed(uint8_t s) { /* what the JSR that entered this routine pushed */
     return (uint16_t)(peek((uint16_t)(0x100u | (uint8_t)(s + 1))) | peek((uint16_t)(0x100u | (uint8_t)(s + 2))) << 8);
 }
 
@@ -225,9 +227,8 @@ static int shield_hit_hook(uint16_t addr) {
  * way: the shield check skips the helmet. */
 static int touch_magic_hook(uint16_t addr) {
     (void)addr;
-    if (!fax_block_raised() ||
-        !from_the_front(peek(PLAYER_POS_X), peek(PLAYER_FLAGS) & FACING_RIGHT, fax_seams_box_left(),
-                        peek(SPRITE_BOX_WIDTH)))
+    if (!fax_block_raised() || !from_the_front(peek(PLAYER_POS_X), peek(PLAYER_FLAGS) & FACING_RIGHT,
+                                               fax_seams_box_left(), peek(SPRITE_BOX_WIDTH)))
         return 0;
     fax_block_return_via(SHIELD_STOPS_MAGIC);
     ++magic_blocked;
@@ -259,9 +260,9 @@ static int flash_hook(uint16_t addr) {
 enum { GLINT_BEAT = 4, GLINT_DRAWS = 3 * GLINT_BEAT, SHIELD_PALETTE = 1 };
 enum { NO_SLOT = 0xFF };
 
-static unsigned glint;                  /* draws of the glint left */
-static bool was_up = true;              /* Block was up at the last draw; true: no glint on loading */
-static uint8_t body_from[2] = { NO_SLOT, NO_SLOT };   /* Sprites_SpriteSlot at Player_DrawBody: live, isolated */
+static unsigned glint;                              /* draws of the glint left */
+static bool was_up = true;                          /* Block was up at the last draw; true: no glint on loading */
+static uint8_t body_from[2] = { NO_SLOT, NO_SLOT }; /* Sprites_SpriteSlot at Player_DrawBody: live, isolated */
 static unsigned glints;
 
 /* Block is up, as the picture shows it: in an isolated machine too. */
@@ -296,7 +297,10 @@ static int draw_weapon_hook(uint16_t addr) {
     bool up = up_as_drawn();
     unsigned left = up ? glint : 0;
     if (!isolated) {
-        if (up && !was_up) { left = GLINT_DRAWS; ++glints; }
+        if (up && !was_up) {
+            left = GLINT_DRAWS;
+            ++glints;
+        }
         was_up = up;
         glint = left ? left - 1 : 0;
     }
@@ -319,11 +323,18 @@ static bool wrap(const char *key, char out[80]) {
     for (unsigned i = 0; i < sizeof words / sizeof words[0]; ++i) {
         size_t len = strlen(words[i]);
         if (!len || len > 16) return false;
-        if (col && col + 1 + len > 16) { out[n++] = '\n'; col = 0; ++rows; }
-        else if (col) { out[n++] = ' '; ++col; }
+        if (col && col + 1 + len > 16) {
+            out[n++] = '\n';
+            col = 0;
+            ++rows;
+        } else if (col) {
+            out[n++] = ' ';
+            ++col;
+        }
         if (rows > 4 || n + len + 1 >= 80) return false;
         memcpy(out + n, words[i], len);
-        n += len; col += len;
+        n += len;
+        col += len;
     }
     out[n] = 0;
     return true;
@@ -342,11 +353,11 @@ static bool encode(const char *s, uint8_t out[FAX_TRAVEL_SLOT_LEN]) {
     return true;
 }
 
-static void compose(void);   /* the line, from the bindings */
+static void compose(void); /* the line, from the bindings */
 
 /* Our line into message $C3's slot, and the SAY step that shows it. */
 static bool serve(void) {
-    static const uint8_t say[] = { 0x03, FAX_TRAVEL_SLOT_ID, 0x00 };   /* SHOW_MESSAGE $C3, END */
+    static const uint8_t say[] = { 0x03, FAX_TRAVEL_SLOT_ID, 0x00 }; /* SHOW_MESSAGE $C3, END */
     uint8_t bytes[FAX_TRAVEL_SLOT_LEN];
     if (!line[0]) compose();
     if (!encode(line, bytes)) return false;
@@ -382,7 +393,10 @@ static bool getting_battle_helmet(void) {
 static int end_script_hook(uint16_t addr) {
     (void)addr;
     if (!enabled || failed || cyc_mod_isolated()) return 0;
-    if (phase == SAYING) { phase = QUIET; return 0; }   /* our line has been said (or dismissed) */
+    if (phase == SAYING) {
+        phase = QUIET;
+        return 0;
+    } /* our line has been said (or dismissed) */
     if (taught || owned || !(owns_shield_slot_item() || getting_battle_helmet())) return 0;
     if (!serve()) {
         fprintf(stderr, "[block] cannot supply the Block tutorial's line; it is off\n");
@@ -423,12 +437,13 @@ void fax_block_loaded(void) {
     picture_reset();
 }
 
-static const char *const hook_ids[] = {
-    "faxanadu.block.main-loop", "faxanadu.block.shield-hit", "faxanadu.block.touch-magic",
-    "faxanadu.block.flash", "faxanadu.block.end-script", "faxanadu.block.draw-body",
-    "faxanadu.block.draw-weapon" };
+static const char *const hook_ids[] = { "faxanadu.block.main-loop",   "faxanadu.block.shield-hit",
+                                        "faxanadu.block.touch-magic", "faxanadu.block.flash",
+                                        "faxanadu.block.end-script",  "faxanadu.block.draw-body",
+                                        "faxanadu.block.draw-weapon" };
 static void hooks(int on) {
-    for (unsigned i = 0; i < sizeof hook_ids / sizeof hook_ids[0]; ++i) nes_mod_set_function_hook_enabled(hook_ids[i], on);
+    for (unsigned i = 0; i < sizeof hook_ids / sizeof hook_ids[0]; ++i)
+        nes_mod_set_function_hook_enabled(hook_ids[i], on);
 }
 static void deactivate(void) {
     enabled = failed = false;
@@ -445,14 +460,14 @@ static void activate(void) {
     enabled = true;
     taught = remembered(TAUGHT);
     hooks(1);
-    nes_mod_set_local_only("Block", 1);   /* host input the other side would not see */
+    nes_mod_set_local_only("Block", 1); /* host input the other side would not see */
 }
 
 /* Saved with the machine: what the hero owned before the script that is
  * running, and whether our line is showing. */
 static int state_get(uint8_t *buf, int cap) {
     if (cap < 3) return -1;
-    buf[0] = 1;   /* version */
+    buf[0] = 1; /* version */
     buf[1] = owned;
     buf[2] = phase;
     return 3;
@@ -462,8 +477,13 @@ static int state_validate(const uint8_t *buf, int len) {
 }
 static int state_set(const uint8_t *buf, int len) {
     if (!state_validate(buf, len)) return 0;
-    if (len) { owned = buf[1]; phase = buf[2]; }
-    else { owned = true; phase = QUIET; }   /* a state from before Block: say nothing */
+    if (len) {
+        owned = buf[1];
+        phase = buf[2];
+    } else {
+        owned = true;
+        phase = QUIET;
+    } /* a state from before Block: say nothing */
     pass = 0;
     return 1;
 }
@@ -473,14 +493,14 @@ static int state_set(const uint8_t *buf, int len) {
 const char *fax_block_controls_label(void) { return label; }
 
 #ifdef CYC_WITH_SDL
-static int key = DEFAULT_KEY, pad = DEFAULT_PAD;   /* 0: unbound */
-static int device = KEYBOARD;           /* the last one played with: the tutorial names its binding */
+static int key = DEFAULT_KEY, pad = DEFAULT_PAD; /* 0: unbound */
+static int device = KEYBOARD;                    /* the last one played with: the tutorial names its binding */
 
 static void hint(int k, int p, char *out, size_t n) {
     CycBinding b = { k, p };
     cyc_binding_hint(&b, out, n);
 }
-static void describe(void) {   /* as the host shows its own shortcuts: "V / RT" */
+static void describe(void) { /* as the host shows its own shortcuts: "V / RT" */
     char text[64] = "unbound";
     if (key || pad) hint(key, pad, text, sizeof text);
     snprintf(label, sizeof label, "Block: %s", text);
@@ -494,7 +514,10 @@ static void compose(void) {
     if (!name[0] || !wrap(name, line)) wrap("Block", line);
 }
 
-static void rebound(void) { describe(); line[0] = 0; }
+static void rebound(void) {
+    describe();
+    line[0] = 0;
+}
 const CycHostBinding *fax_block_binding(void) {
     static const CycHostBinding b = { "Block (hold)", &key, &pad, DEFAULT_KEY, DEFAULT_PAD, rebound };
     return &b;
@@ -507,7 +530,9 @@ bool fax_block_load_setting(const char *name, const char *value) {
         else fprintf(stderr, "[block] BlockKey: SDL has no key named \"%s\"; keeping the default\n", value);
     } else if (!strcmp(name, "BlockButton")) {
         if (cyc_pad_parse(value, &v) && !CYC_PAD_IS_COMBO(v)) pad = v;
-        else fprintf(stderr, "[block] BlockButton: \"%s\" is not one controller button or axis; keeping the default\n", value);
+        else
+            fprintf(stderr, "[block] BlockButton: \"%s\" is not one controller button or axis; keeping the default\n",
+                    value);
     } else {
         return false;
     }
@@ -559,13 +584,17 @@ static void block_state(int id, const char *line_in) {
     cyc_tcp_ok(id, fields);
 }
 void fax_block_tcp_setup(void) {
-    cyc_tcp_register("block_state",
-                     "Block: bindings, held and raised, magic and flashes stopped, the tutorial", block_state);
+    cyc_tcp_register("block_state", "Block: bindings, held and raised, magic and flashes stopped, the tutorial",
+                     block_state);
 }
 #else
 static void compose(void) { wrap("V", line); }
 const CycHostBinding *fax_block_binding(void) { return NULL; }
-bool fax_block_load_setting(const char *name, const char *value) { (void)name; (void)value; return false; }
+bool fax_block_load_setting(const char *name, const char *value) {
+    (void)name;
+    (void)value;
+    return false;
+}
 void fax_block_save_settings(FILE *f) { (void)f; }
 void fax_block_event(const void *ev) { (void)ev; }
 void fax_block_tcp_setup(void) {}
@@ -582,5 +611,6 @@ NES_MOD_CONSTRUCTOR(register_block) {
         !nes_mod_register_reset_callback(deactivate) ||
         !nes_mod_register_activation_plugin("faxanadu.block", activate) ||
         !nes_mod_register_savestate_hook("faxanadu.block", state_get, state_set) ||
-        !nes_mod_register_savestate_validator("faxanadu.block", state_validate)) abort();
+        !nes_mod_register_savestate_validator("faxanadu.block", state_validate))
+        abort();
 }

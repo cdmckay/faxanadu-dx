@@ -14,15 +14,22 @@
 #include "fax_found.c"
 
 static unsigned checks;
-#define CHECK(test) do{++checks;if(!(test)){fprintf(stderr,"FAIL line %u: %s\n",__LINE__,#test);exit(1);}}while(0)
+#define CHECK(test)                                                                                                    \
+    do {                                                                                                               \
+        ++checks;                                                                                                      \
+        if (!(test)) {                                                                                                 \
+            fprintf(stderr, "FAIL line %u: %s\n", __LINE__, #test);                                                    \
+            exit(1);                                                                                                   \
+        }                                                                                                              \
+    } while (0)
 
-#define VISIT_COUNT 0x043Au   /* Screen_TrackedVisitCount */
+#define VISIT_COUNT 0x043Au /* Screen_TrackedVisitCount */
 
 /* ---- the machine ---- */
 static uint8_t ram[0x800];
 static CycModRegs cpu;
 static bool isolated;
-static bool kept_finds_refuses;              /* Kept finds' site before ours: the Items list is full */
+static bool kept_finds_refuses; /* Kept finds' site before ours: the Items list is full */
 
 uint8_t cyc_mod_peek(uint16_t addr) { return addr < 0x2000 ? ram[addr & 0x7FF] : 0; }
 bool cyc_mod_poke(uint16_t addr, uint8_t value) {
@@ -31,10 +38,19 @@ bool cyc_mod_poke(uint16_t addr, uint8_t value) {
     return true;
 }
 void cyc_mod_regs(CycModRegs *out) { *out = cpu; }
-void cyc_mod_set_regs(const CycModRegs *in) { uint16_t pc = cpu.pc; cpu = *in; cpu.pc = pc; }
+void cyc_mod_set_regs(const CycModRegs *in) {
+    uint16_t pc = cpu.pc;
+    cpu = *in;
+    cpu.pc = pc;
+}
 bool cyc_mod_isolated(void) { return isolated; }
 
-typedef struct { const char *id; uint16_t addr; NESModFunctionEntryCallback cb; int on; } Site;
+typedef struct {
+    const char *id;
+    uint16_t addr;
+    NESModFunctionEntryCallback cb;
+    int on;
+} Site;
 static Site sites[4];
 static unsigned site_count;
 int nes_mod_register_function_entry_plugin(const char *id, uint16_t addr, NESModFunctionEntryCallback cb) {
@@ -44,23 +60,33 @@ int nes_mod_register_function_entry_plugin(const char *id, uint16_t addr, NESMod
 }
 int nes_mod_set_function_hook_enabled(const char *id, int on) {
     for (unsigned i = 0; i < site_count; ++i)
-        if (!strcmp(sites[i].id, id)) { sites[i].on = on; return 1; }
+        if (!strcmp(sites[i].id, id)) {
+            sites[i].on = on;
+            return 1;
+        }
     return 0;
 }
 static NESModActivationCallback reset_cb, activate_cb;
-int nes_mod_register_reset_callback(NESModActivationCallback cb) { reset_cb = cb; return 1; }
+int nes_mod_register_reset_callback(NESModActivationCallback cb) {
+    reset_cb = cb;
+    return 1;
+}
 int nes_mod_register_activation_plugin(const char *id, NESModActivationCallback cb) {
     if (strcmp(id, "faxanadu.found-items")) return 0;
     activate_cb = cb;
     return 1;
 }
-void nes_mod_set_local_only(const char *name, int required) { (void)name; (void)required; }
+void nes_mod_set_local_only(const char *name, int required) {
+    (void)name;
+    (void)required;
+}
 static NESModSavestateGet save_get;
 static NESModSavestateSet save_set;
 static NESModSavestateValidate save_validate;
 int nes_mod_register_savestate_hook(const char *id, NESModSavestateGet get, NESModSavestateSet set) {
     if (strcmp(id, "faxanadu.found-items")) return 0;
-    save_get = get; save_set = set;
+    save_get = get;
+    save_set = set;
     return 1;
 }
 int nes_mod_register_savestate_validator(const char *id, NESModSavestateValidate validate) {
@@ -71,18 +97,34 @@ int nes_mod_register_savestate_validator(const char *id, NESModSavestateValidate
 
 /* Save files: the file in play's fields. */
 static FaxSaveListener listener;
-static struct { char key[32], value[96]; } fields[8];
+static struct {
+    char key[32], value[96];
+} fields[8];
 static unsigned field_count;
-bool fax_save_listen(FaxSaveListener l) { listener = l; return true; }
+bool fax_save_listen(FaxSaveListener l) {
+    listener = l;
+    return true;
+}
 static int field_at(const char *key) {
-    for (unsigned i = 0; i < field_count; ++i) if (!strcmp(fields[i].key, key)) return (int)i;
+    for (unsigned i = 0; i < field_count; ++i)
+        if (!strcmp(fields[i].key, key)) return (int)i;
     return -1;
 }
-const char *fax_save_get(const char *key) { int i = field_at(key); return i >= 0 ? fields[i].value : NULL; }
+const char *fax_save_get(const char *key) {
+    int i = field_at(key);
+    return i >= 0 ? fields[i].value : NULL;
+}
 bool fax_save_set(const char *key, const char *value) {
     int i = field_at(key);
-    if (!value) { if (i >= 0) fields[i] = fields[--field_count]; return true; }
-    if (i < 0) { CHECK(field_count < 8); i = (int)field_count++; snprintf(fields[i].key, 32, "%s", key); }
+    if (!value) {
+        if (i >= 0) fields[i] = fields[--field_count];
+        return true;
+    }
+    if (i < 0) {
+        CHECK(field_count < 8);
+        i = (int)field_count++;
+        snprintf(fields[i].key, 32, "%s", key);
+    }
     snprintf(fields[i].value, 96, "%s", value);
     return true;
 }
@@ -97,7 +139,10 @@ static int fire(uint16_t addr) {
  * CMP #$04, BCC: C set (true) below 4; else 0 stored, CLC. */
 static void is_3_of_4_visits(void) {
     uint8_t n = ++ram[VISIT_COUNT];
-    if (n < 4) { cpu.p |= P_C; return; }
+    if (n < 4) {
+        cpu.p |= P_C;
+        return;
+    }
     ram[VISIT_COUNT] = 0;
     cpu.p &= (uint8_t)~P_C;
 }
@@ -106,9 +151,12 @@ static void is_3_of_4_visits(void) {
  * JMP Sprites_Remove. Whether it stayed. */
 static bool first_frame(unsigned slot) {
     cpu.x = (uint8_t)slot;
-    cpu.p ^= P_C;                                  /* whatever C was, the answer sets it */
+    cpu.p ^= P_C; /* whatever C was, the answer sets it */
     if (!fire(SCREEN_IS_3_OF_4_VISITS)) is_3_of_4_visits();
-    if (cpu.p & P_C) { ram[SPRITE_ENTITIES + slot] = 0xFF; return false; }
+    if (cpu.p & P_C) {
+        ram[SPRITE_ENTITIES + slot] = 0xFF;
+        return false;
+    }
     return true;
 }
 /* The screen loads with this item in slot 3, and its behavior runs. */
@@ -125,7 +173,7 @@ static bool visit(unsigned area, unsigned screen, unsigned entity) {
 static void touch(void) {
     cpu.x = 3;
     if (kept_finds_refuses) return;
-    CHECK(!fire(PLAYER_HANDLE_TOUCH_ITEM));        /* it only observes */
+    CHECK(!fire(PLAYER_HANDLE_TOUCH_ITEM)); /* it only observes */
     if (ram[SPRITE_ENTITIES + 3] == FAX_FOUND_GLASS) ram[ITEM_INVENTORY + ram[NUMBER_OF_ITEMS]++] = ITEM_HOUR_GLASS;
     ram[SPRITE_ENTITIES + 3] = 0xFF;
 }
@@ -161,7 +209,7 @@ static void unsold(void) {
  * Mattock, the Red Potion, Zorugeriru's pair, an enemy). The places are bank
  * 11's (docs/GAME_INTERNALS.md, "Items in the world"). */
 static void the_rule(void) {
-    static const uint8_t boots[][2] = { { TRUNK, 0x2D }, { MIST, 0x11 }, { MIST, 0x1B }, { MIST, 0x32 },
+    static const uint8_t boots[][2] = { { TRUNK, 0x2D },     { MIST, 0x11 },   { MIST, 0x1B },  { MIST, 0x32 },
                                         { BUILDINGS, 0x1F }, { BRANCH, 0x1C }, { BRANCH, 0x22 } };
     static const uint8_t glasses[][2] = { { TRUNK, 0x13 }, { BRANCH, 0x16 }, { DARTMOOR, 0x04 }, { DARTMOOR, 0x12 } };
     for (unsigned i = 0; i < sizeof boots / sizeof boots[0]; ++i)
@@ -169,9 +217,11 @@ static void the_rule(void) {
     for (unsigned i = 0; i < sizeof glasses / sizeof glasses[0]; ++i)
         CHECK(fax_found_spawn(glasses[i][0], glasses[i][1], 0x56) == FAX_FOUND_GONE);
     CHECK(fax_found_spawn(MIST, 0x30, 0x56) == FAX_FOUND_FIXED);
-    CHECK(fax_found_spawn(TRUNK, 0x30, 0x56) == FAX_FOUND_GONE);   /* another area's $30 */
+    CHECK(fax_found_spawn(TRUNK, 0x30, 0x56) == FAX_FOUND_GONE); /* another area's $30 */
     CHECK(fax_found_spawn(MIST, 0x31, 0x56) == FAX_FOUND_GONE);
-    static const uint8_t others[] = { ELIXIR_FIND, MATTOCK_FIND, RED_POTION_FIND, BOOTS_QUEST_FIND, ZOZURA, 0x5F, 0x60 };
+    static const uint8_t others[] = {
+        ELIXIR_FIND, MATTOCK_FIND, RED_POTION_FIND, BOOTS_QUEST_FIND, ZOZURA, 0x5F, 0x60
+    };
     for (unsigned i = 0; i < sizeof others; ++i) {
         CHECK(fax_found_spawn(MIST, 0x30, others[i]) == FAX_FOUND_AS_IS);
         CHECK(fax_found_spawn(TRUNK, 0x3B, others[i]) == FAX_FOUND_AS_IS);
@@ -188,7 +238,7 @@ static void boots_are_gone(void) {
     }
     CHECK(gone == 8 && shown == 0);
     ram[VISIT_COUNT] = 3;
-    CHECK(visit(TRUNK, 0x0E, MATTOCK_FIND) && ram[VISIT_COUNT] == 0);   /* the 4th: there, counted */
+    CHECK(visit(TRUNK, 0x0E, MATTOCK_FIND) && ram[VISIT_COUNT] == 0); /* the 4th: there, counted */
     CHECK(!visit(TRUNK, 0x0E, MATTOCK_FIND) && ram[VISIT_COUNT] == 1);
     CHECK(gone == 8);
     /* Off, the original: one visit in four. */
@@ -225,16 +275,18 @@ static void the_fixed_glass(void) {
     play(true);
     ram[SELECTED_ITEM] = ITEM_HOUR_GLASS;
     CHECK(!fax_found_glass_there() && !visit(MIST, 0x30, 0x56));
-    ram[SELECTED_ITEM] = 0xFF; ram[ITEM_INVENTORY + 1] = ITEM_HOUR_GLASS; ram[NUMBER_OF_ITEMS] = 2;
+    ram[SELECTED_ITEM] = 0xFF;
+    ram[ITEM_INVENTORY + 1] = ITEM_HOUR_GLASS;
+    ram[NUMBER_OF_ITEMS] = 2;
     CHECK(!visit(MIST, 0x30, 0x56));
-    ram[NUMBER_OF_ITEMS] = 1;                       /* past the count: a stale byte */
+    ram[NUMBER_OF_ITEMS] = 1; /* past the count: a stale byte */
     CHECK(visit(MIST, 0x30, 0x56));
     /* Touching anything else takes nothing. */
     play(true);
     visit(MIST, 0x30, ELIXIR_FIND);
     touch();
     ram[AREA_CURRENT_SCREEN] = 0x31;
-    ram[SPRITE_ENTITIES + 3] = 0x56;               /* an Hour Glass on another screen (none lies there) */
+    ram[SPRITE_ENTITIES + 3] = 0x56; /* an Hour Glass on another screen (none lies there) */
     touch();
     CHECK(!taken && takes == 0);
 }
@@ -263,13 +315,13 @@ static void the_file(void) {
     CHECK(!taken);
     listener(FAX_SAVE_CONTINUED);
     CHECK(taken);
-    ram[NUMBER_OF_ITEMS] = 0;                       /* the file is what says so */
+    ram[NUMBER_OF_ITEMS] = 0; /* the file is what says so */
     CHECK(!visit(MIST, 0x30, 0x56));
     fax_save_set(FIELD_GLASS, "x");
     listener(FAX_SAVE_CONTINUED);
     CHECK(!taken && visit(MIST, 0x30, 0x56));
     fax_save_set(FIELD_GLASS, "taken");
-    listener(FAX_SAVE_WRITING);                     /* not taken: the field goes */
+    listener(FAX_SAVE_WRITING); /* not taken: the field goes */
     CHECK(!fax_save_get(FIELD_GLASS));
     /* Off, the file is left alone. */
     reset_cb();

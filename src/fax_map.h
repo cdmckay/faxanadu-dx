@@ -13,11 +13,11 @@ const uint32_t *fax_map_present(const uint32_t *picture, int *w, int *h);
 void fax_map_event(const void *event);
 bool fax_map_load_setting(const char *key, const char *value);
 void fax_map_save_settings(FILE *f);
-const char *fax_map_controls_label(void);   /* "Map: M / BACK", for the runtime menu */
+const char *fax_map_controls_label(void); /* "Map: M / BACK", for the runtime menu */
 /* The binding, for the launcher's Controls page and the layout's move (cyc_host_extras.h). */
 const CycHostBinding *fax_map_binding(void);
 void fax_map_tcp_setup(void);
-bool fax_map_showing(void);                 /* the map is open */
+bool fax_map_showing(void); /* the map is open */
 /* Open the map as the Map button does, at the main loop's next pause check:
  * the Select menu's MAP row (fax_menu.c). False where it would show nothing
  * (no page seen yet), or the quest log is open. */

@@ -57,29 +57,31 @@
 #include <string.h>
 
 /* Bank 14 */
-#define PLAYER_HANDLE_TOUCH_ITEM 0x88FBu  /* LDA CurrentSprites_Entities,X, JSR Player_PickUp, ..., the slot emptied */
-#define SCREEN_IS_3_OF_4_VISITS  0xA529u  /* INC Screen_TrackedVisitCount, LDA, CMP #$04, BCC: C set for 3 of 4 */
+#define PLAYER_HANDLE_TOUCH_ITEM 0x88FBu /* LDA CurrentSprites_Entities,X, JSR Player_PickUp, ..., the slot emptied */
+#define SCREEN_IS_3_OF_4_VISITS  0xA529u /* INC Screen_TrackedVisitCount, LDA, CMP #$04, BCC: C set for 3 of 4 */
 /* RAM */
-#define AREA_CURRENT_AREA   0x0024u
-#define AREA_CURRENT_SCREEN 0x0063u
-#define SPRITE_ENTITIES     0x02CCu   /* CurrentSprites_Entities: 8 slots, $FF empty */
-#define ITEM_INVENTORY      0x03ADu   /* the Items list, NumberOfItems entries */
-#define SELECTED_ITEM       0x03C1u   /* the Items' selection, in no list */
-#define NUMBER_OF_ITEMS     0x03C6u
+#define AREA_CURRENT_AREA        0x0024u
+#define AREA_CURRENT_SCREEN      0x0063u
+#define SPRITE_ENTITIES          0x02CCu /* CurrentSprites_Entities: 8 slots, $FF empty */
+#define ITEM_INVENTORY           0x03ADu /* the Items list, NumberOfItems entries */
+#define SELECTED_ITEM            0x03C1u /* the Items' selection, in no list */
+#define NUMBER_OF_ITEMS          0x03C6u
 /* Values */
 enum { SLOTS = 8, MAX_ITEMS = 8, P_C = 0x01 };
-enum { ITEM_HOUR_GLASS = 0x0D };   /* in the Items list */
+enum { ITEM_HOUR_GLASS = 0x0D }; /* in the Items list */
 
 const uint8_t fax_found_unsold[FAX_FOUND_UNSOLD] = {
-    0x8F,   /* ITEM_WING_BOOTS: Forepaw 2800, Conflate 5500 */
-    0x8D,   /* ITEM_HOUR_GLASS: the shop after Mascon 5600 */
-    0x92,   /* SPECIAL_ELIXIR: Eolis 320, the shop after Mascon 4300 */
+    0x8F, /* ITEM_WING_BOOTS: Forepaw 2800, Conflate 5500 */
+    0x8D, /* ITEM_HOUR_GLASS: the shop after Mascon 5600 */
+    0x92, /* SPECIAL_ELIXIR: Eolis 320, the shop after Mascon 4300 */
 };
 
 static bool enabled;
-static uint8_t taken;              /* the fixed Hour Glass: the hero has picked it up */
-static unsigned gone, shown, away, takes;   /* for TCP: finds removed, the glass shown, kept away, taken */
-static struct { int entity, area, screen, rule, left; } last = { -1, -1, -1, -1, -1 };   /* the last answer */
+static uint8_t taken;                     /* the fixed Hour Glass: the hero has picked it up */
+static unsigned gone, shown, away, takes; /* for TCP: finds removed, the glass shown, kept away, taken */
+static struct {
+    int entity, area, screen, rule, left;
+} last = { -1, -1, -1, -1, -1 }; /* the last answer */
 
 /* ---- the rules, on plain values (and fax_found_spawn, fax_found.h's) ---- */
 
@@ -96,7 +98,8 @@ static bool holds_glass(void) {
     if (q(SELECTED_ITEM) == ITEM_HOUR_GLASS) return true;
     unsigned n = q(NUMBER_OF_ITEMS);
     if (n > MAX_ITEMS) n = MAX_ITEMS;
-    for (unsigned i = 0; i < n; ++i) if (q((uint16_t)(ITEM_INVENTORY + i)) == ITEM_HOUR_GLASS) return true;
+    for (unsigned i = 0; i < n; ++i)
+        if (q((uint16_t)(ITEM_INVENTORY + i)) == ITEM_HOUR_GLASS) return true;
     return false;
 }
 
@@ -121,9 +124,13 @@ static int visits_hook(uint16_t addr) {
         if (rule == FAX_FOUND_GONE) ++gone;
         else if (there) ++shown;
         else ++away;
-        last.entity = entity; last.area = area; last.screen = screen; last.rule = rule; last.left = there;
+        last.entity = entity;
+        last.area = area;
+        last.screen = screen;
+        last.rule = rule;
+        last.left = there;
     }
-    return 1;                                   /* as its RTS: the counter not moved */
+    return 1; /* as its RTS: the counter not moved */
 }
 
 /* Player_HandleTouchItem, X the slot: the fixed Hour Glass is picked up (Kept
@@ -143,7 +150,7 @@ static int touch_hook(uint16_t addr) {
 
 /* ---- the file in play (Save files, fax_save.h) ---- */
 
-#define FIELD_GLASS "found.hourglass"   /* "taken", or no field */
+#define FIELD_GLASS "found.hourglass" /* "taken", or no field */
 
 static void on_save(FaxSaveEvent event) {
     if (!enabled) return;
@@ -181,7 +188,8 @@ static int state_set(const uint8_t *buf, int len) {
 
 static const char *const hook_ids[] = { "faxanadu.found-items.visits", "faxanadu.found-items.touch" };
 static void hooks(bool on) {
-    for (unsigned i = 0; i < sizeof hook_ids / sizeof hook_ids[0]; ++i) nes_mod_set_function_hook_enabled(hook_ids[i], on);
+    for (unsigned i = 0; i < sizeof hook_ids / sizeof hook_ids[0]; ++i)
+        nes_mod_set_function_hook_enabled(hook_ids[i], on);
 }
 static void deactivate(void) {
     enabled = false;

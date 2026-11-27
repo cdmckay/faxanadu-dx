@@ -45,28 +45,28 @@
 #define FAX_CHARGES_LOG(...) fprintf(stderr, __VA_ARGS__)
 #endif
 
-extern uint32_t hw_palette_argb[512];   /* the host's NES colors, emphasis in bits 6-8 */
+extern uint32_t hw_palette_argb[512]; /* the host's NES colors, emphasis in bits 6-8 */
 
 /* Bank 10 */
 /* four tile numbers an item, by ITEMINVENTORY_* (TextBox_LoadItemSourceTiles' table for Items) */
-#define ITEM_TILEMAP_INDEXES 0xB4E4u
-#define ITEM_TILES           0x8500u    /* the items' pictures, 16 bytes a tile (UI_Maybe_GetItemSpritePPUTileAddr) */
-#define ITEMINVENTORY_ELIXIR 0x12u
+#define ITEM_TILEMAP_INDEXES    0xB4E4u
+#define ITEM_TILES              0x8500u /* the items' pictures, 16 bytes a tile (UI_Maybe_GetItemSpritePPUTileAddr) */
+#define ITEMINVENTORY_ELIXIR    0x12u
 /* RAM */
-#define INTERRUPT_COUNTER       0x001Au   /* +1 each NMI */
-#define UI_ATTRIBUTE_DATA_INDEX 0x038Du   /* the status bar's and the text box's palette, 0-3 */
+#define INTERRUPT_COUNTER       0x001Au /* +1 each NMI */
+#define UI_ATTRIBUTE_DATA_INDEX 0x038Du /* the status bar's and the text box's palette, 0-3 */
 
 enum { ITEM_BANK = 10, BANK_SIZE = 16384, HUD_LINE = 24, TILES = 4 };
 enum { UNKNOWN = 0xFF };
 
 typedef struct {
-    uint8_t last;    /* the Elixir's charge at the end of the last frame, or UNKNOWN */
-    uint8_t blink;   /* frames of blinking left */
+    uint8_t last;  /* the Elixir's charge at the end of the last frame, or UNKNOWN */
+    uint8_t blink; /* frames of blinking left */
 } Track;
 
 static bool enabled, failed, loaded;
 static Track t;
-static uint8_t picture_px[16][16];   /* the Elixir's picture, pixel values 0-3 */
+static uint8_t picture_px[16][16]; /* the Elixir's picture, pixel values 0-3 */
 static uint32_t *canvas;
 static size_t capacity;
 /* What the last present drew, for TCP: whether the Elixir showed, and where its place is. */
@@ -86,10 +86,10 @@ int fax_charges_width(void) { return enabled ? FAX_CHARGES_ITEM : 0; }
 uint8_t fax_charges_grey(uint8_t c) {
     static const uint8_t GREYS[] = { 0x0F, 0x2D, 0x00, 0x10, 0x20 };
     unsigned hue = c & 0x0Fu, row = (c >> 4) & 3u, level;
-    if (hue >= 0x0E || c == 0x0D || c == 0x1D) return 0x0F;      /* the blacks stay black */
-    if (hue == 0x0D) level = row == 2 ? 1 : 3;                    /* $2D dark grey, $3D light grey */
-    else if (hue == 0x00) level = row < 2 ? row + 2 : 4;          /* $00 grey, $10 light grey, $20 and $30 white */
-    else level = row + 1;                                         /* a color: dark, middle, light, pale */
+    if (hue >= 0x0E || c == 0x0D || c == 0x1D) return 0x0F; /* the blacks stay black */
+    if (hue == 0x0D) level = row == 2 ? 1 : 3;              /* $2D dark grey, $3D light grey */
+    else if (hue == 0x00) level = row < 2 ? row + 2 : 4;    /* $00 grey, $10 light grey, $20 and $30 white */
+    else level = row + 1;                                   /* a color: dark, middle, light, pale */
     return GREYS[level > 1 ? level - 1 : 1];
 }
 
@@ -101,9 +101,7 @@ static void step(Track *k, FaxCharge now, bool box) {
     else if (k->blink && !box) --k->blink;
     k->last = (uint8_t)now;
 }
-static bool lit(const Track *k, uint8_t counter) {
-    return !k->blink || !(counter & FAX_CHARGES_BLINK_OFF);
-}
+static bool lit(const Track *k, uint8_t counter) { return !k->blink || !(counter & FAX_CHARGES_BLINK_OFF); }
 
 /* ---- the machine ---- */
 
@@ -127,7 +125,8 @@ static bool load_picture(void) {
     bool ok = cyc_mod_copy_cart_payload(payload, need) == need, any = false;
     const uint8_t *bank = payload + ITEM_BANK * BANK_SIZE;
     for (int k = 0; ok && k < TILES; ++k) {
-        const uint8_t *tile = bank + (ITEM_TILES - 0x8000u) + bank[ITEM_TILEMAP_INDEXES - 0x8000u + ITEMINVENTORY_ELIXIR * TILES + k] * 16u;
+        const uint8_t *tile = bank + (ITEM_TILES - 0x8000u) +
+                              bank[ITEM_TILEMAP_INDEXES - 0x8000u + ITEMINVENTORY_ELIXIR * TILES + k] * 16u;
         for (int r = 0; r < 8; ++r)
             for (int c = 0; c < 8; ++c) {
                 uint8_t v = (uint8_t)((tile[r] >> (7 - c) & 1u) | (tile[r + 8] >> (7 - c) & 1u) << 1);
@@ -148,7 +147,7 @@ const uint32_t *fax_charges_present(const uint32_t *picture, int *w, int *h) {
     if (from) width = *w, height = *h;
     else from = cyc_render_present(&width, &height);
     if (!from || height < FAX_CHARGES_TOP + FAX_CHARGES_ITEM) return picture;
-    int x = fax_world_hud_x(width) - FAX_CHARGES_ITEM;   /* against the status bar's left edge */
+    int x = fax_world_hud_x(width) - FAX_CHARGES_ITEM; /* against the status bar's left edge */
     if (x < 0 || x + FAX_CHARGES_ITEM > width || !fax_text_hud_showing()) return picture;
     if (!loaded && !(loaded = load_picture())) {
         FAX_CHARGES_LOG("[charges] cannot read the Elixir's picture; the status bar's Elixir is off\n");
@@ -171,7 +170,8 @@ const uint32_t *fax_charges_present(const uint32_t *picture, int *w, int *h) {
     if (n > capacity) {
         uint32_t *grown = realloc(canvas, n * sizeof *grown);
         if (!grown) return picture;
-        canvas = grown; capacity = n;
+        canvas = grown;
+        capacity = n;
     }
     memcpy(canvas, from, n * sizeof *canvas);
     for (int r = 0; r < FAX_CHARGES_ITEM; ++r)
@@ -180,7 +180,8 @@ const uint32_t *fax_charges_present(const uint32_t *picture, int *w, int *h) {
             if (v) canvas[(size_t)(FAX_CHARGES_TOP + r) * (size_t)width + (size_t)(x + col)] = ink[v];
         }
     shown = true;
-    *w = width; *h = height;
+    *w = width;
+    *h = height;
     return canvas;
 }
 
@@ -215,7 +216,8 @@ static int state_set(const uint8_t *buf, int len) {
     if (!state_validate(buf, len)) return 0;
     forget();
     if (len == RECORD) t.last = buf[1], t.blink = buf[2];
-    else if (len == RECORD_ROW) t.last = buf[1 + FAX_RECHARGE_ELIXIR], t.blink = buf[1 + ROW_ITEMS + FAX_RECHARGE_ELIXIR];
+    else if (len == RECORD_ROW)
+        t.last = buf[1 + FAX_RECHARGE_ELIXIR], t.blink = buf[1 + ROW_ITEMS + FAX_RECHARGE_ELIXIR];
     return 1;
 }
 
@@ -232,8 +234,7 @@ static void charges_state(int id, const char *line) {
     cyc_tcp_ok(id, fields);
 }
 void fax_charges_tcp_setup(void) {
-    cyc_tcp_register("charges_state",
-                     "Charges: the Elixir on the status bar (charge, blink, drawn), and where it is",
+    cyc_tcp_register("charges_state", "Charges: the Elixir on the status bar (charge, blink, drawn), and where it is",
                      charges_state);
 }
 #else
@@ -251,7 +252,8 @@ static void activate(void) {
 
 NES_MOD_CONSTRUCTOR(register_charges) {
     forget();
-    if (!nes_mod_register_reset_callback(deactivate) || !nes_mod_register_activation_plugin("faxanadu.charges", activate) ||
+    if (!nes_mod_register_reset_callback(deactivate) ||
+        !nes_mod_register_activation_plugin("faxanadu.charges", activate) ||
         !nes_mod_register_savestate_hook("faxanadu.charges", state_get, state_set) ||
         !nes_mod_register_savestate_validator("faxanadu.charges", state_validate))
         abort();

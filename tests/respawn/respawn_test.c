@@ -7,19 +7,30 @@
 #include "fax_respawn.c"
 
 static unsigned checks;
-#define CHECK(test) do{++checks;if(!(test)){fprintf(stderr,"FAIL line %u: %s\n",__LINE__,#test);exit(1);}}while(0)
+#define CHECK(test)                                                                                                    \
+    do {                                                                                                               \
+        ++checks;                                                                                                      \
+        if (!(test)) {                                                                                                 \
+            fprintf(stderr, "FAIL line %u: %s\n", __LINE__, #test);                                                    \
+            exit(1);                                                                                                   \
+        }                                                                                                              \
+    } while (0)
 
 /* ---- the machine ---- */
-#define SCREEN_PALETTE_INDEX 0x03D0u                    /* what Screen_SetupNew sets from the palette */
-#define PLAYER_POS_X 0x009Eu
-#define PLAYER_POS_Y 0x00A1u
+#define SCREEN_PALETTE_INDEX 0x03D0u /* what Screen_SetupNew sets from the palette */
+#define PLAYER_POS_X         0x009Eu
+#define PLAYER_POS_Y         0x00A1u
 static uint8_t ram[0x800];
 static CycModRegs cpu;
 static bool isolated;
-static int hooks_on;                             /* hooks enabled, as last set */
+static int hooks_on; /* hooks enabled, as last set */
 
 uint8_t cyc_mod_peek(uint16_t addr) { return addr < 0x2000 ? ram[addr & 0x7FF] : 0; }
-bool cyc_mod_poke(uint16_t addr, uint8_t value) { if (addr >= 0x2000) return false; ram[addr & 0x7FF] = value; return true; }
+bool cyc_mod_poke(uint16_t addr, uint8_t value) {
+    if (addr >= 0x2000) return false;
+    ram[addr & 0x7FF] = value;
+    return true;
+}
 void cyc_mod_regs(CycModRegs *out) { *out = cpu; }
 void cyc_mod_set_regs(const CycModRegs *in) { cpu = *in; }
 bool cyc_mod_isolated(void) { return isolated; }
@@ -31,7 +42,10 @@ int nes_mod_register_function_entry_plugin(const char *id, uint16_t addr, NESMod
 }
 int nes_mod_set_function_hook_enabled(const char *id, int on) {
     for (unsigned i = 0; i < 4; ++i)
-        if (!strcmp(id, hook_ids[i])) { hooks_on = on ? hooks_on | 1 << i : hooks_on & ~(1 << i); return 1; }
+        if (!strcmp(id, hook_ids[i])) {
+            hooks_on = on ? hooks_on | 1 << i : hooks_on & ~(1 << i);
+            return 1;
+        }
     return 0;
 }
 int nes_mod_register_reset_callback(NESModActivationCallback cb) { return cb == deactivate; }
@@ -44,21 +58,49 @@ int nes_mod_register_savestate_hook(const char *id, NESModSavestateGet get, NESM
 int nes_mod_register_savestate_validator(const char *id, NESModSavestateValidate v) {
     return !strcmp(id, "faxanadu.zone-respawn") && v == state_validate;
 }
-void nes_mod_set_local_only(const char *name, int required) { (void)name; (void)required; }
+void nes_mod_set_local_only(const char *name, int required) {
+    (void)name;
+    (void)required;
+}
 
-static void push(uint8_t v) { ram[0x100 | cpu.s] = v; cpu.s = (uint8_t)(cpu.s - 1); }
-static uint8_t pull(void) { cpu.s = (uint8_t)(cpu.s + 1); return ram[0x100 | cpu.s]; }
-static uint16_t rts(void) { uint8_t lo = pull(); return (uint16_t)((lo | pull() << 8) + 1); }
-static void jsr(uint16_t at) { uint16_t last = (uint16_t)(at + 2); push((uint8_t)(last >> 8)); push((uint8_t)last); }
+static void push(uint8_t v) {
+    ram[0x100 | cpu.s] = v;
+    cpu.s = (uint8_t)(cpu.s - 1);
+}
+static uint8_t pull(void) {
+    cpu.s = (uint8_t)(cpu.s + 1);
+    return ram[0x100 | cpu.s];
+}
+static uint16_t rts(void) {
+    uint8_t lo = pull();
+    return (uint16_t)((lo | pull() << 8) + 1);
+}
+static void jsr(uint16_t at) {
+    uint16_t last = (uint16_t)(at + 2);
+    push((uint8_t)(last >> 8));
+    push((uint8_t)last);
+}
 
 /* ---- the game's ways into a screen, each up to Screen_SetupNew ---- */
 enum { REGION_EOLIS, REGION_TRUNK, REGION_MIST, REGION_BRANCH, REGION_DARTMOOR, REGION_EVIL_FORTRESS };
-enum { MUSIC_APOLUNE = 0x03, MUSIC_TOWER = 0x06, MUSIC_EOLIS = 0x07, MUSIC_MASCON_VICTIM = 0x09,
-       MUSIC_TEMPLE = 0x0E, MUSIC_SHOP = 0x0F };
-enum { PALETTE_EOLIS = 0x00, PALETTE_OUTSIDE = 0x06, PALETTE_TOWER = 0x07, PALETTE_TEMPLE = 0x12,
-       PALETTE_MEAT_SHOP = 0x18, PALETTE_TOWN = 0x1B };
+enum {
+    MUSIC_APOLUNE = 0x03,
+    MUSIC_TOWER = 0x06,
+    MUSIC_EOLIS = 0x07,
+    MUSIC_MASCON_VICTIM = 0x09,
+    MUSIC_TEMPLE = 0x0E,
+    MUSIC_SHOP = 0x0F
+};
+enum {
+    PALETTE_EOLIS = 0x00,
+    PALETTE_OUTSIDE = 0x06,
+    PALETTE_TOWER = 0x07,
+    PALETTE_TEMPLE = 0x12,
+    PALETTE_MEAT_SHOP = 0x18,
+    PALETTE_TOWN = 0x1B
+};
 
-static void setup_new(void) { load_hook(SCREEN_SETUP_NEW); }   /* the hook, then the routine's own work: */
+static void setup_new(void) { load_hook(SCREEN_SETUP_NEW); } /* the hook, then the routine's own work: */
 static void screen_load(void) {
     setup_new();
     ram[AREA_CURRENT_SCREEN] = ram[AREA_LOADING_SCREEN];
@@ -67,24 +109,31 @@ static void screen_load(void) {
 /* A door within the area (Area_SetStateFromDoorDestination, then the palette's
  * music in Player_CheckHandleEnterDoor, then Game_SetupEnterScreen). */
 static void door(unsigned screen, unsigned palette, unsigned start, unsigned music) {
-    ram[AREA_LOADING_SCREEN] = (uint8_t)screen; ram[SCREEN_DEST_PALETTE] = (uint8_t)palette;
-    ram[SCREEN_START_POS] = (uint8_t)start; ram[AREAS_DEFAULT_MUSIC] = (uint8_t)music;
+    ram[AREA_LOADING_SCREEN] = (uint8_t)screen;
+    ram[SCREEN_DEST_PALETTE] = (uint8_t)palette;
+    ram[SCREEN_START_POS] = (uint8_t)start;
+    ram[AREAS_DEFAULT_MUSIC] = (uint8_t)music;
     screen_load();
 }
 /* A door to the next region (Player_EnterDoorToOutside, Game_LoadCurrentArea,
  * which faces him right with Player_SetInitialState). */
 static void region_door(unsigned region, unsigned area, unsigned screen, unsigned start, unsigned palette,
                         unsigned music) {
-    ram[AREA_REGION] = (uint8_t)region; ram[AREA_CURRENT_AREA] = (uint8_t)area;
-    ram[AREA_LOADING_SCREEN] = (uint8_t)screen; ram[SCREEN_START_POS] = (uint8_t)start;
+    ram[AREA_REGION] = (uint8_t)region;
+    ram[AREA_CURRENT_AREA] = (uint8_t)area;
+    ram[AREA_LOADING_SCREEN] = (uint8_t)screen;
+    ram[SCREEN_START_POS] = (uint8_t)start;
     ram[PLAYER_FLAGS] = FACING_RIGHT;
-    ram[SCREEN_DEST_PALETTE] = (uint8_t)palette; ram[AREAS_DEFAULT_MUSIC] = (uint8_t)music;
+    ram[SCREEN_DEST_PALETTE] = (uint8_t)palette;
+    ram[AREAS_DEFAULT_MUSIC] = (uint8_t)music;
     screen_load();
 }
 /* A town's edge (Player_CheckSwitchScreen_SwitchAreaHoriz, Game_EnterAreaHandler). */
 static void edge(unsigned area, unsigned screen, unsigned start, unsigned palette, unsigned music) {
-    ram[AREA_CURRENT_AREA] = (uint8_t)area; ram[AREA_LOADING_SCREEN] = (uint8_t)screen;
-    ram[SCREEN_START_POS] = (uint8_t)start; ram[SCREEN_DEST_PALETTE] = (uint8_t)palette;
+    ram[AREA_CURRENT_AREA] = (uint8_t)area;
+    ram[AREA_LOADING_SCREEN] = (uint8_t)screen;
+    ram[SCREEN_START_POS] = (uint8_t)start;
+    ram[SCREEN_DEST_PALETTE] = (uint8_t)palette;
     ram[AREAS_DEFAULT_MUSIC] = (uint8_t)music;
     screen_load();
 }
@@ -94,16 +143,20 @@ static uint8_t music_outside;
 static void enter_building(unsigned building, unsigned palette, unsigned music) {
     music_outside = ram[AREAS_DEFAULT_MUSIC];
     ram[AREAS_DEFAULT_MUSIC] = (uint8_t)music;
-    ram[AREA_SAVED_AREA] = ram[AREA_CURRENT_AREA]; ram[AREA_SAVED_SCREEN] = ram[AREA_CURRENT_SCREEN];
+    ram[AREA_SAVED_AREA] = ram[AREA_CURRENT_AREA];
+    ram[AREA_SAVED_SCREEN] = ram[AREA_CURRENT_SCREEN];
     ram[SCREEN_SAVED_PALETTE] = ram[SCREEN_PALETTE_INDEX];
     ram[PLAYER_SAVED_POS] = (uint8_t)((ram[PLAYER_POS_Y] & 0xF0) | ram[PLAYER_POS_X] >> 4);
     ram[AREA_CURRENT_AREA] = FAX_AREA_BUILDINGS;
-    ram[AREA_LOADING_SCREEN] = (uint8_t)building; ram[SCREEN_DEST_PALETTE] = (uint8_t)palette;
+    ram[AREA_LOADING_SCREEN] = (uint8_t)building;
+    ram[SCREEN_DEST_PALETTE] = (uint8_t)palette;
     screen_load();
 }
 static void exit_building_load(void) {
-    ram[AREA_CURRENT_AREA] = ram[AREA_SAVED_AREA]; ram[AREA_LOADING_SCREEN] = ram[AREA_SAVED_SCREEN];
-    ram[SCREEN_DEST_PALETTE] = ram[SCREEN_SAVED_PALETTE]; ram[SCREEN_START_POS] = ram[PLAYER_SAVED_POS];
+    ram[AREA_CURRENT_AREA] = ram[AREA_SAVED_AREA];
+    ram[AREA_LOADING_SCREEN] = ram[AREA_SAVED_SCREEN];
+    ram[SCREEN_DEST_PALETTE] = ram[SCREEN_SAVED_PALETTE];
+    ram[SCREEN_START_POS] = ram[PLAYER_SAVED_POS];
     screen_load();
 }
 static void exit_building(void) {
@@ -112,7 +165,10 @@ static void exit_building(void) {
     exit_building_load();
 }
 /* Standing somewhere on the current screen. */
-static void stand(unsigned x, unsigned y) { ram[PLAYER_POS_X] = (uint8_t)x; ram[PLAYER_POS_Y] = (uint8_t)y; }
+static void stand(unsigned x, unsigned y) {
+    ram[PLAYER_POS_X] = (uint8_t)x;
+    ram[PLAYER_POS_Y] = (uint8_t)y;
+}
 /* A new game: Game_LoadFirstLevel loads Eolis screen 0. */
 static void new_game(void) {
     memset(ram, 0, sizeof ram);
@@ -124,34 +180,37 @@ static void new_game(void) {
 /* The temple's layout, as Game_SpawnInTemple and Game_EnterBuilding make it,
  * for the temple of Eolis. */
 static void temple(void) {
-    ram[AREA_CURRENT_AREA] = FAX_AREA_EOLIS; ram[AREA_CURRENT_SCREEN] = 0x02; ram[AREA_REGION] = REGION_EOLIS;
+    ram[AREA_CURRENT_AREA] = FAX_AREA_EOLIS;
+    ram[AREA_CURRENT_SCREEN] = 0x02;
+    ram[AREA_REGION] = REGION_EOLIS;
     stand(0x50, 0x90);
-    ram[SCREEN_PALETTE_INDEX] = PALETTE_EOLIS; ram[AREAS_DEFAULT_MUSIC] = MUSIC_EOLIS;
+    ram[SCREEN_PALETTE_INDEX] = PALETTE_EOLIS;
+    ram[AREAS_DEFAULT_MUSIC] = MUSIC_EOLIS;
     ram[PLAYER_FLAGS] &= (uint8_t)~FACING_RIGHT;
     enter_building(0x02, PALETTE_TEMPLE, MUSIC_TEMPLE);
 }
 /* Player_Spawn from its JSR Game_SpawnInTemple, where S is $FF, to its JMP
  * Game_MainLoop, each hook where the CPU meets it and RTS as the CPU does it.
  * 1: back at the checkpoint; 0: the temple, as in the original. */
-static unsigned spawned;                         /* Player_Spawn reached SPAWNED, where Save files saves */
+static unsigned spawned; /* Player_Spawn reached SPAWNED, where Save files saves */
 static int player_spawn(void) {
     cpu.s = 0xFF;
-    if (spawn_hook(SPAWN_IN_TEMPLE)) CHECK(rts() == SPAWNED);   /* the JSR skipped, as if it returned */
-    else temple();                                              /* half of it: Game_SpawnInTemple's layout */
+    if (spawn_hook(SPAWN_IN_TEMPLE)) CHECK(rts() == SPAWNED); /* the JSR skipped, as if it returned */
+    else temple();                                            /* half of it: Game_SpawnInTemple's layout */
     ++spawned;
-    jsr(SPAWNED);                                               /* JSR Game_SetupEnterBuilding */
+    jsr(SPAWNED); /* JSR Game_SetupEnterBuilding */
     int back = enter_building_hook(SETUP_ENTER_BUILDING);
     if (back) {
         CHECK(rts() == SETUP_EXIT_BUILDING);
-        exit_building_load();                                   /* Game_ExitBuilding's Screen_Load */
+        exit_building_load(); /* Game_ExitBuilding's Screen_Load */
     }
-    CHECK(rts() == SPAWNED + 3 && cpu.s == 0xFF);               /* JMP Game_MainLoop */
+    CHECK(rts() == SPAWNED + 3 && cpu.s == 0xFF); /* JMP Game_MainLoop */
     return back;
 }
 /* A death: Player_HandleDeath to the end of Player_Spawn. */
 static int die(void) {
     death_hook(DEATH_FADE);
-    ram[PLAYER_FLAGS] = FACING_RIGHT;            /* Player_SetInitialState, in Game_InitStateForSpawn */
+    ram[PLAYER_FLAGS] = FACING_RIGHT; /* Player_SetInitialState, in Game_InitStateForSpawn */
     return player_spawn();
 }
 /* Player_Spawn without a death: a file or a mantra continued, or a Guru travel
@@ -164,12 +223,17 @@ static bool at(int zone, unsigned area, unsigned screen, unsigned start) {
 }
 
 /* ---- the tests ---- */
-static void begin(void) { deactivate(); activate(); isolated = false; new_game(); }
+static void begin(void) {
+    deactivate();
+    activate();
+    isolated = false;
+    new_game();
+}
 
 static void entrances(void) {
     begin();
     CHECK(hooks_on == 15);
-    CHECK(checkpoint.zone == FAX_ZONE_NONE);              /* outside the gate: no zone */
+    CHECK(checkpoint.zone == FAX_ZONE_NONE); /* outside the gate: no zone */
     /* Through the gate: Eolis, from where the gate puts him. */
     door(0x01, PALETTE_EOLIS, 0x99, MUSIC_EOLIS);
     CHECK(at(FAX_ZONE_EOLIS, FAX_AREA_EOLIS, 0x01, 0x99) && recorded == 1);
@@ -184,7 +248,7 @@ static void entrances(void) {
     region_door(REGION_TRUNK, FAX_AREA_TRUNK, 0x00, 0xA1, PALETTE_OUTSIDE, MUSIC_APOLUNE);
     CHECK(at(FAX_ZONE_TRUNK, FAX_AREA_TRUNK, 0x00, 0xA1) && checkpoint.region == REGION_TRUNK);
     /* Into the Tower of Trunk, with its music and palette. */
-    ram[PLAYER_FLAGS] = 0;                                 /* facing left at the door */
+    ram[PLAYER_FLAGS] = 0; /* facing left at the door */
     door(0x0D, PALETTE_TOWER, 0x91, MUSIC_TOWER);
     CHECK(at(FAX_ZONE_TOWER_OF_TRUNK, FAX_AREA_TRUNK, 0x0D, 0x91));
     CHECK(checkpoint.palette == PALETTE_TOWER && checkpoint.music == MUSIC_TOWER && checkpoint.facing == 0);
@@ -219,8 +283,8 @@ static void respawning(void) {
     Checkpoint tower = checkpoint;
     /* Deeper in: a scroll changes the screen, nothing loads. */
     ram[AREA_CURRENT_SCREEN] = 0x12;
-    ram[AREA_REGION] = REGION_EOLIS;                       /* anything; the respawn sets it */
-    ram[AREAS_DEFAULT_MUSIC] = 0x0A;                       /* the boss's, say */
+    ram[AREA_REGION] = REGION_EOLIS; /* anything; the respawn sets it */
+    ram[AREAS_DEFAULT_MUSIC] = 0x0A; /* the boss's, say */
     memset(ram + AREA_SAVED_AREA, 0x5A, 4);
     death_hook(DEATH_FADE);
     CHECK(death == DYING);
@@ -244,7 +308,8 @@ static void respawning(void) {
     /* The engine RTSes from S into Game_SetupExitBuilding, whose RTS goes back
      * to Player_Spawn's JMP Game_MainLoop. */
     CHECK(cpu.s == 0xFB && rts() == SETUP_EXIT_BUILDING);
-    jsr(0xDAC1); CHECK(rts() == 0xDAC4);                  /* its JSR Game_ExitBuilding returns as usual */
+    jsr(0xDAC1);
+    CHECK(rts() == 0xDAC4); /* its JSR Game_ExitBuilding returns as usual */
     CHECK(rts() == SPAWNED + 3 && cpu.s == 0xFF);
     /* Game_ExitBuilding's load lands in the same zone: the checkpoint stays. */
     exit_building_load();
@@ -279,9 +344,10 @@ static void fallbacks_to_the_temple(void) {
     exit_building();
     CHECK(at(FAX_ZONE_EOLIS, FAX_AREA_EOLIS, 0x02, 0x95));
     /* A checkpoint for another zone than where he died. */
-    ram[AREA_CURRENT_AREA] = FAX_AREA_TRUNK; ram[AREA_CURRENT_SCREEN] = 0x03;
+    ram[AREA_CURRENT_AREA] = FAX_AREA_TRUNK;
+    ram[AREA_CURRENT_SCREEN] = 0x03;
     CHECK(die() == 0 && fallbacks == 2);
-    CHECK(checkpoint.zone == FAX_ZONE_NONE);               /* the temple's way out is the next way in */
+    CHECK(checkpoint.zone == FAX_ZONE_NONE); /* the temple's way out is the next way in */
     /* A death in a building, which is in no zone. */
     exit_building();
     stand(0x30, 0x90);
@@ -318,33 +384,37 @@ static void save_states(void) {
     begin();
     region_door(REGION_TRUNK, FAX_AREA_TRUNK, 0x00, 0xA1, PALETTE_OUTSIDE, MUSIC_APOLUNE);
     door(0x0D, PALETTE_TOWER, 0x91, MUSIC_TOWER);
-    death_hook(DEATH_FADE);                               /* saved during the fade */
+    death_hook(DEATH_FADE); /* saved during the fade */
     uint8_t rec[64];
     int n = state_get(rec, sizeof rec);
     CHECK(n == RECORD && state_get(rec, RECORD - 1) == -1);
     Checkpoint saved = checkpoint;
-    deactivate(); activate();
+    deactivate();
+    activate();
     CHECK(checkpoint.zone == FAX_ZONE_NONE && death == ALIVE);
     CHECK(state_set(rec, n) == 1 && death == DYING && memcmp(&checkpoint, &saved, sizeof saved) == 0);
     ram[AREA_CURRENT_SCREEN] = 0x0F;
     cpu.s = 0xFF;
-    CHECK(spawn_hook(SPAWN_IN_TEMPLE) == 1 && death == RESPAWNING);   /* the death goes on to the tower's door */
+    CHECK(spawn_hook(SPAWN_IN_TEMPLE) == 1 && death == RESPAWNING); /* the death goes on to the tower's door */
     /* Saved without the feature: no checkpoint. */
     CHECK(state_set(rec, 0) == 1 && checkpoint.zone == FAX_ZONE_NONE && death == ALIVE);
     /* Bad records are refused, and change nothing. */
     CHECK(state_set(rec, n) == 1);
     uint8_t bad[sizeof rec];
-    struct { unsigned at; uint8_t value; } edits[] = {
-        { 0, 2 },                                         /* version */
-        { 1, FAX_ZONE_COUNT },                            /* no such zone */
-        { 1, FAX_ZONE_TRUNK },                            /* not the zone of area 1, screen $0D */
-        { 2, FAX_AREA_BUILDINGS },                        /* a building */
-        { 3, 0x40 },                                      /* no such screen in the Trunk */
-        { 5, 0x1C },                                      /* a palette the game never sets */
-        { 6, 6 },                                         /* a region */
-        { 7, 0x11 },                                      /* a song */
-        { 8, 0x01 },                                      /* a facing */
-        { 9, RESPAWNING + 1 },                            /* where a death is */
+    struct {
+        unsigned at;
+        uint8_t value;
+    } edits[] = {
+        { 0, 2 },                  /* version */
+        { 1, FAX_ZONE_COUNT },     /* no such zone */
+        { 1, FAX_ZONE_TRUNK },     /* not the zone of area 1, screen $0D */
+        { 2, FAX_AREA_BUILDINGS }, /* a building */
+        { 3, 0x40 },               /* no such screen in the Trunk */
+        { 5, 0x1C },               /* a palette the game never sets */
+        { 6, 6 },                  /* a region */
+        { 7, 0x11 },               /* a song */
+        { 8, 0x01 },               /* a facing */
+        { 9, RESPAWNING + 1 },     /* where a death is */
     };
     for (unsigned i = 0; i < sizeof edits / sizeof edits[0]; ++i) {
         memcpy(bad, rec, (size_t)n);
@@ -355,7 +425,8 @@ static void save_states(void) {
     CHECK(!state_validate(rec, n - 1) && !state_validate(rec, n + 1));
     /* No checkpoint saves as zone $FF, whatever the other bytes hold. */
     memcpy(bad, rec, (size_t)n);
-    bad[1] = 0xFF; bad[2] = 0x77;
+    bad[1] = 0xFF;
+    bad[2] = 0x77;
     CHECK(state_set(bad, n) == 1 && checkpoint.zone == FAX_ZONE_NONE);
 }
 
@@ -368,7 +439,7 @@ static void the_seam_for_save_slots(void) {
     new_game();
     CHECK(checkpoint.zone == FAX_ZONE_NONE);
     CHECK(fax_respawn_checkpoint_unpack(bytes, sizeof bytes) && memcmp(&checkpoint, &saved, sizeof saved) == 0);
-    bytes[2] = 0x00;                                      /* Eolis screen 0 is in no zone */
+    bytes[2] = 0x00; /* Eolis screen 0 is in no zone */
     CHECK(!fax_respawn_checkpoint_unpack(bytes, sizeof bytes) && checkpoint.zone == FAX_ZONE_EOLIS);
     CHECK(fax_respawn_checkpoint_unpack(bytes, 0) && checkpoint.zone == FAX_ZONE_NONE);
 }

@@ -9,24 +9,31 @@
 #include <string.h>
 
 static unsigned checks;
-#define CHECK(test) do{++checks;if(!(test)){fprintf(stderr,"FAIL line %u: %s\n",__LINE__,#test);exit(1);}}while(0)
+#define CHECK(test)                                                                                                    \
+    do {                                                                                                               \
+        ++checks;                                                                                                      \
+        if (!(test)) {                                                                                                 \
+            fprintf(stderr, "FAIL line %u: %s\n", __LINE__, #test);                                                    \
+            exit(1);                                                                                                   \
+        }                                                                                                              \
+    } while (0)
 
 enum { DAGGER, LONG_SWORD, GIANT_BLADE, DRAGON_SLAYER, WEAPONS };
 #define PLAYER_CUR_WEAPON        0x03C8u
-#define DURATION_GLOVE           0x0428u   /* $FF when not running */
+#define DURATION_GLOVE           0x0428u /* $FF when not running */
 #define CURRENT_SPRITES_HP       0x0344u
 #define WEAPON_TO_GLOVE_STRENGTH 0x88C7u
 
 /* The literal rule, from issue #29: each weapon's damage without and with the
  * Pendant, and what the Glove adds. */
-static const uint8_t base[WEAPONS] = {4, 8, 12, 16}, with_pendant[WEAPONS] = {5, 10, 15, 20},
-                     glove[WEAPONS] = {2, 4, 8, 10};
+static const uint8_t base[WEAPONS] = { 4, 8, 12, 16 }, with_pendant[WEAPONS] = { 5, 10, 15, 20 },
+                     glove[WEAPONS] = { 2, 4, 8, 10 };
 
 /* ---- the machine ---- */
 static uint8_t ram[0x800], bank14[0x4000];
 static CycModRegs cpu;
-static int hook_on = -1;                         /* the hook's enabled state, as last set */
-static bool isolated;                            /* in one of Seamless's isolated rooms */
+static int hook_on = -1; /* the hook's enabled state, as last set */
+static bool isolated;    /* in one of Seamless's isolated rooms */
 
 uint8_t cyc_mod_peek(uint16_t addr) {
     if (addr < 0x2000) return ram[addr & 0x7FF];
@@ -51,7 +58,10 @@ int nes_mod_register_reset_callback(NESModActivationCallback cb) { return cb == 
 int nes_mod_register_activation_plugin(const char *id, NESModActivationCallback cb) {
     return !strcmp(id, "faxanadu.pendant-fix") && cb == activate;
 }
-void nes_mod_set_local_only(const char *name, int required) { (void)name; (void)required; }
+void nes_mod_set_local_only(const char *name, int required) {
+    (void)name;
+    (void)required;
+}
 
 static uint8_t rom(uint16_t addr) { return bank14[addr - 0x8000]; }
 
@@ -61,35 +71,35 @@ static uint8_t rom(uint16_t addr) { return bank14[addr - 0x8000]; }
 static unsigned hit(uint8_t x, bool hooked) {
     uint8_t hp = ram[CURRENT_SPRITES_HP + x];
     cpu.x = x;
-    cpu.y = ram[PLAYER_CUR_WEAPON];                          /* $886C LDY Player_CurWeapon */
-    cpu.a = rom((uint16_t)(WEAPON_STRENGTHS + cpu.y));       /* $886F LDA WEAPON_STRENGTHS,Y */
-    ram[TEMP_00] = cpu.a;                                    /* $8872 STA Temp_00 */
-    cpu.a = ram[SPECIAL_ITEMS] & 0x02;                       /* $8874 LDA SpecialItems, AND #$02 */
-    if (cpu.a == 0) {                                        /* $8879 BNE @_checkGlove: the bug */
-        cpu.a = (uint8_t)(ram[TEMP_00] >> 2);                /* $887B LDA Temp_00, LSR, LSR */
-        cpu.a = (uint8_t)(cpu.a + ram[TEMP_00]);             /* $887F CLC, ADC Temp_00 */
-        ram[TEMP_00] = cpu.a;                                /* $8882 STA Temp_00 */
+    cpu.y = ram[PLAYER_CUR_WEAPON];                    /* $886C LDY Player_CurWeapon */
+    cpu.a = rom((uint16_t)(WEAPON_STRENGTHS + cpu.y)); /* $886F LDA WEAPON_STRENGTHS,Y */
+    ram[TEMP_00] = cpu.a;                              /* $8872 STA Temp_00 */
+    cpu.a = ram[SPECIAL_ITEMS] & 0x02;                 /* $8874 LDA SpecialItems, AND #$02 */
+    if (cpu.a == 0) {                                  /* $8879 BNE @_checkGlove: the bug */
+        cpu.a = (uint8_t)(ram[TEMP_00] >> 2);          /* $887B LDA Temp_00, LSR, LSR */
+        cpu.a = (uint8_t)(cpu.a + ram[TEMP_00]);       /* $887F CLC, ADC Temp_00 */
+        ram[TEMP_00] = cpu.a;                          /* $8882 STA Temp_00 */
     }
     /* $8884 @_checkGlove: the hook runs before the instruction, and leaves
      * the registers alone. */
     if (hooked) {
         CycModRegs before = cpu;
-        CHECK(check_glove_hook(CHECK_GLOVE) == 0);           /* the game goes on */
+        CHECK(check_glove_hook(CHECK_GLOVE) == 0); /* the game goes on */
         CHECK(!memcmp(&before, &cpu, sizeof cpu));
     }
-    cpu.a = ram[DURATION_GLOVE];                             /* $8884 LDA DurationGlove */
-    if (!(cpu.a & 0x80)) {                                   /* $8887 BMI @_updateSpriteHP */
+    cpu.a = ram[DURATION_GLOVE]; /* $8884 LDA DurationGlove */
+    if (!(cpu.a & 0x80)) {       /* $8887 BMI @_updateSpriteHP */
         cpu.a = (uint8_t)(ram[TEMP_00] + rom((uint16_t)(WEAPON_TO_GLOVE_STRENGTH + cpu.y)));
-        ram[TEMP_00] = cpu.a;                                /* $8889 LDA Temp_00, CLC, ADC, STA */
+        ram[TEMP_00] = cpu.a; /* $8889 LDA Temp_00, CLC, ADC, STA */
     }
-    ram[CURRENT_SPRITES_HP + x] = (uint8_t)(hp - ram[TEMP_00]);   /* $8891 LDA, SEC, SBC Temp_00, STA */
+    ram[CURRENT_SPRITES_HP + x] = (uint8_t)(hp - ram[TEMP_00]); /* $8891 LDA, SEC, SBC Temp_00, STA */
     return (uint8_t)(hp - ram[CURRENT_SPRITES_HP + x]);
 }
 
 /* A hit on an enemy with 100 HP in slot 3. */
 static unsigned damage(uint8_t weapon, bool pendant, bool gloved, bool hooked) {
     ram[PLAYER_CUR_WEAPON] = weapon;
-    ram[SPECIAL_ITEMS] = pendant ? 0x02 | 0x01 | 0x80 : 0x01 | 0x80;    /* with the Black Onyx and Ring of Elf */
+    ram[SPECIAL_ITEMS] = pendant ? 0x02 | 0x01 | 0x80 : 0x01 | 0x80; /* with the Black Onyx and Ring of Elf */
     ram[DURATION_GLOVE] = gloved ? 0x40 : 0xFF;
     ram[CURRENT_SPRITES_HP + 3] = 100;
     return hit(3, hooked);
@@ -102,7 +112,7 @@ static void setup(void) {
         bank14[WEAPON_STRENGTHS - 0x8000 + w] = base[w];
         bank14[WEAPON_TO_GLOVE_STRENGTH - 0x8000 + w] = glove[w];
     }
-    cpu = (CycModRegs){.a = 0x5A, .s = 0xF0, .p = 0x24};
+    cpu = (CycModRegs){ .a = 0x5A, .s = 0xF0, .p = 0x24 };
     deactivate();
     activate();
     CHECK(hook_on == 1 && enabled);
@@ -112,10 +122,10 @@ static void the_formula(void) {
     for (int w = 0; w < WEAPONS; w++) {
         CHECK(pendant_damage(base[w], 0x00) == base[w]);
         CHECK(pendant_damage(base[w], BIT_PENDANT) == with_pendant[w]);
-        CHECK(pendant_damage(base[w], 0xFD) == base[w]);             /* every other item, no Pendant */
+        CHECK(pendant_damage(base[w], 0xFD) == base[w]); /* every other item, no Pendant */
         CHECK(pendant_damage(base[w], 0xFF) == with_pendant[w]);
     }
-    CHECK(pendant_damage(3, BIT_PENDANT) == 3);                       /* a quarter, rounded down */
+    CHECK(pendant_damage(3, BIT_PENDANT) == 3); /* a quarter, rounded down */
     CHECK(pendant_damage(7, BIT_PENDANT) == 8);
 }
 
@@ -160,7 +170,7 @@ static void it_kills_as_the_game_does(void) {
     ram[PLAYER_CUR_WEAPON] = LONG_SWORD;
     ram[SPECIAL_ITEMS] = 0x02;
     ram[DURATION_GLOVE] = 0xFF;
-    ram[CURRENT_SPRITES_HP + 7] = 9;                 /* a Zozura */
+    ram[CURRENT_SPRITES_HP + 7] = 9; /* a Zozura */
     CHECK(hit(7, true) == 10 && ram[CURRENT_SPRITES_HP + 7] == 0xFF);
     ram[SPECIAL_ITEMS] = 0x00;
     ram[CURRENT_SPRITES_HP + 7] = 9;
@@ -185,7 +195,7 @@ static void the_fist(void) {
     setup();
     CHECK(damage(0xFF, false, false, true) == FAX_PUNCH_STRENGTH);
     CHECK(last_weapon == 0xFF && last_strength == FAX_PUNCH_STRENGTH && !last_pendant && last_damage == 2);
-    CHECK(damage(0xFF, true, false, true) == 2 && last_pendant);    /* a quarter of 2 is 0 */
+    CHECK(damage(0xFF, true, false, true) == 2 && last_pendant); /* a quarter of 2 is 0 */
     CHECK(hits == 2);
 }
 

@@ -5,11 +5,11 @@
 #include <stdint.h>
 
 typedef enum {
-    FAX_GFX_STUDDED_CLIMB,   /* Studded Mail's climbing pose: a tile slot nothing loads */
-    FAX_GFX_FIRE,            /* the Fire spell's second frame: a tile of its first */
-    FAX_GFX_MYCONID,         /* the Myconid's second frame: one tile in the wrong palette */
-    FAX_GFX_TITLE,           /* the title: the F's tip in the stars' grey */
-    FAX_GFX_FORTRESS,        /* the Tower of Fortress ($2D): the Mattock wall's block in the floor */
+    FAX_GFX_STUDDED_CLIMB, /* Studded Mail's climbing pose: a tile slot nothing loads */
+    FAX_GFX_FIRE,          /* the Fire spell's second frame: a tile of its first */
+    FAX_GFX_MYCONID,       /* the Myconid's second frame: one tile in the wrong palette */
+    FAX_GFX_TITLE,         /* the title: the F's tip in the stars' grey */
+    FAX_GFX_FORTRESS,      /* the Tower of Fortress ($2D): the Mattock wall's block in the floor */
     FAX_GFX_FIXES
 } FaxGraphicsFix;
 
