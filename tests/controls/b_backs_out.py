@@ -14,7 +14,7 @@ last in Seamless:
 menu      From Eolis town, a Hand Dagger in his weapons and a Red Potion
           selected: Start opens the Select menu and B closes it; B closes the
           weapons list and the PLAYER page; X still closes the list. B closes
-          the map (Back) and the quest log (the left trigger), which pause.
+          the map (Back) and the quest log (the left stick's press), which pause.
           Each B is a back press and none a press of Use item: the potion
           stays. B held as the menu closes stays up in play: no item, no
           sword, until it is let go; the next press uses the potion.
@@ -160,7 +160,7 @@ def main():
             print("ok: B closes the weapons list and the PLAYER page; X still closes the list")
 
             for n, (button, screen, cmd) in enumerate((("back", "the map", "map_state"),
-                                                       ("lefttrigger+", "the quest log", "quest_state")), 4):
+                                                       ("leftstick", "the quest log", "quest_state")), 4):
                 press(button)
                 until(screen, lambda: tcp(cmd)["open"] and ram(PAUSED) != 0, 120)
                 wait(10)

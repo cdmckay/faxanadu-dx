@@ -618,7 +618,10 @@ What a feature can rely on, and the traps:
   still on layout 1's default, once; the window then saves the file at once.
   The game's own keys move the same way: `[Game] ControlsLayout`, and the
   host extras' `settings_loaded`, which runs once the whole file is read
-  (`fax_controls.c`: Block from B, the map from LT, the quest log from R3).
+  (`fax_controls.c`, layout 3 since #198: from layout 1, Block from B, the map
+  from LT, the quest log from R3; from layout 2, the quest log from LT to L3;
+  and from either, Run comes in on Left Shift and LT, as a file from before
+  it has no line for it).
   A value the player changed, or set back in a file of the new layout, stays,
   and a moved one gives way to it: a new default that lands on a controller
   button the player kept for something else is unbound instead. The engine
@@ -628,11 +631,13 @@ What a feature can rely on, and the traps:
   moved actions against its kept ones, the shortcuts and any NES button the
   player moved (the NES Select on Back is the host's own, shared with the map
   by design). A player who had Magic on LB, free in layout 1, keeps it there,
-  and Rewind keeps F8 alone.
+  and Rewind keeps F8 alone; one who had Fast-forward on L3 keeps it, and the
+  quest log keeps L alone. Run's Left Shift gives way the same to a key the
+  player kept: another action's, a shortcut's or an NES button's.
 - The launcher's Controls page lists the game's own actions (the host
   extras' `bindings`) after the host's shortcuts, and edits them in place;
   recomp-ui holds sixteen such rows since 3b646bb (eight before), and a
-  cartridge has six shortcuts.
+  cartridge has six shortcuts: with the game's six (#198), twelve.
 - **Two tables abort or drop past their size.** The function-hook registry
   (`NES_MOD_MAX_FUNCTION_HOOKS`, `mod_function_hooks.c`) held 128: a feature
   whose site did not fit failed its registration, and its constructor's
@@ -2083,7 +2088,8 @@ which is when the weapon hits and magic meets the shield.
 | `$00A4` | `Player_Flags` | Below |
 | `$00A5` | `Player_StatusFlag` | `$01` attack held, `$02` knockback, `$80` Wing Boots running |
 | `$00A6` | `Player_JumpCurveIndex` | 0-31 through a jump; 32 after one |
-| `$00A9`, `$00AA` | `Player_MoveAcceleration` | Walking speed, 8.8: `$C0` from a standstill, up to `$180` |
+| `$00A9`, `$00AA` | `Player_MoveAcceleration` | Walking speed, 8.8: `$C0` from a standstill, up to `$180` (see *The walk's speed*) |
+| `$0437` | `PlayerTitle` | 0-15; its group of four picks how fast he speeds up |
 | `$00AD` | `Player_InvincibilityPhase` | `$3C` on a hit, down to 0. Knockback ends at `$39` |
 | `$0700-$07FF` | Shadow OAM | DMA'd each frame. The game rotates sprite order from frame to frame |
 
@@ -2137,6 +2143,62 @@ Boots, the D-pad walks him (and a swing on the ground stops him). In the air
 (`Player_Flags & $05`) there is no control: if moving, he keeps going the
 way he faces, still speeding up, and otherwise stops. So from the last frame
 on a ledge, his x is the same frame by frame whether he jumped or fell.
+
+**The walk's speed.** Every sideways move, walking, carried through the air,
+or knocked back, is `Player_TryMoveRight` (`$E1CF`) or `Player_TryMoveLeft`
+(`$E220`), reached from `Player_CheckHandleJump` by a branch or a `JMP`
+(never a `JSR`), or from knockback's `JSR Player_KnockbackHoriz` (`$E15C`,
+which pushes `$E15E`). Each, when he was not already moving (`$20` clear),
+first sets `Player_MoveAcceleration` to `$C0`
+(`Player_SetStandardAcceleration`, `$E27F`), then calls
+`Player_UpdateAcceleration` (`$E291`):
+
+- in knockback it sets 8 whole pixels (`Player_UpdatePosFromKnockback`,
+  `$E288`);
+- with Up or Down held in front of a ladder (can climb), `$C0` again, so
+  lining up with one, or walking past one with Up or Down held, is at
+  0.75 pixels a frame;
+- otherwise, below `$180`, it adds `PLAYER_ACCELERATION_DELTA_BY_RANK_GROUP`
+  (`$E2C4`: 2, 4, 6, 8) by `PlayerTitle >> 2`: a Novice takes 96 frames to
+  reach the top, a Champion 24. `$C0` is a multiple of each, so the top is
+  exactly `$180`, 1.5 pixels a frame, and every value on the way is even. The
+  check is `CMP #$80`, `SBC #$01` on the high byte, `BCS` return.
+
+The routine then sets moving and the facing, adds the acceleration to
+`Player_PosX_Frac` and `Player_PosX_Block` (going left, `SBC`, then `PHP`, and
+`X` 0 if it went past), and only then, at `LDX` (`$E1EE` right, `$E246`
+left), asks `Player_CheckIfPassable` about the block ahead, capping X on a
+wall, and handles the screen's side: right, X `$F1` and up scrolls (or stops
+at `$F0` at the area's edge); left, `PLP` and a carry clear (the step went
+past X 0) scrolls left. Short of those two, the acceleration is never lowered
+while he walks: it stays at the top until he stops and sets off again, and he stops dead (no
+slowing) the frame the D-pad lets go. In the air (`$05` set, no Wing Boots)
+he keeps moving the way he faces at the acceleration, which goes on rising,
+whatever the D-pad holds.
+
+**Run** (`fax_run.c`, #198) hooks those two `LDX`s, after the game's step:
+with its button held, on the ground and in play, it moves him on by half the
+acceleration again, so each step is 1.5 times the walk's, up to `$240`
+256ths (2.25 pixels a frame at the top), and the wall check and the screen's
+side see the whole step. Going left, a step that now goes past X 0 clears the
+carry in the `P` the routine pushed, so it goes on to the screen's side as
+its own would. Since the acceleration is untouched, he speeds up the same
+running or walking (the same value after the same frames), and a jump takes
+the walk's speed into the air: a running jump lands as far from where it
+leaves the ground as a walking one. "In play" is the stack: at either `LDX`,
+above Player_TryMoveLeft's `P`, the return of `GameLoop_UpdatePlayer`'s `JSR
+Player_CheckHandleJump` (`$E0D0`, pushes `$E0D2`), then Game_MainLoop's `JSR
+GameLoop_UpdatePlayer` (`$DB53`, pushes `$DB55`; `EndGame_MainLoop`'s at
+`$DBFF` pushes `$DC01`). Knockback's push has `$E15E` on top instead.
+"On the ground" is `Player_Flags` without `$01`, `$04` or `$10`, no Wing
+Boots or knockback in `Player_StatusFlag`, and, in front of a ladder, no Up
+or Down held and the game's own down check (`Player_CheckIfPassable`, X 3,
+in a scratch copy of the machine) finding a block under him: hanging on a
+ladder, he is caught by the grab path, so `$05` is clear there too. In
+Seamless the step past `$FF` wraps as the routine's own `ADC` does, and the
+seam takes him across as ever (`pre_x > 240 && x < 16`); the camera is a
+function of his place, and a room's actors wake 16 pixels before the view,
+so a step of 2.25 changes neither.
 
 **Knockback** (`Player_StatusFlag` `$02`) lasts 3 frames, from a hit's `$3C`
 to `$39`. `Player_HandleKnockback` sets `Player_Flags` to just his facing bit,
@@ -6333,10 +6395,21 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   entry (`$E016`, first of the three there), where it writes
   `Joy1_ChangedButtonMask`; `GameLoop_CheckPauseGame`'s `AND #$10` (`$E02D`),
   where it takes Start out of A; and the Select menu's `BMI` (`$8AE8`, bank
-  12), where a new Start gets B's bit in A. It moves a `config.ini` of
-  layout 1 (no `ControlsLayout`) onto the layout's defaults once, in the host
-  extras' `settings_loaded`, and names Start's binding in the runtime menu's
-  Controls rows (`cyc_window_bindings`). No ROM, no read overrides, no state.
+  12), where a new Start gets B's bit in A. It moves a `config.ini` of an
+  earlier layout (layout 1 has no `ControlsLayout`; layout 2 is #147's, the
+  quest log on LT) onto layout 3's defaults once, in the host extras'
+  `settings_loaded`, and names Start's binding in the runtime menu's Controls
+  rows (`cyc_window_bindings`). No ROM, no read overrides, no state.
+
+- **Run** (`fax_run.c`, #198). A bindable button (Left Shift, or the left
+  trigger on a controller; `RunKey` and `RunButton` in `config.ini` [Game])
+  held makes each step of the walk 1.5 times the game's, on the ground and in
+  play only; see *The walk's speed*. Two hook sites, which no other feature
+  hooks: the `LDX` before `Player_CheckIfPassable` in `Player_TryMoveRight`
+  (`$E1EE`) and `Player_TryMoveLeft` (`$E246`), where it writes
+  `Player_PosX_Frac` and `Player_PosX_Block`, and going left the carry of the
+  `P` the routine pushed. `Player_MoveAcceleration` stays the game's. No ROM,
+  no read overrides, no state: its button is host input.
 
 - **Use item button** (`fax_use_item.c`, #147). A bindable button (S, or B
   on a controller; `UseItemKey` and `UseItemButton` in `config.ini` [Game])
@@ -6351,10 +6424,10 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   hooks, takes that B out of `Joy1_ChangedButtonMask` after a door's line.
   No ROM, no read overrides, no state.
 
-- **The launcher's Controls page** lists Magic, Use item, Block, Map and
+- **The launcher's Controls page** lists Magic, Use item, Block, Run, Map and
   Quest log after the host's shortcuts (`cyc_extras.c`'s `bindings`), and
   the in-game Menu's Controls rows list the Select menu (Start's binding),
-  Magic, Use item, Block, Map and Quest log.
+  Magic, Use item, Block, Run, Map and Quest log.
 
 - **Fair entrances** (`fax_entrances.c`). The enemies placed where a way onto
   their screen puts the hero, so they hit him before anyone could react, start

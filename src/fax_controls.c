@@ -3,8 +3,8 @@
  * With the remaster, a modern player's pad: Start opens the Select menu (its
  * QUESTS, MAP and the gear) and closes it again, Back is the Map button's
  * (fax_map.c's binding), and every action has its own button: Magic on Y,
- * Use item on B (fax_use_item.c), Block on the right trigger, the quest log on
- * the left. Nothing pauses but the screens that do anyway: the Select menu,
+ * Use item on B (fax_use_item.c), Block on the right trigger, Run on the left
+ * (fax_run.c), the quest log on the left stick's press. Nothing pauses but the screens that do anyway: the Select menu,
  * the map, the quest log and the runtime menu. With the remaster off its
  * hooks are off, and Start and Back are the NES's Start and Select again.
  * The keyboard keeps its keys: Return (the NES Start) opens the menu as Start
@@ -35,20 +35,25 @@
  *   Joy1_ChangedButtonMask): A, then B by ASL. A new Start there gets B's bit
  *   in A, so Start closes the menu as B does (TextBox_Close, back to play).
  *   The lists and the PLAYER page keep the original's B.
- * - config.ini: the layout's defaults moved Block from B to the right
- *   trigger, the map from the left trigger to Back and the quest log from the
- *   right stick's press to the left trigger. [Game] ControlsLayout says which
- *   layout a file was written with; one without it is layout 1's, and each of
- *   those bindings still on layout 1's default moves, once (the engine moves
- *   its shortcuts the same way, cyc_settings.h). One the player changed stays,
- *   and a moved one whose new button the player kept for something else (one
- *   of these actions, a host shortcut, an NES button) is unbound instead.
+ * - config.ini: layout 2 (#147) moved Block from B to the right trigger, the
+ *   map from the left trigger to Back and the quest log from the right
+ *   stick's press to the left trigger; layout 3 (#198) moved the quest log on
+ *   to the left stick's press and gave the left trigger, and Left Shift, to
+ *   Run. [Game] ControlsLayout says which layout a file was written with; one
+ *   without it is layout 1's. Each of those bindings still on its file's
+ *   layout's default moves, once (the engine moves its shortcuts the same
+ *   way, cyc_settings.h), and Run, which a file from before it has no line
+ *   for, comes in on its defaults. One the player changed stays, and a moved
+ *   one whose new button the player kept for something else (one of these
+ *   actions, a host shortcut, an NES button) is unbound instead, as is Run's
+ *   key on a key the player kept.
  * See docs/GAME_INTERNALS.md, "Input and casting". */
 #include "fax_controls.h"
 #include "fax_block.h"
 #include "fax_magic.h"
 #include "fax_map.h"
 #include "fax_quests.h"
+#include "fax_run.h"
 #include "fax_use_item.h"
 #include "cyc_mod.h"
 #include "mod_runtime.h"
@@ -79,7 +84,7 @@
  * @_loadMenuIDs (A), ASL A, BPL @_inputLoop, JMP TextBox_Close (B). */
 #define MENU_INPUT_BRANCH        0x8AE8u
 
-enum { LAYOUT = 2 }; /* ControlsLayout: 1 before #147 (none written) */
+enum { LAYOUT = 3 }; /* ControlsLayout: 1 before #147 (none written), 2 before #198 */
 
 static bool enabled;
 static unsigned starts, closes, unpaused; /* Starts shown as Select, that closed the menu, kept from the pause */
@@ -172,24 +177,31 @@ void fax_controls_save_settings(FILE *f) {
 const char *fax_controls_menu_label(void) { return menu_label; }
 
 #ifdef CYC_WITH_SDL
-/* Layout 1's controller defaults, of the bindings layout 2 moved. */
+/* The controller defaults of the layouts before this one, 1 and 2, of the
+ * bindings a layout moved. */
 static const struct {
     const CycHostBinding *(*binding)(void);
-    int pad;
-} LAYOUT1[] = {
-    { fax_block_binding, CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_B) },
-    { fax_map_binding, CYC_PAD_AXIS(SDL_CONTROLLER_AXIS_TRIGGERLEFT, 1) },
-    { fax_quests_binding, CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_RIGHTSTICK) },
+    int pad[LAYOUT - 1];
+} OLD[] = {
+    { fax_block_binding,
+      { CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_B), CYC_PAD_AXIS(SDL_CONTROLLER_AXIS_TRIGGERRIGHT, 1) } },
+    { fax_map_binding,
+      { CYC_PAD_AXIS(SDL_CONTROLLER_AXIS_TRIGGERLEFT, 1), CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_BACK) } },
+    { fax_quests_binding,
+      { CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_RIGHTSTICK), CYC_PAD_AXIS(SDL_CONTROLLER_AXIS_TRIGGERLEFT, 1) } },
+};
+enum { MOVES = sizeof OLD / sizeof OLD[0] + 1 }; /* and Run, new in layout 3 */
+
+/* The game's actions, those a layout may move among them. */
+static const CycHostBinding *(*const ACTIONS[])(void) = {
+    fax_magic_binding, fax_use_item_binding, fax_block_binding, fax_run_binding, fax_map_binding, fax_quests_binding,
 };
 
 /* A controller binding the player kept somewhere else: one of the game's
  * actions the move left alone, a host shortcut or an NES button. */
 static bool kept_elsewhere(int pad, const CycHostBinding *const moved_ones[], unsigned count) {
-    const CycHostBinding *(*const actions[])(void) = {
-        fax_magic_binding, fax_use_item_binding, fax_block_binding, fax_map_binding, fax_quests_binding,
-    };
-    for (unsigned a = 0; a < sizeof actions / sizeof actions[0]; ++a) {
-        const CycHostBinding *b = actions[a]();
+    for (unsigned a = 0; a < sizeof ACTIONS / sizeof ACTIONS[0]; ++a) {
+        const CycHostBinding *b = ACTIONS[a]();
         bool was_moved = false;
         for (unsigned m = 0; m < count; ++m) was_moved |= moved_ones[m] == b;
         if (b && !was_moved && *b->pad == pad) return true;
@@ -206,18 +218,39 @@ static bool kept_elsewhere(int pad, const CycHostBinding *const moved_ones[], un
     return false;
 }
 
+/* A key the player kept for something else: another of the game's actions,
+ * a host shortcut or an NES button (none of whose own keys is Run's). */
+static bool key_kept_elsewhere(int key, const CycHostBinding *mine) {
+    for (unsigned a = 0; a < sizeof ACTIONS / sizeof ACTIONS[0]; ++a) {
+        const CycHostBinding *b = ACTIONS[a]();
+        if (b && b != mine && *b->key == key) return true;
+    }
+    const CycBindings *bind = cyc_window_bindings();
+    for (int s = 0; s < CYC_SC_COUNT; ++s)
+        if (bind->shortcut[s].key == key) return true;
+    for (int p = 0; p < CYC_INPUT_PLAYERS; ++p)
+        for (int i = 0; i < CYC_INPUT_BUTTONS; ++i)
+            if (bind->button[p][i].key == key) return true;
+    return false;
+}
+
 bool fax_controls_settings_loaded(void) {
     int layout = file_layout ? file_layout : 1;
     file_layout = 0;
     moved = unbound = 0;
     if (layout >= LAYOUT) return false;
-    const CycHostBinding *moved_ones[sizeof LAYOUT1 / sizeof LAYOUT1[0]];
-    for (unsigned i = 0; i < sizeof LAYOUT1 / sizeof LAYOUT1[0]; ++i) {
-        const CycHostBinding *b = LAYOUT1[i].binding();
-        if (!b || *b->pad != LAYOUT1[i].pad) continue;
+    const CycHostBinding *moved_ones[MOVES];
+    for (unsigned i = 0; i < sizeof OLD / sizeof OLD[0]; ++i) {
+        const CycHostBinding *b = OLD[i].binding();
+        int old = OLD[i].pad[layout - 1];
+        if (!b || old == b->default_pad || *b->pad != old) continue;
         *b->pad = b->default_pad;
         moved_ones[moved++] = b;
     }
+    /* Run comes in on its defaults: a file from before it has no line for it. */
+    const CycHostBinding *run = fax_run_binding();
+    bool run_moved = run && *run->pad == run->default_pad;
+    if (run_moved) moved_ones[moved++] = run;
     /* A moved one gives way to a button the player kept for something else. */
     for (unsigned m = 0; m < moved; ++m) {
         /* clang-tidy's analyzer cannot tell that no callback here changes `moved`. */
@@ -226,8 +259,18 @@ bool fax_controls_settings_loaded(void) {
             *b->pad = 0;
             ++unbound;
         }
+    }
+    /* And Run's key to a key the player kept. */
+    bool run_key = run && *run->key && *run->key == run->default_key && key_kept_elsewhere(*run->key, run);
+    if (run_key) {
+        *run->key = 0;
+        ++unbound;
+    }
+    for (unsigned m = 0; m < moved; ++m) {
+        const CycHostBinding *b = moved_ones[m]; /* NOLINT(clang-analyzer-core.uninitialized.Assign) */
         if (b->changed) b->changed();
     }
+    if (run_key && !run_moved && run->changed) run->changed();
     return true; /* written now with this layout, moved or not */
 }
 
@@ -270,8 +313,8 @@ static void controls_state(int id, const char *line) {
     cyc_tcp_quote(menu_label + 13, text, sizeof text);
     /* starts: Starts the menu check saw as Select; closes: Starts that closed the menu; unpaused: Starts the
      * pause check never saw; kept: Selects from the Map button the menu check never saw; moved: bindings the
-     * last config.ini load moved from layout 1's defaults; unbound: of those, left unbound, their new button the
-     * player's for something else */
+     * last config.ini load moved from an earlier layout's defaults, Run's coming in included; unbound: of those,
+     * the buttons (and Run's key) left unbound, the player's for something else */
     snprintf(fields, sizeof fields,
              "\"enabled\":%s,\"layout\":%d,\"menu_binding\":%s,\"starts\":%u,\"closes\":%u,\"unpaused\":%u,"
              "\"kept\":%u,\"moved\":%u,\"unbound\":%u",
@@ -281,7 +324,7 @@ static void controls_state(int id, const char *line) {
 void fax_controls_tcp_setup(void) {
     cyc_tcp_register("controls_state",
                      "Controller layout: Starts shown to the menu check as Select, Starts that closed the menu, "
-                     "Selects kept from it as the Map button's, bindings moved from layout 1",
+                     "Selects kept from it as the Map button's, bindings moved from an earlier layout",
                      controls_state);
 }
 #else

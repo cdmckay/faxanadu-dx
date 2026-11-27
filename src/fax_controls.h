@@ -11,9 +11,10 @@
 /* ControlsLayout; false for any other key. */
 bool fax_controls_load_setting(const char *key, const char *value);
 void fax_controls_save_settings(FILE *f);
-/* After the whole of config.ini: a file of layout 1 (no ControlsLayout) has
- * each of the game's bindings still on layout 1's default moved to the
- * current one. True when it moved any, so the host saves the file. */
+/* After the whole of config.ini: a file of an earlier layout (layout 1 has
+ * no ControlsLayout) has each of the game's bindings still on its layout's
+ * default moved to the current one, and Run, new in layout 3, on its
+ * defaults. True for any earlier layout, so the host saves the file. */
 bool fax_controls_settings_loaded(void);
 /* "Select menu: RETURN / START", from the NES Start's binding, refreshed at
  * power-on. The buffer stays put. */

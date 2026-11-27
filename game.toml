@@ -375,6 +375,21 @@ addr = 0xe153
 bank = 15
 bytes = "a5 a4 29 40 48 49 40 85 a4 20 6b e1"
 
+# Run (fax_run.c, #198): the LDX before Player_CheckIfPassable in
+# Player_TryMoveRight and Player_TryMoveLeft, after the game's own step.
+
+[[mod_function_hook]]
+id = "faxanadu.run.right"
+addr = 0xe1ee
+bank = 15
+bytes = "a2 01 20 c8 e6 f0 09 a5 9e 29 f0 85"   # LDX #$01, JSR Player_CheckIfPassable, BEQ @_checkAtRightEdge
+
+[[mod_function_hook]]
+id = "faxanadu.run.left"
+addr = 0xe246
+bank = 15
+bytes = "a2 00 20 c8 e6 f0 11 28 a5 9e 29 0f"   # LDX #$00, JSR Player_CheckIfPassable, BEQ @_checkAtLeftEdge, PLP
+
 # Hold A to speed up text (fax_text_speed.c): TextBox_ShowNextChar_IfReady,
 # which TextBox_ShowNextChar calls once a frame in every message loop.
 

@@ -2,7 +2,7 @@
 /* The quest log (fax_quests.c): when someone in the game makes a request
  * (fax_quest_table.c), the text box says "New quest" and its name after the
  * line, and "Quest complete" when it is done. A Quest log button (L, or the
- * right stick on a controller) pauses the game on a list of the quests, the
+ * left stick's press on a controller) pauses the game on a list of the quests, the
  * active ones with their objectives first. A "!" floats over anyone with a
  * quest to give, and a "?" over anyone who is the next step of a quest under
  * way. What was given is kept in the file in play. It registers its own
@@ -25,7 +25,7 @@ const uint32_t *fax_quests_log_present(const uint32_t *picture, int *w, int *h);
 void fax_quests_event(const void *event);
 bool fax_quests_load_setting(const char *key, const char *value); /* QuestLogKey, QuestLogButton */
 void fax_quests_save_settings(FILE *f);
-const char *fax_quests_controls_label(void); /* "Quest log: L / LT", for the runtime menu */
+const char *fax_quests_controls_label(void); /* "Quest log: L / L3", for the runtime menu */
 /* The binding, for the launcher's Controls page and the layout's move (cyc_host_extras.h). */
 const CycHostBinding *fax_quests_binding(void);
 void fax_quests_tcp_setup(void);

@@ -6,11 +6,13 @@
  *   the pause check's AND after its load, the Select menu's BMI after its;
  * - in play, the NES Select that Back presses kept from the menu while Back
  *   is the Map button's, on an SDL virtual controller;
- * - an old config.ini (a build before the layout wrote it) through the
- *   engine's own load (nesrecomp's cyc_settings.c), the game's keys going to
- *   this module and to stand-ins for the features' bindings: each binding
- *   still on its old default moves, once, the player's stay, and the file
- *   saved says the layout. */
+ * - an old config.ini (layout 1, before #147 wrote one; layout 2, before Run,
+ *   #198) through the engine's own load (nesrecomp's cyc_settings.c), the
+ *   game's keys going to this module and to stand-ins for the features'
+ *   bindings: each binding still on its layout's default moves, once, Run
+ *   comes in on its defaults, the player's stay, a move onto a button (or
+ *   Run's key onto a key) the player kept gives way, and the file saved says
+ *   the layout. */
 #define CYC_WITH_SDL 1
 #include "fax_controls.c"
 #include "cyc_settings.h"
@@ -83,22 +85,27 @@ typedef struct {
     CycHostBinding b;
 } Action;
 static void changed(void);
-static Action actions[5] = {
+enum { N_ACTIONS = 6 };
+static Action actions[N_ACTIONS] = {
     { "Magic", "MagicKey", "MagicButton", 0, 0, 0, { 0 } },
     { "Use item", "UseItemKey", "UseItemButton", 0, 0, 0, { 0 } },
     { "Block (hold)", "BlockKey", "BlockButton", 0, 0, 0, { 0 } },
     { "Map", "MapKey", "MapButton", 0, 0, 0, { 0 } },
     { "Quest log", "QuestLogKey", "QuestLogButton", 0, 0, 0, { 0 } },
+    { "Run (hold)", "RunKey", "RunButton", 0, 0, 0, { 0 } },
 };
 static unsigned changes;
 static void changed(void) { ++changes; }
-/* The features' defaults, layout 2's (fax_magic.c ... fax_quests.c). */
+/* The features' defaults, layout 3's (fax_magic.c ... fax_quests.c, fax_run.c). */
 static void defaults(void) {
-    const int key[5] = { SDL_SCANCODE_C, SDL_SCANCODE_S, SDL_SCANCODE_V, SDL_SCANCODE_M, SDL_SCANCODE_L };
-    const int pad[5] = { CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_Y), CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_B),
-                         CYC_PAD_AXIS(SDL_CONTROLLER_AXIS_TRIGGERRIGHT, 1), CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_BACK),
-                         CYC_PAD_AXIS(SDL_CONTROLLER_AXIS_TRIGGERLEFT, 1) };
-    for (int i = 0; i < 5; ++i) {
+    const int key[N_ACTIONS] = { SDL_SCANCODE_C, SDL_SCANCODE_S, SDL_SCANCODE_V,
+                                 SDL_SCANCODE_M, SDL_SCANCODE_L, SDL_SCANCODE_LSHIFT };
+    const int pad[N_ACTIONS] = {
+        CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_Y),           CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_B),
+        CYC_PAD_AXIS(SDL_CONTROLLER_AXIS_TRIGGERRIGHT, 1), CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_BACK),
+        CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_LEFTSTICK),   CYC_PAD_AXIS(SDL_CONTROLLER_AXIS_TRIGGERLEFT, 1)
+    };
+    for (int i = 0; i < N_ACTIONS; ++i) {
         Action *a = &actions[i];
         a->key = key[i];
         a->pad = pad[i];
@@ -111,12 +118,13 @@ const CycHostBinding *fax_use_item_binding(void) { return &actions[1].b; }
 const CycHostBinding *fax_block_binding(void) { return &actions[2].b; }
 const CycHostBinding *fax_map_binding(void) { return &actions[3].b; }
 const CycHostBinding *fax_quests_binding(void) { return &actions[4].b; }
+const CycHostBinding *fax_run_binding(void) { return &actions[5].b; }
 
 /* [Game], as cyc_extras.c passes it on: the layout's key here, each binding to its feature. */
 static void game_load(void *ctx, const char *key, const char *value) {
     (void)ctx;
     if (fax_controls_load_setting(key, value)) return;
-    for (int i = 0; i < 5; ++i) {
+    for (int i = 0; i < N_ACTIONS; ++i) {
         int v;
         if (!strcmp(key, actions[i].key_name) && cyc_key_parse(value, &v)) actions[i].key = v;
         if (!strcmp(key, actions[i].pad_name) && cyc_pad_parse(value, &v)) actions[i].pad = v;
@@ -125,7 +133,7 @@ static void game_load(void *ctx, const char *key, const char *value) {
 static void game_save(void *ctx, FILE *f) {
     (void)ctx;
     fax_controls_save_settings(f);
-    for (int i = 0; i < 5; ++i) {
+    for (int i = 0; i < N_ACTIONS; ++i) {
         char k[32], p[48];
         cyc_key_text(actions[i].key, k, sizeof k);
         cyc_pad_text(actions[i].pad, p, sizeof p);
@@ -313,23 +321,25 @@ static void an_old_config(const char *dir) {
     cyc_settings_default(&s);
     CHECK(cyc_settings_load(&s, path, stderr, &GAME));
     CHECK(s.migrated); /* the host saves it at once */
-    /* The game's: each still on its old default moved; the player's Magic on LB stays. */
+    /* The game's: each still on its old default moved, Run came in on LT and Left Shift; the player's Magic
+     * on LB stays. The quest log's move to L3 gives way to the player's Fast-forward there: it keeps L alone. */
     CHECK(actions[2].pad == CYC_PAD_AXIS(SDL_CONTROLLER_AXIS_TRIGGERRIGHT, 1));  /* Block: B -> RT */
     CHECK(actions[3].pad == CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_BACK));         /* Map: LT -> Back */
-    CHECK(actions[4].pad == CYC_PAD_AXIS(SDL_CONTROLLER_AXIS_TRIGGERLEFT, 1));   /* Quest log: R3 -> LT */
+    CHECK(actions[4].pad == 0);                                                  /* Quest log: R3 -> (L3) */
+    CHECK(actions[5].pad == CYC_PAD_AXIS(SDL_CONTROLLER_AXIS_TRIGGERLEFT, 1));   /* Run: LT */
     CHECK(actions[0].pad == CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_LEFTSHOULDER)); /* Magic: the player's */
     CHECK(actions[1].key == SDL_SCANCODE_S && actions[1].pad == CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_B));
-    for (int i = 0; i < 5; ++i) CHECK(actions[i].key == actions[i].b.default_key);
-    CHECK(moved == 3 && changes == 3 && unbound == 0);
+    for (int i = 0; i < N_ACTIONS; ++i) CHECK(actions[i].key == actions[i].b.default_key);
+    CHECK(moved == 4 && changes == 4 && unbound == 1);
     /* The host's: the shortcuts on layout 1's defaults moved, Fast-forward on L3 the player's. */
     CHECK(s.bind.shortcut[CYC_SC_MENU].pad == CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_RIGHTSTICK));
     CHECK(s.bind.shortcut[CYC_SC_REWIND].pad == CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_LEFTSHOULDER));
     CHECK(s.moved_shortcuts == (1u << CYC_SC_DISK | 1u << CYC_SC_MENU | 1u << CYC_SC_STATE_MENU | 1u << CYC_SC_REWIND));
     /* Rewind landed on LB, which the player gave Magic: the host gives way (the window does this after the
      * load, with the game's bindings), and Rewind keeps only F8. */
-    int pads[5];
-    for (int i = 0; i < 5; ++i) pads[i] = actions[i].pad;
-    cyc_settings_yield_moved(&s, pads, 5);
+    int pads[N_ACTIONS];
+    for (int i = 0; i < N_ACTIONS; ++i) pads[i] = actions[i].pad;
+    cyc_settings_yield_moved(&s, pads, N_ACTIONS);
     CHECK(s.bind.shortcut[CYC_SC_REWIND].pad == 0 && s.bind.shortcut[CYC_SC_REWIND].key == SDL_SCANCODE_F8);
     CHECK(s.bind.shortcut[CYC_SC_MENU].pad == CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_RIGHTSTICK));
     CHECK(s.bind.shortcut[CYC_SC_FAST_FORWARD].pad == CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_LEFTSTICK));
@@ -338,10 +348,11 @@ static void an_old_config(const char *dir) {
     /* Saved: both layouts written, the bindings as they now are. */
     CHECK(cyc_settings_save(&s, path, &GAME));
     const char *text = slurp(path);
-    CHECK(strstr(text, "BindingsLayout = 2\n") && strstr(text, "ControlsLayout = 2\n"));
+    CHECK(strstr(text, "BindingsLayout = 2\n") && strstr(text, "ControlsLayout = 3\n"));
     CHECK(strstr(text, "BlockButton = righttrigger+\n") && strstr(text, "MapButton = back\n") &&
-          strstr(text, "QuestLogButton = lefttrigger+\n") && strstr(text, "MagicButton = leftshoulder\n") &&
-          strstr(text, "UseItemKey = S\nUseItemButton = b\n"));
+          strstr(text, "QuestLogButton = none\n") && strstr(text, "MagicButton = leftshoulder\n") &&
+          strstr(text, "UseItemKey = S\nUseItemButton = b\n") &&
+          strstr(text, "RunKey = Left Shift\nRunButton = lefttrigger+\n"));
     /* Once: Block set back to B in a file of the layout stays there. */
     actions[2].pad = CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_B);
     CHECK(cyc_settings_save(&s, path, &GAME));
@@ -351,14 +362,14 @@ static void an_old_config(const char *dir) {
     CHECK(!s.migrated && moved == 0 && changes == 0);
     CHECK(actions[2].pad == CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_B));
     CHECK(s.bind.shortcut[CYC_SC_MENU].pad == CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_RIGHTSTICK));
-    /* A file the game never wrote (no [Game]): nothing to move, but written with the layout. */
+    /* A file the game never wrote (no [Game]): only Run comes in, and it is written with the layout. */
     f = fopen(path, "w");
     fputs("[Display]\nWindowScale = 2\n", f);
     fclose(f);
     defaults();
     cyc_settings_default(&s);
     CHECK(cyc_settings_load(&s, path, stderr, &GAME));
-    CHECK(s.migrated && moved == 0 && actions[2].pad == actions[2].b.default_pad);
+    CHECK(s.migrated && moved == 1 && unbound == 0 && actions[2].pad == actions[2].b.default_pad);
     /* A layout that is no number reads as 1, and moves. */
     f = fopen(path, "w");
     fputs("[Game]\nControlsLayout = new\nBlockButton = b\n", f);
@@ -366,7 +377,7 @@ static void an_old_config(const char *dir) {
     defaults();
     cyc_settings_default(&s);
     CHECK(cyc_settings_load(&s, path, NULL, &GAME));
-    CHECK(moved == 1 && actions[2].pad == actions[2].b.default_pad);
+    CHECK(moved == 2 && actions[2].pad == actions[2].b.default_pad);
     /* A move onto a button the player kept for something else gives way: Magic on Back, so the map stays off
      * the controller; the NES B on the right trigger, so Block does too. The quest log moves as ever. */
     f = fopen(path, "w");
@@ -377,10 +388,68 @@ static void an_old_config(const char *dir) {
     defaults();
     cyc_settings_default(&s);
     CHECK(cyc_settings_load(&s, path, NULL, &GAME));
-    CHECK(moved == 3 && unbound == 2 && changes == 3);
+    CHECK(moved == 4 && unbound == 2 && changes == 4);
     CHECK(actions[3].pad == 0 && actions[2].pad == 0 && actions[3].key == SDL_SCANCODE_M);
-    CHECK(actions[4].pad == CYC_PAD_AXIS(SDL_CONTROLLER_AXIS_TRIGGERLEFT, 1));
+    CHECK(actions[4].pad == CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_LEFTSTICK));
+    CHECK(actions[5].pad == CYC_PAD_AXIS(SDL_CONTROLLER_AXIS_TRIGGERLEFT, 1));
     CHECK(actions[0].pad == CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_BACK));
+    window_now = &window;
+    remove(path);
+}
+
+/* A file of layout 2: the left trigger goes to Run and the quest log to the
+ * left stick's press, unless the player bound them; a move onto a button the
+ * player kept gives way, and so does Run's key. */
+static CycSettings layout2_settings;
+static void load_layout2(const char *path, const char *text) {
+    FILE *f = fopen(path, "w");
+    CHECK(f);
+    fputs(text, f);
+    fclose(f);
+    defaults();
+    cyc_settings_default(&layout2_settings);
+    window_now = &layout2_settings.bind;
+    CHECK(cyc_settings_load(&layout2_settings, path, NULL, &GAME));
+}
+static void a_layout2_config(const char *dir) {
+    char path[1024];
+    snprintf(path, sizeof path, "%s/controls_test_layout2.ini", dir);
+    const char *const DEFAULTS2 = "[Input]\nBindingsLayout = 2\n[Game]\nControlsLayout = 2\nMagicKey = C\n"
+                                  "MagicButton = y\nUseItemKey = S\nUseItemButton = b\nBlockKey = V\n"
+                                  "BlockButton = righttrigger+\nMapKey = M\nMapButton = back\nQuestLogKey = L\n"
+                                  "QuestLogButton = lefttrigger+\n";
+    load_layout2(path, DEFAULTS2);
+    CHECK(layout2_settings.migrated && moved == 2 && unbound == 0 && changes == 2);
+    CHECK(actions[4].pad == CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_LEFTSTICK) && actions[4].key == SDL_SCANCODE_L);
+    CHECK(actions[5].pad == CYC_PAD_AXIS(SDL_CONTROLLER_AXIS_TRIGGERLEFT, 1) && actions[5].key == SDL_SCANCODE_LSHIFT);
+    for (int i = 0; i < 4; ++i) CHECK(actions[i].pad == actions[i].b.default_pad);
+    /* The player's own: the map on LT and the quest log on L3. Both stay, and Run's LT gives way to the map. */
+    load_layout2(path, "[Game]\nControlsLayout = 2\nMapButton = lefttrigger+\nQuestLogButton = leftstick\n");
+    CHECK(moved == 1 && unbound == 1);
+    CHECK(actions[3].pad == CYC_PAD_AXIS(SDL_CONTROLLER_AXIS_TRIGGERLEFT, 1));
+    CHECK(actions[4].pad == CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_LEFTSTICK));
+    CHECK(actions[5].pad == 0 && actions[5].key == SDL_SCANCODE_LSHIFT);
+    /* Magic on L3 and the NES B on Left Shift, both the player's: the quest log's move to L3 gives way (L stays),
+     * and so does Run's Left Shift (the trigger stays). */
+    load_layout2(path, "[Keyboard.Player1]\nb = Left Shift\n[Game]\nControlsLayout = 2\nMagicButton = leftstick\n"
+                       "QuestLogButton = lefttrigger+\n");
+    CHECK(moved == 2 && unbound == 2 && changes == 2);
+    CHECK(actions[0].pad == CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_LEFTSTICK));
+    CHECK(actions[4].pad == 0 && actions[4].key == SDL_SCANCODE_L);
+    CHECK(actions[5].key == 0 && actions[5].pad == CYC_PAD_AXIS(SDL_CONTROLLER_AXIS_TRIGGERLEFT, 1));
+    /* Left Shift kept by a host shortcut, or by another of the game's actions, gives way too. */
+    load_layout2(path, "[Keyboard.Shortcuts]\nscreenshot = Left Shift\n[Game]\nControlsLayout = 2\n");
+    CHECK(actions[5].key == 0 && unbound == 1);
+    load_layout2(path, "[Game]\nControlsLayout = 2\nBlockKey = Left Shift\n");
+    CHECK(actions[5].key == 0 && actions[2].key == SDL_SCANCODE_LSHIFT && unbound == 1);
+    /* A file of this layout: nothing moves, and Run's bindings are the file's. */
+    load_layout2(path,
+                 "[Display]\nDisplayDefaults = 2\n[Input]\nBindingsLayout = 2\n[Game]\nControlsLayout = 3\nRunKey = G\n"
+                 "RunButton = rightshoulder\n"
+                 "QuestLogButton = lefttrigger+\n");
+    CHECK(!layout2_settings.migrated && moved == 0 && unbound == 0 && changes == 0);
+    CHECK(actions[5].key == SDL_SCANCODE_G && actions[5].pad == CYC_PAD_BUTTON(SDL_CONTROLLER_BUTTON_RIGHTSHOULDER));
+    CHECK(actions[4].pad == CYC_PAD_AXIS(SDL_CONTROLLER_AXIS_TRIGGERLEFT, 1));
     window_now = &window;
     remove(path);
 }
@@ -401,6 +470,7 @@ int main(int argc, char **argv) {
     off_means_off();
     back_is_the_maps();
     an_old_config(argc > 1 ? argv[1] : ".");
+    a_layout2_config(argc > 1 ? argv[1] : ".");
     the_menus_row();
     printf("controls_test: %u checks passed\n", checks);
     return 0;
