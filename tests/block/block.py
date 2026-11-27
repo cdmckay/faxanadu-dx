@@ -27,8 +27,9 @@ real SDL key and controller events.
    removed from the save state), picked up as the first shield-slot item: the
    line follows "I've got the Battle Helmet." Picked up again once taught:
    nothing.
-4. config.ini rebinds it (BlockKey = G, BlockButton = leftstick), and the
-   window writes the bindings back; the line names the device last used.
+4. config.ini rebinds it (BlockKey = G, BlockButton = leftstick, the quest
+   log's default, unbound for it), and the window writes the bindings back;
+   the line names the device last used.
 5. With the remaster off in the mod selection, as the original, V does nothing.
 """
 from pathlib import Path
@@ -294,6 +295,8 @@ def main():
                 g.close()
             text = g.config.read_text()
             assert re.search(r"^BlockKey = V$", text, re.M) and re.search(r"^BlockButton = righttrigger\+$", text, re.M), text
+            assert re.search(r"^QuestLogButton = leftstick$", text, re.M), text
+            text = re.sub(r"^QuestLogButton = leftstick$", "QuestLogButton = none", text, flags=re.M)
             g.config.write_text(re.sub(r"^BlockButton = righttrigger\+$", "BlockButton = leftstick",
                                        re.sub(r"^BlockKey = V$", "BlockKey = G", text, flags=re.M), flags=re.M))
             g.launch()

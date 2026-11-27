@@ -20,8 +20,8 @@ and walks the hero to the gate of Eolis, a door. Then it edits save-state RAM
 6. Next to Conflate's Guru (reached by dying with Conflate as the furthest
    temple, from a saved game of that death as the Guru speaks), Magic casts
    without starting a conversation; Up talks.
-7. config.ini rebinds it (MagicKey = G, MagicButton = leftstick), and the
-   window writes the bindings back.
+7. config.ini rebinds it (MagicKey = G, MagicButton = leftstick, the quest
+   log's default, unbound for it), and the window writes the bindings back.
 8. With the remaster off in the mod selection, as the original, C does nothing.
 """
 from pathlib import Path
@@ -211,6 +211,8 @@ def main():
         # 7. config.ini rebinds it.
         text = config.read_text()
         assert re.search(r"^MagicKey = C$", text, re.M) and re.search(r"^MagicButton = y$", text, re.M), text
+        assert re.search(r"^QuestLogButton = leftstick$", text, re.M), text
+        text = re.sub(r"^QuestLogButton = leftstick$", "QuestLogButton = none", text, flags=re.M)
         config.write_text(re.sub(r"^MagicButton = y$", "MagicButton = leftstick",
                                  re.sub(r"^MagicKey = C$", "MagicKey = G", text, flags=re.M), flags=re.M))
         game.launch()

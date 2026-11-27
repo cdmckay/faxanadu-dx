@@ -178,6 +178,8 @@ unit menu
 "$OUT/menu/menu_test"
 unit use_item
 "$OUT/use_item/use_item_test"
+unit run
+"$OUT/run/run_test"
 unit controls
 "$OUT/controls/controls_test" "$OUT/controls"
 unit seams
@@ -281,6 +283,7 @@ E2E=(
   "menu         tests/menu/select_menu.py --parts"
   "controls     tests/controls/controller_layout.py --parts"
   "back-out     tests/controls/b_backs_out.py --parts"
+  "run          tests/run/run.py --parts"
   "seams        tests/seams/seams_lose_nothing.py --parts"
   "open-ground  tests/seams/open_ground.py --parts"
   "fights       tests/seams/fights.py --parts"

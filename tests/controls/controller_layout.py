@@ -9,14 +9,15 @@ in where a player's does: TCP `pad` holds buttons, or pushes a trigger, of an
 SDL virtual controller, and `key` holds a key. Six parts, each its own game,
 all but the last in Seamless:
 
-pad        From Eolis town: the bindings are the layout's (Magic C / Y, Use
-           item S / B, Block V / RT, Map M / BACK, Quest log L / LT, the Select
-           menu RETURN / START). Start opens the Select menu, the game unpaused,
-           and Start closes it again, back to play, no pause. Back opens the map
-           and not the menu (the map's button keeps the NES Select up); Back
-           closes it. The left trigger opens the quest log and closes it.
-           Return opens the menu as Start does, and Backslash (the NES Select)
-           still opens it too.
+pad        From Eolis town: the bindings are the layout's, layout 3 (Magic
+           C / Y, Use item S / B, Block V / RT, Run LEFT SHIFT / LT, Map
+           M / BACK, Quest log L / L3, the Select menu RETURN / START). Start
+           opens the Select menu, the game unpaused, and Start closes it again,
+           back to play, no pause. Back opens the map and not the menu (the
+           map's button keeps the NES Select up); Back closes it. The left
+           stick's press opens the quest log and closes it; the left trigger,
+           Run's now, opens nothing. Return opens the menu as Start does, and
+           Backslash (the NES Select) still opens it too.
 shop       In Eolis's key shop, the buy list up: Back, the NES Select outside
            play, opens no map and changes nothing, as Select in the
            original's shops (since #163 it no longer switches lists).
@@ -32,14 +33,17 @@ switch-pro A virtual Switch Pro Controller (Nintendo's USB ids, which SDL
            by its label it would be Use item.
 migration  A config.ini an older build wrote (no layout): each binding still on
            its old default moves to the layout's, once (Block to RT, the map to
-           Back, the quest log to LT; the engine's Menu to R3, Disk and the
-           save states off the controller), and the ones the player changed
-           stay (Magic on LB, Fast-forward on L3). Rewind's move to LB gives
-           way to the player's Magic there: it keeps F8 alone. The file says
-           layout 2 at once; set back to B in it, Block stays.
+           Back; the engine's Menu to R3, Disk and the save states off the
+           controller), Run comes in on Left Shift and LT, and the ones the
+           player changed stay (Magic on LB, Fast-forward on L3). Rewind's move
+           to LB gives way to the player's Magic there: it keeps F8 alone; the
+           quest log's to L3 gives way to Fast-forward: it keeps L alone. The
+           file says layout 3 at once; set back to B in it, Block stays. Then a
+           config.ini of layout 2, on its defaults: the quest log moves from LT
+           to L3, and Run takes LT and Left Shift.
 original   With the remaster off (the stock view): Start pauses and Start
            unpauses; Back opens the original's menu (six rows) and B closes it;
-           B, S and the left trigger do nothing.
+           B, S, the left trigger and the left stick's press do nothing.
 """
 from pathlib import Path
 import re
@@ -93,6 +97,27 @@ QuestLogKey = L
 QuestLogButton = rightstick
 """
 
+# What a build of layout 2 (#147) wrote, cut to the game's bindings, all on that layout's defaults.
+LAYOUT2 = """[Display]
+WindowScale = 1
+DisplayDefaults = 2
+[Input]
+BindingsLayout = 2
+[Game]
+ViewMode = 0
+ControlsLayout = 2
+MagicKey = C
+MagicButton = y
+UseItemKey = S
+UseItemButton = b
+BlockKey = V
+BlockButton = righttrigger+
+MapKey = M
+MapButton = back
+QuestLogKey = L
+QuestLogButton = lefttrigger+
+"""
+
 
 def controls():
     return tcp("controls_state")
@@ -100,8 +125,8 @@ def controls():
 
 def bindings():
     return {name: tcp(cmd)["binding"] for name, cmd in (("magic", "magic_state"), ("use", "use_item_state"),
-                                                        ("block", "block_state"), ("map", "map_state"),
-                                                        ("quests", "quest_state"))}
+                                                        ("block", "block_state"), ("run", "run_state"),
+                                                        ("map", "map_state"), ("quests", "quest_state"))}
 
 
 def menu_open(rows=8):
@@ -142,12 +167,12 @@ def main():
         if args.wants("pad"):
             game.launch(at="eolis-town")
             wait(10)
-            assert bindings() == {"magic": "C / Y", "use": "S / B", "block": "V / RT", "map": "M / BACK",
-                                  "quests": "L / LT"}, bindings()
+            assert bindings() == {"magic": "C / Y", "use": "S / B", "block": "V / RT", "run": "LEFT SHIFT / LT",
+                                  "map": "M / BACK", "quests": "L / L3"}, bindings()
             c = controls()
-            assert c["enabled"] and c["layout"] == 2 and c["menu_binding"] == "RETURN / START", c
-            print("ok: Magic C / Y, Use item S / B, Block V / RT, Map M / BACK, Quest log L / LT, and the Select "
-                  "menu RETURN / START")
+            assert c["enabled"] and c["layout"] == 3 and c["menu_binding"] == "RETURN / START", c
+            print("ok: Magic C / Y, Use item S / B, Block V / RT, Run LEFT SHIFT / LT, Map M / BACK, Quest log "
+                  "L / L3, and the Select menu RETURN / START")
 
             opened = tcp("select_menu_state")["opened"]
             press("start")
@@ -175,14 +200,21 @@ def main():
             walks()
             print("ok: Back opens the map, not the Select menu, and closes it")
 
-            press("lefttrigger+")
+            presses = tcp("quest_state")["presses"]
+            press("leftstick")
             until("the quest log", lambda: tcp("quest_state")["open"] and ram(PAUSED) != 0, 120)
             wait(10)
-            game.shot("trigger-quest-log")
-            press("lefttrigger+")
+            game.shot("left-stick-quest-log")
+            press("leftstick")
             until("the quest log to close", lambda: not tcp("quest_state")["open"] and ram(PAUSED) == 0, 120)
             walks()
-            print("ok: the left trigger opens the quest log and closes it")
+            press("lefttrigger+", 20)
+            until("the trigger held", lambda: tcp("run_state")["held"], 30)
+            wait(40)
+            assert not tcp("quest_state")["open"] and ram(PAUSED) == 0, "the left trigger opened the quest log"
+            assert tcp("quest_state")["presses"] == presses + 2, tcp("quest_state")
+            print("ok: the left stick's press opens the quest log and closes it; the left trigger, Run's, opens "
+                  "nothing")
 
             press("Return", key=True)
             until("the menu from Return", lambda: menu_open(), 120)
@@ -295,20 +327,21 @@ def main():
             config.write_text(LAYOUT1)
             game.launch(at="eolis-town")
             wait(10)
-            assert bindings() == {"magic": "C / LB", "use": "S / B", "block": "V / RT", "map": "M / BACK",
-                                  "quests": "L / LT"}, bindings()
-            assert controls()["moved"] == 3 and controls()["unbound"] == 0, controls()
+            assert bindings() == {"magic": "C / LB", "use": "S / B", "block": "V / RT", "run": "LEFT SHIFT / LT",
+                                  "map": "M / BACK", "quests": "L"}, bindings()
+            assert controls()["moved"] == 4 and controls()["unbound"] == 1, controls()
             text = config.read_text()                                   # written at start, before any play
-            for line in ("BindingsLayout = 2", "ControlsLayout = 2", "BlockButton = righttrigger+",
-                         "MapButton = back", "QuestLogButton = lefttrigger+", "MagicButton = leftshoulder",
-                         "UseItemKey = S", "UseItemButton = b"):
+            for line in ("BindingsLayout = 2", "ControlsLayout = 3", "BlockButton = righttrigger+",
+                         "MapButton = back", "QuestLogButton = none", "MagicButton = leftshoulder",
+                         "UseItemKey = S", "UseItemButton = b", "RunKey = Left Shift", "RunButton = lefttrigger+"):
                 assert re.search(rf"^{re.escape(line)}$", text, re.M), (line, text)
             pads = text[text.index("[Gamepad.Shortcuts]"):text.index("[Game]")]
             assert pads.split("\n")[1:8] == ["disk = none", "menu = rightstick", "fast_forward = leftstick",
                                              "screenshot = none", "fullscreen = none", "state_menu = none",
                                              "rewind = none"], pads
-            print("ok: an old config.ini moves each binding still on its old default to the layout's, once, and "
-                  "keeps the player's (Magic on LB, Fast-forward on L3); Rewind gives LB way to Magic")
+            print("ok: an old config.ini moves each binding still on its old default to the layout's, once, Run "
+                  "comes in on Left Shift and LT, and the player's stay (Magic on LB, Fast-forward on L3); Rewind "
+                  "gives LB way to Magic, the quest log L3 to Fast-forward")
             game.close()
             config.write_text(re.sub(r"^BlockButton = righttrigger\+$", "BlockButton = b", config.read_text(),
                                      flags=re.M))
@@ -318,6 +351,20 @@ def main():
             game.close()
             assert re.search(r"^BlockButton = b$", config.read_text(), re.M)
             print("ok: in a file of the layout, Block set back to B stays there")
+
+            config.write_text(LAYOUT2)
+            game.launch()
+            wait(10)
+            assert bindings() == {"magic": "C / Y", "use": "S / B", "block": "V / RT", "run": "LEFT SHIFT / LT",
+                                  "map": "M / BACK", "quests": "L / L3"}, bindings()
+            assert controls()["moved"] == 2 and controls()["unbound"] == 0, controls()
+            text = config.read_text()
+            for line in ("ControlsLayout = 3", "QuestLogButton = leftstick", "RunKey = Left Shift",
+                         "RunButton = lefttrigger+", "MapButton = back", "BlockButton = righttrigger+"):
+                assert re.search(rf"^{re.escape(line)}$", text, re.M), (line, text)
+            game.close()
+            print("ok: a config.ini of layout 2 moves the quest log from LT to L3 and gives LT and Left Shift to "
+                  "Run, once")
 
         if args.wants("original"):
             game.set_features({PACKAGE: False})
@@ -337,12 +384,12 @@ def main():
             until("the menu to close", lambda: ram(TEXTBOX_CLOSED) != 0, 120)
             game.poke({SELECTED_ITEM: RED_POTION})
             wait(4)
-            for what, key in (("b", False), ("S", True), ("lefttrigger+", False)):
+            for what, key in (("b", False), ("S", True), ("lefttrigger+", False), ("leftstick", False)):
                 press(what, key=key)
                 wait(30)
                 assert ram(SELECTED_ITEM) == RED_POTION and ram(PAUSED) == 0 and not box_open(), what
-            print("ok: with the remaster off, Start pauses and Back opens the original's menu; B, S and the left "
-                  "trigger do nothing")
+            print("ok: with the remaster off, Start pauses and Back opens the original's menu; B, S, the left "
+                  "trigger and the left stick's press do nothing")
             game.close()
         print("screenshots:", ", ".join(game.shots))
     except BaseException:

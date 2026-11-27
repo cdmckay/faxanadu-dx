@@ -1,6 +1,6 @@
 /* A model of the machine for the movement features' unit tests (falling pose,
- * forgiving jumps, the ladder fixes and holding on to ladders), without the
- * emulator or a ROM. Include it after the feature's .c file.
+ * forgiving jumps, the ladder fixes, holding on to ladders and Run), without
+ * the emulator or a ROM. Include it after the feature's .c file.
  *
  * It holds CPU RAM, the registers and one screen of blocks, and plays the
  * hero's update as bank 15 has it (chipx86's disassembly), instruction by
@@ -9,8 +9,9 @@
  * and knockback ($E174), Player_HandleIFrames, Player_CheckHandleAttack, and
  * both pose routines ($ECAC, $B927). Each hook site fires where the ROM has
  * it, with the registers the instruction before left; a branch after a site
- * goes the way the registers the hook leaves say. So the tests check what the
- * game does, not the modules' own arithmetic.
+ * goes the way the registers the hook leaves say, and the stack holds what the
+ * JSRs on the way pushed (and Player_TryMoveLeft's PHP). So the tests check
+ * what the game does, not the modules' own arithmetic.
  *
  * What the model leaves out: walls (the screens have none where the hero
  * moves sideways), and the screens around this one (a test that reached them
@@ -73,6 +74,9 @@ enum { FLAG_C = 0x01, FLAG_Z = 0x02, FLAG_N = 0x80 };
 static uint8_t ram[0x800];
 static CycModRegs cpu = { .s = 0xF0, .p = 0x24 };
 static char world[13][17];
+/* What the JSR into GameLoop_UpdatePlayer pushed: Game_MainLoop's ($DB53);
+ * EndGame_MainLoop's ($DBFF) pushes $DC01. */
+static uint16_t update_caller = 0xDB55;
 
 /* PLAYER_JUMP_CURVE ($E4D6), PLAYER_ATTACK_ANIMATION_PHASES, the pose tables */
 static const uint8_t curve[32] = { 8, 4, 4, 4, 4, 2, 2, 1, 1, 1, 1, 0, 0, 0, 0, 0,
@@ -191,6 +195,14 @@ static bool site(uint16_t addr) {
 static void set_nz(uint8_t value) {
     cpu.p = (uint8_t)((cpu.p & ~(FLAG_N | FLAG_Z)) | (value & 0x80) | (value ? 0 : FLAG_Z));
 }
+/* The stack, as a JSR (the address of its last byte, high byte first) and PHP push. */
+static void push(uint8_t value) { ram[0x100 | cpu.s--] = value; }
+static uint8_t pull(void) { return ram[0x100 | ++cpu.s]; }
+static void push_return(uint16_t pushed) {
+    push((uint8_t)(pushed >> 8));
+    push((uint8_t)pushed);
+}
+static void pull_return(void) { cpu.s = (uint8_t)(cpu.s + 2); }
 
 /* ---- the screen ---- */
 static void load_screen(const char *const rows[13]) {
@@ -376,6 +388,12 @@ static void move(bool right) { /* Player_TryMoveRight / Player_TryMoveLeft */
     CHECK(x >= 0 && x < 0xF100); /* the screens around are not modelled */
     ram[M_X] = (uint8_t)(x >> 8);
     ram[M_X_FRAC] = (uint8_t)x;
+    /* Going left, PHP: C set, the step not past X 0. Then LDX before Player_CheckIfPassable. */
+    if (!right) push((uint8_t)(cpu.p | FLAG_C));
+    cpu.a = ram[M_X]; /* STA Player_PosX_Block */
+    site(right ? 0xE1EE : 0xE246);
+    if (!right) CHECK(pull() & FLAG_C); /* PLP: still not past X 0 */
+    CHECK(ram[M_X] < 0xF1);             /* nor past the screen's right side */
 }
 static void horizontal(void) { /* Player_CheckHandleJump ($E174) */
     uint8_t f = ram[M_FLAGS];
@@ -383,7 +401,9 @@ static void horizontal(void) { /* Player_CheckHandleJump ($E174) */
         if (site(0xE153)) return;
         uint8_t facing = f & F_RIGHT;
         ram[M_FLAGS] = facing ^ F_RIGHT; /* every other flag is dropped here */
+        push_return(0xE15E);             /* JSR Player_KnockbackHoriz ($E15C) */
         move(!facing);
+        pull_return();
         ram[M_FLAGS] = (uint8_t)((ram[M_FLAGS] & ~F_RIGHT) | facing);
         return;
     }
@@ -479,10 +499,16 @@ static Frame step(uint8_t buttons) {
     cpu.x = 0x33;
     cpu.y = 0x44;
     cpu.p = 0x24;
+    push_return(update_caller); /* JSR GameLoop_UpdatePlayer */
     attack();
+    push_return(0xE0CF); /* its JSR Player_CheckHandleVertMovement ($E0CD) */
     vert_movement();
+    pull_return();
+    push_return(0xE0D2); /* its JSR Player_CheckHandleJump ($E0D0) */
     horizontal();
+    pull_return();
     iframes();
+    pull_return();
     uint8_t gear = gear_frame(), body = body_frame();
     CHECK(gear == gear_frame()); /* shield then weapon: the same pose */
     return (Frame){ ram[M_X], ram[M_Y], ram[M_FLAGS], body, gear };
