@@ -1,0 +1,49 @@
+# clang-format for the repo's own C, src/ and tests/ (docs/C_TOOLING.md):
+# the newer files' style (src/fax_seams.c, src/fax_shops.c), as far as
+# clang-format can follow it. Not the nesrecomp or recomp-ui submodules,
+# which keep their own. Nothing is formatted to it yet, and the gate does
+# not check it.
+#
+# It changes only whitespace and line breaks (and a macro's line
+# continuations): nothing below sorts, inserts, removes or rewraps a token,
+# a string or a comment.
+BasedOnStyle: LLVM
+ColumnLimit: 120
+IndentWidth: 4
+ContinuationIndentWidth: 4
+UseTab: Never
+BreakBeforeBraces: Attach
+IndentCaseLabels: false
+PointerAlignment: Right
+# One-liners: a short function, if, loop or single-statement block stays on
+# its line. A block of two statements cannot: clang-format has no option.
+AllowShortFunctionsOnASingleLine: All
+AllowShortIfStatementsOnASingleLine: AllIfsAndElse
+AllowShortLoopsOnASingleLine: true
+AllowShortBlocksOnASingleLine: Always
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortEnumsOnASingleLine: true
+# { 1, 2, 3 }, the more common spelling here.
+Cpp11BracedListStyle: false
+# The address tables: values in a column, comments beside them.
+AlignConsecutiveMacros: AcrossComments
+AlignTrailingComments:
+  Kind: Always
+  OverEmptyLines: 0
+MaxEmptyLinesToKeep: 1
+InsertNewlineAtEOF: true
+# Never change a token.
+SortIncludes:
+  Enabled: false
+ReflowComments: Never
+BreakStringLiterals: false
+InsertBraces: false
+RemoveBracesLLVM: false
+RemoveParentheses: Leave
+RemoveSemicolon: false
+QualifierAlignment: Leave
+EnumTrailingComma: Leave
+IntegerLiteralSeparator:
+  Binary: 0
+  Decimal: 0
+  Hex: 0
