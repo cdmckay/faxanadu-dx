@@ -37,6 +37,9 @@ extern uint32_t hw_palette_argb[512];
  * wide, as Sonic Mania widens its own. The host scales it to the window by
  * its one fixed rule, sharp at 1080p's 4.5x (#107: fax_world_composed). */
 enum { MAX_ROOMS = 83, RW = 256, RH = 208, HUD = 32, VIEW_W = 424, VIEW_H = 240 };
+/* The one-in-four finds' counter (Screen_Is3Of4Visits, $A529, bank 14 moves
+ * it): one-in-four items count a room met as a neighbour (tick_room). */
+#define SCREEN_TRACKED_VISIT_COUNT 0x043Au
 typedef struct {
     uint8_t ram[2048], chr[8192], palette[32];
     uint8_t valid, live, owned, edges[4];
@@ -231,10 +234,23 @@ static void load(unsigned id) {
     p(0x63, id);
     p(0x64, id);
 }
-static void (*room_fixup)(uint8_t, uint8_t, uint8_t *);
-void fax_world_set_room_fixup(void (*fixup)(uint8_t area, uint8_t screen, uint8_t *ram)) { room_fixup = fixup; }
+/* The room fixups (fax_world_set_room_fixup): the graphics fixes' Tower of
+ * Fortress floor, and Seams' fountain's ladder (#166's slice 7). */
+enum { FIXUPS = 4 };
+typedef void (*RoomFixup)(uint8_t area, uint8_t screen, uint8_t *ram);
+static RoomFixup room_fixups[FIXUPS];
+void fax_world_set_room_fixup(RoomFixup fixup, bool on) {
+    for (unsigned i = 0; i < FIXUPS; i++)
+        if (room_fixups[i] == fixup) room_fixups[i] = NULL;
+    for (unsigned i = 0; on && fixup && i < FIXUPS; i++)
+        if (!room_fixups[i]) {
+            room_fixups[i] = fixup;
+            return;
+        }
+}
 static void fixup_room(unsigned id) {
-    if (room_fixup) room_fixup(rooms[id].ram[0x24], (uint8_t)id, rooms[id].ram);
+    for (unsigned i = 0; i < FIXUPS; i++)
+        if (room_fixups[i]) room_fixups[i](rooms[id].ram[0x24], (uint8_t)id, rooms[id].ram);
 }
 static bool decode(unsigned id) {
     if (!cyc_mod_isolate_begin()) return false;
@@ -468,12 +484,25 @@ static void tick_room(unsigned id) {
     drain();
     speculative = false;
     transfer = NULL;
+    uint8_t visits = q(SCREEN_TRACKED_VISIT_COUNT);
     if (ok) {
         capture(id, false, FAX_SEAMS_TICK);
         r->ticks++;
     }
     cyc_mod_isolate_end();
-    if (!ok) failures++;
+    if (!ok) {
+        failures++;
+        return;
+    }
+    /* One-in-four items count a room met as a neighbour (#166's slice 7).
+     * The copy started with the live Screen_TrackedVisitCount (in no room's
+     * bytes), and only Screen_Is3Of4Visits moves it: on a one-in-four find's
+     * first frame, which runs once a spawn, so in the room's first tick after
+     * it starts from its list (initialize()), and not again until a load
+     * forgets the room and it starts afresh. Carried to the live game, so the
+     * next copy and the live game count on from it, meeting a room counts the
+     * one visit that entering its screen counts in the original. */
+    if (visits != q(SCREEN_TRACKED_VISIT_COUNT)) p(SCREEN_TRACKED_VISIT_COUNT, visits);
 }
 static int player_hook(uint16_t pc) {
     (void)pc;
@@ -909,43 +938,129 @@ static void actors(unsigned id, int w, int h) {
              pal, mask);
     }
 }
-/* The NES clips player tiles at its 256x240 raster even though the world
- * continues there. Ask the original drawing routines for an unclipped pose
- * at a safe scratch position, then supply just its off-room pixels. */
-static void player_edge(int w, int h) {
-    Room *r = &rooms[active];
-    int px = r->ram[0x9e], py = r->ram[0xa1];
-    if (px >= 8 && px <= 232 && py >= 8 && py <= 176) return;
-    uint8_t oam[256], range = 0;
-    if (!cyc_mod_isolate_begin()) return;
+/* The block at pixel (lx, ly) of room r (16 bits from its top-left, past its
+ * sides, top and bottom too) as the joined world has it: in the room it lies
+ * in, or with no room joined there, r's own as the game's 8-bit place reads
+ * it (its ScreenBuffer's undrawn rows 13-15 past the bottom). */
+static uint8_t world_block(Room *r, int lx, int ly) {
+    int x = lx, y = ly;
+    Room *u = room_under(r, &x, &y);
+    if (!u) u = r, x = lx & 255, y = ly & 255;
+    return u->ram[0x600 + ((y & 0xf0) | (x >> 4))];
+}
+/* The hero drawn by the game's own routines at a scratch place, where none
+ * of his cells is clipped: the shadow OAM they leave and its
+ * Sprites_StartSlotRange. Entry 0 is sprite 0 (Sprites_Reset), never his. */
+enum { SCRATCH_X = 120, SCRATCH_Y = 96 }; /* his X + 4 and X + 12 in two columns, 7 and 8, of row 6 */
+typedef struct {
+    uint8_t oam[256], range;
+} Pose;
+/* His pose as the room's capture holds it (the last frame of play, kept
+ * through dialogue): the shield, the body and the weapon, as a frame draws
+ * them. Or in a death, as the live machine draws him: the dissolve's loop in
+ * Player_HandleDeath ($D8EC) draws only Screen_ResetSpritesForGamePlay
+ * ($CB47) and Player_DrawBody ($EBEE). Player_CalculateVisibility gives the
+ * body its behind-the-background bits from the blocks at his X + 4 and
+ * X + 12 on his top row: the scratch place's two such blocks are given those
+ * his true place has, in the room each lies in. */
+static bool pose(Room *r, bool death, int px, int py, Pose *out) {
+    if (!cyc_mod_isolate_begin()) return false;
     /* Use the same retained player pose during dialogue, even while native
      * portrait code temporarily changes drawing state. */
-    for (unsigned i = 0; i < 2048; i++) p(i, r->ram[i]);
-    p(0x9e, 128);
-    p(0xa1, 96);
+    if (!death)
+        for (unsigned i = 0; i < 2048; i++) p(i, r->ram[i]);
+    p(0x9e, SCRATCH_X);
+    p(0xa1, SCRATCH_Y);
     p(0x9f, 0);
     p(0xa2, 0);
     p(0xc, 0);
     p(0x57, 0);
-    bool ok = bank(14) && call(0xcb17, 0, 0) && call(0xb982, 0, 0) && call(0xebee, 0, 0) && call(0xb7d6, 0, 0);
+    bool ok;
+    if (death) {
+        p(0x600 + (SCRATCH_Y & 0xf0) + (SCRATCH_X + 4) / 16, world_block(r, px + 4, py));
+        p(0x600 + (SCRATCH_Y & 0xf0) + (SCRATCH_X + 12) / 16, world_block(r, px + 12, py));
+        ok = bank(14) && call(0xcb47, 0, 0) && call(0xebee, 0, 0);
+    } else ok = bank(14) && call(0xcb17, 0, 0) && call(0xb982, 0, 0) && call(0xebee, 0, 0) && call(0xb7d6, 0, 0);
     if (ok) {
-        for (unsigned i = 0; i < 256; i++) oam[i] = q(0x700 + i);
-        range = q(0x1c);
+        for (unsigned i = 0; i < 256; i++) out->oam[i] = q(0x700 + i);
+        out->range = q(0x1c);
     }
     cyc_mod_isolate_end();
-    if (!ok) {
-        failures++;
-        return;
+    if (!ok) failures++;
+    return ok;
+}
+static int compare_cells(const void *a, const void *b) {
+    uint32_t x = *(const uint32_t *)a, y = *(const uint32_t *)b;
+    return x < y ? -1 : x > y;
+}
+/* The cells of an OAM the NES shows on its screen, moved by (dx, dy): each as
+ * Y, X, tile and attributes, sorted (the flicker's order aside). */
+static unsigned shown_cells(const uint8_t *oam, int dx, int dy, uint32_t *out) {
+    unsigned n = 0;
+    for (unsigned s = 1; s < 64; s++) {
+        const uint8_t *o = oam + s * 4;
+        int x = o[3] + dx, y = o[0] + dy;
+        if (o[0] >= 239 || x < 0 || x > 255 || y < 0 || y >= 239) continue;
+        out[n++] = (uint32_t)y << 24 | (uint32_t)x << 16 | (uint32_t)o[1] << 8 | o[2];
     }
+    qsort(out, n, sizeof *out, compare_cells);
+    return n;
+}
+/* Whether the frame's picture drew a pose at his place (px, py): every cell
+ * it puts on his room's screen is among those the PPU drew from
+ * (cyc_render_oam), which hold any other sprite too. */
+static bool on_picture(const Pose *pose_, int px, int py) {
+    uint32_t a[63], b[63];
+    unsigned n = shown_cells(pose_->oam, px - SCRATCH_X, py - SCRATCH_Y, a);
+    unsigned m = shown_cells(cyc_render_oam(), 0, 0, b), j = 0;
+    for (unsigned i = 0; i < n; i++, j++) {
+        while (j < m && b[j] < a[i]) j++;
+        if (j == m || b[j] != a[i]) return false;
+    }
+    return n > 0;
+}
+/* The NES clips player tiles at its 256x240 raster even though the world
+ * continues there. Ask the original drawing routines for an unclipped pose
+ * at a safe scratch position, then supply just its off-room pixels.
+ *
+ * In a death (#166's slice 7), whose picture is the game's own over his room
+ * (fax_world_present), the same for the hero dissolving, the only sprite
+ * then. Player_DrawDeathAnimation ($D9D6) draws nothing: it rubs lines out of
+ * his tiles in CHR (PPUBuffer_DrawCommand_RemoveVerticalLines, by the PPU
+ * buffer), so the pixels are the live CHR's and palette's (the fade to black
+ * after the dissolve), as the picture's are. The pose is the one the picture
+ * shows, if any: the last frame of play's on the death's first frame, none
+ * while the death sets up (the game's first 17 frames or so: it cleared the
+ * sprites), then the death's once the dissolve's loop has drawn him (the
+ * picture shows the OAM a frame after the game writes it). The death's cells
+ * past the edge are behind the foreground of the room they lie in by his
+ * true place's bits, as the half in his room is behind his. */
+static void player_edge(int w, int h, bool death) {
+    Room *r = &rooms[active];
+    int px = death ? q(0x9e) : r->ram[0x9e], py = death ? q(0xa1) : r->ram[0xa1];
+    if (px >= 8 && px <= 232 && py >= 8 && py <= 176) return;
+    Pose drawn;
+    bool dying = death && pose(r, true, px, py, &drawn) && on_picture(&drawn, px, py);
+    if (!dying) {
+        px = r->ram[0x9e], py = r->ram[0xa1];
+        if ((px >= 8 && px <= 232 && py >= 8 && py <= 176) || !pose(r, false, px, py, &drawn) ||
+            (death && !on_picture(&drawn, px, py)))
+            return;
+    }
+    uint8_t chr[4096];
+    if (death)
+        for (unsigned i = 0; i < sizeof chr; i++) chr[i] = cyc_render_chr((uint16_t)i);
+    else memcpy(chr, r->chr, sizeof chr);
+    const uint8_t *pal = death ? cyc_ppu_palette() : r->palette;
     int ox = r->x * RW - camera_x, oy = HUD + r->y * RH - camera_y;
     unsigned mask = cyc_render_line_mask(239);
     uint8_t order[FAX_FLICKER_SPRITES];
-    unsigned count = fax_flicker_paint_order(range, order);
+    unsigned count = fax_flicker_paint_order(drawn.range, order);
     for (unsigned k = 0; k < count; k++) {
         int s = order[k];
-        const uint8_t *o = oam + s * 4;
-        if (o[0] >= 239) continue;
-        int sx = o[3] + px - 128, sy = o[0] + 1 - HUD + py - 96;
+        const uint8_t *o = drawn.oam + s * 4;
+        if (!s || o[0] >= 239) continue;
+        int sx = o[3] + px - SCRATCH_X, sy = o[0] + 1 - HUD + py - SCRATCH_Y;
         unsigned attr = o[2], tile = o[1];
         for (int y = 0; y < 8; y++)
             for (int x = 0; x < 8; x++) {
@@ -954,11 +1069,15 @@ static void player_edge(int w, int h) {
                 int dx = ox + lx, dy = oy + ly;
                 if (dx < 0 || dx >= w || dy < HUD || dy >= h) continue;
                 unsigned cy = attr & 128 ? 7 - y : y, shift = attr & 64 ? x : 7 - x, off = tile * 16 + cy;
-                unsigned v = ((r->chr[off] >> shift) & 1) | (((r->chr[off + 8] >> shift) & 1) << 1);
+                unsigned v = ((chr[off] >> shift) & 1) | (((chr[off + 8] >> shift) & 1) << 1);
                 if (!v) continue;
+                if (dying && (attr & 32)) {
+                    int ux = lx, uy = ly;
+                    Room *under = room_under(r, &ux, &uy);
+                    if (under && terrain(under, ux, uy)) continue;
+                }
                 canvas[(size_t)dy * w + dx] =
-                    hw_palette_argb[(r->palette[16 + (attr & 3) * 4 + v] & ((mask & 1) ? 0x30 : 0x3f)) |
-                                    ((mask >> 5) << 6)];
+                    hw_palette_argb[(pal[16 + (attr & 3) * 4 + v] & ((mask & 1) ? 0x30 : 0x3f)) | ((mask >> 5) << 6)];
             }
     }
 }
@@ -1077,11 +1196,16 @@ const uint32_t *fax_world_present(int *w, int *h, const uint32_t *native) {
                 if (dx >= 0 && dx < width && dy >= HUD && dy < height && !ui_pixel(x, y))
                     canvas[(size_t)dy * width + dx] = native[y * RW + x];
             }
+        /* A death at a seam: the dissolving hero drawn whole across it, for as
+         * long as the dissolve's loop draws him (Player_HandleDeath sets
+         * Screen_ReadyState, $0E, to $FF once it is over, before the Guru's
+         * script). */
+        if (death_mode && !q(0x0e)) player_edge(width, height, true);
     } else {
         for (unsigned id = 0; id < counts[area]; id++)
             if (rooms[id].owned && id != (unsigned)active) actors(id, width, height);
         actors((unsigned)active, width, height);
-        player_edge(width, height);
+        player_edge(width, height, false);
     }
     if ((script_mode || q(0x100) == 12) && !q(0x20c)) {
         /* Overlay native text boxes only. Copying the entire NES image

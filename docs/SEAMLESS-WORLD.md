@@ -214,6 +214,19 @@ true place, into the room it lies in, his own as a rule. His own room's
 Magman in front of him past a side goes into the room there instead of
 wrapping round his. Nothing new in the records.
 
+**Loose ends** (#166's slice 7, the last of the plan). A one-in-four find
+(GAME_INTERNALS.md's *Items in the world*) in a room met as a neighbour
+decides in its copy's first tick, and Seamless carries the copy's
+`Screen_TrackedVisitCount` to the live game after it, so meeting the room
+counts the visit entering its screen counts in the original. Trunk `$28`
+decoded with the path to Mascon open gets the blocks its screen event
+writes, the stone gone and the ladder down, and its event cleared (Seams'
+room fixup; `fax_world_set_room_fixup` holds a list now), so `$27` shows the
+fountain as it is and crossing runs nothing. Through a death, whose picture
+is the game's own over his room, Seamless paints the dissolving hero's
+cells past its edge, so a death at a seam is whole. Nothing new in the
+records.
+
 The original player starts a right scroll when his right edge crosses at
 x=241. This adapter retains the source until his origin wraps, preserving
 continuous position. Wrapped floor/ladder samples read the correct neighboring
@@ -256,6 +269,7 @@ All automated launches were hidden and muted with native saves disabled.
 | Open seams (#166, slice 1) | `tests/seams/open_ground.py`, in the suite, a part each: unseen Zozuras in two rooms stand still 300 frames; one wakes on the first read within 16 pixels of the view and keeps coming once out of it; Eolis's Zozuras follow him into `$05` and back through `$04` into `$03`; the town's walking woman walks into his room, the walking man in and out; a fireball flies through a seam and goes once out of the view; a room of 5 keeps its seam a wall; a straddling Zozura's pixels on both sides of the seam; a respawn's load brings room 2 back fresh; the intro's trigger by a neighbour's edge leaves it ticking; a save mid-crossing replays alike in two fresh games |
 | Fights across a seam (#166, slice 2) | `tests/seams/fights.py`, in the suite, a part each: from `$04` the Long Sword kills `$05`'s Zozura (its experience and MP his, its death and its bread in `$05`); a Monodron's coin drops in `$05` and its sound plays; he takes a coin across the seam without crossing; a Zozura straddling the seam hurts him; a punch reaches across it; a Sugata in the Mist's `$1F` flashes him on `$1E` in its reach, and not out of it; a save mid-swing replays alike in two fresh games; a frame that ends inside the pass on Zenis 16 reads as the room's own and replays alike. `tests/world/boss_arenas.py` checks that no move or visit comes from an arena |
 | What a neighbouring room sees of him (#166, slice 6) | `tests/seams/sees_him.py`, in the suite, headless, a part each: an Ishiisu put by the Mist's `$50`/`$51` seam walks on into `$51` and stands only once truly within its 32 pixels of him; a Fire Giant there waits with him 80 pixels off and charges at 28; Nash of `$2A` reappears in `$2B` 32 pixels behind him, none of it drawn in `$2A`; the Magmen of the Branch's `$20` and `$22` appear in `$21` in front of him, and `$21`'s own goes into `$20` past its side instead of wrapping round; a Zorugeriru of Zenis `$05` drops its minion at his X in `$0F`; a save before Nash's return replays alike in two fresh games. `tests/seams/seams_test.c` checks every distance against the true one and each placement |
+| Loose ends (#166, slice 7) | `tests/seams/loose_ends.py`, in the suite, headless, a part each: with the remaster off the count moves each time he enters Trunk `$0C`; out onto `$20` with the count at 0-3, `$21`'s one-in-four Red Potion is met as a neighbour, the count goes up by one, once, and the potion lies there only from 3; onto `$1F`, `$1D`'s Ointment and `$21`'s potion are met in turn, a visit each, and walking back and forth moves it no more; the fountain's first opening plays every frame as the original's, and from `$27` after an area load with the path open `$28` has its ladder, no stone and no event, and he walks on into it; a death at x 248 shows, on the picture, his pixels of the same death at x 120 across the seam, before the dissolve's loop draws him, whole, dissolving and fading, facing either way; a save before each replays alike in two fresh games. `tests/seams/seams_test.c` checks the fixup against the event played as the disassembly has it |
 | One above the other (#166, slice 5) | `tests/seams/vertical.py`, in the suite, a part each: a Hornet in Trunk `$2D`'s ladder shaft follows him down `$29`'s ladder, through `$2D`'s bottom and into `$29` at its Y less 208; one straddling that seam is drawn whole, its pixels above and below it; on the Mist's `$10`, at the top of a jump, the Long Sword kills a Hornet of `$07` above (at its y 203) in `$07`, its experience his, and leaves one at `$07`'s y 180 alone; a dormant Hornet of `$07` stands still until the frame the view comes within 16 pixels of it, from Seamless's trace, and wakes on that frame; a Hornet flying up out of `$10` moves into `$07` at its Y plus 208; a Zozura falls from Trunk `$3C` into `$37` and lands on its floor; a save mid-crossing replays alike in two fresh games. `tests/seams/seams_test.c` checks every test past a top or bottom against the blocks of the joined world |
 | The view shows only rooms (#166, slice 4) | `tests/world/camera_test.c`, in the suite, lays out every area from every room as `topology()` does (54 maps), and walks the hero a pixel at a time along every row at every height, with and without an opening above, and through every seam one above the other at each of its 16 block columns: his body always in the view; standing in a room with a room beside it, the view over no place without a room; across a seam, black only where no view over both rows' rooms shows him; the view moving at most 1 pixel for each of his walking, 4 under an opening, 6 climbing and 7 across a seam whose rows share one column; and with no empty place the old camera's view. `tests/world/only_rooms.py`, in the suite, headless, every frame from the trace against `fax_world_room`'s places: the Tower of Trunk from `$10` to `$12` and back (the old camera black from the first frame, the new one never), down `$10`'s ladder into `$0F` (black only on the 42 frames his body is across the seam), and the Tower of Suffer from `$37`'s ledge past the empty corner over `$39` (the view reaching up at the start and down to his row before the corner); at most 2, 7 and 5 pixels a frame, and never without him moving |
 | Arrivals (#204) | `tests/world/arrivals.py`, in the suite, headless, every frame of each load from a few frames before it, the presented picture against the game's own: where the game's playfield lies in the view. On each frame the game still shows the room a load leaves, that room is where it was; from the first frame the new room shows, as long as the hero stands, it is at one place, the trace's for it, through Seamless's own frames after. A part each: Eolis's way out into the Trunk with the J key's line (shown 8 frames before Seamless composed it in play, the room at the view's left edge), left out of Apolune by the town's edge onto the Trunk's `$07` (the old room's last frame), through the Tower of Trunk's door into `$0D` (13), dead on `$0E` and back at that door by zone respawn (13), and out of Eolis's meat shop (taken in play by its first frame). Without the fix the first four fail: the new room 84 pixels right, or the old room 84 right on the town's first frame. Also checked by hand the same way: the Trunk's door into the Mist (15 frames, the room at x 168) and the Mist's into the Branch (9), the Mist's door back, the Trunk's climb both ways, a death into a temple and out of it, Guru travel's arrival and a new game's first screen, all where they stay from their first frame |
@@ -285,7 +299,9 @@ risks a playtest must cover):
   side-by-side seams, and since slice 3 his spell flies on through them and
   ends at the view's edge; since slice 5 all of it one above the other but
   the spell, which still ends at a seam above or below; since slice 6 the
-  rooms beside his measure him and place their actors by his true place.
+  rooms beside his measure him and place their actors by his true place;
+  slice 7 tied off the loose ends (one-in-four items, the fountain's ladder
+  from afar, a death at a seam), the last of the plan.
   Encounters change most: the Mist's Hornets, once seen, drift between its
   rows of open sky over him; Nash, the Magmen and a Zorugeriru's minions come
   to him from the rooms beside his (two Magmen can stand in front of him at
@@ -308,21 +324,25 @@ risks a playtest must cover):
   (`tests/graphics/graphics_fixes.py`). No Mattock wall is at a seam: both
   breakable blocks (`$63`) are in column 3. A broken one stays broken while
   the hero stays in the area, since the room's record keeps its
-  `ScreenBuffer`; the original brings it back at every load. After an area
-  load with the path to Mascon open, Trunk `$28` seen from `$27` shows the
-  fountain's stone and no ladder until he crosses, when the stone clears and
-  the ladder drops.
+  `ScreenBuffer`; the original brings it back at every load. With the path
+  to Mascon open, Trunk `$28` is decoded with its ladder and without its
+  stone and event (#166's slice 7), so `$27` shows the fountain as it is
+  and nothing runs as he crosses; a load straight into `$28` (the Mist's
+  door) plays the ladder's drop, as the original does.
 - **One-in-four items** (the Mattock, Red Potion, Poison, Glove and Ointment
-  of GAME_INTERNALS.md's *Items in the world*) in a room first met as a
-  neighbour are decided in its copy, against a count no seam moves, so they
-  show only when it happens to be 3: Trunk `$0C`'s Red Potion was gone with
-  the count at 0 and kept at 3.
+  of GAME_INTERNALS.md's *Items in the world*): since #166's slice 7 a room
+  first met as a neighbour counts its visit, as entering its screen does in
+  the original; but walking out of a room and back in counts nothing more
+  until a load (the room keeps its find as it was), where the original
+  counts every entry. A playtest call whether finds come round often
+  enough.
 - **Death and retry**: zone respawn's test dies and comes back in rooms Seamless
   joined (Eolis, a screen into the Tower of Trunk); not every region. A load
   (a door within the area, a zone respawn) spawns its own room fresh and,
   since slice 1, every other room of the area too, as each comes near. A
-  hero who dies straddling a seam is cut at it while he dissolves: the death
-  shows the game's own picture over his room.
+  hero who dies straddling a seam dissolves whole across it (slice 7): the
+  death shows the game's own picture over his room, and Seamless paints his
+  cells past its edge.
 - **The ending**: `tests/world/boss_arenas.py` kills the final boss and checks
   the ending reaches the King's room; not the credits.
 - Complete progression and mantra audit; full-map costs and other hosts. No

@@ -34,10 +34,13 @@ const uint8_t *fax_world_room_ram(int area, int room);
 bool fax_world_ticking(void);
 /* A correction for each room Seamless decodes itself, in isolated calls where
  * no hooks run: called with the room's area, its screen and its RAM (2 KiB,
- * ScreenBuffer at $600) once Area_LoadBlocks or Area_LoadScrollData has
- * filled it, before the room is drawn, collided with or adopted. NULL for
- * none. The graphics fixes (fax_graphics.c) set it. */
-void fax_world_set_room_fixup(void (*fixup)(uint8_t area, uint8_t screen, uint8_t *ram));
+ * ScreenBuffer at $600) once Area_LoadBlocks has filled it, and again once
+ * its actors have started from its list (Screen_LoadSpriteInfo: its sprite
+ * slots and CurrentScreen_SpecialEventID), before the room is drawn,
+ * collided with or adopted. Several may be set, each called in turn: `on`
+ * adds one, off takes it away. The graphics fixes (fax_graphics.c) set one,
+ * and Seams (fax_seams.c) another. */
+void fax_world_set_room_fixup(void (*fixup)(uint8_t area, uint8_t screen, uint8_t *ram), bool on);
 /* ---- for Seams (fax_seams.c, #166) ----
  * Rooms are numbered by their screen in the current area. A room's place is
  * in world pixels: its top-left on the map Seamless lays out around the
