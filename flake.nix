@@ -70,6 +70,10 @@
             # nothing, and on macOS sdl2-compat says so in a dialog on screen.
             # This is the SDL3 sdl2-compat is built with (its package.nix).
             FAX_SANITIZE_RPATH = "${pkgs.lib.getLib (pkgs.sdl3.override { traySupport = false; })}/lib";
+            # The clang-format tools/format.sh and the gate run, by path: on
+            # macOS the stdenv's clang 21 has one too, later on PATH, and two
+            # versions can format the same code differently.
+            FAX_CLANG_FORMAT = "${llvm.clang-tools}/bin/clang-format";
           };
         });
     };
