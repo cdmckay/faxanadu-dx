@@ -1635,6 +1635,227 @@ static void the_hint(void) {
     CHECK(fax_shops_present(NULL, &w, &h) == NULL);
 }
 
+/* ---- after a purchase ---- */
+
+/* The list's hint now, "" for none. */
+static const char *hint_now(void) {
+    static char line[HINT_COLS + 1];
+    return hint(line) ? line : "";
+}
+static void just_bought(void) {
+    enum { ELIXIR_ROW = 2, DELUGE_ROW = 3 };
+    /* Eolis's tool shop, the Hand Dagger in hand: owned before the visit, so
+     * "Already owned" at once. */
+    on(true);
+    carry(1000, NULL, 0);
+    press(TO_BUY);
+    talk(shops[EOLIS_TOOLS].index);
+    CHECK(stuck && ram[MENU_CURSOR_POS] == 0 && !strcmp(hint_now(), "Already owned") && !shop.hushed);
+    /* A on Deluge: the game's checks go on (the hook lets it), and once
+     * Player_AddToInventory has it, his while the gold counts down, the list
+     * still up, there is no hint on it. */
+    carry(1000, NULL, 0);
+    press(TO_BUY "ddd");
+    talk(shops[EOLIS_TOOLS].index);
+    CHECK(stuck && ram[MENU_CURSOR_POS] == DELUGE_ROW && !*hint_now());
+    CHECK(buy_pick_hook(BUY_PICK) == 0 && shop.hushed && shop.cursor[BUY] == DELUGE_ROW);
+    ram[list_at[3] + ram[NUMBER_OF_WEAPONS + 3]++] = DELUGE & 0x1F;
+    CHECK(owned_entry(DELUGE_ROW) && !*hint_now());
+    /* Deluge bought: the list is drawn again, its cursor at the top until the
+     * menu's first update puts it back, and no hint, not even the dagger's
+     * there: it is the item just bought the list shows the cursor on. */
+    carry(1000, NULL, 0);
+    press(TO_BUY "dddA");
+    talk(shops[EOLIS_TOOLS].index);
+    CHECK(stuck && count_of(DELUGE) == 1 && shop.hushed && shop.restore && owned_entry(DELUGE_ROW));
+    CHECK(ram[MENU_CURSOR_POS] == 0 && cursor_shown() == DELUGE_ROW && !*hint_now());
+    /* The cursor put back on it, a frame with no button: still none. */
+    carry(1000, NULL, 0);
+    press(TO_BUY "dddA.");
+    talk(shops[EOLIS_TOOLS].index);
+    CHECK(stuck && !shop.restore && ram[MENU_CURSOR_POS] == DELUGE_ROW && shop.hushed && !*hint_now());
+    /* Up to the Elixir, not owned: no hint. Down, back on Deluge: "Already owned". */
+    carry(1000, NULL, 0);
+    press(TO_BUY "dddA.u");
+    talk(shops[EOLIS_TOOLS].index);
+    CHECK(stuck && ram[MENU_CURSOR_POS] == ELIXIR_ROW && !shop.hushed && !*hint_now());
+    carry(1000, NULL, 0);
+    press(TO_BUY "dddA.ud");
+    talk(shops[EOLIS_TOOLS].index);
+    CHECK(stuck && ram[MENU_CURSOR_POS] == DELUGE_ROW && !strcmp(hint_now(), "Already owned"));
+    /* A on it again does nothing, and the hint says why. */
+    on(true);
+    carry(1000, NULL, 0);
+    press(TO_BUY "dddA.A");
+    talk(shops[EOLIS_TOOLS].index);
+    CHECK(stuck && ignored == 1 && ram[MENU_CURSOR_POS] == DELUGE_ROW && !strcmp(hint_now(), "Already owned"));
+    /* A list of one, Eolis's key shop: the J key bought, no hint; Down wraps
+     * back to it, which counts as leaving it: "Already owned". */
+    carry(1000, NULL, 0);
+    press(TO_BUY "A.");
+    talk(shops[EOLIS_KEYS].index);
+    CHECK(stuck && count_of(KEY_J) == 1 && shop.hushed && owned_entry(0) && !*hint_now());
+    carry(1000, NULL, 0);
+    press(TO_BUY "A.d");
+    talk(shops[EOLIS_KEYS].index);
+    CHECK(stuck && ram[MENU_CURSOR_POS] == 0 && !shop.hushed && !strcmp(hint_now(), "Already owned"));
+    /* A consumable: never a hint. Nor does the hush outlive the visit. */
+    carry(1000, NULL, 0);
+    press(TO_BUY "dA.");
+    talk(shops[EOLIS_TOOLS].index);
+    CHECK(stuck && shop.hushed && !*hint_now());
+    ram[MENU_CURSOR_POS] = 0; /* (the dagger, as if the cursor were there) */
+    CHECK(!strcmp(hint_now(), "Already owned"));
+    carry(1000, NULL, 0);
+    press(TO_BUY);
+    talk(shops[EOLIS_TOOLS].index);
+    CHECK(!shop.hushed && !strcmp(hint_now(), "Already owned"));
+    /* Saved with the machine; a state of version 2 (before the hush) shows
+     * its hint at once. */
+    carry(1000, NULL, 0);
+    press(TO_BUY "dddA.");
+    talk(shops[EOLIS_TOOLS].index);
+    uint8_t buf[32];
+    int n = save_get(buf, sizeof buf);
+    CHECK(n == STATE_LEN && buf[0] == 3 && buf[20] == 1 && save_validate(buf, n));
+    shop = (Session){ 0 };
+    CHECK(save_set(buf, n) && shop.hushed && shop.traded && !*hint_now());
+    buf[0] = 2;
+    CHECK(save_validate(buf, STATE_V2_LEN) && save_set(buf, STATE_V2_LEN) && !shop.hushed && shop.traded);
+    CHECK(!strcmp(hint_now(), "Already owned"));
+    CHECK(!save_validate(buf, STATE_LEN)); /* version 2 is 20 bytes */
+    buf[0] = STATE_VERSION;
+    buf[20] = 2;
+    CHECK(!save_validate(buf, STATE_LEN));
+}
+
+/* ---- a price on screen, as the list goes ---- */
+
+/* Entry i's price in the nametable, as Shop_Draw writes it. */
+static void put_price(unsigned i, unsigned price) {
+    for (int k = PRICE_COLS - 1; k >= 0; --k, price /= 10)
+        ciram[PRICE_ROW(i) * 32 + PRICE_COL + k] =
+            (uint8_t)((k == PRICE_COLS - 1 || price) ? DIGIT_TILE + price % 10 : 0);
+}
+/* What entry i's price cells show in `px`: 'O' OWNED (a letter's one pixel
+ * at each cell's top left, on the box's inside), 'b' the box's inside, 'n'
+ * the native picture (the price, uncovered), '?' anything else. */
+static char cells(const uint32_t *px, unsigned i) {
+    uint32_t inside = cyc_render_color(0);
+    bool letters = true, blank = true, bare = true;
+    for (int r = 0; r < 8; ++r)
+        for (int c = 0; c < PRICE_COLS * 8; ++c) {
+            uint32_t v = px[(PRICE_ROW(i) * 8 + r) * 256 + PRICE_COL * 8 + c];
+            bool corner = r == 0 && c % 8 == 0;
+            letters = letters && (corner ? v != inside && v != native[0] : v == inside);
+            blank = blank && v == inside;
+            bare = bare && v == native[0];
+        }
+    return letters ? 'O' : blank ? 'b' : bare ? 'n' : '?';
+}
+/* The picture now: each entry's price cells (cells()), "" if nothing is drawn. */
+static const char *prices_drawn(void) {
+    static char out[PAGE + 1];
+    int w = 256, h = 240;
+    const uint32_t *px = fax_shops_present(NULL, &w, &h);
+    if (!px) return "";
+    for (unsigned i = 0; i < PAGE; ++i) out[i] = cells(px, i);
+    out[PAGE] = 0;
+    return out;
+}
+static void closing(void) {
+    for (int ch = 0x21; ch < 0x80; ++ch) cart[13 * 16384 + (ch - 0x20) * 8] = 0x80;
+    for (int i = 0; i < 256 * 240; ++i) native[i] = 0xFF123456u;
+    static const uint16_t eolis[] = { 400, 160, 320, 400 };
+
+    /* Eolis's tool shop, the Hand Dagger in hand (owned before the visit):
+     * the list up, its frame and prices drawn; OWNED over the dagger's. */
+    on(true);
+    carry(1000, NULL, 0);
+    press(TO_BUY);
+    talk(shops[EOLIS_TOOLS].index);
+    frame_list(true);
+    for (unsigned i = 0; i < 4; ++i) put_price(i, eolis[i]);
+    CHECK(!strcmp(prices_drawn(), "Onnnnnnn"));
+    /* B, nothing bought: IScriptAction_EndScript, which takes frames
+     * (IScripts_ClearPortraitImage, its ID $FF at once) before its
+     * TextBox_Close, the list up all the while: the dagger's price stays
+     * covered, with no hint. */
+    CHECK(buy_end_hook(BUY_END) == 0 && shop.shown == NONE);
+    CHECK(!strcmp(prices_drawn(), "Onnnnnnn"));
+    ram[ISCRIPT_PORTRAIT_ID] = 0xFF;
+    CHECK(!strcmp(prices_drawn(), "Onnnnnnn") && !*hint_now());
+    /* A row that shows another price is not the one kept: uncovered. */
+    put_price(0, 160);
+    CHECK(!strcmp(prices_drawn(), ""));
+    put_price(0, 400);
+    /* TextBox_ClearForPortraitAndText: TextBox_Closed at once, and Seamless
+     * shows no box: nothing is drawn, the prices still in the nametable. Nor
+     * after, if a screen's tiles make TextBox_Closed read 0 again. */
+    text_box(2, 8, 30, 20);
+    ram[TEXTBOX_CLOSED] = 1;
+    CHECK(!strcmp(prices_drawn(), "") && !last_list.kept);
+    text_box(LIST_X, LIST_Y, LIST_W, LIST_H);
+    CHECK(!strcmp(prices_drawn(), ""));
+
+    /* Deluge bought, then B: "Thank you for shopping." first, so
+     * Maybe_Shop_DrawTextBox's two frames with the list up, then the
+     * dialogue box (10,16, 20 x 8) over its middle, the only box Seamless
+     * shows: the dagger's price (row 11) is left in the nametable but not on
+     * screen, so not covered; Deluge's (row 17) is in the dialogue box until
+     * its rows are written over it. */
+    enum { DELUGE_ROW = 3 };
+    on(true);
+    carry(1000, NULL, 0);
+    press(TO_BUY "dddA.");
+    talk(shops[EOLIS_TOOLS].index);
+    frame_list(true);
+    for (unsigned i = 0; i < 4; ++i) put_price(i, eolis[i]);
+    CHECK(!strcmp(prices_drawn(), "OnnOnnnn"));
+    CHECK(buy_end_hook(BUY_END) == 1 && shop.leaving == LEAVING && shop.shown == NONE);
+    CHECK(!strcmp(prices_drawn(), "OnnOnnnn"));
+    text_box(10, 16, 20, 8);
+    CHECK(PRICE_ROW(DELUGE_ROW) == 17 && !strcmp(prices_drawn(), "nnnOnnnn"));
+    memset(ciram + 16 * 32 + 10, 0, 2 * 32); /* the box's first two rows: Deluge's price written over */
+    CHECK(!strcmp(prices_drawn(), ""));
+
+    /* The sell list's "0" (an item not for sale) the same: two pages, the
+     * second's first entry, the Dragon Slayer, not for sale. Turned to it,
+     * the first page's prices are still in the nametable until the list is
+     * drawn again: the A key's 0 under the Long Sword stays covered too. */
+    on(true);
+    static const uint8_t carried[] = { RED_POTION, KEY_J, KEY_Q,      KEY_K,      MATTOCK,
+                                       RED_POTION, KEY_A, RED_POTION, LONG_SWORD, DRAGON_SLAYER };
+    carry(0, carried, sizeof carried);
+    ram[0x03BD] = GIANT_BLADE;
+    press(TO_SELL "ddddddddd");
+    talk(shops[EOLIS_TOOLS].index);
+    CHECK(stuck && shop.page == 1 && ram[DATA_ARRAY] == DRAGON_SLAYER && ram[DATA_ARRAY + 1] == LONG_SWORD);
+    static const uint16_t page1[] = { 80, 0, 80, 0, 0, 0, 0, 80 };
+    frame_list(true);
+    for (unsigned i = 0; i < PAGE; ++i) put_price(i, page1[i]);
+    CHECK(!strcmp(prices_drawn(), "bbnbbbbn"));
+    /* Drawn again: the Dragon Slayer's 0, the Long Sword's 800. */
+    frame_list(true);
+    put_price(0, 0);
+    put_price(1, 800);
+    CHECK(!strcmp(prices_drawn(), "bnnnnnnn"));
+    /* B, nothing sold: the 0 stays covered while the list is up. */
+    CHECK(sell_end_hook(SELL_END) == 0 && shop.shown == NONE);
+    ram[ISCRIPT_PORTRAIT_ID] = 0xFF;
+    CHECK(!strcmp(prices_drawn(), "bnnnnnnn"));
+    ram[TEXTBOX_CLOSED] = 1;
+    CHECK(!strcmp(prices_drawn(), ""));
+    /* A 0 in a script that is not a shop's: left alone. */
+    frame_list(true);
+    put_price(0, 0);
+    press("A");
+    talk(0);
+    text_box(LIST_X, LIST_Y, LIST_W, LIST_H);
+    CHECK(!strcmp(prices_drawn(), ""));
+    on(true);
+}
+
 int main(void) {
     build_bank12();
     CHECK(site_count == 13 && reset_cb && activate_cb && save_get && save_set && save_validate);
@@ -1652,6 +1873,8 @@ int main(void) {
     off();
     isolated_and_saved();
     the_hint();
+    just_bought();
+    closing();
     red_potions();
     found_items();
     printf("shops_test: %u checks passed (%u hook calls)\n", checks, fired);

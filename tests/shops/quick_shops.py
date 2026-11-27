@@ -46,6 +46,19 @@ talk-message   "This is not enough Golds." goes back to the list, without
                "What would you like?" again; B there, nothing bought: the end,
                with no thanks. Then, in another conversation, B in the buy
                list at once ends it quietly too.
+talk-owned     OWNED and the hint, frame by frame (#203), with the Giant Blade
+               in hand: A buys the Hand Dagger, and from that frame (it is
+               his while the gold counts down, then the list is drawn again)
+               no frame has a hint until Down moves the cursor; Up, back on
+               it: "Already owned". B, the thanks. A second visit, owning it:
+               "Already owned" as the list opens; B at once. A third sells
+               it, B, the thanks. No frame of the three shows its 400 once
+               bought, nor the J key's 0 in the sell list (not for sale): not
+               as a list opens or is drawn again, nor as it goes. After B
+               the list stays up for frames (IScriptAction_EndScript's
+               before its TextBox_Close, Maybe_Shop_DrawTextBox's before
+               the dialogue box), its prices under it: on master those
+               showed.
 talk-original  The remaster off, in the stock view: the original's
                conversation, one purchase and its thanks, held to the same
                rules, which it keeps.
@@ -77,7 +90,7 @@ last-one   Selling the last item (a Red Potion) empties the list ("You have
            on to buying, with "What would you like?".
 owned-*    Mascon's tool shop (Large Shield 3500, Thunder 1200, Mattock 800,
            Red Potion 600), with 9000 Golds and a Red Potion: the Mattock is
-           priced, and buying it marks it OWNED at once
+           priced, and buying it marks it OWNED at once, with no hint yet
            (it is kept, reusable tools). Coming back, it keeps its row with
            OWNED where the price was, the hint says "Already owned" on it, and
            A there does nothing: no gold, no line, the list as it was. Thunder
@@ -91,9 +104,10 @@ owned-*    Mascon's tool shop (Large Shield 3500, Thunder 1200, Mattock 800,
 owned-gear A weapon, armor, shield or spell the hero has is OWNED (#165), at
            Eolis's tool shop with 2000 Golds, the Giant Blade in hand and a
            Long Sword carried: the Hand Dagger, weaker, is for sale; bought,
-           its row says OWNED, the hint "Already owned", and A on it does
-           nothing (no gold, and not the game's "You can't carry any more.").
-           The same for Deluge. B, the thanks; in the sell list the dagger
+           its row says OWNED, with no hint (#203), and A on it does nothing
+           (no gold, and not the game's "You can't carry any more."), the
+           hint then "Already owned". The same for Deluge. B, the thanks;
+           in the sell list the dagger
            still sells (200), and back in the buy list it is for sale again,
            and buys. Then, the dagger equipped (in no list): OWNED too, and a
            Red Potion buys twice in a row: a consumable is never owned. (With
@@ -178,6 +192,7 @@ PALETTE_MIST, REGION_MIST = 0x0A, 2
 ZONE_NAMES = "faxanadu.zone-names"                                  # its record: the area and screen, at 5 and 6
 LIST_FRAME = (80, 64)                                               # the list's top-left frame tile, tile 10,8
 HINT = (96, 208)                                                    # its hint line: tile 12,26
+PRICE_X, PRICE_YS = 184, range(88, 88 + 8 * 16, 16)                 # each entry's price: column 23, its second row
 PAGE_ROW, LINE_END = 72, 224                                        # the page: row 9, ending at column 27
 PACKAGE = ("faxanadu.dx", "dx")                                  # the one switch: off is the original game
 # The boxes, in native pixels: TextBox_Open's corner tiles, at the top left and bottom right of each.
@@ -220,7 +235,7 @@ def carrying(gold_amount, weapon_list, item_list, weapon=HAND_DAGGER, spells=())
 
 
 TOOL_KIT = carrying(1100, [DRAGON_SLAYER, LONG_SWORD], [KEY_J, KEY_A, WING_BOOTS], GIANT_BLADE)
-PARTS = ("talk-buy", "talk-sell", "talk-message", "talk-original", "tool-shop", "key-shop", "two-pages",
+PARTS = ("talk-buy", "talk-sell", "talk-message", "talk-owned", "talk-original", "tool-shop", "key-shop", "two-pages",
          "last-one", "owned-mascon", "owned-found", "owned-key", "owned-gear", "a-key", "dartmoor",
          "original")                                                                   # each its own game
 
@@ -407,17 +422,24 @@ def check_priced(path, entry, price):
 # ---- a conversation, headless and frame exact ----
 
 class Frame:
-    """One frame of a headless conversation: its RAM and OAM after it, and
-    what its presented picture showed of the boxes (the corner cells and
-    whether the dialogue box's lines are empty)."""
+    """One frame of a headless conversation: its RAM, OAM and nametable after
+    it, and what its presented picture showed of the boxes (the corner cells
+    and whether the dialogue box's lines are empty), of each list entry's
+    price cells (a checksum each, and the nametable's tiles there), and
+    whether the list's hint row has anything in it. `pressed` is the button
+    pressed on it, if any."""
 
-    def __init__(self, number, ram_, oam, picture):
-        self.number, self.ram, self.oam, self.path = number, ram_, oam, picture
+    def __init__(self, number, ram_, oam, picture, ciram=b""):
+        self.number, self.ram, self.oam, self.path, self.pressed = number, ram_, oam, picture, None
         p = Picture(picture)
         self.width = p.width
         self.cells = {name: (p.cell(*a), p.cell(*b)) for name, (a, b) in
                       (("portrait", PORTRAIT_BOX), ("dialogue", DIALOGUE_BOX), ("list", LIST_BOX))}
         self.blank = p.blank(TEXT_AREA, INSIDE)
+        self.prices = [[zlib.crc32(p.cell(x, y)) for x in range(PRICE_X, PRICE_X + 40, 8)] for y in PRICE_YS]
+        self.tiles = [bytes(ciram[y // 8 * 32 + PRICE_X // 8:y // 8 * 32 + PRICE_X // 8 + 5]) for y in PRICE_YS] \
+            if ciram else []
+        self.hint = not p.blank((*HINT, 128, 8), (HINT[0], PAGE_ROW))
 
     @property
     def message(self):
@@ -445,7 +467,7 @@ class Frame:
 
 
 def read_log(path):
-    """A --frame-log: (frame, RAM, OAM) for each frame."""
+    """A --frame-log: (frame, RAM, OAM, CIRAM: the nametables) for each frame."""
     data = Path(path).read_bytes()
     assert data[:8] == b"CYCFRAME"
     out, pos = [], 12
@@ -453,7 +475,7 @@ def read_log(path):
         head = struct.unpack_from("<9I", data, pos)
         oam = data[pos + 36 + 32:pos + 36 + 32 + 256]
         pos += 36 + 32 + 256
-        out.append((head[0], data[pos:pos + head[3]], oam))
+        out.append((head[0], data[pos:pos + head[3]], oam, data[pos + head[3]:pos + head[3] + head[4]]))
         pos += head[3] + sum(head[4:9])
     return out
 
@@ -525,13 +547,17 @@ def converse(game, name, state, plans, original=False):
                                    "--present-every", "1", "--save-state", f"{start + SEGMENT - 1}:{after}"],
                                   capture_output=True, text=True)
             assert done.returncode == 0, done.stdout + done.stderr
+            pressed = None
             if press:
-                watch.pressed(len(frames) + 1)
+                pressed = len(frames) + 1
+                watch.pressed(pressed)
                 if k == 0:
-                    waited[(p, 0)] = len(frames) + 1
-            press, found, finished = None, None, None
-            for number, ram_, oam in read_log(seg / "frames.bin"):
-                f = Frame(number, ram_, oam, seg / f"p_{number:05d}.png")
+                    waited[(p, 0)] = pressed
+            button, press, found, finished = press, None, None, None
+            for number, ram_, oam, ciram in read_log(seg / "frames.bin"):
+                f = Frame(number, ram_, oam, seg / f"p_{number:05d}.png", ciram)
+                if len(frames) == pressed:
+                    f.pressed = button
                 i = len(frames)
                 frames.append(f)
                 watch.see(i, f)
@@ -818,6 +844,74 @@ def main():
                   "nothing bought, ends with no thanks; and B in the list at once ends quietly; no flash")
             shutil.rmtree(run)
 
+        if args.wants("talk-owned"):
+            # The Giant Blade in hand, a Long Sword and the J key carried: the Hand Dagger is for sale.
+            kit = carrying(2000, [LONG_SWORD], [KEY_J], GIANT_BLADE)
+            bought = [("greeting", "A"), ("menu", "A"), ("line", "A"), ("list", "A"), ("list", "DOWN"),
+                      ("still", "UP"), ("still", "B"), ("thanks", "A")]
+            again = [("greeting", "A"), ("menu", "A"), ("line", "A"), ("list", "B")]
+            sold = [("greeting", "A"), ("menu", "DOWN"), ("menu", "A"), ("line", "A"), ("list", "DOWN"),
+                    ("still", "A"), ("list", "B"), ("thanks", "A")]
+            frames, waited, ended, run = talk("owned", kit, [bought, again, sold])
+            visits = [frames[:ended[0] + 1], frames[ended[0] + 1:ended[1] + 1], frames[ended[1] + 1:]]
+            for f in frames:
+                f.up = f.box == LIST_GEOMETRY and not f.ram[TEXTBOX_CLOSED]
+
+            # 1. A buys the dagger: OWNED at once, and no hint until the cursor moves (Down).
+            first = visits[0]
+            buy_at = next(i for i, f in enumerate(first) if f.ram[NUMBER_OF_WEAPONS] == 2)
+            a_at = max(i for i, f in enumerate(first[:buy_at + 1]) if f.pressed == "A")
+            assert buy_at - a_at <= 2, (a_at, buy_at)
+            moved = next(i for i, f in enumerate(first) if i > buy_at and f.ram[MENU_CURSOR] != 0)
+            assert first[moved].pressed == "DOWN" and first[moved].ram[MENU_CURSOR] == POTION_ROW, moved
+            window = first[a_at:moved]
+            assert all(f.up for f in window), "the list went before the cursor moved"
+            hinted = [f.number for f in window if f.hint]
+            assert not hinted, f"a hint after the purchase, before the cursor moved, at frames {hinted[:10]}"
+            path = keep(game, run, "0-5", "owned-bought")
+            check_owned(path, 0)
+            check_hint(path, None)
+            check_hint(keep(game, run, "0-6", "owned-moved"), None)
+            path = keep(game, run, "0-7", "owned-back")                  # Up: back on the dagger
+            check_owned(path, 0)
+            check_hint(path, "Already owned")
+            print(f"ok: headless, frame exact: the Hand Dagger bought, OWNED at once and no hint in any of the "
+                  f"{len(window)} frames until Down; back on it, \"Already owned\"")
+
+            # 2. Owned before this visit: "Already owned" as the list opens.
+            path = keep(game, run, "1-4", "owned-before")
+            check_owned(path, 0)
+            check_hint(path, "Already owned")
+            print("ok: owned before the visit, the dagger says \"Already owned\" as soon as the list is up")
+
+            # 3. No frame shows a covered price: the dagger's 400 from its purchase on (the list
+            # redrawn, B and the thanks, then a visit owning it, its list opening and B at once), and
+            # the J key's 0 in the sell list (a sale, B and the thanks). The digits are the game's
+            # tiles ($30 + the digit, UI_DrawDigitsNoLeadingZeroes), as drawn uncovered in the
+            # first visit's list before the purchase; where a covered price's tiles are in the
+            # nametable, its cells must not show them.
+            glyphs = {}
+            for before, f in zip(first[:a_at], first[1:a_at]):               # settled: the same tiles two frames
+                if f.up and f.drawn and f.cursor and f.tiles == before.tiles:
+                    for row in range(3):
+                        for k in range(5):
+                            if 0x30 <= f.tiles[row][k] <= 0x39:
+                                glyphs.setdefault(f.tiles[row][k], f.prices[row][k])
+            covered, flashes = [(first[buy_at:], 400), (visits[1], 400), (visits[2], 0)], []
+            for n, (part, price) in enumerate(covered):
+                digits = [None if c == " " else 0x30 + int(c) for c in str(price).rjust(5)]
+                assert all(t in glyphs for t in digits if t), (sorted(glyphs), digits)
+                b = next(i for i, f in enumerate(part) if f.pressed == "B")
+                held = [f for f in part[b:] if f.up and f.tiles[0] == bytes(t or 0 for t in digits)]
+                assert held, f"visit {n + 1}: no frame after B with the list up and the price under it"
+                shown = [f.number for f in part if any(t and f.prices[0][k] == glyphs[t] for k, t in enumerate(digits))]
+                if shown:
+                    flashes.append(f"visit {n + 1}: {price} at frames {shown[:10]} (B at {part[b].number})")
+            assert not flashes, "a covered price shows: " + "; ".join(flashes)
+            print(f"ok: no frame shows the dagger's 400 once bought, nor the J key's 0 (the sell list's), "
+                  f"the lists opening, drawn again and going (B, with and without the thanks)")
+            shutil.rmtree(run)
+
         if args.wants("talk-original"):
             # The original's counter, walked to with the remaster off (the stock view).
             launch(on=False)
@@ -1023,8 +1117,8 @@ def main():
             check_priced(path, MATTOCK_ROW, 800)
             state = buy(MATTOCK_ROW)
             assert gold() == 9000 - 800 and items() == [RED_POTION, MATTOCK], (gold(), items())
-            assert state["owned"] == [False, False, True, False] and state["hint"] == "Already owned", state
-            print("ok: Mascon sells the Mattock, and once bought it is owned at once")
+            assert state["owned"] == [False, False, True, False] and state["hint"] is None, state  # just bought
+            print("ok: Mascon sells the Mattock, and once bought it is owned at once, with no hint on it yet")
 
             # Leave, and come back: the row says OWNED, A does nothing, and Thunder still buys (a first
             # shield would bring Block's line at the end).
@@ -1126,19 +1220,20 @@ def main():
             check_priced(path, DELUGE_ROW, 400)
             state = buy(0)
             assert gold() == 1600 and weapons() == [LONG_SWORD, HAND_DAGGER], (gold(), weapons())
-            assert state["owned"] == [True, False, False] and state["hint"] == "Already owned", state
+            assert state["owned"] == [True, False, False] and state["hint"] is None, state   # just bought (#203)
             path = game.shot("dagger-owned")
             check_owned(path, 0)
-            check_hint(path, "Already owned")
+            check_hint(path, None)
             a_does_nothing(0)
+            check_hint(game.shot("dagger-a-again"), "Already owned")
             print("ok: the Hand Dagger, weaker than his Giant Blade and Long Sword, is for sale; bought, it says "
-                  "OWNED, \"Already owned\", and A on it does nothing: no gold, no line")
+                  "OWNED, with no hint until A on it again, which does nothing (no gold, no line): \"Already owned\"")
             press("down")
             press("down")
             state = buy(DELUGE_ROW)
             spells = lambda: list(ram(MAGIC, 4)[:ram(NUMBER_OF_MAGIC)])
             assert gold() == 1200 and spells() == [DELUGE & 0x1F], (gold(), spells())
-            assert state["owned"] == [True, False, True] and state["hint"] == "Already owned", state
+            assert state["owned"] == [True, False, True] and state["hint"] is None, state
             a_does_nothing(DELUGE_ROW)
             path = game.shot("deluge-owned")
             check_owned(path, 0)

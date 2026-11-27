@@ -68,7 +68,9 @@
  *   the cursor is on it, and A on it is ignored, before the game's own checks:
  *   no gold, and not the game's "You can't carry any more." for gear he has.
  *   Sold, it is for sale again. A consumable, and a different piece (a weaker
- *   weapon than his), are never owned.
+ *   weapon than his), are never owned. Just bought, the cursor still on it,
+ *   it has no hint until the next Up, Down or A (#203): OWNED in its row says
+ *   it is his, and "Already owned" at once read as a refusal.
  * - An item not for sale (fax_shops_not_for_sale: one no shop buys, and one
  *   the hero has for good, so a key's giver can't be farmed for gold; gear he
  *   owns still sells, a second copy bought before too) is listed
@@ -93,8 +95,10 @@
  * The hint line ("Not for sale" and "Already owned", while the cursor is on
  * such an item) sits on the list's last row, and the sell list's page ("1 of
  * 2") on its first, inside its frame, in the game's font (fax_text.c), while
- * the list is the box up and its frame is on screen. See
- * docs/GAME_INTERNALS.md, "Shops". */
+ * the list is the box up and its frame is on screen. OWNED, and the blank
+ * over an unsold item's "0", stay for as long as that price is on screen,
+ * the list going too (#203: after B the list stays up for a few frames, and
+ * its price showed). See docs/GAME_INTERNALS.md, "Shops". */
 #include "fax_shops.h"
 #include "fax_found.h"
 #include "fax_keys.h"
@@ -172,7 +176,7 @@
 enum { ISCRIPTS = ISCRIPT_ADDRS_U - ISCRIPT_ADDRS_L }; /* 152 */
 /* IScript actions */
 enum { SHOW_MESSAGE = 0x03, OPEN_SHOP_ACTION = 0x08, SHOW_BUY_SELL_MENU = 0x0F, SHOW_SELL_MENU = 0x11 };
-enum { BUTTON_UP = 0x08, BUTTON_DOWN = 0x04 };
+enum { BUTTON_A = 0x80, BUTTON_UP = 0x08, BUTTON_DOWN = 0x04 };
 enum { SOUND_CURSOR = 0x0B }; /* Menu_UpdateAndDraw's */
 enum { CATEGORIES = 5, ITEMS = 4, PAGE = 8, MOST = 4 + 4 + 4 + 4 + 8 };
 enum { BIT_ELIXIR = 0x08 }; /* SpecialItems' */
@@ -187,8 +191,12 @@ enum {
     HINT_COL = LIST_X + 2,
     HINT_ROW = LIST_Y + LIST_H - 2,
     HINT_COLS = 16,
-    PAGE_ROW = LIST_Y + 1
+    PAGE_ROW = LIST_Y + 1,
+    PRICE_COL = LIST_X + 13, /* Shop_Draw: an entry's price, 5 digits, on its second row */
+    PRICE_COLS = 5
 };
+#define PRICE_ROW(i) (LIST_Y + 3 + 2 * (int)(i))
+enum { DIGIT_TILE = 0x30 }; /* UI_DrawDigitsNoLeadingZeroes: a digit's tile is its ASCII code */
 /* TextBox_Open's frame corner tiles */
 enum { CORNER_TOP_LEFT = 1, CORNER_TOP_RIGHT = 3, CORNER_BOTTOM_LEFT = 5, CORNER_BOTTOM_RIGHT = 6 };
 
@@ -218,11 +226,20 @@ typedef struct {
     uint8_t lines;     /* bits (1 << BUY, 1 << SELL): the list's line has been said this visit */
     uint8_t traded;    /* something was bought or sold this visit */
     uint8_t leaving;   /* B: on the way out, LEAVING, then THANKING once "Thank you for shopping." begins */
+    uint8_t hushed;    /* A on cursor[BUY] to buy it: no hint on it until the next Up, Down or A */
     Script script;
 } Session;
 
 static bool enabled, failed, priced;
 static Session shop;
+/* The list as last shown whole: its OWNED rows (bits, by entry) and their
+ * prices. Kept after it goes, until a box closes or a script begins, so an
+ * owned item's price stays covered for as long as it is on screen. */
+static struct {
+    bool kept;
+    uint8_t owned;
+    uint16_t price[PAGE];
+} last_list;
 static uint16_t lowest[256]; /* by item: the lowest price any shop asks, 0 if none sells it */
 static unsigned opened, bought, sold, refused, ignored, turned, messages, dropped, thanked, boxes_kept;
 static unsigned waits; /* frames a list has waited for a button: it reads the pad */
@@ -475,6 +492,7 @@ static int next_action_hook(uint16_t addr) {
         Script s;
         shop.active = 0;
         shop.shown = NONE;
+        last_list.kept = false;
         if (!shop_script(word(ISCRIPT_ADDR), &s)) return 0;
         if (!priced && !(priced = price_everything())) {
             FAX_SHOPS_LOG("[shops] cannot read the shops' lists; shops are as they were\n");
@@ -524,12 +542,20 @@ static int open_hook(uint16_t addr) {
 }
 
 /* OpenShop's A, before the game's checks: an item the hero owns stays, and
- * the list waits again, as for an item no shop buys in the sell list. */
+ * the list waits again, as for an item no shop buys in the sell list. Any
+ * other may be bought: if it is, it is his from Player_AddToInventory on,
+ * through the gold's count, with the list up, so its hint is hushed from
+ * here (and a refusal, a message, opens the dialogue box over the list). */
 static int buy_pick_hook(uint16_t addr) {
     (void)addr;
     if (!here() || !in_step(BUY, 3)) return 0;
     unsigned cursor = q(MENU_CURSOR_POS);
-    if (cursor >= PAGE || !owned(q((uint16_t)(DATA_ARRAY + cursor)))) return 0;
+    if (cursor >= PAGE) return 0;
+    if (!owned(q((uint16_t)(DATA_ARRAY + cursor)))) {
+        shop.cursor[BUY] = (uint8_t)cursor;
+        shop.hushed = 1;
+        return 0;
+    }
     ++ignored;
     return go(false, BUY_WAIT, 0, 0, -1);
 }
@@ -639,6 +665,13 @@ static int sold_hook(uint16_t addr) {
     return go(false, INVOKE_NEXT_ACTION, 0, 0, -1);
 }
 
+/* Where list `list`'s cursor is put back: where it was, or on the last entry
+ * if the list is shorter now. */
+static unsigned restored(int list) {
+    unsigned count = q(ARG_STRINGS_COUNT);
+    return count && shop.cursor[list] < count ? shop.cursor[list] : count ? count - 1 : 0;
+}
+
 /* IScripts_WaitForMenuInput, each frame before the menu moves: the cursor
  * put back, and the sell list's pages. */
 static int menu_hook(uint16_t addr) {
@@ -650,10 +683,13 @@ static int menu_hook(uint16_t addr) {
     unsigned count = q(ARG_STRINGS_COUNT), cursor = q(MENU_CURSOR_POS);
     if (shop.restore) {
         shop.restore = 0;
-        cursor = count && shop.cursor[list] < count ? shop.cursor[list] : count ? count - 1 : 0;
+        cursor = restored(list);
         p(MENU_CURSOR_POS, (uint8_t)cursor);
     }
     uint8_t pressed = q(JOY1_CHANGED_BUTTON_MASK);
+    /* The cursor leaves the item just bought (in a list of one it wraps back
+     * to it), or A asks for it again: the hint is back. */
+    if (pressed & (BUTTON_A | BUTTON_UP | BUTTON_DOWN)) shop.hushed = 0;
     if (list != SELL || pages() < 2) return 0; /* the menu wraps, as it always did */
     int turn = pressed & BUTTON_UP ? (cursor == 0 ? -1 : 0) : pressed & BUTTON_DOWN ? (cursor + 1 >= count ? 1 : 0) : 0;
     if (!turn) return 0;
@@ -718,12 +754,20 @@ static int keep_hook(uint16_t addr) {
 /* A list of this conversation is the box up: drawn last, and the box the
  * game opened last (a dialogue box opened over it is not). */
 static bool in_list(void) { return shop.active && shop.shown != NONE && q(ISCRIPT_PORTRAIT_ID) != 0xFF && list_open(); }
+/* The entry the cursor is on, as the list shows it: while a list is drawn
+ * again, the one it goes back to (Shop_Draw leaves Menu_CursorPos at the top
+ * until the menu's first update puts it back). */
+static unsigned cursor_shown(void) {
+    return shop.restore && shop.shown <= SELL ? restored(shop.shown) : q(MENU_CURSOR_POS);
+}
 /* The line under the list, or false for none: why A does nothing on the
- * entry under the cursor. The font has no colon or slash (TILE_GLYPHS_START
- * leaves them blank), so the words say it. */
+ * entry under the cursor. None on the item just bought, until the cursor
+ * moves or A is pressed: OWNED in its row says it is his. The font has no
+ * colon or slash (TILE_GLYPHS_START leaves them blank), so the words say it. */
 static bool hint(char out[HINT_COLS + 1]) {
     if (!in_list()) return false;
-    unsigned cursor = q(MENU_CURSOR_POS);
+    unsigned cursor = cursor_shown();
+    if (shop.hushed && shop.shown == BUY && cursor == shop.cursor[BUY]) return false;
     const char *say = unsold_entry(cursor) ? "Not for sale" : owned_entry(cursor) ? "Already owned" : NULL;
     if (!say) return false;
     snprintf(out, HINT_COLS + 1, "%s", say);
@@ -770,29 +814,74 @@ static void to_picture(int w, int h, int *x, int *y) {
  * blanks all but the units), so an item not for sale would read "0". Its
  * price cells are painted the box's inside again: tile 0, all color 0. An
  * owned item's are too, and OWNED is written in them, in the text's color:
- * five letters where five digits go, so it ends where the prices end. */
+ * five letters where five digits go, so it ends where the prices end.
+ *
+ * While the list is the box up and its frame is all on screen, its entries
+ * say which rows are covered. A list's rows outlive that: after B the list
+ * stays up for the frames IScriptAction_EndScript takes before its
+ * TextBox_Close (IScripts_ClearPortraitImage first), or for
+ * Maybe_Shop_DrawTextBox's two frames before the dialogue box opens over its
+ * middle rows and writes them over, top row first. So a row stays covered
+ * for as long as its price is still on screen: the nametable still holds it
+ * there (shown_tile), in the box Seamless shows. A price of 0 is never one
+ * to show (no shop asks 0, and only what is not for sale sells for it), so
+ * it is covered in any list, a page turned over it too; an owned item's is
+ * matched to the price its row had when last shown whole. */
 #define OWNED_LABEL "OWNED"
-static bool covered(unsigned i) { return unsold_entry(i) || owned_entry(i); }
-static bool any_covered(void) {
-    for (unsigned i = 0; i < q(ARG_STRINGS_COUNT) && i < PAGE; ++i)
-        if (covered(i)) return true;
-    return false;
+_Static_assert(sizeof OWNED_LABEL - 1 == PRICE_COLS, "OWNED fills the price's cells");
+/* Seamless (fax_world.c) shows the native picture's text boxes only: the box
+ * opened last, while TextBox_Closed is 0. Whether its rectangle takes in
+ * `cols` cells of row `row` from column `col`. */
+static bool box_shows(int col, int row, int cols) {
+    if (q(TEXTBOX_CLOSED)) return false;
+    int x = q(TEXTBOX_X), y = q(TEXTBOX_X + 1);
+    return col >= x && col + cols <= x + q(TEXTBOX_X + 2) && row >= y && row < y + q(TEXTBOX_X + 3);
 }
-static void cover_prices(uint32_t *px, int w, int h) {
-    enum { PRICE_COL = LIST_X + 13, PRICE_COLS = 5 }; /* Shop_Draw: X + 13, 5 digits, on an entry's second row */
-    _Static_assert(sizeof OWNED_LABEL - 1 == PRICE_COLS, "OWNED fills the price's cells");
-    unsigned count = q(ARG_STRINGS_COUNT);
+/* Entry i's price cells show `price` as Shop_Draw writes it (five cells, a
+ * digit's tile its ASCII code, the leading zeros tile 0, the units always),
+ * in the box on screen. */
+static bool price_shown(unsigned i, uint16_t price) {
+    int row = PRICE_ROW(i);
+    if (!box_shows(PRICE_COL, row, PRICE_COLS)) return false;
+    unsigned left = price;
+    for (int k = PRICE_COLS - 1; k >= 0; --k, left /= 10)
+        if (shown_tile(PRICE_COL + k, row) != ((k == PRICE_COLS - 1 || left) ? DIGIT_TILE + left % 10 : 0u))
+            return false;
+    return true;
+}
+/* The list is shown whole: what it shows is kept (last_list). */
+static void keep_list(void) {
+    last_list.kept = true;
+    last_list.owned = 0;
+    for (unsigned i = 0; i < PAGE; ++i) {
+        if (owned_entry(i)) last_list.owned |= (uint8_t)(1u << i);
+        last_list.price[i] =
+            (uint16_t)(q((uint16_t)(SHOP_ITEM_COSTS_L + i)) | q((uint16_t)(SHOP_ITEM_COSTS_U + i)) << 8);
+    }
+}
+/* The rows whose price cells are covered this frame (bits, by entry), and
+ * those of them that say OWNED. `whole`: the list is the box up, its frame
+ * all on screen. */
+static void covers(bool whole, uint8_t *blank, uint8_t *mine) {
+    *blank = *mine = 0;
+    if (!last_list.kept) return;
+    for (unsigned i = 0; i < PAGE; ++i) {
+        uint8_t bit = (uint8_t)(1u << i);
+        if ((last_list.owned & bit) && (whole || price_shown(i, last_list.price[i]))) *mine |= bit;
+        if ((*mine & bit) || (whole && unsold_entry(i)) || price_shown(i, 0)) *blank |= bit;
+    }
+}
+static void cover_prices(uint32_t *px, int w, int h, uint8_t blank, uint8_t mine) {
     uint32_t inside = cyc_render_color(0);
-    for (unsigned i = 0; i < count && i < PAGE; ++i) {
-        bool mine = owned_entry(i);
-        if (!covered(i)) continue;
-        int x0 = PRICE_COL * FAX_TEXT_CELL, y0 = (LIST_Y + 3 + 2 * (int)i) * FAX_TEXT_CELL;
+    for (unsigned i = 0; i < PAGE; ++i) {
+        if (!(blank & 1u << i)) continue;
+        int x0 = PRICE_COL * FAX_TEXT_CELL, y0 = PRICE_ROW(i) * FAX_TEXT_CELL;
         int x1 = x0 + PRICE_COLS * FAX_TEXT_CELL, y1 = y0 + FAX_TEXT_CELL, x = x0, y = y0;
         to_picture(w, h, &x0, &y0);
         to_picture(w, h, &x1, &y1);
         for (int yy = y0 < 0 ? 0 : y0; yy < y1 && yy < h; ++yy)
             for (int xx = x0 < 0 ? 0 : x0; xx < x1 && xx < w; ++xx) px[(size_t)yy * (size_t)w + (size_t)xx] = inside;
-        if (!mine) continue;
+        if (!(mine & 1u << i)) continue;
         to_picture(w, h, &x, &y);
         fax_text_draw(px, w, h, x, y, OWNED_LABEL, 255);
     }
@@ -803,9 +892,14 @@ static size_t capacity;
 
 const uint32_t *fax_shops_present(const uint32_t *picture, int *w, int *h) {
     char line[HINT_COLS + 1], page[HINT_COLS + 1];
-    if (!enabled || failed || !in_list() || !list_shown()) return picture;
-    bool hinted = hint(line), paged = page_label(page);
-    if (!hinted && !paged && !any_covered()) return picture;
+    if (!enabled || failed) return picture;
+    bool whole = in_list() && list_shown();
+    if (whole) keep_list();
+    else if (q(TEXTBOX_CLOSED)) last_list.kept = false; /* every box of the conversation has gone */
+    uint8_t blank, mine;
+    covers(whole, &blank, &mine);
+    bool hinted = whole && hint(line), paged = whole && page_label(page);
+    if (!hinted && !paged && !blank) return picture;
     if (!fax_text_loaded() && !fax_text_load()) {
         FAX_SHOPS_LOG("[shops] cannot read the game's font; the list's hint is off\n");
         failed = true;
@@ -824,7 +918,7 @@ const uint32_t *fax_shops_present(const uint32_t *picture, int *w, int *h) {
         capacity = n;
     }
     memcpy(canvas, from, n * sizeof *canvas);
-    cover_prices(canvas, width, height);
+    cover_prices(canvas, width, height, blank, mine);
     int x, y;
     if (hinted) {
         x = HINT_COL * FAX_TEXT_CELL, y = HINT_ROW * FAX_TEXT_CELL;
@@ -856,6 +950,7 @@ static void hooks(int on) {
 static void deactivate(void) {
     enabled = failed = priced = false;
     shop = (Session){ .mode = NONE, .shown = NONE };
+    last_list.kept = false;
     opened = bought = sold = refused = ignored = turned = messages = waits = dropped = thanked = boxes_kept = 0;
     hooks(0);
 }
@@ -868,8 +963,11 @@ static void activate(void) {
 /* Saved with the machine: the conversation, which a state saved in a shop
  * goes on with. Version 1 (Quick shops before #163: straight to the buy list,
  * Select between the lists) had no lines, trade or leaving: a state of it in
- * a list goes on in that list, its line said. */
-enum { STATE_VERSION = 2, STATE_LEN = 20, STATE_V1_LEN = 17 };
+ * a list goes on in that list, its line said. Version 2 (before #203) had no
+ * hush: its hint shows at once. The rows a closing list still covers
+ * (last_list) are not saved: a state loaded mid-close shows its prices for
+ * the frames left of it. */
+enum { STATE_VERSION = 3, STATE_LEN = 21, STATE_V2_LEN = 20, STATE_V1_LEN = 17 };
 static int state_get(uint8_t *buf, int cap) {
     if (cap < STATE_LEN) return -1;
     const uint16_t w[4] = { shop.script.base, shop.script.buy, shop.script.sell, shop.script.items };
@@ -889,18 +987,22 @@ static int state_get(uint8_t *buf, int cap) {
     buf[17] = shop.lines;
     buf[18] = shop.traded;
     buf[19] = shop.leaving;
+    buf[20] = shop.hushed;
     return STATE_LEN;
 }
 static int state_validate(const uint8_t *buf, int len) {
     if (len == 0) return 1;
-    bool v1 = len == STATE_V1_LEN && buf[0] == 1, v2 = len == STATE_LEN && buf[0] == STATE_VERSION;
-    return (v1 || v2) && buf[1] <= 1 && buf[2] <= NONE && buf[3] <= NONE && buf[4] < (MOST + PAGE - 1) / PAGE &&
+    bool v1 = len == STATE_V1_LEN && buf[0] == 1, v2 = len == STATE_V2_LEN && buf[0] == 2,
+         v3 = len == STATE_LEN && buf[0] == STATE_VERSION;
+    return (v1 || v2 || v3) && buf[1] <= 1 && buf[2] <= NONE && buf[3] <= NONE && buf[4] < (MOST + PAGE - 1) / PAGE &&
            buf[5] < PAGE && buf[6] < PAGE && buf[7] <= 1 && buf[8] <= MOST &&
-           (v1 || (buf[17] <= (1u << BUY | 1u << SELL) && buf[18] <= 1 && buf[19] <= THANKING));
+           (v1 || (buf[17] <= (1u << BUY | 1u << SELL) && buf[18] <= 1 && buf[19] <= THANKING)) &&
+           (!v3 || buf[20] <= 1);
 }
 static int state_set(const uint8_t *buf, int len) {
     if (!state_validate(buf, len)) return 0;
     shop = (Session){ .mode = NONE, .shown = NONE };
+    last_list.kept = false;
     if (!len) return 1; /* a state from before Quick shops: no shop under way */
     shop.active = buf[1];
     shop.mode = buf[2];
@@ -913,10 +1015,11 @@ static int state_set(const uint8_t *buf, int len) {
     uint16_t w[4];
     for (int i = 0; i < 4; ++i) w[i] = (uint16_t)(buf[9 + 2 * i] | buf[10 + 2 * i] << 8);
     shop.script = (Script){ w[0], w[1], w[2], w[3] };
-    if (len == STATE_LEN) {
+    if (len >= STATE_V2_LEN) {
         shop.lines = buf[17];
         shop.traded = buf[18];
         shop.leaving = buf[19];
+        if (len == STATE_LEN) shop.hushed = buf[20];
     } else if (shop.mode <= SELL) {
         shop.lines = (uint8_t)(1u << shop.mode);
     }
