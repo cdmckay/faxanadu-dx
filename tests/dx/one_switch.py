@@ -82,6 +82,7 @@ STATES = {
     "found-items": ("found_state", "enabled"),
     "select-menu": ("select_menu_state", "enabled"),
     "controls": ("controls_state", "enabled"), "use-item": ("use_item_state", "enabled"),
+    "run": ("run_state", "enabled"),
     "seamless-world": ("fax_world", "enabled"), "seams": ("seams_state", "enabled"),
     "punches": ("punches_state", "enabled"),
 }
