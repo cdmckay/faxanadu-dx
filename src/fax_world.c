@@ -71,14 +71,20 @@ static bool view_ok;
  * live game: a neighbour's tick sees him projected (shadow()). */
 static int hero_wx, hero_wy;
 static bool death_mode, script_mode;
+/* The active room came in by a load the game shows before its main loop
+ * runs there (arrive()): until the loop's first tick, the picture shows the
+ * game's own picture of the room at its place. */
+static bool arriving;
 static int camera_x, camera_y, picture_w, picture_h;
 static int origin_x, origin_y;
 static bool origin_valid;
 static int hud_x = -1, hud_w; /* where the status bar's column 0 went in the last picture, and its width */
 static uint32_t *canvas;
 static size_t capacity;
-/* The last fax_world_present composed the canvas (fax_world_composed). */
-static bool composed;
+/* The last fax_world_present composed the canvas (fax_world_composed), and
+ * whether it composed the world rather than the game's own picture centred
+ * (leaving()). */
+static bool composed, world_shown;
 /* The status bar band (the native picture's top 32 lines) of the last frame
  * that showed it, live in play and through conversations (fax_world_step). */
 static uint32_t hud_band[RW * HUD];
@@ -479,7 +485,7 @@ static int player_hook(uint16_t pc) {
         cyc_mod_set_ram_read_hook(NULL);
         return 0;
     }
-    if (scene_ready() && q(0x100) == 14) death_mode = script_mode = false; /* main loop resumed */
+    if (scene_ready() && q(0x100) == 14) death_mode = script_mode = arriving = false; /* main loop resumed */
     if (playing()) refresh(false);
     pre_x = q(0x9e);
     pre_y = q(0xa1);
@@ -605,12 +611,34 @@ static int draw_hook(uint16_t pc) {
 }
 static void step(void);
 static void camera_at(int hx, int hy, int *cx, int *cy);
+/* Seamless takes a room in play (refresh, from step and player_hook) only on
+ * a frame that ends in the main loop's bank, its screen set up, with neither
+ * its script nor its death mode on, and those go off only at Game_MainLoop's
+ * next tick. A door whose key says "I've used key." leaves script_mode on, a
+ * zone respawn death_mode; and the game turns the new room's picture back on
+ * (Screen_ResetForGamePlay) a frame before it waits in
+ * GameLoop_LoadSpriteImages for the sprites' tiles. So the room showed 8 to
+ * 15 frames before that tick, as the game's own picture centred, and jumped
+ * to its place as the loop began (#204). Now the map is laid out from the new
+ * room on the first frame its picture shows the status bar, the game's
+ * screen set up (scene_ready()): the room is at its place under the camera
+ * from that frame, the rooms round it with it. Until the loop's tick it is
+ * the game's own picture there (arriving, fax_world_present), as through a
+ * death: the room's capture has no sprites yet, and a script may run on. */
+static void arrive(void) {
+    if ((active >= 0 && area == q(0x24) && active == q(0x63)) || !scene_ready() || q(0x120) || !fax_text_hud_showing())
+        return;
+    refresh(false);
+    arriving = active >= 0 && area == q(0x24) && active == q(0x63);
+}
 /* NESRECOMP_WORLD_TRACE: a line a frame, after Seamless's step: the live
  * game's room and hero, then the camera the frame's picture has
  * (fax_world_present's, F4's map aside) with the hero it is worked out from
  * (the room's capture: the last frame's on a frame the game lagged), and the
  * view Seams wakes actors in (fax_world_view), in world pixels; blank where
- * there is none. */
+ * there is none. Then where the room's top-left sits in that picture
+ * (fax_world_origin's), blank with no camera, and whether the room is still
+ * arriving (arrive(): the game's own picture of it, at that place). */
 void fax_world_step(void) {
     if (!enabled || !supported()) return;
     if (!trace) {
@@ -620,21 +648,22 @@ void fax_world_step(void) {
             if (trace)
                 fprintf(
                     trace,
-                    "cycles,area,room,x,y,scroll,ready,handoffs,failures,simulation_ms,camera_x,camera_y,shown_x,shown_y,view_x,view_y\n");
+                    "cycles,area,room,x,y,scroll,ready,handoffs,failures,simulation_ms,camera_x,camera_y,shown_x,shown_y,view_x,view_y,origin_x,origin_y,arriving\n");
         }
     }
     step();
     if (!trace) return;
-    char shown[48] = ",,,", seen[32] = ",";
+    char shown[48] = ",,,", seen[32] = ",", placed[32] = ",";
     int cx, cy;
     if (active >= 0 && area == q(0x24) && active == q(0x63)) {
         const uint8_t *r = rooms[active].ram;
         camera_at(r[0x9e], r[0xa1], &cx, &cy);
         snprintf(shown, sizeof shown, "%d,%d,%u,%u", cx, cy, r[0x9e], r[0xa1]);
+        snprintf(placed, sizeof placed, "%d,%d", rooms[active].x * RW - cx, HUD + rooms[active].y * RH - cy);
     }
     if (view_ok) snprintf(seen, sizeof seen, "%d,%d", view_x, view_y);
-    fprintf(trace, "%llu,%u,%u,%u,%u,%u,%u,%u,%u,%.4f,%s,%s\n", (unsigned long long)cyc_cycle_count(), q(0x24), q(0x63),
-            q(0x9e), q(0xa1), q(0x54), q(0xe), handoffs, failures, sim_ms, shown, seen);
+    fprintf(trace, "%llu,%u,%u,%u,%u,%u,%u,%u,%u,%.4f,%s,%s,%s,%d\n", (unsigned long long)cyc_cycle_count(), q(0x24),
+            q(0x63), q(0x9e), q(0xa1), q(0x54), q(0xe), handoffs, failures, sim_ms, shown, seen, placed, arriving);
     fflush(trace);
 }
 static void step(void) {
@@ -652,7 +681,11 @@ static void step(void) {
     /* A frame that ended inside Seams' visitors' pass (fax_seams.c, a lag
      * frame): its visitors' rooms tick, and the live room is captured, once
      * the pass has written them back. */
-    if (!playing() || fax_seams_visiting()) return;
+    if (fax_seams_visiting()) return;
+    if (!playing()) {
+        arrive();
+        return;
+    }
     /* A frame the game lagged keeps the last capture, as the PPU keeps its
      * last sprites then (No sprite flicker, fax_flicker.c). */
     uint64_t start = SDL_GetPerformanceCounter();
@@ -956,6 +989,20 @@ int fax_world_hud_x(int width) {
     if (enabled && hud_x >= 0 && width == hud_w) return hud_x;
     return cyc_render_native_origin(width);
 }
+/* A load's first frame can still show the room it leaves: at a town's edge
+ * (Game_SetupNewArea) Area_CurrentArea is the new area's on the frame its
+ * picture still shows the old room, which goes dark only on the next. The
+ * game's own picture centred would move that room for a frame (#204), so
+ * while the game is loading (Game_InterruptHandlersEnabled 0) and its picture
+ * is still lit, Seamless goes on composing the room it holds, as it did on
+ * the frame before. After a dark frame it never does again before it takes a
+ * room: what lights up then is the next room. */
+static bool leaving(const uint32_t *native) {
+    if (!world_shown || active < 0 || q(0x13)) return false;
+    for (int i = HUD * RW; i < 240 * RW; i++)
+        if (native[i] & 0xffffff) return true;
+    return false;
+}
 const uint32_t *fax_world_present(int *w, int *h, const uint32_t *native) {
     /* Start pauses native simulation, not the expanded picture. Select's
      * native inventory is composited over the frozen world at the same scale.
@@ -965,7 +1012,8 @@ const uint32_t *fax_world_present(int *w, int *h, const uint32_t *native) {
     uint64_t start = SDL_GetPerformanceCounter();
     *w = VIEW_W;
     *h = VIEW_H;
-    bool same = active >= 0 && area == q(0x24) && active == q(0x63);
+    bool same = (active >= 0 && area == q(0x24) && active == q(0x63)) || leaving(native);
+    world_shown = same;
     Room *a = same ? &rooms[active] : NULL;
     int l = 0, t = 0, r = 0, b = 0;
     if (same) {
@@ -1016,7 +1064,9 @@ const uint32_t *fax_world_present(int *w, int *h, const uint32_t *native) {
     origin_x = a->x * RW - camera_x;
     origin_y = HUD + a->y * RH - camera_y;
     origin_valid = true;
-    bool original_scene = death_mode;
+    /* A death, and a room the game shows before its main loop runs there
+     * (arriving): the game's own picture, at the room's place. */
+    bool original_scene = death_mode || arriving;
     if (original_scene) {
         int ox = a->x * RW - camera_x, oy = HUD + a->y * RH - camera_y;
         for (int y = HUD; y < 240; y++)
@@ -1064,7 +1114,7 @@ void fax_world_reset(void) {
     events_area = -1;
     fighting = false;
     rom_ok = false;
-    hud_valid = death_mode = script_mode = false;
+    hud_valid = death_mode = script_mode = arriving = world_shown = false;
     ticks = last_tick = handoffs = failures = portals = 0;
     player_tick = collision_active = false;
     screen_loaded = view_ok = false;
@@ -1116,6 +1166,7 @@ const uint8_t *fax_world_room_ram(int a, int id) {
 }
 void fax_world_loaded(void) {
     memset(raster_valid, 0, sizeof raster_valid);
+    world_shown = false; /* a loaded state's first frame is never one a load leaves (leaving()) */
     cyc_mod_set_ram_read_hook(collision_active ? collision_read : NULL);
 }
 bool fax_world_option(const char *name, const char *value) {
@@ -1252,6 +1303,7 @@ static int state_get(uint8_t *buf, int cap) {
     memcpy(buf + 24, &last_tick, 4);
     buf[28] = fighting;
     buf[29] = screen_loaded;
+    buf[30] = arriving;
     memcpy(buf + STATE_HEADER, rooms, sizeof rooms);
     return len;
 }
@@ -1260,12 +1312,13 @@ static int state_get(uint8_t *buf, int cap) {
  * record is set aside (state_set), as the other features' are. Version 5
  * (#166's slice 1) kept each room's Seams block and the screen load not yet
  * acted on; version 6 (slice 5) has the block grown to 512 bytes, its cells
- * past a room's top and bottom too. Older records don't load. */
+ * past a room's top and bottom too. Older records don't load. Byte 30 is
+ * arriving (#204), 0 in a record saved before it, which loads as it was. */
 static int state_validate(const uint8_t *buf, int len) {
     if (!len) return 1;
     if (!buf || len != STATE_HEADER + sizeof rooms || memcmp(buf, "FAXWORLD", 8) || buf[8] != 6 || buf[9] > 8 ||
         buf[10] > MAX_ROOMS || buf[11] > MAX_ROOMS || buf[12] > 3 || buf[13] > 1 || buf[14] > 1 || buf[18] > 1 ||
-        buf[19] > 1 || buf[28] > 1 || buf[29] > 1)
+        buf[19] > 1 || buf[28] > 1 || buf[29] > 1 || buf[30] > 1)
         return 0;
     if (!buf[9] && (buf[10] || buf[11])) return 0;
     if (buf[9] && (buf[10] > counts[buf[9] - 1] || buf[11] > counts[buf[9] - 1])) return 0;
@@ -1299,6 +1352,7 @@ static int state_set(const uint8_t *buf, int len) {
     pre_y = buf[17];
     fighting = buf[28] != 0;
     screen_loaded = buf[29] != 0;
+    arriving = buf[30] != 0;
     memcpy(&ticks, buf + 20, 4);
     memcpy(&last_tick, buf + 24, 4);
     memcpy(rooms, buf + STATE_HEADER, sizeof rooms);
