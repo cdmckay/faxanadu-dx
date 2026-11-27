@@ -973,6 +973,21 @@ rom = []
 # took it.
 
 [[feature]]
+id = "run"
+package = "faxanadu.dx"
+plugin = "faxanadu.run"
+source = "src/fax_run.c"
+hooks = "faxanadu.run."
+rom = []
+# Hooks the LDX before Player_CheckIfPassable in Player_TryMoveRight ($E1EE)
+# and Player_TryMoveLeft ($E246, fixed bank), which no other feature hooks,
+# and never handles them. Writes Player_PosX_Frac and Player_PosX_Block ($9D,
+# $9E), the step the game just made, and going left the carry of the P the
+# routine just pushed; Player_MoveAcceleration stays the game's. Its isolated
+# call to Player_CheckIfPassable changes nothing. No ROM, no read overrides,
+# no save-state record: Run's button is host input, held or not.
+
+[[feature]]
 id = "controls"
 package = "faxanadu.dx"
 plugin = "faxanadu.controls"
