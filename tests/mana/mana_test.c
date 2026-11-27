@@ -293,23 +293,23 @@ static void registers(void) {
     CHECK(!site_on);
 }
 
-/* experience² / 256, at least 1; a boss 40; doubled by the lesson. */
+/* experience² / 512, at least 1; a boss 20; doubled by the lesson. */
 static void per_kill_amounts(void) {
     static const struct {
         uint8_t entity;
         int mp;
     } want[] = {
-        { ISHIISU, 1 },                                             /* 10: 100 / 256 is 0, so the least */
+        { ISHIISU, 1 },                                             /* 10: 100 / 512 is 0, so the least */
         { SUGATA, 1 },                                              /* 13 */
-        { MONODRON, 1 },                                            /* 20: 400 / 256 */
-        { HORNET, 2 },                                              /* 25: 625 / 256 */
-        { ZOZURA, 3 },                                              /* 30: 900 / 256 */
-        { WOLFMAN, 9 },                                             /* 49: 2401 / 256 */
-        { GRIMLOCK, 13 },                                           /* 58: 3364 / 256 */
-        { CHARRON, 16 },                                            /* 65: 4225 / 256, a Tilte */
+        { MONODRON, 1 },                                            /* 20: 400 / 512 is 0, the least */
+        { HORNET, 1 },                                              /* 25: 625 / 512 */
+        { ZOZURA, 1 },                                              /* 30: 900 / 512 */
+        { WOLFMAN, 4 },                                             /* 49: 2401 / 512 */
+        { GRIMLOCK, 6 },                                            /* 58: 3364 / 512 */
+        { CHARRON, 8 },                                             /* 65: 4225 / 512, half a Tilte */
         { ROCK, 1 },                                                /* no experience: still a kill */
-        { ROKUSUTAHN, 40 },  { RIPASHEIKU, 40 }, { ZORADOHNA, 40 }, /* bosses, whatever their experience */
-        { KING_GRIEVE, 40 },                                        /* a boss with none */
+        { ROKUSUTAHN, 20 },  { RIPASHEIKU, 20 }, { ZORADOHNA, 20 }, /* bosses, whatever their experience */
+        { KING_GRIEVE, 20 },                                        /* a boss with none */
     };
     for (unsigned i = 0; i < sizeof want / sizeof want[0]; ++i) {
         CHECK(gives(want[i].entity, false, 0) == want[i].mp);
@@ -321,15 +321,15 @@ static void per_kill_amounts(void) {
     fresh(0);
     kill(7, MONODRON);
     kill(6, ZOZURA); /* the Trunk's screen 3 */
-    CHECK(MP == 4);  /* two Deluges */
+    CHECK(MP == 2);  /* a Deluge */
     fresh(0);
     kill(7, MONODRON);
     kill(6, MONODRON); /* its screens 1 and 5 */
-    CHECK(MP == 2);    /* one */
+    CHECK(MP == 2);    /* a Deluge too */
     fresh(0);
     kill(7, GRIMLOCK);
     kill(6, HORNET); /* a screen of the Mist */
-    CHECK(MP == 15); /* about a Tilte */
+    CHECK(MP == 7);  /* about half a Tilte */
 }
 
 /* A kill's MP is in RAM at once, so a cast or a drain that frame has it; its
@@ -338,40 +338,40 @@ static void a_kill_gives_mp_at_once(void) {
     fresh(10);
     nmi();
     kill(7, ZOZURA);
-    CHECK(MP == 13 && experience == 30 && bars == BAR_MP && calls == 0);
+    CHECK(MP == 11 && experience == 30 && bars == BAR_MP && calls == 0);
     cast(2); /* Deluge in the same pass */
-    CHECK(MP == 11);
+    CHECK(MP == 9);
     cpu.a = 0x00;
     cpu.x = 0x44;
     cpu.y = 0x55;
     cpu.p = 0x02; /* WaitForNextFrame: LDA latch gave 0, Z set */
     frame_ends(PLAYING);
-    CHECK(MP == 11 && bar_mp == 11 && mp_drawn == 1 && hp_drawn == 0 && bars == 0);
+    CHECK(MP == 9 && bar_mp == 9 && mp_drawn == 1 && hp_drawn == 0 && bars == 0);
     CHECK(cpu.a == 0x00 && cpu.x == 0x44 && cpu.y == 0x55 && cpu.p == 0x02 && cpu.s == 0xFD);
     frames(PLAYING, 100);
     CHECK(calls == 1); /* nothing more to draw */
     /* Two kills in a frame: both, and one bar. */
     nmi();
-    kill(6, ZOZURA);
+    kill(6, WOLFMAN);
     kill(7, MONODRON);
     frame_ends(PLAYING);
-    CHECK(MP == 15 && seen.kills == 3 && mp_drawn == 2 && bar_mp == 15);
+    CHECK(MP == 14 && seen.kills == 3 && mp_drawn == 2 && bar_mp == 14);
 }
 
 /* MP stops at 80: the kill counts, the bar is left alone when nothing changed. */
 static void the_cap(void) {
     fresh(78);
     kill(7, CHARRON);
-    CHECK(MP == 80 && seen.mp == 16 && seen.gained == 2);
+    CHECK(MP == 80 && seen.mp == 8 && seen.gained == 2);
     frames(PLAYING, 1);
     CHECK(bar_mp == 80 && mp_drawn == 1);
     kill(7, CHARRON);
     CHECK(MP == 80 && seen.kills == 2 && seen.gained == 2 && bars == 0);
     frames(PLAYING, 10);
     CHECK(mp_drawn == 1);
-    fresh_as(30, true);
-    kill(7, RIPASHEIKU); /* a boss, taught: 80, the whole bar */
-    CHECK(MP == 80 && seen.mp == 80 && seen.bosses == 1);
+    fresh_as(50, true);
+    kill(7, RIPASHEIKU); /* a boss, taught: 40, half the bar, of which 30 fit */
+    CHECK(MP == 80 && seen.mp == 40 && seen.gained == 30 && seen.bosses == 1);
 }
 
 /* Nothing comes back over time: not playing, not after a cast, not with the
@@ -402,7 +402,7 @@ static void nothing_holds_it(void) {
         if (n == 100) kill(7, GRIMLOCK);
         frame_ends(PLAYING);
     }
-    CHECK(MP == 20 - 10 + 13 && mp_drawn == 1);
+    CHECK(MP == 20 - 10 + 6 && mp_drawn == 1);
 }
 
 /* The bar waits for a frame that ends with the CPU in WaitForNextFrame, from
@@ -413,16 +413,16 @@ static void the_bar_waits_for_room(void) {
         fresh(10);
         kill(7, ZOZURA);
         frames(held[i], 300);
-        CHECK(MP == 13 && calls == 0 && bars == BAR_MP && seen.deferred == 300);
+        CHECK(MP == 11 && calls == 0 && bars == BAR_MP && seen.deferred == 300);
         frames(PLAYING, 1);
-        CHECK(bar_mp == 13 && bars == 0);
+        CHECK(bar_mp == 11 && bars == 0);
     }
     static const Where drawn_at[] = { PLAYING, PAUSE, TEXT };
     for (unsigned i = 0; i < sizeof drawn_at / sizeof drawn_at[0]; ++i) {
         fresh(10);
         kill(7, ZOZURA);
         frames(drawn_at[i], 1);
-        CHECK(bar_mp == 13 && bars == 0 && seen.deferred == 0);
+        CHECK(bar_mp == 11 && bars == 0 && seen.deferred == 0);
     }
     /* Room for the tiles, not then for the pattern: the next frame that has. */
     fresh(10);
@@ -441,7 +441,7 @@ static void the_bar_waits_for_room(void) {
     frames(PLAYING, 1);
     CHECK(calls == 1 && mp_drawn == 0 && bars == BAR_MP && seen.deferred == 1);
     frames(PLAYING, 1);
-    CHECK(mp_drawn == 1 && bar_mp == 13);
+    CHECK(mp_drawn == 1 && bar_mp == 11);
 }
 
 /* A Guru: HP and MP to 80 at once, and both bars, in the PPU buffer's room. */
@@ -536,7 +536,7 @@ static void off_and_isolated_do_nothing(void) {
     CHECK(MP == 10 && HP == 20 && calls == 0);
     isolated = false;
     kill(7, ZOZURA);
-    CHECK(MP == 13);
+    CHECK(MP == 11);
 }
 
 /* A kill the game made in a committed call (Sugata's flash turned back):

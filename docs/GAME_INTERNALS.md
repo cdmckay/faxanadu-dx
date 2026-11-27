@@ -5660,18 +5660,22 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   MP, as hearts do in Castlevania. A site at `Player_AddExperienceFromSprite`
   (`$8B87`, *Kills and experience*) reads the slot's entity (X) and its
   `ENEMY_EXPERIENCE` and category from bank 14, mapped there, and returns 0:
-  - **How much:** experience² / 256, at least 1; a boss (category 7) 40; the
+  - **How much:** experience² / 512, at least 1; a boss (category 7) 20; the
     Magician's lesson doubles it (`fax_lesson_learned()`); MP stops at 80.
-    The aim was an early fight giving back a Deluge or two (2 MP each) and a
-    mid-game one a Tilte (16). A screen's experience only about doubles from
-    the Trunk's first screens (two Monodrons or Zozuras, 40-60) to the Mist's
-    and the Branch's median ones (89, 96), so no share of experience meets
-    both (experience / 5 gives those first screens 8-10 MP, four or five
-    Deluges): the square does. A Monodron gives 1, a Hornet 2, a Zozura 3, a
-    Wolfman 9, a Sir Gawaine or a Grimlock 13, a Charron 16; the Trunk's
-    first screens 2-4, the median screens of the Mist 15, the Branch 16,
-    Dartmoor 18 and Zenis 18. The constants are one enum (`SCALE`, `LEAST`,
-    `BOSS_MP`, `TAUGHT`), for Cameron's playtest.
+    #125 gave twice that (experience² / 256, a boss 40: a Zozura 3, the
+    median screens 15-18), and in Cameron's playtest Deluge could be cast
+    without end, so #202 halved it. The aim is an early fight giving back
+    about a Deluge (2 MP) and a mid-game one half a Tilte (8 of its 16). A
+    screen's experience only about doubles from the Trunk's first screens
+    (two Monodrons or Zozuras, 40-60) to the Mist's and the Branch's median
+    ones (89, 96), so no share of experience meets both (experience / 10
+    gives those first screens 4-6 MP, two or three Deluges): the square
+    does. A Monodron, a Hornet or a Zozura gives 1, a Wolfman 4, a Sir
+    Gawaine or a Grimlock 6, a Charron 8. Summed over each screen's enemies
+    (*A screen's worth*), the Trunk's first screens (`$00-$0B`) give 2, but
+    `$00`'s lone Monodron 1 and `$02`'s three enemies 3; the median screens
+    of the Mist 7, the Branch 8, Dartmoor 8 and Zenis 8. The constants are
+    one enum (`SCALE`, `LEAST`, `BOSS_MP`, `TAUGHT`), retuned by playtest.
   - **At once:** the MP goes into `Player_MP` in the site, so a cast or a
     drain that frame has it, and nothing holds it: the Wing Boots and the
     Hour Glass read MP afresh each frame of a run. The bar is drawn at the
@@ -5701,7 +5705,7 @@ one of them since #110, so the remaster always plays in its 424x240 view.
 - **The Magician's lesson** (`fax_lesson.c`, #105). Eolis's Magician no
   longer sells 40 MP for 200 (any Guru now fills MP): he teaches the hero,
   once, for 30000 Golds, to recover MP faster, twice the MP from every kill
-  (MP from kills' `TAUGHT`; a boss's 80, the whole bar), and only a hero who
+  (MP from kills' `TAUGHT`; a boss's 40, half the bar), and only a hero who
   has studied at the magic hall in the Mist (bought Fire from its Magician).
   Since the Wing Boots and the Hour Glass run on MP (#124), it also means
   flying and freezing longer on the same fights. His lines, "I can teach you

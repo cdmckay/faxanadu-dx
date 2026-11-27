@@ -12,7 +12,7 @@
  *   hooks, so Sugata's flash (fax_sugata.c) tells this module
  *   (fax_mana_killed).
  * - How much (kill_mp): the enemy's experience (ENEMY_EXPERIENCE) squared,
- *   / 256, at least 1, and a boss (SPRITE_CATEGORIES_BY_ENTITY 7) BOSS_MP.
+ *   / 512, at least 1, and a boss (SPRITE_CATEGORIES_BY_ENTITY 7) BOSS_MP.
  *   The Magician's lesson (fax_lesson.c) doubles it. MP stops at 80.
  * - Nothing holds it: a kill's MP comes while the Wing Boots fly or the Hour
  *   Glass freezes (fax_recharge.c), which read MP afresh every frame and
@@ -90,21 +90,22 @@ enum { MP_MAX = 80, HP_MAX = 80, CATEGORY_BOSS = 7, JSR = 0x20, NOT_SCROLLING = 
  * the second (16 bytes of the partial tile) checks again after it. */
 enum { PPU_ROOM = 0x24, COMMAND = 3 };
 
-/* What a kill gives, in MP: decided in #125, a starting point for Cameron's
- * playtest; retuning means changing these and nothing else. The aim: an
- * early fight gives back a Deluge or two (2 MP each), a mid-game one a Tilte
- * (16). A screen's enemies give about twice the experience from the Trunk's
- * first screens (two Monodrons or Zozuras, 40-60) to a median screen of the
- * Mist or the Branch (90-96), while the aim grows four to eight times, so no
- * share of experience meets both (experience / 5 gives the first screens 8
- * to 10 MP, four or five Deluges): MP grows with its square instead,
- * experience² / 256. A Monodron (20) gives 1, a Hornet (25) 2, a Zozura
- * (30) 3, a Wolfman (49) 9, a Sir Gawaine or a Grimlock (58) 13, a Charron
- * (65) 16; the Trunk's first screens 2 to 4, the Mist's and the Branch's
- * median screens 15 and 16. Every kill gives at least LEAST, and a boss
- * (met once, alone, at a cost) BOSS_MP, half the bar. The lesson doubles all
- * of it. */
-enum { SCALE = 256, LEAST = 1, BOSS_MP = 40, TAUGHT = 2 };
+/* What a kill gives, in MP: decided in #125, and halved after Cameron's
+ * playtest (#202), in which Deluge could be cast without end; retuning means
+ * changing these and nothing else. The aim: an early fight gives back about
+ * a Deluge (2 MP), a mid-game one half a Tilte (8 of its 16). A screen's
+ * enemies give about twice the experience from the Trunk's first screens
+ * (two Monodrons or Zozuras, 40-60) to a median screen of the Mist or the
+ * Branch (89-96), while the aim grows four times, so no share of experience
+ * meets both (experience / 10 gives the first screens 4 to 6 MP, two or
+ * three Deluges): MP grows with its square instead, experience² / 512 (#125's
+ * / 256 halved). A Monodron (20), a Hornet (25) or a Zozura (30) gives 1, a
+ * Wolfman (49) 4, a Sir Gawaine or a Grimlock (58) 6, a Charron (65) 8; the
+ * Trunk's first screens 2 (1 to 3), the Mist's and the Branch's median
+ * screens 7 and 8. Every kill gives at least LEAST, and a boss (met once,
+ * alone, at a cost) BOSS_MP, a quarter of the bar. The lesson doubles all of
+ * it. */
+enum { SCALE = 512, LEAST = 1, BOSS_MP = 20, TAUGHT = 2 };
 
 static unsigned kill_mp(uint8_t experience, uint8_t category, bool learned) {
     unsigned mp = category == CATEGORY_BOSS ? (unsigned)BOSS_MP : (unsigned)experience * experience / SCALE;

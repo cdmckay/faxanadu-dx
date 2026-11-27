@@ -22,7 +22,7 @@ from the case, which must play it the same. Every case at once.
 
 1. Bare-handed (the remaster on, the default): each punch that lands takes 2
    HP, so a Zozura (9 HP, SPRITE_ENTITIES_HP) dies to the fifth. On that
-   frame its 30 experience comes in, and with it 3 MP (MP from kills). In
+   frame its 30 experience comes in, and with it 1 MP (MP from kills). In
    the first hit phase the fist is where the Hand Dagger's pose puts it (8
    pixels left of him, 8 down), and its reach is the taller dagger's (8, 8):
    a first hit phase lands exactly when the enemy is 0-23 pixels off.
@@ -223,7 +223,7 @@ def main():
             got, rams = fights[name]
             hp = bank14(SPRITE_ENTITIES_HP + entity)
             xp = bank14(ENEMY_EXPERIENCE + entity)
-            mp = max(1, xp * xp // 256)                               # fax_mana.c: experience² / 256, at least 1
+            mp = max(1, xp * xp // 512)                               # fax_mana.c: experience² / 512, at least 1
             want = []
             while True:                                               # damage at least its HP kills; equal leaves 0
                 want.append((hp, (hp - per_hit) & 0xFF))

@@ -13,17 +13,17 @@ kills     From Eolis's screen 4 as its two Zozuras crawl in (the fixture
              frames (#98's refill gave its first MP 240 frames after a cast):
              MP stays at 38.
           2. A kill by the sword, one swing at 10 MP: on the frame the game
-             adds the Zozura's 30 experience, MP is 13 (30² / 256 = 3), and
+             adds the Zozura's 30 experience, MP is 11 (30² / 512 = 1), and
              nothing else moves it; a state saved after shows the MP bar the
-             game draws for 13, where it showed another value before.
+             game draws for 11, where it showed another value before.
           3. A kill by magic, Deluge at the Zozura 64 pixels off at 10 MP: 8
-             once cast, 11 on the kill.
+             once cast, 9 on the kill.
           4. A boss: the Zozura's slot made a Rokusutahn (category 7, 120
              experience, a box 32 wide, so 16 pixels further off), HP 1, and
-             one swing: MP 10 to 50, the bar drawn.
+             one swing: MP 10 to 30, the bar drawn.
           5. The Magician's lesson learned (its record): the sword's kill
-             gives 6, 10 to 16.
-          6. At 79 MP the kill stops at 80.
+             gives 2, 10 to 12.
+          6. At 79 MP, with the lesson, the kill's 2 stops at 80.
           7. The original (the remaster off): the kill gives its 30 experience
              and no MP, and waiting after a cast gives none either.
 guru      In Eolis's temple, come in from the meat shop through a door edited
@@ -61,7 +61,7 @@ HERO_AT, GROUND = 240, 144                        # where the hero stands (a Zoz
 IN_REACH, SPELL_OFF = 26, 64                      # the Zozura this far left of him: a swing's hit, a Deluge's
 FACING_RIGHT = 0x01                               # CurrentSprites_Flags: the Zozura crawls toward him
 FULL = 80
-ZOZURA_XP, ZOZURA_MP, BOSS_XP, BOSS_MP = 30, 3, 120, 40   # ENEMY_EXPERIENCE; fax_mana.c's experience² / 256, BOSS_MP
+ZOZURA_XP, ZOZURA_MP, BOSS_XP, BOSS_MP = 30, 1, 120, 20   # ENEMY_EXPERIENCE; fax_mana.c's experience² / 512, BOSS_MP
 LESSON = "faxanadu.magician-lesson"               # its save-state record: [1] learned
 # The status bar: the Power bar at nametable $2063 and the Magic bar at $2043,
 # UI_MPAndHPBarWidth + 1 tiles each: a full tile an 8 (the Power bar's $08,
@@ -158,7 +158,7 @@ def main():
             boss_state = case("boss", {MP: 10, ENTITIES + NEAR: ROKUSUTAHN,      # 32 wide: its right edge where
                                        SPRITE_X + NEAR: HERO_AT - IN_REACH - 16})   # the Zozura's is
             taught_state = case("taught", {MP: 10}, {LESSON: {1: 1}})
-            cap_state = case("cap", {MP: 79})
+            cap_state = case("cap", {MP: 79}, {LESSON: {1: 1}})
             waiting, frames = CAST_AT + 600, 60
             after_sword, after_boss = out / "sword-after.cycstate", out / "boss-after.cycstate"
             runs = game.headless_all([
@@ -190,7 +190,7 @@ def main():
             # 2. The sword.
             at = one_kill(sword, "sword", 10, 10 + ZOZURA_MP, ZOZURA_XP)
             assert bar_shows(after_sword, "mp", 10 + ZOZURA_MP), bar(after_sword, "mp")
-            assert not bar_shows(kill_state, "mp", 10 + ZOZURA_MP), "the bar showed 13 before"
+            assert not bar_shows(kill_state, "mp", 10 + ZOZURA_MP), f"the bar showed {10 + ZOZURA_MP} before"
             print(f"ok: a swing kills the Zozura on frame {at}: its {ZOZURA_XP} experience and, on the same frame, "
                   f"{ZOZURA_MP} MP (10 to {10 + ZOZURA_MP}); the bar shows {10 + ZOZURA_MP} as the game draws it")
 
@@ -212,7 +212,7 @@ def main():
             one_kill(taught, "taught", 10, 10 + 2 * ZOZURA_MP, ZOZURA_XP)
             one_kill(cap, "cap", 79, FULL, ZOZURA_XP)
             print(f"ok: with the Magician's lesson the kill gives {2 * ZOZURA_MP} (10 to {10 + 2 * ZOZURA_MP}); at 79 "
-                  "it stops at 80")
+                  "its 2 stop at 80")
 
             # 7. The original.
             gained = changes(sword_off, EXPERIENCE, 2)
