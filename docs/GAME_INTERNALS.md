@@ -38,7 +38,7 @@ MMC1, 16 PRG banks of 16 KiB, 8 KiB CHR RAM, no PRG RAM.
 
 | Bank | Range | Size | Notes |
 |---|---|---|---|
-| 12 | `$AD8A-$BFFF` | 4,726 bytes | Guru travel uses `$AE00-$AE06` (and lands on `$AE07` without reading it), Save files `$AE10-$AE17` |
+| 12 | `$AD8A-$BFFF` | 4,726 bytes | Guru travel uses `$AE00-$AE06` (and lands on `$AE07` without reading it), Save files `$AE10-$AE17`. Guru travel's menu names `$AE00` as its rows' string table, whose reads it replaces: nothing is served there for it |
 | 13 | `$B45B-$BFFF` | 2,981 bytes | Keep `$B45A` `$FF` (see Messages). Guru travel and Save files share `$B45B-$B48A` |
 
 **Existing bytes** a feature serves with other values (a tuned table entry,
@@ -304,6 +304,10 @@ faxanatools' `messages.py` decodes and encodes them; `fax_travel.c`'s
   Putting the offset back right after the zeroing (`$F439`) fixes it, as
   Save files does for its lines and Guru travel's after them. Guru travel's
   intro after a new title, with no save file in play, still shows rotated.
+  A dialogue box opened again (`TextBox_OpenForNPC`, as Guru travel's menu of
+  towns gives way to its line) lays its rows out from the top, so the line
+  after it wants the offset 0, not the one kept: Guru travel zeroes it, and
+  Save files' kept value, as it opens (`fax_files_box_reopened`).
 - The font is one bit a pixel in bank 13 at `TILE_GLYPHS_START` (`$8000`),
   8 bytes a character from `$20` to `$7F` (`A` is at `$8108`). The glyph data
   ends where the messages begin (`$8300`). `TextBox_WriteChar` copies a glyph
@@ -320,6 +324,23 @@ faxanatools' `messages.py` decodes and encodes them; `fax_travel.c`'s
   `HUD_TILES_START` (`$8140`), to PPU `$1000`, so tile t is at
   `$8140 + t * 16` in ROM; `fax_text_box_rom` draws the frame from there on
   screens whose pattern tables hold something else, like the title.
+  `TextBox_Open` falls into `TextBox_FillBackground`, which counts the
+  attribute rows' bytes in `Temp_Int24` (`$EC`): set the string table
+  `UI_DrawString` reads from there after a box is opened, not before, as
+  `PlayerMenu_Show` does.
+- **Sprites drawn after a frame's wait show only from the next wait.** The
+  NMI copies the shadow OAM (`$0700`) to the PPU only on a frame
+  `WaitForNextFrame` asked for (`Game_InterruptsHandledLatch` 0), or when
+  `Game_NeedOAMReset` is set; one that comes while the CPU waits on the PPU
+  buffer (`PPUBuffer_WaitForCapacity`, as `TextBox_Open` does for frames)
+  leaves the sprites as they were. So a
+  menu's cursor or a question's "?" stays on screen while a box is drawn
+  after it, unless two frames of `IScripts_UpdatePortraitAnimation` (which
+  hides every sprite, `Sprites_Reset`, and draws the frozen screen's and the
+  portrait's) come first: the first draws them without it, the second sends
+  them. `Maybe_Shop_DrawTextBox` (`$8471`) has those two frames before the
+  dialogue box opens over a shop's list, and Guru travel's menu before each
+  of its boxes.
 - **`TextBox_Closed` (`$020C`) reads 0 with no box up on some screens.** It is
   0 while a box or the Select menu is open and 1 once one has closed, and only
   `TextBox_Open` and `TextBox_Close` store it by name, but the screen's tiles
@@ -360,6 +381,7 @@ faxanatools' `messages.py` decodes and encodes them; `fax_travel.c`'s
   | Dialogue, with a portrait | `TextBox_SetCoordsForNPC` | 10, 16 | 20 x 8 |
   | Dialogue, without | `TextBox_SetCoordsForNPC` | 10, 6 if `Player_PosY` >= 64, else 10, 16 | 20 x 8 |
   | A shop's list (buy or sell) | `Shop_Draw` | 10, 8 | 20 x 20 |
+  | Guru travel's menu of towns (#206) | `fax_travel.c`, then `TextBox_Open` | 10, 24 - h | 20 x h: h = 2 a town + 2, at least 8 |
   | Both closed at a script's end | `TextBox_ClearForPortraitAndText` | 2, 8 | 30 x 20 |
   | The Select menu | `PlayerMenu_Show` | 2, 6 | 10 x 14 |
 
@@ -534,7 +556,9 @@ What a feature can rely on, and the traps:
   S + 2 and goes on at it + 1. So a site anywhere can go anywhere in the same
   routine or another: push the target - 1 (high byte first, as a JSR does)
   and return 1, and S ends where it was. Pushing two targets runs a routine
-  first and returns into the second (Quick shops closes a list that way), and
+  first and returns into the second (Quick shops closes a list that way; Guru
+  travel's menu chains up to four of the game's routines, back into
+  `IScripts_InvokeNextAction`), and
   overwriting a subroutine's own return address at S + 1 leaves it at its
   caller's level. The scheduler runs any PC, mid-routine or not.
 - A hook site can be **any instruction**, not only a routine's entry. Each
@@ -1596,6 +1620,13 @@ masks itself every frame (Left, Up, A), so Select never opens it there.
   `TextBox_Y` + 2 + 2X) with `UI_DrawString`, Y = `DataArray[X]` x 16 (8
   bits, so string numbers 0-15 from `Temp_Int24`), for X up to
   `Arg_StringsCount`. The last row sits just inside the box's bottom frame.
+  It needs nothing of the Select menu's but the box: Guru travel's menu of
+  towns (#206) draws its rows with it in a box of its own, in a Guru's
+  conversation, and waits with the shops' `IScripts_WaitForMenuInput`.
+- **A letter's tile is its ASCII less `$31`** (`Strings_ASCIIToIndex`), so
+  the HUD's font, the one the shops' lists, the Select menu and Guru
+  travel's menu write in, has capitals only: a lowercase letter would land
+  on the digits' tiles (`a` is `$30`, the tile of `0`).
 - **`UI_DrawString`** (`$8E9B`): `LDA (Temp_Int24),Y` (the length), `$8E9D`
   `STA Temp_Int24_U`, `INY`, `JSR PPUBuffer_QueueCommandOrLength` (which
   waits for room in the PPU buffer, so for frames); then for each letter
@@ -1604,7 +1635,10 @@ masks itself every frame (Left, Up, A), so Select never opens it there.
   `JSR PPUBuffer_Set`, `DEC Temp_Int24_U`, `BNE`. Each row stays in the PPU
   buffer's ring (`PPUBuffer`, `$0500-$05FF`) after the NMI has drawn it, as
   length, PPU address (high byte first) and tiles, until the ring comes round:
-  nothing else writes it while the menu waits.
+  nothing else writes it while the menu waits. Its two loads are where the
+  remaster serves strings the ROM does not have, each feature only for its
+  own table address: the Select menu's QUESTS and MAP, and Guru travel's
+  towns (`Temp_Int24` `$AE00`).
 - **`Menu_UpdateAndDraw`** moves `Menu_CursorPos` with Up and Down, wrapping
   at `Arg_StringsCount` both ways, and draws the arrow at its row.
 - **`DataArray`** (`$0220-$0227`) is 8 entries, then the shops' costs
@@ -5662,16 +5696,24 @@ one of them since #110, so the remaster always plays in its 424x240 view.
 
 - **Guru travel** (`fax_travel.c`). After the mantra or a new title, the Guru
   says "All Gurus / meditate as one." and offers "Shall I send / you to
-  another / Guru?", then asks about each Guru you have visited up to the
-  furthest temple ("To the Guru of / <town>?"). It steers the conversation at
-  `IScripts_InvokeNextAction` and supplies two script steps and one message
-  slot through read overrides. The journey is the respawn path without its
-  penalties, with `TempleSpawnPoint` set only during the committed
-  `Game_SpawnInTemple` call, so the spawn point is kept. The furthest temple
-  is the highest visited Guru's (or `TempleSpawnPoint`, if further), since
-  with Save files the spawn point is the Guru last saved with. With a file in
-  play, Save files asks first and starts Guru travel through
-  `fax_travel_begin`; the visited Gurus are then the file's `gurus` field.
+  another / Guru?". A on it opens a menu of the Gurus you have visited up to
+  the furthest temple (#206), one row a town, the cursor on the first: Up and
+  Down move it, A goes there ("Close your eyes / and clear your / mind.",
+  then the journey), B says "Then go in / peace.". Before #206 he asked about
+  each town in turn ("To the Guru of / <town>?", A to go, B for the next),
+  and with Hold A pressed through, the hero went before he knew there was a
+  choice. It steers the conversation at `IScripts_InvokeNextAction` and
+  supplies two script steps and one message slot through read overrides; the
+  menu takes none (*The menu of towns*, below). The journey is the respawn
+  path without its penalties, with `TempleSpawnPoint` set only during the
+  committed `Game_SpawnInTemple` call, so the spawn point is kept. The
+  furthest temple is the highest visited Guru's (or `TempleSpawnPoint`, if
+  further), since with Save files the spawn point is the Guru last saved
+  with. With a file in play, Save files asks first: "Send me to another
+  Guru." opens the menu at once (`fax_travel_menu`), and B there goes back to
+  that choice (`fax_files_guru_again`); after a save its line is followed by
+  the intro and the offer (`fax_travel_begin`). The visited Gurus are then the
+  file's `gurus` field.
   Without Save files they persist in `faxanadu_gurus.txt`; a new game resets
   them. B on its intro ("All Gurus meditate as one.", a `03` message) ends
   the script with its conversation under way; it forgets it when the next
@@ -5682,6 +5724,57 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   the quest log, the Elixir line at Eolis's Guru) would have been taken for
   its intro's and steered to its offer (`tests/travel/travel_test.c`,
   `b_on_the_intro`; not seen in play).
+  - **The menu of towns** (#206) is the game's own list machinery, the Select
+    menu's rows and the shops' wait, entered by return from
+    `IScripts_InvokeNextAction` with the script parked on the SAY step's END
+    (`$AE02`). Each routine's RTS goes on to the next, the last back to
+    `IScripts_InvokeNextAction`, where Guru travel's phase says what is next,
+    and the hook handles the call again:
+    1. Two frames of `IScripts_UpdatePortraitAnimation` (`$87B0`), then
+       `TextBox_Open` (`$8EF1`) with `TextBox_X` to `_Height` set: the box,
+       in the dialogue box's columns (10, 20 wide), its bottom on row 23, as
+       tall as its rows (2 a town and 2 more: a blank row above each, the
+       last just inside the frame, as the Select menu's) but never shorter
+       than the dialogue box: up to three towns in the dialogue box's own
+       place (10,16, 20 x 8), the seven a Guru can offer at most from row 8
+       (10,8, 20 x 16), inside what `IScriptAction_EndScript` clears (2,8,
+       30 x 20). The speaker's tab moves onto a box taller than the
+       dialogue box, as onto a shop's list.
+    2. `PlayerMenu_DrawStringLines` (`$8E6B`) and `IScripts_WaitForMenuInput`
+       (`$84ED`), with `Temp_Int24` `$AE00`, `DataArray` the temples,
+       `Arg_StringsCount` the rows and `Menu_CursorPos` 0. They are set after
+       the box: `TextBox_FillBackground` counts in `Temp_Int24`. The rows are
+       in the HUD's capitals (`UI_DrawString`, *The Select menu*), as the
+       shops list their items. Their strings are served at its two loads, A
+       becoming a town's length and then each letter while `Temp_Int24` is
+       `$AE00`, which no table of the game's is at; what is read there is
+       replaced, so nothing is served from ROM and no override is used. The
+       wait reads `Joy1_ChangedButtonMask` each frame: Up and Down move the
+       cursor (`Menu_UpdateAndDraw`, wrapping, sound `$0B`), A returns C
+       clear and B C set, each only on the frame it goes down, so an A held
+       from the press that opened the menu chooses nothing. Guru travel's
+       site is the first at `$826E`, so it reads that C untouched.
+    3. A makes the row's temple the journey's; B goes back to Save files'
+       choice if that opened the menu, else to the farewell. Either way, two
+       frames of the portrait's animation, then `TextBox_OpenForNPC`
+       (`$81E2`): the dialogue box opened over the list without closing it,
+       as Quick shops does after a purchase (Seamless shows only the box
+       opened last, and a close between them would blank the portrait), its
+       text rows laid out from the top, so `TextBox_LineScrollOffset` is
+       zeroed for the line that follows (and Save files' kept rows,
+       `fax_files_box_reopened`). Then the line at the SAY step, or Save
+       files' choice at `$AE10`, served again. The list's rows outside the
+       dialogue box stay in the nametable, not shown in Seamless, until
+       `IScriptAction_EndScript` clears both boxes' area.
+    While the dialogue box opens again (20-odd frames: `TextBox_ClearTextTiles`
+    sends 64 tiles of CHR through the PPU buffer), `MessageID` still reads 0,
+    the last message's, so a test waits for the line's own message (`$C3`)
+    before it presses on it (`fax_e2e.travel_to()`). Its save-state record
+    (version 2) adds the version and whether B goes back. A state saved
+    while the menu opens, draws or waits has the CPU in those routines with
+    their returns on the stack, and loads and goes on (tests/travel's
+    `resume` part). Version 1's, from the towns asked in turn, loads into
+    its question: A goes there, B says farewell.
 - **Death keeps gold** (`fax_death.c`). Dying brings the hero back with the
   gold, experience and earned title he had. It hooks
   `Player_SetInitialExpAndGold` and returns at once when the far call's resume
@@ -6820,8 +6913,10 @@ file in play, the interpreter goes to a step in unused ROM (bank 12,
 
 - If Guru travel has another Guru to offer: the Buy/Sell menu, showing
   "Remember my / journey. / Send me to / another Guru." (message `$C3`
-  through the operand override). The first saves; the second starts Guru
-  travel at its intro, then the towns at once; B leaves.
+  through the operand override). The first saves; the second opens Guru
+  travel's menu of towns at once (`fax_travel_menu`, the one call of
+  `IScripts_InvokeNextAction` Save files handles), where B comes back to
+  this choice, served again (`fax_files_guru_again`); B leaves.
 - Otherwise: the question "Shall I remember / your journey?" (action `$16`).
   A saves; B leaves.
 - Saving makes this Guru's temple `TempleSpawnPoint`, raises the furthest

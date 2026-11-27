@@ -114,7 +114,8 @@ opens it too. The game holds still underneath, but the music plays on.
   your rest, as in a Metroidvania's save room: as he remembers, the screen
   flashes and your HP and MP fill back up, with the Red Potion's sound.
 - **Guru travel.** A temple's Guru can send you to any other Guru you have
-  visited, keeping your HP, MP and gold.
+  visited, keeping your HP, MP and gold. Ask him to, and you pick the town
+  from a list of them, as in a shop; B goes back.
 - **Zone respawn.** After a death you come back where you last entered the
   tower, castle, town or region you died in, instead of at a temple.
 - **Death keeps gold.** The Guru brings you back with all your gold and

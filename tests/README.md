@@ -215,7 +215,10 @@ Never count on two TCP commands landing a few frames apart. To act on what a
 conversation shows, read its state and the text box in one batch:
 `conversation()` does, and `page_to(there, what)` presses A on each typed page
 until `there(state)` holds on a typed one, and never presses on that page
-(Guru travel's questions answer to A). A batch that ends with a `load_state`
+(Guru travel's offer answers to A). A box opened again over another reads as
+typed while it opens (`MessageID` is still 0), so a line that follows a
+list's choice is waited for by its message: `travel_to()` waits for Guru
+travel's departure line to begin before it presses A on it. A batch that ends with a `load_state`
 lets two frames of the state run before it returns: a button first pressed
 in a loaded state's first frame or two can go unseen (Up at a door did
 nothing). When a button

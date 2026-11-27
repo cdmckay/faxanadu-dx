@@ -9,12 +9,18 @@ void fax_travel_tcp_setup(void);
 /* For Save files (fax_files.c), which asks a Guru's question first while a
  * file is in play: whether this Guru has another to send the hero to; the
  * step that shows the line slot and ends, if Guru travel supplies it (else
- * 0); and starting Guru travel's part, "All Gurus meditate as one." then the
- * offer, or (towns) the towns at once. Returns the step to go to, with its
- * line in the slot, or 0 if there is nothing to offer. */
+ * 0); and starting Guru travel's part after a save, "All Gurus meditate as
+ * one." then the offer, which returns the step to go to, with its line in the
+ * slot, or 0 if there is nothing to offer.
+ * fax_travel_menu opens the menu of towns at once, for "Send me to another
+ * Guru.": called from a hook at IScripts_InvokeNextAction, it sends the CPU
+ * through the game's list routines by return and gives 1 for the hook to
+ * return (the call handled), or 0 if there is nothing to offer. B in that
+ * menu comes back to Save files' choice (fax_files_guru_again). */
 bool fax_travel_can_offer(void);
 uint16_t fax_travel_say_step(void);
-uint16_t fax_travel_begin(bool towns);
+uint16_t fax_travel_begin(void);
+int fax_travel_menu(void);
 
 /* Guru travel's SAY step in bank 12 (03 C3 00: show message $C3, then END),
  * its ASK step after it (16 C3 00 AE: ask message $C3; A jumps to SAY, B goes

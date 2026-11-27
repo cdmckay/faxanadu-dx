@@ -93,8 +93,9 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 import fax_e2e  # noqa: E402
-from fax_e2e import (Game, act, batch, box_open, choose_file, chunks, dissolve, frame, hold, menu_row,  # noqa: E402
-                     page_to, parse_args, ram, shop_list, tcp, title_menu, type_out, typed, until, wait)
+from fax_e2e import (Game, accept_offer, act, batch, box_open, choose_file, chunks, dissolve, frame, hold,  # noqa: E402
+                     menu_row, page_to, parse_args, ram, shop_list, tcp, title_menu, travel_to, type_out, typed,
+                     until, wait)
 
 AREA, SCREEN, PLAYER_X, PLAYER_Y, PLAYER_FLAGS, PLAYER_STATUS = 0x24, 0x63, 0x9E, 0xA1, 0xA4, 0xA5
 SCREEN_READY = 0x0E
@@ -121,7 +122,7 @@ EOLIS_TEMPLE, APOLUNE_TEMPLE, TOOL_SHOP = 0x02, 0x0B, 0x04          # building n
 PALETTE_EOLIS, PALETTE_OUTSIDE, PALETTE_TOWER, PALETTE_SUFFER = 0x00, 0x06, 0x07, 0x0B
 ZOZURA, RIPASHEIKU, ZORUGERIRU, HOUR_GLASS_FIND = 0x47, 0x2D, 0x31, 0x56
 QUEST_SPRING_OF_SKY = 0x02
-TRAVEL_DEPART, TRAVEL_TO_GURU = 3, 4                                # fax_travel.c's lines (TO_GURU + temple)
+TRAVEL_OFFER, APOLUNE = 1, 1                                        # fax_travel.c's offer line; Apolune's temple
 SECOND = 64                                                         # the game's second, what T: counts
 FULL = 80                                                           # a full bar of MP
 STEPS, FLIGHTS = (32, 40, 48, 64), (40, 50, 60, 80)                 # frames an MP, and a full bar's seconds, by band
@@ -891,12 +892,12 @@ def main():
             s = state()
             assert s["boots_running"] == 1 and ram(PLAYER_STATUS) & 0x80, s
             talk_to_guru()                                              # with the ring, he offers Apolune
-            # His line, the intro, the offer: A to each, and none on the offer (page_to()).
-            page_to(lambda s: s["text"] == TRAVEL_TO_GURU + 1, "the offer of Apolune", tries=20)
+            # His line, the intro, the offer: A to each, and none on the offer (page_to()); A on it opens
+            # the menu of towns (#206), Apolune its only row, and A there goes.
+            page_to(lambda s: s["text"] == TRAVEL_OFFER, "Guru travel's offer", tries=20)
             mp_before, left_before = ram(MP), state()["flight_left"]
-            act("a", 6, 14)
-            until("the farewell", lambda: tcp("travel_state")["text"] == TRAVEL_DEPART, 300)
-            page_through()
+            accept_offer()
+            travel_to(APOLUNE)
             until("Apolune's temple", lambda: place() == (BUILDINGS, APOLUNE_TEMPLE) and settled(), 2400)
             wait(30)
             mp_after, f_after = ram(MP), state()["flight_left"]

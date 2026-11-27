@@ -36,7 +36,8 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 import fax_e2e  # noqa: E402
 from fax_e2e import (FILES_CONFIRM, FILES_CONTINUE, FILES_NEW, FILES_TOP, Game, act, choose_file,  # noqa: E402
-                     dissolve, fixture, frame, page_through, page_to, parser, ram, tcp, title_menu, type_out, wait)
+                     dissolve, fixture, frame, guru_send, page_through, page_to, parser, ram, tcp, title_menu,
+                     travel_menu, type_out, wait)
 
 JOY_CHANGED, AREA, SCREEN, START_SCREEN_CHOICE = 0x19, 0x24, 0x63, 0x687
 MESSAGE_ID, TEXTBOX_PAUSED, HP, MP = 0x213, 0x215, 0x431, 0x39A
@@ -49,7 +50,7 @@ TEMPLE_SCREEN = [0x02, 0x0B, 0x10, 0x1E, 0x23, 0x2B, 0x33, 0x3C]   # DEST_SCREEN
 EOLIS, MASCON, CONFLATE = 0, 3, 5
 NEW_TITLE, GREETING, EOLIS_RING, NEGATIVE_THOUGHTS = 0x23, 0x22, 0x2D, 0x24
 GURU_MENU, GURU_QUESTION, GURU_SAVED = 1, 2, 3                      # fax_files.c's GuruPhase
-INTRO, OFFER, FAREWELL, TO_GURU = 0, 1, 2, 4                        # fax_travel.c's lines
+INTRO, OFFER = 0, 1                                                 # fax_travel.c's lines
 MISSING, OK = 1, 0                                                  # FaxSaveStatus
 
 # The progress the hero is given: Fighter (3) with the next title (Adept) earned
@@ -149,11 +150,6 @@ def close_box(button="a"):
     type_out("the line to type out")
     act(button, 6, 60)
     until("the box to close", lambda: ram(0x20C) != 0, 300)
-
-def answer_travel(button, expect):
-    type_out("the question to type out")
-    act(button)
-    until(f"travel line {expect}", lambda: travel()["text"] == expect, 600)
 
 
 @fax_e2e.recipe("files-gate-2")
@@ -349,17 +345,12 @@ def main():
             before = (gamedir / "faxanadu_file2.txt").read_bytes()
             saves = files()["saves"]
             talk_until(GURU_MENU)
-            act("down")
-            act("a")
-            until("Guru travel's intro", lambda: travel()["phase"] == 6, 600)
-            type_out("the intro to type out")
-            act("a")
-            until("the towns", lambda: travel()["text"] == TO_GURU + EOLIS, 600)
-            type_out("the town to type out")
-            shot("travel-towns")
-            answer_travel("b", FAREWELL)
-            close_box()
-            talk_until(GURU_MENU)
+            guru_send()                                       # "Send me to another Guru.": Guru travel's menu
+            state = travel_menu()
+            assert state["menu"] == [EOLIS] and state["shown"] == ["EOLIS"] and state["back"], state
+            shot("travel-menu")
+            act("b")                                          # back to his choice
+            until("the Guru's choice again", lambda: files()["guru"] == GURU_MENU and ram(MESSAGE_ID) == 0, 300)
             close_box("b")
             assert ram(TEMPLE_SPAWN_POINT) == MASCON, "talking to Conflate's Guru left the spawn point at Mascon"
             assert files()["saves"] == saves and (gamedir / "faxanadu_file2.txt").read_bytes() == before
@@ -368,7 +359,8 @@ def main():
             fixture(out / "talked.cycstate", out / "talked-death.cycstate", {PLAYER_IS_DEAD: 1})
             tcp("load_state", path=str(out / "talked-death.cycstate"))
             die_and_respawn(MASCON)
-            print("ok: the menu's second choice asks about the towns; B leaves; neither moves the spawn point")
+            print("ok: the menu's second choice opens Guru travel's menu, whose B comes back to it; B there leaves; "
+                  "neither moves the spawn point")
             print("ok: death returns to the Guru last saved with")
 
         if args.wants("overwrite"):

@@ -39,7 +39,18 @@ rom = [
     { bank = 13, start = 0xB45B, end = 0xB48B, use = "message $C3, the Guru's current line" },
 ]
 # Writes only the game's own variables: TempleSpawnPoint, IScriptOrCHRAddr
-# and IScriptOffset, and the stack at $01FA-$01FF when a journey starts.
+# and IScriptOffset, and the stack at $01FA-$01FF when a journey starts. Its
+# menu of towns (#206) is the game's list routines, entered by return from
+# IScripts_InvokeNextAction: it writes TextBox_X to TextBox_Height (the box),
+# Temp_Int24 (the rows' string table, TOWNS: its own $AE00, which no table of
+# the game's names), DataArray ($0220-$0226, a temple a row), Arg_StringsCount
+# and Menu_CursorPos (0), the returns it pushes under S, which pull S back to
+# where it was, and at UI_DrawString's two loads ($8E9D, $8EA5, shared with
+# the Select menu below) A, N and Z, the towns' lengths and letters, only
+# while Temp_Int24 is TOWNS and its menu draws. Save files' hook opens it
+# through fax_travel_menu, and B there goes back to Save files' choice
+# (fax_files_guru_again, fax_files_box_reopened, which zeroes
+# TextBox_LineScrollOffset for the dialogue box opened again).
 
 [[feature]]
 id = "seamless-world"
@@ -318,8 +329,19 @@ bytes as Guru travel; no one else touches ASK."""
 addr = 0x826E   # IScripts_InvokeNextAction
 hooks = ["faxanadu.travel.next-action", "faxanadu.files.next-action", "faxanadu.shops.next-action",
          "faxanadu.lesson.next-action", "faxanadu.recharge.guru"]
-why = """None handles the call; Save files, Guru travel and Quick shops only \
-steer the interpreter by writing IScriptOrCHRAddr. None redirects to an \
+why = """Save files, Guru travel and Quick shops steer the interpreter by \
+writing IScriptOrCHRAddr. Two handle the call, for Guru travel's menu of \
+towns (#206), and then the later sites are skipped that time, which loses \
+them nothing: none acts where they handle. Guru travel handles it at its SAY \
+step's END ($AE02), where it parks the script while its menu runs, only in \
+its menu's own phases, to send the CPU through the game's list routines and \
+back here; it is the first site, so it reads the C flag the menu's wait \
+(IScripts_WaitForMenuInput) returned untouched. Save files handles it at its \
+choice's second option ($AE13, "Send me to another Guru."), where it opens \
+that menu (fax_travel_menu) instead of going on. In those phases the box \
+up is the menu's or the dialogue box reopened over it, and the script never \
+leaves $AE02 for another's step but Guru travel's SAY or Save files' choice \
+again. None redirects to an \
 address another acts on: with a file in play Guru travel leaves the script's \
 ends to Save files (fax_files_guru_choice), Save files acts on the Gurus' own \
 actions and its own steps, and it undoes SET_SPAWN_POINT's raise at the next \
@@ -953,11 +975,12 @@ plugin = "faxanadu.select-menu"
 source = "src/fax_menu.c"
 hooks = "faxanadu.select-menu."
 rom = []
-# Hooks, which no other feature hooks, all in bank 12: PlayerMenu_Show's LDA
+# Hooks, all in bank 12: PlayerMenu_Show's LDA
 # #$18 ($8AB1) and JSR PlayerMenu_DrawStringLines ($8ADA), where it writes
 # TextBox_Height (18), then DataArray ($0220-$0227, all eight entries: the
 # rows' string numbers) and Arg_StringsCount (8); UI_DrawString's STA
-# Temp_Int24_U ($8E9D) and JSR Strings_ASCIIToIndex ($8EA5), where A, N and Z
+# Temp_Int24_U ($8E9D) and JSR Strings_ASCIIToIndex ($8EA5), shared with Guru
+# travel's menu (below), where A, N and Z
 # become the added rows' length and letters, for strings 6 and 7 of
 # PLAYER_TOP_MENU_ITEM_STRINGS only (Temp_Int24 $8873, Y $60-$7F), which the
 # original never draws; and @_loadMenuIDs ($8AF0), where it writes
@@ -966,6 +989,24 @@ rom = []
 # addresses where its handled return pulls them, so S ends where it was. The
 # map's and the quest log's opens are theirs (fax_map_request,
 # fax_quests_request). No ROM, no read overrides, no save-state record.
+
+[[shared_site]]
+addr = 0x8E9D   # UI_DrawString: STA Temp_Int24_U, after the length's LDA (Temp_Int24),Y
+hooks = ["faxanadu.travel.length", "faxanadu.select-menu.length"]
+why = """Both only observe and return 0, each setting A (with N and Z) to a \
+string's length only for its own table: Guru travel while its menu draws \
+and Temp_Int24 is TOWNS ($AE00, its own steps, which no table of the game's \
+names), the Select menu while Temp_Int24 is $8873 and Y is $60-$7F. One \
+table is never the other, so at most one writes, and the order does not \
+matter."""
+
+[[shared_site]]
+addr = 0x8EA5   # UI_DrawString's @_drawLoop: JSR Strings_ASCIIToIndex, after a letter's LDA (Temp_Int24),Y
+hooks = ["faxanadu.travel.letter", "faxanadu.select-menu.letter"]
+why = """As at $8E9D: each sets A (with N and Z) to a letter of its own \
+strings only, Guru travel's for TOWNS while its menu draws, the Select \
+menu's for $8873 at Y $60-$7F, so at most one writes, and the order does \
+not matter."""
 
 [[feature]]
 id = "use-item"
