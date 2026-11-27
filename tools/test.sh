@@ -277,6 +277,7 @@ E2E=(
   "view         tests/world/fixed_view.py"
   "arenas       tests/world/boss_arenas.py --parts"
   "only-rooms   tests/world/only_rooms.py --parts"
+  "arrivals     tests/world/arrivals.py --parts"
   "live-hud     tests/world/live_status_bar.py --parts"
   "spell-cost   tests/spell_cost/spell_cost.py --parts"
   "found        tests/found/found_items.py --parts"

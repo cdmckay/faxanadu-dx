@@ -3036,6 +3036,61 @@ was saved with, through the temple, and any temple spawn forgets the
 checkpoint (the temple's door is the next way in), so a stored one would
 never be read.
 
+### A load, frame by frame (#204)
+
+Measured headless a frame at a time (`tests/world/arrivals.py`, with
+`--frame-log`, `--screenshot` and `--present-out` every frame):
+
+- **Every load into another room ends the same way.** Its `Game_Setup*`
+  routine runs the loader, then `Screen_ResetForGamePlay` (`$CB17`:
+  `Screen_ResetSpritesForGamePlay`, then `Game_InterruptHandlersEnabled`,
+  `$13`, set to 1), `WaitForNextFrame` and `GameLoop_LoadSpriteImages`
+  (`$C28D`), whose sprites' tiles go through the PPU buffer over a few
+  frames. From the loader's start until
+  `Screen_ResetForGamePlay`, `Game_InterruptHandlersEnabled` is 0 and the
+  picture is dark; it comes back, status bar and all, the frame after, with
+  no sprites until the main loop draws them. `Screen_ReadyState` (`$0E`)
+  stays 0 through a load (it is `$FF` only from a death to the spawn), so it
+  says nothing of one: `Game_InterruptHandlersEnabled` does.
+- `Game_SetupAndLoadOutsideArea` (a region's door) and `Player_Spawn` (a
+  temple, a zone respawn) jump to `Game_MainLoop` after it; a door within an
+  area (`Game_SetupEnterScreen`), a building's way out
+  (`Game_SetupExitBuilding`) and a town's edge (`Game_SetupNewArea`) are
+  jumped to from the player's update (`GameLoop_UpdatePlayer`, `$E0CA`) and
+  return into the main loop.
+- **A door whose key says "I've used key."** (Eolis's way out with the J
+  key, the Tower of Trunk's, the Trunk's door into the Mist with the Q key,
+  the Mist's into the Branch with the A key) runs an interaction script before
+  its load, and a death runs the death path before a zone respawn's. Seamless
+  keeps its script or death mode on until the main loop's next
+  `GameLoop_UpdatePlayer` (`fax_world.c`, `player_hook`), so it took no new
+  room before that: the room showed 8 frames before it out of Eolis's way
+  out, 13 through the Tower of Trunk's door and back at it by zone respawn,
+  15 into the Mist and 9 into the Branch, and those frames were the game's
+  picture centred, the room jumping to its place as the loop began. A door
+  that says nothing (the Mist's back into the Trunk), a building's way out, a
+  town's edge and the Trunk's climb end their load on a frame in bank 14, and
+  Seamless took the room there, by the frame it first showed.
+- **A town's edge has no fade.** On the frame
+  `Player_CheckSwitchScreen_SwitchAreaHoriz` starts the load,
+  `Area_CurrentArea` is already the new area's (`Area_CurrentScreen` is still
+  the old screen's) and `Game_InterruptHandlersEnabled` 0, while that frame's
+  picture still shows the old room whole; it is dark from the next frame. A
+  region's door fades the old room out first: it is dark by the frame
+  `Area_CurrentArea` changes.
+- Seamless's map of area 4 (`AREA_BUILDINGS`) holds its first 10 screens,
+  so a temple (`$0B` and up, all but Eolis's `$02`) is never on it: in a
+  temple, after a death, a journey or a file continued, the picture is the
+  game's own, centred, as a room alone in its row is anyway.
+
+Seamless now lays the map out from a new room on the first frame the game's
+picture shows its status bar with its screen set up (`scene_ready()`), and
+until the loop's tick shows the game's own picture of the room there, as
+through a death; and while the game is loading
+(`Game_InterruptHandlersEnabled` 0) with its picture still lit, it goes on
+composing the room it holds. So the room he leaves stays put until the
+screen goes dark, and the new one shows where it stays.
+
 ## The map
 
 `fax_map_layout.c` reads the whole map from a copy of the cart once, and
@@ -5442,9 +5497,11 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   map out again from it, and so it does when the original's own load (a
   door in the same area) brings a boss back into a room whose copy had none:
   it captures the live room before it decides. The flag is kept in its record
-  (byte 28). It gives Seams the hero's true place (`fax_world_hero()`), and
-  waits with its step while Seams' pass is open. TCP `fax_world_room` shows
-  a room's slots: entity, X, Y, HP and hit counter.
+  (byte 28), and whether the active room is still arriving (#204: *A load,
+  frame by frame*) in byte 30. It gives Seams the hero's true place
+  (`fax_world_hero()`), and waits with its step while Seams' pass is open.
+  TCP `fax_world_room` shows a room's slots: entity, X, Y, HP and hit
+  counter.
   **The view shows only rooms** (#166's slice 4, `fax_camera.c`): the
   camera is a function of the map and the hero's place, kept by nothing,
   that keeps the 424x208 below the status bar off places of the map with

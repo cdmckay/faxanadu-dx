@@ -56,7 +56,9 @@ instead of showing black, easing there as you walk.
 F4 shows the region you're in. Doors and region changes keep the original's
 own transitions, and so does each boss's room: while its boss lives, the
 room stays apart and you fight on that one screen, as in the original; once
-the boss is dead, the room joins the world again. Switch the remaster off and
+the boss is dead, the room joins the world again. The room a door, a region
+change or a respawn brings you to comes up right where the view keeps it,
+with nothing sliding over as it appears. Switch the remaster off and
 the original's own 256-wide view comes back with the rest of the game. See
 [docs/SEAMLESS-WORLD.md](docs/SEAMLESS-WORLD.md).
 

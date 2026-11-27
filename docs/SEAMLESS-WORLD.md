@@ -65,7 +65,21 @@ presentation limit. Empty space outside the connected geometry remains
 empty; terrain is not stretched or repeated to fill it.
 
 Doors, region changes and connections that cannot be embedded consistently
-retain native portal transitions.
+retain native portal transitions. **A load's room shows where it stays**
+(#204): Seamless lays the map out from the new room on the first frame the
+game's picture shows it (its status bar, its screen set up), so from that
+frame the room is at its place under the camera, the rooms round it drawn
+with it, and until the game's main loop runs there (a few frames, while it
+loads the sprites' tiles) it is the game's own picture there, as through a
+death, sprites coming in as the loop draws them. The room a load leaves stays
+where it was for as long as the game's picture shows it (a town's edge has
+no fade: its first frame still shows the old room). Whatever moves, moves
+while the screen is dark. Before, a door that says a key's line and a zone
+respawn showed the room centred, the game's own picture, until the loop's
+first tick, and it jumped to its place then: out of Eolis's way out, 84
+pixels left as the Trunk came in; and a town's edge centred the old room for
+its first frame. Temples and the other buildings past area 4's first 10
+screens are on no map, and show the game's picture centred, as before.
 
 **Boss screens are arenas** (#110). A boss's screen (`SCREEN_EVENT_BOSS` in
 its sprite list: Trunk `$15` and `$3B`, Mist `$34` and `$4C`, Branch `$07`
@@ -232,6 +246,7 @@ All automated launches were hidden and muted with native saves disabled.
 | Fights across a seam (#166, slice 2) | `tests/seams/fights.py`, in the suite, a part each: from `$04` the Long Sword kills `$05`'s Zozura (its experience and MP his, its death and its bread in `$05`); a Monodron's coin drops in `$05` and its sound plays; he takes a coin across the seam without crossing; a Zozura straddling the seam hurts him; a punch reaches across it; a Sugata in the Mist's `$1F` flashes him on `$1E` in its reach, and not out of it; a save mid-swing replays alike in two fresh games; a frame that ends inside the pass on Zenis 16 reads as the room's own and replays alike. `tests/world/boss_arenas.py` checks that no move or visit comes from an arena |
 | One above the other (#166, slice 5) | `tests/seams/vertical.py`, in the suite, a part each: a Hornet in Trunk `$2D`'s ladder shaft follows him down `$29`'s ladder, through `$2D`'s bottom and into `$29` at its Y less 208; one straddling that seam is drawn whole, its pixels above and below it; on the Mist's `$10`, at the top of a jump, the Long Sword kills a Hornet of `$07` above (at its y 203) in `$07`, its experience his, and leaves one at `$07`'s y 180 alone; a dormant Hornet of `$07` stands still until the frame the view comes within 16 pixels of it, from Seamless's trace, and wakes on that frame; a Hornet flying up out of `$10` moves into `$07` at its Y plus 208; a Zozura falls from Trunk `$3C` into `$37` and lands on its floor; a save mid-crossing replays alike in two fresh games. `tests/seams/seams_test.c` checks every test past a top or bottom against the blocks of the joined world |
 | The view shows only rooms (#166, slice 4) | `tests/world/camera_test.c`, in the suite, lays out every area from every room as `topology()` does (54 maps), and walks the hero a pixel at a time along every row at every height, with and without an opening above, and through every seam one above the other at each of its 16 block columns: his body always in the view; standing in a room with a room beside it, the view over no place without a room; across a seam, black only where no view over both rows' rooms shows him; the view moving at most 1 pixel for each of his walking, 4 under an opening, 6 climbing and 7 across a seam whose rows share one column; and with no empty place the old camera's view. `tests/world/only_rooms.py`, in the suite, headless, every frame from the trace against `fax_world_room`'s places: the Tower of Trunk from `$10` to `$12` and back (the old camera black from the first frame, the new one never), down `$10`'s ladder into `$0F` (black only on the 42 frames his body is across the seam), and the Tower of Suffer from `$37`'s ledge past the empty corner over `$39` (the view reaching up at the start and down to his row before the corner); at most 2, 7 and 5 pixels a frame, and never without him moving |
+| Arrivals (#204) | `tests/world/arrivals.py`, in the suite, headless, every frame of each load from a few frames before it, the presented picture against the game's own: where the game's playfield lies in the view. On each frame the game still shows the room a load leaves, that room is where it was; from the first frame the new room shows, as long as the hero stands, it is at one place, the trace's for it, through Seamless's own frames after. A part each: Eolis's way out into the Trunk with the J key's line (shown 8 frames before Seamless composed it in play, the room at the view's left edge), left out of Apolune by the town's edge onto the Trunk's `$07` (the old room's last frame), through the Tower of Trunk's door into `$0D` (13), dead on `$0E` and back at that door by zone respawn (13), and out of Eolis's meat shop (taken in play by its first frame). Without the fix the first four fail: the new room 84 pixels right, or the old room 84 right on the town's first frame. Also checked by hand the same way: the Trunk's door into the Mist (15 frames, the room at x 168) and the Mist's into the Branch (9), the Mist's door back, the Trunk's climb both ways, a death into a temple and out of it, Guru travel's arrival and a new game's first screen, all where they stay from their first frame |
 | Shared CIRAM API | Invalid bounds/NULL and isolated upload refused; upload/restore succeeds; serialized complete machine unchanged after the probe |
 | Catalog / prepared helper | Feature activation without CLI override; hidden helper loads and pauses all prepared states; owner configuration restored to normal audio |
 
@@ -335,8 +350,10 @@ get it). There is no size option: tests play the 424x240 view a player sees. TCP
 canvas's),
 `fax_world_room` and `fax_world_probe`. `NESRECOMP_WORLD_TRACE=<path>` explicitly
 enables the per-frame CSV, a line after each frame: the live room and hero,
-the camera the picture has with the hero it is worked out from, and the view
-actors wake in; ordinary launches create no world journal.
+the camera the picture has with the hero it is worked out from, the view
+actors wake in, where the room's top-left sits in the picture (`origin_x`,
+`origin_y`) and whether it is still arriving (the game's own picture there,
+#204); ordinary launches create no world journal.
 
 The task's `preview/Open-preview.ps1` starts a normal window, normal audio and
 a localhost checklist. The first setup is paused. Tests can be switched and
