@@ -17,8 +17,9 @@ the Guru speaks, from a saved game of that death after its dissolve. Then:
    Then, frame exact: from a save state taken as the greeting types, runs
    the same number of frames headless with A held, without A, and held with
    the mods off, and compares how far each got.
-3. Holds A through Guru travel's offer and its first destination: neither
-   question is answered until A is pressed again, and B still declines.
+3. Holds A through Guru travel's offer and its menu of towns (#206): the
+   offer is not answered until A is pressed again, and that A, held on, does
+   not choose a town; B still declines.
 
 Screenshots of each held wait, and of the greeting after the same frames
 held and not held, go in OUT.
@@ -31,7 +32,8 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "travel"))
-from fax_e2e import Game, act, chunks, conversation, frame, parse_args, ram, tcp, typed, until, wait  # noqa: E402
+from fax_e2e import (Game, act, chunks, conversation, frame, parse_args, ram, tcp, travel_menu, typed,  # noqa: E402
+                     until, wait)
 import guru_travel as gt  # noqa: E402
 
 MESSAGE_ID, PROCESSED, PAUSED = 0x213, 0x214, 0x215   # MessageID, Message_ProcessedLength, TextBox_MessagePaused
@@ -39,7 +41,7 @@ INTERRUPT_COUNTER = 0x1A                               # counts every NMI: one a
 SOUND_TICK = 0x127                                     # SoundEffect_State_Counter: the typing sound's tick, 1-4
 ISCRIPT_OFFSET = 0xDD                                  # moves when the script goes on to its next action
 NEGATIVE_THOUGHTS, MEDITATE_WITH_YOU = 0x24, 0x22      # the death message; the Guru's greeting
-OFFER_PHASE, ASKING_PHASE = 2, 3                       # fax_travel.c's Phase
+OFFER_PHASE, MENU_PHASE = 2, 8                         # fax_travel.c's Phase
 HOLD = 3000                                            # frames: longer than any step below
 SAME_FRAMES = 36                                       # the headless runs: part of the greeting, held or not
 
@@ -250,7 +252,7 @@ def main():
         print(f"ok: in the same {SAME_FRAMES} frames, held A types {held_now} bytes of the greeting to "
               f"{not_held} without; with the mods off, holding A changes nothing")
 
-        # 3. Guru travel's questions, held through.
+        # 3. Guru travel's offer and its menu, held through.
         tcp("load_state", path=str(temple))
         talk_to_guru()
         advance(gt.OFFER)
@@ -261,16 +263,15 @@ def main():
         game.shot("offer-held")
         release_a()
         hold_a()                                     # press again, and keep holding
-        until("the first destination", lambda: line() == gt.TO_GURU + 0)
-        next_message_typed()
-        still("held A does not choose Eolis", lambda: (lambda s: s["text"] == gt.TO_GURU + 0 and s["dest"] == -1
-                                                       and s["phase"] == ASKING_PHASE)(tcp("travel_state")))
-        game.shot("destination-held")
-        act("b")                                     # with A still held: B asks about the next, the farewell here
+        travel_menu()                                # the offer taken: the menu of towns, A still down
+        still("held A does not choose Eolis", lambda: (lambda s: s["phase"] == MENU_PHASE and s["menu_up"] and
+                                                       s["cursor"] == 0 and s["dest"] == -1)(tcp("travel_state")))
+        game.shot("menu-held")
+        act("b")                                     # with A still held: B leaves the menu, the farewell here
         until("the farewell", lambda: line() == gt.FAREWELL)
         release_a()
         assert tcp("travel_state")["dest"] == -1
-        print("ok: held A answers neither Guru travel question; a new press does, and B still declines")
+        print("ok: held A answers neither Guru travel's offer nor its menu; a new press does, and B still declines")
         print("screenshots:", ", ".join(shots))
     except BaseException:
         if game.running():

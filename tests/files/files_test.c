@@ -185,13 +185,20 @@ void cyc_render_sprites(uint32_t *out, int width, int height, int native_x0, con
 /* Guru travel, as Save files sees it. */
 #define TRAVEL_SAY 0xAE00u
 static bool travel_offers, travel_served;
-static int travel_begun = -1; /* -1, or whether it was asked for the towns */
+static int travel_begun = -1; /* -1; 0 its offer (fax_travel_begin); 1 its menu (fax_travel_menu) */
 bool fax_travel_can_offer(void) { return travel_offers; }
 uint16_t fax_travel_say_step(void) { return travel_served ? TRAVEL_SAY : 0; }
-uint16_t fax_travel_begin(bool towns) {
+uint16_t fax_travel_begin(void) {
     if (!travel_offers) return 0;
-    travel_begun = towns;
+    travel_begun = 0;
     return STOCK_END; /* the model ends the script there; travel_test.c covers the rest */
+}
+/* The menu sends the CPU through the game's list routines: the hook that
+ * opens it handles the call, and the model's script stops there. */
+int fax_travel_menu(void) {
+    if (!travel_offers) return 0;
+    travel_begun = 1;
+    return 1;
 }
 
 static void stock(void) {
@@ -787,7 +794,11 @@ static void run(uint16_t at, const char *answers) {
     ram[TEXTBOX_CLOSED] = 0;
     jump(at);
     for (int steps = 0; steps < 64; ++steps) {
-        next_action_hook(0x826E);
+        if (next_action_hook(0x826E)) { /* only to open Guru travel's menu */
+            CHECK(travel_begun == 1);
+            say("travel's menu");
+            return;
+        }
         uint16_t p = (uint16_t)((ram[ISCRIPT_ADDR] | ram[ISCRIPT_ADDR + 1] << 8) + ram[ISCRIPT_OFFSET]);
         uint8_t op = cpu_read(p), arg = cpu_read((uint16_t)(p + 1));
         uint16_t addr1 = (uint16_t)(arg | cpu_read((uint16_t)(p + 2)) << 8);
@@ -909,12 +920,45 @@ static void choices(void) {
           !strcmp(fax_save_record_get(&r, "gold"), "42"));
     CHECK(cpu_read(BUY_SELL_MESSAGE) == BUY_SELL_MESSAGE_ID && guru == GURU_IDLE); /* the shops' menu is theirs again */
 
-    /* Travel from the menu: the towns at once; nothing saved, the spawn point stays. */
+    /* Travel from the menu: Guru travel's menu of towns at once; nothing
+     * saved, the spawn point stays. */
     in_play();
     travel_offers = true;
     temple_guru(5, false, "1");
-    EXPECT("msg 22", MENU, "end");
+    EXPECT("msg 22", MENU, "travel's menu");
     CHECK(travel_begun == 1 && ram[TEMPLE_SPAWN_POINT] == 1 && furthest == 5 && !exists("faxanadu_file1.txt"));
+    CHECK(guru == GURU_IDLE && keep_rows); /* the box stays up, under Guru travel's lines */
+
+    /* B in that menu comes back: the choice served again, its menu shown
+     * as the interpreter reads it, and its options as before. The dialogue
+     * box was opened again for it, laid out from the top: the line scroll
+     * starts at 0, and stays there for the choice's message. */
+    ram[TEXTBOX_LINE_SCROLL] = 1;
+    rows = 1;
+    fax_files_box_reopened();
+    CHECK(ram[TEXTBOX_LINE_SCROLL] == 0 && rows == 0);
+    uint16_t again = fax_files_guru_again();
+    CHECK(again == STEP && guru == GURU_MENU && cpu_read(BUY_SELL_MESSAGE) == SLOT_ID);
+    ram[TEXTBOX_LINE_SCROLL] = 0;                                             /* Messages_Load zeroes it ... */
+    CHECK(scroll_hook(CLEAR_SCROLLED) == 0 && ram[TEXTBOX_LINE_SCROLL] == 0); /* ... and 0 is put back */
+    run(again, "B");
+    EXPECT(MENU, "end");
+    fax_files_frame_end(); /* the box closed; the shops' menu is theirs again */
+    CHECK(guru == GURU_IDLE && !exists("faxanadu_file1.txt") && cpu_read(BUY_SELL_MESSAGE) == BUY_SELL_MESSAGE_ID);
+    in_play();
+    travel_offers = true;
+    temple_guru(5, false, "1");
+    run(fax_files_guru_again(), "0");
+    EXPECT(MENU, SAVED, "end");
+    CHECK(ram[TEMPLE_SPAWN_POINT] == 5 && exists("faxanadu_file1.txt"));
+    remove_files();
+    /* Nothing to come back to: no file in play, or nowhere to send the hero. */
+    in_play();
+    CHECK(fax_files_guru_again() == 0); /* Guru travel has nowhere */
+    stock();
+    remove_files();
+    travel_offers = true;
+    CHECK(fax_files_guru_again() == 0); /* no file in play */
 
     /* B leaves: no save, no travel, and talking did not raise the spawn point (#43). */
     in_play();
@@ -1029,7 +1073,8 @@ static void saving_rests(void) {
         ram[PLAYER_HP_U] = ram[ADDED_HP] = 32;
         ram[PLAYER_MP] = 5;
         temple_guru(5, false, others[i]);
-        EXPECT("msg 22", MENU, "end");
+        const char *const want[] = { "msg 22", MENU, i ? "end" : "travel's menu", NULL };
+        expect(want);
         CHECK(ram[PLAYER_HP_U] == 32 && ram[PLAYER_MP] == 5 && fill_frames == 0 && refills == 0 && !flash);
     }
     /* The question (Guru travel off: our own SAY step), after a new title. */

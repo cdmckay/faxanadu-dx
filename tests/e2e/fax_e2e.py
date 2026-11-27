@@ -118,6 +118,22 @@ Functions, on the game launched last
     shop_leave(frames=1200)         B in that list: the end, or, after a purchase
                                     or a sale, "Thank you for shopping." typed
                                     out and waiting for A: whether he thanked.
+    guru_send(choose=True, frames=1200)
+                                    At a Guru's choice (Save files), Down to "Send
+                                    me to another Guru." and A: Guru travel's menu
+                                    opens.
+    accept_offer(frames=1200)       A on Guru travel's offer, typed out: its menu
+                                    opens.
+    travel_menu(frames=1200)        Until Guru travel's menu of towns (#206) is
+                                    up and waits for a button: its travel_state
+                                    ("menu": the temples, "shown": the rows the
+                                    screen shows, "cursor").
+    travel_to(temple, leave=True, frames=1200)
+                                    In that menu: Down to `temple`'s row, then A,
+                                    each pressed again while the menu still waits
+                                    for it; returns once he is to go there, or
+                                    with `leave` once A has ended the departure
+                                    line, the journey to follow.
     menu_row(name, game=None)       The row of `name` ("WEAPON" ... "PLAYER",
                                     "QUESTS", "MAP") in the Select menu: the
                                     remaster's eight, QUESTS and MAP on top
@@ -912,7 +928,10 @@ def act(name, frames=6, after=8):
 
 
 FILES_TOP, FILES_NEW, FILES_CONTINUE, FILES_CONFIRM = 0, 1, 2, 3   # fax_files.c's Mode
-GURU_FILLING = 4                                                   # fax_files.c's GuruPhase: a save's fill
+GURU_MENU, GURU_FILLING = 1, 4                                     # fax_files.c's GuruPhase: his choice; a save's fill
+TRAVEL_OFFERING, TRAVEL_MENU_PHASES = 2, (7, 8)                    # fax_travel.c's Phase: OFFER; OPENING, MENU
+TRAVEL_OFFER, TRAVEL_SLOT_ID = 1, 0xC3                             # its offer's line; the message its lines are
+MENU_CURSOR = 0x21E                                                # Menu_CursorPos: a menu's or a list's cursor
 
 
 def title_menu(frames=2000):
@@ -1119,6 +1138,67 @@ def shop_leave(frames=1200):
     until("his thanks", lambda: tcp("shops_state")["step"] == "thanks", frames)
     type_out("his thanks", frames, pauses=False)
     return True
+
+
+def guru_send(choose=True, frames=1200):
+    """At a Guru's choice (Save files' Buy/Sell menu: "Remember my journey."
+    or "Send me to another Guru."), typed out: Down to the second, then
+    (`choose`) A, which opens Guru travel's menu of towns at once (#206).
+    Each press again while the choice still waits for it. Returns once the
+    menu is opening, which travel_menu() waits for, or without `choose` once
+    the cursor is on the second."""
+    choice = lambda: tcp("files_state")["guru"] == GURU_MENU   # noqa: E731
+    _press_until("down", "the cursor on Send me to another Guru.", lambda: ram(MENU_CURSOR) == 1, choice, frames)
+    if choose:
+        _press_until("a", "Guru travel's menu", lambda: tcp("travel_state")["phase"] in TRAVEL_MENU_PHASES,
+                     lambda: choice() and ram(MENU_CURSOR) == 1, frames)
+
+
+def accept_offer(frames=1200):
+    """A on Guru travel's offer ("Shall I send you to another Guru?"), typed
+    out (page_to() stops on it), until its menu of towns opens; again while
+    the question still waits for it."""
+    asking = lambda: (lambda s: s["phase"] == TRAVEL_OFFERING and s["text"] == TRAVEL_OFFER)(tcp("travel_state"))  # noqa: E731
+    _press_until("a", "Guru travel's menu", lambda: tcp("travel_state")["phase"] in TRAVEL_MENU_PHASES, asking, frames)
+
+
+def travel_menu(frames=1200):
+    """Until Guru travel's menu of towns (#206) is up and waits for a button,
+    and its travel_state: "menu", the temples a row each; "shown", the rows
+    as the screen shows them; "cursor", the row the cursor is on. It is up
+    ("menu_up") once its box is the box open and its rows are drawn and sent
+    to the screen (the PPU buffer empty), which is when its wait reads the
+    pad: A or B there is new only on the frame it goes down."""
+    until("Guru travel's menu", lambda: tcp("travel_state")["menu_up"], frames)
+    return tcp("travel_state")
+
+
+def travel_to(temple, leave=True, frames=1200):
+    """In Guru travel's menu of towns, up: Down until the cursor is on
+    `temple`'s row (Menu_UpdateAndDraw wraps), then A, which sends the hero
+    there. A press counts only on the frame it goes down, so each is pressed
+    again while the menu still waits for it (_press_until()). Returns once he
+    is to go (travel_state's "dest"), or with `leave`, once the Guru has said
+    "Close your eyes and clear your mind." and A has ended the conversation:
+    the journey follows. The line waits for the dialogue box, opened again
+    over the menu, and MessageID reads 0 until it begins, so a press before
+    then would be lost."""
+    state = travel_menu(frames)
+    row = state["menu"].index(temple)
+    up = lambda: tcp("travel_state")["menu_up"]   # noqa: E731
+    for _ in range(len(state["menu"])):
+        cursor = tcp("travel_state")["cursor"]
+        if cursor == row:
+            break
+        _press_until("down", f"the cursor off row {cursor}", lambda: tcp("travel_state")["cursor"] != cursor, up,
+                     frames)
+    assert tcp("travel_state")["cursor"] == row, f"the cursor never reached {temple}'s row"
+    _press_until("a", f"the journey to temple {temple}", lambda: tcp("travel_state")["dest"] == temple, up, frames)
+    state = tcp("travel_state")
+    if leave:
+        until("the departure", lambda: ram(MESSAGE_ID) == TRAVEL_SLOT_ID, frames)
+        page_through("the conversation's end", lambda: ram(ISCRIPT_PORTRAIT_ID) == 0xFF, frames)
+    return state
 
 
 SELECT_MENU = ("QUESTS", "MAP", "WEAPON", "ARMOR", "SHIELD", "MAGIC", "ITEM", "PLAYER")   # the remaster's (#146)

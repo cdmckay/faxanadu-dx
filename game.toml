@@ -179,7 +179,8 @@ bank = 12
 bytes = "c9 ff d0 02 a9 1f 8d 00 02 aa bd 6b"
 
 # Guru travel (fax_travel.c): each interaction-script action, the
-# conversation's end in the main loop, the temple layout and a new game.
+# conversation's end in the main loop, the temple layout, a new game, and
+# UI_DrawString's two loads, where its menu's rows are the towns (#206).
 
 [[mod_function_hook]]
 id = "faxanadu.travel.next-action"
@@ -204,6 +205,18 @@ id = "faxanadu.travel.new-game"
 addr = 0xdb26
 bank = 15
 bytes = "20 af c6 20 f7 ca 20 a7 de a9 00 8d"
+
+[[mod_function_hook]]
+id = "faxanadu.travel.length"
+addr = 0x8e9d
+bank = 12
+bytes = "85 ee c8 20 dc cf b1 ec 20 b3 8e c8"   # UI_DrawString: STA Temp_Int24_U, INY, JSR PPUBuffer_QueueCommandOrLength
+
+[[mod_function_hook]]
+id = "faxanadu.travel.letter"
+addr = 0x8ea5
+bank = 12
+bytes = "20 b3 8e c8 20 45 f8 c6 ee d0 f3 86"   # @_drawLoop: JSR Strings_ASCIIToIndex, INY, JSR PPUBuffer_Set
 
 # Death keeps gold and experience (fax_death.c): the far-called routine that
 # resets them, skipped only when Player_HandleDeath called it.

@@ -50,8 +50,8 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 import fax_e2e  # noqa: E402
-from fax_e2e import (Game, act, chosen, dissolve, fixture, hold, page_through, page_to, parser, ram,  # noqa: E402
-                     step_toward, tcp, type_out, until, wait)
+from fax_e2e import (Game, accept_offer, act, chosen, dissolve, fixture, hold, page_through, page_to,  # noqa: E402
+                     parser, ram, step_toward, tcp, travel_to, type_out, until, wait)
 
 AREA, SCREEN, PLAYER_X, PLAYER_Y, PLAYER_FLAGS = 0x24, 0x63, 0x9E, 0xA1, 0xA4
 SCREEN_READY_STATE, SCROLL_DIRECTION, INTERRUPTS_ON = 0x0E, 0x54, 0x13
@@ -71,7 +71,7 @@ APOLUNE, CONFLATE = 1, 5                                            # temples
 TEMPLE_SCREEN = {APOLUNE: 0x0B, CONFLATE: 0x2B}                     # DEST_SCREEN_FOR_TEMPLE_SPAWN
 TOWNS = 3
 MEDITATE_WITH_YOU = 0x22                                            # the Guru's greeting
-OFFER, DEPART, TO_GURU = 1, 3, 4                                    # fax_travel.c's lines (TO_GURU + temple)
+OFFER = 1                                                           # fax_travel.c's offer line
 PPU_MASK, DURATION_OINTMENT, SUGATA = 0x0B, 0x427, 0x18             # greyscale is bit 0; $FF: no Ointment
 PACKAGE, FEATURE = "faxanadu.dx", "dx"                          # the one switch: off is the original game
 
@@ -472,9 +472,9 @@ def main():
             act("left", 170, 10)
             act("up", 4, 10)
             until("the Guru's greeting", lambda: ram(MESSAGE_ID) == MEDITATE_WITH_YOU)
-            for want, button in ((OFFER, "a"), (TO_GURU + 0, "b"), (TO_GURU + APOLUNE, "a"), (DEPART, "a")):
-                page_to(lambda s: s["text"] == want, f"travel line {want}")
-                act(button, 6, 30)
+            page_to(lambda s: s["text"] == OFFER, "Guru travel's offer")
+            accept_offer()                                       # its menu of towns (#206)
+            travel_to(APOLUNE)
             until("Apolune's temple", lambda: at(BUILDINGS, TEMPLE_SCREEN[APOLUNE]), 2400)
             assert respawn()["zone"] is None, "the journey forgot Conflate"
             walk_out()

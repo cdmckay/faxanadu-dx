@@ -29,8 +29,8 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
-from fax_e2e import (Game, act, batch, fixture, hold, page_through, page_to, parse_args, ram, step_toward,  # noqa: E402
-                     tcp, until, wait)
+from fax_e2e import (Game, accept_offer, act, batch, fixture, hold, page_through, page_to, parse_args, ram,  # noqa: E402
+                     step_toward, tcp, travel_to, until, wait)
 
 AREA, SCREEN, PLAYER_X = 0x24, 0x63, 0x9E
 TEXTBOX_WIDTH, TEXTBOX_CLOSED, MESSAGE_ID, TEXTBOX_PAUSED = 0x20A, 0x20C, 0x213, 0x215
@@ -42,7 +42,7 @@ BUILDINGS, TOWNS = 4, 3
 TEMPLE_SCREEN = {1: 0x0B, 5: 0x2B}                                  # DEST_SCREEN_FOR_TEMPLE_SPAWN: Apolune, Conflate
 APOLUNE, CONFLATE = 1, 5
 MEDITATE_WITH_YOU, NEGATIVE_THOUGHTS = 0x22, 0x24                  # the Guru's greeting; the death message
-OFFER, DEPART, TO_GURU = 1, 3, 4                                   # fax_travel.c's lines (TO_GURU + temple)
+OFFER = 1                                                          # fax_travel.c's offer line
 PALETTE_TOWER, PALETTE_FRATERNAL, PALETTE_TOWN = 0x07, 0x0D, 0x1B
 FOREPAW, REGION_TRUNK = 2, 1                                       # its first screen in the towns' area
 MENU_WIDTH = 10                                                    # PlayerMenu_Show's box: 2, 6, 10 x 14
@@ -116,13 +116,13 @@ def main():
         raise AssertionError("could not walk out")
 
     def travel(temple):
-        """Talk to the Guru and travel to `temple`, which must be the second one offered."""
+        """Talk to the Guru and travel to `temple`, from Guru travel's menu of towns."""
         act("left", 170, 10)
         act("up", 4, 10)
         until("the Guru's greeting", lambda: ram(MESSAGE_ID) == MEDITATE_WITH_YOU)
-        for want, button in ((OFFER, "a"), (TO_GURU + 0, "b"), (TO_GURU + temple, "a"), (DEPART, "a")):
-            page_to(lambda s: s["text"] == want, f"travel line {want}")
-            act(button, 6, 30)
+        page_to(lambda s: s["text"] == OFFER, "Guru travel's offer")
+        accept_offer()                                           # its menu of towns (#206)
+        travel_to(temple)
         until(f"temple {temple}", lambda: (ram(AREA), ram(SCREEN)) == (BUILDINGS, TEMPLE_SCREEN[temple]), 2400)
 
     def warp(source, name, area, screen, palette, pos, region):

@@ -25,11 +25,13 @@
  * at Eolis's Guru with the Ring of Elf), he offers a choice in the shops'
  * Buy/Sell menu: "Remember my journey." or "Send me to another Guru." (a
  * question, "Shall I remember your journey?", when there is nowhere to send
- * you). B leaves. With no file in play (a save state from the original game)
- * he skips the mantra, and Guru travel offers or the script ends: the
- * remaster never shows a mantra. The interpreter is steered to a step of ours
- * in unused ROM; the menu's message ID is an immediate operand, read through
- * an override for that one menu.
+ * you). B leaves. The second opens Guru travel's menu of towns at once
+ * (fax_travel_menu), and B in that menu comes back to this choice
+ * (fax_files_guru_again). With no file in play (a save state from the
+ * original game) he skips the mantra, and Guru travel offers or the script
+ * ends: the remaster never shows a mantra. The interpreter is steered to a
+ * step of ours in unused ROM; the menu's message ID is an immediate operand,
+ * read through an override for that one menu.
  * Saving makes this Guru's temple the spawn point (the Guru you last saved
  * with is where you continue and where death sends you), and is the rest
  * point (#205), as a Metroidvania's save room: as he remembers the journey
@@ -618,8 +620,43 @@ static void fail(const char *why) {
  * remaster shows no mantra. Guru travel offers, as after a save, or the
  * script ends. Guru travel acts on neither address before this one runs. */
 static void skip_mantra(void) {
-    uint16_t to = fax_travel_begin(false);
+    uint16_t to = fax_travel_begin();
     go(to ? to : STOCK_END);
+}
+
+/* Serve the Guru's choice at STEP: the menu if Guru travel has somewhere to
+ * send the hero, else the question, with its line, and the step that shows
+ * the saved line. False (and failed) if it cannot be supplied. */
+static bool offer_choice(void) {
+    bool as_menu = fax_travel_can_offer();
+    say_step = fax_travel_say_step();
+    if (!say_step) {
+        say_step = OWN_SAY;
+        if (!serve_own_say()) {
+            fail("cannot supply the Guru's step");
+            return false;
+        }
+    }
+    if (!serve_step(as_menu) || !serve_text(as_menu ? TEXT_MENU : TEXT_QUESTION) ||
+        (as_menu && !serve_menu_message(true))) {
+        fail("cannot supply the Guru's choice");
+        return false;
+    }
+    guru = (uint8_t)(as_menu ? GURU_MENU : GURU_QUESTION);
+    keep_rows = true;
+    rows = q(TEXTBOX_LINE_SCROLL) & 3;
+    return true;
+}
+
+uint16_t fax_files_guru_again(void) {
+    if (!fax_files_guru_choice() || !fax_travel_can_offer()) return 0;
+    return offer_choice() ? STEP : 0;
+}
+
+void fax_files_box_reopened(void) {
+    if (!enabled) return;
+    cyc_mod_poke(TEXTBOX_LINE_SCROLL, 0);
+    rows = 0;
 }
 
 /* TextBox_ClearPasswordSize, as Messages_Load starts each message, has just
@@ -636,7 +673,8 @@ static int scroll_hook(uint16_t addr) {
 /* IScripts_InvokeNextAction: where a Guru would show the mantra, offer the
  * choice (or with no file in play, skip it); then save, or hand over to Guru
  * travel. Works whichever of this and Guru travel's hook at the same address
- * runs first: neither redirects at an address the other acts on. */
+ * runs first: neither redirects at an address the other acts on. It handles
+ * the call only to open Guru travel's menu, at the choice's second option. */
 static int next_action_hook(uint16_t addr) {
     (void)addr;
     if (!enabled) return 0;
@@ -663,10 +701,10 @@ static int next_action_hook(uint16_t addr) {
             else FAX_FILES_LOG("[files] cannot supply the Guru's fill; HP and MP stay\n");
             return 0;
         }
-        if (guru == GURU_MENU && at == STEP + 3) { /* "Send me to another Guru." */
-            uint16_t to = fax_travel_begin(true);
+        if (guru == GURU_MENU && at == STEP + 3) { /* "Send me to another Guru.": Guru travel's menu */
             guru = GURU_IDLE;
-            go(to ? to : STOCK_END);
+            if (fax_travel_menu()) return 1; /* the CPU goes through the game's list routines: handled */
+            go(STOCK_END);
             return 0;
         }
         if (guru == GURU_QUESTION && at == STEP + 4) { /* B on the question */
@@ -684,7 +722,7 @@ static int next_action_hook(uint16_t addr) {
     case GURU_SAVED:
         if (at == say_step + 2) { /* the saved line was read: travel may offer */
             guru = GURU_IDLE;
-            uint16_t to = fax_travel_begin(false);
+            uint16_t to = fax_travel_begin();
             if (to) go(to);
             return 0;
         }
@@ -705,25 +743,10 @@ static int next_action_hook(uint16_t addr) {
     }
     Trigger trig = trigger_at(at);
     if (!trig) return 0;
-    bool as_menu = fax_travel_can_offer();
-    say_step = fax_travel_say_step();
-    if (!say_step) {
-        say_step = OWN_SAY;
-        if (!serve_own_say()) {
-            fail("cannot supply the Guru's step");
-            if (trig == AT_MANTRA) skip_mantra();
-            return 0;
-        }
-    }
-    if (!serve_step(as_menu) || !serve_text(as_menu ? TEXT_MENU : TEXT_QUESTION) ||
-        (as_menu && !serve_menu_message(true))) {
-        fail("cannot supply the Guru's choice");
+    if (!offer_choice()) {
         if (trig == AT_MANTRA) skip_mantra();
         return 0;
     }
-    guru = (uint8_t)(as_menu ? GURU_MENU : GURU_QUESTION);
-    keep_rows = true;
-    rows = q(TEXTBOX_LINE_SCROLL) & 3;
     go(STEP);
     return 0;
 }
