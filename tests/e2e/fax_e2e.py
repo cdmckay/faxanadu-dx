@@ -231,6 +231,8 @@ LOCKS = (Path(_runtime) / "faxanadu-e2e-ports" if _runtime and os.path.isdir(_ru
          else Path(tempfile.gettempdir()) / f"faxanadu-e2e-ports-{os.getuid()}")
 REPO = Path(__file__).resolve().parents[2]
 FIXTURES = REPO / "build-tests" / "fixtures"  # the saved games tests start from, made from your ROM
+if os.environ.get("FAX_E2E_FIXTURES"):        # another build's, kept apart (tools/test.sh --sanitize)
+    FIXTURES = Path(os.environ["FAX_E2E_FIXTURES"])
 LAUNCH_TRIES = 3
 LISTEN_TIMEOUT = 60                        # seconds for the game to open its TCP port
 PAGE_FRAMES = 4                            # a typed page read again this many frames on (page_to())
