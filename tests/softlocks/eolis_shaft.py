@@ -284,8 +284,10 @@ def dx(game):
     lowest = [WALL_TOP_Y]
 
     def down():
-        lowest[0] = max(lowest[0], ram(HERO_Y))
-        return ram(HERO_Y) == FLOOR_Y and standing()
+        # His Y and flags at one frame's end: two reads could fall on two frames under load (#191).
+        y, flags = (int(r["hex"], 16) for r in batch(*(("read_ram", dict(addr=a, len=1)) for a in (HERO_Y, FLAGS))))
+        lowest[0] = max(lowest[0], y)
+        return y == FLOOR_Y and not flags & AIRBORNE
     end = fax_e2e.frame() + 600
     while not down():
         assert fax_e2e.frame() < end, f"walking off the wall: {hero()}"
