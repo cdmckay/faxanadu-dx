@@ -2216,6 +2216,310 @@ static void marks_in_the_record(void) {
     CHECK(test_hook(right_hook, SLOT, false) == 0 && !blk(LEFT_ROOM)->through[SLOT]);
 }
 
+/* ==== slice 6 ==== */
+
+enum { NASH_E = 0x0D, MAGMAN_E = 0x23, MINION_E = 0x03, ZORUGERIRU_E = 0x31 };
+
+/* Sprite_CalcDistanceXToPlayer for slot x: the ROM's code from $82F8, with
+ * the hook site at its entry. Returns A, C in the model's P. */
+static uint8_t distance_x(unsigned x) {
+    cpu.x = (uint8_t)x;
+    if (distance_x_hook(DISTANCE_X)) return cpu.a;
+    uint8_t a = subtract(ram[SLOT_X + x], ram[HERO_X]); /* LDA, SEC, SBC Player_PosX_Block */
+    if (cpu.p & FLAG_C) {                               /* BCS @LAB_PRG14__8312 */
+        a = subtract(a, 0x10);                          /* SEC, SBC #$10 */
+        if (!(cpu.p & FLAG_C)) a = 0, cpu.p = (uint8_t)((cpu.p & ~FLAG_N) | FLAG_Z | FLAG_C); /* LDA #$00, SEC */
+        return a;
+    }
+    a = (uint8_t)((a ^ 0xFF) + 1);                                               /* EOR #$FF, CLC, ADC #$01, CLC */
+    cpu.y = ram[HITBOX + x];                                                     /* LDY CurrentSprites_HitBoxTypes,X */
+    a = subtract(a, rom((uint16_t)(HITBOX_WIDTHS + cpu.y)));                     /* SEC, SBC SPRITE_HITBOX_WIDTHS,Y */
+    if (!(cpu.p & FLAG_C)) a = 0, cpu.p = (uint8_t)((cpu.p & ~FLAG_N) | FLAG_Z); /* BCS @_returnTrue, LDA #$00 */
+    cpu.p &= (uint8_t)~FLAG_C;                                                   /* CLC */
+    return a;
+}
+/* Sprite_CalcDistanceYToPlayer, from $831B. */
+static uint8_t distance_y(unsigned x) {
+    cpu.x = (uint8_t)x;
+    if (distance_y_hook(DISTANCE_Y)) return cpu.a;
+    uint8_t a = subtract(ram[SLOT_Y + x], ram[HERO_Y]);
+    if (cpu.p & FLAG_C) return a;
+    a = (uint8_t)((a ^ 0xFF) + 1);
+    cpu.p &= (uint8_t)~FLAG_C;
+    return a;
+}
+/* The truth: the gap between a 16-wide box at sx (its hitbox's width less
+ * one `ext`) and the hero at hx, in 16 bits, the routine's way, 255 at most;
+ * and whether the box is at or right of him. */
+static int true_gap(int sx, int ext, int hx, bool *right) {
+    *right = sx >= hx;
+    int d = *right ? sx - hx - 16 : hx - sx - ext;
+    return d < 0 ? 0 : d > 255 ? 255 : d;
+}
+/* A copy's hero, as shadow() holds him in `room`'s pixels: X 0-255, Y 0-239. */
+static void held(int room) {
+    int x = hero_wx - place_x[room] * 256, y = hero_wy - place_y[room] * 208;
+    ram[HERO_X] = (uint8_t)(x < 0 ? 0 : x > 255 ? 255 : x);
+    ram[HERO_Y] = (uint8_t)(y < 0 ? 0 : y > 239 ? 239 : y);
+}
+
+static void distances_from_his_true_place(void) {
+    /* Room 5's tick, a Zozura there at every 5th X: against every place of
+     * his, its gap is the true one, from his true place in room 5's pixels;
+     * where the copy holds him at his true place the original answers
+     * (nothing counted), and its 8-bit sum is the truth too. */
+    world();
+    run(LEFT_ROOM);
+    put(LEFT_ROOM, SLOT, ZOZURA, 0, 160, false, true);
+    hero_wy = 144;
+    for (hero_wx = -400; hero_wx < 520; hero_wx += 7)
+        for (int sx = 0; sx < 256; sx += 5) {
+            held(LEFT_ROOM);
+            ram[SLOT_X + SLOT] = (uint8_t)sx;
+            unsigned before = distances;
+            bool right;
+            int truth = true_gap(sx, 15, hero_wx + 256, &right);
+            CHECK(distance_x(SLOT) == truth && !(cpu.p & FLAG_C) == !right && cpu.x == SLOT);
+            CHECK(!(cpu.p & FLAG_Z) == (truth != 0) && !(cpu.p & FLAG_N) == !(truth & 0x80));
+            CHECK((distances == before) == (hero_wx + 256 >= 0 && hero_wx + 256 < 256));
+            if (!right) CHECK(cpu.y == 0); /* the hitbox, as LDY leaves it */
+        }
+    /* Through its right side, its X wrapped (room 5's 260, the byte 4): from
+     * there, not from the byte, him in his room at x 40 (room 5's 296). */
+    hero_wx = 40;
+    held(LEFT_ROOM);
+    ram[SLOT_X + SLOT] = 4;
+    blk(LEFT_ROOM)->through[SLOT] = THROUGH_RIGHT;
+    bool right;
+    CHECK(distance_x(SLOT) == true_gap(260, 15, 296, &right) && !(cpu.p & FLAG_C) && distance_x(SLOT) == 21);
+    done(LEFT_ROOM);
+    /* His own room's slot through its left side (x -6, the byte 250), him at
+     * x 40: 30 pixels, not the 8-bit 234 the other way. */
+    put(LIVE, 2, ZOZURA, 250, 160, false, true);
+    blk(LIVE)->through[2] = THROUGH_LEFT;
+    ram[HERO_X] = 40;
+    CHECK(distance_x(2) == 40 + 6 - 15 && !(cpu.p & FLAG_C));
+    blk(LIVE)->through[2] = 0; /* unmarked, the byte is its place: the original */
+    unsigned before = distances;
+    CHECK(distance_x(2) == 250 - 40 - 16 && (cpu.p & FLAG_C) && distances == before);
+    /* Outside a sprite loop's room (an isolated call that is no tick): the original. */
+    isolated = true;
+    CHECK(distance_x(2) == 250 - 40 - 16 && distances == before);
+    isolated = false;
+}
+
+static void distances_up_and_down(void) {
+    /* Room 10 over room 4: in its tick he is at his Y plus 208, the copy
+     * holding him at 239. Its Y distance is the true one, 255 at most; its
+     * X the original's (the same column: X is his own). */
+    stacked();
+    run(UP_ROOM);
+    put(UP_ROOM, 3, ZOZURA, 100, 0, false, true);
+    hero_wx = 100;
+    for (hero_wy = 0; hero_wy <= 176; hero_wy += 4)
+        for (int sy = 0; sy < 200; sy += 3) {
+            held(UP_ROOM);
+            ram[SLOT_Y + 3] = (uint8_t)sy;
+            int d = hero_wy + 208 - sy;
+            CHECK(distance_y(3) == (d > 255 ? 255 : d) && !(cpu.p & FLAG_C));
+        }
+    unsigned before = distances;
+    CHECK(distance_x(3) == 0 && distances == before);
+    done(UP_ROOM);
+    /* Room 11 under room 4: he is above it, at his Y less 208. */
+    run(DOWN_ROOM);
+    put(DOWN_ROOM, 3, ZOZURA, 100, 40, false, true);
+    hero_wy = 100;
+    held(DOWN_ROOM);
+    CHECK(ram[HERO_Y] == 0 && distance_y(3) == 40 + 108 && (cpu.p & FLAG_C));
+    done(DOWN_ROOM);
+}
+
+static void the_ishiisus_sum(void) {
+    /* At its CMP #$20, A |its X - his| in 8 bits: from the true places in
+     * room 5's tick, 255 at most; nothing changed where they agree. */
+    world();
+    run(LEFT_ROOM);
+    put(LEFT_ROOM, 1, ZOZURA, 226, 160, true, true);
+    hero_wx = 40; /* room 5's 296, held at 255 */
+    held(LEFT_ROOM);
+    cpu.x = 1, cpu.a = 29;
+    CHECK(ishiisu_hook(ISHIISU_NEAR) == 0 && cpu.a == 70);
+    hero_wx = 300;
+    held(LEFT_ROOM);
+    cpu.a = 29;
+    CHECK(ishiisu_hook(ISHIISU_NEAR) == 0 && cpu.a == 255);
+    hero_wx = -100; /* room 5's 156: held there */
+    held(LEFT_ROOM);
+    unsigned before = distances;
+    cpu.a = 70;
+    CHECK(ishiisu_hook(ISHIISU_NEAR) == 0 && cpu.a == 70 && distances == before);
+    done(LEFT_ROOM);
+}
+
+/* Room `room`'s tick, as tick_room plays it: its actors run (`act`), its RAM
+ * kept (capture: Seams' captured(), the tick's draws), then between frames
+ * Seams' step. A tick that fails is never captured. */
+static void tick(int room, void (*act)(void), bool kept) {
+    run(room);
+    memset(&drawn[1], 0, sizeof drawn[1]);
+    act();
+    done(room);
+    if (kept) fax_seams_captured(blocks[room], FAX_SEAMS_TICK);
+    fax_seams_step();
+}
+static unsigned act_slot;
+static uint8_t act_offset;
+/* Nash's place, as the game goes on from the hook and puts it (its X by the
+ * hero the copy holds), its last OAM entry drawn there. */
+static void act_nash(void) {
+    held(tick_room);
+    cpu.x = (uint8_t)act_slot;
+    CHECK(nash_hook(NASH_PLACE) == 0);
+    ram[SLOT_X + act_slot] = (uint8_t)nash_x(ram[HERO_X], ram[PLAYER_FLAGS] & HERO_RIGHT);
+    ram[OAM + 12] = 40;
+    drawn[1].owner[3] = (uint8_t)(act_slot + 1);
+    drawn[1].cell[0] = (FaxSeamsCell){ 256, 40, 1, 0, (uint8_t)act_slot };
+    drawn[1].count = 1;
+}
+static void act_magman(void) {
+    held(tick_room);
+    cpu.x = (uint8_t)act_slot, cpu.y = act_offset;
+    CHECK(magman_hook(MAGMAN_PLACE) == 0);
+    ram[SLOT_X + act_slot] = (uint8_t)(ram[HERO_X] + act_offset);
+    ram[SLOT_Y + act_slot] = ram[HERO_Y];
+}
+
+static void placed_by_his_true_place(void) {
+    /* Nash of room 5, him in room 4 at x 120 facing right: the copy puts it
+     * at its x 223 (255 less 32), by the seam; between frames it goes to room
+     * 4 at x 88, behind him, its Y kept, its cells drawn in room 5 hidden. */
+    world();
+    hero_wx = 120, hero_wy = 144;
+    ram[PLAYER_FLAGS] = HERO_RIGHT;
+    records[LEFT_ROOM][PLAYER_FLAGS] = HERO_RIGHT;
+    put(LEFT_ROOM, SLOT, NASH_E, 192, 16, false, true);
+    act_slot = SLOT;
+    tick(LEFT_ROOM, act_nash, false); /* a tick that failed: never kept, nothing placed */
+    CHECK(records[LEFT_ROOM][ENTITIES + SLOT] == NASH_E && records[LEFT_ROOM][SLOT_X + SLOT] == 223 && !places);
+    tick(LEFT_ROOM, act_nash, true);
+    CHECK(records[LEFT_ROOM][ENTITIES + SLOT] == EMPTY && ram[ENTITIES + 7] == NASH_E);
+    CHECK(ram[SLOT_X + 7] == 88 && ram[SLOT_Y + 7] == 16 && (blk(LIVE)->awake >> 7 & 1) && !blk(LIVE)->through[7]);
+    CHECK(records[LEFT_ROOM][OAM + 12] == 0xF0 && !blk(LEFT_ROOM)->owner[3] && !blk(LEFT_ROOM)->count);
+    CHECK(places == 1 && place_log[0][0] == LEFT_ROOM && place_log[0][2] == LIVE && place_log[0][3] == 7 &&
+          place_log[0][4] == NASH_E && placing_count == 0);
+    /* The rule at the screen's edges, in his room's pixels: facing left by
+     * x 220, in front of him (188); facing right by x 10, in front (42). */
+    CHECK(nash_x(220, false) == 188 && nash_x(207, false) == 239 && nash_x(10, true) == 42 && nash_x(32, true) == 0);
+
+    /* Magman of room 5, him in room 4 at x 120 facing left: the copy puts it
+     * at 207 (255 less 48); it goes 48 in front of him, room 4's x 72. */
+    world();
+    hero_wx = 120, hero_wy = 144;
+    put(LEFT_ROOM, 6, MAGMAN_E, 240, 208, false, true);
+    act_slot = 6, act_offset = 0xD0;
+    tick(LEFT_ROOM, act_magman, true);
+    CHECK(ram[ENTITIES + 7] == MAGMAN_E && ram[SLOT_X + 7] == 72 && ram[SLOT_Y + 7] == 144);
+    /* Him at x 10: in front of him is room 5's own x 218, where it stays,
+     * not the 207 the copy gives it. */
+    world();
+    hero_wx = 10, hero_wy = 144;
+    put(LEFT_ROOM, 6, MAGMAN_E, 240, 208, false, true);
+    tick(LEFT_ROOM, act_magman, true);
+    CHECK(records[LEFT_ROOM][ENTITIES + 6] == MAGMAN_E && records[LEFT_ROOM][SLOT_X + 6] == 218);
+    CHECK(records[LEFT_ROOM][SLOT_Y + 6] == 144 && places == 1 && place_log[0][2] == LEFT_ROOM);
+    /* Him at x 230 facing right: room 4's 278 is room 3's 22 (the copy's
+     * byte wraps to room 5's 47). */
+    world();
+    hero_wx = 230, hero_wy = 144;
+    put(LEFT_ROOM, 6, MAGMAN_E, 240, 208, false, true);
+    act_offset = 0x30;
+    tick(LEFT_ROOM, act_magman, true);
+    CHECK(records[LEFT_ROOM][ENTITIES + 6] == EMPTY && records[RIGHT_ROOM][ENTITIES + 7] == MAGMAN_E);
+    CHECK(records[RIGHT_ROOM][SLOT_X + 7] == 22 && blk(RIGHT_ROOM)->tiles[7] == LEFT_ROOM + 1);
+    /* Nothing joined right of room 4: round his room, as the game's X wraps
+     * there: room 4's x 22. */
+    world();
+    edge[LIVE][1] = edge[RIGHT_ROOM][0] = -1;
+    hero_wx = 230, hero_wy = 144;
+    put(LEFT_ROOM, 6, MAGMAN_E, 240, 208, false, true);
+    tick(LEFT_ROOM, act_magman, true);
+    CHECK(ram[ENTITIES + 7] == MAGMAN_E && ram[SLOT_X + 7] == 22);
+    /* Room 4 full (5 actors): it stays where the game put it. */
+    world();
+    hero_wx = 120, hero_wy = 144;
+    for (unsigned k = 0; k < 5; k++) put(LIVE, k, ZOZURA, (uint8_t)(20 + k * 30), 160, false, true);
+    memcpy(records[LIVE], ram, sizeof ram);
+    put(LEFT_ROOM, 6, MAGMAN_E, 240, 208, false, true);
+    act_offset = 0xD0;
+    tick(LEFT_ROOM, act_magman, true);
+    CHECK(records[LEFT_ROOM][ENTITIES + 6] == MAGMAN_E && records[LEFT_ROOM][SLOT_X + 6] == 207 && place_kept == 1);
+
+    /* Magman of room 10, above room 4: the copy holds him at its y 239;
+     * it goes to room 4, at his Y. */
+    stacked();
+    hero_wx = 120, hero_wy = 144;
+    put(UP_ROOM, 6, MAGMAN_E, 240, 208, false, true);
+    act_slot = 6, act_offset = 0xD0;
+    tick(UP_ROOM, act_magman, true);
+    CHECK(ram[ENTITIES + 7] == MAGMAN_E && ram[SLOT_X + 7] == 72 && ram[SLOT_Y + 7] == 144);
+}
+
+static void magman_in_his_room(void) {
+    /* His room's Magman, him at x 20 facing left: in front of him is room
+     * 5's x 228, past room 4's left side, where the game's X wraps round to
+     * room 4's. Put past the side, marked, its X and Y as the routine leaves
+     * them; between frames it moves to room 5. */
+    world();
+    ram[HERO_X] = 20, ram[HERO_Y] = 112;
+    put(LIVE, 2, MAGMAN_E, 240, 208, false, true);
+    cpu.x = 2, cpu.y = 0xD0, cpu.a = 0x55;
+    CHECK(magman_hook(MAGMAN_PLACE) == 1 && cpu.a == 112 && ram[SLOT_X + 2] == 228 && ram[SLOT_Y + 2] == 112);
+    CHECK(blk(LIVE)->through[2] == THROUGH_LEFT && fax_seams_x16(2) == -28 && places == 1);
+    fax_seams_step();
+    CHECK(ram[ENTITIES + 2] == EMPTY && records[LEFT_ROOM][ENTITIES + 7] == MAGMAN_E);
+    CHECK(records[LEFT_ROOM][SLOT_X + 7] == 228 && records[LEFT_ROOM][SLOT_Y + 7] == 112);
+    /* Within his room: the original's. With nothing joined there: the
+     * original's wrap. */
+    put(LIVE, 2, MAGMAN_E, 240, 208, false, true);
+    ram[HERO_X] = 100;
+    CHECK(magman_hook(MAGMAN_PLACE) == 0 && ram[SLOT_X + 2] == 240);
+    ram[HERO_X] = 20;
+    edge[LIVE][0] = edge[LEFT_ROOM][1] = -1;
+    CHECK(magman_hook(MAGMAN_PLACE) == 0 && ram[SLOT_X + 2] == 240 && !blk(LIVE)->through[2]);
+}
+
+static void act_zorugeriru(void) {
+    held(tick_room);
+    put(tick_room, 6, MINION_E, 0, 0, false, false); /* the slot it fills: its entity first */
+    uint8_t hx = ram[HERO_X], zx = ram[SLOT_X + 7];  /* his X, or 16 less under it (zx to zx + 15) */
+    cpu.x = 7, cpu.y = 6, cpu.a = hx >= zx && hx < zx + UNDER ? (uint8_t)(hx - UNDER) : hx;
+    CHECK(zorugeriru_hook(ZORUGERIRU_DROP) == 0);
+    ram[SLOT_X + 6] = cpu.a;
+    ram[SLOT_Y + 6] = 32;
+}
+
+static void minions_drop_on_him(void) {
+    /* A Zorugeriru of room 5 at its x 224 drops its minion at the X it sees
+     * him at, the seam (255); it goes to room 4 at his X, 96, still at the
+     * top. Under the Zorugeriru (room 5's x 224-239) he is in room 5: the
+     * copy sees him there, and nothing moves. */
+    world();
+    bank14[CATEGORIES - 0x8000 + ZORUGERIRU_E] = 7;
+    bank14[CATEGORIES - 0x8000 + MINION_E] = 0;
+    hero_wx = 96, hero_wy = 144;
+    put(LEFT_ROOM, 7, ZORUGERIRU_E, 224, 32, false, true);
+    tick(LEFT_ROOM, act_zorugeriru, true);
+    CHECK(records[LEFT_ROOM][ENTITIES + 6] == EMPTY && records[LEFT_ROOM][ENTITIES + 7] == ZORUGERIRU_E);
+    CHECK(ram[ENTITIES + 7] == MINION_E && ram[SLOT_X + 7] == 96 && ram[SLOT_Y + 7] == 32);
+    hero_wx = -24; /* room 5's 232, under it: the minion 16 to his left */
+    unsigned before = places;
+    tick(LEFT_ROOM, act_zorugeriru, true);
+    CHECK(places == before && records[LEFT_ROOM][ENTITIES + 6] == MINION_E && records[LEFT_ROOM][SLOT_X + 6] == 216);
+    /* Outside a tick (his own room) the hook leaves it all to the game. */
+    CHECK(zorugeriru_hook(ZORUGERIRU_DROP) == 0 && placing_count == 0);
+}
+
 int main(void) {
     the_original_wraps();
     the_ghost_hit_is_refused();
@@ -2267,6 +2571,12 @@ int main(void) {
     seen_from_below();
     towns_stay_safe_up_and_down();
     marks_in_the_record();
+    distances_from_his_true_place();
+    distances_up_and_down();
+    the_ishiisus_sum();
+    placed_by_his_true_place();
+    magman_in_his_room();
+    minions_drop_on_him();
     printf("seams_test: %u checks passed\n", checks);
     return 0;
 }

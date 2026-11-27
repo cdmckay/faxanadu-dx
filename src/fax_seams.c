@@ -199,6 +199,31 @@
  *   - Spells stay as slice 3 left them: one at a seam above or below ends,
  *     and so does one when he crosses up or down.
  *
+ * Slice 6, what a neighbouring room sees of him. A copy's hero is held to its
+ * room (Seamless's shadow()), so what measures him or places itself by him
+ * acts as if he stood at the seam:
+ *
+ *   - **His distance.** Sprite_CalcDistanceXToPlayer ($82F8: the script
+ *     op's X test, Raiden, Ikeda, the Snowman, the Fire Giant, Grimlock, Sir
+ *     Gawaine and the Wolfman) and Sprite_CalcDistanceYToPlayer ($831B: the
+ *     op's Y test, Grimlock, the Giant Bees, the Naga), and the Ishiisu's own
+ *     sum (its CMP #$20 at $9147), are answered from his true place in the
+ *     room's pixels and the slot's X and Y in 16 bits (by its marks), capped
+ *     at 255, wherever either is past the room or its byte: in a copy, and
+ *     in his room for a slot through a side. Otherwise the original sums.
+ *   - **Placed by him.** Nash (its X 32 pixels behind him, at $90A2), Magman
+ *     (48 in front, at his height, at $95F7) and a Zorugeriru's dropping
+ *     minion (at his X, at $9E3E) put themselves by the hero they see. In a
+ *     copy the game places it by the held hero, and Seams notes by how much
+ *     his true place moves it; between frames (once the tick's RAM is kept)
+ *     it goes there, into the room that place lies in, his own as a rule: a
+ *     mover's move, refused where a move would be (a full room, a town's
+ *     edge, no free slot), when it stays where the game put it. Its cells
+ *     drawn by the seam that frame are hidden, so it is never seen there. In
+ *     his own room Magman's X wraps round the room past a side (the
+ *     original's); with a room joined there that may take it, it is put past
+ *     the side instead, marked through it, and moves there between frames.
+ *
  * Each room's state is a block in Seamless's record (version 6); the pass,
  * the sounds still to play and the spell's side are this feature's own
  * record (version 2), since a frame can end inside the pass (the main loop
@@ -297,6 +322,26 @@
 #define HITBOX_WIDTHS   0xB4D1u /* SPRITE_HITBOX_WIDTHS: a hitbox type's width less 1 */
 #define HITBOX_HEIGHTS  0xB4D8u /* SPRITE_HITBOX_HEIGHTS: its height less 1 */
 #define CATEGORIES      0xB544u /* SPRITE_CATEGORIES_BY_ENTITY */
+/* Slice 6. Sprite_CalcDistanceXToPlayer: LDA CurrentSprites_XPos_Full,X, SEC,
+ * SBC Player_PosX_Block, BCS (A the gap to him, C the sprite at or right of
+ * him) */
+#define DISTANCE_X      0x82F8u
+/* Sprite_CalcDistanceYToPlayer: LDA CurrentSprites_YPos,X, SEC, SBC
+ * Player_PosY, BCS (A |its Y - his|, C the sprite at or below him) */
+#define DISTANCE_Y      0x831Bu
+/* SpriteBehavior_Ishiisu's @LAB_PRG14__9147, A |its X - his| in 8 bits: CMP
+ * #$20, BCC (within 32 pixels it waits for him to face it) */
+#define ISHIISU_NEAR    0x9147u
+/* SpriteBehavior_Nash past phase 0's STA CurrentSprites_BehaviorData2: LDA
+ * Player_Flags, AND #$40, BNE, then its X his + or - $20 and RTS */
+#define NASH_PLACE      0x90A2u
+/* SpriteBehavior_Magman's @LAB_PRG14__95f7 (Y $30 or $D0): TYA, CLC, ADC
+ * Player_PosX_Block, STA CurrentSprites_XPos_Full,X, LDA Player_PosY, STA
+ * CurrentSprites_YPos,X, RTS */
+#define MAGMAN_PLACE    0x95F7u
+/* SpriteBehavior_Zorugeriru__9e13's @LAB_PRG14__9e3e, A his X (16 less under
+ * the Zorugeriru), Y the minion's new slot: STA a:CurrentSprites_XPos_Full,Y */
+#define ZORUGERIRU_DROP 0x9E3Eu
 /* Bank 11 */
 #define AREA_SPRITE_ADDRESSES 0x8210u /* per area, a pointer to its screens' sprite lists, a word a screen */
 /* Bank 15 */
@@ -336,6 +381,7 @@
 #define HERO_X             0x009Eu   /* Player_PosX_Block: his left edge, in the live room */
 #define SCROLL_X           0x009Fu   /* Screen_Maybe_ScrollXCounter: the screen's high byte of X */
 #define HERO_Y             0x00A1u   /* Player_PosY: his top */
+#define PLAYER_FLAGS       0x00A4u   /* Player_Flags: $40 facing right */
 #define PIXEL_X            0x00B5u   /* Arg_PixelPosX */
 #define PIXEL_Y            0x00B6u   /* Arg_PixelPosY */
 #define BLOCKS_RESULT      0x00B7u   /* Blocks_Result: nonzero, blocked */
@@ -368,6 +414,7 @@
 #define PLAYER_IS_DEAD       0x0438u /* PlayerIsDead */
 #define BLOCK_PROPERTIES     0x043Cu /* BlockProperties: a nibble per block id */
 #define SCREEN_BUFFER        0x0600u /* ScreenBuffer: 16 blocks a row */
+#define OAM                  0x0700u /* the shadow OAM: Y, tile, attributes, X an entry */
 /* Flags */
 enum { FLAG_C = 0x01, FLAG_Z = 0x02, FLAG_V = 0x40, FLAG_N = 0x80 };
 
@@ -408,8 +455,12 @@ enum {
     SPELL = FAX_SEAMS_SPELL, /* the owner, less 1, of the spell's OAM cells and cells past a side */
     SPELL_TYPES = 12,        /* CastMagic_Type's values, each spell and its after-hit kinds */
     MOVING_RIGHT = 0x40,
-    HIDDEN = 0x10,   /* CastMagic_Flags; CurrentSprites_Flags (Sprites_IsSpriteHidden) */
-    HIDDEN_Y = 0xEF, /* OAM Y from which the NES shows no line of a sprite: line 240 and down */
+    HIDDEN = 0x10,     /* CastMagic_Flags; CurrentSprites_Flags (Sprites_IsSpriteHidden) */
+    HIDDEN_Y = 0xEF,   /* OAM Y from which the NES shows no line of a sprite: line 240 and down */
+    HERO_RIGHT = 0x40, /* Player_Flags: facing right */
+    NASH_SIDE = 0x20,  /* how far beside him Nash goes (SpriteBehavior_Nash's ADC and SBC #$20) */
+    UNDER = 16,        /* a Zorugeriru drops its minion 16 to his left when he is under it (its X to X + 15) */
+    PLACES = 8,        /* placements a step takes at most (slice 6) */
 };
 
 /* A room's block in Seamless's record. */
@@ -493,6 +544,25 @@ static int spell_end[5] = { 0, 0, 0, -1, -1 }; /* the last end: its X in 16 bits
                                                          2 a side with nothing joined, 3 its own rule), step, right */
 static int spell_x16(void);
 static bool dormant(unsigned s);
+
+/* Slice 6: an actor of a neighbour's tick that placed itself by the hero
+ * there, to go by his true place between frames: its room and slot, its
+ * entity, how far his true place moves it (world pixels), and whether the
+ * tick's RAM was kept (its capture), so it holds what the tick did. Within a
+ * step only: the ticks and the step are one call between frames, so no save
+ * state holds one. */
+typedef struct {
+    int8_t room;
+    uint8_t slot, entity, kept;
+    int16_t dx, dy;
+} Placement;
+static Placement placing[PLACES];
+static unsigned placing_count;
+/* Slice 6's counts, for the TCP command: distances answered from his true
+ * place, actors placed by it (between frames, or past his room's side in the
+ * live game) and those that stayed where the game put them. */
+static unsigned distances, places, place_kept;
+static int place_log[LOG][6]; /* the last placements: from, slot, to, slot, entity, step */
 
 /* ---- slice 0 ---- */
 
@@ -1238,21 +1308,55 @@ static int load_hook(uint16_t addr) {
 
 /* ---- slice 1: between frames ---- */
 
+/* Slot s of `from` into the highest free slot of `to` (as
+ * Sprites_PopulateNextAvailableSprite takes them), at (x, y) there: every
+ * byte, its tiles (another of its kind's there, or its home's), its wake,
+ * and a mark for each side of `to` it straddles (its right one, unless it
+ * came in from the left, `right` false; its bottom); its old slot emptied.
+ * Its new slot, or -1 with none free (and nothing changed). */
+static int transfer(int from, unsigned s, int to, uint8_t x, int y, bool right) {
+    Block *bf = block(from), *bt = to >= 0 ? block(to) : NULL;
+    int d = -1;
+    for (int k = 7; bf && bt && k >= 0 && d < 0; k--)
+        if (rd(to, ENTITIES + (unsigned)k) == EMPTY) d = k;
+    if (d < 0) return -1;
+    uint8_t e = rd(from, ENTITIES + s);
+    unsigned ext = width_less_1(from, s), height = height_less_1(from, s), u = (unsigned)d;
+    wr(to, SLOT_X + u, x);
+    wr(to, SLOT_Y + u, (uint8_t)y);
+    for (unsigned a = SLOT_ARRAYS; a < SLOT_ARRAYS + 23 * 8; a += 8) wr(to, a + u, rd(from, a + s));
+    unsigned k = 0;
+    while (k < 8 && (k == u || rd(to, ENTITIES + k) != e)) ++k;
+    if (k < 8) { /* its entity's tiles are where that slot's are */
+        wr(to, PPU_OFFSETS + u, rd(to, PPU_OFFSETS + k));
+        bt->tiles[u] = bt->tiles[k];
+    } else {
+        int home = bf->tiles[s] ? bf->tiles[s] - 1 : from;
+        bt->tiles[u] = home == to ? 0 : (uint8_t)(home + 1);
+    }
+    bt->awake |= (uint8_t)(1u << u);
+    bt->through[u] = (uint8_t)((right && x + ext >= 256 ? THROUGH_RIGHT : 0) |
+                               (y >= 0 && y + (int)height >= ROOM_H ? THROUGH_DOWN : 0));
+    wr(from, ENTITIES + s, EMPTY);
+    bf->through[s] = bf->tiles[s] = 0;
+    bf->awake &= (uint8_t)~(1u << s);
+    bf->flash &= (uint8_t)~(1u << s);
+    bt->flash &= (uint8_t)~(1u << u); /* a flash waiting comes back to its damage there, and asks again */
+    return d;
+}
 /* Slot s of `from`, its origin across its side dx, dy (one or both: a
- * corner), to a free slot of the room there: every byte, its Y less or plus
- * 208 up or down (slice 5), its tiles, its wake, and a mark for each side of
- * its new room it straddles (its right one, in from the right; its bottom,
- * in from below). With nowhere to go (no free slot, the room gone) it is put
- * back inside its room, turned round, as at a wall. */
+ * corner), to a free slot of the room there (transfer()): its Y less or
+ * plus 208 up or down (slice 5), marked as it straddles its new room's
+ * right side (in from the right) or bottom (in from below). With nowhere to
+ * go (no free slot, the room gone) it is put back inside its room, turned
+ * round, as at a wall. */
 static void move(int from, unsigned s, int dx, int dy) {
     Block *bf = block(from);
-    int to = room_by(from, dx, dy), d = -1;
+    int to = room_by(from, dx, dy);
     uint8_t x = rd(from, SLOT_X + s), e = rd(from, ENTITIES + s);
     int y = y16(from, s);
     unsigned ext = width_less_1(from, s), height = height_less_1(from, s);
-    Block *bt = to >= 0 ? block(to) : NULL;
-    for (int k = 7; bt && k >= 0 && d < 0; k--)
-        if (rd(to, ENTITIES + (unsigned)k) == EMPTY) d = k;
+    int d = to >= 0 ? transfer(from, s, to, x, y - dy * ROOM_H, dx <= 0) : -1;
     if (d < 0) {
         if (dx) {
             wr(from, SLOT_X + s, dx > 0 ? (uint8_t)((255 - ext) & 0xF0) : 0);
@@ -1267,38 +1371,21 @@ static void move(int from, unsigned s, int dx, int dy) {
         ++pushed_back;
         return;
     }
-    unsigned u = (unsigned)d;
-    int ny = y - dy * ROOM_H;
-    wr(to, SLOT_X + u, x);
-    wr(to, SLOT_Y + u, (uint8_t)ny);
-    for (unsigned a = SLOT_ARRAYS; a < SLOT_ARRAYS + 23 * 8; a += 8) wr(to, a + u, rd(from, a + s));
-    unsigned k = 0;
-    while (k < 8 && (k == u || rd(to, ENTITIES + k) != e)) ++k;
-    if (k < 8) { /* its entity's tiles are where that slot's are */
-        wr(to, PPU_OFFSETS + u, rd(to, PPU_OFFSETS + k));
-        bt->tiles[u] = bt->tiles[k];
-    } else {
-        int home = bf->tiles[s] ? bf->tiles[s] - 1 : from;
-        bt->tiles[u] = home == to ? 0 : (uint8_t)(home + 1);
-    }
-    bt->awake |= (uint8_t)(1u << u);
-    bt->through[u] = (uint8_t)((dx <= 0 && x + ext >= 256 ? THROUGH_RIGHT : 0) |
-                               (ny >= 0 && ny + (int)height >= ROOM_H ? THROUGH_DOWN : 0));
-    wr(from, ENTITIES + s, EMPTY);
-    bf->through[s] = bf->tiles[s] = 0;
-    bf->awake &= (uint8_t)~(1u << s);
-    bf->flash &= (uint8_t)~(1u << s);
-    bt->flash &= (uint8_t)~(1u << u); /* a flash waiting comes back to its damage there, and asks again */
     moves_up += dy < 0, moves_down += dy > 0;
     int note[6] = { from, (int)s, to, d, e, (int)steps };
     memcpy(move_log[moves++ % LOG], note, sizeof note);
 }
 
+static void place_all(void);
 void fax_seams_step(void) {
-    if (!enabled || fax_world_active_room() < 0) return;
+    if (!enabled || fax_world_active_room() < 0) {
+        placing_count = 0;
+        return;
+    }
     int vx, vy;
     bool view = fax_world_view(&vx, &vy);
     ++steps;
+    place_all(); /* slice 6: the neighbours' actors that placed themselves by him, by his true place */
     /* The neighbours' sounds of this frame, for the live game to play at its
      * next pass's site (those of a frame it never reached are dropped). */
     memcpy(pending, heard, sizeof pending);
@@ -1884,6 +1971,235 @@ void fax_seams_adopted(int from, int to) {
     spell_crossed += on;
 }
 
+/* ---- slice 6: what a neighbouring room sees of him ---- */
+
+/* The hero's place in the pixels of `room`, the room whose loop runs: in his
+ * own the live game's; in a neighbour's tick his true place there, past its
+ * sides, top or bottom (shadow() holds the copy's to the room). False
+ * without a view (Seamless's place for him is the view's). */
+static bool hero_in(int room, int *x, int *y) {
+    if (!cyc_mod_isolated()) {
+        *x = cyc_mod_peek(HERO_X), *y = cyc_mod_peek(HERO_Y);
+        return true;
+    }
+    int hx, hy, px, py;
+    if (room < 0 || !fax_world_ticking() || !fax_world_hero(&hx, &hy)) return false;
+    fax_world_place(room, &px, &py);
+    *x = hx - px, *y = hy - py;
+    return true;
+}
+/* Slot s's place in its room for its distance to him, X or Y: its byte, past
+ * a side or its top by its marks (as x16_of; the game's own sums take a Y of
+ * $F0 and up as it is, so this does). */
+static int marked(const Block *b, unsigned s, uint8_t v, bool vertical) {
+    if (!vertical) return x16_of(b, s, v);
+    return (b->through[s] & THROUGH_UP) && v >= 128 ? v - 256 : v;
+}
+/* Slot s of the room whose loop runs and the hero, X or Y, each in 16 bits
+ * there (*sprite, *hero), when either is not its byte: a copy's hero past the
+ * room, a slot past a side. False where the game's 8-bit sums are the truth. */
+static bool apart(unsigned s, bool vertical, int *sprite, int *hero) {
+    int room = running(), hx, hy;
+    Block *b = room >= 0 ? block(room) : NULL;
+    if (!b || !hero_in(room, &hx, &hy)) return false;
+    uint8_t v = cyc_mod_peek((uint16_t)((vertical ? SLOT_Y : SLOT_X) + s));
+    *sprite = marked(b, s, v, vertical);
+    *hero = vertical ? hy : hx;
+    return *sprite != v || *hero != cyc_mod_peek(vertical ? HERO_Y : HERO_X);
+}
+static int capped(int d) { return d < 0 ? 0 : d > 255 ? 255 : d; }
+/* Return from a distance routine with A `d` (N and Z by it) and C `c`. */
+static int answer(CycModRegs *regs, int d, bool c) {
+    regs->a = (uint8_t)d;
+    regs->p = (uint8_t)((regs->p & ~(FLAG_C | FLAG_Z | FLAG_N)) | (c ? FLAG_C : 0) | (d ? 0 : FLAG_Z) | (d & FLAG_N));
+    cyc_mod_set_regs(regs);
+    ++distances;
+    return 1;
+}
+/* Sprite_CalcDistanceXToPlayer's entry, X the slot: the routine in 16 bits.
+ * At or right of him the gap from his right (his X + 16) to its X, C set;
+ * left of him from its right (its X + its hitbox's width less one, Y that
+ * hitbox) to his X, C clear; 0 where they meet, 255 at most. V, which no
+ * caller reads, as it was. */
+static int distance_x_hook(uint16_t addr) {
+    (void)addr;
+    CycModRegs regs;
+    cyc_mod_regs(&regs);
+    unsigned s = regs.x & 7u;
+    int sx, hx;
+    if (!apart(s, false, &sx, &hx)) return 0;
+    if (sx >= hx) return answer(&regs, capped(sx - hx - HERO_W), true);
+    regs.y = cyc_mod_peek((uint16_t)(HITBOX + s));
+    return answer(&regs, capped(hx - sx - rom14(HITBOX_WIDTHS + regs.y)), false);
+}
+/* Sprite_CalcDistanceYToPlayer's entry: |its Y - his|, 255 at most, C set
+ * when it is at or below him. */
+static int distance_y_hook(uint16_t addr) {
+    (void)addr;
+    CycModRegs regs;
+    cyc_mod_regs(&regs);
+    int sy, hy;
+    if (!apart(regs.x & 7u, true, &sy, &hy)) return 0;
+    return answer(&regs, capped(abs(sy - hy)), sy >= hy);
+}
+/* The Ishiisu's CMP #$20: A |its X - his| from the 16-bit places, 255 at
+ * most; the CMP runs on it. */
+static int ishiisu_hook(uint16_t addr) {
+    (void)addr;
+    CycModRegs regs;
+    cyc_mod_regs(&regs);
+    int sx, hx;
+    if (!apart(regs.x & 7u, false, &sx, &hx)) return 0;
+    regs.a = (uint8_t)capped(abs(sx - hx));
+    cyc_mod_set_regs(&regs);
+    ++distances;
+    return 0;
+}
+
+/* In a neighbour's tick, slot s placed itself at (x, y) of its room, by the
+ * hero the copy holds there; by his true place it is (tx, ty). Noted to go
+ * there between frames (place_all). */
+static void stage(unsigned s, int x, int y, int tx, int ty) {
+    int room = fax_world_seams_room();
+    if (!fax_world_ticking() || room < 0 || (tx == x && ty == y) || placing_count >= PLACES) return;
+    Placement *p = &placing[placing_count++];
+    p->room = (int8_t)room, p->slot = (uint8_t)s, p->entity = cyc_mod_peek((uint16_t)(ENTITIES + s)), p->kept = 0;
+    p->dx = (int16_t)(tx - x), p->dy = (int16_t)(ty - y);
+}
+/* Nash's X: 32 pixels behind him (left facing right, right facing left), in
+ * front where that would leave the screen (SpriteBehavior_Nash: X 240 and up
+ * or past 255 facing left, below 0 facing right). */
+static int nash_x(int hx, bool right) {
+    if (!right) return hx + NASH_SIDE < 0xF0 ? hx + NASH_SIDE : hx - NASH_SIDE;
+    return hx >= NASH_SIDE ? hx - NASH_SIDE : hx + NASH_SIDE;
+}
+/* SpriteBehavior_Nash, X the slot, as it goes beside him (its Y kept): in a
+ * neighbour's tick, by the rule in his room's pixels, by his true X there.
+ * The game goes on and places it by the hero the copy holds. */
+static int nash_hook(uint16_t addr) {
+    (void)addr;
+    if (!fax_world_ticking()) return 0;
+    CycModRegs regs;
+    cyc_mod_regs(&regs);
+    int room = fax_world_seams_room(), active = fax_world_active_room(), hx, hy, px, py, ax, ay;
+    if (!hero_in(room, &hx, &hy)) return 0;
+    fax_world_place(room, &px, &py);
+    fax_world_place(active, &ax, &ay);
+    bool right = cyc_mod_peek(PLAYER_FLAGS) & HERO_RIGHT;
+    unsigned s = regs.x & 7u;
+    uint8_t y = cyc_mod_peek((uint16_t)(SLOT_Y + s));
+    stage(s, nash_x(cyc_mod_peek(HERO_X), right), y, nash_x(hx + px - ax, right) + ax - px, y);
+    return 0;
+}
+/* Clear the shadow OAM entries `room`'s last tick drew for slot s, and its
+ * cells past the sides: it is drawn where it went from the next frame. */
+static void hide_drawn(int room, unsigned s) {
+    Block *b = block(room);
+    for (unsigned k = 0; k < 64; k++)
+        if (b->owner[k] == s + 1) {
+            wr(room, OAM + k * 4, 0xF0);
+            b->owner[k] = 0;
+        }
+    unsigned n = 0;
+    for (unsigned k = 0; k < b->count && k < CELLS; k++)
+        if (b->cell[k].slot != s) b->cell[n++] = b->cell[k];
+    b->count = (uint8_t)n;
+}
+/* SpriteBehavior_Magman's place, 48 pixels in front of him at his height (Y
+ * the offset, $30 or $D0; X the slot). In a neighbour's tick by his true
+ * place there; the game goes on with the hero the copy holds. In his own
+ * room, past a side, where the game's X wraps round the room: put past it,
+ * marked through it, when the room joined there may take it, so it moves
+ * there between frames (the original's wrap otherwise). */
+static int magman_hook(uint16_t addr) {
+    (void)addr;
+    CycModRegs regs;
+    cyc_mod_regs(&regs);
+    unsigned s = regs.x & 7u;
+    int offset = (int8_t)regs.y, room = running(), hx, hy;
+    uint8_t x = (uint8_t)(cyc_mod_peek(HERO_X) + regs.y), y = cyc_mod_peek(HERO_Y);
+    if (fax_world_ticking()) {
+        if (hero_in(room, &hx, &hy)) stage(s, x, y, hx + offset, hy);
+        return 0;
+    }
+    Block *b = !cyc_mod_isolated() && room >= 0 ? block(room) : NULL;
+    int at = cyc_mod_peek(HERO_X) + offset;
+    if (!b || (at >= 0 && at < 256)) return 0;
+    int to = fax_world_joined(room, at >= 256);
+    if (!may_enter(to, room, s, true)) {
+        ++place_kept;
+        return 0;
+    }
+    cyc_mod_poke((uint16_t)(SLOT_X + s), x);
+    cyc_mod_poke((uint16_t)(SLOT_Y + s), y);
+    b->through[s] = at < 0 ? THROUGH_LEFT : THROUGH_RIGHT;
+    ++places;
+    int note[6] = { room, (int)s, to, -1, cyc_mod_peek((uint16_t)(ENTITIES + s)), (int)steps };
+    memcpy(place_log[(places - 1) % LOG], note, sizeof note);
+    regs.a = y; /* the routine's LDA Player_PosY, after its ADC's carry */
+    regs.p =
+        (uint8_t)((regs.p & ~(FLAG_C | FLAG_Z | FLAG_N)) | (at >= 256 ? FLAG_C : 0) | (y ? 0 : FLAG_Z) | (y & FLAG_N));
+    cyc_mod_set_regs(&regs);
+    return 1;
+}
+/* A Zorugeriru's minion (Y its slot, X the Zorugeriru's), A the X it drops at:
+ * the hero's, or 16 to its left when he is under the Zorugeriru. In a
+ * neighbour's tick by his true X there (the Zorugeriru's in 16 bits). */
+static int zorugeriru_hook(uint16_t addr) {
+    (void)addr;
+    if (!fax_world_ticking()) return 0;
+    CycModRegs regs;
+    cyc_mod_regs(&regs);
+    int room = fax_world_seams_room(), hx, hy;
+    if (!block(room) || !hero_in(room, &hx, &hy)) return 0;
+    int zx = x16(room, regs.x & 7u);
+    stage(regs.y & 7u, regs.a, 0, hx < zx || hx >= zx + UNDER ? hx : hx - UNDER, 0);
+    return 0;
+}
+/* Between frames, before the moves: each placement whose tick was kept, by
+ * his true place, into the room that place lies in (his, or the one joined
+ * to his there; past a side of his with nothing joined, round his room as
+ * the game's 8-bit X would wrap it there), as a move goes: refused for a
+ * full room, a town's edge or no free slot, when it stays where the game put
+ * it. Its cells drawn this frame are hidden. */
+static void place_all(void) {
+    int active = fax_world_active_room(), ax, ay;
+    fax_world_place(active, &ax, &ay);
+    for (unsigned i = 0; i < placing_count; i++) {
+        const Placement *p = &placing[i];
+        int from = p->room, fx, fy;
+        unsigned s = p->slot;
+        if (!p->kept || !block(from) || rd(from, ENTITIES + s) != p->entity) continue;
+        fax_world_place(from, &fx, &fy);
+        int x = fx + rd(from, SLOT_X + s) + p->dx - ax, y = fy + rd(from, SLOT_Y + s) + p->dy - ay; /* in his room */
+        int dx = x < 0 ? -1 : x >= 256 ? 1 : 0, dy = y < 0 ? -1 : y >= ROOM_H ? 1 : 0;
+        int to = x < -256 || x >= 512 || y < -ROOM_H || y >= 2 * ROOM_H ? -1
+                 : dx || dy                                             ? room_by(active, dx, dy)
+                                                                        : active;
+        if (to < 0 && !dy && x >= -256 && x < 512) to = active, dx = 0, x &= 255;
+        if (to < 0 || (to != from && !may_enter(to, from, s, true))) {
+            ++place_kept;
+            continue;
+        }
+        uint8_t tx = (uint8_t)(x - dx * 256);
+        int ty = y - dy * ROOM_H, d = (int)s;
+        if (to == from) {
+            Block *b = block(from);
+            wr(from, SLOT_X + s, tx);
+            wr(from, SLOT_Y + s, (uint8_t)ty);
+            b->through[s] = (uint8_t)((tx + width_less_1(from, s) >= 256 ? THROUGH_RIGHT : 0) |
+                                      (ty + (int)height_less_1(from, s) >= ROOM_H ? THROUGH_DOWN : 0));
+        } else if ((d = transfer(from, s, to, tx, ty, true)) < 0) {
+            ++place_kept;
+            continue;
+        }
+        hide_drawn(from, s);
+        int note[6] = { from, (int)s, to, d, p->entity, (int)steps };
+        memcpy(place_log[places++ % LOG], note, sizeof note);
+    }
+    placing_count = 0;
+}
+
 /* ---- slice 2: this feature's record ---- */
 
 enum {
@@ -1969,6 +2285,9 @@ static int state_set(const uint8_t *buf, int len) {
 void fax_seams_captured(uint8_t *bytes, int how) {
     Block *b = (Block *)bytes;
     if (!b) return;
+    if (how == FAX_SEAMS_TICK) /* slice 6: a tick's placements hold what it did, now kept */
+        for (unsigned i = 0; i < placing_count; i++)
+            if (block(placing[i].room) == b) placing[i].kept = 1;
     if (how == FAX_SEAMS_FRESH) {
         memset(b, 0, sizeof *b);
         return;
@@ -2062,6 +2381,12 @@ static const struct {
     { "faxanadu.seams.up", MOVE_UP, up_hook },
     { "faxanadu.seams.cap", CAP_VERTICAL, cap_hook },
     { "faxanadu.seams.fall", FALL_EDGE, fall_hook },
+    { "faxanadu.seams.distance-x", DISTANCE_X, distance_x_hook },
+    { "faxanadu.seams.distance-y", DISTANCE_Y, distance_y_hook },
+    { "faxanadu.seams.ishiisu", ISHIISU_NEAR, ishiisu_hook },
+    { "faxanadu.seams.nash", NASH_PLACE, nash_hook },
+    { "faxanadu.seams.magman", MAGMAN_PLACE, magman_hook },
+    { "faxanadu.seams.zorugeriru", ZORUGERIRU_DROP, zorugeriru_hook },
 };
 enum { HOOKS = sizeof hooks / sizeof hooks[0] };
 
@@ -2087,6 +2412,9 @@ static void deactivate(void) {
     spell_end[3] = spell_end[4] = -1;
     looping[0] = looping[1] = false;
     loop_room[0] = loop_room[1] = -1;
+    placing_count = 0;
+    distances = places = place_kept = 0;
+    memset(place_log, 0, sizeof place_log);
     for (unsigned i = 0; i < HOOKS; i++) nes_mod_set_function_hook_enabled(hooks[i].id, 0);
 }
 static void activate(void) {
@@ -2111,7 +2439,7 @@ static size_t ring_json(char *out, size_t cap, const int *ring, unsigned n, unsi
 }
 static void seams_state(int id, const char *line) {
     (void)line;
-    char fields[4200], log[700], visit[700], sound[300];
+    char fields[5000], log[700], visit[700], sound[300], placed[700];
     int vx = 0, vy = 0;
     bool view = fax_world_view(&vx, &vy);
     uint8_t type = cyc_mod_peek(CAST_TYPE), byte = cyc_mod_peek(CAST_X);
@@ -2119,6 +2447,7 @@ static void seams_state(int id, const char *line) {
     ring_json(log, sizeof log, &move_log[0][0], 6, LOG, moves);
     ring_json(visit, sizeof visit, &visit_log[0][0], 6, LOG, visits);
     ring_json(sound, sizeof sound, &sound_log[0][0], 4, HEARD, played);
+    ring_json(placed, sizeof placed, &place_log[0][0], 6, LOG, places);
     snprintf(
         fields, sizeof fields,
         "\"enabled\":%s,\"skipped\":%u,\"refused\":%u,\"last_weapon_x\":%d,\"last_sprite_x\":%u,\"last_entity\":%u,"
@@ -2130,7 +2459,8 @@ static void seams_state(int id, const char *line) {
         "\"spell\":[%u,%u,%d,%d],\"spell_walls\":%u,\"spell_view_ends\":%u,\"spell_side_ends\":%u,"
         "\"spell_end\":[%d,%d,%d,%d,%d],\"spell_crossed\":%u,\"spell_cleared\":%u,\"magic_dormant\":%u,"
         "\"spell_visibility\":%u,\"spell_drawn_abroad\":%u,\"casting\":%s,"
-        "\"moves_up\":%u,\"moves_down\":%u,\"fell_on\":%u",
+        "\"moves_up\":%u,\"moves_down\":%u,\"fell_on\":%u,"
+        "\"distances\":%u,\"places\":%u,\"place_kept\":%u,\"place_log\":[%s]",
         enabled ? "true" : "false", skipped, refused, last_weapon_x, last_sprite_x, last_entity, steps, moves, kept_out,
         town_edge, pushed_back, removed, woken, frozen, vx, vy, view ? "true" : "false", last_woken[0], last_woken[1],
         last_woken[2], last_woken[3], log, passes, visits, waited, pass.open ? "true" : "false", broken, flashes_due,
@@ -2141,7 +2471,7 @@ static void seams_state(int id, const char *line) {
                    : 0,
         x16, spell_walls, spell_view_ends, spell_side_ends, spell_end[0], spell_end[1], spell_end[2], spell_end[3],
         spell_end[4], spell_crossed, spell_cleared, magic_dormant, spell_visibility, spell_drawn_abroad,
-        spell.casting ? "true" : "false", moves_up, moves_down, fell_on);
+        spell.casting ? "true" : "false", moves_up, moves_down, fell_on, distances, places, place_kept, placed);
     cyc_tcp_ok(id, fields);
 }
 void fax_seams_tcp_setup(void) {
@@ -2153,7 +2483,8 @@ void fax_seams_tcp_setup(void) {
                      "their outcomes, matches refused for wrapping, neighbours' sounds heard and played; the spell "
                      "(type, X byte, side, X in 16 bits), its walls across a seam, its ends at the view's edge and at "
                      "a side, the last end, crossings kept, dormant sleepers it was kept from; moves up and down, "
-                     "falls carried on into a room below",
+                     "falls carried on into a room below; distances to him answered from his true place, actors "
+                     "placed by it and kept where the game put them, the last placements",
                      seams_state);
 }
 #else

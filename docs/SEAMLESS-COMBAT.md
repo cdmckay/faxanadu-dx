@@ -1,8 +1,8 @@
 # Seamless's seams: the plan for one big world
 
-Issue #166. A plan, built a slice at a time: slices 0 to 5 are in the
-game. Where building slices 1 to 5 found the plan wrong, the plan below says
-what was built, and "Slice 1, as built" to "Slice 5, as built" list the
+Issue #166. A plan, built a slice at a time: slices 0 to 6 are in the
+game. Where building slices 1 to 6 found the plan wrong, the plan below says
+what was built, and "Slice 1, as built" to "Slice 6, as built" list the
 changes.
 
 **The goal**, as Cameron put it: "it should just feel like 1 big world." A
@@ -43,8 +43,9 @@ C as estimated, and likely twice that, as slice 0 took. Slice 0 (nothing
 lost at a seam, no ghost hit) is done: #177. Slice 1 (#178, seams are open
 ground, mechanism 1) is done too, and so are slice 2 (#187, fights across a
 seam, mechanism 2), slice 3 (#188, the spell flies on, mechanism 3),
-slice 4 (#194, the view shows only rooms, mechanism 4) and slice 5 (#201,
-mechanisms 1 to 3 one above the other).
+slice 4 (#194, the view shows only rooms, mechanism 4), slice 5 (#201,
+mechanisms 1 to 3 one above the other) and slice 6 (#214, what a
+neighbouring room sees of him, mechanism 5).
 
 ## How Seamless runs a neighbouring room today
 
@@ -228,10 +229,11 @@ Checked in hidden games where marked; the scripts were throwaway, on
   **Slice 1.**
 - **The projected hero is clamped to the room's edge.** Four effects:
   neighbours' monsters pile at the seam (above; **slice 1**); behaviours that
-  measure his distance act as if he stood at the seam (**slice 6**); Nash and
-  Magman, who place themselves beside him, appear by the seam, or for
-  Magman, whose X wraps, at the far side of the room (**slice 6**); rooms
-  above and below see him on their bottom or top row (**slice 5, done**).
+  measure his distance act as if he stood at the seam (**slice 6, done**);
+  Nash and Magman, who place themselves beside him, appear by the seam, or
+  for Magman, whose X wraps, at the far side of the room, and so does a
+  Zorugeriru's dropping minion (**slice 6, done**); rooms above and below
+  see him on their bottom or top row (**slice 5, done**).
 - **A neighbouring room's sounds are lost** with the copy's RAM: the coin's
   sound (`$10`, `Sprites_ReplaceWithCoinDrop`, `$AC75`) when a monster killed
   across a seam drops one, Pakukame's (`$12`) as it spawns (Dartmoor `$13`,
@@ -705,18 +707,23 @@ function of his place and the map, which `fax_world_present` and
 - **His distance.** Behaviours that measure how far he is use
   `Sprite_CalcDistanceXToPlayer` (`$82F8`) and `Sprite_CalcDistanceYToPlayer`
   (`$831B`): the script ops `SpriteOp_CheckDistanceToPlayer_X` and `_Y`
-  (`$A7F8`, `$A82A`), the Giant Bees, the Naga, Sir Gawaine and the Wolfman.
-  `SpriteBehavior_Ishiisu` (`$9129`, within 32 pixels) and `FUN_PRG14__9aa1`
-  (64) do the same sum inline. In a copy he is at the seam for all of them,
-  so a monster near it acts as if he stood beside it, however far he is.
-  Hooks there give a copy's actor his true distance, capped at 255.
+  (`$A7F8`, `$A82A`: Raiden, Ikeda, the Snowman, the Fire Giant, Grimlock),
+  the Giant Bees, the Naga, Sir Gawaine and the Wolfman.
+  `SpriteBehavior_Ishiisu` (`$9129`, within 32 pixels) does the same sum
+  inline (`FUN_PRG14__9aa1`'s, 64, is an unused enemy's, which no list
+  holds). In a copy he is at the seam for all of them, so a monster near it
+  acts as if he stood beside it, however far he is. Hooks there give a
+  copy's actor his true distance, capped at 255 (as built: a slot of his own
+  room through a side gets its true distance too).
 - **Nash and Magman** place themselves by him: `SpriteBehavior_Nash`
-  (`$9060`, Mist `$2A`) 32 pixels beside him, `SpriteBehavior_Magman`
-  (`$95C0`, Branch `$20` and `$22`) 48 pixels in front of or behind him, at
-  his height. In a copy that is by the projected hero, at the seam, and
-  Magman's X, which does not stop at the screen's edge, wraps to the far
+  (`$9060`, Mist `$2A`) 32 pixels behind him, at its own height,
+  `SpriteBehavior_Magman` (`$95C0`, Branch `$20` and `$22`) 48 pixels in
+  front of him, at his height; and (found building it) a Zorugeriru drops
+  its minion at his X. In a copy that is by the projected hero, at the seam,
+  and Magman's X, which does not stop at the screen's edge, wraps to the far
   side of its room. In a copy, Seamless puts the one that places itself
-  beside his true place, in his room: mechanism 1's move.
+  beside his true place, in his room: mechanism 1's move (as built, into the
+  room that place lies in, his as a rule).
 - **Above and below**, rooms saw him on their bottom or top row: slice 5
   gives them his true Y (as built, held to 0-239).
 
@@ -891,7 +898,7 @@ twice its estimate (see "What it costs").
 | 3. Spells fly on (**done**, #188) | The spell's side, walls across, the view's edge (his own room's too), its picture, visitors in its path, kept through a crossing | Deluge flies through the seam to the view's edge, ends at a wall across a seam and kills a Zozura across one; a Deluge cast toward a dormant Zozura just past the view's edge, across a seam and in his own room, ends at the view's edge, and the Zozura keeps its full HP and stays dormant (no wake, no hit, no experience); behind the next room's foreground; Fire still flickers across a seam; a spell survives his crossing; save and load mid-flight (`tests/seams/spells.py`) | Medium: estimated at 230 lines, built in about 370 lines of C (`fax_seams.c` half comments) and 900 of tests |
 | 4. The view shows only rooms (**done**, #194) | The camera keeps the view over rooms, gliding where its limits change; through a seam one above the other it follows him over both rows' rooms, black only where the two share his column alone | Walking the Tower of Trunk from `$10`, and a Mist stretch with an empty corner: on no frame does the view lie over an empty place (`fax_world`'s camera against `fax_world_room`'s places), and it moves a few pixels a frame at most (`tests/world/only_rooms.py`, headless, every frame); down `$10`'s ladder, black only while he straddles the seam; every real map walked a pixel at a time (`tests/world/camera_test.c`) | Medium: estimated at 150 lines, built in about 190 lines of C (`fax_camera.c` a third comments, and `fax_world.c`'s side) and 660 of tests |
 | 5. One above the other (**done**, #201) | Slices 1-3 across seams one above the other: Y converted, fliers and fallers, drawn whole up and down, his true Y for the rooms above and below | A Hornet follows him down a Trunk ladder (`tests/seams/vertical.py`); his sword hits one across a seam above (on the Mist's `$10`, at the top of a jump); a Hornet straddling the seam is drawn whole; a dormant Hornet above wakes on the frame the view comes within 16 pixels of it, and not before; one flying up moves into the room above; a Zozura falls into the room below and lands; a save mid-crossing replays alike in two fresh games | Medium: estimated at 250 lines, built in about 470 lines of C (`fax_seams.c` half comments) and 850 of tests |
-| 6. What a neighbouring room sees of him | His true distance in a copy; Nash and Magman beside his true place | An Ishiisu across a seam waits until he is within its 32 pixels; Nash reappears beside him, in his room | Small, about 120 |
+| 6. What a neighbouring room sees of him (**done**, #214) | His true distance in a copy; Nash, Magman and a Zorugeriru's minion beside his true place | An Ishiisu across a seam waits until he is within its 32 pixels (`tests/seams/sees_him.py`, headless, as all here); a Fire Giant across one waits while he is 80 pixels away and charges at 28; Nash reappears beside him, in his room; Magmen from beside and above appear in front of him in his room, and his own room's goes past its side into the room there instead of wrapping round; a Zorugeriru's minion drops at his X in his room; a save before Nash's return replays alike in two fresh games | Small: estimated at 120 lines, built in about 330 lines of C (`fax_seams.c` half comments) and 720 of tests |
 | 7. Loose ends | One-in-four items count a room met as a neighbour; the fountain's ladder from afar; a death at a seam drawn whole | Rooms of one-in-four items met in turn move the count, and one item in four shows; from `$27` with `Quests` `$20`, `$28` has its ladder and nothing runs as he crosses; a death at x 248 dissolves whole across the seam | Small, about 90 |
 
 Slice 1 goes first because waiting at invisible lines is what a player sees
@@ -1146,6 +1153,77 @@ One PR. Where the plan changed:
   fresh: the Mist's `$10` under `$07`'s Hornets 3.590 against 3.591 ms of
   CPU a frame; the Trunk's `$29` under `$2D`'s shaft 3.414 against 3.392;
   Eolis's town 3.210 against 3.204. Within noise.
+
+### Slice 6, as built (#214)
+
+One PR. Where the plan changed:
+
+- **The callers, found in the code.** The two routines' list was right; the
+  script op serves five monsters (Raiden, Ikeda, the Snowman, the Fire Giant,
+  Grimlock), and Shadow Eura's aimed shot uses both, in her arena only. Of
+  the two inline sums only the Ishiisu's is in play: `FUN_PRG14__9aa1`'s is
+  entity `$12`'s, the unused snake boss's body, which no list holds and
+  nothing spawns, so it has no hook. Nothing else in bank 14 measures him;
+  the rest compares sides (facing him) or is his own.
+- **His true distance, in his room too.** The hooks answer wherever the hero
+  or the slot is past its byte: in a copy beside, above, below or across a
+  corner from his room, and for a slot of his own room through a side (the
+  frame before it moves). Elsewhere the game's 8-bit sums are the truth and
+  run as they are.
+- **A third that places itself by him**: a Zorugeriru drops its minion at his
+  X (`$9E3E`), at the seam in a copy. It goes the same way.
+- **Placed between frames.** In a copy the game places the actor by the hero
+  it holds there; the hook notes how far his true place moves it, and once
+  the tick's RAM is kept, Seams' step moves it there, into the room that
+  place lies in: his as a rule, the room past his side for a Magman in front
+  of him there, its own for one whose place is in its own room (a Magman of
+  `$20` with him by the seam). A move's rules hold (a full room, a town's
+  edge, no free slot: it stays where the game put it). The cells and shadow
+  OAM its tick drew are hidden, so it is never seen by the seam: it is not
+  drawn that one frame.
+- **His own room's Magman** in front of him past a side (the game's X wraps
+  round to the room's far side) is put past the side, marked through it,
+  and moves into the room there; with nothing joined there the original's
+  wrap stands.
+- **Nash keeps its height**: it moves only in X (its Y is its own, 16 as
+  listed, the top of the room), so from a room beside his it comes into his
+  room at the top, and from a room above or below it stays there, in his
+  column, as the copy already put it.
+- **The Ishiisus never reach a seam as listed.** The Mist's `$50` to `$52`
+  hold one each between two blocks on their floor (columns 5 and 13): `$50`'s
+  stops at x 192 walking at him. So the test puts one by the seam (x 226),
+  where the copy's held hero, 29 pixels off, would have kept it waiting.
+  The Fire Giants on the floor above are the same: where `$50`'s list puts
+  its own (x 176) its gap to the held hero is 63 pixels, past its 32, so the
+  test puts it by the seam (x 220), where it charged at once across the seam
+  with him 80 pixels away.
+- **Where it shows most: Sir Gawaine and the Wolfmen.** They walk at him
+  and stop to fight 24 pixels from him, so in a copy they stopped 24 short
+  of the held hero, by the seam, and never came through it (slice 1's open
+  seam notwithstanding). Now they come on: in the Branch's `$21`, standing
+  2,400 frames, one of `$20`'s two Wolfmen came into his room, where on
+  master both stayed in `$20`.
+- **Followers.** Once awake, Nash, the Magmen and a Zorugeriru's minions
+  come to him from the rooms beside his, as the walkers do: a Magman moved
+  into his room is that room's from then, and keeps following him. In the
+  Branch's `$21`, once he has seen both, the Magmen of `$20` and `$22` both
+  come, and can stand in front of him at once, on the same spot if he
+  hasn't moved between their turns. And where the
+  camera follows him low in a room (Mist `$2B`, him on its floor: the view's
+  top at the room's y 56), Nash at the room's top shows above the view. A
+  playtest call, both.
+- **Record**: nothing new in either. A placement lives within one step (the
+  neighbours' ticks and Seams' step are one call between frames), and his
+  own room's Magman is a slot through a side, in the block as before.
+- **Cost.** Headless, 2,400 frames standing (3,000 in Eolis), this build
+  against master's, the median of 5, from the same saves: the Mist's `$51`
+  between `$50` and `$52` (Ishiisus and Fire Giants) 3.396 against 3.405 ms
+  of CPU a frame; the Mist's `$2B` beside Nash's `$2A` 3.513 against 3.522;
+  Eolis's town 3.150 against 3.158. The Branch's `$21` between the Magmen's
+  rooms 3.517 against 3.436: there the game plays differently, a Magman and
+  a Wolfman of `$20` coming into his room (4 actors in the live game against
+  master's 2); from a save with them there already, both builds play alike,
+  3.516 against 3.525. The hooks themselves are within noise.
 
 Boss rooms are covered by `tests/world/boss_arenas.py`, which every slice
 runs, with a check that no mover or visitor comes from an arena: the moves'

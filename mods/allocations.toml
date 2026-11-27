@@ -1142,6 +1142,24 @@ rom = []
 # floor and sideways tests at $855E, $86BD and $86A7 read a straddler's rows
 # in both rooms. Between frames its moves write a slot's Y less or plus 208.
 # Seamless's shadow() holds a copy's hero to Y 0-239 (it was 0-176).
+# Slice 6, what a neighbouring room sees of him, hooks in bank 14
+# Sprite_CalcDistanceXToPlayer's ($82F8) and Sprite_CalcDistanceYToPlayer's
+# ($831B) entries, SpriteBehavior_Ishiisu's CMP #$20 ($9147, a branch
+# target), SpriteBehavior_Nash's LDA Player_Flags ($90A2),
+# SpriteBehavior_Magman's TYA at $95F7 (a branch target) and
+# SpriteBehavior_Zorugeriru__9e13's STA a:CurrentSprites_XPos_Full,Y ($9E3E,
+# a branch target), which no other feature hooks. Handles the two entries
+# where the hero (a neighbour's copy) or the slot (through a side) is past
+# its byte, returning with A the distance from the 16-bit places (255 at
+# most), C, N and Z as the routines leave them, and Y the hitbox type on the
+# X routine's left path; at $9147 it writes A, and the CMP runs. Nash's,
+# Magman's and the minion's sites only observe in a neighbour's tick; Magman's
+# in his room handles a place past a side whose joined room may take it,
+# writing the slot's X and Y as the routine does and returning as its RTS
+# would. Between frames (Seams' step) the neighbours' placements move their
+# slots, every byte, into the room his true place lies in, as a move does,
+# and clear the shadow OAM entries their room's tick drew for them ($0700,
+# in the room's record). Nothing new in either record.
 
 [[feature]]
 id = "punches"

@@ -394,7 +394,9 @@ static int freeze_hook(uint16_t pc) {
  * keeps coming until it crosses, Seams, fax_seams.c): his X to 0-255, his Y
  * to 0-239, so a room above sees him past its bottom (slice 5) and not, as
  * the game's sprites read a Y of $F0 and up, wrapped past its top;
- * invincible, not swinging, with no spell and no buttons. */
+ * invincible, not swinging, with no spell and no buttons. What measures his
+ * distance or places itself by him goes by his true place instead
+ * (fax_world_hero(); Seams' slice 6). */
 static void shadow(unsigned id) {
     Room *r = &rooms[id], *a = &rooms[active];
     p(0x9e, clamp(a->x * RW + q(0x9e) - r->x * RW, 0, 255));
