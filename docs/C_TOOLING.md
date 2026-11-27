@@ -1,7 +1,7 @@
 # C tooling: what catches bugs in the repo's C
 
-The C this repo owns, `src/` and `tests/`, goes through four checks: three
-in the gate (`tools/test.sh`), the fourth a flag of it. Only the sanitized
+The C this repo owns, `src/` and `tests/`, goes through five checks: four
+in the gate (`tools/test.sh`), the fifth a flag of it. Only the sanitized
 game takes in the nesrecomp and recomp-ui submodules and the recompiled code
 as well.
 
@@ -9,13 +9,9 @@ as well.
 |---|---|---|
 | Warnings, as errors | every `src/` file the game builds | yes: the game's build fails |
 | clang-tidy (`tools/lint.sh`) | the same files | yes: `== lint` |
+| clang-format (`tools/format.sh`) | every `.c` and `.h` in `src/` and `tests/` | yes: `== format` |
 | AddressSanitizer and UBSan | every unit test | yes: the unit tests build that way |
 | AddressSanitizer and UBSan | the whole game, in `build-asan` | opt-in: `tools/test.sh --sanitize` |
-
-A `.clang-format` sets the style for the repo's C, but nothing is formatted
-to it yet and the gate does not check it: a reformat of the whole tree comes
-in a PR of its own. Until then, leave the formatting of the lines you do not
-change as it is.
 
 ## Sanitizers
 
@@ -91,9 +87,6 @@ checks recover. None is needed today.
 -Wwrite-strings -Wpointer-arith`, and on clang `-Wconditional-uninitialized
 -Wmissing-variable-declarations -Wshorten-64-to-32 -Wunreachable-code
 -Wloop-analysis`. The engine and the recompiled code keep their own flags.
-On gcc, `src/fax_world.c` goes without `-Wmisleading-indentation` until it
-is formatted: its dense lines put a statement after an `if` on the `if`'s
-line.
 
 `tools/test.sh` configures its builds with `FAX_WERROR=ON`, so a warning in
 `src/` fails the gate. A plain build only warns: a player's compiler, newer
@@ -117,12 +110,42 @@ so it is not used.
 
 ## Formatting
 
-`.clang-format` (with `.clang-format-ignore` keeping clang-format out of the
-submodules) is the newer files' style as far as clang-format can follow it:
-4 spaces, 120 columns, braces on the line, short functions, ifs and loops on
-one line, the address tables' values and comments in columns. clang-format
-cannot keep a block of two or more statements on one line (`{ ++n; return; }`),
-nor a one-line struct, so those become several lines, and a macro split over
-lines gets a backslash at the end of each. Besides those backslashes it
-changes only whitespace: nothing in it sorts includes, adds braces, or breaks
-strings or comments.
+The repo's C is formatted with clang-format, to `.clang-format`: the newer
+files' style as far as clang-format can follow it. 4 spaces, 120 columns,
+braces on the line, short functions, ifs and loops on one line, `case` at
+its `switch`'s level, `{ 1, 2 }` lists, and the address tables' values and
+comments in columns. A block of two or more statements, or a struct, takes
+several lines: clang-format cannot keep one on a line. `.clang-format-ignore`
+keeps clang-format out of the submodules.
+
+```bash
+tools/format.sh                 # format every .c and .h in src/ and tests/
+tools/format.sh src/fax_map.c   # one file
+tools/format.sh --check         # what the gate runs: names any not formatted
+```
+
+Format before you commit: the gate's `== format` fails on a file that is not,
+and names the command that fixes it. `tools/format.sh` runs the devShell's
+clang-format 22 by its path (`$FAX_CLANG_FORMAT`), so every machine formats
+alike; on macOS the stdenv's clang 21 has a clang-format too, later on
+`PATH`, and two versions can format the same code differently. An editor
+that formats on save should use that one too, or leave formatting to the
+script.
+
+A `#define`'s comment goes beside it when it fits on that line, and above it
+otherwise: given a trailing comment of more than one line, or one past 120
+columns, clang-format moves the macro's value onto a continuation line.
+
+The tree was formatted in one commit (#193), after one that moved such
+comments above their `#define`s. Both are in `.git-blame-ignore-revs`, so
+that blame shows who wrote a line, not who formatted it. GitHub's blame view
+reads the file itself; for `git blame`, once per checkout:
+
+```bash
+git config blame.ignoreRevsFile .git-blame-ignore-revs
+```
+
+Both commits change no token. The comments commit is the same with comments
+stripped (`gcc -fpreprocessed -dD -E -P`); the reformat is the same with all
+whitespace and backslash-newlines removed, and token for token; and the
+game's `src/` objects built byte for byte the same across each.
