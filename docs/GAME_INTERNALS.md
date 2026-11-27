@@ -4048,7 +4048,9 @@ has to be served, which the Magician's lesson does in
    takes 10 Golds a frame and then waits 60 frames, then (`$8463`)
    `Maybe_Shop_DrawTextBox` (`$8471`: two frames, close the list, open the
    dialogue box) and `JMP IScripts_InvokeNextAction`: BUY + 3, "Thank you for
-   shopping.", and the end. One purchase per conversation.
+   shopping.", and the end. One purchase per conversation. The item is the
+   hero's from the frame A is read: for the Hand Dagger's 400, the list stays
+   up 100 frames after it (40 counting, 60 waiting) before `$8463`.
 
 `IScripts_ShowFinalMessage` (`$837E`, A = the message) types a message and,
 at `$838E`, on A or B, `JMP IScriptAction_EndScript`. The shops' refusals and
@@ -4061,6 +4063,23 @@ reach: OpenShop's at `$83FF` (B on "What would you like?", the `BCS` at
 in the list). The original's B there ends the script with no line: no box
 opens first, and `TextBox_ClearForPortraitAndText` clears the list with the
 portrait's box.
+
+**How long a list stays up after B.** `IScriptAction_EndScript` (`$82B4`)
+first waits a frame (`IScripts_UpdatePortraitAnimation`), then
+`IScripts_ClearPortraitImage` sets `IScript_PortraitID` to `$FF` and waits
+for an OAM reset and reloads the sprites' palette and pictures, and only then
+`TextBox_ClearForPortraitAndText` (2,8, 30 x 20) runs `TextBox_Close`, which
+sets `TextBox_Closed` first and then queues each row with the tiles behind
+the box (`Textbox_Maybe_GetAreaBehindTextbox`). Measured at Eolis's key
+shop: the list is still the box up, `TextBox_Closed` 0, for the 6 frames from
+the one B is read on, then closed. Seamless shows a box only while
+`TextBox_Closed` is 0 (*The text box*), so there the list goes all at once
+on the 7th. After a trade (Quick shops' thanks), `Maybe_Shop_DrawTextBox`
+leaves the list the box for its two frames, then `TextBox_OpenForNPC` makes
+the dialogue box (10,16, 20 x 8) the one shown, and its rows write over the
+list's rows 16-23, top row first: the price rows of entries 3 to 6 (17, 19,
+21, 23). The list's other rows stay in the nametable, not shown, until
+`IScriptAction_EndScript` clears both boxes' area.
 
 **The conversation, with Quick shops** (#163): the original's, step for step
 (the greeting, the Buy/Sell menu, the list's line, the list), with one change:
@@ -4092,7 +4111,10 @@ list, reopens the dialogue box and invokes SELL + 3.
 **`Shop_Draw`** draws each entry on two rows from row 10: the item's picture
 at column 12, its name at column 15, and on the next row its price at column
 23, 5 digits by `UI_DrawDigitsNoLeadingZeroes`, which blanks leading zeros but
-**always draws the units**: a price of 0 shows "0". Eight entries fill rows
+**always draws the units**: a price of 0 shows "0". A digit's tile is its
+ASCII code (`$30`-`$39`, among the HUD's tiles at PPU `$1000`) and a blanked
+zero is tile 0, so the nametable says which price a row shows: 400 is `00 00
+34 30 30`. Eight entries fill rows
 10-25; rows 9 and 26 inside the frame stay empty. The gold counts by 10s, and
 every price in the game is a multiple of 20, so every half is a multiple of
 10. A price that is not would overshoot: `IScripts_ProgressivelyAddGold` pays
