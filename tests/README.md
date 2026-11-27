@@ -259,6 +259,14 @@ headless run (`--save-state F:PATH`, repeatable) and read the record from
 each, a few dozen frames a run, since a save is over a megabyte (#189:
 fights' `lag` finds the first frame that ends inside Seams' visitors' pass
 so, where polls over TCP missed every one on a loaded machine).
+`play.py`'s `play()` gives all three at once: each frame's RAM, Seamless's
+trace and states saved after chosen frames (#211: open_ground's `shot` and
+`full` read the fireball's place on every frame, the live room's from the
+RAM and the next room's from the saves, where a poll a loop turn missed its
+last frame at the room's edge). A count only the live game reports
+(`seams_state`'s) is still exact read at the ends: in one batch with the
+`load_state`, before the state's first frame, and again after `wait()`ing the
+frames the headless run took, once nothing more can count.
 
 A walk of taps goes as far a tap however many frames come between them, so
 one bounded by frames runs out on a loaded machine: hold the direction

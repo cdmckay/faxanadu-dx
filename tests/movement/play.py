@@ -11,9 +11,12 @@ forgiving_jumps.py).
   schedule and a per-frame log of RAM (--input, --frame-log), for anything
   that depends on the exact frame a button goes down. Each takes the remaster
   on or off through the mod selection (off is the original game), and
-  screenshots come from them too.
+  screenshots come from them too. play() adds Seamless's per-frame trace
+  (NESRECOMP_WORLD_TRACE), for the Seams tests (tests/seams/vertical.py,
+  open_ground.py).
 """
 from concurrent.futures import ThreadPoolExecutor
+import csv
 import os
 from pathlib import Path
 import shutil
@@ -149,6 +152,43 @@ class Game(fax_e2e.Game):
             pos += head[3] + sum(head[4:9])
         assert len(rams) == frames, (len(rams), frames)
         return rams
+
+    def play(self, state, schedule, frames, mods, saves=(), picture=None):
+        """Play `frames` frames headless from `state`, holding buttons on a
+        schedule of (frame, buttons) counted from its frame. Returns each
+        frame's CPU RAM after it, and its line of Seamless's trace (a dict of
+        ints, None where blank); saves a state after each frame f of `saves`
+        (f, path), and with `picture` what the window presents after the last
+        frame (--present-out)."""
+        start = self.continues_at(state)
+        run = Path(tempfile.mkdtemp(prefix="run-", dir=self.out))
+        mods = shutil.copytree(mods, run / "mods")                  # its own: a run writes its selection back
+        (run / "input.txt").write_text("".join(f"{start + at} {buttons}\n" for at, buttons in sorted(schedule)))
+        log, trace = run / "frames.bin", run / "world.csv"
+        args = [str(self.exe), str(self.rom), "--load-state", str(state), "--input", str(run / "input.txt"),
+                "--frames", str(start + frames), "--frame-log", str(log),
+                "--frame-log-frames", f"{start}:{start + frames - 1}", "--mods-root", str(mods), "--no-save"]
+        for at, path in saves:
+            args += ["--save-state", f"{start + at}:{path}"]
+        if picture:
+            args += ["--present-out", str(picture)]
+        done = subprocess.run(args, capture_output=True, text=True,
+                              env=dict(os.environ, NESRECOMP_WORLD_TRACE=str(trace)))
+        assert done.returncode == 0, done.stdout + done.stderr
+        data = log.read_bytes()
+        with open(trace, newline="") as f:
+            rows = [{k: (int(v) if v not in ("", None) and k != "simulation_ms" else None) for k, v in r.items()}
+                    for r in csv.DictReader(f)]
+        shutil.rmtree(run)
+        assert data[:8] == b"CYCFRAME"
+        rams, pos = [], 12
+        while pos < len(data):
+            head = struct.unpack_from("<9I", data, pos)
+            pos += 36 + 32 + 256
+            rams.append(data[pos:pos + head[3]])
+            pos += head[3] + sum(head[4:9])
+        assert len(rams) == frames and len(rows) == frames, (len(rams), len(rows), frames)
+        return rams, rows
 
     def headless_all(self, runs):
         """headless(*run) for each run at once, each its own process; their
