@@ -258,6 +258,7 @@ E2E=(
   "seams        tests/seams/seams_lose_nothing.py --parts"
   "open-ground  tests/seams/open_ground.py --parts"
   "fights       tests/seams/fights.py --parts"
+  "spells       tests/seams/spells.py --parts"
   "punches      tests/punches/punches.py"
   "vsync        tests/vsync/vsync_default.py"
 )

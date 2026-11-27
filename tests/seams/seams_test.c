@@ -14,7 +14,16 @@
  * covers in the joined world, the draw's cells against where each really
  * lies in 16 bits, and the moves byte for byte. The rooms are the Trunk's
  * (a region), but for towns stay safe: Eolis's, with bank 11's lists for
- * its screens as the ROM has them, and fax_zone.c's zones. */
+ * its screens as the ROM has them, and fax_zone.c's zones.
+ *
+ * Slice 3, the spell flies on: CastMagic_UpdateXPosition ($BCAF) and
+ * CastMagic_CheckDirection ($BD8F) played as the disassembly has them, with
+ * the hook sites at $BD8F and the two off-screen CMPs, and the update
+ * handlers' use of C and Blocks_Result; every flight from every 7th place,
+ * each way, three spells, a wall in each of many columns of the three rooms
+ * and either side unjoined, checked frame by frame against the truth in the
+ * joined world (its X in 16 bits, the view's edge, the walls of the room each
+ * pixel lies in), and in an arena against the original's own code. */
 #include "fax_seams.c"
 #include <string.h>
 
@@ -736,7 +745,9 @@ static void blocks_and_the_record(void) {
     CHECK(fax_seams_valid(blocks[RIGHT_ROOM], ROOMS));
     blk(RIGHT_ROOM)->through[0] = 3;
     CHECK(!fax_seams_valid(blocks[RIGHT_ROOM], ROOMS));
-    blk(RIGHT_ROOM)->through[0] = 0, blk(RIGHT_ROOM)->owner[9] = 9;
+    blk(RIGHT_ROOM)->through[0] = 0, blk(RIGHT_ROOM)->owner[9] = 9;    /* the spell's (slice 3) */
+    CHECK(fax_seams_valid(blocks[RIGHT_ROOM], ROOMS));
+    blk(RIGHT_ROOM)->owner[9] = 10;
     CHECK(!fax_seams_valid(blocks[RIGHT_ROOM], ROOMS));
     char out[300];
     blk(RIGHT_ROOM)->owner[9] = 0, blk(RIGHT_ROOM)->awake = 0x81, blk(RIGHT_ROOM)->tiles[1] = LEFT_ROOM + 1;
@@ -1266,6 +1277,439 @@ static void the_record_mid_pass(void) {
     CHECK(!fax_seams_visiting() && record_get(rec, sizeof rec) == 0);
 }
 
+
+/* ==== slice 3: the spell flies on ==== */
+
+enum { DELUGE = 0, THUNDER = 1, FIRE_SPELL = 2, THUNDER_HIT = 6, FIRE_HIT = 7, SPELL_Y = 152, FOREGROUND = 3 };
+
+/* The spell's tables as bank 14 has them: CAST_MAGIC_MAX_SCREEN_WIDTHS and
+ * the code after it (CastMagic_UpdateYPosition: LDA CastMagic_Flags, BMI,
+ * LDA ...), which types 5 and up read; CAST_MAGIC_WIDTHS and _HEIGHTS; the
+ * hit boxes, CAST_MAGIC_HIT_WIDTHS and _HEIGHTS. */
+static void spell_world(uint8_t hx) {
+    fight(hx);
+    static const uint8_t max[] = {0xF0, 0xF0, 0xE0, 0xF0, 0xF0, 0xAD, 0xB4, 0x02, 0x30, 0x1E, 0xAD, 0xB7};
+    static const uint8_t widths[] = {15, 15, 31, 15, 15, 15, 15, 31, 15, 15, 15, 15};
+    static const uint8_t heights[] = {15, 31, 15, 15, 15, 15, 31, 15, 15, 15, 15, 15};
+    static const uint8_t hit_w[] = {11, 11, 27, 11, 11}, hit_h[] = {11, 27, 11, 11, 11};
+    memcpy(bank14 + (CAST_MAX_WIDTHS - 0x8000), max, sizeof max);
+    memcpy(bank14 + (CAST_MOVE_WIDTHS - 0x8000), widths, sizeof widths);
+    memcpy(bank14 + (CAST_HEIGHTS - 0x8000), heights, sizeof heights);
+    memcpy(bank14 + (CAST_WIDTHS - 0x8000), hit_w, sizeof hit_w);
+    memcpy(bank14 + (CAST_HEIGHTS_HIT - 0x8000), hit_h, sizeof hit_h);
+    for (int r = RIGHT_ROOM; r <= LEFT_ROOM; r++) mem(r)[BLOCK_PROPERTIES + 1] = 0x42;   /* id 3 a foreground (4) */
+}
+/* Player_CastMagic's entry with no spell on, then the cast: `type` from his
+ * X (the ADC's carry clear), moving right or left. */
+static void cast(uint8_t type, bool right) {
+    ram[CAST_TYPE] = 0xFF;
+    CHECK(cast_hook(PLAYER_CAST_MAGIC) == 0 && spell.casting && spell.side == 0);
+    ram[CAST_TYPE] = type, ram[CAST_X] = ram[HERO_X], ram[CAST_Y] = SPELL_Y, ram[CAST_FLAGS] = right ? 0x40 : 0;
+}
+/* The live room's own block test, ScreenBuffer_IsBlockImpassable. */
+static uint8_t live_solid(unsigned index) {
+    uint8_t id = ram[SCREEN_BUFFER + (index & 0xFF)], bits = ram[BLOCK_PROPERTIES + (id >> 1)];
+    return bank15[BLOCK_IMPASSABLE - 0xC000 + (id & 1 ? bits >> 4 : bits & 15)];
+}
+/* CastMagic_CheckDirection, the ROM's code from $BD8F with the hook site at
+ * its entry when `hooked`. */
+static void check_direction(bool hooked) {
+    if (hooked && direction_hook(CAST_CHECK_DIRECTION)) return;
+    uint8_t type = ram[CAST_TYPE];
+    if (cpu.x > 1) { ram[BLOCKS_RESULT] = 0; return; }             /* up and down */
+    unsigned px = ram[CAST_X] + (cpu.x ? rom((uint16_t)(CAST_MOVE_WIDTHS + type)) : 0);
+    ram[PIXEL_X] = (uint8_t)px;
+    if (cpu.x ? px > 255 : px >= 0xF0) { ram[BLOCKS_RESULT] = 1; return; }   /* CastMagic_SetShouldDisperse */
+    ram[PIXEL_Y] = ram[CAST_Y];                                    /* _CheckImpassable */
+    unsigned x = (ram[PIXEL_Y] & 0xF0u) | (ram[PIXEL_X] >> 4);
+    uint8_t r = live_solid(x);
+    if (!r && rom((uint16_t)(CAST_HEIGHTS + type)) >= 0x10) r = live_solid(x = (x + 16) & 0xFF);
+    if (!r && (ram[CAST_Y] & 15)) r = live_solid(x = (x + 16) & 0xFF);
+    ram[BLOCKS_RESULT] = r;
+}
+/* CastMagic_UpdateXPosition by `delta` pixels (the fraction 0): the ROM's
+ * code from $BCAF, the hook sites at $BD8F and the CMPs when `hooked`. C on
+ * return: off the screen. */
+static bool update_x(uint8_t delta, bool hooked) {
+    bool right = ram[CAST_FLAGS] & 0x40;
+    ram[CAST_X] = (uint8_t)(right ? ram[CAST_X] + delta : ram[CAST_X] - delta);
+    cpu.x = right;
+    check_direction(hooked);
+    if (right) cpu.x = ram[CAST_TYPE];
+    cpu.a = ram[CAST_X];
+    if (hooked && edge_hook(right ? CAST_RIGHT_EDGE : CAST_LEFT_EDGE)) return cpu.p & FLAG_C;
+    compare(cpu.a, right ? rom((uint16_t)(CAST_MAX_WIDTHS + ram[CAST_TYPE])) : 0xF0);
+    return cpu.p & FLAG_C;
+}
+/* One frame of flight, as the update handlers have it: 0 on, 1 off the
+ * screen (CastMagic_Clear), 2 a wall (Deluge's and Fire's: the hit sound;
+ * Thunder's and Death's go through). */
+enum { FLYING, OFF, WALL };
+static int fly(uint8_t delta, bool walls, bool hooked) {
+    if (update_x(delta, hooked)) { ram[CAST_TYPE] = 0xFF; return OFF; }
+    if (walls && ram[BLOCKS_RESULT]) { ram[CAST_TYPE] = 0xFF; return WALL; }
+    return FLYING;
+}
+/* The truth, in the joined world: a spell `w` wide (less 1) at x (from room
+ * 4's left) after its move. Off once its leading edge passes the view (from
+ * view_x, room 4 at world 0) or a side with nothing joined; else a wall when
+ * its leading pixel's column, in the room it lies in, is solid on its rows. */
+static int truth(int x, int w, int h, bool right, bool walls) {
+    bool off = right ? x + w + 1 >= view_x + VIEW_W || (x + w + 1 >= 256 && edge[LIVE][1] < 0)
+                     : x < view_x || (x < 0 && edge[LIVE][0] < 0);
+    if (off) return OFF;
+    if (!walls) return FLYING;
+    int px = right ? x + w : x;
+    bool hit = truly(LIVE, px, SPELL_Y, false) || (h >= 16 && truly(LIVE, px, SPELL_Y + 16, false)) ||
+               ((SPELL_Y & 15) && truly(LIVE, px, SPELL_Y + (h >= 16 ? 32 : 16), false));
+    return hit ? WALL : FLYING;
+}
+
+static void the_spells_side(void) {
+    /* From his X, a byte's moves of a few pixels a frame make its side: cast
+     * left from x 2, three a frame, it is past room 4's left at -1 (byte
+     * 255); cast right from x 255 with the cast's carry (byte 0), at 256. */
+    spell_world(2);
+    cast(DELUGE, false);
+    ram[CAST_X] = 255;
+    CHECK(spell_x16() == -1 && spell.side == -1);
+    for (int x = -4; x > -300; x -= 3) {
+        ram[CAST_X] = (uint8_t)x;
+        CHECK(spell_x16() == x && spell.side == (x < -256 ? -2 : -1));
+    }
+    ram[HERO_X] = 255;
+    cast(DELUGE, true);
+    ram[CAST_X] = 0;                                                  /* 255 + 0 + C */
+    CHECK(spell_x16() == 256 && spell.side == 1);
+    ram[CAST_X] = 3;
+    CHECK(spell_x16() == 259);
+    /* The cast's entry also starts this frame's spell draws, which end at
+     * GameLoop_CheckUseCurrentItem's entry (an item draws the hero again)
+     * or the sprite loop's start; a copy's call changes nothing. */
+    CHECK(spell.casting && cast_done_hook(CHECK_USE_ITEM) == 0 && !spell.casting);
+    ram[CAST_TYPE] = 0;
+    cast_hook(PLAYER_CAST_MAGIC);
+    CHECK(spell.casting && spell.side == 1);                          /* on: its side kept */
+    loop_hook(SPRITES_UPDATE_ALL);
+    CHECK(!spell.casting);
+    isolated = true;
+    CHECK(cast_hook(PLAYER_CAST_MAGIC) == 0 && !spell.casting && cast_done_hook(CHECK_USE_ITEM) == 0);
+    isolated = false;
+    /* A load (a door, a respawn): a spell left on is in the room loaded. */
+    load_hook(LOAD_SPRITE_INFO);
+    CHECK(spell.side == 0);
+}
+
+static void every_flight_against_the_truth(void) {
+    /* Every 7th place of the hero, each way, Deluge, Fire and Thunder, with a
+     * wall in one column of room 5, 4 or 3 or none, and room 5 or 3 not
+     * joined (or both, an arena): frame by frame the game's flight, hooked,
+     * is the truth's, and its X in 16 bits is where it truly is. */
+    static const uint8_t types[] = {DELUGE, FIRE_SPELL, THUNDER}, deltas[] = {3, 4, 2};
+    unsigned flights = 0, walls_hit = 0, abroad = 0;
+    for (int joined = 0; joined < 4; joined++)
+        for (int hx = 0; hx < 256; hx += 7)
+            for (int dir = 0; dir < 2; dir++)
+                for (unsigned t = 0; t < 3; t++)
+                    for (int wall = -1; wall < 48; wall += 5) {
+                        spell_world((uint8_t)hx);
+                        if (joined & 1) edge[LIVE][0] = -1;
+                        if (joined & 2) edge[LIVE][1] = -1;
+                        if (joined == 3) view_x = (0 + 256 - VIEW_W) / 2;   /* an arena: centred */
+                        else if (joined == 1) view_x = view_x < 0 ? 0 : view_x;   /* clamped to the rooms */
+                        else if (joined == 2) view_x = view_x + VIEW_W > 256 ? 256 - VIEW_W : view_x;
+                        if (wall >= 0) {
+                            int room = wall < 16 ? LEFT_ROOM : wall < 32 ? LIVE : RIGHT_ROOM;
+                            block_at(room, wall & 15, 9 + (wall & 1), SOLID);
+                        }
+                        uint8_t type = types[t];
+                        int w = rom((uint16_t)(CAST_MOVE_WIDTHS + type)), h = rom((uint16_t)(CAST_HEIGHTS + type));
+                        bool right = dir, walls = type != THUNDER;
+                        cast(type, right);
+                        int x = hx, outcome = FLYING;
+                        for (int f = 0; f < 260 && outcome == FLYING; f++) {
+                            x += right ? deltas[t] : -deltas[t];
+                            outcome = fly(deltas[t], walls, true);
+                            abroad += outcome == FLYING && (x < 0 || x >= 256);
+                            int expected = truth(x, w, h, right, walls);
+                            if (outcome != expected || spell_x16() != x) {
+                                fprintf(stderr, "joined %d hx %d %s type %u wall %d frame %d x %d: game %d truth %d x16 %d\n",
+                                        joined, hx, right ? "right" : "left", type, wall, f, x, outcome, expected,
+                                        spell_x16());
+                                CHECK(false);
+                            }
+                        }
+                        if (outcome == FLYING) fprintf(stderr, "never ended: joined %d hx %d %s type %u wall %d x %d\n",
+                                                       joined, hx, right ? "right" : "left", type, wall, x);
+                        CHECK(outcome != FLYING);
+                        ++flights;
+                        walls_hit += outcome == WALL;
+                    }
+    CHECK(flights > 0 && walls_hit > 0 && abroad > 0);
+}
+
+static void the_original_in_an_arena(void) {
+    /* Joined on neither side (an arena) and the view wider than the room:
+     * from anywhere he can cast (x below 240), each frame hooked is the
+     * original's, walls included. */
+    for (int hx = 0; hx < 240; hx += 3)
+        for (int dir = 0; dir < 2; dir++)
+            for (int wall = -1; wall < 16; wall += 3) {
+                spell_world((uint8_t)hx);
+                edge[LIVE][0] = edge[LIVE][1] = -1;
+                view_x = (256 - VIEW_W) / 2;
+                if (wall >= 0) block_at(LIVE, wall, 10, SOLID);
+                cast(DELUGE, dir);
+                uint8_t start[0x800];
+                memcpy(start, ram, sizeof ram);
+                int game[100], original[100], n = 0;
+                for (int f = 0; f < 100 && (!n || game[n - 1] == FLYING); f++, n++) game[n] = fly(3, true, true);
+                memcpy(ram, start, sizeof ram);
+                for (int f = 0; f < n; f++) {
+                    original[f] = fly(3, true, false);
+                    CHECK(original[f] == game[f]);
+                }
+            }
+}
+
+static void its_own_rules(void) {
+    /* Moving right, Thunder after a first hit ends at x 180 of the room it
+     * is in and Fire after one at once (the original's bytes past the
+     * table); moving left they run to the edge as the others do. */
+    spell_world(40);
+    cast(THUNDER_HIT, true);
+    ram[CAST_X] = 170;
+    CHECK(fly(2, false, true) == FLYING && fly(2, false, true) == FLYING);
+    CHECK(fly(2, false, true) == FLYING && fly(2, false, true) == FLYING && ram[CAST_X] == 178);
+    CHECK(fly(2, false, true) == OFF && spell_end[2] == 3);
+    cast(FIRE_HIT, true);
+    CHECK(fly(4, true, true) == OFF);
+    cast(FIRE_HIT, false);
+    CHECK(fly(4, true, true) == FLYING);
+    /* Cast left from x 245 (Seamless lets him stand at 241-255): the
+     * original ends it at once (X $F0 and up reads as wrapped); hooked it
+     * flies, its X 242 in his room. */
+    spell_world(245);
+    cast(DELUGE, false);
+    uint8_t start[0x800];
+    memcpy(start, ram, sizeof ram);
+    CHECK(fly(3, true, false) == OFF);
+    memcpy(ram, start, sizeof ram);
+    CHECK(fly(3, true, true) == FLYING && spell_x16() == 242);
+    /* Ended at the view's edge, logged: its X, the edge, why. */
+    spell_world(60);
+    cast(DELUGE, false);
+    while (fly(3, true, true) == FLYING) {}
+    CHECK(spell_end[2] == 1 && spell_end[0] < spell_end[1] && spell_end[1] - spell_end[0] <= 3);
+    CHECK(spell_end[1] == 60 + 8 - VIEW_W / 2 && spell_view_ends == 1);
+    /* No view (a load under way), another isolated call, or Seams off: the
+     * original's own code. */
+    spell_world(60);
+    cast(DELUGE, false);
+    view_ok = false;
+    cpu.x = 0;
+    CHECK(direction_hook(CAST_CHECK_DIRECTION) == 0 && edge_hook(CAST_LEFT_EDGE) == 0 &&
+          visibility_hook(CAST_VISIBILITY) == 0);
+    view_ok = true, isolated = true;
+    CHECK(direction_hook(CAST_CHECK_DIRECTION) == 0 && edge_hook(CAST_LEFT_EDGE) == 0);
+    isolated = false;
+    cpu.x = 2;                                                        /* up and down: the original's 0 */
+    CHECK(direction_hook(CAST_CHECK_DIRECTION) == 0);
+}
+
+static void spells_told_apart_and_dormant(void) {
+    /* Deluge at room 4's x -6 (byte 250, side -1): a room 5 Zozura visiting
+     * at its x 246 (the live -10) is under it, the original's hit; his own
+     * room's Zozura at x 246, 252 pixels off, is refused. */
+    spell_world(40);
+    cast(DELUGE, false);
+    for (int x = 39; x >= -6; x -= 3) ram[CAST_X] = (uint8_t)x, spell_x16();
+    CHECK(spell_x16() == -6);
+    fill(LIVE, SLOT, ZOZURA, 246, 150);
+    blk(LIVE)->awake = 1u << SLOT;
+    ram[CURRENT_SPRITE_INDEX] = SLOT;
+    CHECK(magic_hook(CHECK_MAGIC) == 1 && magic_refused == 1 && magic_dormant == 0 && (cpu.p & FLAG_C));
+    fill(LEFT_ROOM, 2, ZOZURA, 246, 150);
+    blk(LEFT_ROOM)->awake = 1u << 2;
+    fill(LIVE, SLOT, ZOZURA, 100, 150);                               /* his own, far off */
+    CHECK(arrive() == 1 && pass.count == 1 && pass.v[0].room == LEFT_ROOM);
+    unsigned live = pass.v[0].live;
+    ram[CURRENT_SPRITE_INDEX] = (uint8_t)live;
+    CHECK(fax_seams_x16(live) == -10 && magic_hook(CHECK_MAGIC) == 0);   /* the game's hit */
+    /* The same visitor never seen: refused, counted, as the X test's failure. */
+    blk(LEFT_ROOM)->awake = 0;
+    CHECK(magic_hook(CHECK_MAGIC) == 1 && magic_dormant == 1 && (cpu.p & FLAG_C) && cpu.x == live);
+    /* Under it but too high, or hidden: no hit for the game either, nothing counted. */
+    uint8_t y = ram[SLOT_Y + live];
+    ram[SLOT_Y + live] = 40;
+    CHECK(magic_hook(CHECK_MAGIC) == 0 && magic_dormant == 1);
+    ram[SLOT_Y + live] = y, ram[FLAGS + live] |= HIDDEN;
+    CHECK(magic_hook(CHECK_MAGIC) == 0 && magic_dormant == 1);
+    arrive();
+    /* His own room's sleeper not yet seen, under the spell (the hole the
+     * view's edge closes): refused; awake, the game's. A coin: the game's. */
+    spell_world(40);
+    cast(DELUGE, false);
+    ram[CAST_X] = 20, spell_x16();
+    fill(LIVE, SLOT, ZOZURA, 16, 150);
+    ram[CURRENT_SPRITE_INDEX] = SLOT;
+    CHECK(magic_hook(CHECK_MAGIC) == 1 && magic_dormant == 1);
+    blk(LIVE)->awake = 1u << SLOT;
+    CHECK(magic_hook(CHECK_MAGIC) == 0 && magic_dormant == 1);
+    blk(LIVE)->awake = 0, ram[ENTITIES + SLOT] = COIN;
+    CHECK(magic_hook(CHECK_MAGIC) == 0);
+}
+
+static void visitors_by_the_spell(void) {
+    /* The hero at room 4's x 200, the Deluge at room 4's -40 (side -1): a
+     * room 5 Zozura at its x 210 (the live -46) is far from him but at the
+     * spell, so it visits. With the spell at 216 of his room, it doesn't. */
+    spell_world(200);
+    cast(DELUGE, false);
+    for (int x = 197; x >= -40; x -= 3) ram[CAST_X] = (uint8_t)x, spell_x16();
+    fill(LEFT_ROOM, 1, ZOZURA, 210, 150);
+    CHECK(spell_x16() == -40 && arrive() == 1 && pass.count == 1 && pass.v[0].slot == 1);
+    arrive();
+    spell_world(200);
+    cast(DELUGE, false);
+    ram[CAST_X] = 216, spell_x16();
+    fill(LEFT_ROOM, 1, ZOZURA, 210, 150);
+    CHECK(arrive() == 0);
+}
+
+static void drawn_on_its_side(void) {
+    /* The Deluge at -6 (byte 250, side -1), drawn inside Player_CastMagic: a
+     * screen over, so its left cell lies at -6, past room 4's side, the
+     * spell's, and its right one at 2 is in OAM, the spell's; his room's
+     * capture keeps both beside the sprite loop's, his own wrap untouched. */
+    spell_world(40);
+    cast(DELUGE, false);
+    for (int x = 39; x >= -6; x -= 3) ram[CAST_X] = (uint8_t)x, spell_x16();
+    bank14[DATA - 0x8000] = 0x20, bank14[DATA - 0x8000 + 1] = 0, bank14[DATA - 0x8000 + 2] = 0x21, bank14[DATA - 0x8000 + 3] = 0;
+    ram[COLS] = 1, ram[ROWS] = 0, ram[NORM_X] = 250, ram[OFFSET_X] = 0, ram[NORM_Y] = 152, ram[OFFSET_Y] = 0;
+    ram[READ_ADDR] = (uint8_t)DATA, ram[READ_ADDR + 1] = DATA >> 8, ram[SPRITE_SLOT] = 0, ram[START_SLOT_RANGE] = 0;
+    ram[FLIP_MASK] = 0, ram[MOVING_VISIBILITY] = 0, ram[SLOTS_FULL] = 0;
+    CHECK(draw_hook(DRAW_STANDARD) == 0 && ram[OFFSET_X] == 0xFF && spell_drawn_abroad == 1);
+    CHECK(spell_drawn.count == 1 && spell_drawn.cell[0].x == -6 && spell_drawn.cell[0].slot == SPELL);
+    CHECK(spell_drawn.owner[0] == SPELL + 1);
+    cast_done_hook(CHECK_USE_ITEM);
+    loop_hook(SPRITES_UPDATE_ALL);                                    /* the sprite loop draws a Zozura after it */
+    put(LIVE, 3, ZOZURA, 100, 120, false, true);
+    ram[CURRENT_SPRITE_INDEX] = 3, ram[OFFSET_X] = 0, ram[NORM_X] = 100, ram[SPRITE_SLOT] = 1;
+    draw_hook(DRAW_STANDARD);
+    loop_done_hook(SPRITES_LOOP_DONE);
+    fax_seams_captured(blocks[LIVE], FAX_SEAMS_LIVE);
+    const FaxSeamsCell *cells;
+    CHECK(fax_seams_cells(blocks[LIVE], &cells) == 1 && cells[0].x == -6 && cells[0].slot == SPELL);
+    CHECK(fax_seams_oam_slot(blocks[LIVE], 0) == SPELL && fax_seams_slot_tiles(blocks[LIVE], SPELL) == -1);
+    CHECK(fax_seams_oam_slot(blocks[LIVE], 1) == 3 && fax_seams_valid(blocks[LIVE], ROOMS));
+    /* A neighbour's capture takes none of it. */
+    fax_seams_captured(blocks[LEFT_ROOM], FAX_SEAMS_TICK);
+    CHECK(fax_seams_oam_slot(blocks[LEFT_ROOM], 0) != SPELL);
+    /* In his room the draw is left where it is, but still the spell's. */
+    spell_world(40);
+    cast(DELUGE, false);
+    bank14[DATA - 0x8000] = 0x20, bank14[DATA - 0x8000 + 1] = 0, bank14[DATA - 0x8000 + 2] = 0x21, bank14[DATA - 0x8000 + 3] = 0;
+    ram[CAST_X] = 30, ram[NORM_X] = 30, ram[OFFSET_X] = 0;
+    ram[READ_ADDR] = (uint8_t)DATA, ram[READ_ADDR + 1] = DATA >> 8, ram[COLS] = 1, ram[ROWS] = 0, ram[NORM_Y] = 152;
+    CHECK(draw_hook(DRAW_STANDARD) == 0 && ram[OFFSET_X] == 0 && spell_drawn.count == 0);
+    CHECK(spell_drawn.owner[0] == SPELL + 1 && spell_drawn_abroad == 0);
+}
+
+static void its_visibility(void) {
+    /* Room 5's column 5, row 9 a foreground (property 4). The Deluge at
+     * room 4's -175 moving left: both its pixels (-171, -163) in it, behind
+     * (3). At -187: its left pixel in column 4 (air), its right in 5: bit 1
+     * only, then swapped moving right. Wholly in his room: the original's. */
+    spell_world(40);
+    block_at(LEFT_ROOM, 5, 9, FOREGROUND);
+    cast(DELUGE, false);
+    for (int x = 38; x >= -175; x -= 3) ram[CAST_X] = (uint8_t)x, spell_x16();
+    CHECK(spell_x16() == -175 && visibility_hook(CAST_VISIBILITY) == 1 && ram[MOVING_VISIBILITY] == 3 && ram[TEMP_VISIBILITY] == 3);
+    CHECK(ram[PIXEL_X] == (uint8_t)(-163) && ram[PIXEL_Y] == SPELL_Y && cpu.a == 3);
+    for (int x = -175; x >= -187; x -= 3) ram[CAST_X] = (uint8_t)x, spell_x16();
+    CHECK(spell_x16() == -187 && visibility_hook(CAST_VISIBILITY) == 1 && ram[MOVING_VISIBILITY] == 2);
+    ram[CAST_FLAGS] = 0x40;
+    CHECK(visibility_hook(CAST_VISIBILITY) == 1 && ram[MOVING_VISIBILITY] == 1 && ram[TEMP_VISIBILITY] == 2);
+    /* Only 4 counts on the right (the routine's BNE), 9 and $0D on the left too. */
+    spell_world(40);
+    cast(DELUGE, false);
+    for (int x = 37; x >= -20; x -= 3) ram[CAST_X] = (uint8_t)x, spell_x16();   /* -20: pixels -16 and -8 */
+    mem(LEFT_ROOM)[BLOCK_PROPERTIES + 2] = 0x90;                      /* id 5 property 9 */
+    block_at(LEFT_ROOM, 15, 9, 5);
+    CHECK(visibility_hook(CAST_VISIBILITY) == 1 && ram[MOVING_VISIBILITY] == 1);
+    block_at(LEFT_ROOM, 15, 9, AIR), block_at(LEFT_ROOM, 14, 9, 5);
+    CHECK(visibility_hook(CAST_VISIBILITY) == 1 && ram[MOVING_VISIBILITY] == 0);
+    ram[CAST_X] = 20;                                                 /* back in his room: the original's */
+    spell.side = 0, spell.last = 20;
+    CHECK(visibility_hook(CAST_VISIBILITY) == 0);
+}
+
+static void a_crossing_keeps_it(void) {
+    /* He crosses into room 5 with the spell at room 4's -41: it is room 5's
+     * 215, his room's now (side 0); into room 3 with it at 298: room 3's 42.
+     * His own room's spell is a room to the side then. Up or down, it ends. */
+    spell_world(4);
+    cast(DELUGE, false);
+    for (int x = 1; x >= -41; x -= 3) ram[CAST_X] = (uint8_t)x, spell_x16();
+    fax_seams_adopted(LIVE, LEFT_ROOM);
+    CHECK(spell.side == 0 && spell_x16() == 215 && ram[CAST_TYPE] == DELUGE && spell_crossed == 1);
+    spell_world(250);
+    cast(DELUGE, true);
+    for (int x = 253; x <= 298; x += 3) ram[CAST_X] = (uint8_t)x, spell_x16();
+    fax_seams_adopted(LIVE, RIGHT_ROOM);
+    CHECK(spell.side == 0 && spell_x16() == 42);
+    spell_world(250);
+    cast(DELUGE, false);
+    fax_seams_adopted(LIVE, RIGHT_ROOM);
+    CHECK(spell.side == -1 && spell_x16() == 250 - 256 && ram[CAST_TYPE] == DELUGE);
+    place_y[RIGHT_ROOM] = 1;                                          /* below his: a ladder down */
+    spell_world(250);
+    cast(DELUGE, false);
+    fax_seams_adopted(LIVE, RIGHT_ROOM);
+    CHECK(ram[CAST_TYPE] == 0xFF && spell.side == 0 && spell_cleared == 1);
+    place_y[RIGHT_ROOM] = 0;
+    /* Too far (two rooms off): it ends, as it would at the view's edge. */
+    spell_world(4);
+    cast(DELUGE, true);
+    spell.side = 1;
+    fax_seams_adopted(LIVE, LEFT_ROOM);
+    CHECK(ram[CAST_TYPE] == 0xFF);
+    /* With Seams off Seamless clears it, as it always did. */
+    spell_world(4);
+    cast(DELUGE, false);
+    enabled = false;
+    fax_seams_adopted(LIVE, LEFT_ROOM);
+    CHECK(ram[CAST_TYPE] == 0xFF);
+    enabled = true;
+}
+
+static void the_record_keeps_its_side(void) {
+    /* Version 2 keeps the side, its last byte and that a cast is drawing; a
+     * version 1 record (slice 2's) loads, the spell in his room. */
+    spell_world(4);
+    cast(DELUGE, false);
+    for (int x = 1; x >= -41; x -= 3) ram[CAST_X] = (uint8_t)x, spell_x16();
+    uint8_t rec[RECORD + 4];
+    int n = record_get(rec, sizeof rec);
+    CHECK(n == RECORD && rec[0] == 2 && record_validate(rec, n));
+    clear_spell();
+    CHECK(record_set(rec, n) && spell.side == -1 && spell.last == (uint8_t)-41 && spell.casting && !spell.resync);
+    CHECK(spell_x16() == -41);
+    rec[RECORD_V1] = 2;                                               /* side 2: never written */
+    CHECK(!record_validate(rec, n));
+    rec[RECORD_V1] = 0xFF, rec[RECORD_V1 + 3] = 2;
+    CHECK(!record_validate(rec, n));
+    rec[RECORD_V1 + 3] = 1, rec[0] = 1;                               /* version 1 at version 2's length */
+    CHECK(!record_validate(rec, n));
+    CHECK(record_validate(rec, RECORD_V1) && record_set(rec, RECORD_V1));
+    CHECK(spell.resync && spell.side == 0 && !spell.casting);
+    ram[CAST_X] = 200;
+    CHECK(spell_x16() == 200 && !spell.resync);
+    rec[0] = 2;
+    CHECK(!record_validate(rec, RECORD_V1));
+}
+
 int main(void) {
     the_original_wraps();
     the_ghost_hit_is_refused();
@@ -1295,6 +1739,16 @@ int main(void) {
     sugatas_flash();
     a_neighbours_sounds();
     the_record_mid_pass();
+    the_spells_side();
+    every_flight_against_the_truth();
+    the_original_in_an_arena();
+    its_own_rules();
+    spells_told_apart_and_dormant();
+    visitors_by_the_spell();
+    drawn_on_its_side();
+    its_visibility();
+    a_crossing_keeps_it();
+    the_record_keeps_its_side();
     printf("seams_test: %u checks passed\n", checks);
     return 0;
 }

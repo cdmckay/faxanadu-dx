@@ -1,9 +1,9 @@
 # Seamless's seams: the plan for one big world
 
-Issue #166. A plan, built a slice at a time: slices 0, 1 and 2 are in the
-game. Where building slices 1 and 2 found the plan wrong, the plan below says
-what was built, and "Slice 1, as built" and "Slice 2, as built" list the
-changes.
+Issue #166. A plan, built a slice at a time: slices 0 to 3 are in the
+game. Where building slices 1 to 3 found the plan wrong, the plan below says
+what was built, and "Slice 1, as built", "Slice 2, as built" and "Slice 3,
+as built" list the changes.
 
 **The goal**, as Cameron put it: "it should just feel like 1 big world." A
 player should never be able to tell where one room ends and the next begins.
@@ -40,8 +40,8 @@ Then come seams one above the other, what a neighbouring room sees of the
 hero, and three loose ends: seven slices after slice 0, about 2,100 lines of
 C as estimated, and likely twice that, as slice 0 took. Slice 0 (nothing
 lost at a seam, no ghost hit) is done: #177. Slice 1 (#178, seams are open
-ground, mechanism 1) is done too, and so is slice 2 (#187, fights across a
-seam, mechanism 2).
+ground, mechanism 1) is done too, and so are slice 2 (#187, fights across a
+seam, mechanism 2) and slice 3 (#188, the spell flies on, mechanism 3).
 
 ## How Seamless runs a neighbouring room today
 
@@ -81,7 +81,8 @@ When the hero crosses, `seam_hook` at `Area_ScrollTo` (`$E8E9`) swallows the
 original's scroll, and `draw_hook` at `Player_DrawShield` (`$B982`) adopts the
 next room once his origin wraps: `adopt()` keeps the old room's RAM, loads the
 new room's own bytes into the live machine, copies its sprite tiles
-(`$0900-$0FFF`) in, and clears the spell (`CastMagic_Type` `$FF`).
+(`$0900-$0FFF`) in, and cleared the spell (`CastMagic_Type` `$FF`); since
+slice 3 a spell keeps flying (`fax_seams_adopted()`).
 
 So **no actor ever moves between machines**: each room keeps its own eight
 slots. The spell (`CastMagic_*`, `$02B3-$02BB`) is not room-local: only the
@@ -119,7 +120,8 @@ room, in mid-air in Seamless's view.
 **A spell also vanishes when the hero crosses a seam.** Deluge cast right
 from x 46, then the hero walked left into room 5: on the frame he crossed,
 `CastMagic_Type` went to `$FF` with the spell at room 4's x 241. `adopt()`
-clears it.
+clears it. **Both fixed by slice 3**: the spell flies on, through a crossing
+too, and ends at the view's edge.
 
 ### Monsters pile up at the seam
 
@@ -619,28 +621,47 @@ at most, or within 16 of his spell's).
 
 The spell stays in the live game: `CastMagic_*` is not room-local, and the
 live game must decide what it hits. Seamless keeps its side, the room it is
-in relative to the hero's.
+in relative to the hero's (as built: Seams keeps it, -1, 0 or 1, worked out
+from its X byte's moves since the cast, which starts at his X in his room).
 
-- At `CastMagic_CheckDirection_Left` and `_Right`, where its X wraps, and at
-  `CastMagic_UpdateXPosition`'s off-screen test after them, a joined room
-  that way changes its side instead of ending it.
-- While it is abroad, its wall checks read that room's `ScreenBuffer`
-  (through the RAM read hook `collision_read` already uses for the hero), and
-  that room's actors near it are visitors, so `Sprite_CheckHitByCastMagic`
-  meets them with its own hit handler and damage
-  (`Player_HitEnemyWithMagic`, `$81A7`).
-- It ends where it would in one big room: at a wall, on a monster, or at the
-  edge of the view (the camera), whichever comes first. Each spell keeps its
-  own rule, and Fire its flicker (its finish handler draws it 2 frames in 4
-  by `InterruptCounter`, untouched).
-- So a spell never reaches a dormant monster: it ends at the view's edge,
-  and everything in the view is awake (Cameron's call on #166).
-- Seamless draws it on its side: its cells in the live room's OAM are moved
-  a room over, and slice 1's lists give the cells past the edge.
-- A crossing keeps it: `adopt()` stops clearing `CastMagic_Type`, and the
-  side changes with the hero's room.
+- **Walls in the room it is in.** As built, `CastMagic_CheckDirection`
+  (`$BD8F`) is done in C for the sideways moves, not through the RAM read
+  hook `collision_read`: Seamless clears that hook at `Player_DrawShield`,
+  before `Player_CastMagic` runs. Its pixel (X moving left, X plus its width
+  moving right) is tested in the room it lies in, with slice 1's block test
+  and `CastMagic_CheckDirection_CheckImpassable`'s rows. Past a side with no
+  room joined it disperses, as at the original's screen edge.
+- **Visitors.** Across a seam that room's actors near it are visitors, so
+  `Sprite_CheckHitByCastMagic` meets them with its own hit handler and
+  damage (`Player_HitEnemyWithMagic`, `$81A7`); the told-apart test takes
+  its X in 16 bits.
+- **It ends where it would in one big room**: at a wall, on a monster, or at
+  the edge of the view, whichever comes first, **in his own room too**
+  (Cameron's call on #166): `CastMagic_UpdateXPosition`'s two off-screen
+  compares (`$BCD1`, `$BCF2`) end it once its leading edge passes the view
+  (worked out again at the cast's entry, from his place this frame) or a
+  side with nothing joined. In an arena (joined on neither side) the view is
+  wider than the room, so nothing changes there. Each spell keeps its own
+  rule: Fire its flicker (its finish handler draws it 2 frames in 4 by
+  `InterruptCounter`, untouched), and Thunder's and Fire's after a first
+  hit their limits moving right, bytes the game reads past
+  `CAST_MAGIC_MAX_SCREEN_WIDTHS`.
+- **So a spell never reaches a dormant monster**: it ends at the view's
+  edge, and everything within 16 pixels of the view is awake (Cameron's call
+  on #166). Before slice 3 his own room had the hole: up to 50 pixels of it
+  are out of the view at a seam, and a spell flew to the room's side and hit
+  a sleeper there. As a second guard, `Sprite_CheckHitByCastMagic` refuses
+  a hit on a sleeper not yet seen.
+- **Seamless draws it on its side**: its draw, inside `Player_CastMagic`
+  before the sprite loop, is moved a room over by its side, slice 1's
+  replay keeps its cells past the edge and marks its OAM cells as the
+  spell's, so Seamless paints them where it is. Its behind-the-background
+  bits (`CastMagic_CalculateVisibility`, `$C315`) are read in the room each
+  of its pixels lies in.
+- **A crossing keeps it**: `adopt()` stops clearing `CastMagic_Type`, and
+  the side changes with the hero's room.
 - Spells fly sideways. Tilte's drop and a spell at a seam above or below end
-  as now.
+  as now, and so does a spell when he crosses up or down.
 
 ### 4. The view shows only rooms (slice 4)
 
@@ -844,7 +865,7 @@ twice its estimate (see "What it costs").
 | 0. Seams lose nothing (**done**, #177) | Copies stop touching the hero (no lost drops, no frozen rooms). The weapon's reach in 16 bits (no ghost hit; the original keeps it) | A coin at room 5's edge stays, and he takes it walking in; the Dragon Slayer there leaves room 5 ticking; a swing at room 4's x 4 leaves a Zozura at its x 236 alone, and the original's kills it | Small: estimated at 100 lines, built in about 200 |
 | 1. Seams are open ground (**done**, #178) | Monsters, shots and walking people go through side-by-side seams both ways, between any two rooms, up to 5 actors a room; dormant until first seen, then awake for good (a shot leaving the view is removed); drawn whole across a seam; tiles from home; a load refreshes the rooms joined to it; record version 5 | Eolis's walking woman walks from room 2 into his room 1, and the walking man in and out (`tests/seams/open_ground.py`, as all here); a room 5 Zozura follows him back through room 4 to the town's edge (room 3's side) and turns back there, none ever in room 3, and room 4's follow him into room 5; the walking man at room 1's side by room 8 turns back there; a Zozura never seen stands still, wakes the first frame it is in view, and keeps coming after it leaves the view; unseen monsters in two rooms don't gather at him; a missed fireball flies on through a seam, and one leaving the view is gone; a room holding 5 keeps its seam a wall, one holding 4 doesn't; a straddling Zozura's pixels on both sides of the seam; a zone respawn's load brings the rooms beside it back fresh; the intro's trigger, a person who talks when touched, at a neighbour's edge leaves its room ticking (slice 0's hook); a save mid-crossing replays alike in two fresh games | Large: estimated at 730 lines, built in about 850 lines of C (`fax_seams.c` half comments) and 1,050 of tests |
 | 2. Fights across a seam (**done**, #187) | The visitors' pass, side by side: the sword, touches, shots on him and his shield, bread and coins; a neighbouring room's sounds; Sugata's flash | From room 4, he kills a room 5 Zozura: its experience and MP, its death in room 5, its drop there (bread: a Zozura leaves no coin); a Monodron killed the same way drops its coin in room 5, and the coin's sound plays (`tests/seams/fights.py`); a Zozura straddling the seam hurts him; he takes a coin across it; a punch reaches across it; a Sugata across a Mist seam flashes him in reach, and not out of it; a save mid-swing replays alike in two fresh games; on Zenis 16 a frame that ends inside the pass reads as the room's own and replays alike | Medium: estimated at 470 lines, built in about 800 lines of C (`fax_seams.c` half comments, and the features that ask it) and 1,050 of tests |
-| 3. Spells fly on | The spell's side, walls across, the view's edge, its picture, visitors in its path, kept through a crossing | Deluge ends at a wall across a seam and kills a Zozura across one; a Deluge cast toward a dormant Zozura just past the view's edge, across a seam, ends at the view's edge, and the Zozura keeps its full HP and stays dormant (no wake, no hit, no experience); Fire still flickers; save and load mid-flight | Medium, about 230 |
+| 3. Spells fly on (**done**, #188) | The spell's side, walls across, the view's edge (his own room's too), its picture, visitors in its path, kept through a crossing | Deluge flies through the seam to the view's edge, ends at a wall across a seam and kills a Zozura across one; a Deluge cast toward a dormant Zozura just past the view's edge, across a seam and in his own room, ends at the view's edge, and the Zozura keeps its full HP and stays dormant (no wake, no hit, no experience); behind the next room's foreground; Fire still flickers across a seam; a spell survives his crossing; save and load mid-flight (`tests/seams/spells.py`) | Medium: estimated at 230 lines, built in about 370 lines of C (`fax_seams.c` half comments) and 900 of tests |
 | 4. The view shows only rooms | The camera keeps the view over rooms, gliding where its limits change | Walking the Tower of Trunk from `$10`, and a Mist stretch with an empty corner: on no frame does the view lie over an empty place (`fax_world`'s camera against `fax_world_room`'s places), and it moves a few pixels a frame at most | Medium, about 150 |
 | 5. One above the other | Slices 1-3 across seams one above the other: Y converted, fliers and fallers, drawn whole up and down, his true Y for the rooms above and below | A Hornet follows him down a Trunk ladder; his sword hits one across a seam above | Medium, about 250 |
 | 6. What a neighbouring room sees of him | His true distance in a copy; Nash and Magman beside his true place | An Ishiisu across a seam waits until he is within its 32 pixels; Nash reappears beside him, in his room | Small, about 120 |
@@ -935,6 +956,61 @@ changed:
   3.148 against 3.149 ms of CPU a frame; Eolis's town, 3,000 frames, 3.187
   against 3.186; the Mist's `$1E` with Sugatas on both sides, 3.061 against
   3.055. All within noise: the pass is a few hundred instructions.
+
+### Slice 3, as built (#188)
+
+One PR. Where the plan (and the design on #166 before any code) changed:
+
+- **Walls in C, not through `collision_read`.** That RAM read hook is off by
+  the time `Player_CastMagic` runs (Seamless's `Player_DrawShield` hook
+  clears it), so `CastMagic_CheckDirection` is done in C for the sideways
+  moves, with slice 1's block test in the room the pixel lies in.
+- **The view's edge in his own room too** (Cameron's call on #166: "I could
+  just spam my spells and kill everyone offscreen who is frozen"). Every
+  spell ends at the edge of the 424-wide view or at a side with nothing
+  joined, so a spell in his room no longer flies on to a sleeper up to 50
+  pixels past the view. In an arena nothing changes: the room's sides come
+  first.
+- **The second guard**: `Sprite_CheckHitByCastMagic` refuses a hit on a
+  sleeper not yet seen (in his room or a visitor), counted in `seams_state`
+  (`magic_dormant`, which only a hit the game would have made counts). In
+  play the view's edge leaves it nothing to do.
+- **Its side from its byte.** A cast takes his X as the byte at
+  `Player_CastMagic`'s entry, and every later look reads the byte's move
+  (4 pixels a frame at most) to keep the side: no extra RAM, and the cast's
+  own carry (a pixel) and a cast from x 255 (its byte 0, the next room's)
+  come out right.
+- **Its own rules kept.** Thunder's and Fire's after a first hit (types 6
+  and 7) end moving right by the bytes the game reads past
+  `CAST_MAGIC_MAX_SCREEN_WIDTHS` (`$B4` and `$02`): Thunder at x 180 of the
+  room it is in, Fire at once, as in the original. Neither hits anything
+  then (`Sprite_CheckHitByCastMagic` returns for a type of 5 and up).
+- **A Seamless bug fixed on the way.** The hero stands at x 241-255 before he
+  crosses, and a spell cast from x 243 or more moving left, or 237 or more
+  moving right, read as off the screen and ended on its first frame.
+- **The picture.** Rather than noting the OAM range at `Player_CastMagic`'s
+  entry and return, slice 1's replay runs for every draw between
+  `Player_CastMagic`'s entry and `GameLoop_CheckUseCurrentItem`'s, which
+  gives its exact OAM cells (an item's use, `Game_DrawScreenInFrozenState`,
+  draws the hero again after it, so the window ends there). They are marked
+  as the spell's (`FAX_SEAMS_SPELL`), so Seamless's fix for the hero's own
+  wrapped cells leaves them alone. `CastMagic_CalculateVisibility` is read
+  in the room each pixel lies in: from room 4 the Deluge passes behind room
+  5's tower, where before it would have shown in front.
+- **Crossings.** `adopt()` asks `fax_seams_adopted()`: sideways the side
+  moves by the rooms' places; up or down, or a side further than one room,
+  ends it as before. In the test the Deluge, cast right from room 4's x 240,
+  was through the seam on its fifth frame, flew on after he crossed into
+  room 3, and through room 3's right side into room 2, to the view's edge.
+- **Record.** Seams' record is version 2 (481 bytes: the side, its last
+  byte, and whether a cast is drawing); version 1 still loads, the spell in
+  his room.
+- **Cost.** Headless, from the same save (Eolis `$04`, the hero at x 60, a
+  Deluge cast left every 75 frames, so a spell in flight most frames, most
+  of them in room 5), 2,400 frames, slice 3's build against master's (its
+  hooks off), the median of 5: room 5 empty 3.216 against 3.221 ms of CPU a
+  frame, room 5's two Zozuras there 3.248 against 3.246. Within noise: the
+  hooks are a few dozen instructions a frame while a spell is on.
 
 Boss rooms are covered by `tests/world/boss_arenas.py`, which every slice
 runs, with a check that no mover or visitor comes from an arena: the moves'

@@ -345,7 +345,11 @@ static bool adopt(unsigned next,int x,int y){
     capture((unsigned)active,true,FAX_SEAMS_LIVE);load(next);
     for(unsigned i=0x900;i<0x1000;i++)cyc_mod_chr_poke((uint16_t)i,rooms[next].chr[i]);
     p(0x9e,x);p(0xa1,y);p(0x9f,0);p(0xa2,0);p(0xc,0);p(0xd,0);p(0x57,0);p(0x58,0);p(0x59,0);
-    p(0x54,255);p(0xe,0);p(0xb4,0);p(0x2b3,255);
+    p(0x54,255);p(0xe,0);p(0xb4,0);
+    /* The spell flies on through a crossing sideways (Seams' slice 3,
+     * fax_seams.c): its side moves by the rooms' places. Up or down, or with
+     * Seams off, CastMagic_Type goes $FF, as it always did here. */
+    fax_seams_adopted(active,(int)next);
     active=(int)next;handoffs++;
     double cost=(SDL_GetPerformanceCounter()-start)*1000.0/SDL_GetPerformanceFrequency();if(cost>max_seam_ms)max_seam_ms=cost;
     return true;
@@ -479,6 +483,7 @@ static void cell(Room *r,const uint8_t *chr,int sx,int sy,unsigned tile,unsigned
         unsigned py=attr&128?7-y:y,shift=attr&64?x:7-x,off=tile*16+py;
         unsigned v=((chr[off]>>shift)&1)|(((chr[off+8]>>shift)&1)<<1);if(!v)continue;
         int lx=sx+x;Room *under=r;
+        if(lx< -RW||lx>=2*RW)continue; /* further than the room joined: none drawn there */
         if(lx<0||lx>=RW){unsigned n=r->edges[lx<0?0:1];if(n>=MAX_ROOMS||!rooms[n].valid)continue;under=&rooms[n];lx+=lx<0?RW:-RW;}
         if((attr&32)&&terrain(under,lx,clamp(sy-HUD+y,0,207)))continue;
         canvas[(size_t)dy*w+dx]=hw_palette_argb[(pal[16+(attr&3)*4+v]&((mask&1)?0x30:0x3f))|((mask>>5)<<6)];

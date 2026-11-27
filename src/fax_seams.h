@@ -1,6 +1,7 @@
 #pragma once
 /* Seams (fax_seams.c, #166): slice 0, seams lose nothing; slice 1, seams
- * are open ground; slice 2, fights across a seam. It registers its own hooks
+ * are open ground; slice 2, fights across a seam; slice 3, the spell flies
+ * on. It registers its own hooks
  * and save-state record; the host adds its TCP command, Seamless
  * (fax_world.c) calls the rest, and the features that hit or are hit ask it
  * where a slot is. Each room's state is a block of FAX_WORLD_SEAMS_BYTES that
@@ -17,10 +18,15 @@ void fax_seams_tcp_setup(void);
  * attributes as the game would have put them in OAM, and the actor's slot. */
 typedef struct { int16_t x; uint8_t y, tile, attr, slot; } FaxSeamsCell;
 
-/* The cells past the room's sides from its last finished sprite loop. */
+/* The slot, past the actors' 0-7, that the hero's spell's cells are told by
+ * (slice 3): in his room's OAM and its cells past a side. */
+enum { FAX_SEAMS_SPELL = 8 };
+/* The cells past the room's sides from its last finished sprite loop (his
+ * room's spell's too). */
 unsigned fax_seams_cells(const uint8_t *block, const FaxSeamsCell **cells);
-/* The actor slot (0-7) that drew OAM entry `oam` (0-63) in that loop, or -1
- * for a cell no actor drew (the hero, his weapon, his spell). */
+/* The actor slot (0-7) that drew OAM entry `oam` (0-63) in that loop,
+ * FAX_SEAMS_SPELL for his spell's, or -1 for a cell no actor drew (the hero,
+ * his weapon). */
 int fax_seams_oam_slot(const uint8_t *block, unsigned oam);
 /* The room whose CHR holds the slot's tiles, when it came through a seam
  * into a room without tiles for it (tiles from home); -1 for its own room. */
@@ -34,6 +40,10 @@ void fax_seams_captured(uint8_t *block, int how);
  * whose origin crossed a seam move to the room they entered; shots wholly
  * out of the view go. */
 void fax_seams_step(void);
+/* Seamless adopts room `to` as his, from `from`: a spell on keeps flying,
+ * its side moved by the rooms' places, unless the crossing is up or down
+ * (it ends, CastMagic_Type $FF, as it always did then). */
+void fax_seams_adopted(int from, int to);
 /* Whether room `room` of Seamless's area is a town room: a screen of a
  * town's zone (fax_zone.c) whose sprite list holds no monster. A seam
  * between a town room and one that isn't is a wall for every mover. */
