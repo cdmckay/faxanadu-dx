@@ -5,23 +5,29 @@
 #   tools/test.sh                 # ROM: "Faxanadu (USA).nes" at the repo root
 #   tools/test.sh --rom PATH      # another copy of the same ROM
 #   tools/test.sh --quick         # skip the end-to-end game runs
+#   tools/test.sh --sanitize      # play the game built with AddressSanitizer
+#                                 # and UBSan (build-asan) instead
 #
 # Run inside the Nix devShell (direnv, or nix develop). The game build in
-# build-cycle is configured on first use. The end-to-end runs fill every
+# build-cycle is configured on first use, and a warning in the repo's own C
+# fails it; the unit tests build with AddressSanitizer and UBSan, and
+# clang-tidy lints src/ (docs/C_TOOLING.md). The end-to-end runs fill every
 # hardware thread, so only one suite on the machine runs them at a time:
 # another checkout's suite waits for the lock, then runs. E2E_JOBS=N plays at
 # most N of its runs at once (default: one a thread). Without --quick, the
-# allocation checks, unit tests and the game's smoke run go on beside the
+# allocation checks, lint, unit tests and the game's smoke run go on beside the
 # end-to-end runs, and print when those end.
 set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 ROM="$REPO/Faxanadu (USA).nes"
 QUICK=0
+SANITIZED=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --rom) ROM="$(realpath "$2")"; shift 2;;
     --quick) QUICK=1; shift;;
-    -h|--help) sed -n '2,13p' "$0"; exit 0;;
+    --sanitize) SANITIZED=1; shift;;
+    -h|--help) sed -n '2,19p' "$0"; exit 0;;
     *) echo "unknown arg: $1" >&2; exit 2;;
   esac
 done
@@ -30,151 +36,152 @@ cd "$REPO"
 JOBS="$(nproc 2>/dev/null || echo 4)"
 OUT="$REPO/build-tests"
 
-# The game, built first: the end-to-end runs play it.
+# The sanitizer builds, every unit test and with --sanitize the game: under
+# AddressSanitizer and UndefinedBehaviorSanitizer, a read or write out of
+# bounds, a use after free or any undefined behaviour stops a unit test or
+# fails the suite, with a report (docs/C_TOOLING.md). They build with the
+# devShell's sanitizer compiler, clang 22, and SDL3's folder as an rpath
+# (flake.nix says why). Leaks go unchecked: LeakSanitizer finds none on
+# macOS, and the gate passes or fails the same everywhere.
+SANITIZE_CC="${FAX_SANITIZE_CC:?run in the Nix devShell (direnv, or nix develop): it names the sanitizer compiler}"
+SANITIZE_CXX="${FAX_SANITIZE_CXX:?run in the Nix devShell}"
+SANITIZE_RPATH="${FAX_SANITIZE_RPATH:?run in the Nix devShell}"
+[ -d "$SANITIZE_RPATH" ] || { echo "No SDL3 folder at $SANITIZE_RPATH: reload the devShell" >&2; exit 2; }
+SANITIZE="-fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g"
+export ASAN_OPTIONS="detect_leaks=0${ASAN_OPTIONS:+:$ASAN_OPTIONS}"
+export UBSAN_OPTIONS="print_stacktrace=1${UBSAN_OPTIONS:+:$UBSAN_OPTIONS}"
+fresh() {  # DIR COMPILER: start DIR's build again if another compiler configured it
+  grep -qsx "CMAKE_C_COMPILER:[A-Z]*=$2" "$1/CMakeCache.txt" || rm -rf "$1/CMakeCache.txt" "$1/CMakeFiles"
+}
+# The game, built first: the end-to-end runs play it. A warning in the repo's
+# own C fails its build (FAX_WERROR). With --sanitize they play build-asan's,
+# the whole game under AddressSanitizer and UBSan (docs/C_TOOLING.md).
+game() {  # DIR [CMAKE ARGS...]: configure DIR on first use, with FAX_WERROR on, and build it
+  local dir="$1"; shift
+  [ -f "$dir/CMakeCache.txt" ] || cmake -S . -B "$dir" -DNESRECOMP_ROM="$ROM" -DFAX_WERROR=ON "$@" >/dev/null
+  grep -qsx "FAX_WERROR:BOOL=ON" "$dir/CMakeCache.txt" || cmake -S . -B "$dir" -DFAX_WERROR=ON >/dev/null
+  cmake --build "$dir" -j"$JOBS" >/dev/null
+}
 echo "== game build"
-[ -f build-cycle/CMakeCache.txt ] || cmake -S . -B build-cycle -DCMAKE_BUILD_TYPE=Release -DNESRECOMP_ROM="$ROM" >/dev/null
-cmake --build build-cycle -j"$JOBS" >/dev/null
+game build-cycle -DCMAKE_BUILD_TYPE=Release
+GAME=build-cycle
+if [ "$SANITIZED" = 1 ]; then
+  echo "== game build, sanitized (build-asan)"
+  fresh build-asan "$SANITIZE_CC"
+  game build-asan -DCMAKE_BUILD_TYPE=RelWithDebInfo -DFAX_SANITIZE=ON \
+    -DCMAKE_C_COMPILER="$SANITIZE_CC" -DCMAKE_CXX_COMPILER="$SANITIZE_CXX"
+  GAME=build-asan
+fi
+
+unit() {  # DIR: configure and build tests/DIR's unit test in $OUT/DIR
+  fresh "$OUT/$1" "$SANITIZE_CC"
+  cmake -S "tests/$1" -B "$OUT/$1" -DNESRECOMP_ROOT="$REPO/nesrecomp" --no-warn-unused-cli \
+    -DCMAKE_C_COMPILER="$SANITIZE_CC" -DCMAKE_C_FLAGS="$SANITIZE" \
+    -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined" -DCMAKE_BUILD_RPATH="$SANITIZE_RPATH" >/dev/null
+  cmake --build "$OUT/$1" -j"$JOBS" >/dev/null
+}
 
 checks() {  # everything but the end-to-end runs
 echo "== allocations"
 python3 tools/check_allocations.py --rom "$ROM"
 python3 tests/allocations/check_allocations_test.py --rom "$ROM"
 
+echo "== lint"
+JOBS="$JOBS" tools/lint.sh
+
 echo "== unit tests"
-cmake -S tests/travel -B "$OUT/travel" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-cmake --build "$OUT/travel" -j"$JOBS" >/dev/null
+unit travel
 "$OUT/travel/travel_test"
-cmake -S tests/text_speed -B "$OUT/text_speed" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-cmake --build "$OUT/text_speed" -j"$JOBS" >/dev/null
+unit text_speed
 "$OUT/text_speed/text_speed_test"
-cmake -S tests/world -B "$OUT/world" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-cmake --build "$OUT/world" -j"$JOBS" >/dev/null && echo "fax_world.c compiles without SDL"
+unit world
+echo "fax_world.c compiles without SDL"
 "$OUT/world/present_fit_test" | tail -4
-cmake -S tests/death -B "$OUT/death" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-cmake --build "$OUT/death" -j"$JOBS" >/dev/null
+unit death
 "$OUT/death/death_test"
-cmake -S tests/pendant -B "$OUT/pendant" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-cmake --build "$OUT/pendant" -j"$JOBS" >/dev/null
+unit pendant
 "$OUT/pendant/pendant_test"
-cmake -S tests/magic -B "$OUT/magic" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-cmake --build "$OUT/magic" -j"$JOBS" >/dev/null
+unit magic
 "$OUT/magic/magic_test"
-cmake -S tests/zones -B "$OUT/zones" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-cmake --build "$OUT/zones" -j"$JOBS" >/dev/null
+unit zones
 "$OUT/zones/zones_test"
-cmake -S tests/keys -B "$OUT/keys" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-cmake --build "$OUT/keys" -j"$JOBS" >/dev/null
+unit keys
 "$OUT/keys/keys_test"
-cmake -S tests/movement -B "$OUT/movement" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-cmake --build "$OUT/movement" -j"$JOBS" >/dev/null
+unit movement
 "$OUT/movement/pose_test"
 "$OUT/movement/jumps_test"
-cmake -S tests/ladders -B "$OUT/ladders" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-cmake --build "$OUT/ladders" -j"$JOBS" >/dev/null
+unit ladders
 "$OUT/ladders/ladders_test"
 "$OUT/ladders/ladder_hold_test"
-cmake -S tests/files -B "$OUT/files" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-cmake --build "$OUT/files" -j"$JOBS" >/dev/null
+unit files
 FAX_FILES_TEST_DIR="$OUT/files/scratch" "$OUT/files/files_test"
-cmake -S tests/title -B "$OUT/title" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-cmake --build "$OUT/title" -j"$JOBS" >/dev/null
+unit title
 "$OUT/title/title_test"
-cmake -S tests/speaker -B "$OUT/speaker" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-cmake --build "$OUT/speaker" -j"$JOBS" >/dev/null
+unit speaker
 "$OUT/speaker/speaker_test"
-cmake -S tests/dagger -B "$OUT/dagger" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-cmake --build "$OUT/dagger" -j"$JOBS" >/dev/null
+unit dagger
 "$OUT/dagger/dagger_test"
-cmake -S tests/block -B "$OUT/block" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-cmake --build "$OUT/block" -j"$JOBS" >/dev/null
+unit block
 "$OUT/block/block_test"
-cmake -S tests/sugata -B "$OUT/sugata" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-cmake --build "$OUT/sugata" -j"$JOBS" >/dev/null
+unit sugata
 "$OUT/sugata/sugata_test"
-cmake -S tests/shops -B "$OUT/shops" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-cmake --build "$OUT/shops" -j"$JOBS" >/dev/null
+unit shops
 "$OUT/shops/shops_test"
-cmake -S tests/respawn -B "$OUT/respawn" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-cmake --build "$OUT/respawn" -j"$JOBS" >/dev/null
+unit respawn
 "$OUT/respawn/respawn_test"
-cmake -S tests/recharge -B "$OUT/recharge" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-cmake --build "$OUT/recharge" -j"$JOBS" >/dev/null
+unit recharge
 "$OUT/recharge/recharge_test"
-cmake -S tests/charges -B "$OUT/charges" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-cmake --build "$OUT/charges" -j"$JOBS" >/dev/null
+unit charges
 "$OUT/charges/charges_test"
-cmake -S tests/item_box -B "$OUT/item_box" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-cmake --build "$OUT/item_box" -j"$JOBS" >/dev/null
+unit item_box
 "$OUT/item_box/item_box_test"
-cmake -S tests/mana -B "$OUT/mana" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-cmake --build "$OUT/mana" -j"$JOBS" >/dev/null
+unit mana
 "$OUT/mana/mana_test"
-cmake -S tests/lesson -B "$OUT/lesson" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-cmake --build "$OUT/lesson" -j"$JOBS" >/dev/null
+unit lesson
 "$OUT/lesson/lesson_test"
-cmake -S tests/gold -B "$OUT/gold" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-cmake --build "$OUT/gold" -j"$JOBS" >/dev/null
+unit gold
 "$OUT/gold/gold_test"
-cmake -S tests/slain -B "$OUT/slain" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-cmake --build "$OUT/slain" -j"$JOBS" >/dev/null
+unit slain
 "$OUT/slain/slain_test"
-cmake -S tests/indoor -B "$OUT/indoor" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-cmake --build "$OUT/indoor" -j"$JOBS" >/dev/null
+unit indoor
 "$OUT/indoor/indoor_test"
-cmake -S tests/damage -B "$OUT/damage" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-cmake --build "$OUT/damage" -j"$JOBS" >/dev/null
+unit damage
 "$OUT/damage/damage_test"
-cmake -S tests/inventory -B "$OUT/inventory" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-cmake --build "$OUT/inventory" -j"$JOBS" >/dev/null
+unit inventory
 "$OUT/inventory/inventory_test"
-cmake -S tests/fixes -B "$OUT/fixes" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-cmake --build "$OUT/fixes" -j"$JOBS" >/dev/null
+unit fixes
 "$OUT/fixes/fixes_test"
-cmake -S tests/finds -B "$OUT/finds" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-cmake --build "$OUT/finds" -j"$JOBS" >/dev/null
+unit finds
 "$OUT/finds/finds_test"
-cmake -S tests/found -B "$OUT/found" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-cmake --build "$OUT/found" -j"$JOBS" >/dev/null
+unit found
 "$OUT/found/found_test"
-cmake -S tests/shaft -B "$OUT/shaft" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-cmake --build "$OUT/shaft" -j"$JOBS" >/dev/null
+unit shaft
 "$OUT/shaft/shaft_test"
-cmake -S tests/map -B "$OUT/map" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-cmake --build "$OUT/map" -j"$JOBS" >/dev/null
+unit map
 "$OUT/map/map_test" "$ROM"
-cmake -S tests/quests -B "$OUT/quests" >/dev/null
-cmake --build "$OUT/quests" -j"$JOBS" >/dev/null
+unit quests
 "$OUT/quests/quests_test" "$ROM"
-cmake -S tests/graphics -B "$OUT/graphics" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-cmake --build "$OUT/graphics" -j"$JOBS" >/dev/null
+unit graphics
 "$OUT/graphics/graphics_test"
-cmake -S tests/flicker -B "$OUT/flicker" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-cmake --build "$OUT/flicker" -j"$JOBS" >/dev/null
+unit flicker
 "$OUT/flicker/flicker_test"
-cmake -S tests/entrances -B "$OUT/entrances" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-cmake --build "$OUT/entrances" -j"$JOBS" >/dev/null
+unit entrances
 "$OUT/entrances/entrances_test"
-cmake -S tests/spell_cost -B "$OUT/spell_cost" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-cmake --build "$OUT/spell_cost" -j"$JOBS" >/dev/null
+unit spell_cost
 "$OUT/spell_cost/spell_cost_test"
-cmake -S tests/menu -B "$OUT/menu" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-cmake --build "$OUT/menu" -j"$JOBS" >/dev/null
+unit menu
 "$OUT/menu/menu_test"
-cmake -S tests/use_item -B "$OUT/use_item" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-cmake --build "$OUT/use_item" -j"$JOBS" >/dev/null
+unit use_item
 "$OUT/use_item/use_item_test"
-cmake -S tests/controls -B "$OUT/controls" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-cmake --build "$OUT/controls" -j"$JOBS" >/dev/null
+unit controls
 "$OUT/controls/controls_test" "$OUT/controls"
-cmake -S tests/seams -B "$OUT/seams" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-cmake --build "$OUT/seams" -j"$JOBS" >/dev/null
+unit seams
 "$OUT/seams/seams_test"
-cmake -S tests/punches -B "$OUT/punches" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
-cmake --build "$OUT/punches" -j"$JOBS" >/dev/null
+unit punches
 "$OUT/punches/punch_test"
 
-echo "== the game, 600 frames headless"
-build-cycle/FaxanaduRecomp "$ROM" --frames 600 --no-save | grep "mode="
+echo "== the game, 600 frames headless ($GAME)"
+UBSAN_OPTIONS="$UBSAN_OPTIONS:halt_on_error=1" "$GAME/FaxanaduRecomp" "$ROM" --frames 600 --no-save | grep "mode="
 }
 
 if [ "$QUICK" = 1 ]; then checks; echo "(end-to-end runs skipped: --quick)"; exit 0; fi
@@ -195,8 +202,21 @@ if command -v flock >/dev/null; then
 else
   echo "(no flock: end-to-end runs may overlap another suite's)"
 fi
+# With --sanitize the games keep fixtures of their own (making a fixture
+# with one build throws away the other's), and their sanitizers write each
+# report to a file, read at the end: any report fails the suite. A UBSan
+# report lets the game play on, so one suite finds every place.
+REPORTS="$OUT/sanitizer-reports"
+TIMES="$OUT/e2e-times.txt"
+if [ "$SANITIZED" = 1 ]; then
+  rm -rf "$REPORTS"
+  mkdir -p "$REPORTS"
+  export FAX_E2E_FIXTURES="$OUT/fixtures-asan"
+  export ASAN_OPTIONS="$ASAN_OPTIONS:log_path=$REPORTS/report" UBSAN_OPTIONS="$UBSAN_OPTIONS:log_path=$REPORTS/report"
+  TIMES="$OUT/e2e-times-asan.txt"
+fi
 echo "== end to end: the shared helper's port reservation and relaunch"
-python3 tests/e2e/fax_e2e_test.py --build build-cycle --rom "$ROM" --out "$OUT/e2e-helper"
+python3 tests/e2e/fax_e2e_test.py --build "$GAME" --rom "$ROM" --out "$OUT/e2e-helper"
 # Every end-to-end test at once, each in its own folder, on a free port. A
 # test that splits into parts (--parts here, first) runs each part as its own
 # game, every part or those listed (--parts=a,b); the saved games they start
@@ -268,7 +288,6 @@ E2E=(
 # runs start first, by the CPU each used last time (e2e-times.txt): unlike its
 # wall time, that does not depend on how busy the machine was when it ran.
 JOBS="${E2E_JOBS:-$JOBS}"
-TIMES="$OUT/e2e-times.txt"
 ms() { echo $(( $(date +%s%N) / 1000000 )); }
 names=(); cmds=()
 for entry in "${E2E[@]}"; do
@@ -291,7 +310,7 @@ run_e2e() {  # NAME SCRIPT [ARGS...]: one run in its folder; its log, and "code 
   local out; out=$(folder "$name")
   rm -f "$out.end"
   { local t0 code cpu; t0=$(ms)
-    python3 "$script" --build build-cycle --rom "$ROM" --out "$out" "$@" > "$out.log" 2>&1
+    python3 "$script" --build "$GAME" --rom "$ROM" --out "$out" "$@" > "$out.log" 2>&1
     code=$?
     cpu=$(sed -n 's/^.*time: .*, games \([0-9.]*\) s CPU, script \([0-9.]*\) s CPU$/\1 \2/p' "$out.log" |
           awk '{ printf "%d", ($1 + $2) * 1000 }')
@@ -319,7 +338,12 @@ for name in "${names[@]}"; do
 done | sort -n | tee >(awk '{ print $3, $4 }' > "$TIMES") | awk '{ printf "  %6.1f  %5.1f  %s\n", $1 / 1000, $2 / 1000, $4 }'
 checked=$(cat "$OUT/checks.code" 2>/dev/null || echo 1)
 cat "$OUT/checks.log"
-[ "$checked" = 0 ] || echo "== FAILED: the checks above (allocations, unit tests or the game's smoke run)" >&2
+[ "$checked" = 0 ] || echo "== FAILED: the checks above (allocations, lint, unit tests or the game's smoke run)" >&2
 [ "$failed" = 0 ] || echo "end-to-end tests failed; screenshots in $OUT/*-e2e*/" >&2
+if [ "$SANITIZED" = 1 ] && [ -n "$(ls -A "$REPORTS")" ]; then
+  failed=1
+  echo "== FAILED: the sanitizers' reports in $REPORTS, each place with how many games hit it:" >&2
+  grep -h -E "^SUMMARY: AddressSanitizer|runtime error:" "$REPORTS"/* | sort | uniq -c | sort -rn >&2
+fi
 [ "$checked" = 0 ] && [ "$failed" = 0 ] || exit 1
 echo "all checks passed"

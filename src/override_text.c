@@ -409,9 +409,8 @@ int text_override_load_json(const char *path) {
 
     fseek(f, 0, SEEK_END);
     long fsize = ftell(f);
-    rewind(f);
 
-    if (fsize <= 0 || fsize > 65536) {
+    if (fsize <= 0 || fsize > 65536 || fseek(f, 0, SEEK_SET) != 0) {
         fclose(f);
         fprintf(stderr, "[TextOverride] JSON file size out of range (%ld bytes)\n", fsize);
         return -1;

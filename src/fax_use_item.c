@@ -308,7 +308,7 @@ void fax_use_item_save_settings(FILE *f) {
 void fax_use_item_event(const void *ev) {
     const SDL_Event *e = ev;
     if (e->type == SDL_KEYDOWN) {
-        if (key && !e->key.repeat && e->key.keysym.scancode == key) press();
+        if (key && !e->key.repeat && (int)e->key.keysym.scancode == key) press();
     } else if (e->type == SDL_CONTROLLERBUTTONDOWN || e->type == SDL_CONTROLLERBUTTONUP) {
         if (CYC_PAD_IS_BUTTON(pad) && e->cbutton.button == pad - 1) {
             if (e->type == SDL_CONTROLLERBUTTONDOWN) pad_pressed();

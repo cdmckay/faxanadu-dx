@@ -1,0 +1,3 @@
+# clang-format leaves the submodules alone: they keep their own style (.clang-format).
+nesrecomp/**
+recomp-ui/**

@@ -519,7 +519,7 @@ void fax_block_event(const void *ev) {
     int was = device;
     if (e->type == SDL_KEYDOWN || e->type == SDL_KEYUP) {
         if (e->type == SDL_KEYDOWN) device = KEYBOARD;
-        if (key && e->key.keysym.scancode == key) key_held = e->type == SDL_KEYDOWN;
+        if (key && (int)e->key.keysym.scancode == key) key_held = e->type == SDL_KEYDOWN;
     } else if (e->type == SDL_CONTROLLERBUTTONDOWN || e->type == SDL_CONTROLLERBUTTONUP) {
         if (e->type == SDL_CONTROLLERBUTTONDOWN) device = CONTROLLER;
         if (CYC_PAD_IS_BUTTON(pad) && e->cbutton.button == pad - 1) pad_held = e->type == SDL_CONTROLLERBUTTONDOWN;

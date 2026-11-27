@@ -24,6 +24,7 @@ generated/
 
 build_ui/
 build-cycle/
+build-asan/
 build-legacy/
 cycle-evidence/
 faxanadu_auto_entries.csv

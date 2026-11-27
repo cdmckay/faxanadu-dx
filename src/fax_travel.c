@@ -209,10 +209,10 @@ static void save_visited(void) {
 
 /* Save files: the visited Gurus are the file's `gurus` field. */
 static void on_save(FaxSaveEvent event) {
-    char text[FAX_SAVE_VALUE];
+    char gurus[FAX_SAVE_VALUE];
     if (event == FAX_SAVE_NEW_GAME) visited = 1;
     else if (event == FAX_SAVE_CONTINUED) visited = (uint8_t)(fax_save_gurus_parse(fax_save_get("gurus")) | 1u);
-    else { fax_save_gurus_format(visited, text); fax_save_set("gurus", text); }
+    else { fax_save_gurus_format(visited, gurus); fax_save_set("gurus", gurus); }
 }
 
 /* The furthest temple: the highest visited Guru's, or the spawn point, which
