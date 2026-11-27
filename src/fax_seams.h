@@ -1,7 +1,7 @@
 #pragma once
 /* Seams (fax_seams.c, #166): slice 0, seams lose nothing; slice 1, seams
  * are open ground; slice 2, fights across a seam; slice 3, the spell flies
- * on. It registers its own hooks
+ * on; slice 5, all of it one above the other. It registers its own hooks
  * and save-state record; the host adds its TCP command, Seamless
  * (fax_world.c) calls the rest, and the features that hit or are hit ask it
  * where a slot is. Each room's state is a block of FAX_WORLD_SEAMS_BYTES that
@@ -12,20 +12,22 @@
 
 void fax_seams_tcp_setup(void);
 
-/* A sprite cell a room's actor drew past the room's side, which the NES
- * skips (Sprite_Draw_Standard, Sprite_Draw_FlippedHoriz): x from the room's
- * left edge in pixels (below 0 or 256 and up), y as OAM Y, its tile and
+/* A sprite cell a room's actor drew past the room's side, top or bottom,
+ * which the NES skips or hides (Sprite_Draw_Standard,
+ * Sprite_Draw_FlippedHoriz): x from the room's left edge in pixels (below 0
+ * or 256 and up), y as OAM Y in 16 bits (the status bar's 32 lines above the
+ * room's top: below 32 past it, 239 and up past its bottom), its tile and
  * attributes as the game would have put them in OAM, and the actor's slot. */
 typedef struct {
-    int16_t x;
-    uint8_t y, tile, attr, slot;
+    int16_t x, y;
+    uint8_t tile, attr, slot;
 } FaxSeamsCell;
 
 /* The slot, past the actors' 0-7, that the hero's spell's cells are told by
  * (slice 3): in his room's OAM and its cells past a side. */
 enum { FAX_SEAMS_SPELL = 8 };
-/* The cells past the room's sides from its last finished sprite loop (his
- * room's spell's too). */
+/* The cells past the room's sides, top and bottom from its last finished
+ * sprite loop (his room's spell's too). */
 unsigned fax_seams_cells(const uint8_t *block, const FaxSeamsCell **cells);
 /* The actor slot (0-7) that drew OAM entry `oam` (0-63) in that loop,
  * FAX_SEAMS_SPELL for his spell's, or -1 for a cell no actor drew (the hero,
@@ -63,9 +65,13 @@ int fax_seams_x16(unsigned slot);
  * runs it). */
 int fax_seams_room_x16(int room, unsigned slot);
 /* The room whose pixels the live slot's X byte counts (its own for one that
- * has come from or straddles a joined room): -1 outside the live game or
- * without Seamless. The damage numbers draw there. */
+ * has come from or straddles a joined room; a visitor's own): -1 outside
+ * the live game or without Seamless. The damage numbers draw there. */
 int fax_seams_slot_room(unsigned slot);
+/* The live slot's Y in the pixels of that room: a visitor from above or
+ * below has its own room's Y, its byte in the live game being his room's
+ * (slice 5). */
+int fax_seams_slot_y(unsigned slot);
 /* The current sprite's box (SpriteBox_Left, as Sprite_GetBounds left it) in
  * 16 bits, as fax_seams_x16. */
 int fax_seams_box_left(void);

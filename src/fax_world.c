@@ -384,13 +384,15 @@ static int freeze_hook(uint16_t pc) {
     return 0;
 }
 /* The hero as a neighbour's actors see him: his place in that room's
- * coordinates, clamped to its edge (0-255: a monster coming for him across
- * a seam keeps coming until it crosses, Seams, fax_seams.c), invincible, not
- * swinging, with no spell and no buttons. */
+ * coordinates, clamped to its edge (a monster coming for him across a seam
+ * keeps coming until it crosses, Seams, fax_seams.c): his X to 0-255, his Y
+ * to 0-239, so a room above sees him past its bottom (slice 5) and not, as
+ * the game's sprites read a Y of $F0 and up, wrapped past its top;
+ * invincible, not swinging, with no spell and no buttons. */
 static void shadow(unsigned id) {
     Room *r = &rooms[id], *a = &rooms[active];
     p(0x9e, clamp(a->x * RW + q(0x9e) - r->x * RW, 0, 255));
-    p(0xa1, clamp(a->y * RH + q(0xa1) - r->y * RH, 0, 176));
+    p(0xa1, clamp(a->y * RH + q(0xa1) - r->y * RH, 0, 239));
     p(0xad, 200);
     p(0xae, 0);
     p(0x2b3, 255);
@@ -786,10 +788,34 @@ static void raster(unsigned id) {
 static const uint8_t *tiles_of(Room *r, int from) {
     return from >= 0 && from < MAX_ROOMS && rooms[from].live ? rooms[from].chr : r->chr;
 }
+/* The room joined to r one step along edge e (0 left, 1 right, 2 above, 3
+ * below), decoded: NULL for none. */
+static Room *joined_room(Room *r, unsigned e) {
+    unsigned n = r ? r->edges[e] : 255;
+    return n < MAX_ROOMS && rooms[n].valid ? &rooms[n] : NULL;
+}
+/* The room pixel (*lx, *ly) of room r lies in, through the rooms joined to
+ * it, sideways, up or down, or both (a corner: either way round, the map is
+ * a grid), with the pixel moved into its coordinates: NULL past a side with
+ * no room joined, or further than one room. */
+static Room *room_under(Room *r, int *lx, int *ly) {
+    int dx = *lx < 0 ? -1 : *lx >= RW ? 1 : 0, dy = *ly < 0 ? -1 : *ly >= RH ? 1 : 0;
+    if (*lx < -RW || *lx >= 2 * RW || *ly < -RH || *ly >= 2 * RH) return NULL;
+    unsigned ex = dx < 0 ? 0 : 1, ey = dy < 0 ? 2 : 3;
+    Room *u = r;
+    if (dx && dy) {
+        Room *a = joined_room(joined_room(r, ex), ey);
+        u = a ? a : joined_room(joined_room(r, ey), ex);
+    } else if (dx) u = joined_room(r, ex);
+    else if (dy) u = joined_room(r, ey);
+    *lx -= dx * RW, *ly -= dy * RH;
+    return u;
+}
 /* One 8x8 sprite cell of room r at (sx,sy) of its picture (sy as OAM Y + 1,
- * the status bar included). A pixel past the room's side falls in the room
- * joined there, whose terrain its behind-the-background bit is tested
- * against; past a side with no room joined it isn't drawn. */
+ * the status bar included). A pixel past the room's side, top or bottom
+ * falls in the room joined there (Seams' drawn whole, fax_seams.c), whose
+ * terrain its behind-the-background bit is tested against; past one with no
+ * room joined it isn't drawn. */
 static void cell(Room *r, const uint8_t *chr, int sx, int sy, unsigned tile, unsigned attr, int w, int h,
                  const uint8_t *pal, unsigned mask) {
     int ox = r->x * RW - camera_x, oy = HUD + r->y * RH - camera_y;
@@ -800,16 +826,10 @@ static void cell(Room *r, const uint8_t *chr, int sx, int sy, unsigned tile, uns
             unsigned py = attr & 128 ? 7 - y : y, shift = attr & 64 ? x : 7 - x, off = tile * 16 + py;
             unsigned v = ((chr[off] >> shift) & 1) | (((chr[off + 8] >> shift) & 1) << 1);
             if (!v) continue;
-            int lx = sx + x;
-            Room *under = r;
-            if (lx < -RW || lx >= 2 * RW) continue; /* further than the room joined: none drawn there */
-            if (lx < 0 || lx >= RW) {
-                unsigned n = r->edges[lx < 0 ? 0 : 1];
-                if (n >= MAX_ROOMS || !rooms[n].valid) continue;
-                under = &rooms[n];
-                lx += lx < 0 ? RW : -RW;
-            }
-            if ((attr & 32) && terrain(under, lx, clamp(sy - HUD + y, 0, 207))) continue;
+            int lx = sx + x, ly = sy - HUD + y;
+            Room *under = room_under(r, &lx, &ly);
+            if (!under) continue;
+            if ((attr & 32) && terrain(under, lx, ly)) continue;
             canvas[(size_t)dy * w + dx] =
                 hw_palette_argb[(pal[16 + (attr & 3) * 4 + v] & ((mask & 1) ? 0x30 : 0x3f)) | ((mask >> 5) << 6)];
         }
@@ -822,15 +842,14 @@ static void actors(unsigned id, int w, int h) {
      * a building/fade palette; it must use the active scene's colors. */
     const uint8_t *pal = rooms[active].palette;
     unsigned mask = cyc_render_line_mask(239);
-    /* The cells the room's actors drew past its sides, which the NES skips
-     * (Seams' drawn whole), behind its own sprites. */
+    /* The cells the room's actors drew past its sides, top and bottom, which
+     * the NES skips or hides (Seams' drawn whole), behind its own sprites. */
     const FaxSeamsCell *cells;
     unsigned n = fax_seams_cells(r->seams, &cells);
     for (unsigned k = 0; k < n; k++) {
         const FaxSeamsCell *c = &cells[k];
-        int sy = c->y + 1;
-        if (sy < HUD || sy >= 240) continue;
-        cell(r, tiles_of(r, fax_seams_slot_tiles(r->seams, c->slot)), c->x, sy, c->tile, c->attr, w, h, pal, mask);
+        cell(r, tiles_of(r, fax_seams_slot_tiles(r->seams, c->slot)), c->x, c->y + 1, c->tile, c->attr, w, h, pal,
+             mask);
     }
     /* Every sprite, back to front in the order the game drew them (No sprite
      * flicker, fax_flicker.c, from the room's own Sprites_StartSlotRange). */
@@ -840,8 +859,11 @@ static void actors(unsigned id, int w, int h) {
         int s = order[k];
         const uint8_t *o = r->ram + 0x700 + s * 4;
         int sy = o[0] + 1, sx = o[3];
-        if (sy < HUD || sy >= 240) continue;
         int slot = fax_seams_oam_slot(r->seams, (unsigned)s);
+        /* Hidden (line 240 and down: those an actor drew are among its cells
+         * past the bottom), or over the status bar and no actor's (an
+         * actor's cell there lies in the room above). */
+        if (sy >= 240 || (sy < HUD && slot < 0)) continue;
         /* The hero's own cells that wrap round the screen as he stands past
          * x 240; never an actor's. */
         if (id == (unsigned)active && slot < 0) {
@@ -1060,7 +1082,7 @@ int fax_world_active_room(void) { return enabled ? active : -1; }
 int fax_world_area(void) { return enabled ? area : -1; }
 bool fax_world_room_live(int id) { return on_map(id) && rooms[id].live; }
 int fax_world_joined(int id, int side) {
-    if (!on_map(id) || side < 0 || side > 1) return -1;
+    if (!on_map(id) || side < 0 || side > 3) return -1;
     unsigned n = rooms[id].edges[side];
     return n < MAX_ROOMS && fax_world_room_live((int)n) ? (int)n : -1;
 }
@@ -1214,7 +1236,7 @@ static int state_get(uint8_t *buf, int cap) {
     if (len > cap) return -1;
     memset(buf, 0, STATE_HEADER);
     memcpy(buf, "FAXWORLD", 8);
-    buf[8] = 5;
+    buf[8] = 6;
     buf[9] = (uint8_t)(area + 1);
     buf[10] = (uint8_t)(active + 1);
     buf[18] = death_mode;
@@ -1236,11 +1258,12 @@ static int state_get(uint8_t *buf, int cap) {
 /* A record is checked whether Seamless is on or not: with the remaster off
  * (the original game) a state saved with it on still loads, and Seamless's
  * record is set aside (state_set), as the other features' are. Version 5
- * (#166's slice 1) keeps each room's Seams block and the screen load not yet
- * acted on; older records don't load. */
+ * (#166's slice 1) kept each room's Seams block and the screen load not yet
+ * acted on; version 6 (slice 5) has the block grown to 512 bytes, its cells
+ * past a room's top and bottom too. Older records don't load. */
 static int state_validate(const uint8_t *buf, int len) {
     if (!len) return 1;
-    if (!buf || len != STATE_HEADER + sizeof rooms || memcmp(buf, "FAXWORLD", 8) || buf[8] != 5 || buf[9] > 8 ||
+    if (!buf || len != STATE_HEADER + sizeof rooms || memcmp(buf, "FAXWORLD", 8) || buf[8] != 6 || buf[9] > 8 ||
         buf[10] > MAX_ROOMS || buf[11] > MAX_ROOMS || buf[12] > 3 || buf[13] > 1 || buf[14] > 1 || buf[18] > 1 ||
         buf[19] > 1 || buf[28] > 1 || buf[29] > 1)
         return 0;

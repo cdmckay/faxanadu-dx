@@ -33,9 +33,12 @@ How the game works, as far as we've learned it, is in
 The remaster plays in Seamless. Faxanadu's rooms join into one continuous
 world: no more stopping to scroll at each screen's edge, and the next room is
 already in view. Monsters, their shots and the people who walk cross from
-room to room as if there were no edge: they stand still until you first see
-them, then come for you, and a monster that has seen you follows you on,
-up to a town's edge: towns stay safe, and their people stay in them. Fights
+room to room as if there were no edge, above and below as well as beside: a
+Hornet flies on up or down a ladder's shaft after you, and a monster that
+steps off a ledge falls into the room below instead of vanishing. They
+stand still until you first see them, then come for you, and a monster that
+has seen you follows you on, up to a town's edge: towns stay safe, and their
+people stay in them. Fights
 go on across the edges too: your sword or fist reaches a monster in the next
 room, a monster or its shot there can hurt you, a coin or bread lying across
 the edge is yours for the touch, you hear what happens next door, and a

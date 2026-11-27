@@ -50,9 +50,13 @@ bool fax_world_room_origin(int area, int room, int *x, int *y) {
     return true;
 }
 /* Seams (fax_seams.c): the room a slot's X counts the pixels of, -1 without
- * Seamless (the live screen, then). */
-static int slot_room[8];
+ * Seamless (the live screen, then), and its Y in that room's pixels (a
+ * visitor from above or below: its own room's, slot_y; else its byte). */
+static int slot_room[8], slot_y[8];
 int fax_seams_slot_room(unsigned slot) { return slot_room[slot & 7]; }
+int fax_seams_slot_y(unsigned slot) {
+    return slot_y[slot & 7] >= 0 ? slot_y[slot & 7] : ram[CURRENT_SPRITES_YPOS + (slot & 7)];
+}
 #define BG        0xFF404040u
 #define INK_WHITE 0xFFF0F0F0u
 #define INK_PINK  0xFFF05898u
@@ -150,7 +154,7 @@ static void setup(void) {
     for (unsigned s = 0; s < SLOTS; ++s) ram[CURRENT_SPRITES_ENTITIES + s] = 0xFF;
     world_on = false;
     for (int r = 0; r < 16; ++r) room_x[r] = room_y[r] = NO_ROOM;
-    for (int s = 0; s < 8; ++s) slot_room[s] = -1;
+    for (int s = 0; s < 8; ++s) slot_room[s] = slot_y[s] = -1;
 }
 
 /* ---- the tests ---- */
@@ -226,6 +230,13 @@ static void weapon_and_magic_hits(void) {
     CHECK(count == 2 && numbers[1].room == 3 && numbers[1].x == 2 + 8 - 3);
     hero_takes(4, 0); /* his own: his room's */
     CHECK(count == 3 && numbers[2].room == 4);
+    /* One above (slice 5): a Zozura of the room over his at its y 200, the
+     * live room's -8 (its byte there 248): its number is over it in that
+     * room's pixels, at its own y. */
+    place(6, ZOZURA, 120, 248, 9);
+    slot_room[6] = 7, slot_y[6] = 200;
+    sword(6, 8);
+    CHECK(count == 4 && numbers[3].room == 7 && numbers[3].ty == 200 && numbers[3].x == 120 + 8 - 3);
 }
 
 static void the_hero_hit(void) {

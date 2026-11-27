@@ -1,8 +1,8 @@
 # Seamless's seams: the plan for one big world
 
-Issue #166. A plan, built a slice at a time: slices 0 to 4 are in the
-game. Where building slices 1 to 4 found the plan wrong, the plan below says
-what was built, and "Slice 1, as built" to "Slice 4, as built" list the
+Issue #166. A plan, built a slice at a time: slices 0 to 5 are in the
+game. Where building slices 1 to 5 found the plan wrong, the plan below says
+what was built, and "Slice 1, as built" to "Slice 5, as built" list the
 changes.
 
 **The goal**, as Cameron put it: "it should just feel like 1 big world." A
@@ -42,8 +42,9 @@ hero, and three loose ends: seven slices after slice 0, about 2,100 lines of
 C as estimated, and likely twice that, as slice 0 took. Slice 0 (nothing
 lost at a seam, no ghost hit) is done: #177. Slice 1 (#178, seams are open
 ground, mechanism 1) is done too, and so are slice 2 (#187, fights across a
-seam, mechanism 2), slice 3 (#188, the spell flies on, mechanism 3) and
-slice 4 (#194, the view shows only rooms, mechanism 4).
+seam, mechanism 2), slice 3 (#188, the spell flies on, mechanism 3),
+slice 4 (#194, the view shows only rooms, mechanism 4) and slice 5 (#201,
+mechanisms 1 to 3 one above the other).
 
 ## How Seamless runs a neighbouring room today
 
@@ -230,7 +231,7 @@ Checked in hidden games where marked; the scripts were throwaway, on
   measure his distance act as if he stood at the seam (**slice 6**); Nash and
   Magman, who place themselves beside him, appear by the seam, or for
   Magman, whose X wraps, at the far side of the room (**slice 6**); rooms
-  above and below see him on their bottom or top row (**slice 5**).
+  above and below see him on their bottom or top row (**slice 5, done**).
 - **A neighbouring room's sounds are lost** with the copy's RAM: the coin's
   sound (`$10`, `Sprites_ReplaceWithCoinDrop`, `$AC75`) when a monster killed
   across a seam drops one, Pakukame's (`$12`) as it spawns (Dartmoor `$13`,
@@ -415,7 +416,8 @@ room's machine.
   behaviour's target position, tiles, magic-hit state, HP, hit counter,
   behaviour script and value) goes to a free slot of the room it entered,
   and its old slot is emptied. Side by side the bytes are kept as they are;
-  one above the other (slice 5), its Y and its target's Y move by 208. In
+  one above the other (slice 5), its Y moves by 208 (as built, its Y alone:
+  no other byte is a place). In
   and out of the live game through `cyc_mod_poke`, as `load()` writes it. A
   person's conversation goes with the slot (`CurrentSprites_Values`), and
   the hero talks to them as at home: Up while touching them
@@ -715,8 +717,8 @@ function of his place and the map, which `fax_world_present` and
   Magman's X, which does not stop at the screen's edge, wraps to the far
   side of its room. In a copy, Seamless puts the one that places itself
   beside his true place, in his room: mechanism 1's move.
-- **Above and below**, rooms see him on their bottom or top row: slice 5
-  gives fliers and fallers his true Y the same way.
+- **Above and below**, rooms saw him on their bottom or top row: slice 5
+  gives them his true Y (as built, held to 0-239).
 
 ### 6. Loose ends (slice 7)
 
@@ -888,7 +890,7 @@ twice its estimate (see "What it costs").
 | 2. Fights across a seam (**done**, #187) | The visitors' pass, side by side: the sword, touches, shots on him and his shield, bread and coins; a neighbouring room's sounds; Sugata's flash | From room 4, he kills a room 5 Zozura: its experience and MP, its death in room 5, its drop there (bread: a Zozura leaves no coin); a Monodron killed the same way drops its coin in room 5, and the coin's sound plays (`tests/seams/fights.py`); a Zozura straddling the seam hurts him; he takes a coin across it; a punch reaches across it; a Sugata across a Mist seam flashes him in reach, and not out of it; a save mid-swing replays alike in two fresh games; on Zenis 16 a frame that ends inside the pass reads as the room's own and replays alike | Medium: estimated at 470 lines, built in about 800 lines of C (`fax_seams.c` half comments, and the features that ask it) and 1,050 of tests |
 | 3. Spells fly on (**done**, #188) | The spell's side, walls across, the view's edge (his own room's too), its picture, visitors in its path, kept through a crossing | Deluge flies through the seam to the view's edge, ends at a wall across a seam and kills a Zozura across one; a Deluge cast toward a dormant Zozura just past the view's edge, across a seam and in his own room, ends at the view's edge, and the Zozura keeps its full HP and stays dormant (no wake, no hit, no experience); behind the next room's foreground; Fire still flickers across a seam; a spell survives his crossing; save and load mid-flight (`tests/seams/spells.py`) | Medium: estimated at 230 lines, built in about 370 lines of C (`fax_seams.c` half comments) and 900 of tests |
 | 4. The view shows only rooms (**done**, #194) | The camera keeps the view over rooms, gliding where its limits change; through a seam one above the other it follows him over both rows' rooms, black only where the two share his column alone | Walking the Tower of Trunk from `$10`, and a Mist stretch with an empty corner: on no frame does the view lie over an empty place (`fax_world`'s camera against `fax_world_room`'s places), and it moves a few pixels a frame at most (`tests/world/only_rooms.py`, headless, every frame); down `$10`'s ladder, black only while he straddles the seam; every real map walked a pixel at a time (`tests/world/camera_test.c`) | Medium: estimated at 150 lines, built in about 190 lines of C (`fax_camera.c` a third comments, and `fax_world.c`'s side) and 660 of tests |
-| 5. One above the other | Slices 1-3 across seams one above the other: Y converted, fliers and fallers, drawn whole up and down, his true Y for the rooms above and below | A Hornet follows him down a Trunk ladder; his sword hits one across a seam above | Medium, about 250 |
+| 5. One above the other (**done**, #201) | Slices 1-3 across seams one above the other: Y converted, fliers and fallers, drawn whole up and down, his true Y for the rooms above and below | A Hornet follows him down a Trunk ladder (`tests/seams/vertical.py`); his sword hits one across a seam above (on the Mist's `$10`, at the top of a jump); a Hornet straddling the seam is drawn whole; a dormant Hornet above wakes on the frame the view comes within 16 pixels of it, and not before; one flying up moves into the room above; a Zozura falls into the room below and lands; a save mid-crossing replays alike in two fresh games | Medium: estimated at 250 lines, built in about 470 lines of C (`fax_seams.c` half comments) and 850 of tests |
 | 6. What a neighbouring room sees of him | His true distance in a copy; Nash and Magman beside his true place | An Ishiisu across a seam waits until he is within its 32 pixels; Nash reappears beside him, in his room | Small, about 120 |
 | 7. Loose ends | One-in-four items count a room met as a neighbour; the fountain's ladder from afar; a death at a seam drawn whole | Rooms of one-in-four items met in turn move the count, and one item in four shows; from `$27` with `Quests` `$20`, `$28` has its ladder and nothing runs as he crosses; a death at x 248 dissolves whole across the seam | Small, about 90 |
 
@@ -1082,6 +1084,68 @@ One PR. Where the plan changed:
   Within noise (and a little less, where fewer actors come into view). The
   camera itself is 0.8 microseconds a call on a 35-room map, two or three
   calls a frame.
+
+### Slice 5, as built (#201)
+
+One PR. Where the plan changed:
+
+- **Fliers and fallers, found in the code.** Four tests call a move past a
+  room's top or bottom blocked, not one: `CurrentSprite_CanMoveInDirection`'s
+  down and up paths (`$871C`, `$8731`), `Sprite_CapToBlockOppositeFalling`
+  (`$85AD`, the fliers that test no blocks: Giant Bees, Yuinaru, the
+  Execution Hood) and `CurrentSprite_HandleFall`'s removal at y 192
+  (`$865B`): a monster that walked off a ledge over an opening vanished on
+  the room's last row. Each is hooked as the sides' tests are, and the
+  walkers' floor test (`$855E`) and the sideways tests read a straddler's
+  rows in both rooms. Past a room's bottom the original read its
+  `ScreenBuffer`'s rows 13 and 14, a screen's undrawn data (Trunk `$2D`'s is
+  solid under its ladder shaft); with a room joined below they are never
+  read now.
+- **A full room or a town's edge below is a floor**: the down test blocks
+  there and the floor test finds ground, so a Hornet bounces off the seam
+  and a walker walks along it, as a side's wall turns them. Where nothing is
+  joined, the original's rules stand (a faller removed at y 192, a Giant Bee
+  dipping to 224).
+- **Corners.** A mover straddling a side and a top or bottom at once reaches
+  the room diagonally across: the edge tests check that room too (there, not
+  full, no town's edge), and a slot whose origin crosses both moves there.
+- **Only its Y moves**: `CurrentSprites_BehaviorState_XFull` and `_YFull`
+  are speeds and distances, not places, so nothing else changes by 208.
+- **Drawn whole up and down.** A cell the game skips for its Y, or puts
+  where the NES hides it (OAM Y `$EF` and up), is kept with its true Y, and
+  Seamless paints it in the room joined there, behind-the-background by that
+  room's blocks. A slot whose origin crossed the top this frame is drawn
+  from its wrapped byte, a screen below: none of it goes in OAM, so nothing
+  lands on the status bar, and all of it is kept. A cell's Y is 16 bits now,
+  and each room's block grew from 384 to 512 bytes: Seamless's record is
+  version 6.
+- **Visitors from above and below**, within reach, at his room's Y (a room
+  above's 200 is the byte 248). Their Y needs no telling apart: within 48
+  pixels of him no 8-bit Y sum wraps. A Sugata's flash is still taken only
+  from his row. The damage numbers ask for a visitor's own room's Y
+  (`fax_seams_slot_y`).
+- **His true Y**: a copy sees him at his Y in its pixels, held to 0-239
+  (176 before), below `$F0`, which the game's sprites take as wrapped past
+  the top.
+- **The test.** Hornets never steer for him (`SpriteBehavior_BuzzAround`
+  turns only when blocked), so the one that follows him down a Trunk ladder
+  is put in `$2D`'s ladder shaft above him, where its sideways moves are
+  blocked every frame, and it comes down after him into `$29`. The Trunk's
+  rows have a floor between them but for their shafts, so the sword hits one
+  across a seam above on the Mist's `$10`, the hero at the top of a jump (y
+  0: a jump's 32 pixels from its row 4) and a Hornet of `$07` at its y 203.
+- **Spells** as slice 3 left them: one at a seam above or below, and Tilte's
+  drop, end as before, and so does one when he crosses up or down.
+- **Encounters.** The Mist's outdoors is open sky between rows (`$01`-`$03`
+  over `$07`-`$09`, and `$07` over `$10`), Hornets in nearly every room: once
+  seen they now drift from row to row over him, where before each turned at
+  its room's top and bottom. A playtest call.
+- **Cost.** Headless, 2,400 frames standing (3,000 in Eolis), this build
+  against master's, the median of 5, from the same machine with Seamless's
+  record taken out (its version differs), so both lay their worlds out
+  fresh: the Mist's `$10` under `$07`'s Hornets 3.590 against 3.591 ms of
+  CPU a frame; the Trunk's `$29` under `$2D`'s shaft 3.414 against 3.392;
+  Eolis's town 3.210 against 3.204. Within noise.
 
 Boss rooms are covered by `tests/world/boss_arenas.py`, which every slice
 runs, with a check that no mover or visitor comes from an arena: the moves'

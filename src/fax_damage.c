@@ -201,7 +201,8 @@ static void spawn(unsigned kind, unsigned slot, unsigned amount, int tx, int ty,
 /* An enemy in sprite slot `slot` takes `amount`: over its box, in the room
  * its X counts the pixels of. With Seamless that may be the room beside his:
  * one across a seam, or straddling one (Seams, fax_seams.c), keeps its X's
- * byte, which is that room's. */
+ * byte, which is that room's; one from the room above or below (slice 5) has
+ * that room's Y (fax_seams_slot_y), its byte in the live game being his. */
 static void enemy_hit(unsigned slot, unsigned amount) {
     slot &= SLOTS - 1;
     unsigned entity = q((uint16_t)(CURRENT_SPRITES_ENTITIES + slot));
@@ -212,8 +213,9 @@ static void enemy_hit(unsigned slot, unsigned amount) {
         if (eh && eh <= 64) h = (int)eh;
     }
     int room = fax_seams_slot_room(slot);
-    spawn(DEALT, slot, amount, q((uint16_t)(CURRENT_SPRITES_XPOS + slot)), q((uint16_t)(CURRENT_SPRITES_YPOS + slot)),
-          w, h, room >= 0 ? (unsigned)room : q(AREA_CURRENT_SCREEN));
+    int y = room >= 0 ? fax_seams_slot_y(slot) : q((uint16_t)(CURRENT_SPRITES_YPOS + slot));
+    spawn(DEALT, slot, amount, q((uint16_t)(CURRENT_SPRITES_XPOS + slot)), y, w, h,
+          room >= 0 ? (unsigned)room : q(AREA_CURRENT_SCREEN));
 }
 
 void fax_damage_enemy_hit(unsigned slot, unsigned amount) {

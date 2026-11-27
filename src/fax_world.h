@@ -43,7 +43,7 @@ void fax_world_set_room_fixup(void (*fixup)(uint8_t area, uint8_t screen, uint8_
  * in world pixels: its top-left on the map Seamless lays out around the
  * active room, 256 wide and 208 tall per room, so two rooms side by side are
  * 256 apart. */
-enum { FAX_WORLD_SEAMS_BYTES = 384 };
+enum { FAX_WORLD_SEAMS_BYTES = 512 };
 /* The room whose sprite loop the machine is running: inside a neighbour's
  * tick (fax_world_ticking()) that room, else the active room; -1 with
  * Seamless off or before it has a room. */
@@ -52,8 +52,9 @@ int fax_world_active_room(void);
 /* The area (Area_CurrentArea) whose screens the rooms are: -1 with Seamless
  * off or before it has a map. */
 int fax_world_area(void);
-/* The room joined to `room` on `side` (0 left, 1 right) whose actors run
- * (started from its list): -1 for none, an arena, or one not started. */
+/* The room joined to `room` on `side` (0 left, 1 right, 2 above, 3 below)
+ * whose actors run (started from its list): -1 for none, an arena, or one
+ * not started. */
 int fax_world_joined(int room, int side);
 /* Whether `room` is on the map and its actors run. */
 bool fax_world_room_live(int room);

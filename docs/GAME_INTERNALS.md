@@ -870,15 +870,16 @@ What a feature can rely on, and the traps:
   side.
   See [SEAMLESS-COMBAT.md](SEAMLESS-COMBAT.md).
 - **A test can read a neighbouring room whole** from Seamless's save-state
-  record, `faxanadu.world`, version 5 (byte 8): a 32-byte header (byte 9 the
+  record, `faxanadu.world`, version 6 (byte 8): a 32-byte header (byte 9 the
   area + 1, byte 10 the hero's room + 1, byte 29 a screen load not yet acted
-  on), then `fax_world.c`'s `Room` for each of 83 rooms, 10,680 bytes each
+  on), then `fax_world.c`'s `Room` for each of 83 rooms, 10,800 bytes each
   with this build's compiler (its 2 KB of RAM first; then CHR, palette,
-  `valid`, `live`, `owned`, the edges, x, y and ticks; and last Seams' 384
-  bytes: a wake bit per slot, a count of cells past the room's sides, a mark
-  per slot for one let through a side, 1 left and 2 right, then each slot's
-  tiles room plus one, as moved and as drawn, the slot that drew each OAM
-  entry plus one, and the cells). A `fixture()` record edit puts anything in
+  `valid`, `live`, `owned`, the edges, x, y and ticks; and last Seams' 512
+  bytes: a wake bit per slot, a count of cells past the room's sides, top
+  and bottom, a mark per slot for one let through a side, 1 left, 2 right, 4
+  the top and 8 the bottom (a corner's two at once), then each slot's tiles
+  room plus one, as moved and as drawn, the slot that drew each OAM entry
+  plus one, and the cells, 8 bytes each with a 16-bit Y). A `fixture()` record edit puts anything in
   a neighbour's slots. The active room's RAM there is its last capture; its
   slots are the live game's (`fax_world_room` reads them live).
 - **Seamless's view need not be centred on him** (#166's slice 4): it keeps
@@ -4531,7 +4532,11 @@ flights on MP):
 ## Screens and blocks
 
 - A screen is 16 × 16 blocks in `ScreenBuffer` (`$0600`, row × 16 + column);
-  the last row is always zero. `Area_LoadBlocks` (`$D1F6`) decompresses one
+  the last row is always zero. `Area_LoadBlocks` decodes all 256 blocks and
+  zeroes row 15, but a screen shows 13 rows (208 lines): rows 13 and 14 are
+  the screen's data, never drawn, and only a sprite's test past the bottom
+  reads them (Trunk `$2D`'s row 13 is solid all along, the foot of its ladder
+  shaft included). `Area_LoadBlocks` (`$D1F6`) decompresses one
   from the area's bank (`AREA_TO_SCREEN_DATA_BANKS`: Trunk and Branch bank 1,
   the buildings, Dartmoor and the Evil Fortress bank 2, the rest bank 0),
   through the word
@@ -4579,8 +4584,10 @@ flights on MP):
   (`$8427`), which snaps and turns one at X `$F0` or more, and returns C set
   then; a shot (`SpriteBehavior_EnemyMagic`, `$A0CB`, 2 pixels a frame)
   takes that C to remove itself (entity `$FF`). Up and down, Y `$F0` or more
-  is blocked. So no sprite ever straddles a screen's edge, and a shot that
-  misses ends there. Before Seams' slice 1 a seam was such an edge: a
+  is blocked, and past row 12 the undrawn rows 13-15 are tested; a faller is
+  removed at y 192, and the fliers that bounce without a block test turn at
+  y 224 (*Seams: actors across rooms*, slice 5). So no sprite ever straddles
+  a screen's side, and a shot that misses ends there. Before Seams' slice 1 a seam was such an edge: a
   neighbouring room's monsters pressed against it and turned (Eolis `$05`'s
   two Zozuras spent 800 frames between its x 222 and 240 while the hero
   stood on `$04`), and so did its walking people (the `eolis-town` fixture:
@@ -5109,6 +5116,93 @@ spell's own code):
   room 4's x 240 was through the seam on its fifth frame, and flew on through
   room 3 and into room 2 after he crossed); up or down it still ends.
 
+What slice 5 (one above the other) builds on:
+
+- **Where a move up or down is called off.** `CurrentSprite_CanMoveInDirection`
+  (`$8710`, Y the slot) moving down (`$871C`): Y plus the hitbox's height
+  (less one) into `Arg_PixelPosY`, blocked from `$F0` (`$872C`:
+  `Blocks_Result` 1, `RTS`), else that row across the hitbox's columns
+  (`$873A`), rows 13 and 14 past the room's bottom being the screen's undrawn
+  ones (*Screens and blocks*). Moving up (`$8731`): Y `$F0` and up, wrapped
+  past 0, blocked; else the row at Y. `MoveSpriteVerticalIfPossible`
+  (`$8575`) snaps a blocked sprite's Y to its block (`AND #$F0`, plus 16
+  moving up) and returns C set, which `Sprite_MoveVertAndFlipIfNeeded`
+  (`$8564`) turns into a flip of the falling bit (`$80` of
+  `CurrentSprites_Flags`, down): the Hornet and Bihoruda bounce between floor
+  and ceiling so.
+- **The fliers with no block test.** `Sprite_Maybe_TurnAroundIfAtScreenEdgeVert`
+  (`$859C`: Giant Bees, Yuinaru, the Execution Hood, the eyeball at
+  `SpriteBehavior_SomethingEyeball_17`) moves Y, then
+  `Sprite_CapToBlockOppositeFalling` (`$85AD`) calls Y `$E0` and up the
+  screen's edge: snapped, C set, turned. So they fly through walls up and
+  down, dip to y 224 past a screen's bottom, and turn at its top as Y wraps.
+- **Falls.** `Sprites_SetCurrentSpriteCanMove` (`$861F`) finds no floor under
+  a walker's leading corner (`Sprites_CanMoveDownByHitbox`, `$8543`: Y plus
+  its height plus 1, at X + 0 or 15 by facing, `Sprites_CheckPlacementInvalidAtY`)
+  and sets its can-fall bit (`$04`); `SpriteBehavior_WalkForward` then flips
+  its facing and runs `CurrentSprite_HandleFall` (`$864A`): 8 pixels down a
+  frame, and at y 192 (`CMP #$C0` at `$865B`, its box still on row 12) the
+  sprite is removed (entity `$FF`), "off the screen"; else the down test,
+  and blocked, Y `AND #$F0`. A Zozura that walks off a ledge over an opening
+  at a screen's bottom vanishes as it reaches its last row.
+- **The Hornet** (entity `$07`, `SpriteBehavior_BuzzAround`, `$8E77`): 2
+  pixels a frame sideways, turning at walls, and up or down by a step from
+  `SPRITE_BEHAVIOR_BUZZ_AROUND_Y_FRAC` (`$8EB0`) and the table after it, by
+  its tick (`CurrentSprites_BehaviorData2` >> 3 & 7): 2, 1, 1/2, 1/4, 0, 1/4,
+  1/2 and 1 pixels a frame, 8 ticks each, turning only when blocked. It never
+  steers for the hero. In a shaft a block wide its sideways moves are
+  blocked every frame and snap it back to the column, so it flies straight
+  down or up it. 3 HP (the Long Sword kills it in one blow), 25 experience.
+  Trunk `$2D`, `$3A` and `$3C` hold Hornets, over rooms joined below; the
+  Mist's outdoors is open sky between rows where `$01`-`$03` sit over
+  `$07`-`$09`, and `$07` over `$10` (property 4, passable; `$08` has a
+  floor over `$11`), Hornets in nearly every room.
+- **What reads his Y.** In bank 14's behaviours only `BScript_Action_FacePlayerY`
+  (`$8691`), `Sprite_CalcDistanceYToPlayer` (`$831B`), `SpriteBehavior_Magman`
+  (`$95C0`, which puts itself at his Y) and an unused enemy read
+  `Player_PosY`. A neighbour's copy sees him at his true Y in its pixels
+  (Seamless's `shadow()`), held to 0-239: below `$F0`, which the tests take
+  as wrapped past the top. Before slice 5 it was held to 0-176, a room
+  above seeing him on its bottom row.
+- **Nothing per slot is a place but X and Y.** `CurrentSprites_BehaviorState_XFull`
+  and `_YFull` (`$030C`, `$0314`) hold speeds and distances
+  (`SpriteBehavior_Unknown_29_SomeSetup`'s, the move ops'), so a slot moving
+  a room up or down changes only its Y.
+- **Drawn up and down.** `Sprite_Draw` (`$F072`) adds the status bar's 32
+  lines to the Y (`Temp_Sprites_NormYPos`, its carry in
+  `Sprite_TileInfo_OffsetY`), and the tile loop skips a cell whose Y carries
+  past 255; a cell at OAM Y `$EF` and up goes in OAM, but the NES shows none
+  of its lines (line 240 and down). So a sprite whose Y has wrapped past the
+  top (`$F0` and up) is drawn from its byte a screen below, skipped whole,
+  and a cell above the room's top (OAM Y below 32) would be drawn on the
+  status bar's lines.
+- **The interaction tests' Y.** Their Y sums are 8-bit as the X ones are; a
+  visitor from the room above at his room's -8 is the byte 248, and the
+  game's sums meet it where it truly is. None can wrap within reach: his Y
+  is 0-176 and a visitor's box is within 48 pixels of his, so the 16-bit
+  difference stays far inside 256 less the box and its pad.
+
+What Seams does there (slice 5): hooks at `$871C`, `$8731`, `$85AD` and
+`$865B`, and the floor test at `$855E`, for an awake mover whose box reaches
+past its room's bottom or top into a room joined there that it may enter (5
+actors, a town's edge, and, at a corner, the room diagonally across too):
+the row is that room's (its Y less or plus 208), each column's block read
+in the room it lies in, and the slot is marked through the bottom (8) or
+the top (4); the sideways tests read a straddler's rows the same way. A full
+room or a town's edge below is a floor: the down test blocks there, the
+floor test finds ground. With nothing joined the original decides. The
+fall's hook does the rest of `CurrentSprite_HandleFall` in C, so a faller
+goes on falling into the room below. Between frames a slot whose origin is
+past the bottom (Y 208 and up, marked) or the top (wrapped, marked) moves,
+every byte, its Y less or plus 208; one in from below straddles its new
+room's bottom and is marked so. A cell past the room's top or bottom
+(skipped, or at OAM Y `$EF` and up) is kept with its true Y, and Seamless
+paints it in the room joined there, behind-the-background against that
+room's blocks; a slot through the top, wrapped, is drawn from its byte and
+so wholly kept, none of it on the status bar. The visitors' pass takes the
+rooms above and below his too, a visitor's Y byte his room's (`fax_seams_slot_y`
+gives the damage numbers its own room's).
+
 ## Graphics bugs
 
 What the original draws wrong on the USA ROM, found by chipx86's notes, the
@@ -5370,10 +5464,11 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   15's `Sprite_Draw_Standard`, `Sprite_Draw_FlippedHoriz` and
   `Screen_LoadSpriteInfo` entries. Between frames (`fax_seams_step()`, from
   Seamless's step once its neighbours have ticked) it moves slots and removes
-  shots, the live game's by poke. Each room's state is a 384-byte block in
-  Seamless's record (version 5): a wake bit and a through mark per slot, the
-  tiles' room, and its last loop's OAM owners and cells past its sides,
-  which `fax_world_present` paints. Seamless gives it `fax_world_view()`,
+  shots, the live game's by poke. Each room's state is a 512-byte block in
+  Seamless's record (version 6; 384 bytes in version 5, before slice 5): a
+  wake bit and a through mark per slot, the tiles' room, and its last loop's
+  OAM owners and cells past its sides, top and bottom, which
+  `fax_world_present` paints. Seamless gives it `fax_world_view()`,
   each room's place, RAM and block, the joined rooms, and its area
   (`fax_world_area()`). With the remaster off nothing of it runs. Slice 2,
   fights across a seam: after the live sprite loop, at `Game_MainLoop`'s
@@ -5413,7 +5508,15 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   `$BCF2`: the view's edge) and `CastMagic_CalculateVisibility`'s entry
   (`$C315`); the spell's X in 16 bits for the told-apart spell test and for
   choosing visitors; its draw moved a screen over by its side, its cells the
-  spell's; `fax_seams_adopted()` for Seamless's `adopt()`. Slice 0, seams
+  spell's; `fax_seams_adopted()` for Seamless's `adopt()`. Slice 5, one
+  above the other: hooks at `CurrentSprite_CanMoveInDirection`'s down and
+  up paths (`$871C`, `$8731`), `Sprite_CapToBlockOppositeFalling`'s entry
+  (`$85AD`) and `CurrentSprite_HandleFall`'s `CMP #$C0` (`$865B`), all bank
+  14, which no other feature hooks; movers through rooms' tops and bottoms
+  (marks 4 and 8), moves with their Y less or plus 208, cells past a top or
+  bottom, the visitors of the rooms above and below his, and
+  `fax_seams_slot_y()` (a visitor's own room's Y, for the damage numbers);
+  Seamless's `shadow()` holds a copy's hero to Y 0-239. Slice 0, seams
   lose nothing, is two hooks in bank 14's sprite loop:
   - `CurrentSprite_CheckHitPlayer`'s entry (`$890A`) returns at once in a
     neighbouring room's tick, with X the current slot as its first `LDX
@@ -6206,7 +6309,8 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   (Seamless's neighboring rooms) nothing shows. A number belongs to the area
   and room it landed in: an enemy's is the room whose pixels its X counts
   (`fax_seams_slot_room()`: the room beside his for one hit across a seam,
-  or straddling one); Seamless draws
+  or straddling one, or above or below him, at that room's Y,
+  `fax_seams_slot_y()`); Seamless draws
   it at that room's place (`fax_world_room_origin`), so it stays put in the
   world as the camera moves, and the original view only on its own screen,
   and not while the screen scrolls; another area (a door, a building) drops

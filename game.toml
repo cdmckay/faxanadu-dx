@@ -1307,6 +1307,38 @@ addr = 0xc315
 bank = 15
 bytes = "a9 00 85 b8 ad b8 02 85 b6 ad b6 02"   # CastMagic_CalculateVisibility: LDA #$00, STA Temp_MovingSpriteVisibility, LDA CastMagic_YPos_Full, STA Arg_PixelPosY, LDA CastMagic_XPos_Full
 
+# One above the other (fax_seams.c, #166's slice 5): the tests that call a
+# move past a room's top or bottom blocked. CurrentSprite_CanMoveInDirection's
+# down and up paths ($871C, $8731: mid-routine sites reached by branches, so
+# a hook that handles one returns from the routine), Sprite_CapToBlockOppositeFalling's
+# entry (the fliers that turn at a screen's top and bottom) and
+# CurrentSprite_HandleFall's CMP #$C0 after its 8 pixels ($865B, mid-routine:
+# handled, it returns from the routine, the rest done in C).
+
+[[mod_function_hook]]
+id = "faxanadu.seams.down"
+addr = 0x871c
+bank = 14
+bytes = "be 04 03 b9 c2 00 18 7d d8 b4 85 b6"   # CurrentSprite_CanMoveInDirection moving down: LDX CurrentSprites_HitBoxTypes,Y, LDA CurrentSprites_YPos,Y, CLC, ADC SPRITE_HITBOX_HEIGHTS,X, STA Arg_PixelPosY
+
+[[mod_function_hook]]
+id = "faxanadu.seams.up"
+addr = 0x8731
+bank = 14
+bytes = "b9 c2 00 c9 f0 b0 f4 85 b6 b9 ba 00"   # @LAB_PRG14__8731, moving up: LDA CurrentSprites_YPos,Y, CMP #$F0, BCS @LAB_PRG14__872c, STA Arg_PixelPosY, LDA CurrentSprites_XPos_Full,Y
+
+[[mod_function_hook]]
+id = "faxanadu.seams.cap"
+addr = 0x85ad
+bank = 14
+bytes = "b5 c2 c9 e0 90 10 bd dc 02 0a b5 c2"   # Sprite_CapToBlockOppositeFalling: LDA CurrentSprites_YPos,X, CMP #$E0, BCC @_return, LDA CurrentSprites_Flags,X, ASL A
+
+[[mod_function_hook]]
+id = "faxanadu.seams.fall"
+addr = 0x865b
+bank = 14
+bytes = "c9 c0 b0 16 a2 03 20 10 87 a5 b7 f0"   # CurrentSprite_HandleFall, past STA CurrentSprites_YPos,X: CMP #$C0, BCS @_clearSprite, LDX #$03, JSR CurrentSprite_CanMoveInDirection, LDA Blocks_Result
+
 # Punches (fax_punch.c, #180): without a weapon, Player_DrawWeapon's BMI after
 # LDA Player_CurWeapon (the fist placed, with the Hand Dagger's reach),
 # Player_HitSpriteWithWeapon's (the punch goes on), and the Glove's STA

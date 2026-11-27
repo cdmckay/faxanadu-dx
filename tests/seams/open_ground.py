@@ -12,9 +12,9 @@ screen 3 right of it, the first of the town), eolis-town (the town's screen
 1, room 2 left of it with a walking woman) and seams-town-words (dead there,
 as the Guru speaks). Each edits its save: the live game's RAM, and rooms in
 Seamless's record (faxanadu.world: a 32-byte header, then each room's
-fax_world.c Room, its 2 KB of RAM first and Seams' block its last 384 bytes:
+fax_world.c Room, its 2 KB of RAM first and Seams' block its last 512 bytes:
 a wake bit per slot, then a mark per slot for a slot let through a side, 1
-left and 2 right), filled as Sprites_PopulateNextAvailableSprite fills a
+left and 2 right, 4 the top and 8 the bottom), filled as Sprites_PopulateNextAvailableSprite fills a
 slot, from the ROM's tables. Ointment (DurationOintment below $80) keeps
 touches off the hero where monsters come for him.
 
@@ -95,7 +95,7 @@ ENTITIES, FLAGS, PPU_OFFSETS, VALUES = 0x2CC, 0x2DC, 0x32C, 0x36C    # CurrentSp
 SLOT_ARRAYS = [SPRITE_X, SPRITE_Y] + list(range(0x2BC, 0x374, 8))     # every per-slot byte
 OINTMENT, HP, PLAYER_IS_DEAD = 0x427, 0x431, 0x438                   # DurationOintment, Player_HP, PlayerIsDead
 ZOZURA, FIREBALL, WOMAN, WALKING_MAN, TRIGGER, EMPTY = 0x47, 0x0A, 0x45, 0x34, 0x4F, 0xFF
-ROOMS, HEADER, BLOCK = 83, 32, 384                                   # fax_world.c's MAX_ROOMS, STATE_HEADER; Seams' block
+ROOMS, HEADER, BLOCK = 83, 32, 512                                   # fax_world.c's MAX_ROOMS, STATE_HEADER; Seams' block
 THROUGH_RIGHT = 2
 VIEW_W, PAD, ROOM_W, HUD = 424, 16, 256, 32                       # the view, its margin, a room, the status bar
 PARTS = ("dormant", "follow", "walker", "shot", "full", "straddle", "load", "person", "town-people", "save-load")
@@ -116,7 +116,7 @@ def rooms_record(data):
         if tag == b"MOD " and bytes(data[p:p + 64]).rstrip(b"\0") == b"faxanadu.world":
             size, rest = divmod(n - 64 - HEADER, ROOMS)
             assert not rest and size > 2048 + BLOCK, n
-            assert data[p + 64 + 8] == 5, "Seamless's record is version 5"
+            assert data[p + 64 + 8] == 6, "Seamless's record is version 6"
             return p + 64, size
     raise AssertionError("no Seamless record in the save state")
 

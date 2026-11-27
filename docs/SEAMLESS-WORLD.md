@@ -149,8 +149,8 @@ it is painted from its home room's CHR. The hero a neighbour's actors see is
 clamped to its x 0-255 (240 before). A load within the area (a door, a zone
 respawn, the original's scroll into an arena: `Screen_LoadSpriteInfo` in
 play) forgets every other room of the area, so each comes back fresh from
-its list as it comes near. Each room keeps Seams' 384-byte block in its
-record; the record is version 5.
+its list as it comes near. Each room keeps Seams' block in its record (384
+bytes in version 5; 512 since slice 5, version 6).
 
 **Fights across a seam** (`fax_seams.c`, #166's slice 2). Everything that
 touches the hero still happens in the live game: once its sprite loop is
@@ -175,6 +175,19 @@ the view, in his own room too, or at a side with nothing joined, so it never
 reaches a monster he hasn't seen. It is drawn on its side, behind that
 room's foreground, and a crossing keeps it (`adopt()` asks Seams; up or down
 it still ends). Its side is in Seams' record, version 2.
+
+**One above the other** (`fax_seams.c`, #166's slice 5). All of that holds
+up and down too: a flier goes through a room's top or bottom into the room
+joined there, and a monster that walks off a ledge over an opening falls on
+into the room below and lands there, where the original removed it as it
+reached its room's last row. A full room or a town's edge below is a floor.
+A mover's Y moves by 208 between rooms (a room above's y 200 is his room's
+-8); one straddling a top or bottom is drawn whole, its cells painted in
+the room joined there; the rooms above and below his visit the live game's
+sprite loop, so his sword reaches a monster across the seam above him; and
+their actors see his true Y, held to 0-239. Spells still end at a seam
+above or below, and when he crosses up or down. Each room's Seams block is
+512 bytes now: Seamless's record is version 6.
 
 The original player starts a right scroll when his right edge crosses at
 x=241. This adapter retains the source until his origin wraps, preserving
@@ -217,6 +230,7 @@ All automated launches were hidden and muted with native saves disabled.
 | Live status bar (#132) | `tests/world/live_status_bar.py`, in the suite, read off the presented picture's pixels (the band's gold digits, and its bars' fill): buying the Elixir at Eolis's tool shop, every frame of the count-down shows the gold the game had a frame before, every amount from 700 down to 380, and every frame's band is the game's own picture's; the King's gift counts 0 up to 3000 the same way; at Eolis's Guru the bars read 32 HP and 5 MP, and 80 and 80 during his first line. Without the fix all three fail. A probe through the shop's opening, a Start pause and the Select menu found the band equal to the game's own on every frame |
 | Open seams (#166, slice 1) | `tests/seams/open_ground.py`, in the suite, a part each: unseen Zozuras in two rooms stand still 300 frames; one wakes on the first read within 16 pixels of the view and keeps coming once out of it; Eolis's Zozuras follow him into `$05` and back through `$04` into `$03`; the town's walking woman walks into his room, the walking man in and out; a fireball flies through a seam and goes once out of the view; a room of 5 keeps its seam a wall; a straddling Zozura's pixels on both sides of the seam; a respawn's load brings room 2 back fresh; the intro's trigger by a neighbour's edge leaves it ticking; a save mid-crossing replays alike in two fresh games |
 | Fights across a seam (#166, slice 2) | `tests/seams/fights.py`, in the suite, a part each: from `$04` the Long Sword kills `$05`'s Zozura (its experience and MP his, its death and its bread in `$05`); a Monodron's coin drops in `$05` and its sound plays; he takes a coin across the seam without crossing; a Zozura straddling the seam hurts him; a punch reaches across it; a Sugata in the Mist's `$1F` flashes him on `$1E` in its reach, and not out of it; a save mid-swing replays alike in two fresh games; a frame that ends inside the pass on Zenis 16 reads as the room's own and replays alike. `tests/world/boss_arenas.py` checks that no move or visit comes from an arena |
+| One above the other (#166, slice 5) | `tests/seams/vertical.py`, in the suite, a part each: a Hornet in Trunk `$2D`'s ladder shaft follows him down `$29`'s ladder, through `$2D`'s bottom and into `$29` at its Y less 208; one straddling that seam is drawn whole, its pixels above and below it; on the Mist's `$10`, at the top of a jump, the Long Sword kills a Hornet of `$07` above (at its y 203) in `$07`, its experience his, and leaves one at `$07`'s y 180 alone; a dormant Hornet of `$07` stands still until the frame the view comes within 16 pixels of it, from Seamless's trace, and wakes on that frame; a Hornet flying up out of `$10` moves into `$07` at its Y plus 208; a Zozura falls from Trunk `$3C` into `$37` and lands on its floor; a save mid-crossing replays alike in two fresh games. `tests/seams/seams_test.c` checks every test past a top or bottom against the blocks of the joined world |
 | The view shows only rooms (#166, slice 4) | `tests/world/camera_test.c`, in the suite, lays out every area from every room as `topology()` does (54 maps), and walks the hero a pixel at a time along every row at every height, with and without an opening above, and through every seam one above the other at each of its 16 block columns: his body always in the view; standing in a room with a room beside it, the view over no place without a room; across a seam, black only where no view over both rows' rooms shows him; the view moving at most 1 pixel for each of his walking, 4 under an opening, 6 climbing and 7 across a seam whose rows share one column; and with no empty place the old camera's view. `tests/world/only_rooms.py`, in the suite, headless, every frame from the trace against `fax_world_room`'s places: the Tower of Trunk from `$10` to `$12` and back (the old camera black from the first frame, the new one never), down `$10`'s ladder into `$0F` (black only on the 42 frames his body is across the seam), and the Tower of Suffer from `$37`'s ledge past the empty corner over `$39` (the view reaching up at the start and down to his row before the corner); at most 2, 7 and 5 pixels a frame, and never without him moving |
 | Shared CIRAM API | Invalid bounds/NULL and isolated upload refused; upload/restore succeeds; serialized complete machine unchanged after the probe |
 | Catalog / prepared helper | Feature activation without CLI override; hidden helper loads and pauses all prepared states; owner configuration restored to normal audio |
@@ -242,8 +256,10 @@ risks a playtest must cover):
   and walking people go through side-by-side seams, dormant until first
   seen, and are drawn whole across them; since slice 2 they fight him across
   side-by-side seams, and since slice 3 his spell flies on through them and
-  ends at the view's edge. Still open: seams one above the other are walls,
-  for spells too. Encounters change most: a monster he has seen follows
+  ends at the view's edge; since slice 5 all of it one above the other but
+  the spell, which still ends at a seam above or below. Encounters change
+  most: the Mist's Hornets, once seen, drift between its rows of open sky
+  over him; a monster he has seen follows
   him room after room, Eolis's Zozuras into its town, and towns are busier;
   that wants a playtest. Fixed by slice 0 (Seams lose nothing, #177): the
   live game's ghost hit at the far side of his own room, the drops a copy
