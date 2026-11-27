@@ -187,7 +187,7 @@ void fax_magic_save_settings(FILE *f) {
 void fax_magic_event(const void *ev) {
     const SDL_Event *e = ev;
     if (e->type == SDL_KEYDOWN) {
-        if (key && !e->key.repeat && e->key.keysym.scancode == key) press();
+        if (key && !e->key.repeat && (int)e->key.keysym.scancode == key) press();
     } else if (e->type == SDL_CONTROLLERBUTTONDOWN) {
         if (CYC_PAD_IS_BUTTON(pad) && e->cbutton.button == pad - 1) press();
     } else if (e->type == SDL_CONTROLLERAXISMOTION && CYC_PAD_IS_AXIS(pad) && e->caxis.axis == (pad - 100) / 2) {

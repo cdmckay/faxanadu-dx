@@ -214,7 +214,8 @@ bool fax_controls_settings_loaded(void) {
     }
     /* A moved one gives way to a button the player kept for something else. */
     for (unsigned m = 0; m < moved; ++m) {
-        const CycHostBinding *b = moved_ones[m];
+        /* clang-tidy's analyzer cannot tell that no callback here changes `moved`. */
+        const CycHostBinding *b = moved_ones[m];   /* NOLINT(clang-analyzer-core.uninitialized.Assign) */
         if (*b->pad && kept_elsewhere(*b->pad, moved_ones, moved)) { *b->pad = 0; ++unbound; }
         if (b->changed) b->changed();
     }
