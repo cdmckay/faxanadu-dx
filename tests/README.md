@@ -242,6 +242,13 @@ Play it headless and read every frame (`play.py`'s `headless()`), each press
 on the frame after the one whose RAM calls for it (#155: the dagger test's
 swings, whose first hit phase lasts 3 frames).
 
+What a feature keeps outside CPU RAM, its record, is in no frame log. To
+find the frame on which it holds, save a state after each frame of a
+headless run (`--save-state F:PATH`, repeatable) and read the record from
+each, a few dozen frames a run, since a save is over a megabyte (#189:
+fights' `lag` finds the first frame that ends inside Seams' visitors' pass
+so, where polls over TCP missed every one on a loaded machine).
+
 A walk of taps goes as far a tap however many frames come between them, so
 one bounded by frames runs out on a loaded machine: hold the direction
 (`hold()`, `walk()`), and he covers the same ground in the same frames (#144).

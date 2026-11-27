@@ -4913,11 +4913,15 @@ What slice 2 (fights across a seam) builds on:
   and the host's frame ends wherever the CPU is: on the fortress of Zenis's
   screen 16, with its six actors, the Execution Hood's two shots and a
   Maskman across the seam visiting, about one frame end in 25 fell inside
-  the pass. Between frames the machine is read (save states, the other
-  features' frame ends, TCP), and a test reading the room's shot there found
-  it gone (hidden). So a frame's end puts the live slots back and keeps the
-  pass's, the next frame's beginning puts them back before the CPU runs on
-  (`fax_seams_frame_end()` first in the host's frame end,
+  the pass. Which ones is as fixed as the rest of the machine: headless
+  from `tests/seams/fights.py`'s `lag` save, frames 85, 217, 229, 337, 349
+  and 361 of its first 400 (40 of 1,200), every run, so a test finds one
+  headless, never by polling over TCP, which can step over them all on a
+  loaded machine (#189). Between frames the machine is read (save states,
+  the other features' frame ends, TCP), and a test reading the room's shot
+  there found it gone (hidden). So a frame's end puts the live slots back
+  and keeps the pass's, the next frame's beginning puts them back before
+  the CPU runs on (`fax_seams_frame_end()` first in the host's frame end,
   `fax_seams_frame_begin()` last in its beginning), the pass's state with
   both is a record of its own, and Seamless ticks the neighbours and
   captures the live room only once the pass has written its visitors home.
