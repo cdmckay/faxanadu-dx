@@ -158,7 +158,48 @@
  *     which moves its side by the rooms' places; a crossing up or down still
  *     ends it.
  *
- * Each room's state is a block in Seamless's record (version 5); the pass,
+ * Slice 5, one above the other. Slices 1 to 3 across seams where one room
+ * sits above another (a room is 208 tall, so a room above's y 200 is his
+ * room's -8, a byte of 248 there):
+ *
+ *   - **Fliers and fallers go through.** The tests that call a move past a
+ *     room's top or bottom blocked are hooked as the sides' are: moving down,
+ *     CurrentSprite_CanMoveInDirection's row at the hitbox's bottom ($871C:
+ *     the original blocks it from $F0, and reads the ScreenBuffer's rows 13
+ *     and 14, the screen's undrawn data, and 15, zero); moving up, its row at Y
+ *     ($8731: $F0 and up, wrapped past the top, blocked); the fliers that
+ *     bounce off a screen's top and bottom without a block test
+ *     (Sprite_CapToBlockOppositeFalling, $85AD: Y $E0 and up); a fall
+ *     (CurrentSprite_HandleFall's CMP #$C0 at $865B, after its 8 pixels: the
+ *     original removes a faller at y 192, "off the screen"); and the
+ *     walkers' floor test ($855E), at Y + its height + 1. With a room joined
+ *     that way, an awake mover's row is that room's, its blocks tested in
+ *     the room each column lies in, corners included, and the slot is marked
+ *     through the top or bottom. A full room or a town's edge is a wall (a
+ *     floor) there; with nothing joined the original decides. The walkers'
+ *     and fliers' sideways tests read a straddler's rows across both rooms.
+ *   - **The move.** A slot whose origin is past the bottom (marked, Y 208 and
+ *     up) or the top (marked, Y $80 and up) moves to the room there between
+ *     frames, its Y less or plus 208, the rest of its bytes as they are (its
+ *     behaviour's BehaviorState_YFull is a speed, not a place). One in from
+ *     below straddles its new room's bottom, and is marked so.
+ *   - **Drawn whole up and down.** A cell past the room's top or bottom is
+ *     kept as one past a side is, and painted in the room joined there: the
+ *     game skips a cell whose screen Y carries past 255, and the NES hides
+ *     one at line 240 and down. A slot whose origin crossed the top this
+ *     frame is drawn from its wrapped byte, a screen below: all its cells
+ *     are skipped, so none lands on the status bar, and are kept where they
+ *     truly lie.
+ *   - **Visitors from above and below.** The visitors' pass takes the actors
+ *     of the rooms joined above and below his too, at their Y less or plus
+ *     208 (its byte his room's: -8 is 248). The interaction tests' Y needs
+ *     no telling apart: within reach of him (48 pixels), no Y test wraps.
+ *   - **His true Y.** Rooms above and below see the hero at his true Y in
+ *     their pixels, held to 0-239 (Seamless's shadow()).
+ *   - Spells stay as slice 3 left them: one at a seam above or below ends,
+ *     and so does one when he crosses up or down.
+ *
+ * Each room's state is a block in Seamless's record (version 6); the pass,
  * the sounds still to play and the spell's side are this feature's own
  * record (version 2), since a frame can end inside the pass (the main loop
  * lags on a busy screen): then, between frames, the machine shows the live
@@ -229,6 +270,20 @@
 /* CurrentSprite_CanMoveInDirection, up and down: LDA CurrentSprites_XPos_Full,Y,
  * STA Arg_PixelPosX, JSR Area_ConvertPixelsToBlockPos, then the hitbox's columns */
 #define MOVE_VERTICAL        0x873Au
+/* CurrentSprite_CanMoveInDirection moving down, past DEX, BEQ: LDX
+ * CurrentSprites_HitBoxTypes,Y, LDA CurrentSprites_YPos,Y, CLC, ADC
+ * SPRITE_HITBOX_HEIGHTS,X, STA Arg_PixelPosY, CMP #$F0, BCC $873A */
+#define MOVE_DOWN            0x871Cu
+/* ... moving up (@LAB_PRG14__8731): LDA CurrentSprites_YPos,Y, CMP #$F0,
+ * BCS (blocked), STA Arg_PixelPosY, then $873A */
+#define MOVE_UP              0x8731u
+/* Sprite_CapToBlockOppositeFalling: LDA CurrentSprites_YPos,X, CMP #$E0,
+ * BCC @_return (C clear: not at the screen's top or bottom) */
+#define CAP_VERTICAL         0x85ADu
+/* CurrentSprite_HandleFall, after LDA CurrentSprites_YPos,X, CLC, ADC #$08,
+ * STA CurrentSprites_YPos,X: CMP #$C0, BCS @_clearSprite, LDX #$03, JSR
+ * CurrentSprite_CanMoveInDirection */
+#define FALL_EDGE            0x865Bu
 /* Sprites_IsSpriteOutOfWeaponRange: LDA CurrentSprites_Entities,X, ASL A,
  * TAY, LDA MAYBE_SPRITE_EXTENTS,Y, CLC, ADC Maybe_WeaponRange_X, STA Temp_00 */
 #define OUT_OF_WEAPON_RANGE  0x88CBu
@@ -324,8 +379,14 @@ enum {
     BREAD_OR_COIN = 1,
     THROUGH_LEFT = 1,
     THROUGH_RIGHT = 2, /* a slot let through its room's side this frame, or straddling it */
-    ROOM_LIMIT = 5,    /* a room takes no mover once it holds this many (the most a list holds) */
-    PAD = 16,          /* the view's margin: what an actor draws past its hitbox */
+    THROUGH_UP = 4,
+    THROUGH_DOWN = 8, /* ... its top or bottom (slice 5): marks, one each way at most */
+    SIDEWAYS = THROUGH_LEFT | THROUGH_RIGHT,
+    UPRIGHT = THROUGH_UP | THROUGH_DOWN,
+    ROOM_H = 208,   /* a room's height: one above another's y 200 is its -8 */
+    FALLING = 0x80, /* CurrentSprites_Flags: moving down (Sprite_CalculateNewVertPos) */
+    ROOM_LIMIT = 5, /* a room takes no mover once it holds this many (the most a list holds) */
+    PAD = 16,       /* the view's margin: what an actor draws past its hitbox */
     VIEW_W = 424,
     VIEW_H = 208, /* the view below the status bar */
     CELLS = 48,
@@ -347,7 +408,8 @@ enum {
     SPELL = FAX_SEAMS_SPELL, /* the owner, less 1, of the spell's OAM cells and cells past a side */
     SPELL_TYPES = 12,        /* CastMagic_Type's values, each spell and its after-hit kinds */
     MOVING_RIGHT = 0x40,
-    HIDDEN = 0x10, /* CastMagic_Flags; CurrentSprites_Flags (Sprites_IsSpriteHidden) */
+    HIDDEN = 0x10,   /* CastMagic_Flags; CurrentSprites_Flags (Sprites_IsSpriteHidden) */
+    HIDDEN_Y = 0xEF, /* OAM Y from which the NES shows no line of a sprite: line 240 and down */
 };
 
 /* A room's block in Seamless's record. */
@@ -380,6 +442,9 @@ static int last_weapon_x = 0x7FFF; /* the last refused one's weapon X, in 16 bit
 static unsigned last_sprite_x, last_entity = 0xFF;
 /* Slice 1's counts, for the TCP command. */
 static unsigned steps, moves, kept_out, town_edge, removed, woken, frozen, pushed_back;
+/* Slice 5's: falls carried on past the original's y 192 (into a room
+ * below), and moves up or down. */
+static unsigned fell_on, moves_up, moves_down;
 static int last_woken[4] = { -1, -1, -1, -1 }; /* room, slot, entity, step */
 enum { LOG = 16 };
 static int move_log[LOG][6]; /* the last moves: from, slot, to, slot, entity, step */
@@ -592,15 +657,25 @@ static unsigned hitbox(int room, unsigned s) {
     return h > 6 ? 6 : h;
 }
 static unsigned width_less_1(int room, unsigned s) { return rom14(HITBOX_WIDTHS + hitbox(room, s)); }
+static unsigned height_less_1(int room, unsigned s) { return rom14(HITBOX_HEIGHTS + hitbox(room, s)); }
 
 /* A slot's X in 16 bits from its room's left edge: past the left side once
  * let through it and wrapped, past the right once it wrapped the other way. */
 static int x16_of(const Block *b, unsigned s, uint8_t x) {
-    if (b->through[s] == THROUGH_LEFT && x >= 128) return x - 256;
-    if (b->through[s] == THROUGH_RIGHT && x < 128) return x + 256;
+    if ((b->through[s] & THROUGH_LEFT) && x >= 128) return x - 256;
+    if ((b->through[s] & THROUGH_RIGHT) && x < 128) return x + 256;
     return x;
 }
 static int x16(int room, unsigned s) { return x16_of(block(room), s, rd(room, SLOT_X + s)); }
+/* Its Y in 16 bits from its room's top (slice 5): past the top once let
+ * through it and wrapped ($80 and up), or, not through the bottom, at $F0
+ * and up, which the game's own tests take as wrapped past the top; past the
+ * bottom, 208 and up, is the byte itself. */
+static int y16_of(const Block *b, unsigned s, uint8_t y) {
+    unsigned t = b->through[s];
+    return ((t & THROUGH_UP) && y >= 128) || (!(t & THROUGH_DOWN) && y >= 0xF0) ? y - 256 : y;
+}
+static int y16(int room, unsigned s) { return y16_of(block(room), s, rd(room, SLOT_Y + s)); }
 
 /* Whether the slot's hitbox, with `pad` pixels round it, meets the view. */
 static bool in_view(int room, unsigned s, int pad) {
@@ -608,7 +683,7 @@ static bool in_view(int room, unsigned s, int pad) {
     if (!fax_world_view(&vx, &vy)) return false;
     fax_world_place(room, &px, &py);
     unsigned h = hitbox(room, s);
-    int x = px + x16(room, s), y = py + rd(room, SLOT_Y + s);
+    int x = px + x16(room, s), y = py + y16(room, s);
     int w = rom14(HITBOX_WIDTHS + h) + 1, t = rom14(HITBOX_HEIGHTS + h) + 1;
     return x + w + pad > vx && x - pad < vx + VIEW_W && y + t + pad > vy && y - pad < vy + VIEW_H;
 }
@@ -626,29 +701,65 @@ static uint8_t solid(int room, unsigned index, bool ladder) {
     if (ladder && property_ == 2) return 1;
     return rom15(BLOCK_IMPASSABLE + property_);
 }
+/* The room `dx` rooms across and `dy` down from `room` (each -1, 0 or 1)
+ * through the joined rooms whose actors run, sideways then up or down or
+ * the other way round (the map is a grid: both lead to one place); -1 for
+ * none. */
+static int room_by(int room, int dx, int dy) {
+    if (room < 0) return -1;
+    int h = dx ? fax_world_joined(room, dx > 0) : room;
+    int a = dy && h >= 0 ? fax_world_joined(h, dy > 0 ? 3 : 2) : h;
+    if (a >= 0 || !dx || !dy) return a;
+    int v = fax_world_joined(room, dy > 0 ? 3 : 2);
+    return v >= 0 ? fax_world_joined(v, dx > 0) : -1;
+}
 /* The room pixel column `px` lies in, from `room`'s left edge: the room
  * joined left below 0, right from 256; -1 for none. */
-static int room_at(int room, int px) {
-    return px < 0 ? fax_world_joined(room, 0) : px >= 256 ? fax_world_joined(room, 1) : room;
+static int room_at(int room, int px) { return room_by(room, px < 0 ? -1 : px >= 256 ? 1 : 0, 0); }
+/* The block pixel (px, py) of `room` (16 bits from its top-left) lies in:
+ * the room, through the rooms joined to it, and in *index the block's
+ * there. Up and down a room is 208 tall; with no room joined that way the
+ * row is the room's own, as the game's 8-bit Y reads it (its ScreenBuffer's
+ * rows 13-15 past the bottom, row 15 down wrapping past the top). -1 for
+ * none sideways, or further than a room. */
+static int block_of(int room, int px, int py, unsigned *index) {
+    *index = 0;
+    if (px < -256 || px >= 512 || py < -ROOM_H || py >= 2 * ROOM_H) return -1;
+    int dx = px < 0 ? -1 : px >= 256 ? 1 : 0, dy = py < 0 ? -1 : py >= ROOM_H ? 1 : 0;
+    int r = dy ? room_by(room, dx, dy) : -1;
+    if (r < 0) r = room_by(room, dx, 0), dy = 0;
+    *index = (((unsigned)(py - dy * ROOM_H) & 0xF0u) | (((unsigned)px & 0xFFu) >> 4)) & 0xFF;
+    return r;
 }
-/* Sprites_MoveRight__86c6's test at column `col` of `room`: the block at
- * the slot's Y, then one a row further down for every 16 of its hitbox's
- * height, and one more if Y is not on a block's edge, until one is solid. */
-static uint8_t rows_test(int room, unsigned col, uint8_t y, unsigned hb) {
-    unsigned index = ((y & 0xF0u) | col) & 0xFF;
-    uint8_t result = solid(room, index, false);
-    for (int t = rom14(HITBOX_HEIGHTS + hb); !result && t >= 16; t -= 16) {
-        index = (index + 16) & 0xFF;
-        result = solid(room, index, false);
-    }
-    if (!result && (y & 15)) result = solid(room, (index + 16) & 0xFF, false);
+/* ScreenBuffer_IsBlockImpassable at pixel (px, py) of `room`, in the room it
+ * lies in: solid where none is. */
+static uint8_t solid_at(int room, int px, int py, bool ladder) {
+    unsigned index;
+    int r = block_of(room, px, py, &index);
+    return r < 0 ? 1 : solid(r, index, ladder);
+}
+/* Sprites_MoveRight__86c6's test at pixel column px of `room` (16 bits,
+ * past its sides too): the block at Y, then one a row further down for
+ * every 16 of the hitbox's height, and one more if Y is not on a block's
+ * edge, until one is solid, each in the room it lies in (slice 5: up and
+ * down too). */
+static uint8_t rows_test(int room, int px, int y, unsigned hb) {
+    int at = y & ~15;
+    uint8_t result = solid_at(room, px, at, false);
+    for (int t = rom14(HITBOX_HEIGHTS + hb); !result && t >= 16; t -= 16) result = solid_at(room, px, at += 16, false);
+    if (!result && (y & 15)) result = solid_at(room, px, at + 16, false);
     return result;
 }
-/* The same test along a row, at column c (from `room`'s; below 0 or past 15
- * in the room joined there, solid where none is). */
-static uint8_t column_cell(int room, int c, unsigned row) {
-    int r = room_at(room, c * 16);
-    return r < 0 ? 1 : solid(r, row | ((unsigned)c & 15), false);
+/* The same test along a row, CurrentSprite_CanMoveInDirection's up and down
+ * one ($873A): at pixel row py of `room`, across slot s's hitbox's columns
+ * (one for every 16 of its width, and one more if X is not on a block's
+ * edge), until one is solid. */
+static uint8_t row_test(int room, unsigned s, int py) {
+    int x = x16(room, s), px = x & ~15;
+    uint8_t result = solid_at(room, px, py, false);
+    for (int t = (int)width_less_1(room, s); !result && t >= 16; t -= 16) result = solid_at(room, px += 16, py, false);
+    if (!result && (x & 15)) result = solid_at(room, px + 16, py, false);
+    return result;
 }
 
 /* A town room: a screen of a town's zone (fax_zone.c, by the dialogue's
@@ -676,17 +787,18 @@ bool fax_seams_town(int room) {
 }
 
 /* Whether `to` is full for a mover coming from slot s of `from`: its actors
- * (dormant ones included) and the movers on their way in from its sides
- * make ROOM_LIMIT. */
+ * (dormant ones included) and the movers on their way in from its sides,
+ * top and bottom make ROOM_LIMIT. */
 static bool full(int to, int from, unsigned s) {
+    static const uint8_t toward[4] = { THROUGH_RIGHT, THROUGH_LEFT, THROUGH_DOWN, THROUGH_UP };
     unsigned n = 0;
     for (unsigned k = 0; k < 8; k++) n += rd(to, ENTITIES + k) < 0x80;
-    for (int side = 0; side < 2; side++) {
+    for (int side = 0; side < 4; side++) {
         int nb = fax_world_joined(to, side);
         const Block *o = nb >= 0 ? block(nb) : NULL;
         if (!o) continue;
         for (unsigned k = 0; k < 8; k++)
-            if (!(nb == from && k == s) && o->through[k] == (side == 0 ? THROUGH_RIGHT : THROUGH_LEFT)) ++n;
+            if (!(nb == from && k == s) && (o->through[k] & toward[side])) ++n;
     }
     return n >= ROOM_LIMIT;
 }
@@ -711,6 +823,19 @@ static bool may_enter(int to, int room, unsigned s, bool entering) {
         return false;
     }
     return true;
+}
+/* Whether the awake mover in slot s of `room` may go on through its side
+ * dx, dy (one of them 0) into the room joined there (may_enter), and, while
+ * it straddles a side the other way, into the room diagonally across too,
+ * which its box then reaches. */
+static bool may_pass(int room, const Block *b, unsigned s, int dx, int dy) {
+    unsigned t = b->through[s];
+    unsigned mark = dx < 0 ? THROUGH_LEFT : dx > 0 ? THROUGH_RIGHT : dy < 0 ? THROUGH_UP : THROUGH_DOWN;
+    bool entering = !(t & mark);
+    if (!may_enter(room_by(room, dx, dy), room, s, entering)) return false;
+    int ox = dx ? 0 : t & THROUGH_LEFT ? -1 : t & THROUGH_RIGHT ? 1 : 0;
+    int oy = dy ? 0 : t & THROUGH_UP ? -1 : t & THROUGH_DOWN ? 1 : 0;
+    return (!ox && !oy) || may_enter(room_by(room, dx + ox, dy + oy), room, s, entering);
 }
 /* A block test's result as the game's own leaves it: Blocks_Result, the
  * pixel it looked at, and X the slot. */
@@ -788,6 +913,14 @@ static int state_hook(uint16_t addr) {
     return 1;
 }
 
+/* Whether slot s's rows [Y, Y + height] reach past its room's top or
+ * bottom into a room joined there (slice 5): its sideways tests then read
+ * rows of two rooms. */
+static bool rows_across(int room, const Block *b, unsigned s) {
+    int y = y16_of(b, s, cyc_mod_peek(SLOT_Y + s)), h = (int)height_less_1(room, s);
+    return (y < 0 && room_by(room, 0, -1) >= 0) || (y + h >= ROOM_H && room_by(room, 0, 1) >= 0);
+}
+
 /* FUN_PRG14__86bd: the test walking left. Y is the slot. */
 static int left_hook(uint16_t addr) {
     (void)addr;
@@ -798,13 +931,15 @@ static int left_hook(uint16_t addr) {
     Block *b;
     if (!awake_mover(s, &room, &b)) return 0;
     uint8_t x = cyc_mod_peek(SLOT_X + s), y = cyc_mod_peek(SLOT_Y + s);
-    int px = x16_of(b, s, x);
-    if (px == x && x >= 0xF1 && b->through[s] != THROUGH_RIGHT) px = x - 256; /* wrapped past the left side */
-    if (px >= 0 && px < 0xF1) return 0;                                       /* the original's test */
-    int to = room_at(room, px);
-    if (!may_enter(to, room, s, px < 0 && b->through[s] != THROUGH_LEFT)) return 0;
-    uint8_t result = rows_test(to, ((unsigned)px & 0xFF) >> 4, y, hitbox(room, s));
-    if (!result && px < 0) b->through[s] = THROUGH_LEFT;
+    int px = x16_of(b, s, x), py = y16_of(b, s, y);
+    if (px == x && x >= 0xF1 && !(b->through[s] & THROUGH_RIGHT)) px = x - 256; /* wrapped past the left side */
+    if (px >= 0 && px < 0xF1) {
+        if (!rows_across(room, b, s)) return 0; /* the original's test */
+    } else if (px < 0 && !may_pass(room, b, s, -1, 0)) {
+        return 0;
+    } /* (straddling the right side, 241 and up: its own last column) */
+    uint8_t result = rows_test(room, px, py, hitbox(room, s));
+    if (!result && px < 0) b->through[s] |= THROUGH_LEFT;
     tested(s, px, y, result);
     return 1;
 }
@@ -818,19 +953,21 @@ static int right_hook(uint16_t addr) {
     Block *b;
     if (!awake_mover(s, &room, &b)) return 0;
     uint8_t x = cyc_mod_peek(SLOT_X + s), y = cyc_mod_peek(SLOT_Y + s);
-    int left = x16_of(b, s, x), px = left + width_less_1(room, s);
-    if (left >= 0 && px < 256) return 0; /* the original's test */
-    int to = room_at(room, px);
-    if (!may_enter(to, room, s, px >= 256 && b->through[s] != THROUGH_RIGHT)) return 0;
-    uint8_t result = rows_test(to, ((unsigned)px & 0xFF) >> 4, y, hitbox(room, s));
-    if (!result && px >= 256) b->through[s] = THROUGH_RIGHT;
+    int left = x16_of(b, s, x), px = left + width_less_1(room, s), py = y16_of(b, s, y);
+    if (left >= 0 && px < 256) {
+        if (!rows_across(room, b, s)) return 0; /* the original's test */
+    } else if (px >= 256 ? !may_pass(room, b, s, 1, 0) : room_at(room, px) < 0) {
+        return 0; /* (through the left side, its right edge still past it: the room there) */
+    }
+    uint8_t result = rows_test(room, px, py, hitbox(room, s));
+    if (!result && px >= 256) b->through[s] |= THROUGH_RIGHT;
     tested(s, px, y, result);
     return 1;
 }
 /* CurrentSprite_CanMoveInDirection's up and down test, with Arg_PixelPosY
- * set: the row there, across the hitbox's columns (one for every 16 of its
- * width, and one more if X is not on a block's edge), for a slot past a
- * side, whose columns lie in two rooms. */
+ * set: the row there, across the hitbox's columns, for a slot past a side,
+ * whose columns lie in two rooms. (Rows past the top or bottom with a room
+ * joined there are up_hook's and down_hook's.) */
 static int vertical_hook(uint16_t addr) {
     (void)addr;
     CycModRegs regs;
@@ -842,17 +979,118 @@ static int vertical_hook(uint16_t addr) {
     int left = x16_of(b, s, cyc_mod_peek(SLOT_X + s));
     int ext = width_less_1(room, s);
     if (left >= 0 && left + ext < 256) return 0; /* the original's test */
-    uint8_t py = cyc_mod_peek(PIXEL_Y);
-    unsigned row = py & 0xF0u;
-    int c = (left + 256) / 16 - 16; /* floor(left / 16) */
-    uint8_t result = column_cell(room, c, row);
-    for (int t = ext; !result && t >= 16; t -= 16) result = column_cell(room, ++c, row);
-    if (!result && (left & 15)) result = column_cell(room, ++c, row);
+    uint8_t py = cyc_mod_peek(PIXEL_Y), y = cyc_mod_peek(SLOT_Y + s);
+    uint8_t result = row_test(room, s, y16_of(b, s, y) + (uint8_t)(py - y));
     tested(s, left, py, result);
     return 1;
 }
+/* CurrentSprite_CanMoveInDirection moving down ($871C, Y the slot), slice 5:
+ * the row at the hitbox's bottom (Y plus its height less one). Past the
+ * room's bottom, with a room joined below, it is that room's row (less
+ * 208), across the hitbox's columns in the room each lies in, and the slot
+ * is marked through the bottom; where the mover may not go (a full room, a
+ * town's edge) the seam is a floor: blocked. With nothing joined below the
+ * original decides (it blocks from $F0, and reads its ScreenBuffer's rows
+ * 13-15 till then). Leaves what the game's test leaves. */
+static uint8_t down_test(int room, Block *b, unsigned s, int py) {
+    if (!may_pass(room, b, s, 0, 1)) return 1;
+    uint8_t result = row_test(room, s, py);
+    if (!result) b->through[s] |= THROUGH_DOWN;
+    return result;
+}
+static int down_hook(uint16_t addr) {
+    (void)addr;
+    CycModRegs regs;
+    cyc_mod_regs(&regs);
+    unsigned s = regs.y & 7;
+    int room;
+    Block *b;
+    if (!awake_mover(s, &room, &b)) return 0;
+    uint8_t x = cyc_mod_peek(SLOT_X + s), y = cyc_mod_peek(SLOT_Y + s);
+    int py = y16_of(b, s, y) + (int)height_less_1(room, s);
+    if (py < ROOM_H || room_by(room, 0, 1) < 0) return 0; /* the original's (and $873A's across a side) */
+    uint8_t result = down_test(room, b, s, py);
+    tested(s, x, (uint8_t)py, result);
+    return 1;
+}
+/* ... moving up ($8731): the row at Y. The original calls a Y of $F0 and up
+ * (wrapped past the top) blocked; with a room joined above it is that
+ * room's row (plus 208), and the slot is marked through the top; a full
+ * room or a town's edge stays the original's wall. */
+static int up_hook(uint16_t addr) {
+    (void)addr;
+    CycModRegs regs;
+    cyc_mod_regs(&regs);
+    unsigned s = regs.y & 7;
+    int room;
+    Block *b;
+    if (!awake_mover(s, &room, &b)) return 0;
+    uint8_t x = cyc_mod_peek(SLOT_X + s), y = cyc_mod_peek(SLOT_Y + s);
+    int py = y16_of(b, s, y);
+    if (py >= 0 || room_by(room, 0, -1) < 0 || !may_pass(room, b, s, 0, -1)) return 0;
+    uint8_t result = row_test(room, s, py);
+    if (!result) b->through[s] |= THROUGH_UP;
+    tested(s, x, y, result);
+    return 1;
+}
+/* Sprite_CapToBlockOppositeFalling ($85AD, X the slot), the fliers that turn
+ * at a screen's top and bottom with no block test (Giant Bees, Yuinaru, the
+ * Execution Hood): at Y $E0 and up it snaps Y to a block and returns C set.
+ * Moving down with its box past the bottom, or up with Y wrapped past the
+ * top, into a room joined there that it may enter, it goes through, marked,
+ * and the routine returns C clear ("not at the edge") from $E0 on. */
+static int cap_hook(uint16_t addr) {
+    (void)addr;
+    CycModRegs regs;
+    cyc_mod_regs(&regs);
+    unsigned s = regs.x & 7;
+    int room;
+    Block *b;
+    if (!awake_mover(s, &room, &b)) return 0;
+    uint8_t y = cyc_mod_peek(SLOT_Y + s);
+    if (cyc_mod_peek(FLAGS + s) & FALLING) {
+        int py = y16_of(b, s, y) + (int)height_less_1(room, s);
+        if (py >= ROOM_H && !(b->through[s] & THROUGH_DOWN) && room_by(room, 0, 1) >= 0 && may_pass(room, b, s, 0, 1))
+            b->through[s] |= THROUGH_DOWN;
+        if (!(b->through[s] & THROUGH_DOWN) || y < 0xE0) return 0;
+    } else {
+        if (y16_of(b, s, y) >= 0 || room_by(room, 0, -1) < 0 || !may_pass(room, b, s, 0, -1)) return 0;
+        b->through[s] |= THROUGH_UP;
+    }
+    regs.a = y;
+    regs.p = (uint8_t)((regs.p & ~(FLAG_C | FLAG_Z | FLAG_N)) | (y == 0xE0 ? FLAG_Z : 0) | ((y - 0xE0) & FLAG_N));
+    cyc_mod_set_regs(&regs);
+    return 1;
+}
+/* CurrentSprite_HandleFall's CMP #$C0 ($865B), its 8 pixels down already
+ * added (A the new Y): at $C0 and up the original removes the faller, off
+ * the screen. With a room joined below, an awake mover falls on: the rest
+ * of the routine in C, the down test (the row at the hitbox's bottom, in
+ * the room below past 208, marked through it; the seam a floor where it may
+ * not go there) and, blocked, Y snapped to its block. X the slot. */
+static int fall_hook(uint16_t addr) {
+    (void)addr;
+    CycModRegs regs;
+    cyc_mod_regs(&regs);
+    unsigned s = cyc_mod_peek(CURRENT_SPRITE_INDEX) & 7;
+    int room;
+    Block *b;
+    if (regs.a < 0xC0 || !awake_mover(s, &room, &b) || room_by(room, 0, 1) < 0) return 0;
+    uint8_t x = cyc_mod_peek(SLOT_X + s), y = cyc_mod_peek(SLOT_Y + s);
+    int py = y16_of(b, s, y) + (int)height_less_1(room, s);
+    uint8_t result = py >= ROOM_H ? down_test(room, b, s, py) : row_test(room, s, py);
+    cyc_mod_poke(PIXEL_X, x);
+    cyc_mod_poke(PIXEL_Y, (uint8_t)py);
+    cyc_mod_poke(BLOCKS_RESULT, result);
+    if (result) cyc_mod_poke(SLOT_Y + s, (uint8_t)(y & 0xF0));
+    else ++fell_on;
+    leave(s, result ? (y & 0xF0) : 0, -1); /* A as the routine leaves it: the snapped Y, or Blocks_Result 0 */
+    return 1;
+}
 /* Sprites_CheckPlacementInvalidAtY's block (Arg_PixelPosY set, the X there
- * X + 15 facing right, X facing left): the room it lies in, past a side. */
+ * X + 15 facing right, X facing left): the room it lies in, past a side,
+ * and (slice 5) past the bottom or top into a room joined there; where the
+ * mover may not go below, the seam is its floor. */
 static int placement_hook(uint16_t addr) {
     (void)addr;
     CycModRegs regs;
@@ -862,12 +1100,15 @@ static int placement_hook(uint16_t addr) {
     Block *b;
     if (!awake_mover(s, &room, &b)) return 0;
     int px = x16_of(b, s, cyc_mod_peek(SLOT_X + s)) + (cyc_mod_peek(FLAGS + s) & 1 ? 15 : 0);
-    if (px >= 0 && px < 256) return 0; /* the original's */
-    int to = room_at(room, px);
-    if (to < 0) return 0;
-    uint8_t py = cyc_mod_peek(PIXEL_Y);
-    unsigned index = (py & 0xF0u) | (((unsigned)px & 0xFF) >> 4);
-    uint8_t result = solid(to, index, true);
+    uint8_t py = cyc_mod_peek(PIXEL_Y), y = cyc_mod_peek(SLOT_Y + s);
+    int at = y16_of(b, s, y) + (uint8_t)(py - y);
+    int dy = at >= ROOM_H ? 1 : at < 0 ? -1 : 0;
+    if (dy && room_by(room, 0, dy) < 0) dy = 0;
+    if (px >= 0 && px < 256 && !dy) return 0; /* the original's */
+    if (room_at(room, px) < 0) return 0;
+    unsigned index;
+    int to = block_of(room, px, at, &index);
+    uint8_t result = to < 0 || (dy > 0 && !may_pass(room, b, s, 0, 1)) ? 1 : solid(to, index, true);
     cyc_mod_poke(PIXEL_X, (uint8_t)px);
     regs.a = result;
     regs.x = (uint8_t)index;
@@ -890,13 +1131,13 @@ static int flier_hook(uint16_t addr) {
     uint8_t x = cyc_mod_peek(SLOT_X + s);
     if (x < 0xF0) return 0;
     if (cyc_mod_peek(FLAGS + s) & 1) {
-        if (b->through[s] != THROUGH_RIGHT && b->through[s] != THROUGH_LEFT) {
-            if (!may_enter(fax_world_joined(room, 1), room, s, true)) return 0;
-            b->through[s] = THROUGH_RIGHT;
+        if (!(b->through[s] & SIDEWAYS)) {
+            if (!may_pass(room, b, s, 1, 0)) return 0;
+            b->through[s] |= THROUGH_RIGHT;
         }
-    } else if (!b->through[s]) {
-        if (!may_enter(fax_world_joined(room, 0), room, s, true)) return 0;
-        b->through[s] = THROUGH_LEFT;
+    } else if (!(b->through[s] & SIDEWAYS)) {
+        if (!may_pass(room, b, s, -1, 0)) return 0;
+        b->through[s] |= THROUGH_LEFT;
     }
     regs.a = x;
     regs.p = (uint8_t)((regs.p & ~(FLAG_C | FLAG_Z | FLAG_N)) | (x == 0xF0 ? FLAG_Z : 0) | ((x - 0xF0) & FLAG_N));
@@ -907,10 +1148,13 @@ static int flier_hook(uint16_t addr) {
 /* Sprite_Draw_Standard's or _FlippedHoriz's tile loop, played from the state
  * Sprite_Draw left (the disassembly's, cell for cell): each cell it puts in
  * OAM gets the slot as its owner, and each it skips for lying past the
- * screen's side, where its Y is on the screen, is kept as a cell past the
- * side. Sprites_IncNextSpriteSlot's count (two halves, $20 apart) gives the
- * OAM entry. */
-static void play_draw(Drawn *d, unsigned s, bool flipped) {
+ * screen's side, top or bottom (its X or Y carrying past 255), or puts where
+ * the NES hides it (OAM Y 239 and up, line 240 and down: past the room's
+ * bottom), is kept as a cell past the side, its Y moved by `dy` (-256 for a
+ * slot drawn from its byte wrapped past the top: its true place).
+ * Sprites_IncNextSpriteSlot's count (two halves, $20 apart) gives the OAM
+ * entry. */
+static void play_draw(Drawn *d, unsigned s, bool flipped, int dy) {
     uint8_t cols = cyc_mod_peek(COLS), rows = cyc_mod_peek(ROWS);
     uint8_t normx = cyc_mod_peek(NORM_X), normy = cyc_mod_peek(NORM_Y);
     uint8_t offx = cyc_mod_peek(OFFSET_X), offy = cyc_mod_peek(OFFSET_Y);
@@ -937,17 +1181,21 @@ static void play_draw(Drawn *d, unsigned s, bool flipped) {
             unsigned hi = offx + (lo >> 8);
             bool fits_x = (hi & 0xFF) == 0;
             unsigned ylo = normy + cyc_mod_peek((uint16_t)(TILE_POSITIONS + row)) + (fits_x ? hi >> 8 : 0);
-            bool fits_y = ((offy + (ylo >> 8)) & 0xFF) == 0;
+            unsigned yhi = offy + (ylo >> 8);
+            bool fits_y = (yhi & 0xFF) == 0;
             uint8_t attr = (uint8_t)(cyc_mod_peek((uint16_t)(addr + y + 1)) ^ flip);
             if (visible & cyc_mod_peek((uint16_t)((flipped ? VISIBILITY_FLIPPED : VISIBILITY_MASK) + (tx & 1))))
                 attr |= 0x20;
-            if (fits_x && fits_y && !full) {
+            bool drawn_ = fits_x && fits_y && !full;
+            if (drawn_) {
                 d->owner[(((unsigned)slot << 2 ^ range) >> 2) & 63] = (uint8_t)(s + 1);
                 slot ^= 0x20;
                 if (!(slot & 0x20) && ++slot >= 0x20) full = 1;
-            } else if (!fits_x && fits_y && d->count < CELLS) {
+            }
+            if ((drawn_ ? (ylo & 0xFF) >= HIDDEN_Y : !fits_x || !fits_y) && d->count < CELLS) {
+                int cy = (int)(int8_t)(uint8_t)yhi * 256 + (int)(ylo & 0xFF) + dy;
                 d->cell[d->count++] = (FaxSeamsCell){ (int16_t)((int)(int8_t)(uint8_t)hi * 256 + (lo & 0xFF)),
-                                                      (uint8_t)ylo, (uint8_t)(tile + ppu), attr, (uint8_t)s };
+                                                      (int16_t)cy, (uint8_t)(tile + ppu), attr, (uint8_t)s };
             }
             y += 2;
         }
@@ -965,7 +1213,7 @@ static int draw_hook(uint16_t addr) {
             cyc_mod_poke(OFFSET_X, (uint8_t)(cyc_mod_peek(OFFSET_X) + (uint8_t)spell.side));
             ++spell_drawn_abroad;
         }
-        play_draw(&spell_drawn, SPELL, addr == DRAW_FLIPPED);
+        play_draw(&spell_drawn, SPELL, addr == DRAW_FLIPPED, 0);
         return 0;
     }
     if (!looping[c]) return 0;
@@ -975,7 +1223,10 @@ static int draw_hook(uint16_t addr) {
     int x = x16_of(b, s, cyc_mod_peek(SLOT_X + s));
     if (x < 0 || x >= 256) cyc_mod_poke(OFFSET_X, (uint8_t)(cyc_mod_peek(OFFSET_X) + (x < 0 ? 0xFF : 1)));
     drawn[c].tiles[s] = b->tiles[s];
-    play_draw(&drawn[c], s, addr == DRAW_FLIPPED);
+    /* Through the top and wrapped (slice 5): the game draws it from its byte,
+     * a screen below, so it puts none of its cells in OAM (none on the
+     * status bar); they are kept where they lie. */
+    play_draw(&drawn[c], s, addr == DRAW_FLIPPED, y16_of(b, s, cyc_mod_peek(SLOT_Y + s)) < 0 ? -256 : 0);
     return 0;
 }
 /* Screen_LoadSpriteInfo in play: a screen loads its list. */
@@ -987,29 +1238,39 @@ static int load_hook(uint16_t addr) {
 
 /* ---- slice 1: between frames ---- */
 
-/* Slot s of `from`, across its side `side`, to a free slot of the room
- * there: every byte, its tiles, its wake, and a mark if it straddles the
- * new room's right side (in from the right). With nowhere to go (no free
- * slot, the room gone) it is put back inside its room, turned round, as at
- * a wall. */
-static void move(int from, unsigned s, int side) {
+/* Slot s of `from`, its origin across its side dx, dy (one or both: a
+ * corner), to a free slot of the room there: every byte, its Y less or plus
+ * 208 up or down (slice 5), its tiles, its wake, and a mark for each side of
+ * its new room it straddles (its right one, in from the right; its bottom,
+ * in from below). With nowhere to go (no free slot, the room gone) it is put
+ * back inside its room, turned round, as at a wall. */
+static void move(int from, unsigned s, int dx, int dy) {
     Block *bf = block(from);
-    int to = fax_world_joined(from, side), d = -1;
+    int to = room_by(from, dx, dy), d = -1;
     uint8_t x = rd(from, SLOT_X + s), e = rd(from, ENTITIES + s);
-    unsigned ext = width_less_1(from, s);
+    int y = y16(from, s);
+    unsigned ext = width_less_1(from, s), height = height_less_1(from, s);
     Block *bt = to >= 0 ? block(to) : NULL;
     for (int k = 7; bt && k >= 0 && d < 0; k--)
         if (rd(to, ENTITIES + (unsigned)k) == EMPTY) d = k;
     if (d < 0) {
-        wr(from, SLOT_X + s, side ? (uint8_t)((255 - ext) & 0xF0) : 0);
-        wr(from, FLAGS + s, (uint8_t)(rd(from, FLAGS + s) ^ 1));
-        bf->through[s] = 0;
+        if (dx) {
+            wr(from, SLOT_X + s, dx > 0 ? (uint8_t)((255 - ext) & 0xF0) : 0);
+            wr(from, FLAGS + s, (uint8_t)(rd(from, FLAGS + s) ^ 1));
+            bf->through[s] &= (uint8_t)~SIDEWAYS;
+        }
+        if (dy) {
+            wr(from, SLOT_Y + s, dy > 0 ? (uint8_t)((ROOM_H - 1 - height) & 0xF0) : 0);
+            wr(from, FLAGS + s, (uint8_t)(rd(from, FLAGS + s) ^ FALLING));
+            bf->through[s] &= (uint8_t)~UPRIGHT;
+        }
         ++pushed_back;
         return;
     }
     unsigned u = (unsigned)d;
+    int ny = y - dy * ROOM_H;
     wr(to, SLOT_X + u, x);
-    wr(to, SLOT_Y + u, rd(from, SLOT_Y + s));
+    wr(to, SLOT_Y + u, (uint8_t)ny);
     for (unsigned a = SLOT_ARRAYS; a < SLOT_ARRAYS + 23 * 8; a += 8) wr(to, a + u, rd(from, a + s));
     unsigned k = 0;
     while (k < 8 && (k == u || rd(to, ENTITIES + k) != e)) ++k;
@@ -1021,12 +1282,14 @@ static void move(int from, unsigned s, int side) {
         bt->tiles[u] = home == to ? 0 : (uint8_t)(home + 1);
     }
     bt->awake |= (uint8_t)(1u << u);
-    bt->through[u] = side == 0 && x + ext >= 256 ? THROUGH_RIGHT : 0;
+    bt->through[u] = (uint8_t)((dx <= 0 && x + ext >= 256 ? THROUGH_RIGHT : 0) |
+                               (ny >= 0 && ny + (int)height >= ROOM_H ? THROUGH_DOWN : 0));
     wr(from, ENTITIES + s, EMPTY);
     bf->through[s] = bf->tiles[s] = 0;
     bf->awake &= (uint8_t)~(1u << s);
     bf->flash &= (uint8_t)~(1u << s);
     bt->flash &= (uint8_t)~(1u << u); /* a flash waiting comes back to its damage there, and asks again */
+    moves_up += dy < 0, moves_down += dy > 0;
     int note[6] = { from, (int)s, to, d, e, (int)steps };
     memcpy(move_log[moves++ % LOG], note, sizeof note);
 }
@@ -1060,16 +1323,26 @@ void fax_seams_step(void) {
                 ++removed;
                 continue;
             }
-            if (!b->through[s]) continue;
-            uint8_t x = rd(room, SLOT_X + s);
-            if (b->through[s] == THROUGH_LEFT) {
-                if (x >= 128) move(room, s, 0);
-                else b->through[s] = 0;
-            } else if (x < 128) {
-                move(room, s, 1);
-            } else if (x + width_less_1(room, s) < 256) {
-                b->through[s] = 0; /* back inside */
+            unsigned t = b->through[s];
+            if (!t) continue;
+            uint8_t x = rd(room, SLOT_X + s), y = rd(room, SLOT_Y + s);
+            int dx = 0, dy = 0;
+            if (t & THROUGH_LEFT) {
+                if (x >= 128) dx = -1;
+                else t &= ~(unsigned)THROUGH_LEFT;
+            } else if (t & THROUGH_RIGHT) {
+                if (x < 128) dx = 1;
+                else if (x + width_less_1(room, s) < 256) t &= ~(unsigned)THROUGH_RIGHT; /* back inside */
             }
+            if (t & THROUGH_UP) {
+                if (y >= 128) dy = -1;
+                else t &= ~(unsigned)THROUGH_UP;
+            } else if (t & THROUGH_DOWN) {
+                if (y >= ROOM_H) dy = 1;
+                else if (y + height_less_1(room, s) < ROOM_H) t &= ~(unsigned)THROUGH_DOWN; /* back inside */
+            }
+            b->through[s] = (uint8_t)t;
+            if (dx || dy) move(room, s, dx, dy);
         }
     }
 }
@@ -1106,8 +1379,14 @@ int fax_seams_room_x16(int room, unsigned slot) {
 int fax_seams_slot_room(unsigned slot) {
     int active = fax_world_active_room();
     if (active < 0 || cyc_mod_isolated()) return -1;
+    int v = visitor_of(slot & 7u);
+    if (v >= 0) return pass.v[v].room;
     int x = fax_seams_x16(slot);
     return x < 0 ? fax_world_joined(active, 0) : x >= 256 ? fax_world_joined(active, 1) : active;
+}
+int fax_seams_slot_y(unsigned slot) {
+    int v = cyc_mod_isolated() ? -1 : visitor_of(slot & 7u);
+    return v >= 0 ? rd(pass.v[v].room, SLOT_Y + pass.v[v].slot) : cyc_mod_peek((uint16_t)(SLOT_Y + (slot & 7u)));
 }
 bool fax_seams_hero_x(int *x) {
     if (!cyc_mod_isolated()) {
@@ -1257,7 +1536,7 @@ static bool flash_waits(int room, unsigned k) {
 }
 
 typedef struct {
-    int room, slot, gap, shift;
+    int room, slot, gap, shift, y; /* y: its Y in his room's pixels (slice 5: from above or below, less or plus 208) */
     bool flash;
 } Candidate;
 
@@ -1273,7 +1552,7 @@ static int pass_begin(void) {
     int cx = spell_on ? spell_x16() : 0, cy = cyc_mod_peek(CAST_Y);
     Candidate c[16];
     unsigned n = 0;
-    for (int side = 0; side < 2; side++) {
+    for (int side = 0; side < 4; side++) { /* left, right, and (slice 5) above and below */
         int nb = fax_world_joined(active, side);
         Block *b = nb >= 0 ? block(nb) : NULL;
         if (!b) continue;
@@ -1281,7 +1560,7 @@ static int pass_begin(void) {
             uint8_t e = rd(nb, ENTITIES + k);
             if (e >= 0x80) continue;
             bool due = b->flash >> k & 1;
-            if (due && !flash_waits(nb, k)) {
+            if (due && (side > 1 || !flash_waits(nb, k))) { /* a flash is taken only from his row */
                 b->flash &= (uint8_t)~(1u << k);
                 due = false;
             }
@@ -1290,13 +1569,14 @@ static int pass_begin(void) {
                 !(rd(nb, HIT_BY_MAGIC + k) & 0x80))
                 continue; /* the loop lets these interact (and moves the rest) */
             unsigned h = hitbox(nb, k);
-            int x = x16(nb, k) + (side ? 256 : -256), y = rd(nb, SLOT_Y + k);
+            int x = x16(nb, k) + (side == 0 ? -256 : side == 1 ? 256 : 0);
+            int y = y16(nb, k) + (side == 2 ? -ROOM_H : side == 3 ? ROOM_H : 0);
             int w = rom14(HITBOX_WIDTHS + h) + 1, t = rom14(HITBOX_HEIGHTS + h) + 1;
             int g = gap(x, w, hx, HERO_W);
             bool near = g <= REACH && gap(y, t, hy, HERO_H) <= REACH;
             if (!near && spell_on) near = gap(x, w, cx, 32) <= PAD && gap(y, t, cy, 32) <= PAD;
             if (!near && !due) continue;
-            Candidate it = { nb, (int)k, due ? -1 : g, x - rd(nb, SLOT_X + k), due };
+            Candidate it = { nb, (int)k, due ? -1 : g, x - rd(nb, SLOT_X + k), y, due };
             unsigned at = n++;
             while (at > 0 && c[at - 1].gap > it.gap) {
                 c[at] = c[at - 1];
@@ -1324,6 +1604,7 @@ static int pass_begin(void) {
         pass.v[i] = (Visitor){ (int8_t)c[i].room, (uint8_t)c[i].slot, (uint8_t)live, c[i].flash, (int16_t)c[i].shift };
         for (unsigned k = 0; k < SLOT_BYTES; k++)
             cyc_mod_poke((uint16_t)byte_at(k, live), rd(c[i].room, byte_at(k, (unsigned)c[i].slot)));
+        cyc_mod_poke((uint16_t)(SLOT_Y + live), (uint8_t)c[i].y); /* above: its -8 is 248; below: its 8 is 216 */
     }
     pass.count = (uint8_t)count;
     pass.open = 1;
@@ -1725,7 +2006,9 @@ bool fax_seams_valid(const uint8_t *bytes, unsigned rooms) {
     const Block *b = (const Block *)bytes;
     if (b->count > CELLS) return false;
     for (unsigned s = 0; s < 8; s++)
-        if (b->through[s] > THROUGH_RIGHT || b->tiles[s] > rooms || b->drawn_tiles[s] > rooms) return false;
+        if (b->through[s] > (SIDEWAYS | UPRIGHT) || (b->through[s] & SIDEWAYS) == SIDEWAYS ||
+            (b->through[s] & UPRIGHT) == UPRIGHT || b->tiles[s] > rooms || b->drawn_tiles[s] > rooms)
+            return false;
     for (unsigned k = 0; k < 64; k++)
         if (b->owner[k] > SPELL + 1) return false;
     for (unsigned k = 0; k < b->count; k++)
@@ -1775,6 +2058,10 @@ static const struct {
     { "faxanadu.seams.spell-left", CAST_LEFT_EDGE, edge_hook },
     { "faxanadu.seams.spell-right", CAST_RIGHT_EDGE, edge_hook },
     { "faxanadu.seams.spell-visibility", CAST_VISIBILITY, visibility_hook },
+    { "faxanadu.seams.down", MOVE_DOWN, down_hook },
+    { "faxanadu.seams.up", MOVE_UP, up_hook },
+    { "faxanadu.seams.cap", CAP_VERTICAL, cap_hook },
+    { "faxanadu.seams.fall", FALL_EDGE, fall_hook },
 };
 enum { HOOKS = sizeof hooks / sizeof hooks[0] };
 
@@ -1785,6 +2072,7 @@ static void deactivate(void) {
     last_sprite_x = 0;
     last_entity = 0xFF;
     steps = moves = kept_out = town_edge = removed = woken = frozen = pushed_back = 0;
+    fell_on = moves_up = moves_down = 0;
     memset(move_log, 0, sizeof move_log);
     for (unsigned i = 0; i < 4; i++) last_woken[i] = -1;
     clear_pass();
@@ -1823,7 +2111,7 @@ static size_t ring_json(char *out, size_t cap, const int *ring, unsigned n, unsi
 }
 static void seams_state(int id, const char *line) {
     (void)line;
-    char fields[3800], log[700], visit[700], sound[300];
+    char fields[4200], log[700], visit[700], sound[300];
     int vx = 0, vy = 0;
     bool view = fax_world_view(&vx, &vy);
     uint8_t type = cyc_mod_peek(CAST_TYPE), byte = cyc_mod_peek(CAST_X);
@@ -1841,7 +2129,8 @@ static void seams_state(int id, const char *line) {
         "\"heard\":%u,\"played\":%u,\"pending\":%u,\"visit_log\":[%s],\"sound_log\":[%s],"
         "\"spell\":[%u,%u,%d,%d],\"spell_walls\":%u,\"spell_view_ends\":%u,\"spell_side_ends\":%u,"
         "\"spell_end\":[%d,%d,%d,%d,%d],\"spell_crossed\":%u,\"spell_cleared\":%u,\"magic_dormant\":%u,"
-        "\"spell_visibility\":%u,\"spell_drawn_abroad\":%u,\"casting\":%s",
+        "\"spell_visibility\":%u,\"spell_drawn_abroad\":%u,\"casting\":%s,"
+        "\"moves_up\":%u,\"moves_down\":%u,\"fell_on\":%u",
         enabled ? "true" : "false", skipped, refused, last_weapon_x, last_sprite_x, last_entity, steps, moves, kept_out,
         town_edge, pushed_back, removed, woken, frozen, vx, vy, view ? "true" : "false", last_woken[0], last_woken[1],
         last_woken[2], last_woken[3], log, passes, visits, waited, pass.open ? "true" : "false", broken, flashes_due,
@@ -1852,7 +2141,7 @@ static void seams_state(int id, const char *line) {
                    : 0,
         x16, spell_walls, spell_view_ends, spell_side_ends, spell_end[0], spell_end[1], spell_end[2], spell_end[3],
         spell_end[4], spell_crossed, spell_cleared, magic_dormant, spell_visibility, spell_drawn_abroad,
-        spell.casting ? "true" : "false");
+        spell.casting ? "true" : "false", moves_up, moves_down, fell_on);
     cyc_tcp_ok(id, fields);
 }
 void fax_seams_tcp_setup(void) {
@@ -1863,7 +2152,8 @@ void fax_seams_tcp_setup(void) {
                      "sleepers woken and kept frozen, the view, the last move and wake; visitors' passes, visits and "
                      "their outcomes, matches refused for wrapping, neighbours' sounds heard and played; the spell "
                      "(type, X byte, side, X in 16 bits), its walls across a seam, its ends at the view's edge and at "
-                     "a side, the last end, crossings kept, dormant sleepers it was kept from",
+                     "a side, the last end, crossings kept, dormant sleepers it was kept from; moves up and down, "
+                     "falls carried on into a room below",
                      seams_state);
 }
 #else
