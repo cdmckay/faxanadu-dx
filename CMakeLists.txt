@@ -35,7 +35,7 @@ if(NESRECOMP_BACKEND STREQUAL "cycle")
         GAME_CONFIG "${CMAKE_CURRENT_SOURCE_DIR}/game.toml"
         RECOMPILER "${NESRECOMP_HOST_COMPILER}"
         SEED_FILE "${NESRECOMP_CYCLE_SEEDS}"
-        HOST_EXTRAS src/cyc_extras.c src/fax_world.c src/fax_travel.c src/fax_death.c
+        HOST_EXTRAS src/cyc_extras.c src/fax_world.c src/fax_camera.c src/fax_travel.c src/fax_death.c
             src/fax_pendant.c
             src/fax_magic.c
             src/fax_zone.c src/fax_text.c src/fax_banner.c

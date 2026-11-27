@@ -50,6 +50,7 @@ cmake --build "$OUT/text_speed" -j"$JOBS" >/dev/null
 cmake -S tests/world -B "$OUT/world" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/world" -j"$JOBS" >/dev/null && echo "fax_world.c compiles without SDL"
 "$OUT/world/present_fit_test" | tail -4
+"$OUT/world/camera_test" "$ROM" | tail -3
 cmake -S tests/death -B "$OUT/death" -DNESRECOMP_ROOT="$REPO/nesrecomp" >/dev/null
 cmake --build "$OUT/death" -j"$JOBS" >/dev/null
 "$OUT/death/death_test"
@@ -249,6 +250,7 @@ E2E=(
   "entrances    tests/entrances/fair_entrances.py --parts"
   "view         tests/world/fixed_view.py"
   "arenas       tests/world/boss_arenas.py --parts"
+  "only-rooms   tests/world/only_rooms.py --parts"
   "live-hud     tests/world/live_status_bar.py --parts"
   "spell-cost   tests/spell_cost/spell_cost.py --parts"
   "found        tests/found/found_items.py --parts"

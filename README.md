@@ -47,7 +47,9 @@ view is always 424x240, the original's full height and 53 tiles wide, scaled
 to fill your window or screen and keep its shape: 3x at 720p, 6x at 1440p and
 9x at 4K, with every pixel square and crisp. At 1080p, 4.5x, the pixels stay
 crisp too, with no blur but a one-pixel blend at some of their edges (sharp
-scaling, as Shovel Knight does).
+scaling, as Shovel Knight does). The view shows only rooms: where the map
+has no room beside, above or below, it stops short or keeps to your row
+instead of showing black, easing there as you walk.
 F4 shows the region you're in. Doors and region changes keep the original's
 own transitions, and so does each boss's room: while its boss lives, the
 room stays apart and you fight on that one screen, as in the original; once

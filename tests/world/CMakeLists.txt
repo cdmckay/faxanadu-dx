@@ -13,3 +13,11 @@ target_include_directories(present_fit_test PRIVATE "${NESRECOMP_ROOT}/runner/cy
 if(NOT MSVC)
     target_link_libraries(present_fit_test PRIVATE m)
 endif()
+# Seamless's camera (#166's slice 4): its unit test, over shapes of the game's
+# maps, and every real map with the ROM's path (tools/test.sh passes it).
+add_executable(camera_test camera_test.c ../../src/fax_camera.c)
+set_property(TARGET camera_test PROPERTY C_STANDARD 11)
+target_include_directories(camera_test PRIVATE ../../src)
+if(NOT MSVC)
+    target_compile_options(camera_test PRIVATE -Wall -Wextra)
+endif()

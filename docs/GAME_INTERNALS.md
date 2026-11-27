@@ -876,6 +876,16 @@ What a feature can rely on, and the traps:
   entry plus one, and the cells). A `fixture()` record edit puts anything in
   a neighbour's slots. The active room's RAM there is its last capture; its
   slots are the live game's (`fax_world_room` reads them live).
+- **Seamless's view need not be centred on him** (#166's slice 4): it keeps
+  off places with no room, so beside one it stops short, and up and down it
+  follows him only over rooms. Read where it is from the game, never work
+  it out from his X: `fax_world`'s `camera` (the picture's) or `seams_state`'s
+  `view` (the one actors wake in), in world pixels. For every frame of a
+  headless run, `NESRECOMP_WORLD_TRACE=<path>` writes a line after each
+  frame with both (`camera_x`, `camera_y`, `view_x`, `view_y`) and the hero
+  the picture's camera is worked out from (`shown_x`, `shown_y`: the room's
+  capture, the last frame's on a frame the game lagged), as
+  `tests/world/only_rooms.py` reads it.
 
 ## Far calls (`MMC1_LoadBankAndJump`)
 
@@ -5248,6 +5258,31 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   (byte 28). It gives Seams the hero's true place (`fax_world_hero()`), and
   waits with its step while Seams' pass is open. TCP `fax_world_room` shows
   a room's slots: entity, X, Y, HP and hit counter.
+  **The view shows only rooms** (#166's slice 4, `fax_camera.c`): the
+  camera is a function of the map and the hero's place, kept by nothing,
+  that keeps the 424x208 below the status bar off places of the map with
+  no room, where it can. Sideways it stays over his row's run of rooms
+  (centred on a room alone in its row, an arena or a shaft); up and down it
+  follows him into the next row only as far as the columns it spans hold
+  rooms there, a line for each pixel its span is clear of that row's empty
+  places, so it comes down to his row as he walks toward one. Near where
+  he can pass up or down it moves onto the columns both rows hold rooms in.
+  Where he can pass is read from the rooms' records: the block columns
+  where the upper room's bottom row and the lower room's top row of
+  `ScreenBuffer` are both passable by `BlockProperties` and
+  `BLOCK_PROPERTY_IMPASSABLE_MAP` (`$E8D9`: 1 for properties 1, 5-8 and
+  `$0B`; a ladder, 2, and `$0A` pass), for two rooms joined up and down.
+  Both `fax_world_present` and `fax_world_update_view` ask it; nothing in
+  the game changes. **The map's shapes** (bank 3's links laid out as
+  `topology()` does, the boss screens alone): 101 seams one above the
+  other, of which 28 have rooms in both rows on each side of their column,
+  48 on one side only (the view moves sideways there to follow him through
+  without black), and 25 on neither (their two rows share only that column:
+  Trunk `$10` over `$0F` and `$13` over `$12`, the Mist's towers, Branch,
+  Dartmoor and Zenis), where black can't be kept out while he straddles
+  the seam. 30 rooms besides the arenas have no room beside them in their
+  row: 18 join nothing (the 10 buildings among them), 12 are shafts joined
+  up or down. The view is centred on those, black at its sides, as before.
 
 - **Seams** (`fax_seams.c`, #166; the plan is
   [SEAMLESS-COMBAT.md](SEAMLESS-COMBAT.md)). Slice 1, seams are open

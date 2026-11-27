@@ -48,6 +48,9 @@ plugin = "faxanadu.seamless-world"
 source = "src/fax_world.c"
 hooks = "faxanadu.world."
 rom = []
+# Its camera (src/fax_camera.c, #166's slice 4) has no hooks, no ROM and no
+# state: a function of the map and the hero's place, reading the rooms'
+# records and BLOCK_PROPERTY_IMPASSABLE_MAP ($E8D9) through Seamless.
 
 [[shared_site]]
 addr = 0xE016   # GameLoop_CheckShowPlayerMenu
