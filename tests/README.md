@@ -107,6 +107,14 @@ asking at once wait for one to make it. Never commit a save state: it holds
 CHR RAM copied from the ROM. Ask for a fixture (`game.state(name)`) before the
 test's own game launches: an uncapped game burns a thread while it waits.
 
+A fixture's frame is not exact: its recipe plays over TCP, so on a loaded
+machine it ends a few frames later, and the game's frame counters
+(`InterruptCounter`, `SpriteUpdateCounter`, `$1C`'s half) stand at another
+phase. A check that depends on one sets it in its own `fixture()` writes
+(the fair entrances' `PHASE`) or holds at every phase (#196: the flicker
+test's Fire, drawn 2 frames in 4 by `InterruptCounter`, failed from a
+fixture made during a loaded suite).
+
 Start past a seam from a fixture, not a walk across it. In Seamless a room's
 enemies run before the hero walks in and wait at the seam he is nearest, so
 one can knock him back across it as he crosses, at a frame that depends on how

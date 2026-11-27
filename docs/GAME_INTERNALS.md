@@ -4800,13 +4800,22 @@ flights on MP):
   (`$9036`); `SPRITE_APPEARANCE_PHASE_OFFSETS` (bank 14) gives an entity's
   first (the Myconid, entity `$1B`: `$31`, so 49 and 50). Cast magic's is
   `SPRITE_MAGIC_IMAGE_ADDRS_U[CastMagic_Type]` + the frame
-  (`CastMagic_SetAppearance`): Fire is 155 and 156.
+  (`CastMagic_SetAppearance`): Fire is 155 and 156. Its first frame is 8
+  cells, two columns of four, `$65 $7A $7A $65` and `$66 $7B $7B $66`; its
+  second is 6, `$7C $7C` in the middle rows of column 0 and `$7E $7D $7D $7E`
+  (Graphics fixes' `$7E` at the bottom, stock `$66`). Each column's bottom
+  two are its top two mirrored top to bottom. Columns are as the appearance
+  lists them; cast to the right, every cell is flipped left to right.
 - **The Fire spell flickers by design**: `CastMagic_FinishHandler_Fire` draws
   it only when `InterruptCounter` has bit 1 set, 2 frames in 4, and picks its
   frame from bit 2, so each frame shows 2 frames in 8. Thunder draws on the
   other two (bit 1 clear). The remaster keeps it: it draws what OAM holds,
   and across a seam the cells it keeps for the spell are only those it drew
-  (the RAM after a frame has the `InterruptCounter` it drew by).
+  (the RAM after a frame has the `InterruptCounter` it drew by). A test that
+  finds the Fire in OAM by its tiles needs both frames': with only the first
+  frame's `$66`, `tests/flicker/no_flicker.py` saw 2 of its 8 cells and
+  counted the Fire drawn only in its second frame, 2 frames in 8, so its
+  check of 2 in 4 passed or failed by the fixture's `InterruptCounter` (#196).
 
 ### The shadow OAM, a frame at a time
 
