@@ -17,9 +17,11 @@
  * - Nothing holds it: a kill's MP comes while the Wing Boots fly or the Hour
  *   Glass freezes (fax_recharge.c), which read MP afresh every frame and
  *   take theirs from what there is.
- * - Talking to a Guru fills HP and MP to 80 (fax_mana_guru, from Recharging
- *   items' guru_hook at his first script action, before he speaks), the
- *   safety net for a stretch with nothing to kill.
+ * - Saving with a Guru fills HP and MP to 80, the safety net for a stretch
+ *   with nothing to kill: Save files' rest (fax_files.c, #205), with a flash
+ *   and the bars filling through the game's own ADD_HP and ADD_MP, as he
+ *   remembers the journey. Talking to him without saving leaves them as
+ *   they are (until #205 a Guru filled both at his first action).
  *
  * How, on the unchanged ROM: a kill's MP goes into Player_MP at once, so
  * every cost and drain that frame sees it, and its bar is drawn at the end
@@ -33,15 +35,11 @@
  * WaitForNextFrame, from anywhere (the main loop, a pause, a text box): the
  * code that called it is between two of its steps, with no command half
  * queued (PPUBuffer_WaitForCapacity spins without it). Otherwise, or with
- * no room, the next frame's end that will. A Guru's HP and MP go in at once
- * too, and each bar is drawn at once, between two of the interpreter's
- * actions, if the buffer has room (UI_DrawPlayerHP, Player_SetMP); at his
- * first action it is usually still full of his box, so a frame or two into
- * his conversation. The bars still to draw are this feature's save-state
- * record. MP is in no save file
- * (continuing fills it). Nothing happens inside Seamless's isolated
- * simulation of other rooms. With the remaster off, the original: MP only
- * from the meat shops, Eolis's Magician, the Elixir and a spawn. See
+ * no room, the next frame's end that will. The bars still to draw are this
+ * feature's save-state record. MP is in no save file (continuing fills it).
+ * Nothing happens inside Seamless's isolated simulation of other rooms.
+ * With the remaster off, the original: MP only from the meat shops, Eolis's
+ * Magician, the Elixir and a spawn. See
  * docs/GAME_INTERNALS.md, "MP and its bar" and "Kills and experience". */
 #include "fax_mana.h"
 #include "fax_lesson.h"
@@ -84,7 +82,7 @@
 #define PLAYER_SET_MP            0xFA85u /* CMP #$51, BCC, LDA #$50, STA Player_MP, LDY #$01: draws the Magic bar */
 #define WAIT_FOR_NEXT_FRAME      0xCA25u /* LDA #$00, STA Game_InterruptsHandledLatch, then LDA, BEQ until the NMI */
 /* Values */
-enum { MP_MAX = 80, HP_MAX = 80, CATEGORY_BOSS = 7, JSR = 0x20, NOT_SCROLLING = 0xFF };
+enum { MP_MAX = 80, CATEGORY_BOSS = 7, JSR = 0x20, NOT_SCROLLING = 0xFF };
 /* PPUBuffer_HasCapacity: room (ReadOffset - WriteOffset) is 0 (empty) or at
  * least $24. A bar's first command is 3 bytes and BarWidth + 1 tiles, and
  * the second (16 bytes of the partial tile) checks again after it. */
@@ -118,14 +116,15 @@ static uint8_t with_gain(uint8_t mp, unsigned gain) {
     return (uint8_t)(now > MP_MAX ? MP_MAX : now);
 }
 
-/* The bars still to draw: what a save state must keep. */
+/* The bars still to draw: what a save state must keep. A kill's MP draws only
+ * the Magic bar; the Power bar is a Guru's from before #205, whose fill drew
+ * both, still to draw in a state saved then. */
 enum { BAR_HP = 1, BAR_MP = 2, BARS = BAR_HP | BAR_MP };
 
 static bool enabled;
 static uint8_t bars;
 typedef struct {
     unsigned kills, bosses, gained; /* kills, of them bosses, and the MP they gave (after the cap) */
-    unsigned restores;              /* Gurus who filled HP and MP */
     unsigned drawn, deferred;       /* bars drawn; and frames one waited for room */
     uint8_t entity, experience, mp; /* the last kill: whom, its experience, its MP before the cap */
 } Seen;
@@ -201,21 +200,6 @@ static int kill_hook(uint16_t addr) {
     return 0;
 }
 
-/* A Guru's first action: HP and MP to 80, and their bars, now if they fit. */
-void fax_mana_guru(void) {
-    if (!enabled || cyc_mod_isolated()) return;
-    ++seen.restores;
-    if (q(PLAYER_HP_U) != HP_MAX) {
-        cyc_mod_poke(PLAYER_HP_U, HP_MAX);
-        bars |= BAR_HP;
-    }
-    if (q(PLAYER_MP) != MP_MAX) {
-        cyc_mod_poke(PLAYER_MP, MP_MAX);
-        bars |= BAR_MP;
-    }
-    draw_bars();
-}
-
 /* A frame's end: the bars still to draw, if it will do. */
 void fax_mana_frame_end(void) {
     if (!enabled || cyc_mod_isolated() || !bars) return;
@@ -271,17 +255,17 @@ static void mana_state(int id, const char *line) {
     /* The last kill: its entity, its experience and its MP (before the cap); the per-kill rule: the scale, the
      * least, a boss's and the lesson's factor (taught: the hero has it). */
     snprintf(fields, sizeof fields,
-             "\"enabled\":%s,\"mp\":%u,\"hp\":%u,\"kills\":%u,\"bosses\":%u,\"gained\":%u,\"restores\":%u,"
+             "\"enabled\":%s,\"mp\":%u,\"hp\":%u,\"kills\":%u,\"bosses\":%u,\"gained\":%u,"
              "\"bars\":%u,\"drawn\":%u,\"deferred\":%u,\"entity\":%u,\"experience\":%u,\"kill_mp\":%u,"
              "\"scale\":%d,\"least\":%d,\"boss_mp\":%d,\"taught\":%s,\"factor\":%d",
-             enabled ? "true" : "false", q(PLAYER_MP), q(PLAYER_HP_U), seen.kills, seen.bosses, seen.gained,
-             seen.restores, bars, seen.drawn, seen.deferred, seen.entity, seen.experience, seen.mp, SCALE, LEAST,
-             BOSS_MP, fax_lesson_learned() ? "true" : "false", fax_lesson_learned() ? TAUGHT : 1);
+             enabled ? "true" : "false", q(PLAYER_MP), q(PLAYER_HP_U), seen.kills, seen.bosses, seen.gained, bars,
+             seen.drawn, seen.deferred, seen.entity, seen.experience, seen.mp, SCALE, LEAST, BOSS_MP,
+             fax_lesson_learned() ? "true" : "false", fax_lesson_learned() ? TAUGHT : 1);
     cyc_tcp_ok(id, fields);
 }
 void fax_mana_tcp_setup(void) {
     cyc_tcp_register("mana_state",
-                     "MP from kills: MP, HP, kills, bosses, MP gained, Gurus' fills, bars to draw, the last kill, the "
+                     "MP from kills: MP, HP, kills, bosses, MP gained, bars to draw, the last kill, the "
                      "rule",
                      mana_state);
 }

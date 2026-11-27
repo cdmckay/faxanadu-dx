@@ -110,7 +110,9 @@ opens it too. The game holds still underneath, but the music plays on.
   CONTINUE: NEW GAME asks which file to start in, and asks before erasing a
   used one, and CONTINUE picks a saved file and continues it exactly as you
   left it. A Guru no longer gives a mantra: he offers to remember your
-  journey, and you continue at the last Guru you saved with.
+  journey, and you continue at the last Guru you saved with. Saving is also
+  your rest, as in a Metroidvania's save room: as he remembers, the screen
+  flashes and your HP and MP fill back up, with the Red Potion's sound.
 - **Guru travel.** A temple's Guru can send you to any other Guru you have
   visited, keeping your HP, MP and gold.
 - **Zone respawn.** After a death you come back where you last entered the
@@ -133,7 +135,7 @@ opens it too. The game holds still underneath, but the music plays on.
   your sword.
 - **MP from kills.** As hearts do in Castlevania, every enemy you kill, by
   sword or spell, gives MP back: a little for the weak ones, more for the
-  tough, 20 for a boss. It no longer comes back by waiting, and talking to
+  tough, 20 for a boss. It no longer comes back by waiting, and saving with
   any Guru fills your HP and MP. Eolis's Magician no longer sells MP: once
   you have learned Fire at the magic hall in the Mist, he teaches you, once,
   for 30000 Golds, to draw twice as much from every kill, which keeps the

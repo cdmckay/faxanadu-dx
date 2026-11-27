@@ -24,7 +24,8 @@
  *   game's own second ends it, as in the original.
  * With 0 MP, Down+B on either does nothing but play the game's "invalid
  * choice" sound, as a spell he can't afford does nothing. MP comes from
- * kills (fax_mana.c), while either drains too, and a Guru fills it. Both at
+ * kills (fax_mana.c), while either drains too, and a Guru's save fills it
+ * (fax_files.c). Both at
  * once drain together, and each ends when MP runs out.
  * T: shows the selected item's seconds left while it runs: the flight's or
  * the freeze's, at the MP there is and what drains it, rounded up (a full
@@ -123,8 +124,8 @@
  *   step after "2 more springs", which the script reaches only with the bit
  *   set): the Elixir is spent, and the game's own step then clears its bit,
  *   as Player_UseElixir does. At the
- *   first action of a Guru's script: a spent Elixir is charged again, HP and
- *   MP are filled (fax_mana_guru, MP from kills'), and his line is chosen. It is shown before his next action that no other feature
+ *   first action of a Guru's script: a spent Elixir is charged again, and
+ *   his line is chosen. It is shown before his next action that no other feature
  *   steers (a temple Guru's CHECK_UPDATE_PLAYER_TITLE, right after
  *   SET_SPAWN_POINT; Eolis's Guru's first, CHECK_FOR_ITEM): the script goes
  *   to the SAY step, and at its END comes back where it was. At a first
@@ -144,7 +145,6 @@
 #include "fax_recharge.h"
 #include "fax_banner.h"
 #include "fax_items.h"
-#include "fax_mana.h"
 #include "fax_remember.h"
 #include "fax_save.h"
 #include "fax_text.h"
@@ -905,9 +905,10 @@ static void say(int which) {
     ++lines_said[which];
 }
 
-/* IScripts_InvokeNextAction: a Guru's conversation begins, so fill HP and MP
- * (MP from kills, fax_mana.c) and charge a spent Elixir before he speaks, whatever he goes on to offer (the mantra, Save
- * files' choice, Guru travel) and however it ends, and choose his line. The
+/* IScripts_InvokeNextAction: a Guru's conversation begins, so charge a spent
+ * Elixir before he speaks, whatever he goes on to offer (the mantra, Save
+ * files' choice, Guru travel) and however it ends, and choose his line. (HP
+ * and MP fill only when he saves: Save files, fax_files.c.) The
  * line goes before an action no other hook here steers (line_goes_before),
  * and the script comes back to it at the SAY step's END ($AE02), where Guru
  * travel, with no conversation of its own in this script, and Save files,
@@ -935,7 +936,6 @@ static int guru_hook(uint16_t addr) {
         return 0;
     }
     if (guru_begins(at) < 0) return 0;
-    fax_mana_guru();
     int line = guru_says(&charge, q(SPECIAL_ITEMS) & BIT_ELIXIR);
     if (charge.elixir_spent) {
         cyc_mod_poke(SPECIAL_ITEMS, (uint8_t)(q(SPECIAL_ITEMS) | BIT_ELIXIR));

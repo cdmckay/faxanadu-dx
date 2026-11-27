@@ -246,10 +246,11 @@ plugin = "faxanadu.save-files"
 source = "src/fax_files.c"
 hooks = "faxanadu.files."
 # Supplied through read overrides; the ROM image itself is never changed.
-# $AE14, where B on the question goes on to, is never read: the next-action
-# hook steers the interpreter on before it is, so it is not served.
+# $AE14, where B on the question and a save's fill go on to, is never read:
+# the next-action hook steers the interpreter on before it is, so it is not
+# served.
 rom = [
-    { bank = 12, start = 0xAE10, end = 0xAE14, use = "the Guru's choice: the menu (0F SAY) or the question (16 C3 SAY)" },
+    { bank = 12, start = 0xAE10, end = 0xAE14, use = "the Guru's choice: the menu (0F SAY) or the question (16 C3 SAY); once read and saved, the fill (13 hp 0A mp)" },
     { bank = 12, start = 0xAE15, end = 0xAE18, use = "its own SAY step (03 C3 00), for when Guru travel's is not served" },
     { bank = 13, start = 0xB45B, end = 0xB48B, use = "message $C3, the Guru's line slot, shared with Guru travel" },
 ]
@@ -268,7 +269,14 @@ overrides = [
 # never sees it. Writes TempleSpawnPoint (the saved Guru), the joypad's
 # changed mask on the title screen, DAT_0687 (Start or Continue), X and Y at
 # $9F64 (the arrow's place, on the title only), IScriptOrCHRAddr and IScriptOffset,
-# and the progress Password_Load would write when continuing.
+# and the progress Password_Load would write when continuing. A Guru's save
+# fills HP and MP (#205) through the game's own ADD_HP and ADD_MP actions in
+# the step at $AE10, once the choice there has been read; before them it sets
+# Temp_AddedHPValue ($0399, which ADD_HP fills from) to Player_HP_U, and the
+# actions write HP, MP, their bars and the sound as the meat shops' do. Its
+# flash greys the presented picture (Sugata's flash's greyscale,
+# fax_sugata_grey) for 8 frames, after Seamless composes it and the speaker
+# tabs and before the map and the quest log; no machine state.
 
 [[shared_rom]]
 bank = 13
@@ -316,6 +324,12 @@ address another acts on: with a file in play Guru travel leaves the script's \
 ends to Save files (fax_files_guru_choice), Save files acts on the Gurus' own \
 actions and its own steps, and it undoes SET_SPAWN_POINT's raise at the next \
 action rather than skipping it, so Guru travel still meets the Guru there. \
+A save's fill (#205) is Save files' own step ($AE10, ADD_HP and ADD_MP), \
+from the saved line's SAY step, which it then points the script back at \
+from $AE14: none of the others acts at $AE10-$AE14, Guru travel's part has \
+not begun there (Save files starts it at the saved line's END), and \
+Recharging items, whose line was read before the choice, does nothing at a \
+SAY step it did not point the script at. \
 Quick shops notes a script with the shops' layout at its first action \
 (IScriptOffset 1, before which the others have moved nothing in a shop), and \
 then steers only the thank-you steps after its two lists (BUY + 3 and \
@@ -325,10 +339,8 @@ action or step. Guru travel also forgets a conversation \
 of its own that B ended when any script begins (IScriptOffset 1), before \
 anyone steers it. Recharging items, at a Guru's first action (a temple Guru's \
 SET_SPAWN_POINT, or $A0BD for Eolis's), which none redirects, charges a spent \
-Elixir (SpecialItems), has MP from kills fill HP and MP (Player_HP_U, \
-Player_MP and their bars in the PPU buffer, in committed calls), none of \
-which the others read there, and chooses the Guru's Elixir \
-line. It shows the line by pointing the script at Guru travel's SAY step \
+Elixir (SpecialItems), which none of the others reads there, and chooses \
+the Guru's Elixir line. It shows the line by pointing the script at Guru travel's SAY step \
 before an action no other hook acts on ($A0BD itself, or the \
 CHECK_UPDATE_PLAYER_TITLE after a temple Guru's SET_SPAWN_POINT, so \
 SET_SPAWN_POINT still runs where Save files and Guru travel see it), and \
@@ -489,9 +501,11 @@ rom = [
 # that ends a run plays the item's sound ($1A, Sound_PlayEffect in a
 # committed call). Its site at
 # IScripts_InvokeNextAction ($826E) hears a Guru's first action, which Save
-# files and Guru travel leave where it is, has MP from kills (mana-refill,
-# fax_mana_guru) fill HP and MP there, and to show his Elixir line writes IScriptOrCHRAddr and IScriptOffset (to the SAY step, then
-# back), and so too for an item's lesson at its use script's message. Keeps
+# files and Guru travel leave where it is, and to show his Elixir line writes
+# IScriptOrCHRAddr and IScriptOffset (to the SAY step, then back), and so
+# too for an item's lesson at its use script's message. (Until #205 it had
+# MP from kills fill HP and MP there; a Guru's save fills them now, Save
+# files'.) Keeps
 # the fields recharge.elixir and recharge.elixir_told in the file in play
 # (fax_save.h), when Save files has one, and drops #27's recharge.wingboots
 # and recharge.hourglass from it; and the lessons learned in
@@ -539,17 +553,17 @@ rom = []
 # bank 14), which no other feature hooks and which returns 0: it reads the
 # slot's entity and bank 14's ENEMY_EXPERIENCE and
 # SPRITE_CATEGORIES_BY_ENTITY, and writes Player_MP. Sugata's flash calls it
-# (fax_mana_killed) for a kill its committed call made, and Recharging items
-# (fax_mana_guru) at a Guru's first action, at its site at $826E, where it
-# writes Player_HP_U and Player_MP. It draws the bars as the game does, with
-# UI_DrawPlayerHP ($C0BD) and Player_SetMP ($FA85) in committed calls, there
-# or at a frame's end while Game_MainLoop waits in WaitForNextFrame from its
-# top, only when the PPU buffer has room: they write the bars' commands in
+# (fax_mana_killed) for a kill its committed call made. (A Guru's fill, which
+# Recharging items had it do at a Guru's first action until #205, is Save
+# files' save now.) It draws the bar as the game does, with Player_SetMP
+# ($FA85) in a committed call (and UI_DrawPlayerHP, $C0BD, for a Guru's
+# Power bar still to draw in a state saved before #205), at a frame's end
+# while the CPU waits in WaitForNextFrame, only when the PPU buffer has
+# room: they write the bars' commands in
 # the PPU buffer (with PPUBuffer_WriteOffset), Player_HP_U or Player_MP,
 # UI_SetHUDBarValue's temporaries (PPU_TargetAddr, Temp_Int24_U, Temp_0xEF,
 # Temp_AddedHPValue), and the stack below S; the CPU's registers are put
-# back. At a frame's end nothing else runs, and between two of the
-# interpreter's actions nothing is using them. No read overrides. Not in save
+# back. At a frame's end nothing else runs. No read overrides. Not in save
 # files: continuing fills MP.
 
 [[feature]]

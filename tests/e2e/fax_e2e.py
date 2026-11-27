@@ -91,7 +91,8 @@ Functions, on the game launched last
     typed()                         The text box waits for a button: MessageID
                                     clears, or TextBox_MessagePaused is set.
     conversation(cmd)               A conversation's state (cmd's reply) and typed(),
-                                    one frame's, in one batch.
+                                    one frame's, in one batch; a Guru's save
+                                    filling HP and MP is no typed page.
     page_to(there, what, cmd)       A on each typed page until there(state) holds
                                     on a typed one; never A on that page. A is
                                     held while each page types.
@@ -911,6 +912,7 @@ def act(name, frames=6, after=8):
 
 
 FILES_TOP, FILES_NEW, FILES_CONTINUE, FILES_CONFIRM = 0, 1, 2, 3   # fax_files.c's Mode
+GURU_FILLING = 4                                                   # fax_files.c's GuruPhase: a save's fill
 
 
 def title_menu(frames=2000):
@@ -1226,11 +1228,13 @@ def walk(button, stop=lambda: False, frames=600, x_addr=0x9E):
 def conversation(cmd="travel_state"):
     """A conversation's state (the TCP command `cmd`'s reply, `id` dropped)
     and typed(), read in one batch: the same frame's, so a press sent on what
-    they show lands on that page, never the next."""
-    reply, box = batch((cmd, {}), ("read_ram", dict(addr=MESSAGE_ID, len=3)))
+    they show lands on that page, never the next. A Guru's save filling HP and
+    MP (#205) waits for no button, though the box shows a typed page (his
+    choice), so it is no typed page."""
+    reply, box, files = batch((cmd, {}), ("read_ram", dict(addr=MESSAGE_ID, len=3)), ("files_state", {}))
     message, _, paused = bytes.fromhex(box["hex"])
     reply.pop("id", None)
-    return reply, message == 0 or paused != 0
+    return reply, (message == 0 or paused != 0) and files["guru"] != GURU_FILLING
 
 
 def page_to(there, what, cmd="travel_state", tries=12, frames=1200):

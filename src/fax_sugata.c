@@ -347,6 +347,7 @@ static void prepare(void) {
 }
 static unsigned luma(uint32_t c) { return (2 * (c >> 16 & 255) + 5 * (c >> 8 & 255) + (c & 255)) / 8; }
 static uint32_t grey(uint32_t c) {
+    if (!palette_ready) prepare();
     c |= 0xFF000000u;
     for (unsigned h = (c * 2654435761u) >> 24, n = 0; seen[h].from && n < 256; h = (h + 1) & 255, ++n)
         if (seen[h].from == c) return seen[h].to;
@@ -357,6 +358,7 @@ static uint32_t grey(uint32_t c) {
     }
     return greys[best];
 }
+uint32_t fax_sugata_grey(uint32_t color) { return grey(color); }
 static uint32_t dim(uint32_t c) { /* a third darker */
     uint32_t r = c >> 16 & 255, g = c >> 8 & 255, b = c & 255;
     return 0xFF000000u | (r - r / 3) << 16 | (g - g / 3) << 8 | (b - b / 3);

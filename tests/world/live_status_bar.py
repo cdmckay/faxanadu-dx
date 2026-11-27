@@ -30,11 +30,9 @@ king       The King, to a hero with no gold, at his plea's end (a save
            his conversation (sampled every 4th frame, each the gold of that
            frame or the one before, and the game's own band). One picture
            mid-count is kept.
-guru       Eolis's temple at 32 HP and 5 MP, both bars drawn (MP from kills'
-           fixture): the band's bars read 32 and 5. Talking to the Guru fills
-           both to 80 at his first action (fax_mana.c), and the game draws
-           the bars a frame or two into his conversation: while his first
-           line is still up, the band's bars read 80 and 80.
+
+The HP and MP bars counting up through a Guru's save (#205) are read off the
+band the same way, every frame, by tests/files/guru_refill.py.
 """
 from pathlib import Path
 import shutil
@@ -45,14 +43,12 @@ import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "block"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "movement"))
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "mana"))
 import harness  # noqa: E402  (walking, a building's way out)
 import play  # noqa: E402  (headless runs' mods and frames)
 import fax_e2e  # noqa: E402
-from fax_e2e import batch, box_open, fixture, page_to, parse_args, ram, tcp, until, walk  # noqa: E402
-import mp_from_kills  # noqa: E402,F401  (its fixture: "mana-eolis-temple")
+from fax_e2e import fixture, page_to, parse_args, walk  # noqa: E402
 
-PARTS = ("tool-shop", "king", "guru")
+PARTS = ("tool-shop", "king")
 AREA, POS_X, ENTITIES = 0x24, 0x9E, 0x2CC
 MESSAGE_ID, GOLD, MP, PORTRAIT, SPECIAL_ITEMS, HP = 0x213, 0x392, 0x39A, 0x3C7, 0x42C, 0x431
 AREA_SAVED_AREA, AREA_SAVED_SCREEN, PLAYER_SAVED_POS = 0x3D5, 0x3D6, 0x3D8
@@ -305,36 +301,6 @@ def main():
                   f"{len(shown)} amounts in {len(bands)} sampled frames, each a frame after the game's, the game's "
                   "own band")
 
-        if args.wants("guru"):
-            g.launch(at="mana-eolis-temple")
-            g.wait(4)
-            assert tcp("fax_world")["hud_x"] == HUD_X, tcp("fax_world")
-
-            def look(name):
-                """A screenshot, RAM and the text box at one frame boundary."""
-                path = g.out / f"{len(g.shots):02d}-{name}.png"
-                _, memory = batch(("screenshot", dict(path=str(path))), ("read_ram", dict(addr=0, len=0x440)))
-                g.shots.append(path.name)
-                return Band(path, HUD_X, glyphs), bytes.fromhex(memory["hex"])
-
-            band, r = look("guru-before")
-            assert (r[HP], r[MP]) == (0x20, 5), (r[HP], r[MP])
-            assert (band.bar(HP_LINE), band.bar(MP_LINE)) == (0x20, 5), (band.bar(HP_LINE), band.bar(MP_LINE))
-            walk("left")                                            # to the Guru, at the left
-            assert not box_open()
-            before = ram(MESSAGE_ID)
-            g.act("up", 4, 0)
-            until("the Guru's first line", lambda: box_open() and ram(MESSAGE_ID) != before, 300)
-            first = ram(MESSAGE_ID)
-            until("the bars drawn", lambda: tcp("mana_state")["bars"] == 0, 60)
-            g.wait(4)                                               # the NMIs send what was queued before them
-            band, r = look("guru-first-line")
-            assert r[MESSAGE_ID] == first and r[0x20C] == 0, "still his first line"
-            assert (r[HP], r[MP]) == (FULL, FULL), (r[HP], r[MP])
-            assert (band.bar(HP_LINE), band.bar(MP_LINE)) == (FULL, FULL), (band.bar(HP_LINE), band.bar(MP_LINE))
-            print("ok: at Eolis's Guru the status bar shows 32 HP and 5 MP, and during his first line both bars "
-                  "full, as MP from kills fills them")
-            g.close()
         print("screenshots:", ", ".join(g.shots))
     except BaseException:
         if g.running():

@@ -123,8 +123,8 @@ between actions.
 | `$07` | item | Add an item (`IScriptAction_AddInventoryItem`, `$839F`): its `IScripts_LoadByte`, then at `$83A2` `PHA`, `PHA`, `Player_AddToInventory` (no room check: a full list loses its last entry), and the item's picture and name in the dialogue box, with the blinking ▲, until A (only A: `BPL` on `Joy1_ChangedButtonMask`); then the next action. Entered at `$83A2` with the item in A, it gives any item (the Potion Sellers did, #127, until #179) |
 | `$08` | items | A shop's buy list (see *Shops*) |
 | `$0F` | addr | The shops' Buy/Sell menu: message `$10`, then a cursor on its lines 1 and 3. A on the first choice jumps to addr, A on the second goes on to the next action, B ends the script |
-| `$0A` | MP | Add MP (`IScriptAction_AddMP`, `$8580`), 1 at a time with its sound |
-| `$13` | HP | Add HP (`IScriptAction_AddHP`), the same way |
+| `$0A` | MP | Add MP (`IScriptAction_AddMP`, `$8580`): with `Player_MP` 80 or more, nothing; else exactly MP points, one a frame (`IScripts_UpdatePortraitAnimation`, then `Player_SetMP` with `Player_MP` + 1, which draws the bar), with sound `$13` on the frames `InterruptCounter` & 3 is 0 (`IScripts_PlayFillingSound`). Only the bar caps it: an amount past 80 goes on at 80, a sound every 4th frame, for the rest. The meat shops (30), Eolis's Magician (40) and the doctors (80) use it |
+| `$13` | HP | Add HP (`IScriptAction_AddHP`, `$85AF`), the same way, from `Temp_AddedHPValue` (`$0399`), not `Player_HP_U`: `UI_DrawPlayerHPValue`, its only writer, stores both, so they differ only where something stored HP without drawing it. Each point is `UI_DrawPlayerHPValue` (its bar too); `Player_HP_L` is left as it was |
 | `$11` | items | A shop's sell list |
 | `$14` | | Show the mantra (`IScriptAction_ShowPassword`): encodes it, types it a character a frame, waits for A |
 | `$16` | msg, addr | Question: A jumps to addr, B goes on to the next action. Unused by the game, works: Guru travel's ASK step and the Magician's lesson ask with it |
@@ -1873,6 +1873,14 @@ only user of `$1F`:
 | `$AB44` | `LDA #$04`, `JSR Sound_PlayEffect`; `$3C` to `Player_InvincibilityPhase`; knockback; `$0A00` to `Arg_PlayerHealthDelta`; `JSR Player_ReduceHP` | 10 HP, wherever the hero is |
 | `$AB60` | `LDX CurrentSpriteIndex`, `JMP Sprite_FinishBehavior` | |
 
+- **It is the game's only screen flash.** Nothing else sets `PPU_Mask`'s
+  greyscale (bit 0) or emphasis bits: its other writers are
+  `Game_InitScreenAndMusic` (`$1E`), `Screen_ClearSprites` and the two
+  Sugata kills, which clear bit 0. Greyscale keeps each color's row of the
+  palette and drops its hue (`entry & $30`), so black (`$0F`) becomes the
+  dark grey `$00` and the picture lifts: a flash, not a dimming. Save files'
+  flash as a Guru remembers a journey is this greyscale, over the whole
+  presented picture (`fax_sugata_grey`).
 - It checks no position, hitbox, shield, jump, iframes or Ointment: every
   other hit checks the last two.
 - Killing Sugata clears the greyscale bit (in `Player_HitEnemyWithMagic`'s
@@ -2670,9 +2678,9 @@ jump a few updates after stepping off, as A from the hang itself would.
   Magician (40 MP for 200 G, `ISCRIPT_EOLIS_MARTIAL_ARTS_MAGIC_SHOP`; both through
   `IScriptAction_AddMP`, `$8580`, bank 12, 1 MP at a time with its sound) and
   the Elixir's fill (`Player_FillHPAndMP`, `$C4DA`, 4 at a time). It never
-  comes back on its own. With the remaster, kills give it and a Guru fills
-  it, and the Magician teaches the hero to draw twice as much from a kill
-  instead of selling MP (*Features*).
+  comes back on its own. With the remaster, kills give it and a Guru's save
+  fills it, and the Magician teaches the hero to draw twice as much from a
+  kill instead of selling MP (*Features*).
 - **Only a cast takes MP.** The stores to `Player_MP` are `Game_Start`'s,
   `Player_Spawn`'s, `Player_ReduceMP` (`$C0C3`, from `Player_CastMagic`, the
   only one that lowers it), `Player_AddMP` (`$C0D9`: `CLC`, `ADC Player_MP`,
@@ -2680,8 +2688,9 @@ jump a few updates after stepping off, as A from the hang itself would.
   capped at 80). So MP lower than a frame before means a spell was cast (or a
   new game began). With the remaster the Wing Boots (while A is held) and the
   Hour Glass take MP too (Recharging items stores it and draws the bar with
-  `Player_SetMP`), and a kill or a Guru stores it (MP from kills, which draws
-  it the same way).
+  `Player_SetMP`), a kill stores it (MP from kills, which draws it the same
+  way), and a Guru's save adds it through the game's own `ADD_MP` (Save
+  files).
 - **The bar is drawn only when MP changes through those routines.**
   `Player_SetMP` stores MP and falls into `UI_SetHUDBarValue` with Y = 1, the
   Magic bar, which queues two PPU buffer commands: the bar at `$2043`,
@@ -2731,6 +2740,30 @@ jump a few updates after stepping off, as A from the hang itself would.
   + 2): `$19`, a middle green, in 25 of bank 11's 31 screen palettes, and
   `$1A` in one (14). The other five have `$0F` (4, loaded only by dead
   code), `$27` (16, the title's, and 28), `$25` (29) and `$1C` (30).
+- **The game's fills.** Three fill HP or MP a little at a time, all with
+  sound `$13`, the "fill a bar" sound:
+  - The Red Potion (`Player_UseRedPotion`, `$C533`): its script `$80`
+    ("I've used Red Potion."), sound `$1A` once, then 2 HP every 4 frames
+    with `$13` each time, up to 80: 160 frames from empty. HP only.
+  - The Elixir's revive (`Player_UseElixir`, `$C4CA`, script `$85`, then it
+    falls into `Player_FillHPAndMP`, `$C4DA`): 4 HP every 4 frames with `$13`
+    until HP is 80, then 4 MP every 4 frames until MP is 80, one bar then the
+    other, at least one step of each even when full.
+  - The two script actions `ADD_HP` (`$13`) and `ADD_MP` (`$0A`) (*Interaction
+    scripts*): a point a frame, `$13` every 4th frame, inside a conversation,
+    the box and the portrait left as they are. The meat shops add 30 of each,
+    HP then MP. The doctors' treatment (all six hospitals, `ISCRIPT_*_DOCTOR`:
+    "Do you want treatment?", the price, then `13 50`, `0A 50`) is the game's
+    own full refill in a conversation: HP then MP to 80, but always 80 frames
+    a bar not already full, since the 80 is added whole (the rest at 80, with
+    the sound).
+  The first two run in play: each step calls `Game_DrawScreenInFrozenState`
+  and waits in its own `WaitForNextFrame`s with `Sprites_FlipRanges`, so they
+  draw the play screen's sprites and do not fit a conversation. A Guru's save
+  (Save files) fills as a doctor treats, the two actions, HP then MP, from a
+  step of its own, but with only what is missing: with 32 HP and 5 MP that
+  is 48 frames, then 75, the bars drawn a frame behind RAM as the NMI sends
+  them.
 - **A spell goes off with MP equal to its cost.** `Player_ReduceMP`
   subtracts `MAGIC_COSTS` (`$B7A9`, bank 14: 2, 4, 6, 10, 16, by
   `SelectedMagic`) from `Player_MP` and refuses only on a borrow, so a spell
@@ -5765,13 +5798,12 @@ one of them since #110, so the remaster always plays in its 424x240 view.
     `Screen_ScrollDirection` `$FF`) and the PPU buffer has room for both of
     the bar's commands (0, empty, or at least 50 bytes); else at the next
     frame's end that has all three.
-  - **A Guru** fills HP and MP to 80 at his first action (`fax_mana_guru`,
-    from Recharging items' site at `$826E`, with the Elixir's charge), before
-    he speaks: the safety net for stretches with nothing to kill. Each bar
-    that changed is drawn then (`UI_DrawPlayerHP`, `Player_SetMP`, committed)
-    if the buffer has room; his box has usually filled it, so it is drawn a
-    frame's end later, as his first line types. `Player_HP_L` is left as the
-    game's own fills leave it.
+  - **A Guru's save** fills HP and MP to 80 (Save files, #205): the safety
+    net for stretches with nothing to kill, and the rest point. Until #205
+    a Guru filled both at his first action, before he spoke, through this
+    module (`fax_mana_guru`, gone); talking without saving fills nothing
+    now. A state saved then with his Power bar still to draw still draws it
+    (`UI_DrawPlayerHP`, committed, at a frame's end with room).
   - Sugata's flash turned back by the Magic Shield kills in a committed call
     that runs no hooks; Sugata's flash calls `fax_mana_killed` for it.
   - Nothing comes back over time. With the remaster off, the original: MP
@@ -5782,7 +5814,7 @@ one of them since #110, so the remaster always plays in its 424x240 view.
     still `faxanadu.mana-refill` (plugin, record, hook prefix), so the switch
     and old states find it.
 - **The Magician's lesson** (`fax_lesson.c`, #105). Eolis's Magician no
-  longer sells 40 MP for 200 (any Guru now fills MP): he teaches the hero,
+  longer sells 40 MP for 200 (a Guru's save now fills MP): he teaches the hero,
   once, for 30000 Golds, to recover MP faster, twice the MP from every kill
   (MP from kills' `TAUGHT`; a boss's 40, half the bar), and only a hero who
   has studied at the magic hall in the Mist (bought Fire from its Magician).
@@ -6152,8 +6184,8 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   - A kill's MP (MP from kills, below) comes during a flight or a freeze as
     at any time: each frame of a run reads `Player_MP` afresh and takes its
     MP from what there is.
-  - At a Guru's first action, with the Elixir's charge, MP from kills fills
-    HP and MP (`fax_mana_guru`).
+  - At a Guru's first action it charges the Elixir; HP and MP it leaves
+    (until #205 MP from kills filled them there; his save fills them now).
   - `Player_UseElixir`: the Elixir is spent. `SpecialItems`' bit stays the
     game's own "a revive is in reserve", so `Player_ReduceHP`, the Player page
     and the Spring of Trunk go by whether it is charged.
@@ -6682,7 +6714,8 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   isolated rooms.
 
 - **Save files** (`fax_save.c`, `fax_files.c`). Three files instead of
-  mantras; see "Save files" below.
+  mantras, and a Guru's save is the rest point (a flash, HP and MP filled);
+  see "Save files" below.
 
 ## Save files
 
@@ -6795,6 +6828,37 @@ file in play, the interpreter goes to a step in unused ROM (bank 12,
   temple, writes the file, and shows "I will remember / your journey."
   (through Guru travel's SAY step, or Save files' own at `$AE15`). Then, if
   Guru travel has somewhere to offer, its intro and offer follow.
+- **Saving is the rest point** (#205), as a Metroidvania's save room: as he
+  remembers (A on "Remember my journey." or on the question, the hook at
+  the saved line's SAY step), the whole presented picture flashes once and
+  HP and MP fill to 80, before his line. B, the other choice, or no file in
+  play fill nothing; a respawn's save (death, a journey, continuing) is no
+  Guru's and fills nothing either, though `Player_Spawn` fills both after a
+  death or a continue as it always did (a journey keeps them).
+  - **The fill** is the game's own: once the choice at `$AE10` has been read,
+    Save files serves the same four bytes as `13 hp 0A mp` (`ADD_HP` 80 - HP,
+    `ADD_MP` 80 - MP: the actions add exactly their amount, so it is what is
+    missing, and none at 80) and points the script there; at `$AE14`, which
+    is never read, the hook sends it on to the saved line. So HP counts up a
+    point a frame, then MP, with the meat shops' fill sound `$13` (the Red
+    Potion's) every 4th frame, the box and portrait as they were (the choice's
+    text stays up), the music on; from 32 HP and 5 MP, 48 frames then 75, and
+    his line's first letter on the last. B cannot cut it short: the actions
+    read no button. It sets `Temp_AddedHPValue` to `Player_HP_U` first, since
+    `ADD_HP` fills from it. Of the game's fills (*MP and its bar*), only these
+    run in a conversation (the doctors' treatment is the same two), and they
+    fill one bar then the other.
+  - **The flash** is the game's own flash, Sugata's greyscale (*Sugata's
+    flash*): every pixel of the presented picture, Seamless's 424-wide view
+    with its margins, the status bar, the box and the speaker's tab, becomes
+    the grey of its palette row, for 8 frames from the save's, once. It is
+    drawn at present time (`fax_files_present`, after the speaker tabs, before
+    the map and quest log), so the machine and the ROM are untouched.
+  - Its save-state record (version 3) adds the fill's two amounts and the
+    flash's frames left: a state saved mid-fill loads, its step is served
+    again, and the fill goes on where the interpreter was (what is left is
+    the game's `IScript_HPOrMPValueToAdd`, `$0206`). Versions 1 and 2 load with
+    neither.
 - **The spawn point moves only on a save** (#43). `SET_SPAWN_POINT` (`$06`)
   still runs, so Guru travel meets the Guru there, but Save files puts
   `TempleSpawnPoint` back at the next action and keeps the raise as the
