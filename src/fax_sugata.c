@@ -412,7 +412,7 @@ const uint32_t *fax_sugata_present(const uint32_t *picture, int *w, int *h) {
     for (unsigned i = 0; i < BANDS && capture_path[0] && capture_kind != NO_BAND; ++i) {
         const Band *b = &bands[i];
         if (capture_kind == b->kind &&
-            (b->kind == FLASH_BAND ? FLASH_SHOWN - b->frames >= capture_at : warning_frames() >= capture_at)) {
+            (b->kind == FLASH_BAND ? (unsigned)(FLASH_SHOWN - b->frames) >= capture_at : warning_frames() >= capture_at)) {
             if (cyc_write_png(capture_path, canvas, width, height)) ++captured;
             capture_kind = NO_BAND;
         }

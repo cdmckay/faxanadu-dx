@@ -4,6 +4,31 @@ project(FaxanaduRecomp C CXX)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 option(NESRECOMP_ENABLE_TRACE "Enable game diagnostics" OFF)
+# compile_commands.json, for tools/lint.sh and editors.
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# The bug-catching builds (docs/C_TOOLING.md). FAX_SANITIZE builds the whole
+# game, the engine and the recompiled code with it, under AddressSanitizer and
+# UndefinedBehaviorSanitizer: tools/test.sh --sanitize plays it, in build-asan.
+# FAX_WERROR makes a warning in the repo's own C an error: tools/test.sh turns
+# it on in its builds, so the gate fails on one, while a player's build, with
+# whatever compiler, only warns.
+option(FAX_SANITIZE "Build with AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
+option(FAX_WERROR "Treat warnings in the repo's own C (src/) as errors" OFF)
+set(FAX_SANITIZE_RPATH "$ENV{FAX_SANITIZE_RPATH}" CACHE PATH "SDL3's folder, an rpath of the sanitized game")
+if(FAX_SANITIZE)
+    if(MSVC)
+        message(FATAL_ERROR "FAX_SANITIZE needs clang or gcc")
+    endif()
+    # Under AddressSanitizer, sdl2-compat finds SDL3 only by the game's own
+    # rpath, and on macOS a dialog says so when it does not (flake.nix).
+    if(NOT EXISTS "${FAX_SANITIZE_RPATH}")
+        message(FATAL_ERROR "FAX_SANITIZE needs FAX_SANITIZE_RPATH, SDL3's folder: configure in the Nix devShell")
+    endif()
+    add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=address,undefined)
+    list(APPEND CMAKE_BUILD_RPATH "${FAX_SANITIZE_RPATH}")
+endif()
 
 set(NESRECOMP_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/nesrecomp" CACHE PATH "NESRecomp engine checkout")
 
@@ -81,6 +106,28 @@ if(NESRECOMP_BACKEND STREQUAL "cycle")
     target_include_directories(FaxanaduRecomp PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src"
         "${NESRECOMP_ROOT}/runner/include" "${NESRECOMP_ROOT}/runner/src")
     target_compile_definitions(FaxanaduRecomp PRIVATE CYC_CONTENT_TOOLS)
+    # Warnings on the C this repo owns, every src/ file the game builds, not
+    # the engine's or the recompiled code's (docs/C_TOOLING.md).
+    if(NOT MSVC)
+        get_target_property(FAX_OWN_SOURCES FaxanaduRecomp SOURCES)
+        list(FILTER FAX_OWN_SOURCES INCLUDE REGEX "^src/")
+        set(FAX_WARNINGS -Wall -Wextra -Wshadow -Wimplicit-fallthrough -Wmissing-prototypes
+            -Wstrict-prototypes -Wformat=2 -Wundef -Wcast-qual -Wwrite-strings -Wpointer-arith)
+        if(CMAKE_C_COMPILER_ID MATCHES "Clang")
+            list(APPEND FAX_WARNINGS -Wconditional-uninitialized -Wmissing-variable-declarations
+                -Wshorten-64-to-32 -Wunreachable-code -Wloop-analysis)
+        endif()
+        if(FAX_WERROR)
+            list(APPEND FAX_WARNINGS -Werror)
+        endif()
+        set_source_files_properties(${FAX_OWN_SOURCES} PROPERTIES COMPILE_OPTIONS "${FAX_WARNINGS}")
+        # gcc takes fax_world.c's statements after an if, on its line, for
+        # ones it guards: until that file is formatted (.clang-format), not
+        # there.
+        if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+            set_property(SOURCE src/fax_world.c APPEND PROPERTY COMPILE_OPTIONS -Wno-misleading-indentation)
+        endif()
+    endif()
     # The remaster's features were packages of their own before they became
     # one package (#56), and so was Seamless until it joined it (#110). That
     # package was faxanadu.remastered until the project became Faxanadu DX

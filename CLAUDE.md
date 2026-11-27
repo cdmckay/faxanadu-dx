@@ -51,12 +51,21 @@ cmake -S . -B build-cycle -DCMAKE_BUILD_TYPE=Release -DNESRECOMP_ROM="$PWD/Faxan
 cmake --build build-cycle -j"$(nproc)"
 build-cycle/FaxanaduRecomp "Faxanadu (USA).nes"     # the launcher, then the game
 tools/test.sh                                        # every check; --quick skips the game runs
+tools/test.sh --sanitize                             # the same, the game under ASan and UBSan (build-asan)
+tools/lint.sh                                        # clang-tidy on src/ (test.sh runs it)
 tools/disassembly.sh                                 # chipx86's disassembly, verified, with labels
 tools/readme_screenshots.py --only NAME             # the README's screenshot of a feature
 ```
 
 There is no CI: nothing builds without the ROM, which cannot be distributed.
 `tools/test.sh` is the gate, so run it before every PR.
+
+The gate also catches bugs in the C itself: a warning in `src/` fails the
+build, clang-tidy lints `src/`, and the unit tests run under AddressSanitizer
+and UBSan. `--sanitize` plays the end-to-end suite on a sanitized game too;
+run it before a PR that changes how `src/` reads or writes memory.
+[docs/C_TOOLING.md](docs/C_TOOLING.md) has each tool, how to read its
+reports, and the `.clang-format` the tree is not formatted to yet.
 
 Its end-to-end runs play a game a hardware thread at once, longest first, so
 they take a machine-wide lock: a second checkout's suite prints that it is

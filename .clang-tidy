@@ -1,0 +1,50 @@
+# clang-tidy on the repo's own C, src/ (tools/lint.sh; docs/C_TOOLING.md):
+# the checks that find bugs, not style, and any finding is an error. Off, as
+# noise on this code (each was read through on all of src/ when it was set):
+#
+#   bugprone-easily-swappable-parameters          two ints side by side, everywhere
+#   bugprone-implicit-widening-of-multiplication-result, bugprone-narrowing-conversions
+#                                                 small constant products, int from a byte
+#   bugprone-assignment-in-if-condition, bugprone-switch-missing-default-case,
+#   bugprone-branch-clone, bugprone-inc-dec-in-conditions
+#                                                 the house style, on purpose
+#   bugprone-too-small-loop-variable              a byte counting to a small constant
+#   bugprone-signed-char-misuse                   int8_t data, not text
+#   clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling
+#                                                 wants Annex K's fprintf_s and friends
+#   clang-analyzer-optin.taint.*                  marks every byte from a file tainted, and
+#                                                 then text[strcspn(text, "\n")] out of bounds
+#   clang-analyzer-optin.performance.Padding      a struct's layout, not a bug
+#   clang-analyzer-deadcode.DeadStores            the last n += snprintf(...) of a list
+#   clang-analyzer-unix.Errno                     errno after a failed call, unread on purpose
+#   misc-include-cleaner, misc-no-recursion       includes and recursion, both fine here
+#
+# bugprone-suspicious-string-compare still catches a compare with a wrong
+# constant; !strcmp(a, b) is how this code says equal.
+Checks: >
+  -*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-implicit-widening-of-multiplication-result,
+  -bugprone-narrowing-conversions,
+  -bugprone-assignment-in-if-condition,
+  -bugprone-switch-missing-default-case,
+  -bugprone-branch-clone,
+  -bugprone-inc-dec-in-conditions,
+  -bugprone-too-small-loop-variable,
+  -bugprone-signed-char-misuse,
+  clang-analyzer-*,
+  -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,
+  -clang-analyzer-optin.taint.*,
+  -clang-analyzer-optin.performance.Padding,
+  -clang-analyzer-deadcode.DeadStores,
+  -clang-analyzer-unix.Errno,
+  misc-*,
+  -misc-include-cleaner,
+  -misc-no-recursion
+WarningsAsErrors: '*'
+# The repo's own headers, not the engine's (nesrecomp/runner/src/ is a src/ too).
+HeaderFilterRegex: '.*/src/[^/]*\.h$'
+ExcludeHeaderFilterRegex: '.*/(nesrecomp|recomp-ui)/.*'
+CheckOptions:
+  bugprone-suspicious-string-compare.WarnOnImplicitComparison: false

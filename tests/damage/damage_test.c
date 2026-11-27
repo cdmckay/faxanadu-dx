@@ -306,7 +306,7 @@ static void never_on_top_of_each_other(void) {
     sword(6, 8);
     CHECK(count == 2 && seen.crowded == 1);
     CHECK(numbers[1].lift == 0 && top_of(&numbers[1]) == 152 && top_of(&numbers[0]) == 152 - SPACED);
-    for (unsigned f = 0; count == 2; ++f) {   /* apart every frame, as both rise at one pace */
+    while (count == 2) {   /* apart every frame, as both rise at one pace */
         CHECK(!crowded());
         frames(1);
     }

@@ -1191,8 +1191,8 @@ static int pass_begin(void) {
         cyc_mod_peek(PLAYER_IS_DEAD))
         return 0;
     int hx = cyc_mod_peek(HERO_X), hy = cyc_mod_peek(HERO_Y);
-    bool spell = cyc_mod_peek(CAST_TYPE) < 5;
-    int cx = spell ? spell_x16() : 0, cy = cyc_mod_peek(CAST_Y);
+    bool spell_on = cyc_mod_peek(CAST_TYPE) < 5;
+    int cx = spell_on ? spell_x16() : 0, cy = cyc_mod_peek(CAST_Y);
     Candidate c[16];
     unsigned n = 0;
     for (int side = 0; side < 2; side++) {
@@ -1213,7 +1213,7 @@ static int pass_begin(void) {
             int w = rom14(HITBOX_WIDTHS + h) + 1, t = rom14(HITBOX_HEIGHTS + h) + 1;
             int g = gap(x, w, hx, HERO_W);
             bool near = g <= REACH && gap(y, t, hy, HERO_H) <= REACH;
-            if (!near && spell) near = gap(x, w, cx, 32) <= PAD && gap(y, t, cy, 32) <= PAD;
+            if (!near && spell_on) near = gap(x, w, cx, 32) <= PAD && gap(y, t, cy, 32) <= PAD;
             if (!near && !due) continue;
             Candidate it = {nb, (int)k, due ? -1 : g, x - rd(nb, SLOT_X + k), due};
             unsigned at = n++;

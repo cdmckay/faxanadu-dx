@@ -1,8 +1,10 @@
 # Tests
 
-`tools/test.sh` runs every check: allocations, the C unit tests, the game
-build, then every end-to-end test. `tools/test.sh --quick` skips the
-end-to-end runs. While developing, run `--quick` and your own end-to-end test
+`tools/test.sh` runs every check: allocations, clang-tidy on `src/`, the C
+unit tests (under AddressSanitizer and UBSan), the game build (a warning in
+`src/` fails it), then every end-to-end test. `tools/test.sh --quick` skips
+the end-to-end runs, and `--sanitize` plays them on the game built with the
+sanitizers ([docs/C_TOOLING.md](../docs/C_TOOLING.md)). While developing, run `--quick` and your own end-to-end test
 directly; run the full suite before a PR. The end-to-end part takes a
 machine-wide `flock` (`$XDG_RUNTIME_DIR/faxanadu-dx-e2e.lock`), so a
 second checkout's suite waits for the first's games to finish.
