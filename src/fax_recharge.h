@@ -3,8 +3,8 @@
  * Elixir are kept after use. The Wing Boots and the Hour Glass both run on
  * MP, with no cooldown, and turning either on or off shows no text box: an
  * end the player did not cause says so below the HUD, and the first use of
- * each teaches it once; a Guru restores the Elixir (and fills HP and MP:
- * fax_mana.c), says when he does, and once that he can. It registers itself
+ * each teaches it once; a Guru restores the Elixir (his save fills HP and MP:
+ * fax_files.c), says when he does, and once that he can. It registers itself
  * and keeps its state in its save-state record, in the file in play (Save
  * files' named fields recharge.elixir and recharge.elixir_told) and in
  * faxanadu_recharge.txt (the lessons learned); the host adds its TCP command

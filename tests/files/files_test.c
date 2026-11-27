@@ -3,8 +3,9 @@
  * bytes of the Guru scripts and the Buy/Sell menu's message operand, unused ROM
  * ($FF), the engine's read overrides, and the title's letters in its pattern
  * table. A small interpreter plays the interaction-script actions the Gurus
- * use, calling the hook before each as IScripts_InvokeNextAction does. Files
- * are written in a scratch directory. */
+ * use, and ADD_HP and ADD_MP a point a frame as the game's do, calling the
+ * hook before each as IScripts_InvokeNextAction does. Files are written in a
+ * scratch directory. */
 #define _POSIX_C_SOURCE 200809L
 /* macOS's headers hide mkdtemp under a strict _POSIX_C_SOURCE; this shows it. */
 #define _DARWIN_C_SOURCE
@@ -106,6 +107,10 @@ void nes_mod_set_local_only(const char *name, int required) {
     (void)name;
     (void)required;
 }
+/* Sugata's flash's greyscale (fax_sugata.c), as a mark: the colour's low
+ * bits, opaque grey. */
+enum { GREYED = 0x7F000000u };
+uint32_t fax_sugata_grey(uint32_t color) { return GREYED | (color & 0xFFu); }
 bool fax_text_load(void) { return true; }
 bool fax_text_loaded(void) { return true; }
 static struct {
@@ -753,10 +758,32 @@ static void jump(uint16_t to) {
     ram[ISCRIPT_ADDR + 1] = (uint8_t)(to >> 8);
     ram[ISCRIPT_OFFSET] = 0;
 }
+/* IScriptAction_AddHP and IScriptAction_AddMP: none at 80 or more (HP as
+ * Temp_AddedHPValue has it); else `n` points, one a frame, each frame's end
+ * seen by the module, capped at 80 as UI_DrawPlayerHPValue and Player_SetMP
+ * cap. Says what it filled from and to, and notes the frames it took and
+ * how many of their pictures the save's flash greyed. */
+static unsigned fill_frames, flashed_frames;
+static void fill(uint8_t op, uint8_t n) {
+    bool hp = op == ADD_HP;
+    uint8_t from = hp ? ram[ADDED_HP] : ram[PLAYER_MP];
+    if (from >= 0x50) return;
+    for (unsigned i = 0; i < n; ++i) {
+        uint8_t v = (uint8_t)((hp ? ram[ADDED_HP] : ram[PLAYER_MP]) + 1);
+        if (v > 0x50) v = 0x50;
+        if (hp) ram[ADDED_HP] = ram[PLAYER_HP_U] = v;
+        else ram[PLAYER_MP] = v;
+        ++fill_frames;
+        fax_files_frame_end();
+        if (flash) ++flashed_frames; /* its picture, presented after its end */
+    }
+    say("%s %u to %u", hp ? "hp" : "mp", from, hp ? ram[PLAYER_HP_U] : ram[PLAYER_MP]);
+}
 /* Run a script from `at`. Each question or menu takes the next answer: 'A' or
  * 'B' for a question, '0', '1' or 'B' for the Buy/Sell menu. */
 static void run(uint16_t at, const char *answers) {
     said_n = 0;
+    fill_frames = flashed_frames = 0;
     ram[TEXTBOX_CLOSED] = 0;
     jump(at);
     for (int steps = 0; steps < 64; ++steps) {
@@ -807,6 +834,11 @@ static void run(uint16_t at, const char *answers) {
             }
             len = 4;
             break;
+        case ADD_HP:
+        case ADD_MP:
+            fill(op, arg);
+            len = 2;
+            break;
         case 0x17:
             jump(addr1);
             continue;
@@ -849,7 +881,8 @@ static void temple_guru(uint8_t here, bool new_title, const char *answers) {
     run(0xA000, answers);
     fax_files_frame_end();
 }
-/* A file in play: saved with Apolune's Guru, Mascon the furthest temple. */
+/* A file in play: saved with Apolune's Guru, Mascon the furthest temple; HP
+ * and MP full, so a save fills nothing. */
 static void in_play(void) {
     stock();
     remove_files();
@@ -857,6 +890,7 @@ static void in_play(void) {
     furthest = 3;
     ram[TEMPLE_SPAWN_POINT] = 1;
     ram[GOLD] = 42;
+    ram[PLAYER_HP_U] = ram[ADDED_HP] = ram[PLAYER_MP] = FULL;
 }
 
 static void choices(void) {
@@ -964,6 +998,82 @@ static void choices(void) {
     remove_files();
 }
 
+/* A save is the rest point (#205): as he remembers, the picture flashes and
+ * HP then MP fill to 80 through the game's ADD_HP and ADD_MP, a point a
+ * frame, before his line; B, or the other choice, leaves them. Everywhere a
+ * Guru saves: the menu and the question, after the mantra's greeting, a new
+ * title, and Eolis's Guru with the Ring. */
+static void saving_rests(void) {
+    static const uint8_t travel_say[] = { SHOW_MESSAGE, SLOT_ID, END }; /* Guru travel's SAY step */
+    /* The menu, at 32 HP and 5 MP, Temp_AddedHPValue stale (HP stored, not drawn). */
+    in_play();
+    travel_offers = travel_served = true;
+    for (unsigned i = 0; i < 3; ++i)
+        cyc_mod_set_prg_read_override(prg(12, (uint16_t)(TRAVEL_SAY + i)), 0xFF, travel_say[i]);
+    ram[PLAYER_HP_U] = 32;
+    ram[ADDED_HP] = 70;
+    ram[PLAYER_MP] = 5;
+    unsigned saved_before = saves;
+    temple_guru(5, false, "0");
+    EXPECT("msg 22", MENU, "hp 32 to 80", "mp 5 to 80", SAVED, "end");
+    CHECK(fill_frames == 48 + 75 && fill_hp == 48 && fill_mp == 75 && refills == 1 && saves == saved_before + 1);
+    CHECK(flashed_frames == FLASH_FRAMES && flash == 0); /* the fill's first 8 frames, then never again */
+    CHECK(ram[TEMPLE_SPAWN_POINT] == 5 && travel_begun == 0 && guru == GURU_IDLE);
+    CHECK(cpu_read(STEP) == ADD_HP && cpu_read(STEP + 1) == 48 && cpu_read(STEP + 2) == ADD_MP &&
+          cpu_read(STEP + 3) == 75 && cpu_read(STEP + 4) == 0xFF); /* + 4 never read: steered on */
+    /* The other choice, and B: no save, no flash, HP and MP as they were. */
+    static const char *const others[] = { "1", "B" };
+    for (unsigned i = 0; i < 2; ++i) {
+        in_play();
+        travel_offers = true;
+        ram[PLAYER_HP_U] = ram[ADDED_HP] = 32;
+        ram[PLAYER_MP] = 5;
+        temple_guru(5, false, others[i]);
+        EXPECT("msg 22", MENU, "end");
+        CHECK(ram[PLAYER_HP_U] == 32 && ram[PLAYER_MP] == 5 && fill_frames == 0 && refills == 0 && !flash);
+    }
+    /* The question (Guru travel off: our own SAY step), after a new title. */
+    in_play();
+    ram[PLAYER_HP_U] = ram[ADDED_HP] = 1;
+    ram[PLAYER_MP] = 79;
+    temple_guru(4, true, "A");
+    EXPECT("msg 23", QUESTION, "hp 1 to 80", "mp 79 to 80", SAVED, "end");
+    CHECK(fill_frames == 80 && refills == 1 && ram[TEMPLE_SPAWN_POINT] == 4);
+    in_play();
+    ram[PLAYER_HP_U] = ram[ADDED_HP] = 1;
+    ram[PLAYER_MP] = 79;
+    temple_guru(4, true, "B");
+    EXPECT("msg 23", QUESTION, "end");
+    CHECK(ram[PLAYER_HP_U] == 1 && ram[PLAYER_MP] == 79 && !flash && refills == 0);
+    /* Eolis's Guru with the Ring: MP only. Full already: the flash, no fill. */
+    in_play();
+    ram[PLAYER_MP] = 0;
+    ram[AREA_CURRENT_AREA] = BUILDINGS;
+    ram[AREA_CURRENT_SCREEN] = temple_screen[0];
+    run(0xA0C6, "A");
+    EXPECT("msg 2D", QUESTION, "mp 0 to 80", SAVED, "end");
+    CHECK(fill_hp == 0 && fill_mp == 80 && fill_frames == 80);
+    in_play();
+    temple_guru(2, false, "A");
+    EXPECT("msg 22", QUESTION, SAVED, "end");
+    CHECK(refills == 1 && fill_hp == 0 && fill_mp == 0 && flash == FLASH_FRAMES);
+    /* The flash: the whole picture (Seamless's 424-wide view), greyed as the
+     * PPU's greyscale would, for FLASH_FRAMES frames from the save's. */
+    static uint32_t picture[424 * 240];
+    for (int i = 0; i < 424 * 240; ++i) picture[i] = 0xFF000000u | (uint32_t)(i & 0x3F);
+    int w = 424, h = 240;
+    for (unsigned f = 0; f < FLASH_FRAMES; ++f) {
+        const uint32_t *got = fax_files_present(picture, &w, &h);
+        CHECK(got != picture && w == 424 && h == 240);
+        CHECK(got[0] == (GREYED | 0) && got[423] == (GREYED | (423 & 0x3F)) && got[424 * 240 - 1] == (GREYED | 0x3F));
+        fax_files_frame_end();
+    }
+    CHECK(fax_files_present(picture, &w, &h) == picture); /* once: never a strobe */
+    deactivate();
+    CHECK(fax_files_present(picture, &w, &h) == picture);
+    remove_files();
+}
+
 /* ---- save states ---- */
 
 static void save_states(void) {
@@ -975,9 +1085,10 @@ static void save_states(void) {
     jump(GURU_MANTRA);
     next_action_hook(0x826E);
     CHECK(guru == GURU_MENU);
-    uint8_t buf[16];
+    uint8_t buf[20];
+    CHECK(state_get(buf, RECORD - 1) == -1);
     int n = state_get(buf, sizeof buf);
-    CHECK(n == RECORD && state_validate(buf, n));
+    CHECK(n == RECORD && buf[0] == 3 && state_validate(buf, n));
     memset(overridden, 0, sizeof overridden);
     guru = GURU_IDLE;
     furthest = 0;
@@ -1011,16 +1122,63 @@ static void save_states(void) {
     buf[3] = TOP;
     buf[4] = 3;
     CHECK(!state_validate(buf, n));
-    /* Version 1 had the file select ("Erase a file" its row 3): the two choices come back. */
+    /* Version 1 had the file select ("Erase a file" its row 3): the two choices
+     * come back. Its record is 14 bytes, as version 2's. */
     buf[0] = 1;
     buf[3] = 2;
     buf[4] = 3;
-    CHECK(state_validate(buf, n) && state_set(buf, n) && menu.mode == TOP && menu.cursor == 0 && title_up);
-    buf[3] = 3;
     CHECK(!state_validate(buf, n));
+    CHECK(state_validate(buf, RECORD_V2) && state_set(buf, RECORD_V2) && menu.mode == TOP && menu.cursor == 0 &&
+          title_up);
+    buf[3] = 3;
+    CHECK(!state_validate(buf, RECORD_V2));
     CHECK(state_set(buf, 0) && guru == GURU_IDLE && !title_up);
     fax_files_state_loaded();
     CHECK(fax_save_file() == 0);
+
+    /* Mid-fill (#205): the fill step, the saved line, what is left of the
+     * flash; the interpreter's place and what the fill has left are the
+     * machine's, so it goes on where it was. */
+    in_play();
+    ram[AREA_CURRENT_AREA] = BUILDINGS;
+    ram[AREA_CURRENT_SCREEN] = temple_screen[2];
+    ram[PLAYER_HP_U] = ram[ADDED_HP] = 30;
+    ram[PLAYER_MP] = 20;
+    jump(GURU_MANTRA);
+    next_action_hook(0x826E); /* the question */
+    jump(OWN_SAY);
+    next_action_hook(0x826E); /* A: saved, and the fill begins */
+    CHECK(guru == GURU_FILLING && fill_hp == 50 && fill_mp == 60 && flash == FLASH_FRAMES + 1);
+    fax_files_frame_end();
+    n = state_get(buf, sizeof buf);
+    CHECK(n == RECORD && buf[8] == GURU_FILLING && buf[14] == 50 && buf[15] == 60 && buf[16] == FLASH_FRAMES);
+    memset(overridden, 0, sizeof overridden);
+    guru = GURU_IDLE;
+    fill_hp = fill_mp = flash = 0;
+    CHECK(state_set(buf, n));
+    fax_files_state_loaded();
+    CHECK(guru == GURU_FILLING && flash == FLASH_FRAMES && cpu_read(STEP) == ADD_HP && cpu_read(STEP + 1) == 50 &&
+          cpu_read(STEP + 2) == ADD_MP && cpu_read(STEP + 3) == 60 && cpu_read(OWN_SAY) == SHOW_MESSAGE);
+    said_n = 0;
+    message(SLOT_ID);
+    EXPECT(SAVED);
+    jump(STEP + FILL_LEN); /* past the fill: the saved line */
+    next_action_hook(0x826E);
+    CHECK(guru == GURU_SAVED && ram[ISCRIPT_ADDR] == (OWN_SAY & 0xFF) && ram[ISCRIPT_ADDR + 1] == OWN_SAY >> 8);
+    buf[16] = FLASH_FRAMES + 2;
+    CHECK(!state_validate(buf, n));
+    buf[16] = 0;
+    buf[14] = FULL + 1;
+    CHECK(!state_validate(buf, n));
+    buf[14] = 0;
+    CHECK(state_validate(buf, n) && !state_validate(buf, RECORD_V2) && !state_validate(buf, 1));
+    /* Version 2 (14 bytes): loads with no fill and no flash; it could not be filling. */
+    flash = 3;
+    buf[0] = 2;
+    CHECK(!state_validate(buf, RECORD_V2)); /* filling */
+    buf[8] = GURU_QUESTION;
+    CHECK(state_validate(buf, RECORD_V2) && !state_validate(buf, n));
+    CHECK(state_set(buf, RECORD_V2) && guru == GURU_QUESTION && flash == 0 && fill_hp == 0);
     remove_files();
 }
 
@@ -1047,6 +1205,7 @@ int main(void) {
     placement();
     title();
     choices();
+    saving_rests();
     save_states();
     if (!base) {
         CHECK(chdir("/") == 0);

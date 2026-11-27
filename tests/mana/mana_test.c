@@ -444,40 +444,21 @@ static void the_bar_waits_for_room(void) {
     CHECK(mp_drawn == 1 && bar_mp == 11);
 }
 
-/* A Guru: HP and MP to 80 at once, and both bars, in the PPU buffer's room. */
-static void a_guru_fills_hp_and_mp(void) {
-    fresh(5);
-    HP = 20;
-    ram[0x432] = 0x80; /* half an HP: the game's own fills leave the 256ths */
-    cpu.s = 0xF3;      /* between two of the interpreter's actions */
-    fax_mana_guru();
-    CHECK(HP == 80 && MP == 80 && ram[0x432] == 0x80 && bar_hp == 80 && bar_mp == 80 && bars == 0);
-    CHECK(hp_drawn == 1 && mp_drawn == 1 && seen.restores == 1 && WRITE == 66);
-    frames(PLAYING, 10);
-    CHECK(calls == 2);
-    /* Full already: nothing to draw. One full, one not: that one. */
-    fax_mana_guru();
-    CHECK(calls == 2 && seen.restores == 2);
-    MP = 33;
-    fax_mana_guru();
-    CHECK(MP == 80 && hp_drawn == 1 && mp_drawn == 2);
-    /* No room as he begins: each at the first played frame's end that has it. */
-    fresh(5);
-    HP = 20;
-    nmi();
+/* A state saved before #205 as a Guru filled HP and MP (at his first
+ * action, then) may still have both bars to draw: each at the first played
+ * frame's end with room, as the game draws them. Guru fills are Save files'
+ * now (fax_files.c), through the game's own ADD_HP and ADD_MP. */
+static void an_old_gurus_bars(void) {
+    fresh(80);
+    HP = 80;
+    uint8_t old[RECORD] = { RECORD_VERSION, BAR_HP | BAR_MP };
+    CHECK(save_validate(old, RECORD) && save_set(old, RECORD) == 1 && bars == BARS);
     READ = 0x10;
     WRITE = (uint8_t)(READ - 60); /* room for one bar, not two */
-    fax_mana_guru();
-    CHECK(HP == 80 && MP == 80 && hp_drawn == 1 && mp_drawn == 0 && bars == BAR_MP);
-    frame_ends(TEXT); /* his box, still full: the NMI has not sent it yet */
-    CHECK(mp_drawn == 0 && seen.deferred == 1);
-    frames(TEXT, 1); /* a frame into his words */
+    frame_ends(PLAYING);
+    CHECK(hp_drawn == 1 && bar_hp == 80 && mp_drawn == 0 && bars == BAR_MP);
+    frames(PLAYING, 1);
     CHECK(mp_drawn == 1 && bar_mp == 80 && bars == 0);
-    /* The lesson changes nothing here. */
-    fresh_as(5, true);
-    HP = 1;
-    fax_mana_guru();
-    CHECK(HP == 80 && MP == 80);
 }
 
 static void save_states(void) {
@@ -516,7 +497,7 @@ static void save_states(void) {
     CHECK(save_validate(buf, 0) && save_set(buf, 0) == 1 && bars == 0);
 }
 
-/* The remaster off: no site, no fill; a kill gives what the game gives
+/* The remaster off: no site; a kill gives what the game gives
  * (experience). Isolated (Seamless's simulation of another room): nothing. */
 static void off_and_isolated_do_nothing(void) {
     fresh(10);
@@ -524,14 +505,12 @@ static void off_and_isolated_do_nothing(void) {
     HP = 20;
     kill(7, ZOZURA);
     fax_mana_killed(SUGATA);
-    fax_mana_guru();
     frames(PLAYING, 100);
     CHECK(MP == 10 && HP == 20 && experience == 30 && calls == 0 && !site_on);
     plugin_cb();
     isolated = true;
     kill(7, ZOZURA);
     fax_mana_killed(SUGATA);
-    fax_mana_guru();
     frames(PLAYING, 100);
     CHECK(MP == 10 && HP == 20 && calls == 0);
     isolated = false;
@@ -558,7 +537,7 @@ int main(void) {
     no_refill_over_time();
     nothing_holds_it();
     the_bar_waits_for_room();
-    a_guru_fills_hp_and_mp();
+    an_old_gurus_bars();
     save_states();
     off_and_isolated_do_nothing();
     a_kill_without_the_site();

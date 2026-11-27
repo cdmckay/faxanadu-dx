@@ -15,7 +15,10 @@ Copies the build to OUT/game (the save files are written beside it), then:
      saved game of that death as the Guru speaks: the dissolve is not what
      is checked): Eolis's Guru, with nowhere to send the hero, asks "Shall I
      remember your journey?"; Conflate's, after granting a title, offers the
-     menu, and saving there makes Conflate the spawn point;
+     menu, and saving there makes Conflate the spawn point and fills HP and
+     MP (edited down to 20 and 10 before he speaks) to 80 before his line
+     (tests/files/guru_refill.py plays the fill frame by frame), and Guru
+     travel still offers after it;
   3. quits and relaunches: the title opens on CONTINUE, whose pick greys the
      empty files and skips them; continuing file 2 restores the game, which
      is compared with the file and with what was saved;
@@ -36,7 +39,7 @@ from fax_e2e import (FILES_CONFIRM, FILES_CONTINUE, FILES_NEW, FILES_TOP, Game, 
                      dissolve, fixture, frame, page_through, page_to, parser, ram, tcp, title_menu, type_out, wait)
 
 JOY_CHANGED, AREA, SCREEN, START_SCREEN_CHOICE = 0x19, 0x24, 0x63, 0x687
-MESSAGE_ID, TEXTBOX_PAUSED = 0x213, 0x215
+MESSAGE_ID, TEXTBOX_PAUSED, HP, MP = 0x213, 0x215, 0x431, 0x39A
 EXPERIENCE, GOLD, SPECIAL_ITEMS, QUESTS, TITLE, PLAYER_IS_DEAD, TEMPLE_SPAWN_POINT, NEXT_TITLE = (
     0x390, 0x392, 0x42C, 0x42D, 0x437, 0x438, 0x439, 0x4ED)
 LISTS, SELECTED, COUNTS = (0x39D, 0x3A1, 0x3A5, 0x3A9, 0x3AD), 0x3BD, 0x3C2
@@ -279,12 +282,15 @@ def main():
             die_and_respawn(CONFLATE)
             temple = out / "conflate-temple.cycstate"
             tcp("save_state", path=str(temple))
+            game.poke({HP: 20, MP: 10})
             scratch = ram(*PASSWORD_SCRATCH)
             talk_until(GURU_MENU)
             assert ram(TITLE) == 4, "the Guru granted the title first"
+            assert (ram(HP), ram(MP)) == (20, 10), "talking fills nothing"
             shot("conflate-menu", "guru-menu")
             act("a")
             until("the saved line", lambda: files()["guru"] == GURU_SAVED, 300)
+            assert (ram(HP), ram(MP)) == (80, 80) and files()["refills"] == 1 and files()["fill"] == [60, 70]
             type_out("the saved line to type out")
             shot("conflate-saved", "guru-saved")
             type_out("the line to type out")
@@ -302,7 +308,7 @@ def main():
             expect = dict(PROGRESS, title=4)
             assert file_progress(saved) == expect, (file_progress(saved), expect)
             assert ram(*PASSWORD_SCRATCH) == scratch, "the mantra was never encoded"
-            print("ok: Conflate's Guru grants a title, offers the menu, saves, then offers travel")
+            print("ok: Conflate's Guru grants a title, offers the menu, saves, fills HP and MP, then offers travel")
             print("ok: file 2 holds exact gold, experience, title, items, quests, spawn point and Gurus")
 
             # 3. Quit, relaunch, continue file 2.

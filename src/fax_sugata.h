@@ -14,6 +14,11 @@ void fax_sugata_frame_end(void);
  * otherwise `picture` itself. */
 const uint32_t *fax_sugata_present(const uint32_t *picture, int *w, int *h);
 void fax_sugata_tcp_setup(void);
+/* `color` (a presented pixel) as the PPU's greyscale draws it, the game's own
+ * flash: the grey of its row of the palette (entry & $30), black ($0F) the
+ * darkest grey. Save files' flash as a Guru remembers a journey greys the
+ * whole picture with it (fax_files.c). */
+uint32_t fax_sugata_grey(uint32_t color);
 
 /* The rules, in screen pixels (exposed for the unit tests). The flash reaches
  * the band [center - SUGATA_REACH, center + SUGATA_REACH) around Sugata's

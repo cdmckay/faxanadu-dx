@@ -31,7 +31,14 @@
  * in unused ROM; the menu's message ID is an immediate operand, read through
  * an override for that one menu.
  * Saving makes this Guru's temple the spawn point (the Guru you last saved
- * with is where you continue and where death sends you), then Guru travel
+ * with is where you continue and where death sends you), and is the rest
+ * point (#205), as a Metroidvania's save room: as he remembers the journey
+ * the whole picture flashes once, the game's own flash (the PPU's greyscale,
+ * as Sugata's: fax_sugata_grey), and HP and MP fill to 80 on their bars, a
+ * point a frame with the meat shops' fill sound ($13, the Red Potion's)
+ * every 4th, through the game's own script actions ADD_HP ($13) and ADD_MP
+ * ($0A), HP then MP, in a step of ours before his line "I will remember
+ * your journey." B leaves HP and MP as they are. Then Guru travel
  * offers to send you on. Talking to a Guru no longer raises the spawn point:
  * SET_SPAWN_POINT only raises the furthest temple, which the file keeps.
  * Every respawn (death, a Guru travel journey, continuing) saves the file too,
@@ -41,6 +48,7 @@
  * See docs/GAME_INTERNALS.md, "Save files". */
 #include "fax_files.h"
 #include "fax_save.h"
+#include "fax_sugata.h"
 #include "fax_text.h"
 #include "fax_travel.h"
 #include "cyc_mod.h"
@@ -69,6 +77,11 @@
 #define TEXTBOX_LINE_SCROLL  0x021Au /* TextBox_LineScrollOffset: the CHR line block of the box's top row */
 #define EXPERIENCE           0x0390u
 #define GOLD                 0x0392u
+/* Temp_AddedHPValue: the HP IScriptAction_AddHP fills from, which
+ * UI_DrawPlayerHPValue, its only writer, keeps equal to Player_HP_U */
+#define ADDED_HP             0x0399u
+#define PLAYER_MP            0x039Au /* at most 80 */
+#define PLAYER_HP_U          0x0431u /* whole HP, at most 80 */
 #define TEMPLE_SPAWN_POINT   0x0439u /* with Save files: the temple of the Guru last saved with */
 #define NEXT_PLAYER_TITLE    0x04EDu
 #define START_SCREEN_CHOICE  0x0687u /* DAT_0687: 0 Start, 1 Continue */
@@ -85,16 +98,19 @@
 #define GURU_NEW_RANK_END    0xA602u /* ISCRIPT_COMMON_GURU_NEW_RANK ($A600): 01 23, here 00 */
 #define EOLIS_GURU_RING_END  0xA0C8u /* Eolis's Guru with the Ring of Elf ($A0C6): 03 2D, here 00 */
 #define STOCK_END            0xA5FFu /* an END: where the mantra's script ends */
-#define STEP    0xAE10u /* the choice: 0F SAY (menu) or 16 C3 SAY (question); B on the question goes on to + 4 */
-#define OWN_SAY 0xAE15u /* 03 C3 00, when Guru travel's own is not there */
+/* The choice: 0F SAY (menu) or 16 C3 SAY (question); B on the question goes
+ * on to + 4. Once it is read and the hero saves, the fill: 13 hp 0A mp, which
+ * goes on to + 4 too, where the hook sends it to the saved line. */
+#define STEP                 0xAE10u
+#define OWN_SAY              0xAE15u /* 03 C3 00, when Guru travel's own is not there */
 /* Bank 13: message $C3, Guru travel's line slot (fax_travel.c) */
-#define SLOT_ID 0xC3u
-#define SLOT    0xB45Bu
-#define BUY_SELL_MESSAGE_ID 0x10u /* "Come here / to buy. / Come here / to sell." */
+#define SLOT_ID              0xC3u
+#define SLOT                 0xB45Bu
+#define BUY_SELL_MESSAGE_ID  0x10u /* "Come here / to buy. / Come here / to sell." */
 /* Fixed bank */
-#define START_SPAWN         0xFC95u /* Game_ShowStartScreen's @_afterSetExpGoldFarJump: JMP Player_Spawn */
-#define SPAWNED             0xDB20u /* Player_Spawn, after JSR Game_SpawnInTemple: JSR Game_SetupEnterBuilding */
-#define SOUND_PLAY_EFFECT   0xD0E4u /* Sound_PlayEffect: A = the effect */
+#define START_SPAWN          0xFC95u /* Game_ShowStartScreen's @_afterSetExpGoldFarJump: JMP Player_Spawn */
+#define SPAWNED              0xDB20u /* Player_Spawn, after JSR Game_SpawnInTemple: JSR Game_SetupEnterBuilding */
+#define SOUND_PLAY_EFFECT    0xD0E4u /* Sound_PlayEffect: A = the effect */
 #define CLEAR_SCROLLED 0xF439u /* TextBox_ClearPasswordSize (from Messages_Load), after STA TextBox_LineScrollOffset */
 /* Joypad bits */
 enum {
@@ -136,10 +152,18 @@ enum {
     UNSKIPPABLE_MESSAGE = 0x01,
     SHOW_MESSAGE = 0x03,
     SET_SPAWN_POINT = 0x06,
+    /* IScriptAction_AddMP ($8580) and IScriptAction_AddHP: n, then a point a
+     * frame from Player_MP or Temp_AddedHPValue, the sound $13 when
+     * InterruptCounter & 3 is 0, n times (none at 80 or more) */
+    ADD_MP = 0x0A,
     BUY_SELL_MENU = 0x0F,
+    ADD_HP = 0x13,
     MANTRA = 0x14,
     QUESTION_JUMP_IF_ACCEPTED = 0x16
 };
+/* A save's rest: HP and MP fill to FULL, the step's 4 bytes (13 hp 0A mp),
+ * and the picture flashes for FLASH_FRAMES frames as it begins. */
+enum { FULL = 80, FILL_LEN = 4, FLASH_FRAMES = 8 };
 
 static const uint8_t temple_screen[FAX_SAVE_TEMPLES] = { /* DEST_SCREEN_FOR_TEMPLE_SPAWN */
                                                          0x02, 0x0B, 0x10, 0x1E, 0x23, 0x2B, 0x33, 0x3C
@@ -161,8 +185,9 @@ static const struct {
     [AT_NEW_RANK] = { GURU_NEW_RANK_END, { UNSKIPPABLE_MESSAGE, 0x23, END } },
     [AT_EOLIS] = { EOLIS_GURU_RING_END, { SHOW_MESSAGE, 0x2D, END } },
 };
-/* The conversation, once a Guru offers the choice. */
-typedef enum { GURU_IDLE, GURU_MENU, GURU_QUESTION, GURU_SAVED, GURU_PHASES } GuruPhase;
+/* The conversation, once a Guru offers the choice. A save fills HP and MP
+ * (GURU_FILLING), then shows the saved line (GURU_SAVED). */
+typedef enum { GURU_IDLE, GURU_MENU, GURU_QUESTION, GURU_SAVED, GURU_FILLING, GURU_PHASES } GuruPhase;
 
 /* ---- the title's menu ---- */
 
@@ -196,6 +221,9 @@ static bool stepped, own_say, menu_message; /* overrides of ours that are set */
 static bool keep_rows;                      /* our lines are in a box that may have scrolled: keep its rows */
 static uint8_t rows;                        /* TextBox_LineScrollOffset as the box's last line left it */
 static unsigned saves, save_failures;
+static uint8_t fill_hp, fill_mp; /* the save's fill, in the step while GURU_FILLING */
+static uint8_t flash;            /* frames of the save's flash still to show */
+static unsigned refills;         /* saves that filled HP and MP */
 static int last_spawn = -1;
 static char title_names[16][10];
 static bool names_loaded;
@@ -499,6 +527,13 @@ static bool serve_step(bool as_menu) {
     const uint8_t qn[] = { QUESTION_JUMP_IF_ACCEPTED, SLOT_ID, (uint8_t)say_step, (uint8_t)(say_step >> 8) };
     return as_menu ? serve(STEP, m, sizeof m) : serve(STEP, qn, sizeof qn);
 }
+/* The fill at STEP, once the choice there has been read: ADD_HP fill_hp,
+ * ADD_MP fill_mp. */
+static bool serve_fill(void) {
+    stepped = true;
+    const uint8_t f[FILL_LEN] = { ADD_HP, fill_hp, ADD_MP, fill_mp };
+    return serve(STEP, f, sizeof f);
+}
 static bool serve_own_say(void) {
     static const uint8_t say[] = { SHOW_MESSAGE, SLOT_ID, END };
     own_say = true;
@@ -550,6 +585,27 @@ static void save_here(void) {
     commit();
 }
 
+/* What fills `value` to FULL: none at FULL or more. ADD_HP and ADD_MP add
+ * exactly their amount (only the bar caps it), so it must be what is
+ * missing. */
+static uint8_t missing(uint8_t value) { return (uint8_t)(value < FULL ? FULL - value : 0); }
+
+/* The save's rest: the flash, and the fill step, which the interpreter runs
+ * next. ADD_HP fills from Temp_AddedHPValue: set to the HP it fills, in case
+ * something stored HP without drawing it. False if the step cannot be
+ * supplied. */
+static bool rest(void) {
+    uint8_t hp = q(PLAYER_HP_U);
+    cyc_mod_poke(ADDED_HP, hp);
+    fill_hp = missing(hp);
+    fill_mp = missing(q(PLAYER_MP));
+    if (!serve_fill()) return false;
+    flash = FLASH_FRAMES + 1; /* this frame's end counts one, before any picture shows it */
+    ++refills;
+    go(STEP);
+    return true;
+}
+
 static void fail(const char *why) {
     FAX_FILES_LOG("[files] %s; the Gurus offer no save\n", why);
     unserve();
@@ -596,13 +652,15 @@ static int next_action_hook(uint16_t addr) {
     switch (guru) {
     case GURU_MENU:
     case GURU_QUESTION:
-        if (at == say_step) { /* A on "Remember my journey." */
+        if (at == say_step) { /* A on "Remember my journey.": save, then fill HP and MP */
             save_here();
             if (!serve_text(TEXT_SAVED)) {
                 fail("cannot supply the Guru's line");
                 return 0;
             }
             guru = GURU_SAVED;
+            if (rest()) guru = GURU_FILLING;
+            else FAX_FILES_LOG("[files] cannot supply the Guru's fill; HP and MP stay\n");
             return 0;
         }
         if (guru == GURU_MENU && at == STEP + 3) { /* "Send me to another Guru." */
@@ -617,6 +675,12 @@ static int next_action_hook(uint16_t addr) {
             return 0;
         }
         break;
+    case GURU_FILLING: /* the fill's actions, ADD_HP then ADD_MP; past them, the saved line */
+        if (at == STEP + FILL_LEN) {
+            guru = GURU_SAVED;
+            go(say_step);
+        }
+        return 0;
     case GURU_SAVED:
         if (at == say_step + 2) { /* the saved line was read: travel may offer */
             guru = GURU_IDLE;
@@ -724,22 +788,42 @@ static void hide_choices(uint32_t *px, int w, int h, int x0) {
     cyc_render_sprites(px, w, h, x0, NULL, in_choices_row, NULL);
 }
 
-const uint32_t *fax_files_present(const uint32_t *picture, int *w, int *h) {
-    if (!enabled || seen > 1) return picture; /* the title's loop ran this frame */
-    if (menu.mode != TOP && !fax_text_loaded() && !fax_text_load()) return picture;
-    int width = 0, height = 0;
+/* `picture` (or the engine's own, if NULL) copied into the canvas, at least
+ * 256x240; NULL if there is none or no room. */
+static uint32_t *to_canvas(const uint32_t *picture, int *w, int *h, int *width, int *height) {
     const uint32_t *from = picture;
-    if (from) width = *w, height = *h;
-    else from = cyc_render_present(&width, &height);
-    if (!from || width < 256 || height < 240) return picture;
-    size_t n = (size_t)width * (size_t)height;
+    if (from) *width = *w, *height = *h;
+    else from = cyc_render_present(width, height);
+    if (!from || *width < 256 || *height < 240) return NULL;
+    size_t n = (size_t)*width * (size_t)*height;
     if (n > capacity) {
         uint32_t *grown = realloc(canvas, n * sizeof *grown);
-        if (!grown) return picture;
+        if (!grown) return NULL;
         canvas = grown;
         capacity = n;
     }
     memcpy(canvas, from, n * sizeof *canvas);
+    return canvas;
+}
+
+/* The save's flash: the whole picture, Seamless's 424-wide view and all,
+ * greyed as the PPU's greyscale would (the game's own flash, Sugata's). */
+static const uint32_t *flash_present(const uint32_t *picture, int *w, int *h) {
+    int width = 0, height = 0;
+    if (!to_canvas(picture, w, h, &width, &height)) return picture;
+    for (size_t i = 0, n = (size_t)width * (size_t)height; i < n; ++i) canvas[i] = fax_sugata_grey(canvas[i]);
+    *w = width;
+    *h = height;
+    return canvas;
+}
+
+const uint32_t *fax_files_present(const uint32_t *picture, int *w, int *h) {
+    if (!enabled) return picture;
+    if (flash) return flash_present(picture, w, h);
+    if (seen > 1) return picture; /* the title's loop ran this frame */
+    if (menu.mode != TOP && !fax_text_loaded() && !fax_text_load()) return picture;
+    int width = 0, height = 0;
+    if (!to_canvas(picture, w, h, &width, &height)) return picture;
     int x0 = cyc_render_native_origin(width);
     if (menu.mode == TOP) {
         /* NEW GAME over CONTINUE (grey with nothing to continue), in place of
@@ -784,11 +868,13 @@ void fax_files_power_on(void) {
     guru = GURU_IDLE;
     held = false;
     keep_rows = false;
+    flash = 0;
     menu = (Menu){ TOP, 0, 0 };
     fax_save_end();
 }
 void fax_files_frame_end(void) {
     if (seen < 255) ++seen;
+    if (flash) --flash;
     if (title_up && seen > 30) title_up = false; /* the title went without a choice (a state was loaded) */
     if (menu_message) serve_menu_message(false); /* the menu has read its message ID */
     if (q(TEXTBOX_CLOSED)) {
@@ -799,25 +885,44 @@ void fax_files_frame_end(void) {
         rows = q(TEXTBOX_LINE_SCROLL) & 3;
 }
 
-/* Save states carry the file in play, the title's menu and the Guru's choice,
- * so loading one resumes them as they were. The file's fields are reread.
- * Version 1 had the file select with "Erase a file" where the menu is: its
- * menu comes back as the title's two choices. */
-enum { RECORD = 14, VERSION = 2 };
+/* Save states carry the file in play, the title's menu, the Guru's choice and
+ * a save's fill and flash, so loading one resumes them as they were (a fill
+ * goes on where it was: the interpreter's place and what is left are the
+ * machine's). The file's fields are reread. Version 3 (#205) adds [14] and
+ * [15] the fill's HP and MP and [16] the flash's frames left; version 2 loads
+ * with neither, as it had none. Version 1 had the file select with "Erase a
+ * file" where the menu is: its menu comes back as the title's two choices. */
+enum { RECORD = 17, RECORD_V2 = 14, VERSION = 3 };
 static int state_get(uint8_t *buf, int cap) {
     if (cap < RECORD) return -1;
-    const uint8_t rec[RECORD] = { VERSION,           (uint8_t)fax_save_file(), title_up,  menu.mode, menu.cursor,
-                                  menu.target,       (uint8_t)continuing,      furthest,  guru,      seen,
-                                  (uint8_t)say_step, (uint8_t)(say_step >> 8), keep_rows, rows };
+    const uint8_t rec[RECORD] = { VERSION,
+                                  (uint8_t)fax_save_file(),
+                                  title_up,
+                                  menu.mode,
+                                  menu.cursor,
+                                  menu.target,
+                                  (uint8_t)continuing,
+                                  furthest,
+                                  guru,
+                                  seen,
+                                  (uint8_t)say_step,
+                                  (uint8_t)(say_step >> 8),
+                                  keep_rows,
+                                  rows,
+                                  fill_hp,
+                                  fill_mp,
+                                  flash };
     memcpy(buf, rec, RECORD);
     return RECORD;
 }
 static int state_validate(const uint8_t *buf, int len) {
-    bool menu_ok =
-        buf[0] == VERSION ? buf[3] < MODES && buf[4] < FAX_SAVE_FILES : buf[0] == 1 && buf[3] <= 2 && buf[4] <= 3;
-    return len == 0 || (len == RECORD && menu_ok && buf[1] <= FAX_SAVE_FILES && buf[2] <= 1 &&
-                        buf[5] < FAX_SAVE_FILES && buf[6] <= FAX_SAVE_FILES && buf[7] < FAX_SAVE_TEMPLES &&
-                        buf[8] < GURU_PHASES && buf[12] <= 1 && buf[13] <= 3);
+    if (len == 0) return 1;
+    bool ok = buf[0] == VERSION ? len == RECORD && buf[14] <= FULL && buf[15] <= FULL && buf[16] <= FLASH_FRAMES + 1
+                                : len == RECORD_V2 && (buf[0] == 1 || buf[0] == 2) && buf[8] < GURU_FILLING;
+    if (!ok) return 0;
+    bool menu_ok = buf[0] == 1 ? buf[3] <= 2 && buf[4] <= 3 : buf[3] < MODES && buf[4] < FAX_SAVE_FILES;
+    return menu_ok && buf[1] <= FAX_SAVE_FILES && buf[2] <= 1 && buf[5] < FAX_SAVE_FILES && buf[6] <= FAX_SAVE_FILES &&
+           buf[7] < FAX_SAVE_TEMPLES && buf[8] < GURU_PHASES && buf[12] <= 1 && buf[13] <= 3;
 }
 static uint8_t loaded_file;
 static int state_set(const uint8_t *buf, int len) {
@@ -829,7 +934,7 @@ static int state_set(const uint8_t *buf, int len) {
     }
     loaded_file = buf[1];
     title_up = buf[2];
-    menu = buf[0] == VERSION ? (Menu){ buf[3], buf[4], buf[5] } : (Menu){ TOP, 0, 0 };
+    menu = buf[0] == 1 ? (Menu){ TOP, 0, 0 } : (Menu){ buf[3], buf[4], buf[5] };
     continuing = buf[6];
     furthest = buf[7];
     guru = buf[8];
@@ -837,6 +942,10 @@ static int state_set(const uint8_t *buf, int len) {
     say_step = (uint16_t)(buf[10] | buf[11] << 8);
     keep_rows = buf[12];
     rows = buf[13];
+    bool v3 = buf[0] == VERSION;
+    fill_hp = v3 ? buf[14] : 0;
+    fill_mp = v3 ? buf[15] : 0;
+    flash = v3 ? buf[16] : 0;
     held = false;
     return 1;
 }
@@ -853,8 +962,9 @@ void fax_files_state_loaded(void) {
     }
     if (!guru || failed) return;
     bool ok = say_step != OWN_SAY || serve_own_say();
-    ok = ok && serve_step(guru == GURU_MENU);
-    ok = ok && serve_text(guru == GURU_SAVED ? TEXT_SAVED : guru == GURU_MENU ? TEXT_MENU : TEXT_QUESTION);
+    ok = ok && (guru == GURU_FILLING ? serve_fill() : serve_step(guru == GURU_MENU));
+    bool said = guru == GURU_SAVED || guru == GURU_FILLING;
+    ok = ok && serve_text(said ? TEXT_SAVED : guru == GURU_MENU ? TEXT_MENU : TEXT_QUESTION);
     if (!ok) fail("cannot supply the Guru's choice");
 }
 
@@ -866,14 +976,15 @@ static void files_state(int id, const char *line_in) {
         fields, sizeof fields,
         "\"enabled\":%s,\"file\":%d,\"title\":%s,\"shown\":%s,\"mode\":%u,\"cursor\":%u,\"target\":%u,"
         "\"can_continue\":%s,\"continuing\":%d,\"guru\":%u,\"furthest\":%u,\"saves\":%u,\"save_failures\":%u,"
-        "\"spawn\":%d,\"failed\":%s,\"palette\":[%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u],\"slots\":[",
+        "\"spawn\":%d,\"failed\":%s,\"refills\":%u,\"fill\":[%u,%u],\"flash\":%u,"
+        "\"palette\":[%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u],\"slots\":[",
         enabled ? "true" : "false", fax_save_file(), title_up ? "true" : "false",
         enabled && seen <= 1 ? "true" : "false", menu.mode, menu.cursor, menu.target, can_continue() ? "true" : "false",
-        continuing, guru, furthest, saves, save_failures, last_spawn, failed ? "true" : "false", cyc_render_palette(0),
-        cyc_render_palette(1), cyc_render_palette(2), cyc_render_palette(3), cyc_render_palette(4),
-        cyc_render_palette(5), cyc_render_palette(6), cyc_render_palette(7), cyc_render_palette(8),
-        cyc_render_palette(9), cyc_render_palette(10), cyc_render_palette(11), cyc_render_palette(12),
-        cyc_render_palette(13), cyc_render_palette(14), cyc_render_palette(15));
+        continuing, guru, furthest, saves, save_failures, last_spawn, failed ? "true" : "false", refills, fill_hp,
+        fill_mp, flash, cyc_render_palette(0), cyc_render_palette(1), cyc_render_palette(2), cyc_render_palette(3),
+        cyc_render_palette(4), cyc_render_palette(5), cyc_render_palette(6), cyc_render_palette(7),
+        cyc_render_palette(8), cyc_render_palette(9), cyc_render_palette(10), cyc_render_palette(11),
+        cyc_render_palette(12), cyc_render_palette(13), cyc_render_palette(14), cyc_render_palette(15));
     for (int i = 0; i < FAX_SAVE_FILES && n > 0 && (size_t)n < sizeof fields; ++i) {
         const Slot *s = &slots[i];
         n += snprintf(fields + n, sizeof fields - (size_t)n,
@@ -894,7 +1005,9 @@ static void files_state(int id, const char *line_in) {
     cyc_tcp_ok(id, fields);
 }
 void fax_files_tcp_setup(void) {
-    cyc_tcp_register("files_state", "Save files: the file in play, the title's menu and each file", files_state);
+    cyc_tcp_register("files_state",
+                     "Save files: the file in play, the title's menu, each file, and a Guru's choice, saves and fills",
+                     files_state);
 }
 #else
 void fax_files_tcp_setup(void) {}
@@ -911,6 +1024,8 @@ static void hooks(bool on) {
 static void deactivate(void) {
     unserve();
     enabled = failed = false;
+    refills = 0;
+    fill_hp = fill_mp = 0;
     fax_save_set_enabled(false);
     fax_files_power_on();
     hooks(false);

@@ -246,6 +246,7 @@ E2E=(
   "speaker      tests/speaker/speaker_names.py --parts"
   "text         tests/text_speed/text_speed.py"
   "files        tests/files/save_files.py --parts"
+  "refill       tests/files/guru_refill.py --parts"
   "dagger       tests/dagger/taller_dagger.py"
   "block        tests/block/block.py --parts"
   "sugata       tests/sugata/sugata_flash.py"

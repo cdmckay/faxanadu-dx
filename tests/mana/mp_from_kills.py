@@ -1,7 +1,6 @@
 """Play MP from kills end to end.
 
     python3 tests/mana/mp_from_kills.py --build build-cycle --rom "Faxanadu (USA).nes" --out /tmp/mana
-    python3 tests/mana/mp_from_kills.py ... --part guru
 
 kills     From Eolis's screen 4 as its two Zozuras crawl in (the fixture
           "eolis-zozuras"), with save-state RAM and record edits (external
@@ -26,14 +25,11 @@ kills     From Eolis's screen 4 as its two Zozuras crawl in (the fixture
           6. At 79 MP, with the lesson, the kill's 2 stops at 80.
           7. The original (the remaster off): the kill gives its 30 experience
              and no MP, and waiting after a cast gives none either.
-guru      In Eolis's temple, come in from the meat shop through a door edited
-          to lead to it (the fixture "mana-eolis-temple") with 32 HP and 5 MP,
-          which the screen's load drew on the status bar: talking to the Guru,
-          HP and MP are 80 by his first line, and while it types (his box
-          fills the PPU buffer as it opens) both bars are drawn full, as the
-          game draws them.
-original  The same, with the remaster off: the Guru leaves HP and MP at 32
-          and 5, as the original does.
+
+A Guru fills HP and MP only when he saves (#205): tests/files/guru_refill.py
+plays it, from this test's fixture "mana-eolis-temple" (Eolis's temple, come
+in from the meat shop through a door edited to lead to it, with 32 HP and 5
+MP, which the screen's load drew on the status bar).
 """
 from pathlib import Path
 import sys
@@ -42,18 +38,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "movement"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "recharge"))
 import fax_e2e  # noqa: E402
-from fax_e2e import act, box_open, chunks, fixture, parse_args, ram, tcp, until, walk  # noqa: E402
+from fax_e2e import chunks, fixture, parse_args  # noqa: E402
 import play  # noqa: E402  (fax_e2e.Game with headless runs)
 import recharging_items as recharge  # noqa: E402  (its walk out of a shop, and in at a door)
 
-PARTS = ("kills", "guru", "original")
+PARTS = ("kills",)
 PACKAGE = ("faxanadu.dx", "dx")
 POS_X, POS_Y, PLAYER_FLAGS, STATUS, IFRAMES = 0x9E, 0xA1, 0xA4, 0xA5, 0xAD
 SPRITE_X, SPRITE_Y, ENTITIES, SPRITE_FLAGS, SPRITE_HP, HIT_COUNTER = 0xBA, 0xC2, 0x2CC, 0x2DC, 0x344, 0x34C
 EXPERIENCE, MP, SELECTED_WEAPON, SELECTED_ARMOR, SELECTED_MAGIC = 0x390, 0x39A, 0x3BD, 0x3BE, 0x3C0
 MAGIC_INVENTORY, NUMBER_OF_MAGIC_SPELLS, PLAYER_CUR_WEAPON = 0x3A9, 0x3C5, 0x3C8
 DURATION_OINTMENT, DURATION_GLOVE, SPECIAL_ITEMS, HP, CAST_MAGIC_TYPE = 0x427, 0x428, 0x42C, 0x431, 0x2B3
-MESSAGE_ID = 0x213
 EOLIS, EOLIS_TEMPLE, PALETTE_EOLIS = 0, 0x02, 0x00
 ROKUSUTAHN, DELUGE, LONG_SWORD, DELUGE_COST = 0x11, 0, 1, 2
 NEAR, FAR = 7, 6                                  # the Zozuras' slots: the nearer, the one behind it
@@ -222,49 +217,6 @@ def main():
             print(f"ok: with the remaster off the kill gives its {ZOZURA_XP} experience and no MP, and after a cast "
                   "MP stays where it was")
 
-        for part in ("guru", "original"):
-            if not args.wants(part):
-                continue
-            temple = game.state("mana-eolis-temple")
-            dx = part == "guru"
-            game.set_features({PACKAGE: dx})
-            game.launch()
-            tcp("load_state", path=str(temple))
-            fax_e2e.wait(4)
-            before = out / f"{part}-before.cycstate"
-            tcp("save_state", path=str(before))
-            assert (ram(HP), ram(MP)) == (0x20, 5), (ram(HP), ram(MP))
-            assert bar_shows(before, "hp", 0x20) and bar_shows(before, "mp", 5), (bar(before, "hp"), bar(before, "mp"))
-            s = tcp("mana_state")
-            assert s["enabled"] == dx, s
-            walk("left")                                            # to the Guru, who stands on the left
-            assert not box_open()
-            shown = ram(MESSAGE_ID)
-            act("up", 4, 0)
-            until("the Guru's first line", lambda: box_open() and ram(MESSAGE_ID) != shown, 300)
-            first = ram(MESSAGE_ID)
-            if dx:
-                s = tcp("mana_state")
-                assert (ram(HP), ram(MP)) == (FULL, FULL) and s["restores"] == 1, s
-                # The bars: as soon as the PPU buffer has room, which his box takes as it opens.
-                until("the bars", lambda: tcp("mana_state")["bars"] == 0, 60)
-                fax_e2e.wait(4)                                     # the NMIs send what was queued before them
-                assert ram(MESSAGE_ID) == first and box_open(), "still his first line"
-            opened = out / f"{part}-opened.cycstate"
-            tcp("save_state", path=str(opened))
-            game.shot(f"{part}-guru")
-            if dx:
-                s = tcp("mana_state")
-                assert bar_shows(opened, "hp", FULL) and bar_shows(opened, "mp", FULL), \
-                    (bar(opened, "hp"), bar(opened, "mp"))
-                print(f"ok: Eolis's Guru, at 32 HP and 5 MP: at his first action both are 80, before his first line, "
-                      f"and while it types both bars are drawn full, as the game draws them ({s['drawn']} drawn, "
-                      f"after {s['deferred']} frames' wait for room)")
-            else:
-                assert (ram(HP), ram(MP)) == (0x20, 5), (ram(HP), ram(MP))
-                assert bar_shows(opened, "hp", 0x20) and bar_shows(opened, "mp", 5)
-                print("ok: with the remaster off, the Guru leaves HP at 32 and MP at 5")
-            game.close()
         print("screenshots:", ", ".join(game.shots))
     except BaseException:
         if game.running():

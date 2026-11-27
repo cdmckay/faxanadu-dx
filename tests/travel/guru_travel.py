@@ -157,12 +157,13 @@ def main():
         if args.wants("journey"):
             if not game.running():
                 with_gurus()
-            # 3. Travel to Mascon: everything but the place is kept. Talking to the Guru fills HP and MP (MP
-            # from kills, fax_mana.c), so they are set again once he has, to see the journey keep them.
+            # 3. Travel to Mascon: everything but the place is kept. Saving with the Guru (A on his menu, in
+            # talk_to_guru()) fills HP and MP (Save files, #205), so they are set again once he has, to see the
+            # journey keep them.
             tcp("load_state", path=str(temple))
             before = progress()
             talk_to_guru()
-            assert (ram(HP), ram(MP)) == (0x50, 0x50), "the Guru fills HP and MP"
+            assert (ram(HP), ram(MP)) == (0x50, 0x50), "his save fills HP and MP"
             game.poke({HP: 0x2A, MP: 0x11})
             advance(TO_GURU + 0)
             answer("b", TO_GURU + 1)

@@ -558,14 +558,6 @@ static void note(const char *text) {
     CHECK(said_n < 12);
     snprintf(said[said_n++], sizeof said[0], "%s", text);
 }
-/* MP from kills (fax_mana.c) fills HP and MP when Recharging items tells it a
- * Guru's conversation begins: here, how many times, and how many messages the
- * box had shown by the last. */
-static unsigned guru_fills, said_at_fill;
-void fax_mana_guru(void) {
-    ++guru_fills;
-    said_at_fill = said_n;
-}
 static void (*on_line)(void); /* called as each message shows, for a test to act mid-script */
 /* Run the script at `script` as IScripts_Begin starts it (IScriptOffset 1,
  * past its entity byte), firing IScripts_InvokeNextAction's hooks before
@@ -1706,32 +1698,27 @@ static void the_spring_spends_it(void) {
     CHECK(!fax_recharge_elixir_spent() && fax_recharge_charge(FAX_RECHARGE_ELIXIR) == FAX_CHARGE_NONE);
 }
 
-/* Each Guru's conversation fills HP and MP (MP from kills) at his first
- * action, with the Elixir's charge, before he says anything: his Elixir line
- * too. Once a conversation; no one else's script; not when off. */
-static void gurus_fill_hp_and_mp(void) {
+/* A Guru's conversation charges a spent Elixir at his first action, before
+ * he says anything, but leaves HP and MP as they are: only his save fills
+ * them (Save files, fax_files.c, #205; until then every Guru filled both
+ * here). */
+static void gurus_leave_hp_and_mp(void) {
     static const unsigned temples[] = { 0, 1, 3, 5, 6 };
     for (unsigned i = 0; i < sizeof temples / sizeof temples[0]; ++i) {
         play(true);
         ram[SPECIAL_ITEMS] = 0x80; /* the Ring of Elf, no Elixir: no line */
-        guru_fills = 0;
+        ram[HP_U] = 32;
+        ram[PLAYER_MP] = 5;
         meet_guru(temples[i]);
-        CHECK(guru_fills == 1 && said_at_fill == 0 && said_n >= 1);
+        CHECK(ram[HP_U] == 32 && ram[PLAYER_MP] == 5 && said_n >= 1);
         ram[SPECIAL_ITEMS] = BIT_ELIXIR | 0x80;
-        hurt(); /* spent: he says so, after the fill */
+        hurt(); /* spent: he says so */
         CHECK(charge.elixir_spent);
+        ram[HP_U] = 32; /* the Elixir's revive filled both */
+        ram[PLAYER_MP] = 5;
         meet_guru(temples[i]);
-        CHECK(guru_fills == 2 && said_at_fill == 0 && !strcmp(said[0], RESTORED) && !charge.elixir_spent);
+        CHECK(ram[HP_U] == 32 && ram[PLAYER_MP] == 5 && !strcmp(said[0], RESTORED) && !charge.elixir_spent);
     }
-    play(true);
-    guru_fills = 0;
-    static const uint8_t npc[] = { 0x81, 0x03, 0x40, 0x00 }; /* a portrait, a line, the end */
-    memcpy(bank12 + (0xA310 - 0x8000), npc, sizeof npc);
-    run_script(0xA310, 0);
-    CHECK(guru_fills == 0 && said_n == 2);
-    play(false);
-    meet_guru(1);
-    CHECK(guru_fills == 0);
 }
 
 /* ---- what a Guru says about the Elixir ---- */
@@ -2341,7 +2328,7 @@ int main(void) {
     elixir();
     elixir_found_not_bought();
     the_spring_spends_it();
-    gurus_fill_hp_and_mp();
+    gurus_leave_hp_and_mp();
     charges_on_the_status_bar();
     finds_add_nothing();
     other_items_untouched();
