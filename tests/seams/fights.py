@@ -46,9 +46,13 @@ visit_log: room, slot, live slot, entity, what it was after).
 8. lag: the fortress of Zenis's screen 16 (block-hood-cast, the Execution
    Hood's shot at the hero's head: tests/block/block.py), whose six actors and
    a Maskman across the seam make the main loop overrun some frames, so a
-   frame ends inside the visitors' pass. Read then, the live room's slots are
-   its own (no actor hidden), as fax_world_room shows them; saved then, two
-   fresh games run 60 frames from it to the same machine and records.
+   frame ends inside the visitors' pass. That frame is found headless, frame
+   exact: a state saved after each frame, and the first whose Seams record
+   has the pass open (polls over TCP could step over every such frame on a
+   loaded machine, #189). Read then (that save loaded, read in the same
+   batch), the live room's slots are its own (no actor hidden), as
+   fax_world_room shows them; saved then, two fresh games run 60 frames from
+   it to the same machine and records.
 
 Screenshots: the Zozura's death in room 5 with the hero in room 4, the coin
 taken across, the touch, and Sugata's band across the seam (taken by the game
@@ -85,6 +89,7 @@ REACH, FLASH_DAMAGE, WARNING = 40, 10, 30
 ONE_BLOW = 7                                                     # HP the Long Sword's 8 (the Pendant fixed) kills
 PARTS = ("kill", "coin-drop", "coin", "touch", "punch", "flash", "save-load", "lag")
 HOOD_SHOT, HEAD_HEIGHT, ZENIS_16 = 0x51, 136, 16
+LAG_FRAMES, LAG_CHUNK = 400, 50                                  # lag: frames searched headless, a run's saves
 
 
 @fax_e2e.recipe("seams-mist-warning", parent="eolis-meat-shop")
@@ -323,22 +328,31 @@ def main():
             assert ram(HP) == hp0 and s1["in_reach"] == s0["in_reach"] and s1["waits"] == s0["waits"], (s1, ram(HP))
             print(f"ok: with the hero at x 150, out of its reach, the flash ends in $1F's tick and takes nothing")
 
-        def replays(mid, rooms):
-            """Two fresh games, headless, each loading `mid` and running 60
-            frames: the same machine, the same records of `rooms`, and the
-            same Seams record. Returns the first's state."""
+        def headless(state, frames, saves):
+            """A fresh game, headless, the remaster on: `state` loaded, run
+            `frames` frames, a state saved after each (frame, path) of
+            `saves`, frames counted from the state's. Frame exact however
+            loaded the machine is."""
             mods = out / "headless-mods"
             if not mods.exists():
                 shutil.copytree(out / "game" / "mods" / "packages", mods / "packages")
                 (mods / "state.toml").write_text(fax_e2e.features_toml({}))
-            at = struct.unpack_from("<I", mid.read_bytes(), 28)[0]            # the frame it continues at
+            at = struct.unpack_from("<I", state.read_bytes(), 28)[0]          # the frame it continues at
+            run = [str(game.exe), str(game.rom), "--load-state", str(state), "--frames", str(at + frames),
+                   "--mods-root", str(mods), "--no-save"]
+            for f, p in saves:
+                run += ["--save-state", f"{at + f}:{p}"]
+            done = subprocess.run(run, env=game.env, capture_output=True, text=True)
+            assert done.returncode == 0 and all(p.exists() for _, p in saves), done.stdout + done.stderr
+
+        def replays(mid, rooms):
+            """Two fresh games, headless, each loading `mid` and running 60
+            frames: the same machine, the same records of `rooms`, and the
+            same Seams record. Returns the first's state."""
             after = []
             for i in range(2):
                 p = out / f"{mid.stem}-after-{i}.cycstate"
-                done = subprocess.run([str(game.exe), str(game.rom), "--load-state", str(mid), "--frames",
-                                       str(at + 61), "--save-state", f"{at + 60}:{p}", "--mods-root", str(mods),
-                                       "--no-save"], env=game.env, capture_output=True, text=True)
-                assert done.returncode == 0 and p.exists(), done.stdout + done.stderr
+                headless(mid, 61, [(60, p)])
                 after.append(p.read_bytes())
             a, b = after
             ra, rb = Record(a), Record(b)
@@ -351,6 +365,27 @@ def main():
         def seams_record(data):
             return [bytes(data[p:p + n]) for tag, p, n in fax_e2e.chunks(data) if tag == b"MOD " and
                     bytes(data[p:p + 64]).rstrip(b"\0") == b"faxanadu.seams"]
+
+        def inside_pass(state):
+            """The first of LAG_FRAMES frames played headless from `state`
+            that ends inside the visitors' pass: its number, from 0, and the
+            state saved after it (OUT/lag-mid-pass.cycstate). A frame's end
+            leaves no trace of the pass in the machine (fax_seams_frame_end()
+            puts the live slots back), so a state is saved after every frame
+            and its Seams record read; LAG_CHUNK frames a run, each run from
+            `state`, since a save is over a megabyte."""
+            for first in range(0, LAG_FRAMES, LAG_CHUNK):
+                saves = [(f, out / f"lag-{f:03d}.cycstate") for f in range(first, first + LAG_CHUNK)]
+                headless(state, first + LAG_CHUNK, saves)
+                found = None
+                for f, p in saves:
+                    if found is None and seams_record(p.read_bytes())[0][64 + 1]:   # past its name: open
+                        found = f, p.replace(out / "lag-mid-pass.cycstate")
+                    else:
+                        p.unlink()
+                if found:
+                    return found
+            raise AssertionError(f"no frame ended inside the visitors' pass in {LAG_FRAMES} frames")
 
         if args.wants("save-load"):
             path = edited("save-load", zozuras, {HERO_X: 4, PLAYER_FLAGS: 0, PLAYER_CUR_WEAPON: LONG_SWORD,
@@ -371,31 +406,25 @@ def main():
             shot = list(clive[ENTITIES:ENTITIES + 8]).index(HOOD_SHOT)
             path = out / "lag.cycstate"
             fixture(cast, path, {SPRITE_Y + shot: HEAD_HEIGHT, 0x3BF: 0})                # the Small Shield
+            n, mid = inside_pass(path)
+            rec = seams_record(mid.read_bytes())[0][64:]                         # past the record's name
+            assert rec[1] == 1 and rec[4] == 1, ("saved inside the pass, the live slots out", list(rec[:5]))
             if game.running():
                 game.close()
             game.launch(at="block-hood-cast")
-            tcp("load_state", path=str(path))
-            mid = out / "lag-mid-pass.cycstate"
-            end, inside = frame() + 400, None
-            while frame() < end and not inside:                    # at each frame's end, till one is in it: the
-                s, live_, r16, _ = batch(("seams_state", {}),     # reads and a save, at one frame's end
-                                         ("read_ram", dict(addr=ENTITIES, len=8)),
-                                         ("fax_world_room", dict(room=ZENIS_16)), ("save_state", dict(path=str(mid))))
-                if s["visiting"]:
-                    inside = (s, list(bytes.fromhex(live_["hex"])), r16)
-                else:
-                    wait(1)
-            assert inside, "no frame ended inside the visitors' pass"
-            s, entities, r16 = inside
-            assert ram(SCREEN) == ZENIS_16 and entities == r16["entities"], (entities, r16)
+            # Read at that frame's end: its save loaded, and read before a frame runs (one batch).
+            loaded, s, live_, r16, sc, at = batch(("load_state", dict(path=str(mid))), ("seams_state", {}),
+                                                  ("read_ram", dict(addr=ENTITIES, len=8)),
+                                                  ("fax_world_room", dict(room=ZENIS_16)),
+                                                  ("read_ram", dict(addr=SCREEN, len=1)), ("ping", {}))
+            entities = list(bytes.fromhex(live_["hex"]))
+            assert s["visiting"] and at["frame"] == loaded["frame"], ("inside the pass", loaded, at, s["visiting"])
+            assert int(sc["hex"], 16) == ZENIS_16 and entities == r16["entities"], (entities, r16)
             assert entities.count(EMPTY) <= 3 and HOOD_SHOT in entities, ("the room's own, none hidden", entities)
-            data = mid.read_bytes()
-            rec = seams_record(data)[0][64:]                                    # past the record's name
-            assert rec[1] == 1 and rec[4] == 1, ("saved inside the pass, the live slots out", list(rec[:5]))
             replays(mid, (ZENIS_16,))
-            print(f"ok: a frame of Zenis 16 ends inside the visitors' pass ({s['visits']} visits so far); read "
-                  f"then, the live slots are the room's own ({[hex(e) for e in entities]}); saved then, two fresh "
-                  f"games run 60 frames from it to the same machine and records")
+            print(f"ok: frame {n} of Zenis 16 from the shot's save ends inside the visitors' pass ({rec[2]} "
+                  f"visiting); read then, the live slots are the room's own ({[hex(e) for e in entities]}); saved "
+                  f"then, two fresh games run 60 frames from it to the same machine and records")
         print("screenshots:", ", ".join(game.shots))
     except BaseException:
         if game.running():
