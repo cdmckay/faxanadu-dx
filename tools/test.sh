@@ -97,6 +97,7 @@ unit text_speed
 unit world
 echo "fax_world.c compiles without SDL"
 "$OUT/world/present_fit_test" | tail -4
+"$OUT/world/camera_test" "$ROM" | tail -3
 unit death
 "$OUT/death/death_test"
 unit pendant
@@ -269,6 +270,7 @@ E2E=(
   "entrances    tests/entrances/fair_entrances.py --parts"
   "view         tests/world/fixed_view.py"
   "arenas       tests/world/boss_arenas.py --parts"
+  "only-rooms   tests/world/only_rooms.py --parts"
   "live-hud     tests/world/live_status_bar.py --parts"
   "spell-cost   tests/spell_cost/spell_cost.py --parts"
   "found        tests/found/found_items.py --parts"

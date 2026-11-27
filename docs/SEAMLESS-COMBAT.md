@@ -1,9 +1,9 @@
 # Seamless's seams: the plan for one big world
 
-Issue #166. A plan, built a slice at a time: slices 0 to 3 are in the
-game. Where building slices 1 to 3 found the plan wrong, the plan below says
-what was built, and "Slice 1, as built", "Slice 2, as built" and "Slice 3,
-as built" list the changes.
+Issue #166. A plan, built a slice at a time: slices 0 to 4 are in the
+game. Where building slices 1 to 4 found the plan wrong, the plan below says
+what was built, and "Slice 1, as built" to "Slice 4, as built" list the
+changes.
 
 **The goal**, as Cameron put it: "it should just feel like 1 big world." A
 player should never be able to tell where one room ends and the next begins.
@@ -34,14 +34,16 @@ open ground:
    touches, shots and drops work across it, and a neighbouring room's sounds
    play.
 3. The spell stays the live game's and flies on into the next room.
-4. The camera never shows black where no room is.
+4. The camera never shows black where no room is, but while he straddles a
+   seam one above the other whose rows share only his column.
 
 Then come seams one above the other, what a neighbouring room sees of the
 hero, and three loose ends: seven slices after slice 0, about 2,100 lines of
 C as estimated, and likely twice that, as slice 0 took. Slice 0 (nothing
 lost at a seam, no ghost hit) is done: #177. Slice 1 (#178, seams are open
 ground, mechanism 1) is done too, and so are slice 2 (#187, fights across a
-seam, mechanism 2) and slice 3 (#188, the spell flies on, mechanism 3).
+seam, mechanism 2), slice 3 (#188, the spell flies on, mechanism 3) and
+slice 4 (#194, the view shows only rooms, mechanism 4).
 
 ## How Seamless runs a neighbouring room today
 
@@ -244,7 +246,8 @@ Checked in hidden games where marked; the scripts were throwaway, on
   Trunk 31, Mist 64, Branch 21, Dartmoor 20, Zenis 6, and none in Eolis or
   the towns (from the ROM's scroll data, laid out as `topology()` does).
   Out of the Tower of Trunk's door onto `$10`, the view's top left was black
-  (checked). **Slice 4.**
+  (checked). **Slice 4 (done)**, but while he straddles one of the 25 seams
+  one above the other whose rows share only his column.
 - **A load leaves the rooms beside it as they were.** A door within the area,
   or a zone respawn after a death (`fax_respawn.c`, in the same area), loads
   its room fresh from its list, but Seamless keeps every other room's record:
@@ -665,18 +668,35 @@ from its X byte's moves since the cast, which starts at his X in his room).
 
 ### 4. The view shows only rooms (slice 4)
 
-The camera clamps to the box around the rooms joined to his. Instead, it
-keeps the view over places that hold a room:
+The camera clamped to the box around the rooms joined to his. Instead, it
+keeps the view over places that hold a room (as built: `fax_camera.c`, a
+function of his place and the map, which `fax_world_present` and
+`fax_world_update_view` both ask):
 
 - From the position centred on him, it moves the least it must so that no
   part of the view is over an empty place. The view is exactly a room tall
   (208), so his own room's row always fits; sideways, any room beside his
   fills the rest (256 + 256 is more than 424). A room with no room on either
-  side, as a boss arena is, stays centred, black at its sides, as now.
+  side, as a boss arena is, stays centred, black at its sides, as now. As
+  built, sideways the view stays over his row's run of rooms, and up and
+  down it follows him into the next row only as far as the columns it spans
+  hold rooms there.
 - Where a limit changes as he walks (a column with an empty place comes into
   view), the camera glides to it a few pixels a frame, and looks ahead by
-  the distance the glide needs, so it is never caught showing black.
-- All in `fax_world_present` and its camera; nothing in the game changes.
+  the distance the glide needs, so it is never caught showing black. As
+  built, the glide and the look-ahead are one rule, with no state: the view
+  may reach a line into the next row for each pixel its span is clear of
+  that row's empty places, so as he walks toward one it comes down to his
+  row a pixel for each of his, and is there when the empty place would come
+  into sight.
+- **Seams one above the other** (found building it): while he straddles
+  one, the view must show both rows. Near where he can pass (a ladder or an
+  opening, from the rooms' blocks) it moves sideways onto the columns both
+  rows hold rooms in, so it follows him through without black. Where the two
+  rows share only his column (25 of the 101 such seams), no view can, and
+  black can't be helped: the view keeps his row until his body reaches the
+  seam, then follows him through in the 32 pixels he straddles it.
+- All in Seamless's camera; nothing in the game changes.
 
 ### 5. What a neighbouring room sees of him (slice 6)
 
@@ -826,7 +846,8 @@ whole is more likely 4,000 lines of C, and as much again in tests. All but
 the camera live in `src/fax_seams.c` (slice 0's file, its hook prefix and
 allocations), with `fax_world.c` giving it what it needs: a room's RAM to
 write, a room's side of the hero, calls at a tick, a crossing and a load,
-and the drawn-whole cells to paint. The camera is `fax_world.c`'s own.
+and the drawn-whole cells to paint. The camera is Seamless's own
+(`fax_camera.c`, slice 4).
 `fax_world.c` is about 630 lines now.
 
 - **Encounters change the most:** followers once seen, trains of up to 5,
@@ -866,7 +887,7 @@ twice its estimate (see "What it costs").
 | 1. Seams are open ground (**done**, #178) | Monsters, shots and walking people go through side-by-side seams both ways, between any two rooms, up to 5 actors a room; dormant until first seen, then awake for good (a shot leaving the view is removed); drawn whole across a seam; tiles from home; a load refreshes the rooms joined to it; record version 5 | Eolis's walking woman walks from room 2 into his room 1, and the walking man in and out (`tests/seams/open_ground.py`, as all here); a room 5 Zozura follows him back through room 4 to the town's edge (room 3's side) and turns back there, none ever in room 3, and room 4's follow him into room 5; the walking man at room 1's side by room 8 turns back there; a Zozura never seen stands still, wakes the first frame it is in view, and keeps coming after it leaves the view; unseen monsters in two rooms don't gather at him; a missed fireball flies on through a seam, and one leaving the view is gone; a room holding 5 keeps its seam a wall, one holding 4 doesn't; a straddling Zozura's pixels on both sides of the seam; a zone respawn's load brings the rooms beside it back fresh; the intro's trigger, a person who talks when touched, at a neighbour's edge leaves its room ticking (slice 0's hook); a save mid-crossing replays alike in two fresh games | Large: estimated at 730 lines, built in about 850 lines of C (`fax_seams.c` half comments) and 1,050 of tests |
 | 2. Fights across a seam (**done**, #187) | The visitors' pass, side by side: the sword, touches, shots on him and his shield, bread and coins; a neighbouring room's sounds; Sugata's flash | From room 4, he kills a room 5 Zozura: its experience and MP, its death in room 5, its drop there (bread: a Zozura leaves no coin); a Monodron killed the same way drops its coin in room 5, and the coin's sound plays (`tests/seams/fights.py`); a Zozura straddling the seam hurts him; he takes a coin across it; a punch reaches across it; a Sugata across a Mist seam flashes him in reach, and not out of it; a save mid-swing replays alike in two fresh games; on Zenis 16 a frame that ends inside the pass reads as the room's own and replays alike | Medium: estimated at 470 lines, built in about 800 lines of C (`fax_seams.c` half comments, and the features that ask it) and 1,050 of tests |
 | 3. Spells fly on (**done**, #188) | The spell's side, walls across, the view's edge (his own room's too), its picture, visitors in its path, kept through a crossing | Deluge flies through the seam to the view's edge, ends at a wall across a seam and kills a Zozura across one; a Deluge cast toward a dormant Zozura just past the view's edge, across a seam and in his own room, ends at the view's edge, and the Zozura keeps its full HP and stays dormant (no wake, no hit, no experience); behind the next room's foreground; Fire still flickers across a seam; a spell survives his crossing; save and load mid-flight (`tests/seams/spells.py`) | Medium: estimated at 230 lines, built in about 370 lines of C (`fax_seams.c` half comments) and 900 of tests |
-| 4. The view shows only rooms | The camera keeps the view over rooms, gliding where its limits change | Walking the Tower of Trunk from `$10`, and a Mist stretch with an empty corner: on no frame does the view lie over an empty place (`fax_world`'s camera against `fax_world_room`'s places), and it moves a few pixels a frame at most | Medium, about 150 |
+| 4. The view shows only rooms (**done**, #194) | The camera keeps the view over rooms, gliding where its limits change; through a seam one above the other it follows him over both rows' rooms, black only where the two share his column alone | Walking the Tower of Trunk from `$10`, and a Mist stretch with an empty corner: on no frame does the view lie over an empty place (`fax_world`'s camera against `fax_world_room`'s places), and it moves a few pixels a frame at most (`tests/world/only_rooms.py`, headless, every frame); down `$10`'s ladder, black only while he straddles the seam; every real map walked a pixel at a time (`tests/world/camera_test.c`) | Medium: estimated at 150 lines, built in about 190 lines of C (`fax_camera.c` a third comments, and `fax_world.c`'s side) and 660 of tests |
 | 5. One above the other | Slices 1-3 across seams one above the other: Y converted, fliers and fallers, drawn whole up and down, his true Y for the rooms above and below | A Hornet follows him down a Trunk ladder; his sword hits one across a seam above | Medium, about 250 |
 | 6. What a neighbouring room sees of him | His true distance in a copy; Nash and Magman beside his true place | An Ishiisu across a seam waits until he is within its 32 pixels; Nash reappears beside him, in his room | Small, about 120 |
 | 7. Loose ends | One-in-four items count a room met as a neighbour; the fountain's ladder from afar; a death at a seam drawn whole | Rooms of one-in-four items met in turn move the count, and one item in four shows; from `$27` with `Quests` `$20`, `$28` has its ladder and nothing runs as he crosses; a death at x 248 dissolves whole across the seam | Small, about 90 |
@@ -1011,6 +1032,56 @@ One PR. Where the plan (and the design on #166 before any code) changed:
   hooks off), the median of 5: room 5 empty 3.216 against 3.221 ms of CPU a
   frame, room 5's two Zozuras there 3.248 against 3.246. Within noise: the
   hooks are a few dozen instructions a frame while a spell is on.
+
+### Slice 4, as built (#194)
+
+One PR. Where the plan changed:
+
+- **Its own file, and no state.** The camera is `src/fax_camera.c`, a pure
+  function of the map (which places hold rooms, and where he can pass
+  between two one above the other) and his place. So the view is the same
+  however often a frame asks for it (Seams asks at the sprite loop's entry,
+  the cast's and the step), a save state and a rewind need nothing, and
+  `tests/world/camera_test.c` tests it apart from the game.
+- **The glide is a slope, not a speed.** Rather than a camera that moves a
+  few pixels a frame toward a limit it looks ahead to, the limit itself eases
+  in: a line of the next row for each pixel the view's span is clear of that
+  row's empty places. Walking at 1.5 pixels a frame, the view comes down 1.5
+  a frame, starting as far ahead as it has lines to lose (at most 104). It
+  moves only when he does. An empty place in both rows doesn't count, so at
+  the map's side the view follows him up and down as before.
+- **Seams one above the other**, which the plan left out: while his body is
+  across one, the view shows both rows. 76 of the 101 have rooms in both
+  rows beside his column; near a ladder or an opening (within 96 pixels of
+  one, his body within 32 pixels of the seam) the view moves sideways onto
+  those columns, in full where they leave him 96 pixels of views to show him
+  in, in part where they leave fewer, so walking past never swings it. The
+  other 25 share only his column, and show black while he straddles them,
+  for the 32 pixels the view takes to follow him through. Where he can pass
+  is read from the rooms' records: the upper room's bottom row and the lower
+  room's top row both passable (`BLOCK_PROPERTY_IMPASSABLE_MAP`).
+- **How fast it moves**, for each pixel of his: walking, at most 1 (2 a
+  frame); near a ladder or under an opening, up to 4; climbing, up to 6;
+  through a seam whose rows share his column alone, up to 7 (the view swings
+  a row in the 32 pixels he straddles it: 5 a frame climbing). A fall moves
+  him up to 8 pixels a frame, and the view with him.
+- **The trace** (`NESRECOMP_WORLD_TRACE`) now writes its line after
+  Seamless's step, with the picture's camera, the hero it is worked out
+  from, and the view actors wake in, for tests that check every frame.
+- **Seams' view.** Actors wake when the view first comes within 16 pixels
+  of them, shots go 16 pixels out of it and spells end at its edge, all from
+  `fax_world_view()`, which is the same camera. The view now stops short of
+  empty places and follows him up and down only over rooms, so what is in
+  it, and wakes, is what the picture shows, as before; it never moves while
+  he stands, so nothing wakes on its own, and a spell's edge moves only as
+  he does, at most the few pixels a frame above.
+- **Cost.** Headless, from the same saves and inputs, this build against
+  master, the median of 5: the Mist's `$37` to `$39` and back, 2,400 frames,
+  3.80 against 3.86 ms of CPU a frame; Trunk `$10` to `$12` and back, 3.52
+  against 3.60; Eolis's town, standing, 3,000 frames, 3.36 against 3.37.
+  Within noise (and a little less, where fewer actors come into view). The
+  camera itself is 0.8 microseconds a call on a 35-room map, two or three
+  calls a frame.
 
 Boss rooms are covered by `tests/world/boss_arenas.py`, which every slice
 runs, with a check that no mover or visitor comes from an arena: the moves'

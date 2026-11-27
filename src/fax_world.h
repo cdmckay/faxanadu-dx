@@ -67,7 +67,9 @@ uint8_t *fax_world_room_record(int room);
 void fax_world_place(int room, int *x, int *y);
 /* The view's top-left in world pixels (VIEW 424 wide, 208 tall below the
  * status bar), where fax_world_present puts it for the frame the machine is
- * running, whether or not F4's map shows: false when there is no view.
+ * running, whether or not F4's map shows: false when there is no view. It is
+ * Seamless's camera (fax_camera.c, #166's slice 4), over rooms only where
+ * it can be, so it need not be centred on him.
  * fax_world_update_view() works it out again from the live hero (the live
  * sprite loop's start); Seamless does too before its neighbours' ticks. */
 bool fax_world_view(int *x, int *y);

@@ -5,6 +5,7 @@
  * Door/region/script transitions retain their original ownership.
  * Boss screens are arenas: while a boss lives, its room joins no neighbour. */
 #include "fax_world.h"
+#include "fax_camera.h"
 #include "fax_seams.h"
 #include "fax_entrances.h"
 #include "fax_charges.h"
@@ -393,10 +394,26 @@ static int draw_hook(uint16_t pc){
     }
     return 0;
 }
+static void step(void);
+static void camera_at(int hx,int hy,int *cx,int *cy);
+/* NESRECOMP_WORLD_TRACE: a line a frame, after Seamless's step: the live
+ * game's room and hero, then the camera the frame's picture has
+ * (fax_world_present's, F4's map aside) with the hero it is worked out from
+ * (the room's capture: the last frame's on a frame the game lagged), and the
+ * view Seams wakes actors in (fax_world_view), in world pixels; blank where
+ * there is none. */
 void fax_world_step(void){
     if(!enabled||!supported())return;
-    if(!trace){const char *path=getenv("NESRECOMP_WORLD_TRACE");if(path&&*path){trace=fopen(path,"w");if(trace)fprintf(trace,"cycles,area,room,x,y,scroll,ready,handoffs,failures,simulation_ms\n");}}
-    if(trace)fprintf(trace,"%llu,%u,%u,%u,%u,%u,%u,%u,%u,%.4f\n",(unsigned long long)cyc_cycle_count(),q(0x24),q(0x63),q(0x9e),q(0xa1),q(0x54),q(0xe),handoffs,failures,sim_ms);
+    if(!trace){const char *path=getenv("NESRECOMP_WORLD_TRACE");if(path&&*path){trace=fopen(path,"w");if(trace)fprintf(trace,"cycles,area,room,x,y,scroll,ready,handoffs,failures,simulation_ms,camera_x,camera_y,shown_x,shown_y,view_x,view_y\n");}}
+    step();
+    if(!trace)return;
+    char shown[48]=",,,",seen[32]=",";int cx,cy;
+    if(active>=0&&area==q(0x24)&&active==q(0x63)){const uint8_t *r=rooms[active].ram;camera_at(r[0x9e],r[0xa1],&cx,&cy);snprintf(shown,sizeof shown,"%d,%d,%u,%u",cx,cy,r[0x9e],r[0xa1]);}
+    if(view_ok)snprintf(seen,sizeof seen,"%d,%d",view_x,view_y);
+    fprintf(trace,"%llu,%u,%u,%u,%u,%u,%u,%u,%u,%.4f,%s,%s\n",(unsigned long long)cyc_cycle_count(),q(0x24),q(0x63),q(0x9e),q(0xa1),q(0x54),q(0xe),handoffs,failures,sim_ms,shown,seen);
+    fflush(trace);
+}
+static void step(void){
     /* The status bar band is the game's own picture's, taken every frame
      * that picture shows it (fax_text_hud_showing), not only in play: in a
      * conversation, a shop or a script the world keeps its pose, but gold
@@ -424,26 +441,46 @@ void fax_world_step(void){
     fax_seams_step();
     sim_ms=(SDL_GetPerformanceCounter()-start)*1000.0/SDL_GetPerformanceFrequency();
 }
-/* The box, in rooms, round every room on the map. */
+/* The box, in rooms, round every room on the map: F4's map shows it all. */
 static void region(int *l,int *t,int *r,int *b){
     Room *a=&rooms[active];*l=*r=a->x;*t=*b=a->y;
     for(unsigned i=0;i<counts[area];i++)if(rooms[i].owned){Room *v=&rooms[i];if(v->x<*l)*l=v->x;if(v->x>*r)*r=v->x;if(v->y<*t)*t=v->y;if(v->y>*b)*b=v->y;}
 }
-/* The view's top-left in world pixels, width by height (the status bar
- * included), with the hero at (hx,hy) of the active room: centred on him,
- * kept inside the region's box, and centred in it when it is narrower. */
-static void camera_at(int width,int height,int l,int t,int r,int b,int hx,int hy,int *cx,int *cy){
+/* The map as the camera (fax_camera.c, #166's slice 4) sees it: the room
+ * on the map at a place, drawn there; -1 for none. */
+static int room_at_place(int col,int row){
+    for(unsigned i=0;i<counts[area];i++){Room *v=&rooms[i];if(v->owned&&v->valid&&v->x==col&&v->y==row)return (int)i;}
+    return -1;
+}
+static bool camera_room(void *ctx,int col,int row){(void)ctx;return room_at_place(col,row)>=0;}
+/* Where the hero can pass between the room at (col, row - 1) and the one
+ * under it, joined up and down: the block columns where the upper room's
+ * bottom row and the lower room's top row are both passable
+ * (BLOCK_PROPERTY_IMPASSABLE_MAP, $E8D9: a ladder is), as ScreenBuffer
+ * and BlockProperties ($0600, $043C) have them in each room's record. */
+static unsigned camera_openings(void *ctx,int col,int row){
+    (void)ctx;int d=room_at_place(col,row),u=room_at_place(col,row-1);
+    if(d<0||u<0||rooms[d].edges[2]!=u)return 0;
+    unsigned bits=0;
+    for(unsigned bx=0;bx<16;bx++){
+        const uint8_t *ru=rooms[u].ram,*rd=rooms[d].ram;unsigned bu=ru[0x600+0xc0+bx],bd=rd[0x600+bx];
+        unsigned pu=bu&1?ru[0x43c+(bu>>1)]>>4:ru[0x43c+(bu>>1)]&15,pd=bd&1?rd[0x43c+(bd>>1)]>>4:rd[0x43c+(bd>>1)]&15;
+        if(!data(15,0xe8d9+pu)&&!data(15,0xe8d9+pd))bits|=1u<<bx;
+    }
+    return bits;
+}
+static const FaxCameraMap camera_map={camera_room,camera_openings,NULL};
+/* The view's top-left in world pixels (the status bar above it), with the
+ * hero at (hx,hy) of the active room: Seamless's camera, over rooms only
+ * (fax_camera.c). */
+static void camera_at(int hx,int hy,int *cx,int *cy){
     Room *a=&rooms[active];
-    int x=a->x*RW+hx+8-width/2,y=a->y*RH+hy+16-(height-HUD)/2;
-    int xmax=(r+1)*RW-width,ymax=(b+1)*RH-(height-HUD);
-    *cx=xmax<l*RW?(l*RW+xmax)/2:clamp(x,l*RW,xmax);
-    *cy=ymax<t*RH?ymax:clamp(y,t*RH,ymax);
+    fax_camera_place(&camera_map,a->x*RW+hx,a->y*RH+hy,cx,cy);
 }
 void fax_world_update_view(void){
     view_ok=false;
     if(!enabled||cyc_mod_isolated()||active<0||area!=q(0x24)||active!=q(0x63))return;
-    int l,t,r,b;region(&l,&t,&r,&b);
-    camera_at(VIEW_W,VIEW_H,l,t,r,b,q(0x9e),q(0xa1),&view_x,&view_y);view_ok=true;
+    camera_at(q(0x9e),q(0xa1),&view_x,&view_y);view_ok=true;
     hero_wx=rooms[active].x*RW+q(0x9e);hero_wy=rooms[active].y*RH+q(0xa1);
 }
 bool fax_world_view(int *x,int *y){if(!view_ok)return false;*x=view_x;*y=view_y;return true;}
@@ -594,7 +631,7 @@ const uint32_t *fax_world_present(int *w,int *h,const uint32_t *native){
         goto finished;
     }
     if(atlas){camera_x=l*RW;camera_y=t*RH;}
-    else camera_at(width,height,l,t,r,b,a->ram[0x9e],a->ram[0xa1],&camera_x,&camera_y);
+    else camera_at(a->ram[0x9e],a->ram[0xa1],&camera_x,&camera_y);
     for(unsigned id=0;id<counts[area];id++)if(rooms[id].owned&&rooms[id].valid){
         Room *v=&rooms[id];int ox=v->x*RW-camera_x,oy=HUD+v->y*RH-camera_y;
         if(ox>=width||ox+RW<=0||oy>=height||oy+RH<=HUD)continue;raster(id);

@@ -22,8 +22,24 @@ the original stop-and-scroll sequence.
 original's full 240 lines, its HUD and a room's 208, so exactly as much shows
 above and below the hero as on the NES, and 53 of its 8-pixel tiles across,
 the width Sonic Mania widens to for the same idea. Nothing changes it: there
-is no zoom and no option. The camera follows the hero and clamps to the
-connected region's edges, centring a region narrower than the view. The
+is no zoom and no option. **The view shows only rooms** (#166's slice 4,
+`fax_camera.c`): the camera follows the hero, and from the place centred on
+him moves the least it must to keep off places of the map that hold no
+room. Sideways it stays over his row's run of rooms (any room beside his
+fills the rest: 256 + 256 is more than 424), centred on a room alone in its
+row, an arena or a shaft, black at its sides, as before. Up and down it
+follows him into the next row only as far as the columns it spans hold rooms
+there, and that limit eases in, a line for each pixel of the span's
+clearance, so walking toward an empty corner the view comes down to his row
+a pixel for each of his, before the corner would be in sight. Near a ladder
+or an opening between rooms one above the other it moves sideways onto the
+columns both rows hold rooms in, so it follows him through without black;
+where the two rows share only his column (25 of the 101 such seams), black
+can't be helped, and the view keeps his row until his body reaches the seam,
+then follows him through in the 32 pixels he straddles it. It is a function
+of his place and the map, so it is the same however often a frame asks, and
+a save state holds nothing of it. Before, it clamped to the box round the
+rooms, black wherever the box held no room (142 places beside a room). The
 inventory, text boxes and the original's own pictures (death, scripts, region
 loads) sit where the native picture would, centred. The status bar band, its
 top 32 lines, is the one exception (#113, #117): it and the Elixir left of its
@@ -201,6 +217,7 @@ All automated launches were hidden and muted with native saves disabled.
 | Live status bar (#132) | `tests/world/live_status_bar.py`, in the suite, read off the presented picture's pixels (the band's gold digits, and its bars' fill): buying the Elixir at Eolis's tool shop, every frame of the count-down shows the gold the game had a frame before, every amount from 700 down to 380, and every frame's band is the game's own picture's; the King's gift counts 0 up to 3000 the same way; at Eolis's Guru the bars read 32 HP and 5 MP, and 80 and 80 during his first line. Without the fix all three fail. A probe through the shop's opening, a Start pause and the Select menu found the band equal to the game's own on every frame |
 | Open seams (#166, slice 1) | `tests/seams/open_ground.py`, in the suite, a part each: unseen Zozuras in two rooms stand still 300 frames; one wakes on the first read within 16 pixels of the view and keeps coming once out of it; Eolis's Zozuras follow him into `$05` and back through `$04` into `$03`; the town's walking woman walks into his room, the walking man in and out; a fireball flies through a seam and goes once out of the view; a room of 5 keeps its seam a wall; a straddling Zozura's pixels on both sides of the seam; a respawn's load brings room 2 back fresh; the intro's trigger by a neighbour's edge leaves it ticking; a save mid-crossing replays alike in two fresh games |
 | Fights across a seam (#166, slice 2) | `tests/seams/fights.py`, in the suite, a part each: from `$04` the Long Sword kills `$05`'s Zozura (its experience and MP his, its death and its bread in `$05`); a Monodron's coin drops in `$05` and its sound plays; he takes a coin across the seam without crossing; a Zozura straddling the seam hurts him; a punch reaches across it; a Sugata in the Mist's `$1F` flashes him on `$1E` in its reach, and not out of it; a save mid-swing replays alike in two fresh games; a frame that ends inside the pass on Zenis 16 reads as the room's own and replays alike. `tests/world/boss_arenas.py` checks that no move or visit comes from an arena |
+| The view shows only rooms (#166, slice 4) | `tests/world/camera_test.c`, in the suite, lays out every area from every room as `topology()` does (54 maps), and walks the hero a pixel at a time along every row at every height, with and without an opening above, and through every seam one above the other at each of its 16 block columns: his body always in the view; standing in a room with a room beside it, the view over no place without a room; across a seam, black only where no view over both rows' rooms shows him; the view moving at most 1 pixel for each of his walking, 4 under an opening, 6 climbing and 7 across a seam whose rows share one column; and with no empty place the old camera's view. `tests/world/only_rooms.py`, in the suite, headless, every frame from the trace against `fax_world_room`'s places: the Tower of Trunk from `$10` to `$12` and back (the old camera black from the first frame, the new one never), down `$10`'s ladder into `$0F` (black only on the 42 frames his body is across the seam), and the Tower of Suffer from `$37`'s ledge past the empty corner over `$39` (the view reaching up at the start and down to his row before the corner); at most 2, 7 and 5 pixels a frame, and never without him moving |
 | Shared CIRAM API | Invalid bounds/NULL and isolated upload refused; upload/restore succeeds; serialized complete machine unchanged after the probe |
 | Catalog / prepared helper | Feature activation without CLI override; hidden helper loads and pauses all prepared states; owner configuration restored to normal audio |
 
@@ -231,11 +248,13 @@ risks a playtest must cover):
   that wants a playtest. Fixed by slice 0 (Seams lose nothing, #177): the
   live game's ghost hit at the far side of his own room, the drops a copy
   took at its edge, and the rooms an item or a person there froze.
-- **Black where no room is.** The camera clamps to the box around the rooms
-  joined to his, so where that box holds no room the view is black, a block
-  with straight edges (out of the Tower of Trunk's door onto `$10`: the top
-  left). 142 such places lie beside a room, in Trunk, the Mist, Branch,
-  Dartmoor and Zenis.
+- **Black where no room is** (fixed by #166's slice 4 but where it can't
+  be helped): while he straddles one of the 25 seams one above the other
+  whose rows share only his column (Trunk `$10` over `$0F`, `$13` over `$12`,
+  and in the Mist's towers, Branch, Dartmoor and Zenis), and beside the 12
+  shafts and 18 rooms that have no room beside them in their row, as beside
+  an arena. The camera's feel (where it eases up and down, and sideways near
+  a ladder) wants a playtest.
 - **Secrets and breakable terrain** (the Mattock's walls, the path to
   Mascon's fountain): the suite covers the fountain's ladder (the ladder
   fixes' test), breaking Trunk `$0C`'s Mattock wall in its own room (the keys
@@ -299,7 +318,9 @@ choice for a run (the suite never uses it: it plays the remaster as players
 get it). There is no size option: tests play the 424x240 view a player sees. TCP: `fax_world` (its `size` is the
 canvas's),
 `fax_world_room` and `fax_world_probe`. `NESRECOMP_WORLD_TRACE=<path>` explicitly
-enables the per-frame CSV; ordinary launches create no world journal.
+enables the per-frame CSV, a line after each frame: the live room and hero,
+the camera the picture has with the hero it is worked out from, and the view
+actors wake in; ordinary launches create no world journal.
 
 The task's `preview/Open-preview.ps1` starts a normal window, normal audio and
 a localhost checklist. The first setup is paused. Tests can be switched and
