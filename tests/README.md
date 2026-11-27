@@ -255,7 +255,11 @@ one bounded by frames runs out on a loaded machine: hold the direction
 
 A check of a picture's pixels needs what it checks on the picture. Seamless's
 view follows the hero, so it need not show the whole room: with him at x 232,
-the view's left edge is the room's x 28. A loaded machine's reads come
+the view's left edge is the room's x 28. It also keeps off places of the map
+with no room (#166's slice 4), so it is not always centred on him: read where
+it is from the game (`fax_world`'s `camera`), and for every frame of a
+headless run from Seamless's trace (`NESRECOMP_WORLD_TRACE`, as
+`tests/world/only_rooms.py` does). A loaded machine's reads come
 further apart, so a look sampled while something moves comes later in its
 path (#144: the Fire past the view's edge).
 
