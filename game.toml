@@ -1352,6 +1352,50 @@ addr = 0x865b
 bank = 14
 bytes = "c9 c0 b0 16 a2 03 20 10 87 a5 b7 f0"   # CurrentSprite_HandleFall, past STA CurrentSprites_YPos,X: CMP #$C0, BCS @_clearSprite, LDX #$03, JSR CurrentSprite_CanMoveInDirection, LDA Blocks_Result
 
+# What a neighbouring room sees of him (fax_seams.c, #166's slice 6): the
+# entries of Sprite_CalcDistanceXToPlayer and _YToPlayer and the Ishiisu's
+# own sum's CMP #$20 (his true distance: a branch target, so the CMP runs on
+# what the hook leaves in A); and the three places where an actor puts itself
+# by him, Nash's (past its phase 0's countdown), Magman's (a branch target:
+# handled in his room past a side, it returns from the behaviour as its RTS
+# would) and a Zorugeriru's minion's STA of its X.
+
+[[mod_function_hook]]
+id = "faxanadu.seams.distance-x"
+addr = 0x82f8
+bank = 14
+bytes = "b5 ba 38 e5 9e b0 13 49 ff 18 69 01"   # Sprite_CalcDistanceXToPlayer: LDA CurrentSprites_XPos_Full,X, SEC, SBC Player_PosX_Block, BCS, EOR #$FF, CLC, ADC #$01
+
+[[mod_function_hook]]
+id = "faxanadu.seams.distance-y"
+addr = 0x831b
+bank = 14
+bytes = "b5 c2 38 e5 a1 b0 06 49 ff 18 69 01"   # Sprite_CalcDistanceYToPlayer: LDA CurrentSprites_YPos,X, SEC, SBC Player_PosY, BCS @_return, EOR #$FF, CLC, ADC #$01
+
+[[mod_function_hook]]
+id = "faxanadu.seams.ishiisu"
+addr = 0x9147
+bank = 14
+bytes = "c9 20 90 13 20 7b 86 a9 c0 8d 74 03"   # SpriteBehavior_Ishiisu's @LAB_PRG14__9147: CMP #$20, BCC, JSR BScript_Action_FacePlayerX, LDA #$C0, STA Arg_DeltaX_Frac
+
+[[mod_function_hook]]
+id = "faxanadu.seams.nash"
+addr = 0x90a2
+bank = 14
+bytes = "a5 a4 29 40 d0 15 a5 9e 18 69 20 95"   # SpriteBehavior_Nash: LDA Player_Flags, AND #$40, BNE, LDA Player_PosX_Block, CLC, ADC #$20, STA CurrentSprites_XPos_Full,X
+
+[[mod_function_hook]]
+id = "faxanadu.seams.magman"
+addr = 0x95f7
+bank = 14
+bytes = "98 18 65 9e 95 ba a5 a1 95 c2 60 20"   # SpriteBehavior_Magman's @LAB_PRG14__95f7: TYA, CLC, ADC Player_PosX_Block, STA CurrentSprites_XPos_Full,X, LDA Player_PosY, STA CurrentSprites_YPos,X, RTS
+
+[[mod_function_hook]]
+id = "faxanadu.seams.zorugeriru"
+addr = 0x9e3e
+bank = 14
+bytes = "99 ba 00 a9 20 99 c2 00 bd 2c 03 99"   # SpriteBehavior_Zorugeriru__9e13's @LAB_PRG14__9e3e: STA a:CurrentSprites_XPos_Full,Y, LDA #$20, STA a:CurrentSprites_YPos,Y, LDA CurrentSprites_PPUOffsets,X
+
 # Punches (fax_punch.c, #180): without a weapon, Player_DrawWeapon's BMI after
 # LDA Player_CurWeapon (the fist placed, with the Hand Dagger's reach),
 # Player_HitSpriteWithWeapon's (the punch goes on), and the Glove's STA

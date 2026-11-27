@@ -5347,6 +5347,90 @@ so wholly kept, none of it on the status bar. The visitors' pass takes the
 rooms above and below his too, a visitor's Y byte his room's (`fax_seams_slot_y`
 gives the damage numbers its own room's).
 
+What slice 6 (what a neighbouring room sees of him) builds on:
+
+- **Who measures his distance.** `Sprite_CalcDistanceXToPlayer` (`$82F8`,
+  X the slot) is the gap between them, not the distance: at or right of
+  him its X less his less 16 (his width), C set; left of him his X less its
+  X less its hitbox's width less one (`SPRITE_HITBOX_WIDTHS`, Y the hitbox
+  type), C clear; 0 where they meet. `Sprite_CalcDistanceYToPlayer`
+  (`$831B`) is |its Y - his|, C set at or below him. Their callers: the
+  script op's tests (`BScript_Op_CheckDistanceToPlayer`, op `$03`:
+  `SpriteOp_CheckDistanceToPlayer_X`, `$A7F8`, and `_Y`, `$A82A`), used by
+  the scripts of Raiden (`$04`, X < 48: hop at him), Ikeda (`$26`, X < 64),
+  the Snowman (`$0C`, X < 32), the Fire Giant (`$0E`, X < 32: face him and
+  charge 40 ticks) and Grimlock (`$19`, Y < 16 and X < 16), and the unused
+  eyeball's; `SpriteBehavior_GiantBees` (Y < 8), `SpriteBehavior_Naga` (Y <
+  16: rise or sink toward him), `SpriteBehavior_SirGawaineWolfman` (X:
+  close in at 1 pixel a frame beyond 24, fight within it);
+  `SpriteBehavior_Unknown_29_SomeSetup` (both, to aim: Shadow Eura's shot,
+  `$53`, in her arena only); and `SpriteBehavior_EnemyUnused36` and
+  `FUN_PRG14__9699` (an unused enemy). Only the Ishiisu does such a sum
+  inline in play (`$913C`, |its X - his|, then `CMP #$20` at `$9147`);
+  `FUN_PRG14__9aa1`'s (64) is entity `$12`'s, the unused snake boss's body,
+  and `SpriteBehavior_EnemyUnused43` reads his X and Y for the unused
+  winged skeleton: no list holds either, and nothing spawns them. Everything
+  else in bank 14 that reads his X or Y compares sides (`BScript_Action_FacePlayerX`
+  and `_Y`, `Sprite_Maybe_AddFacingPosX`) or is his own (the touch, the
+  weapon, the shield, the spell), but the three below that place themselves
+  by him.
+- **The Ishiisu** (`$0F`, `SpriteBehavior_Ishiisu`, `$9129`): while 32
+  pixels or more from him (raw X, not the gap) it faces him and walks at
+  0.75 pixels a frame; within 32 it stands, and once he faces it
+  (`Player_Flags` `$40` against its facing, `BYTE_ARRAY_PRG14__918c`) it
+  faces him, counts 30 frames, throws a shot (`$51`, `FUN_PRG14__a0a0`,
+  12 lines below its top) at 10 left, and walks again. The Mist's `$50`,
+  `$51` and `$52` have one each on their floor, between two blocks on it
+  at columns 5 and 13 (x 80 and 208) that stop a walker, so as listed they
+  never reach a seam: `$50`'s, walking at him on `$51`, stops at x 192.
+- **Nash** (`$0D`, `SpriteBehavior_Nash`, `$9060`, the Mist's `$2A`): phase
+  0 for 120 frames hidden (`Sprite_SetVisible`, which despite its name sets
+  the hidden bit `$10`; `Sprites_HideSprite` clears it); then at `$90A2`
+  its X goes 32 behind him (`$40` set, facing right: his X less 32, or plus
+  32 if that borrows; else plus 32, or less 32 if that carries or reaches
+  240), its Y kept (16 as listed: it floats at the top); phase 1 for 60
+  frames it faces him, drawn 4 frames in 8; phase 2 for 60 it shows itself
+  and at 10 left throws a shot; then phase 0 again.
+- **Magman** (`$23`, `SpriteBehavior_Magman`, `$95C0`, the Branch's `$20`
+  and `$22`): ready, it hides at (240, 208), below the room, for 60 frames;
+  then at `$95F7` (`TYA`, `CLC`, `ADC Player_PosX_Block`) goes 48 pixels in
+  front of him (Y `$30` facing right, `$D0` facing left) at his Y, with no
+  check, so near a side its X wraps round the room (him at x 230 facing
+  right: x 22); it faces him for 120 frames, drawn in its odd phases only,
+  and hides again. It only touches.
+- **A Zorugeriru's minion** (`$03`, `SpriteBehavior_Garbled3`):
+  `SpriteBehavior_Zorugeriru` (`$31`, a big enemy: the Trunk's `$3B`, the
+  Mist's `$40`, Zenis `$05` and `$0C`) counts, and while its room holds
+  fewer than 4 minions, every 16 frames starts a 32-frame wait, then
+  `SpriteBehavior_Zorugeriru__9e13` puts one in a free slot at y 32 and at
+  his X (`$9E3E`, `STA a:CurrentSprites_XPos_Full,Y`), or 16 left of it when
+  he is under the Zorugeriru (its X to X + 15). The minion falls, lands
+  with sound 7, shakes 5 frames, waits 15 and is gone.
+- **What a copy sees.** A copy holds him to its room (`shadow()`: X 0-255,
+  Y 0-239), so for a room beside his each distance is to the seam: the
+  Fire Giant of `$50` by the seam (x 220) charged at once with him at `$51`'s
+  x 60, 80 pixels away; an Ishiisu put there (x 226) stood by the seam,
+  and whenever he faced it threw its shot at him from there; Nash went to
+  `$2A`'s x 223 and
+  Magman to `$20`'s x 207, or wrapped to its x 47, by the seam where he
+  wasn't; above him, Magman went to `$22`'s y 239, below its floor.
+
+What Seams does there (slice 6): the two routines' entries and the Ishiisu's
+`CMP` answer from his true place in the room's pixels (`fax_world_hero()`)
+and the slot's X and Y from its marks, capped at 255, wherever either is
+past its byte (a copy beside or across from his room; a slot of his own
+through a side), the registers as the routine leaves them (the `CMP` runs
+on the A it is given); elsewhere the game's own sums are the truth. At the
+three placements a copy notes how far his true place moves the actor and
+the game goes on; once the tick's RAM is kept, between frames, the actor
+goes there, into the room the place lies in (his, or past his side the room
+joined there; with nothing joined, round his room as the byte would wrap),
+as a move goes, refused for a full room, a town's edge or no free slot, and
+the cells and shadow OAM entries (`$0700`) its tick drew are cleared, so it
+is never drawn by the seam. His own room's Magman whose place is past a side
+with a room joined there that may take it is put there, marked through the
+side, and moves between frames.
+
 ## Graphics bugs
 
 What the original draws wrong on the USA ROM, found by chipx86's notes, the
@@ -5662,7 +5746,18 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   (marks 4 and 8), moves with their Y less or plus 208, cells past a top or
   bottom, the visitors of the rooms above and below his, and
   `fax_seams_slot_y()` (a visitor's own room's Y, for the damage numbers);
-  Seamless's `shadow()` holds a copy's hero to Y 0-239. Slice 0, seams
+  Seamless's `shadow()` holds a copy's hero to Y 0-239. Slice 6, what a
+  neighbouring room sees of him: hooks at `Sprite_CalcDistanceXToPlayer`'s
+  and `Sprite_CalcDistanceYToPlayer`'s entries (`$82F8`, `$831B`) and the
+  Ishiisu's `CMP #$20` (`$9147`), answering from his true place
+  (`fax_world_hero()`) and the slot's marks where either is past its byte,
+  255 at most; and at Nash's, Magman's and a Zorugeriru's minion's
+  placements (`$90A2`, `$95F7`, `$9E3E`), which in a copy note how far his
+  true place moves the actor, and between frames (once the tick is
+  captured: `fax_seams_captured()`) move it there, into the room it lies in,
+  hiding the cells its tick drew; Magman's in his room puts it past a side,
+  marked, where the game's X would wrap (*Seams: actors across rooms*).
+  Nothing new in either record. Slice 0, seams
   lose nothing, is two hooks in bank 14's sprite loop:
   - `CurrentSprite_CheckHitPlayer`'s entry (`$890A`) returns at once in a
     neighbouring room's tick, with X the current slot as its first `LDX

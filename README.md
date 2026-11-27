@@ -38,7 +38,10 @@ Hornet flies on up or down a ladder's shaft after you, and a monster that
 steps off a ledge falls into the room below instead of vanishing. They
 stand still until you first see them, then come for you, and a monster that
 has seen you follows you on, up to a town's edge: towns stay safe, and their
-people stay in them. Fights
+people stay in them. Monsters in the next room know how far away you really
+are, so one that waits for you to come close waits instead of charging at the
+edge, and Nash and Magman, who appear beside you, appear beside you, not at
+the room's edge. Fights
 go on across the edges too: your sword or fist reaches a monster in the next
 room, a monster or its shot there can hurt you, a coin or bread lying across
 the edge is yours for the touch, you hear what happens next door, and a
