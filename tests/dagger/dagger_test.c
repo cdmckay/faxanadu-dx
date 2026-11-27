@@ -9,13 +9,23 @@
 #include <string.h>
 
 static unsigned checks;
-#define CHECK(test) do{++checks;if(!(test)){fprintf(stderr,"FAIL line %u: %s\n",__LINE__,#test);exit(1);}}while(0)
+#define CHECK(test)                                                                                                    \
+    do {                                                                                                               \
+        ++checks;                                                                                                      \
+        if (!(test)) {                                                                                                 \
+            fprintf(stderr, "FAIL line %u: %s\n", __LINE__, #test);                                                    \
+            exit(1);                                                                                                   \
+        }                                                                                                              \
+    } while (0)
 
 /* ---- the machine ----
  * The registrations below accept only this module's own callbacks: the
  * constructor aborts before main if any is wrong. */
-static uint8_t rom[16 * 16384];                  /* $FF but the weapon range table */
-typedef struct { uint32_t offset; uint8_t compare, value; } Override;
+static uint8_t rom[16 * 16384]; /* $FF but the weapon range table */
+typedef struct {
+    uint32_t offset;
+    uint8_t compare, value;
+} Override;
 static Override overrides[64];
 static unsigned override_count;
 static bool local_only;
@@ -23,7 +33,11 @@ static bool local_only;
 bool cyc_mod_set_prg_read_override(uint32_t offset, uint8_t compare, uint8_t value) {
     if (offset >= sizeof rom || rom[offset] != compare) return false;
     for (unsigned i = 0; i < override_count; ++i)
-        if (overrides[i].offset == offset) { overrides[i].compare = compare; overrides[i].value = value; return true; }
+        if (overrides[i].offset == offset) {
+            overrides[i].compare = compare;
+            overrides[i].value = value;
+            return true;
+        }
     if (override_count == 64) return false;
     overrides[override_count++] = (Override){ offset, compare, value };
     return true;
@@ -46,7 +60,10 @@ int nes_mod_register_savestate_hook(const char *id, NESModSavestateGet get, NESM
 int nes_mod_register_savestate_validator(const char *id, NESModSavestateValidate validate) {
     return !strcmp(id, "faxanadu.taller-dagger") && validate == state_validate;
 }
-void nes_mod_set_local_only(const char *name, int required) { (void)name; local_only = required; }
+void nes_mod_set_local_only(const char *name, int required) {
+    (void)name;
+    local_only = required;
+}
 
 /* A fresh machine with the stock image and the feature off. */
 static void stock(void) {
@@ -54,13 +71,20 @@ static void stock(void) {
     deactivate();
     memset(rom, 0xFF, sizeof rom);
     memcpy(rom + prg(14, WEAPON_RANGES), ranges, sizeof ranges);
-    override_count = 0; local_only = false;
+    override_count = 0;
+    local_only = false;
 }
-static void on(void) { stock(); activate(); fax_dagger_step(); }
+static void on(void) {
+    stock();
+    activate();
+    fax_dagger_step();
+}
 
 /* ---- the game ---- */
 enum { DAGGER, LONG_SWORD, GIANT_BLADE, DRAGON_SLAYER };
-typedef struct { uint8_t x, y; } Reach;
+typedef struct {
+    uint8_t x, y;
+} Reach;
 /* Player_DrawWeapon, which runs in bank 14: X = Player_CurWeapon * 2, then
  * LDA MAYBE_WEAPON_RANGES,X and MAYBE_WEAPON_RANGES+1,X. */
 static Reach reach(int weapon) {
@@ -82,7 +106,9 @@ static bool hits(Reach r, uint8_t wx, uint8_t wy, uint8_t sx, uint8_t sy, uint8_
  * then (x + 24, y + 6). A Zozura is 16 by 16 (MAYBE_SPRITE_EXTENTS) and stands
  * at y + 16 on the same ground. */
 enum { HERO_X = 120, HERO_Y = 144, ZOZURA = 16 };
-typedef struct { uint8_t dx, dy; } Phase;
+typedef struct {
+    uint8_t dx, dy;
+} Phase;
 static const Phase dagger_phases[] = { { 14, 8 }, { 24, 6 } }, sword_phases[] = { { 16, 8 }, { 24, 6 } };
 static const Phase *phases(int weapon) { return weapon == DAGGER ? dagger_phases : sword_phases; }
 static bool swing(int weapon, uint8_t sx, uint8_t sy, uint8_t ex, uint8_t ey) {
@@ -98,7 +124,7 @@ static void stock_reach(void) {
     stock();
     CHECK(reach(DAGGER).x == 0x08 && reach(DAGGER).y == 0x04);
     for (int w = LONG_SWORD; w <= DRAGON_SLAYER; ++w) CHECK(reach(w).x == 0x10 && reach(w).y == 0x08);
-    fax_dagger_step();                               /* not activated: nothing served */
+    fax_dagger_step(); /* not activated: nothing served */
     CHECK(override_count == 0);
 }
 
@@ -108,23 +134,27 @@ static void taller_reach(void) {
     CHECK(reach(DAGGER).x == 0x08 && reach(DAGGER).y == 0x08);
     for (int w = LONG_SWORD; w <= DRAGON_SLAYER; ++w) CHECK(reach(w).x == 0x10 && reach(w).y == 0x08);
     /* One override, on bank 14's byte only: physical offset $3B898. */
-    CHECK(override_count == 1 && overrides[0].offset == 0x3B898 && overrides[0].compare == 0x04 && overrides[0].value == 0x08);
-    rom[prg(13, DAGGER_REACH_Y)] = 0x04;             /* the same address in another bank is untouched */
+    CHECK(override_count == 1 && overrides[0].offset == 0x3B898 && overrides[0].compare == 0x04 &&
+          overrides[0].value == 0x08);
+    rom[prg(13, DAGGER_REACH_Y)] = 0x04; /* the same address in another bank is untouched */
     CHECK(cpu_read(13, DAGGER_REACH_Y) == 0x04);
-    fax_dagger_step(); fax_dagger_step();            /* served once */
+    fax_dagger_step();
+    fax_dagger_step(); /* served once */
     CHECK(override_count == 1);
-    deactivate();                                    /* the launcher turns it off: stock again */
+    deactivate(); /* the launcher turns it off: stock again */
     CHECK(reach(DAGGER).y == 0x04 && !served && !enabled);
-    activate(); fax_dagger_step();                   /* and on again, in play */
+    activate();
+    fax_dagger_step(); /* and on again, in play */
     CHECK(reach(DAGGER).y == 0x08 && override_count == 1);
 }
 
 static void refuses_other_layouts(void) {
     stock();
-    rom[prg(14, DAGGER_REACH_Y)] = 0x06;             /* not the stock image */
-    activate(); fax_dagger_step();
+    rom[prg(14, DAGGER_REACH_Y)] = 0x06; /* not the stock image */
+    activate();
+    fax_dagger_step();
     CHECK(failed && !served && override_count == 0 && reach(DAGGER).y == 0x06);
-    fax_dagger_step();                               /* no retry every frame */
+    fax_dagger_step(); /* no retry every frame */
     CHECK(override_count == 0);
 }
 
@@ -135,20 +165,20 @@ static void save_states(void) {
     on();
     CHECK(state_get(buf, sizeof buf) == 0);
     CHECK(state_validate(NULL, 0) && !state_validate(buf, 1) && !state_set(buf, 1));
-    override_count = 0;                              /* a host that dropped every override */
+    override_count = 0; /* a host that dropped every override */
     CHECK(reach(DAGGER).y == 0x04);
-    CHECK(state_set(NULL, 0));                       /* a save without our record, or with an empty one */
+    CHECK(state_set(NULL, 0)); /* a save without our record, or with an empty one */
     CHECK(reach(DAGGER).y == 0x08 && override_count == 1 && served);
-    CHECK(state_set(NULL, 0) && override_count == 1);  /* a load where the override survived */
-    stock();                                         /* turned off: a load serves nothing */
+    CHECK(state_set(NULL, 0) && override_count == 1); /* a load where the override survived */
+    stock();                                          /* turned off: a load serves nothing */
     CHECK(state_set(NULL, 0) && override_count == 0 && reach(DAGGER).y == 0x04);
 }
 
 static void low_enemies(void) {
     const uint8_t zx = HERO_X + 22, ground = HERO_Y + 16;
     stock();
-    CHECK(!swing(DAGGER, zx, ground, ZOZURA, ZOZURA));        /* the stock dagger passes over a Zozura */
-    CHECK(swing(LONG_SWORD, zx, ground, ZOZURA, ZOZURA));     /* that the Long Sword hits */
+    CHECK(!swing(DAGGER, zx, ground, ZOZURA, ZOZURA));    /* the stock dagger passes over a Zozura */
+    CHECK(swing(LONG_SWORD, zx, ground, ZOZURA, ZOZURA)); /* that the Long Sword hits */
     on();
     CHECK(swing(DAGGER, zx, ground, ZOZURA, ZOZURA));
     CHECK(swing(LONG_SWORD, zx, ground, ZOZURA, ZOZURA));
@@ -160,8 +190,11 @@ static void low_enemies(void) {
 /* A few enemies' extents, as MAYBE_SPRITE_EXTENTS ($B407, bank 14) has them:
  * the low crawler, a flier that hovers at the hero's head, the common tall
  * walker, and the two boss shapes that are not 32 tall. */
-static const struct { const char *name; uint8_t ex, ey; } enemies[] = {
-    { "Zozura", 16, 16 }, { "Hornet", 16, 16 }, { "Monodron", 16, 32 },
+static const struct {
+    const char *name;
+    uint8_t ex, ey;
+} enemies[] = {
+    { "Zozura", 16, 16 },   { "Hornet", 16, 16 },     { "Monodron", 16, 32 },
     { "Pakukame", 32, 24 }, { "Rokusutahn", 32, 16 },
 };
 
@@ -183,17 +216,23 @@ static void every_height(void) {
                 on();
                 bool after = swing(DAGGER, (uint8_t)sx, (uint8_t)sy, ex, ey);
                 CHECK(!before || after);
-                if (after && !before) { ++added; CHECK(sy > HERO_Y + 10 && sy <= HERO_Y + 16); }
-                if (sy <= HERO_Y + 10) CHECK(after == before);            /* higher up: unchanged */
-                if (sy + ey <= HERO_Y + 6) CHECK(!after);                 /* wholly above the swing */
+                if (after && !before) {
+                    ++added;
+                    CHECK(sy > HERO_Y + 10 && sy <= HERO_Y + 16);
+                }
+                if (sy <= HERO_Y + 10) CHECK(after == before); /* higher up: unchanged */
+                if (sy + ey <= HERO_Y + 6) CHECK(!after);      /* wholly above the swing */
             }
-        if (!added) { fprintf(stderr, "FAIL: the taller dagger reaches no new %s\n", enemies[e].name); exit(1); }
+        if (!added) {
+            fprintf(stderr, "FAIL: the taller dagger reaches no new %s\n", enemies[e].name);
+            exit(1);
+        }
         for (unsigned sy = 0; sy < 240; ++sy)
             for (unsigned p = 0; p < 2; ++p) {
                 uint8_t wx = (uint8_t)(HERO_X + sword_phases[p].dx), wy = (uint8_t)(HERO_Y + sword_phases[p].dy);
                 bool dagger = hits(reach(DAGGER), wx, wy, wx, (uint8_t)sy, ex, ey);
                 bool sword = hits(reach(LONG_SWORD), wx, wy, wx, (uint8_t)sy, ex, ey);
-                CHECK(dagger == sword);                                    /* the same height */
+                CHECK(dagger == sword); /* the same height */
             }
     }
 }

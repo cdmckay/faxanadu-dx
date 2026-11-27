@@ -19,7 +19,7 @@ enum { FAX_CHARGES_ITEM = 16, FAX_CHARGES_TOP = 16 };
  * (FAX_CHARGES_ITEM), else 0: Seamless lays the status bar out with it. */
 int fax_charges_width(void);
 
-void fax_charges_frame_end(void);   /* the end of each machine frame */
+void fax_charges_frame_end(void); /* the end of each machine frame */
 /* The picture to present: `picture` (Seamless's canvas, or if NULL the
  * engine's own) with the Elixir drawn beside the status bar when there is
  * room for it; otherwise `picture` itself. */

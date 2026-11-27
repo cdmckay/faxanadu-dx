@@ -23,17 +23,17 @@ void fax_spell_cost_tcp_setup(void);
  * fill tile $09 and the partial tile $0D, between the border's lines 17 and
  * 22). */
 enum { FAX_SPELL_COST_BAR_X = 24, FAX_SPELL_COST_FILL_TOP = 18, FAX_SPELL_COST_FILL_LINES = 4 };
-enum { FAX_SPELL_COST_SPELLS = 5 };   /* Deluge, Thunder, Fire, Death, Tilte */
+enum { FAX_SPELL_COST_SPELLS = 5 }; /* Deluge, Thunder, Fire, Death, Tilte */
 
 typedef enum {
-    FAX_SPELL_COST_NONE = 0,   /* no spell selected, or nothing to draw: the bar as it is */
-    FAX_SPELL_COST_CAST,       /* enough MP: the cost's pixels a step lighter */
-    FAX_SPELL_COST_SHORT,      /* not enough: the whole fill a step darker */
+    FAX_SPELL_COST_NONE = 0, /* no spell selected, or nothing to draw: the bar as it is */
+    FAX_SPELL_COST_CAST,     /* enough MP: the cost's pixels a step lighter */
+    FAX_SPELL_COST_SHORT,    /* not enough: the whole fill a step darker */
 } FaxSpellCostKind;
 
 typedef struct {
     FaxSpellCostKind kind;
-    uint8_t from, to;          /* the bar's pixels drawn, from <= x < to (0 at the bar's left) */
+    uint8_t from, to; /* the bar's pixels drawn, from <= x < to (0 at the bar's left) */
 } FaxSpellCostSpan;
 
 /* The span for `mp` with spell `selected` (SelectedMagic: 0-4, else none),

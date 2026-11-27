@@ -44,19 +44,22 @@
 #include <stdlib.h>
 
 /* Fixed bank */
-#define DRAW_TILE         0xF131u  /* Sprite_Draw_Standard: CLC, ADC Sprites_PPUOffset after
-                                      LDA (Sprite_TileInfo_ReadAddr_L),Y, the cell's tile slot */
-#define DRAW_ATTRIBUTE    0xF13Bu  /* Sprite_Draw_Standard: EOR CurrentSprite_FlipMask after
-                                      LDA (Sprite_TileInfo_ReadAddr_L),Y, the cell's attribute */
-#define FLIPPED_TILE      0xF1E5u  /* Sprite_Draw_FlippedHoriz: the same two */
+/* Sprite_Draw_Standard: CLC, ADC Sprites_PPUOffset after
+ * LDA (Sprite_TileInfo_ReadAddr_L),Y, the cell's tile slot */
+#define DRAW_TILE         0xF131u
+/* Sprite_Draw_Standard: EOR CurrentSprite_FlipMask after
+ * LDA (Sprite_TileInfo_ReadAddr_L),Y, the cell's attribute */
+#define DRAW_ATTRIBUTE    0xF13Bu
+#define FLIPPED_TILE      0xF1E5u /* Sprite_Draw_FlippedHoriz: the same two */
 #define FLIPPED_ATTRIBUTE 0xF1EFu
-#define TITLE_WRITE       0xF8B7u  /* PPU_WriteTilesFromCHRRAM: STA PPUDATA after LDA (IScriptOrCHRAddr),Y */
-#define SCREEN_LOADED     0xD1BEu  /* Area_LoadScrollData: JSR MMC1_RestorePrevROMBank, right after
-                                      LDA Area_CurrentScreen, JSR Area_LoadBlocks */
+#define TITLE_WRITE       0xF8B7u /* PPU_WriteTilesFromCHRRAM: STA PPUDATA after LDA (IScriptOrCHRAddr),Y */
+/* Area_LoadScrollData: JSR MMC1_RestorePrevROMBank, right after
+ * LDA Area_CurrentScreen, JSR Area_LoadBlocks */
+#define SCREEN_LOADED     0xD1BEu
 /* RAM */
-#define TILEINFO_READ_L   0x003Au  /* Sprite_TileInfo_ReadAddr_L/_U: the cell bytes, past the header */
+#define TILEINFO_READ_L   0x003Au /* Sprite_TileInfo_ReadAddr_L/_U: the cell bytes, past the header */
 #define TILEINFO_READ_U   0x003Bu
-#define CHR_ADDR_L        0x00DBu  /* IScriptOrCHRAddr/_U: what PPU_WriteTilesFromCHRRAM copies */
+#define CHR_ADDR_L        0x00DBu /* IScriptOrCHRAddr/_U: what PPU_WriteTilesFromCHRRAM copies */
 #define CHR_ADDR_U        0x00DCu
 #define AREA_CURRENT      0x0024u
 #define SCREEN_CURRENT    0x0063u
@@ -69,7 +72,11 @@
 #define FLAG_Z            0x02u
 
 /* A byte of bank 7's tile info: what the game reads, and what it should. */
-typedef struct { uint16_t addr; uint8_t stock, fixed; FaxGraphicsFix fix; } SpriteByte;
+typedef struct {
+    uint16_t addr;
+    uint8_t stock, fixed;
+    FaxGraphicsFix fix;
+} SpriteByte;
 static const SpriteByte SPRITE_BYTES[] = {
     /* SPRITE_TILEINFO_PLAYER_ARMOR_STUDDED_07 ($ABF1, appearance 23), row 1, column 0: slot $34;
        slot $30 holds STUDDED_48 ($7D), the tile Studded Mail with a shield and Full Plate climb with */
@@ -81,13 +88,15 @@ static const SpriteByte SPRITE_BYTES[] = {
        palette 2; every other cell of both frames is palette 3 */
     { 0x95E6u, 0x02u, 0x03u, FAX_GFX_MYCONID },
 };
-#define TITLE_ATTRIBUTES  0x9B60u  /* START_SCREEN_PPU_ATTRIBUTES (bank 10): $23C0's 64 bytes */
-#define TITLE_F_TIP       9u       /* x 32-63, y 32-63: top right (x 48-63, y 32-47) is palette 3 */
+#define TITLE_ATTRIBUTES  0x9B60u /* START_SCREEN_PPU_ATTRIBUTES (bank 10): $23C0's 64 bytes */
+#define TITLE_F_TIP       9u      /* x 32-63, y 32-63: top right (x 48-63, y 32-47) is palette 3 */
 #define TITLE_F_TIP_STOCK 0x0Cu
 #define TITLE_F_TIP_FIXED 0x00u
 
 /* A block of a decompressed screen: what Area_LoadBlocks gives, and what it should. */
-typedef struct { uint8_t area, screen, index, stock, fixed; } ScreenBlock;
+typedef struct {
+    uint8_t area, screen, index, stock, fixed;
+} ScreenBlock;
 static const ScreenBlock SCREEN_BLOCKS[] = {
     /* Trunk ($01), screen $2D (Tower of Fortress), row 11, column 3: block $63 (Trunk's Mattock
        wall) in the floor's 1B 08 1B 08 row, under the left pillar */
@@ -95,7 +104,7 @@ static const ScreenBlock SCREEN_BLOCKS[] = {
 };
 
 static bool enabled;
-static unsigned applied[FAX_GFX_FIXES];  /* bytes each fix changed, outside isolated calls */
+static unsigned applied[FAX_GFX_FIXES]; /* bytes each fix changed, outside isolated calls */
 
 uint8_t fax_graphics_sprite_byte(uint16_t addr, uint8_t value, FaxGraphicsFix *fix) {
     for (size_t i = 0; i < sizeof SPRITE_BYTES / sizeof *SPRITE_BYTES; ++i)
@@ -178,7 +187,8 @@ static int screen_hook(uint16_t addr) {
     for (unsigned i = 0; i < 256; ++i) blocks[i] = cyc_mod_peek((uint16_t)(SCREEN_BUFFER + i));
     if (!fax_graphics_fix_blocks(area, screen, blocks)) return 0;
     for (unsigned i = 0; i < 256; ++i)
-        if (cyc_mod_peek((uint16_t)(SCREEN_BUFFER + i)) != blocks[i]) cyc_mod_poke((uint16_t)(SCREEN_BUFFER + i), blocks[i]);
+        if (cyc_mod_peek((uint16_t)(SCREEN_BUFFER + i)) != blocks[i])
+            cyc_mod_poke((uint16_t)(SCREEN_BUFFER + i), blocks[i]);
     count(FAX_GFX_FORTRESS);
     return 0;
 }
@@ -189,9 +199,9 @@ static void room_fixup(uint8_t area, uint8_t screen, uint8_t *ram) {
 }
 
 static const char *const hook_ids[] = {
-    "faxanadu.graphics-fix.tile", "faxanadu.graphics-fix.attribute",
+    "faxanadu.graphics-fix.tile",         "faxanadu.graphics-fix.attribute",
     "faxanadu.graphics-fix.flipped-tile", "faxanadu.graphics-fix.flipped-attribute",
-    "faxanadu.graphics-fix.title", "faxanadu.graphics-fix.screen",
+    "faxanadu.graphics-fix.title",        "faxanadu.graphics-fix.screen",
 };
 #define HOOKS (sizeof hook_ids / sizeof *hook_ids)
 
@@ -239,5 +249,6 @@ NES_MOD_CONSTRUCTOR(register_graphics) {
         !nes_mod_register_function_entry_plugin(hook_ids[4], TITLE_WRITE, title_hook) ||
         !nes_mod_register_function_entry_plugin(hook_ids[5], SCREEN_LOADED, screen_hook) ||
         !nes_mod_register_reset_callback(deactivate) ||
-        !nes_mod_register_activation_plugin("faxanadu.graphics-fix", activate)) abort();
+        !nes_mod_register_activation_plugin("faxanadu.graphics-fix", activate))
+        abort();
 }

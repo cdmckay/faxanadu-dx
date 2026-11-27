@@ -64,55 +64,66 @@
 #define FAX_QUESTS_LOG(...) fprintf(stderr, __VA_ARGS__)
 #endif
 
-extern uint32_t hw_palette_argb[512];   /* the host's NES colors, emphasis in bits 6-8 */
+extern uint32_t hw_palette_argb[512]; /* the host's NES colors, emphasis in bits 6-8 */
 
 /* RAM */
-#define SCREEN_READY_STATE      0x000Eu   /* 0 once a screen is set up */
-#define INTERRUPT_HANDLERS_ON   0x0013u   /* Game_InterruptHandlersEnabled */
-#define JOY1_CHANGED            0x0019u   /* newly pressed: B $40, Start $10, Left $02, Right $01 */
+#define SCREEN_READY_STATE      0x000Eu /* 0 once a screen is set up */
+#define INTERRUPT_HANDLERS_ON   0x0013u /* Game_InterruptHandlersEnabled */
+#define JOY1_CHANGED            0x0019u /* newly pressed: B $40, Start $10, Left $02, Right $01 */
 #define AREA_CURRENT_AREA       0x0024u
-#define SCREEN_SCROLL_DIRECTION 0x0054u   /* $FF unless scrolling to the next screen */
+#define SCREEN_SCROLL_DIRECTION 0x0054u /* $FF unless scrolling to the next screen */
 #define AREA_CURRENT_SCREEN     0x0063u
-#define CURRENT_SPRITES_XPOS    0x00BAu   /* CurrentSprites_XPos_Full: a sprite's box's left, 8 slots */
-#define CURRENT_SPRITES_YPOS    0x00C2u   /* its top, under the HUD */
-#define ISCRIPT_ADDR            0x00DBu   /* IScriptOrCHRAddr; the next action is at it + IScriptOffset */
+#define CURRENT_SPRITES_XPOS    0x00BAu /* CurrentSprites_XPos_Full: a sprite's box's left, 8 slots */
+#define CURRENT_SPRITES_YPOS    0x00C2u /* its top, under the HUD */
+#define ISCRIPT_ADDR            0x00DBu /* IScriptOrCHRAddr; the next action is at it + IScriptOffset */
 #define ISCRIPT_OFFSET          0x00DDu
-#define CURRENT_ROM_BANK        0x0100u   /* 14 in the main loop, 12 while a script or the menu runs */
+#define CURRENT_ROM_BANK        0x0100u /* 14 in the main loop, 12 while a script or the menu runs */
 enum { MAIN_LOOP_BANK = 14 };
-#define GAME_PAUSED_STATE       0x0120u
-#define TEXTBOX_CLOSED          0x020Cu
-#define TEXTBOX_LINE_SCROLL     0x021Au   /* TextBox_LineScrollOffset */
-#define CURRENT_SPRITES_ENTITIES 0x02CCu  /* $FF: an empty slot */
-#define CURRENT_SPRITES_VALUES  0x036Cu   /* an NPC's script */
-#define GOLD                    0x0392u   /* 24 bits */
-#define INVENTORY_LISTS         0x039Du   /* weapons, armor, shields, magic (4 each), items (8) */
-#define INVENTORY_SELECTED      0x03BDu   /* SelectedWeapon ... SelectedItem */
-#define INVENTORY_COUNTS        0x03C2u   /* NumberOfWeapons ... NumberOfItems */
-#define SPECIAL_ITEMS           0x042Cu
-#define QUESTS                  0x042Du
-#define PLAYER_TITLE            0x0437u
-#define PLAYER_IS_DEAD          0x0438u
-#define TEMPLE_SPAWN_POINT      0x0439u
-#define NEXT_PLAYER_TITLE       0x04EDu
+#define GAME_PAUSED_STATE           0x0120u
+#define TEXTBOX_CLOSED              0x020Cu
+#define TEXTBOX_LINE_SCROLL         0x021Au /* TextBox_LineScrollOffset */
+#define CURRENT_SPRITES_ENTITIES    0x02CCu /* $FF: an empty slot */
+#define CURRENT_SPRITES_VALUES      0x036Cu /* an NPC's script */
+#define GOLD                        0x0392u /* 24 bits */
+#define INVENTORY_LISTS             0x039Du /* weapons, armor, shields, magic (4 each), items (8) */
+#define INVENTORY_SELECTED          0x03BDu /* SelectedWeapon ... SelectedItem */
+#define INVENTORY_COUNTS            0x03C2u /* NumberOfWeapons ... NumberOfItems */
+#define SPECIAL_ITEMS               0x042Cu
+#define QUESTS                      0x042Du
+#define PLAYER_TITLE                0x0437u
+#define PLAYER_IS_DEAD              0x0438u
+#define TEMPLE_SPAWN_POINT          0x0439u
+#define NEXT_PLAYER_TITLE           0x04EDu
 /* Bank 15 */
-#define MESSAGES_LOAD           0xF3F5u   /* STA MessageID: A is the message */
-#define CLEAR_SCROLLED          0xF439u   /* TextBox_ClearPasswordSize, after STA TextBox_LineScrollOffset */
-#define PAUSE_CHECK             0xE02Fu   /* GameLoop_CheckPauseGame's BEQ: Start not new, no pause */
-#define PAUSE_LOOP              0xE040u   /* the pause loop's BEQ: Start not new, another frame paused */
+#define MESSAGES_LOAD               0xF3F5u /* STA MessageID: A is the message */
+#define CLEAR_SCROLLED              0xF439u /* TextBox_ClearPasswordSize, after STA TextBox_LineScrollOffset */
+#define PAUSE_CHECK                 0xE02Fu /* GameLoop_CheckPauseGame's BEQ: Start not new, no pause */
+#define PAUSE_LOOP                  0xE040u /* the pause loop's BEQ: Start not new, another frame paused */
 /* Bank 12 */
 #define ISCRIPT_ACTION_END_SCRIPT   0x82B4u
 #define ISCRIPTS_INVOKE_NEXT_ACTION 0x826Eu
 /* Bank 14 */
-#define SPRITE_CATEGORIES       0xB544u   /* SPRITE_CATEGORIES_BY_ENTITY */
+#define SPRITE_CATEGORIES           0xB544u /* SPRITE_CATEGORIES_BY_ENTITY */
 
 enum { BANK = 16384, ENTITIES = 0x65, SLOTS = 8, SPRITE_NPC = 2, NO_SCRIPT = 0xFF, SCRIPTS = 0x98, PERSON_W = 16 };
 enum { AREA_EOLIS, AREA_TRUNK, AREA_MIST, AREA_TOWNS, AREA_BUILDINGS, AREA_BRANCH, AREA_DARTMOOR, AREA_ZENIS, AREAS };
-enum { END_KINGS_ROOM = 0x44 };           /* building $44: the King at the end (ISCRIPT_KING_END_GAME) */
+enum { END_KINGS_ROOM = 0x44 }; /* building $44: the King at the end (ISCRIPT_KING_END_GAME) */
 enum { BUTTON_B = 0x40, BUTTON_START = 0x10, BUTTON_LEFT = 0x02, BUTTON_RIGHT = 0x01, P_Z = 0x02 };
 enum { SLOT_LEN = FAX_TRAVEL_SLOT_LEN };
 /* Messages_Load's pickups: "I've got ..." and "I'm holding ...", $B0-$BA. */
-enum { GOT_ELIXIR = 0xB0, GOT_RED_POTION, GOT_MATTOCK, GOT_WING_BOOTS, GOT_HOUR_GLASS, GOT_BATTLE_SUIT,
-       GOT_BATTLE_HELMET, GOT_DRAGON_SLAYER, GOT_BLACK_ONYX, GOT_PENDANT, GOT_MAGICAL_ROD };
+enum {
+    GOT_ELIXIR = 0xB0,
+    GOT_RED_POTION,
+    GOT_MATTOCK,
+    GOT_WING_BOOTS,
+    GOT_HOUR_GLASS,
+    GOT_BATTLE_SUIT,
+    GOT_BATTLE_HELMET,
+    GOT_DRAGON_SLAYER,
+    GOT_BLACK_ONYX,
+    GOT_PENDANT,
+    GOT_MAGICAL_ROD
+};
 
 static const uint16_t list_addr[FAX_QUEST_LISTS] = { 0x039D, 0x03A1, 0x03A5, 0x03A9, 0x03AD };
 static const uint8_t list_max[FAX_QUEST_LISTS] = { 4, 4, 4, 4, 8 };
@@ -123,25 +134,25 @@ static const unsigned area_screens[AREAS] = { 9, 64, 83, 14, 0, 40, 32, 20 };
  * (cyc_input.h CYC_PAD_AXIS: 100 + axis * 2 + positive). Layout 1 (before
  * #147) had the right stick's press, now the runtime menu's. */
 enum { DEFAULT_KEY = 15, DEFAULT_PAD = 100 + 4 * 2 + 1 };
-enum { OPEN_WINDOW = 30 };   /* frames a press waits for the main loop's pause check */
+enum { OPEN_WINDOW = 30 }; /* frames a press waits for the main loop's pause check */
 
 /* ---- state ---- */
 
 typedef enum { QUIET, SAYING } Phase;
-enum { SAY_NEW = 1, SAY_DONE = 2 };   /* a line: kind << 5 | quest */
+enum { SAY_NEW = 1, SAY_DONE = 2 }; /* a line: kind << 5 | quest */
 
 static bool enabled, failed, decoded;
 static uint8_t bank12[BANK], categories[ENTITIES];
-static uint32_t given, done;              /* a bit per quest */
-static uint32_t pending_new, pending_done;   /* lines to say at the script's end */
-static uint8_t saying;                    /* the line in the slot while SAYING, else 0 */
+static uint32_t given, done;               /* a bit per quest */
+static uint32_t pending_new, pending_done; /* lines to say at the script's end */
+static uint8_t saying;                     /* the line in the slot while SAYING, else 0 */
 static Phase phase;
-static uint8_t rows;                      /* the box's line scroll when our line began */
-static uint8_t pickup;                    /* the pickup message this script showed, or 0 */
-static bool quiet = true;                 /* take what is complete as it is, saying nothing */
-static bool seeded = true;                /* the file had quests.given; false: count done ones as given */
-static uint32_t banner_pending;           /* quests done outside a conversation, to show below the HUD */
-static int banner_quest = -1;             /* the one showing */
+static uint8_t rows;            /* the box's line scroll when our line began */
+static uint8_t pickup;          /* the pickup message this script showed, or 0 */
+static bool quiet = true;       /* take what is complete as it is, saying nothing */
+static bool seeded = true;      /* the file had quests.given; false: count done ones as given */
+static uint32_t banner_pending; /* quests done outside a conversation, to show below the HUD */
+static int banner_quest = -1;   /* the one showing */
 static unsigned banner_age;
 static bool open, closing;
 static int page;
@@ -182,40 +193,60 @@ static bool decode(void) {
 
 static unsigned level_at(unsigned area, unsigned screen) {
     switch (area) {
-    case AREA_MIST: return FAX_REACHED_MIST;
-    case AREA_BRANCH: return FAX_REACHED_BRANCH;
-    case AREA_DARTMOOR: return FAX_REACHED_DARTMOOR;
-    case AREA_ZENIS: return FAX_REACHED_ZENIS;
-    case AREA_TOWNS:   /* two screens a town: Apolune, Forepaw, Mascon, Victim, Conflate, Daybreak, Dartmoor */
-        return screen < 2 ? FAX_REACHED_EOLIS : screen < 4 ? FAX_REACHED_FOREPAW : screen < 8 ? FAX_REACHED_MIST
-             : screen < 12 ? FAX_REACHED_BRANCH : FAX_REACHED_DARTMOOR;
-    case AREA_BUILDINGS: return screen == END_KINGS_ROOM ? FAX_REACHED_ENDING : FAX_REACHED_EOLIS;
+    case AREA_MIST:
+        return FAX_REACHED_MIST;
+    case AREA_BRANCH:
+        return FAX_REACHED_BRANCH;
+    case AREA_DARTMOOR:
+        return FAX_REACHED_DARTMOOR;
+    case AREA_ZENIS:
+        return FAX_REACHED_ZENIS;
+    case AREA_TOWNS: /* two screens a town: Apolune, Forepaw, Mascon, Victim, Conflate, Daybreak, Dartmoor */
+        return screen < 2    ? FAX_REACHED_EOLIS
+               : screen < 4  ? FAX_REACHED_FOREPAW
+               : screen < 8  ? FAX_REACHED_MIST
+               : screen < 12 ? FAX_REACHED_BRANCH
+                             : FAX_REACHED_DARTMOOR;
+    case AREA_BUILDINGS:
+        return screen == END_KINGS_ROOM ? FAX_REACHED_ENDING : FAX_REACHED_EOLIS;
     }
     return FAX_REACHED_EOLIS;
 }
 /* The furthest temple's town: Forepaw (2), Mascon's in the Mist (3), Victim
  * (4), Conflate (5) and Daybreak (6) off the Branch, Dartmoor (7). */
 static unsigned level_of_temple(unsigned t) {
-    return t >= 7 ? FAX_REACHED_DARTMOOR : t >= 5 ? FAX_REACHED_BRANCH : t >= 3 ? FAX_REACHED_MIST
-         : t >= 2 ? FAX_REACHED_FOREPAW : FAX_REACHED_EOLIS;
+    return t >= 7   ? FAX_REACHED_DARTMOOR
+           : t >= 5 ? FAX_REACHED_BRANCH
+           : t >= 3 ? FAX_REACHED_MIST
+           : t >= 2 ? FAX_REACHED_FOREPAW
+                    : FAX_REACHED_EOLIS;
 }
 static unsigned reached(void) {
     unsigned level = level_at(q(AREA_CURRENT_AREA), q(AREA_CURRENT_SCREEN));
     unsigned t = q(TEMPLE_SPAWN_POINT), gurus = fax_travel_visited();
     if (t > 7) t = 0;
-    for (unsigned g = 7; g > t; --g) if (gurus >> g & 1) { t = g; break; }
+    for (unsigned g = 7; g > t; --g)
+        if (gurus >> g & 1) {
+            t = g;
+            break;
+        }
     if (level_of_temple(t) > level) level = level_of_temple(t);
     for (unsigned area = 0; area < AREAS; ++area)
         for (unsigned s = 0; s < area_screens[area]; ++s) {
             unsigned l = level_at(area, s);
-            if (l > level && fax_map_seen(area, s)) { level = l; break; }
+            if (l > level && fax_map_seen(area, s)) {
+                level = l;
+                break;
+            }
         }
     return level;
 }
 static void game_now(FaxQuestGame *g) {
     memset(g, 0, sizeof *g);
-    g->quests = q(QUESTS); g->special = q(SPECIAL_ITEMS);
-    g->title = q(PLAYER_TITLE); g->next_title = q(NEXT_PLAYER_TITLE);
+    g->quests = q(QUESTS);
+    g->special = q(SPECIAL_ITEMS);
+    g->title = q(PLAYER_TITLE);
+    g->next_title = q(NEXT_PLAYER_TITLE);
     g->gold = (uint32_t)q(GOLD) | (uint32_t)q(GOLD + 1) << 8 | (uint32_t)q(GOLD + 2) << 16;
     for (unsigned c = 0; c < FAX_QUEST_LISTS; ++c) {
         g->count[c] = q((uint16_t)(INVENTORY_COUNTS + c));
@@ -229,16 +260,26 @@ static void game_now(FaxQuestGame *g) {
  * Dragon Slayer to their lists (the last entry of a full list replaced), and
  * an Item through Player_PickUpItem, which refuses one more than 8. */
 static void with_pickup(FaxQuestGame *g) {
-    static const struct { uint8_t msg, special, list, id; } got[] = {
-        { GOT_ELIXIR, 0x08, 0, 0 }, { GOT_BLACK_ONYX, 0x01, 0, 0 }, { GOT_PENDANT, 0x02, 0, 0 },
-        { GOT_MAGICAL_ROD, 0x04, 0, 0 }, { GOT_BATTLE_SUIT, 0, FAX_QUEST_ARMOR, 3 },
-        { GOT_BATTLE_HELMET, 0, FAX_QUEST_SHIELDS, 3 }, { GOT_DRAGON_SLAYER, 0, FAX_QUEST_WEAPONS, 3 },
-        { GOT_MATTOCK, 0, FAX_QUEST_ITEMS, 0x09 }, { GOT_WING_BOOTS, 0, FAX_QUEST_ITEMS, 0x0F },
+    static const struct {
+        uint8_t msg, special, list, id;
+    } got[] = {
+        { GOT_ELIXIR, 0x08, 0, 0 },
+        { GOT_BLACK_ONYX, 0x01, 0, 0 },
+        { GOT_PENDANT, 0x02, 0, 0 },
+        { GOT_MAGICAL_ROD, 0x04, 0, 0 },
+        { GOT_BATTLE_SUIT, 0, FAX_QUEST_ARMOR, 3 },
+        { GOT_BATTLE_HELMET, 0, FAX_QUEST_SHIELDS, 3 },
+        { GOT_DRAGON_SLAYER, 0, FAX_QUEST_WEAPONS, 3 },
+        { GOT_MATTOCK, 0, FAX_QUEST_ITEMS, 0x09 },
+        { GOT_WING_BOOTS, 0, FAX_QUEST_ITEMS, 0x0F },
         { GOT_HOUR_GLASS, 0, FAX_QUEST_ITEMS, 0x0D },
     };
     for (unsigned i = 0; i < sizeof got / sizeof got[0]; ++i) {
         if (got[i].msg != pickup) continue;
-        if (got[i].special) { g->special |= got[i].special; return; }
+        if (got[i].special) {
+            g->special |= got[i].special;
+            return;
+        }
         unsigned c = got[i].list, n = g->count[c] > list_max[c] ? list_max[c] : g->count[c];
         if (n < list_max[c]) g->list[c][n] = got[i].id, g->count[c] = (uint8_t)(n + 1);
         else if (c != FAX_QUEST_ITEMS) g->list[c][n - 1] = got[i].id;
@@ -267,12 +308,17 @@ static void take_done(bool in_script) {
     done |= now;
     if (quiet) {
         quiet = false;
-        if (!seeded) { given |= done; seeded = true; }
+        if (!seeded) {
+            given |= done;
+            seeded = true;
+        }
         return;
     }
     now &= given;
-    if (in_script) { pending_done |= now; pending_new &= ~now; }
-    else banner_pending |= now;
+    if (in_script) {
+        pending_done |= now;
+        pending_new &= ~now;
+    } else banner_pending |= now;
 }
 
 /* ---- the line slot ---- */
@@ -298,7 +344,7 @@ static void line_text(uint8_t line, char out[48]) {
 }
 /* Our line into message $C3's slot, and Guru travel's SAY step that shows it. */
 static bool serve(uint8_t line) {
-    static const uint8_t say[] = { 0x03, FAX_TRAVEL_SLOT_ID, 0x00 };   /* SHOW_MESSAGE $C3, END */
+    static const uint8_t say[] = { 0x03, FAX_TRAVEL_SLOT_ID, 0x00 }; /* SHOW_MESSAGE $C3, END */
     char text[48];
     uint8_t bytes[SLOT_LEN];
     line_text(line, text);
@@ -313,7 +359,10 @@ static uint8_t next_line(void) {
     for (unsigned k = 0; k < 2; ++k) {
         uint32_t *set = k == 0 ? &pending_done : &pending_new;
         for (unsigned quest = 0; quest < FAX_QUESTS; ++quest)
-            if (*set >> quest & 1) { *set &= ~(1u << quest); return (uint8_t)((k == 0 ? SAY_DONE : SAY_NEW) << 5 | quest); }
+            if (*set >> quest & 1) {
+                *set &= ~(1u << quest);
+                return (uint8_t)((k == 0 ? SAY_DONE : SAY_NEW) << 5 | quest);
+            }
     }
     return 0;
 }
@@ -327,11 +376,11 @@ static int message_hook(uint16_t addr) {
     CycModRegs regs;
     cyc_mod_regs(&regs);
     uint8_t msg = regs.a;
-    if (msg == FAX_TRAVEL_SLOT_ID) return 0;                   /* ours, or another feature's line */
+    if (msg == FAX_TRAVEL_SLOT_ID) return 0; /* ours, or another feature's line */
     pickup = msg >= GOT_ELIXIR && msg <= GOT_MAGICAL_ROD ? msg : 0;
     uint32_t quests = fax_quest_given_by(msg) & ~given;
     if (!quests) return 0;
-    if (quiet) take_done(false);                               /* the first moment after a load or a continue */
+    if (quiet) take_done(false); /* the first moment after a load or a continue */
     FaxQuestGame g;
     game_now(&g);
     quests &= ~(done | fax_quest_done_all(&g));
@@ -345,7 +394,10 @@ static int message_hook(uint16_t addr) {
 static int end_script_hook(uint16_t addr) {
     (void)addr;
     if (!enabled || failed || cyc_mod_isolated() || !decoded) return 0;
-    if (phase == SAYING) { phase = QUIET; saying = 0; }        /* our line has been said (or dismissed) */
+    if (phase == SAYING) {
+        phase = QUIET;
+        saying = 0;
+    } /* our line has been said (or dismissed) */
     take_done(true);
     uint8_t line = next_line();
     if (!line) return 0;
@@ -377,8 +429,14 @@ static int scroll_hook(uint16_t addr) {
 
 enum { NATIVE_W = 256, NATIVE_H = 240, TITLE_Y = 16, FIRST_ROW = 4, PAGE_ROWS = 22, FOOT_Y = 216, COLUMN = 7 };
 enum { ROW_NAME, ROW_OBJECTIVE, ROW_HEADER, ROW_DONE, ROW_NOTE };
-typedef struct { uint8_t kind, quest; char text[FAX_QUEST_COLS + 1]; } Row;
-typedef struct { Row row[PAGE_ROWS]; unsigned count; } Page;
+typedef struct {
+    uint8_t kind, quest;
+    char text[FAX_QUEST_COLS + 1];
+} Row;
+typedef struct {
+    Row row[PAGE_ROWS];
+    unsigned count;
+} Page;
 enum { MAX_PAGES = 8 };
 static Page pages[MAX_PAGES];
 static unsigned page_count;
@@ -386,7 +444,8 @@ static unsigned page_count;
 static void add(Page *p, uint8_t kind, uint8_t quest, const char *text, size_t len) {
     if (p->count >= PAGE_ROWS) return;
     Row *r = &p->row[p->count++];
-    r->kind = kind; r->quest = quest;
+    r->kind = kind;
+    r->quest = quest;
     if (len > FAX_QUEST_COLS) len = FAX_QUEST_COLS;
     memcpy(r->text, text, len);
     r->text[len] = 0;
@@ -437,19 +496,26 @@ static void lay_out(void) {
 
 /* ---- the pause: the map's two branches ---- */
 
-static void steer(bool fall_through) {   /* the BEQ: on past it (Z clear), or taken (Z set) */
+static void steer(bool fall_through) { /* the BEQ: on past it (Z clear), or taken (Z set) */
     CycModRegs regs;
     cyc_mod_regs(&regs);
-    if (fall_through) { regs.a = BUTTON_START; regs.p = (uint8_t)(regs.p & ~P_Z); }
-    else { regs.a = 0; regs.p = (uint8_t)(regs.p | P_Z); }
+    if (fall_through) {
+        regs.a = BUTTON_START;
+        regs.p = (uint8_t)(regs.p & ~P_Z);
+    } else {
+        regs.a = 0;
+        regs.p = (uint8_t)(regs.p | P_Z);
+    }
     cyc_mod_set_regs(&regs);
 }
 static void show(void) {
     want = 0;
-    if (fax_map_showing()) return;                 /* the map opened first */
+    if (fax_map_showing()) return; /* the map opened first */
     lay_out();
     page = 0;
-    open = true; closing = false; age = 0;
+    open = true;
+    closing = false;
+    age = 0;
     ++opens;
 }
 
@@ -467,7 +533,10 @@ static int loop_hook(uint16_t addr) {
     (void)addr;
     if (!enabled || cyc_mod_isolated() || !decoded) return 0;
     if (!open) {
-        if (want && !fax_map_showing()) { show(); if (open) steer(false); }   /* pressed during the game's own pause */
+        if (want && !fax_map_showing()) {
+            show();
+            if (open) steer(false);
+        } /* pressed during the game's own pause */
         return 0;
     }
     uint8_t changed = q(JOY1_CHANGED);
@@ -477,7 +546,10 @@ static int loop_hook(uint16_t addr) {
     if (!close && (changed & BUTTON_LEFT) && page > 0) --page;
     else if (!close && (changed & BUTTON_RIGHT) && page + 1 < (int)page_count) ++page;
     if (page != was) ++turns;
-    if (close) { open = false; ++closes; }
+    if (close) {
+        open = false;
+        ++closes;
+    }
     steer(close);
     return 0;
 }
@@ -511,14 +583,21 @@ void fax_quests_frame_end(void) {
     if (open) ++age;
     if (q(TEXTBOX_CLOSED)) pickup = 0;
     if (!in_play()) return;
-    if (phase == SAYING) { phase = QUIET; saying = 0; }        /* the box closed under our line */
+    if (phase == SAYING) {
+        phase = QUIET;
+        saying = 0;
+    } /* the box closed under our line */
     take_done(false);
-    banner_pending |= pending_done;               /* a completion no script's end said */
+    banner_pending |= pending_done; /* a completion no script's end said */
     pending_new = pending_done = 0;
     if (banner_quest < 0) {
-        if (!banner_pending || fax_banner_busy()) return;   /* after any zone name */
+        if (!banner_pending || fax_banner_busy()) return; /* after any zone name */
         for (unsigned quest = 0; quest < FAX_QUESTS; ++quest)
-            if (banner_pending >> quest & 1) { banner_quest = (int)quest; banner_pending &= ~(1u << quest); break; }
+            if (banner_pending >> quest & 1) {
+                banner_quest = (int)quest;
+                banner_pending &= ~(1u << quest);
+                break;
+            }
         banner_age = 0;
         ++banners_shown;
     } else if (++banner_age >= BANNER_SHOWN) {
@@ -537,7 +616,9 @@ static bool get_set(const char *in, uint32_t *set) {
     uint32_t got = 0;
     unsigned i = 0;
     for (; *in; ++in, i += 4) {
-        unsigned d = *in >= '0' && *in <= '9' ? (unsigned)(*in - '0') : *in >= 'a' && *in <= 'f' ? (unsigned)(*in - 'a' + 10) : 16;
+        unsigned d = *in >= '0' && *in <= '9'   ? (unsigned)(*in - '0')
+                     : *in >= 'a' && *in <= 'f' ? (unsigned)(*in - 'a' + 10)
+                                                : 16;
         if (d > 15 || i >= 32) return false;
         got |= (uint32_t)d << i;
     }
@@ -547,16 +628,21 @@ static bool get_set(const char *in, uint32_t *set) {
 
 static void forget(void) {
     given = done = pending_new = pending_done = banner_pending = 0;
-    banner_quest = -1; banner_age = 0;
-    phase = QUIET; saying = 0; pickup = 0;
+    banner_quest = -1;
+    banner_age = 0;
+    phase = QUIET;
+    saying = 0;
+    pickup = 0;
 }
 
 static void on_save(FaxSaveEvent event) {
     if (!enabled) return;
     if (event == FAX_SAVE_WRITING) {
         char text[FAX_SAVE_VALUE];
-        put_set(text, given); fax_save_set("quests.given", text);
-        put_set(text, done); fax_save_set("quests.done", text);
+        put_set(text, given);
+        fax_save_set("quests.given", text);
+        put_set(text, done);
+        fax_save_set("quests.done", text);
         return;
     }
     forget();
@@ -566,7 +652,10 @@ static void on_save(FaxSaveEvent event) {
     const char *g = fax_save_get("quests.given"), *d = fax_save_get("quests.done");
     uint32_t set;
     if (g && get_set(g, &set)) given = set;
-    else { seeded = false; if (g) FAX_QUESTS_LOG("[quests] quests.given is damaged; the log starts from what is done\n"); }
+    else {
+        seeded = false;
+        if (g) FAX_QUESTS_LOG("[quests] quests.given is damaged; the log starts from what is done\n");
+    }
     if (d && get_set(d, &set)) done = set;
 }
 
@@ -579,7 +668,7 @@ bool fax_quests_given_in_file(unsigned quest) {
 
 /* ---- drawing ---- */
 
-enum { HUD = 32, BLACK = 0x0F, MARK_INK = 0x27, NAME_INK = 0x37, DONE_INK = 0x10 };   /* gold, pale gold, grey */
+enum { HUD = 32, BLACK = 0x0F, MARK_INK = 0x27, NAME_INK = 0x37, DONE_INK = 0x10 }; /* gold, pale gold, grey */
 
 static uint32_t nes(unsigned c) {
     unsigned mask = cyc_render_line_mask(239);
@@ -596,7 +685,8 @@ static const uint32_t *begin(const uint32_t *picture, int *w, int *h, int *width
     if (n > capacity) {
         uint32_t *grown = realloc(canvas, n * sizeof *grown);
         if (!grown) return NULL;
-        canvas = grown; capacity = n;
+        canvas = grown;
+        capacity = n;
     }
     if (copy && from != canvas) memcpy(canvas, from, n * sizeof *canvas);
     return from;
@@ -622,7 +712,11 @@ static void glyph(uint32_t *px, int w, int h, int x, int y, char ch, uint32_t in
 }
 
 /* The marks: who is where, and what each one's script says now. */
-typedef struct { uint8_t area, room, slot, script; char mark; int16_t x, y; } Mark;
+typedef struct {
+    uint8_t area, room, slot, script;
+    char mark;
+    int16_t x, y;
+} Mark;
 enum { MAX_MARKS = 32 };
 static Mark marks[MAX_MARKS];
 static unsigned mark_count;
@@ -632,7 +726,8 @@ static void room_marks(unsigned area, unsigned room, const uint8_t *ram, const F
     for (unsigned s = 0; s < SLOTS && mark_count < MAX_MARKS; ++s) {
         uint8_t entity = ram ? ram[CURRENT_SPRITES_ENTITIES + s] : q((uint16_t)(CURRENT_SPRITES_ENTITIES + s));
         uint8_t script = ram ? ram[CURRENT_SPRITES_VALUES + s] : q((uint16_t)(CURRENT_SPRITES_VALUES + s));
-        if (entity >= ENTITIES || categories[entity] != SPRITE_NPC || script == NO_SCRIPT || script >= SCRIPTS) continue;
+        if (entity >= ENTITIES || categories[entity] != SPRITE_NPC || script == NO_SCRIPT || script >= SCRIPTS)
+            continue;
         uint8_t path[FAX_QUEST_PATH];
         unsigned n = fax_quest_walk(bank12, script, g, path);
         char mark = fax_quest_mark(path, n, given, complete);
@@ -640,8 +735,13 @@ static void room_marks(unsigned area, unsigned room, const uint8_t *ram, const F
         uint8_t x = ram ? ram[CURRENT_SPRITES_XPOS + s] : q((uint16_t)(CURRENT_SPRITES_XPOS + s));
         uint8_t y = ram ? ram[CURRENT_SPRITES_YPOS + s] : q((uint16_t)(CURRENT_SPRITES_YPOS + s));
         /* Over the middle of his 16 pixels (the King's and the Gurus' boxes are wider, to the right). */
-        marks[mark_count++] = (Mark){ (uint8_t)area, (uint8_t)room, (uint8_t)s, script, mark,
-                                      (int16_t)(x + PERSON_W / 2 - FAX_TEXT_CELL / 2), (int16_t)(y - FAX_TEXT_CELL - 4) };
+        marks[mark_count++] = (Mark){ (uint8_t)area,
+                                      (uint8_t)room,
+                                      (uint8_t)s,
+                                      script,
+                                      mark,
+                                      (int16_t)(x + PERSON_W / 2 - FAX_TEXT_CELL / 2),
+                                      (int16_t)(y - FAX_TEXT_CELL - 4) };
     }
 }
 
@@ -649,7 +749,10 @@ static void room_marks(unsigned area, unsigned room, const uint8_t *ram, const F
  * and centered, as Seamless shows a building it does not lay out (fax_world.c). */
 static void to_picture(int w, int h, int *x, int *y) {
     int nw = w < NATIVE_W ? w : NATIVE_W, nh = NATIVE_H * nw / NATIVE_W;
-    if (nh > h) { nh = h; nw = NATIVE_W * nh / NATIVE_H; }
+    if (nh > h) {
+        nh = h;
+        nw = NATIVE_W * nh / NATIVE_H;
+    }
     *x = (w - nw) / 2 + *x * nw / NATIVE_W;
     *y = *y * nh / NATIVE_H;
 }
@@ -664,14 +767,17 @@ const uint32_t *fax_quests_marks_present(const uint32_t *picture, int *w, int *h
     room_marks(area, here, NULL, &g, complete);
     int ox, oy;
     bool world = picture && fax_world_origin(&ox, &oy);
-    if (world)   /* the people in the rooms around, from Seamless's copies */
+    if (world) /* the people in the rooms around, from Seamless's copies */
         for (unsigned room = 0; room < 256 && mark_count < MAX_MARKS; ++room) {
             const uint8_t *ram = room == here ? NULL : fax_world_room_ram((int)area, (int)room);
             if (ram) room_marks(area, room, ram, &g, complete);
         }
     if (!mark_count) return picture;
     int width = 0, height = 0;
-    if (!begin(picture, w, h, &width, &height, true)) { mark_count = 0; return picture; }
+    if (!begin(picture, w, h, &width, &height, true)) {
+        mark_count = 0;
+        return picture;
+    }
     uint32_t ink = nes(MARK_INK), edge = nes(BLACK);
     int top = width < NATIVE_W ? HUD * width / NATIVE_W : HUD;
     for (unsigned i = 0; i < mark_count; ++i) {
@@ -679,17 +785,23 @@ const uint32_t *fax_quests_marks_present(const uint32_t *picture, int *w, int *h
         int x = m->x, y = m->y + HUD;
         if (world) {
             int rx, ry;
-            if (!fax_world_room_origin(m->area, m->room, &rx, &ry)) { mark_px[i][0] = mark_px[i][1] = -1; continue; }
-            x = rx + m->x; y = ry + m->y;
-        } else if (width >= NATIVE_W) {   /* the original view, or Seamless showing the native picture */
+            if (!fax_world_room_origin(m->area, m->room, &rx, &ry)) {
+                mark_px[i][0] = mark_px[i][1] = -1;
+                continue;
+            }
+            x = rx + m->x;
+            y = ry + m->y;
+        } else if (width >= NATIVE_W) { /* the original view, or Seamless showing the native picture */
             x += cyc_render_native_origin(width);
         } else {
             to_picture(width, height, &x, &y);
         }
-        mark_px[i][0] = (int16_t)x; mark_px[i][1] = (int16_t)y;
+        mark_px[i][0] = (int16_t)x;
+        mark_px[i][1] = (int16_t)y;
         glyph(canvas, width, height, x, y, m->mark, ink, edge, top);
     }
-    *w = width; *h = height;
+    *w = width;
+    *h = height;
     return canvas;
 }
 
@@ -712,9 +824,10 @@ const uint32_t *fax_quests_banner_present(const uint32_t *picture, int *w, int *
     int x = (width - box_w) / 2, y = hud + FAX_TEXT_CELL;
     fax_text_box(canvas, width, height, x, y, cols, 2, alpha);
     for (int r = 0; r < 2; ++r)
-        fax_text_draw(canvas, width, height, x + (box_w - fax_text_width(line[r])) / 2,
-                      y + (1 + r) * FAX_TEXT_CELL, line[r], alpha);
-    *w = width; *h = height;
+        fax_text_draw(canvas, width, height, x + (box_w - fax_text_width(line[r])) / 2, y + (1 + r) * FAX_TEXT_CELL,
+                      line[r], alpha);
+    *w = width;
+    *h = height;
     return canvas;
 }
 
@@ -732,7 +845,7 @@ const uint32_t *fax_quests_log_present(const uint32_t *picture, int *w, int *h) 
     fax_text_box(canvas, width, height, ox, oy, NATIVE_W / FAX_TEXT_CELL - 2, NATIVE_H / FAX_TEXT_CELL - 2, 255);
     const char *title = "Quests";
     fax_text_draw(canvas, width, height, ox + (NATIVE_W - fax_text_width(title)) / 2, oy + TITLE_Y, title, 255);
-    if (page_count > 1) {   /* the font's triangles: ~ points left, } right */
+    if (page_count > 1) { /* the font's triangles: ~ points left, } right */
         if (page > 0) fax_text_draw(canvas, width, height, ox + 2 * FAX_TEXT_CELL, oy + TITLE_Y, "~", 255);
         if (page + 1 < (int)page_count)
             fax_text_draw(canvas, width, height, ox + NATIVE_W - 3 * FAX_TEXT_CELL, oy + TITLE_Y, "}", 255);
@@ -745,32 +858,61 @@ const uint32_t *fax_quests_log_present(const uint32_t *picture, int *w, int *h) 
         const Row *r = &p->row[i];
         int x = ox + COLUMN * FAX_TEXT_CELL, y = oy + (int)(FIRST_ROW + i) * FAX_TEXT_CELL;
         switch (r->kind) {
-        case ROW_NAME: fax_text_draw_color(canvas, width, height, x, y, r->text, nes(NAME_INK), 255); break;
-        case ROW_OBJECTIVE: fax_text_draw(canvas, width, height, x + FAX_TEXT_CELL, y, r->text, 255); break;
-        case ROW_HEADER: fax_text_draw(canvas, width, height, x, y, r->text, 255); break;
-        case ROW_DONE: fax_text_draw_color(canvas, width, height, x + FAX_TEXT_CELL, y, r->text, nes(DONE_INK), 255); break;
-        default: fax_text_draw(canvas, width, height, x, y, r->text, 255); break;
+        case ROW_NAME:
+            fax_text_draw_color(canvas, width, height, x, y, r->text, nes(NAME_INK), 255);
+            break;
+        case ROW_OBJECTIVE:
+            fax_text_draw(canvas, width, height, x + FAX_TEXT_CELL, y, r->text, 255);
+            break;
+        case ROW_HEADER:
+            fax_text_draw(canvas, width, height, x, y, r->text, 255);
+            break;
+        case ROW_DONE:
+            fax_text_draw_color(canvas, width, height, x + FAX_TEXT_CELL, y, r->text, nes(DONE_INK), 255);
+            break;
+        default:
+            fax_text_draw(canvas, width, height, x, y, r->text, 255);
+            break;
         }
     }
-    *w = width; *h = height;
+    *w = width;
+    *h = height;
     return canvas;
 }
 
 /* ---- save states: everything above ---- */
 
 enum { VERSION = 1, RECORD = 1 + 4 * 5 + 10 };
-static void put32(uint8_t *p, uint32_t v) { for (unsigned i = 0; i < 4; ++i) p[i] = (uint8_t)(v >> (8 * i)); }
-static uint32_t get32(const uint8_t *p) { return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24; }
+static void put32(uint8_t *p, uint32_t v) {
+    for (unsigned i = 0; i < 4; ++i) p[i] = (uint8_t)(v >> (8 * i));
+}
+static uint32_t get32(const uint8_t *p) {
+    return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24;
+}
 static int state_get(uint8_t *buf, int cap) {
     if (cap < RECORD) return -1;
     uint8_t *p = buf;
     *p++ = VERSION;
-    put32(p, given); p += 4; put32(p, done); p += 4; put32(p, pending_new); p += 4; put32(p, pending_done); p += 4;
-    put32(p, banner_pending); p += 4;
-    *p++ = (uint8_t)phase; *p++ = saying; *p++ = rows; *p++ = pickup;
-    *p++ = (uint8_t)(quiet | seeded << 1); *p++ = (uint8_t)(banner_quest < 0 ? 0xFF : banner_quest);
+    put32(p, given);
+    p += 4;
+    put32(p, done);
+    p += 4;
+    put32(p, pending_new);
+    p += 4;
+    put32(p, pending_done);
+    p += 4;
+    put32(p, banner_pending);
+    p += 4;
+    *p++ = (uint8_t)phase;
+    *p++ = saying;
+    *p++ = rows;
+    *p++ = pickup;
+    *p++ = (uint8_t)(quiet | seeded << 1);
+    *p++ = (uint8_t)(banner_quest < 0 ? 0xFF : banner_quest);
     *p++ = (uint8_t)(banner_age > 255 ? 255 : banner_age);
-    *p++ = open; *p++ = (uint8_t)page; *p++ = (uint8_t)(want > frames ? want - frames : 0);
+    *p++ = open;
+    *p++ = (uint8_t)page;
+    *p++ = (uint8_t)(want > frames ? want - frames : 0);
     return (int)(p - buf);
 }
 static int state_validate(const uint8_t *buf, int len) {
@@ -782,21 +924,41 @@ static int state_validate(const uint8_t *buf, int len) {
 }
 static int state_set(const uint8_t *buf, int len) {
     if (!state_validate(buf, len)) return 0;
-    open = closing = false; page = 0; want = 0;
-    if (!len) { forget(); quiet = true; seeded = false; return 1; }
+    open = closing = false;
+    page = 0;
+    want = 0;
+    if (!len) {
+        forget();
+        quiet = true;
+        seeded = false;
+        return 1;
+    }
     const uint8_t *p = buf + 1;
-    given = get32(p); done = get32(p + 4); pending_new = get32(p + 8); pending_done = get32(p + 12);
+    given = get32(p);
+    done = get32(p + 4);
+    pending_new = get32(p + 8);
+    pending_done = get32(p + 12);
     banner_pending = get32(p + 16);
     p += 20;
-    phase = p[0]; saying = p[1]; rows = p[2]; pickup = p[3];
-    quiet = p[4] & 1; seeded = (p[4] >> 1) & 1;
-    banner_quest = p[5] == 0xFF ? -1 : p[5]; banner_age = p[6];
-    open = p[7]; page = p[8]; want = p[9] ? frames + p[9] : 0;
+    phase = p[0];
+    saying = p[1];
+    rows = p[2];
+    pickup = p[3];
+    quiet = p[4] & 1;
+    seeded = (p[4] >> 1) & 1;
+    banner_quest = p[5] == 0xFF ? -1 : p[5];
+    banner_age = p[6];
+    open = p[7];
+    page = p[8];
+    want = p[9] ? frames + p[9] : 0;
     if (open && decoded) lay_out();
     return 1;
 }
 void fax_quests_loaded(void) {
-    if (enabled && !failed && phase == SAYING && saying && !serve(saying)) { phase = QUIET; saying = 0; }
+    if (enabled && !failed && phase == SAYING && saying && !serve(saying)) {
+        phase = QUIET;
+        saying = 0;
+    }
 }
 
 /* ---- the bindings (config.ini [Game]) ---- */
@@ -804,10 +966,10 @@ void fax_quests_loaded(void) {
 const char *fax_quests_controls_label(void) { return label; }
 
 #ifdef CYC_WITH_SDL
-static int key = DEFAULT_KEY, pad = DEFAULT_PAD;   /* 0: unbound */
+static int key = DEFAULT_KEY, pad = DEFAULT_PAD; /* 0: unbound */
 static bool axis_down;
 
-static void describe(void) {   /* as the host shows its own shortcuts: "L / LT" */
+static void describe(void) { /* as the host shows its own shortcuts: "L / LT" */
     char hint[64] = "unbound";
     CycBinding both = { key, pad };
     if (key || pad) cyc_binding_hint(&both, hint, sizeof hint);
@@ -826,7 +988,10 @@ bool fax_quests_load_setting(const char *name, const char *value) {
         else fprintf(stderr, "[quests] QuestLogKey: SDL has no key named \"%s\"; keeping the default\n", value);
     } else if (!strcmp(name, "QuestLogButton")) {
         if (cyc_pad_parse(value, &got) && !CYC_PAD_IS_COMBO(got)) pad = got;
-        else fprintf(stderr, "[quests] QuestLogButton: \"%s\" is not one controller button or axis; keeping the default\n", value);
+        else
+            fprintf(stderr,
+                    "[quests] QuestLogButton: \"%s\" is not one controller button or axis; keeping the default\n",
+                    value);
     } else {
         return false;
     }
@@ -871,7 +1036,8 @@ static void quest_state(int id, const char *line) {
     char set[512], text[48] = "";
     size_t n = 0;
     if (saying) line_text(saying, text);
-    for (char *c = text; *c; ++c) if (*c == '\n') *c = '|';
+    for (char *c = text; *c; ++c)
+        if (*c == '\n') *c = '|';
     n += (size_t)snprintf(fields + n, sizeof fields - n,
                           "\"enabled\":%s,\"decoded\":%s,\"open\":%s,\"page\":%d,\"pages\":%u,\"opens\":%u,"
                           "\"closes\":%u,\"turns\":%u,\"presses\":%u,\"requests\":%u,\"binding\":\"%s\",\"paused\":%u,"
@@ -899,9 +1065,11 @@ static void quest_state(int id, const char *line) {
     }
     n += (size_t)snprintf(fields + n, sizeof fields - n, ",\"marks\":[");
     for (unsigned i = 0; i < mark_count && n < sizeof fields - 96; ++i)
-        n += (size_t)snprintf(fields + n, sizeof fields - n, "%s{\"area\":%u,\"room\":%u,\"slot\":%u,\"script\":%u,"
-                              "\"mark\":\"%c\",\"x\":%d,\"y\":%d}", i ? "," : "", marks[i].area, marks[i].room,
-                              marks[i].slot, marks[i].script, marks[i].mark, mark_px[i][0], mark_px[i][1]);
+        n += (size_t)snprintf(fields + n, sizeof fields - n,
+                              "%s{\"area\":%u,\"room\":%u,\"slot\":%u,\"script\":%u,"
+                              "\"mark\":\"%c\",\"x\":%d,\"y\":%d}",
+                              i ? "," : "", marks[i].area, marks[i].room, marks[i].slot, marks[i].script, marks[i].mark,
+                              mark_px[i][0], mark_px[i][1]);
     n += (size_t)snprintf(fields + n, sizeof fields - n, "],\"rows\":[");
     if (open && page < (int)page_count)
         for (unsigned i = 0; i < pages[page].count && n < sizeof fields - 64; ++i)
@@ -912,34 +1080,42 @@ static void quest_state(int id, const char *line) {
 }
 void fax_quests_tcp_setup(void) {
     cyc_tcp_register("quest_state",
-                     "Quest log: quests given, done and active, the line saying, the marks drawn, the log's page", quest_state);
+                     "Quest log: quests given, done and active, the line saying, the marks drawn, the log's page",
+                     quest_state);
 }
 #else
 const CycHostBinding *fax_quests_binding(void) { return NULL; }
-bool fax_quests_load_setting(const char *name, const char *value) { (void)name; (void)value; return false; }
+bool fax_quests_load_setting(const char *name, const char *value) {
+    (void)name;
+    (void)value;
+    return false;
+}
 void fax_quests_save_settings(FILE *f) { (void)f; }
 void fax_quests_event(const void *ev) { (void)ev; }
 void fax_quests_tcp_setup(void) {}
 #endif
 
-static const char *const hook_ids[] = { "faxanadu.quests.message", "faxanadu.quests.end-script", "faxanadu.quests.scroll",
-                                        "faxanadu.quests.check", "faxanadu.quests.loop" };
+static const char *const hook_ids[] = { "faxanadu.quests.message", "faxanadu.quests.end-script",
+                                        "faxanadu.quests.scroll", "faxanadu.quests.check", "faxanadu.quests.loop" };
 static void hooks(int on) {
-    for (unsigned i = 0; i < sizeof hook_ids / sizeof hook_ids[0]; ++i) nes_mod_set_function_hook_enabled(hook_ids[i], on);
+    for (unsigned i = 0; i < sizeof hook_ids / sizeof hook_ids[0]; ++i)
+        nes_mod_set_function_hook_enabled(hook_ids[i], on);
 }
 static void deactivate(void) {
     enabled = false;
     open = closing = false;
-    page = 0; want = 0;
+    page = 0;
+    want = 0;
     opens = closes = turns = presses = requests = lines_said = banners_shown = age = 0;
     forget();
-    quiet = true; seeded = false;
+    quiet = true;
+    seeded = false;
     hooks(0);
 }
 static void activate(void) {
     enabled = true;
     hooks(1);
-    nes_mod_set_local_only("Quest log", 1);   /* it pauses the game: host input a peer would not see */
+    nes_mod_set_local_only("Quest log", 1); /* it pauses the game: host input a peer would not see */
 }
 
 NES_MOD_CONSTRUCTOR(register_quests) {
@@ -951,6 +1127,6 @@ NES_MOD_CONSTRUCTOR(register_quests) {
         !nes_mod_register_reset_callback(deactivate) ||
         !nes_mod_register_activation_plugin("faxanadu.quest-log", activate) ||
         !nes_mod_register_savestate_hook("faxanadu.quests", state_get, state_set) ||
-        !nes_mod_register_savestate_validator("faxanadu.quests", state_validate) ||
-        !fax_save_listen(on_save)) abort();
+        !nes_mod_register_savestate_validator("faxanadu.quests", state_validate) || !fax_save_listen(on_save))
+        abort();
 }

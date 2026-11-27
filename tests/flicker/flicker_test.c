@@ -19,9 +19,16 @@
 #include <string.h>
 
 static unsigned checks;
-#define CHECK(test) do{++checks;if(!(test)){fprintf(stderr,"FAIL line %u: %s\n",__LINE__,#test);exit(1);}}while(0)
+#define CHECK(test)                                                                                                    \
+    do {                                                                                                               \
+        ++checks;                                                                                                      \
+        if (!(test)) {                                                                                                 \
+            fprintf(stderr, "FAIL line %u: %s\n", __LINE__, #test);                                                    \
+            exit(1);                                                                                                   \
+        }                                                                                                              \
+    } while (0)
 
-static uint8_t zero_page[0x20];                   /* Game_InterruptsHandledLatch, Game_NeedOAMReset */
+static uint8_t zero_page[0x20]; /* Game_InterruptsHandledLatch, Game_NeedOAMReset */
 uint8_t cyc_mod_peek(uint16_t addr) { return addr < sizeof zero_page ? zero_page[addr] : 0; }
 int nes_mod_register_reset_callback(NESModActivationCallback cb) { return cb == deactivate; }
 int nes_mod_register_activation_plugin(const char *id, NESModActivationCallback cb) {
@@ -31,13 +38,17 @@ int nes_mod_register_activation_plugin(const char *id, NESModActivationCallback 
 /* ---- the machine: the shadow OAM and the slot variables ---- */
 static uint8_t oam[256], range, slot, full;
 
-static void sprites_reset(void) {                  /* Sprites_Reset, sprite 0 mode 0 */
+static void sprites_reset(void) { /* Sprites_Reset, sprite 0 mode 0 */
     for (unsigned i = 0; i < 256; i += 4) oam[i] = 0xF0;
-    oam[0] = 0x17; oam[1] = 0x7F; oam[2] = 0x23; oam[3] = 8;
-    slot = 1; full = 0;
+    oam[0] = 0x17;
+    oam[1] = 0x7F;
+    oam[2] = 0x23;
+    oam[3] = 8;
+    slot = 1;
+    full = 0;
     range = (uint8_t)((range & 0x80) ^ 0x80);
 }
-static void inc_slot(void) {                       /* Sprites_IncNextSpriteSlot */
+static void inc_slot(void) { /* Sprites_IncNextSpriteSlot */
     slot ^= 0x20;
     if (slot & 0x20) return;
     if (++slot >= 0x20) ++full;
@@ -46,7 +57,10 @@ static void inc_slot(void) {                       /* Sprites_IncNextSpriteSlot 
 static void cell(uint8_t y, uint8_t tile, uint8_t attr, uint8_t x) {
     if (full) return;
     uint8_t i = (uint8_t)(slot << 2 ^ range);
-    oam[i] = y; oam[i + 1] = tile; oam[i + 2] = attr; oam[i + 3] = x;
+    oam[i] = y;
+    oam[i + 1] = tile;
+    oam[i + 2] = attr;
+    oam[i + 3] = x;
     inc_slot();
 }
 /* An object, columns x rows of cells from (x, y), row by row, left to right. */
@@ -56,8 +70,8 @@ static void object(uint8_t id, int x, int y, int columns, int rows) {
 }
 
 /* ---- painting ---- */
-enum { W = 256, H = 240, HERO = 1 };              /* OAM X is a byte: the NES's 256 pixels */
-static uint8_t canvas[H][W];                      /* the tile (object) on top; 0 nothing */
+enum { W = 256, H = 240, HERO = 1 }; /* OAM X is a byte: the NES's 256 pixels */
+static uint8_t canvas[H][W];         /* the tile (object) on top; 0 nothing */
 
 static void paint(void) {
     memset(canvas, 0, sizeof canvas);
@@ -87,14 +101,15 @@ static void order_is_every_sprite(void) {
     for (int on = 0; on < 2; ++on) {
         on ? activate() : deactivate();
         for (unsigned r = 0; r < 2; ++r) {
-            uint8_t order[FAX_FLICKER_SPRITES], seen[64] = {0};
+            uint8_t order[FAX_FLICKER_SPRITES], seen[64] = { 0 };
             CHECK(fax_flicker_paint_order((uint8_t)(r * 0x80), order) == FAX_FLICKER_SPRITES);
             for (unsigned k = 0; k < FAX_FLICKER_SPRITES; ++k) {
-                CHECK(order[k] >= 1 && order[k] <= 63);  /* never sprite 0, the status bar's */
+                CHECK(order[k] >= 1 && order[k] <= 63); /* never sprite 0, the status bar's */
                 CHECK(!seen[order[k]]);
                 seen[order[k]] = 1;
             }
-            if (!on) for (unsigned k = 0; k < FAX_FLICKER_SPRITES; ++k) CHECK(order[k] == 63 - k);
+            if (!on)
+                for (unsigned k = 0; k < FAX_FLICKER_SPRITES; ++k) CHECK(order[k] == 63 - k);
         }
     }
     activate();
@@ -103,7 +118,7 @@ static void order_is_every_sprite(void) {
      * off, so never in play: it is the first slot past full). */
     fax_flicker_paint_order(0x00, order);
     CHECK(order[60] == 33 && order[61] == 1 && order[62] == 32);
-    fax_flicker_paint_order(0x80, order);                /* the halves swapped: slot 33 at index 1 */
+    fax_flicker_paint_order(0x80, order); /* the halves swapped: slot 33 at index 1 */
     CHECK(order[60] == 1 && order[61] == 33 && order[62] == 32);
 }
 
@@ -114,10 +129,10 @@ static void hero_stays_in_front(void) {
     for (int on = 0; on < 2; ++on) {
         on ? activate() : deactivate();
         range = 0;
-        int hidden[2] = {0, 0};
+        int hidden[2] = { 0, 0 };
         for (int frame = 0; frame < 2; ++frame) {
             town(100);
-            CHECK(range == (frame ? 0x00 : 0x80));        /* the two halves, a frame each */
+            CHECK(range == (frame ? 0x00 : 0x80)); /* the two halves, a frame each */
             paint();
             memcpy(before[frame], canvas, sizeof canvas);
             for (int y = 151; y < 151 + 32; ++y)
@@ -126,7 +141,7 @@ static void hero_stays_in_front(void) {
         if (on) {
             CHECK(hidden[0] == 0 && hidden[1] == 0);
             CHECK(!memcmp(before[0], before[1], sizeof before[0]));
-        } else {                                          /* the original: hidden on both, by halves */
+        } else { /* the original: hidden on both, by halves */
             CHECK(hidden[0] > 0 && hidden[1] > 0);
             CHECK(memcmp(before[0], before[1], sizeof before[0]) != 0);
         }
@@ -146,7 +161,7 @@ static void actors_keep_their_order(void) {
         paint();
         for (int y = 153; y < 151 + 32; ++y)
             for (int x = 204; x < 216; ++x) CHECK(canvas[y][x] == 7);
-        CHECK(canvas[152 + 32][210] == 6);                 /* below the first, the second shows */
+        CHECK(canvas[152 + 32][210] == 6); /* below the first, the second shows */
     }
 }
 
@@ -157,8 +172,8 @@ static void every_sprite_on_a_line(void) {
     for (int frame = 0; frame < 2; ++frame) {
         sprites_reset();
         for (int i = 0; i < 62; ++i) object((uint8_t)(10 + i), 8 * (i % 32), i < 32 ? 100 : 140, 1, 1);
-        CHECK(full);                                       /* 62 drawn: the slots are full */
-        cell(100, 99, 0, 0);                               /* one more is not drawn, as in the game */
+        CHECK(full);         /* 62 drawn: the slots are full */
+        cell(100, 99, 0, 0); /* one more is not drawn, as in the game */
         paint();
         for (int i = 0; i < 62; ++i)
             for (int x = 8 * (i % 32); x < 8 * (i % 32) + 8; ++x) CHECK(canvas[i < 32 ? 104 : 144][x] == 10 + i);
@@ -172,11 +187,12 @@ static void every_sprite_on_a_line(void) {
 static void frames_the_nmi_copies(void) {
     for (int on = 0; on < 2; ++on) {
         on ? activate() : deactivate();
-        zero_page[0x10] = 0; zero_page[0x1B] = 0;          /* waiting in WaitForNextFrame */
+        zero_page[0x10] = 0;
+        zero_page[0x1B] = 0; /* waiting in WaitForNextFrame */
         CHECK(fax_flicker_frame_drawn());
-        zero_page[0x10] = 1;                               /* still drawing: a lagging frame */
-        CHECK(fax_flicker_frame_drawn() == !on);           /* off: Seamless took every frame */
-        zero_page[0x1B] = 1;                               /* the NMI copies it anyway */
+        zero_page[0x10] = 1;                     /* still drawing: a lagging frame */
+        CHECK(fax_flicker_frame_drawn() == !on); /* off: Seamless took every frame */
+        zero_page[0x1B] = 1;                     /* the NMI copies it anyway */
         CHECK(fax_flicker_frame_drawn());
     }
     activate();

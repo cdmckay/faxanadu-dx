@@ -1,8 +1,9 @@
 # Tests
 
-`tools/test.sh` runs every check: allocations, clang-tidy on `src/`, the C
-unit tests (under AddressSanitizer and UBSan), the game build (a warning in
-`src/` fails it), then every end-to-end test. `tools/test.sh --quick` skips
+`tools/test.sh` runs every check: allocations, clang-tidy on `src/`, the C's
+formatting (`tools/format.sh --check`), the C unit tests (under
+AddressSanitizer and UBSan), the game build (a warning in `src/` fails it),
+then every end-to-end test. `tools/test.sh --quick` skips
 the end-to-end runs, and `--sanitize` plays them on the game built with the
 sanitizers ([docs/C_TOOLING.md](../docs/C_TOOLING.md)). While developing, run `--quick` and your own end-to-end test
 directly; run the full suite before a PR. The end-to-end part takes a

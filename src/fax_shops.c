@@ -118,64 +118,77 @@
 
 /* RAM */
 #define JOY1_CHANGED_BUTTON_MASK 0x0019u
-#define ISCRIPT_ADDR        0x00DBu   /* IScriptOrCHRAddr; the next byte is at it + IScriptOffset */
-#define ISCRIPT_OFFSET      0x00DDu
-#define TEXTBOX_X           0x0208u   /* TextBox_X, _Y, _Width, _Height: the box last opened or closed */
-#define TEXTBOX_CLOSED      0x020Cu   /* 0 while a box is open */
-#define MENU_CURSOR_POS     0x021Eu
-#define ARG_STRINGS_COUNT   0x021Fu   /* the entries in the list */
-#define DATA_ARRAY          0x0220u   /* the list's items, 8 at most: costs follow at $0228 and $0230 */
-#define SHOP_ITEM_COSTS_L   0x0228u
-#define SHOP_ITEM_COSTS_U   0x0230u
-#define ITEM_INVENTORY      0x03ADu   /* the Items list, NumberOfItems entries */
-#define SELECTED_WEAPON     0x03BDu   /* then armor, shields, spells, items: each kind's equipped entry,
-                                         in no list; $FF for none */
-#define SELECTED_ITEM       0x03C1u   /* the Items' selection, in no list; $FF for none */
-#define NUMBER_OF_WEAPONS   0x03C2u   /* then armor, shields, spells, items */
-#define NUMBER_OF_ITEMS     0x03C6u
-#define SPECIAL_ITEMS       0x042Cu   /* the rings, the Elixir ($08), ...: bits, in no list */
-#define ISCRIPT_PORTRAIT_ID 0x03C7u   /* $FF once IScriptAction_EndScript has run */
+#define ISCRIPT_ADDR             0x00DBu /* IScriptOrCHRAddr; the next byte is at it + IScriptOffset */
+#define ISCRIPT_OFFSET           0x00DDu
+#define TEXTBOX_X                0x0208u /* TextBox_X, _Y, _Width, _Height: the box last opened or closed */
+#define TEXTBOX_CLOSED           0x020Cu /* 0 while a box is open */
+#define MENU_CURSOR_POS          0x021Eu
+#define ARG_STRINGS_COUNT        0x021Fu /* the entries in the list */
+#define DATA_ARRAY               0x0220u /* the list's items, 8 at most: costs follow at $0228 and $0230 */
+#define SHOP_ITEM_COSTS_L        0x0228u
+#define SHOP_ITEM_COSTS_U        0x0230u
+#define ITEM_INVENTORY           0x03ADu /* the Items list, NumberOfItems entries */
+/* then armor, shields, spells, items: each kind's equipped entry,
+ * in no list; $FF for none */
+#define SELECTED_WEAPON          0x03BDu
+#define SELECTED_ITEM            0x03C1u /* the Items' selection, in no list; $FF for none */
+#define NUMBER_OF_WEAPONS        0x03C2u /* then armor, shields, spells, items */
+#define NUMBER_OF_ITEMS          0x03C6u
+#define SPECIAL_ITEMS            0x042Cu /* the rings, the Elixir ($08), ...: bits, in no list */
+#define ISCRIPT_PORTRAIT_ID      0x03C7u /* $FF once IScriptAction_EndScript has run */
 /* Bank 12 */
-#define INVOKE_NEXT_ACTION  0x826Eu   /* IScripts_InvokeNextAction: JSR IScripts_LoadByte, TAX, dispatch */
-#define FINAL_MESSAGE_END   0x838Eu   /* IScripts_ShowFinalMessage's @_endScript: JMP IScriptAction_EndScript */
-#define OPEN_SHOP           0x83D8u   /* IScriptAction_OpenShop: LDA #$14 ("What would you like?"), its loop */
-#define OPEN_SHOP_LIST      0x83EAu   /* ... after the loop: JSR IScripts_LoadByte (the items), Populate, Draw */
-#define OPEN_SHOP_DRAW      0x83F7u   /* ... after JSR Shop_Populate: JSR Shop_Draw */
-#define BUY_WAIT            0x83FAu   /* ... JSR IScripts_WaitForMenuInput, BCC to BUY_PICK, JMP EndScript */
-#define BUY_END             0x83FFu   /* ... @_endScript: JMP IScriptAction_EndScript, on B in the list or the line */
-#define BUY_PICK            0x8402u   /* ... A: JSR Shop_GetPlayerHasSelectedItem, the room, the gold, the item */
-#define BOUGHT              0x8463u   /* ... after Player_AddToInventory and the gold: JSR Maybe_Shop_DrawTextBox,
-                                         JMP IScripts_InvokeNextAction */
-#define MAYBE_SHOP_DRAW_TEXTBOX 0x8471u  /* two frames, then closes the list and opens the dialogue box again */
-#define MAYBE_SHOP_CLOSE    0x8477u   /* ... JSR TextBox_Close */
-#define MAYBE_SHOP_OPEN     0x847Au   /* ... JMP TextBox_OpenForNPC */
-#define MENU_UPDATE         0x84F0u   /* IScripts_WaitForMenuInput, after the frame: JSR Menu_UpdateAndDraw,
-                                         LDA Joy1_ChangedButtonMask */
-#define SELL_LIST           0x86BCu   /* IScriptAction_ShowSellMenu after its scan: LDA Arg_StringsCount, BNE,
-                                         LDA #$12, JMP IScripts_ShowFinalMessage */
-#define SELL_DRAW           0x86D8u   /* ... after "Which one would like to sell?": JSR Shop_Draw */
-#define SELL_WAIT           0x86DBu   /* ... JSR IScripts_WaitForMenuInput */
-#define SELL_PICK           0x86E0u   /* ... A: LDX Menu_CursorPos, the price, the item, JSR Player_RemoveItem */
-#define SOLD                0x86F8u   /* ... after the gold: JSR TextBox_Close, JSR TextBox_OpenForNPC, JMP
-                                         IScripts_InvokeNextAction */
-#define SELL_END            0x8701u   /* ... @_endScript: JMP IScriptAction_EndScript, on B in the list or the line */
-#define ISCRIPT_ADDRS_L     0x9F6Bu   /* every script's address, low bytes, then high bytes */
-#define ISCRIPT_ADDRS_U     0xA003u
+#define INVOKE_NEXT_ACTION       0x826Eu /* IScripts_InvokeNextAction: JSR IScripts_LoadByte, TAX, dispatch */
+#define FINAL_MESSAGE_END        0x838Eu /* IScripts_ShowFinalMessage's @_endScript: JMP IScriptAction_EndScript */
+#define OPEN_SHOP                0x83D8u /* IScriptAction_OpenShop: LDA #$14 ("What would you like?"), its loop */
+#define OPEN_SHOP_LIST           0x83EAu /* ... after the loop: JSR IScripts_LoadByte (the items), Populate, Draw */
+#define OPEN_SHOP_DRAW           0x83F7u /* ... after JSR Shop_Populate: JSR Shop_Draw */
+#define BUY_WAIT                 0x83FAu /* ... JSR IScripts_WaitForMenuInput, BCC to BUY_PICK, JMP EndScript */
+#define BUY_END                 0x83FFu /* ... @_endScript: JMP IScriptAction_EndScript, on B in the list or the line */
+#define BUY_PICK                0x8402u /* ... A: JSR Shop_GetPlayerHasSelectedItem, the room, the gold, the item */
+/* ... after Player_AddToInventory and the gold: JSR Maybe_Shop_DrawTextBox,
+ * JMP IScripts_InvokeNextAction */
+#define BOUGHT                  0x8463u
+#define MAYBE_SHOP_DRAW_TEXTBOX 0x8471u /* two frames, then closes the list and opens the dialogue box again */
+#define MAYBE_SHOP_CLOSE        0x8477u /* ... JSR TextBox_Close */
+#define MAYBE_SHOP_OPEN         0x847Au /* ... JMP TextBox_OpenForNPC */
+/* IScripts_WaitForMenuInput, after the frame: JSR Menu_UpdateAndDraw,
+ * LDA Joy1_ChangedButtonMask */
+#define MENU_UPDATE             0x84F0u
+/* IScriptAction_ShowSellMenu after its scan: LDA Arg_StringsCount, BNE,
+ * LDA #$12, JMP IScripts_ShowFinalMessage */
+#define SELL_LIST               0x86BCu
+#define SELL_DRAW               0x86D8u /* ... after "Which one would like to sell?": JSR Shop_Draw */
+#define SELL_WAIT               0x86DBu /* ... JSR IScripts_WaitForMenuInput */
+#define SELL_PICK               0x86E0u /* ... A: LDX Menu_CursorPos, the price, the item, JSR Player_RemoveItem */
+/* ... after the gold: JSR TextBox_Close, JSR TextBox_OpenForNPC, JMP
+ * IScripts_InvokeNextAction */
+#define SOLD                    0x86F8u
+#define SELL_END                0x8701u /* ... @_endScript: JMP IScriptAction_EndScript, on B in the list or the line */
+#define ISCRIPT_ADDRS_L         0x9F6Bu /* every script's address, low bytes, then high bytes */
+#define ISCRIPT_ADDRS_U         0xA003u
 /* Fixed bank */
-#define SOUND_PLAY_EFFECT   0xD0E4u   /* A = the effect; keeps X and Y */
+#define SOUND_PLAY_EFFECT       0xD0E4u /* A = the effect; keeps X and Y */
 
-enum { ISCRIPTS = ISCRIPT_ADDRS_U - ISCRIPT_ADDRS_L };   /* 152 */
+enum { ISCRIPTS = ISCRIPT_ADDRS_U - ISCRIPT_ADDRS_L }; /* 152 */
 /* IScript actions */
 enum { SHOW_MESSAGE = 0x03, OPEN_SHOP_ACTION = 0x08, SHOW_BUY_SELL_MENU = 0x0F, SHOW_SELL_MENU = 0x11 };
 enum { BUTTON_UP = 0x08, BUTTON_DOWN = 0x04 };
-enum { SOUND_CURSOR = 0x0B };                     /* Menu_UpdateAndDraw's */
+enum { SOUND_CURSOR = 0x0B }; /* Menu_UpdateAndDraw's */
 enum { CATEGORIES = 5, ITEMS = 4, PAGE = 8, MOST = 4 + 4 + 4 + 4 + 8 };
-enum { BIT_ELIXIR = 0x08 };                       /* SpecialItems' */
+enum { BIT_ELIXIR = 0x08 }; /* SpecialItems' */
 enum { BUY, SELL, NONE };
 enum { STAYING, LEAVING, THANKING };
 /* Shop_Draw's list, in tiles: its box and its rows (an entry is two rows). */
-enum { LIST_X = 10, LIST_Y = 8, LIST_W = 20, LIST_H = 20, HINT_COL = LIST_X + 2, HINT_ROW = LIST_Y + LIST_H - 2,
-       HINT_COLS = 16, PAGE_ROW = LIST_Y + 1 };
+enum {
+    LIST_X = 10,
+    LIST_Y = 8,
+    LIST_W = 20,
+    LIST_H = 20,
+    HINT_COL = LIST_X + 2,
+    HINT_ROW = LIST_Y + LIST_H - 2,
+    HINT_COLS = 16,
+    PAGE_ROW = LIST_Y + 1
+};
 /* TextBox_Open's frame corner tiles */
 enum { CORNER_TOP_LEFT = 1, CORNER_TOP_RIGHT = 3, CORNER_BOTTOM_LEFT = 5, CORNER_BOTTOM_RIGHT = 6 };
 
@@ -187,27 +200,32 @@ static const uint8_t list_max[CATEGORIES] = { 4, 4, 4, 4, 8 };
 /* The sell list's order: the Items, as the original lists them, then the rest. */
 static const uint8_t sell_order[CATEGORIES] = { ITEMS, 0, 1, 2, 3 };
 
-typedef struct { uint8_t id; uint16_t price; } Offer;
-typedef struct { uint16_t base, buy, sell, items; } Script;
+typedef struct {
+    uint8_t id;
+    uint16_t price;
+} Offer;
+typedef struct {
+    uint16_t base, buy, sell, items;
+} Script;
 typedef struct {
     uint8_t active;
-    uint8_t mode;        /* the list the conversation is on: BUY or SELL, NONE before either */
-    uint8_t shown;       /* the list drawn last: BUY, SELL or NONE */
-    uint8_t page;        /* the sell list's page */
-    uint8_t cursor[2];   /* each list's cursor, to put back */
-    uint8_t restore;     /* put it back at the next list's first menu update */
-    uint8_t selling;     /* entries in the sell list, all pages */
-    uint8_t lines;       /* bits (1 << BUY, 1 << SELL): the list's line has been said this visit */
-    uint8_t traded;      /* something was bought or sold this visit */
-    uint8_t leaving;     /* B: on the way out, LEAVING, then THANKING once "Thank you for shopping." begins */
+    uint8_t mode;      /* the list the conversation is on: BUY or SELL, NONE before either */
+    uint8_t shown;     /* the list drawn last: BUY, SELL or NONE */
+    uint8_t page;      /* the sell list's page */
+    uint8_t cursor[2]; /* each list's cursor, to put back */
+    uint8_t restore;   /* put it back at the next list's first menu update */
+    uint8_t selling;   /* entries in the sell list, all pages */
+    uint8_t lines;     /* bits (1 << BUY, 1 << SELL): the list's line has been said this visit */
+    uint8_t traded;    /* something was bought or sold this visit */
+    uint8_t leaving;   /* B: on the way out, LEAVING, then THANKING once "Thank you for shopping." begins */
     Script script;
 } Session;
 
 static bool enabled, failed, priced;
 static Session shop;
-static uint16_t lowest[256];   /* by item: the lowest price any shop asks, 0 if none sells it */
+static uint16_t lowest[256]; /* by item: the lowest price any shop asks, 0 if none sells it */
 static unsigned opened, bought, sold, refused, ignored, turned, messages, dropped, thanked, boxes_kept;
-static unsigned waits;         /* frames a list has waited for a button: it reads the pad */
+static unsigned waits; /* frames a list has waited for a button: it reads the pad */
 
 static uint8_t q(uint16_t addr) { return cyc_mod_peek(addr); }
 static void p(uint16_t addr, uint8_t v) { cyc_mod_poke(addr, v); }
@@ -217,21 +235,24 @@ static uint16_t word(uint16_t addr) { return (uint16_t)(q(addr) | q((uint16_t)(a
 
 bool fax_shops_never_buys(uint8_t id) {
     switch (id) {
-    case 0x03:   /* WEAPON_DRAGON_SLAYER: "Defeat the Evil one with Dragon Slayer." ($9C); King Grieve drops it */
-    case 0x23:   /* ARMOR_BATTLE_SUIT and */
-    case 0x43:   /* SHIELD_BATTLE_HELMET: worn only with the Dragon Slayer, for the last fight ($8B) */
-    case 0x80: case 0x81: case 0x82: case 0x83:   /* the rings of Elf, Ruby, Dworf, the Demon's: doors, the rock */
-    case 0x8A:   /* SPECIAL_MAGICAL_ROD */
-    case 0x92:   /* SPECIAL_ELIXIR: the Spring of Trunk asks for it (with the remaster, its charge) */
-    case 0x93:   /* SPECIAL_PENDANT */
-    case 0x94:   /* SPECIAL_BLACK_ONYX: the man by the gate to Branch gives the A key for it */
+    case 0x03: /* WEAPON_DRAGON_SLAYER: "Defeat the Evil one with Dragon Slayer." ($9C); King Grieve drops it */
+    case 0x23: /* ARMOR_BATTLE_SUIT and */
+    case 0x43: /* SHIELD_BATTLE_HELMET: worn only with the Dragon Slayer, for the last fight ($8B) */
+    case 0x80:
+    case 0x81:
+    case 0x82:
+    case 0x83: /* the rings of Elf, Ruby, Dworf, the Demon's: doors, the rock */
+    case 0x8A: /* SPECIAL_MAGICAL_ROD */
+    case 0x92: /* SPECIAL_ELIXIR: the Spring of Trunk asks for it (with the remaster, its charge) */
+    case 0x93: /* SPECIAL_PENDANT */
+    case 0x94: /* SPECIAL_BLACK_ONYX: the man by the gate to Branch gives the A key for it */
         return true;
     }
     return false;
 }
 
 uint16_t fax_shops_sell_price(uint8_t id, uint16_t here, uint16_t lowest_price) {
-    enum { FLAT = 100 };   /* for what no shop sells, as the 40th Anniversary Edition pays */
+    enum { FLAT = 100 }; /* for what no shop sells, as the 40th Anniversary Edition pays */
     if (fax_shops_never_buys(id)) return 0;
     /* The Red Potion: half the lowest price, whatever this shop asks (#176). */
     if (id == FAX_SHOPS_RED_POTION && lowest_price) here = 0;
@@ -249,20 +270,25 @@ uint16_t fax_shops_sell_price(uint8_t id, uint16_t here, uint16_t lowest_price) 
 static bool kept_for_good(uint8_t id, const FaxShopsHero *h) {
     bool kept;
     switch (id) {
-    case 0x92:                                   /* SPECIAL_ELIXIR: a bit, one at most; spent, still his */
+    case 0x92: /* SPECIAL_ELIXIR: a bit, one at most; spent, still his */
         return (h->special & BIT_ELIXIR) || h->elixir_spent;
-    case 0x8D: case 0x8F:                        /* the Hour Glass, the Wing Boots: kept, they run on MP */
+    case 0x8D:
+    case 0x8F: /* the Hour Glass, the Wing Boots: kept, they run on MP */
         kept = h->recharging;
         break;
-    case 0x84: case 0x85: case 0x86: case 0x87: case 0x88:   /* the A, K, Q, J and Jo keys */
-    case 0x89:                                   /* the Mattock */
+    case 0x84:
+    case 0x85:
+    case 0x86:
+    case 0x87:
+    case 0x88: /* the A, K, Q, J and Jo keys */
+    case 0x89: /* the Mattock */
         kept = h->reusable;
         break;
     default:
         return false;
     }
-    if (!kept) return false;                     /* used up: a second is worth buying */
-    uint8_t item = id & 0x1F;                    /* the selected item is in no list (Player_Equip) */
+    if (!kept) return false;  /* used up: a second is worth buying */
+    uint8_t item = id & 0x1F; /* the selected item is in no list (Player_Equip) */
     if (h->selected == item) return true;
     for (unsigned i = 0; i < h->count && i < sizeof h->items; ++i)
         if (h->items[i] == item) return true;
@@ -282,12 +308,15 @@ bool fax_shops_owned(uint8_t id, const FaxShopsHero *h) {
 }
 
 static FaxShopsHero hero_now(void) {
-    FaxShopsHero h = { .selected = q(SELECTED_ITEM), .count = q(NUMBER_OF_ITEMS), .special = q(SPECIAL_ITEMS),
-                       .elixir_spent = fax_recharge_elixir_spent(), .recharging = fax_recharge_on(),
+    FaxShopsHero h = { .selected = q(SELECTED_ITEM),
+                       .count = q(NUMBER_OF_ITEMS),
+                       .special = q(SPECIAL_ITEMS),
+                       .elixir_spent = fax_recharge_elixir_spent(),
+                       .recharging = fax_recharge_on(),
                        .reusable = fax_reusable_tools_on() };
     if (h.count > sizeof h.items) h.count = sizeof h.items;
     for (unsigned i = 0; i < h.count; ++i) h.items[i] = q((uint16_t)(ITEM_INVENTORY + i));
-    for (unsigned c = 0; c < ITEMS; ++c) {       /* weapons, armor, shields, spells */
+    for (unsigned c = 0; c < ITEMS; ++c) { /* weapons, armor, shields, spells */
         h.gear_selected[c] = q((uint16_t)(SELECTED_WEAPON + c));
         h.gear_count[c] = q((uint16_t)(NUMBER_OF_WEAPONS + c));
         if (h.gear_count[c] > FAX_SHOPS_GEAR_SLOTS) h.gear_count[c] = FAX_SHOPS_GEAR_SLOTS;
@@ -320,7 +349,8 @@ static bool unsold_entry(unsigned i) {
 static bool shop_script(uint16_t base, Script *s) {
     if (base < 0x8000 || base > 0xBFF0) return false;
     if (q(base) < 0x80 || q((uint16_t)(base + 1)) != SHOW_MESSAGE || q((uint16_t)(base + 3)) != SHOW_BUY_SELL_MENU ||
-        q((uint16_t)(base + 6)) != SHOW_SELL_MENU || q((uint16_t)(base + 9)) != SHOW_MESSAGE) return false;
+        q((uint16_t)(base + 6)) != SHOW_SELL_MENU || q((uint16_t)(base + 9)) != SHOW_MESSAGE)
+        return false;
     uint16_t buy = word((uint16_t)(base + 4)), items = word((uint16_t)(base + 7));
     if (buy < 0x8000 || buy > 0xBFF0 || items < 0x8000 || items > 0xBFF0) return false;
     if (q(buy) != OPEN_SHOP_ACTION || word((uint16_t)(buy + 1)) != items || q((uint16_t)(buy + 3)) != SHOW_MESSAGE)
@@ -414,15 +444,17 @@ static int go(bool ret, uint16_t to, uint16_t then, uint16_t last, int a) {
     uint16_t chain[3] = { to, then, last };
     int n = last ? 3 : then ? 2 : 1;
     int i = n - 1;
-    if (ret) {                                  /* the routine's RTS goes to the last */
+    if (ret) { /* the routine's RTS goes to the last */
         uint16_t v = (uint16_t)(chain[i--] - 1);
         p((uint16_t)(0x100u | (uint8_t)(s + 1)), (uint8_t)v);
         p((uint16_t)(0x100u | (uint8_t)(s + 2)), (uint8_t)(v >> 8));
     }
-    for (; i >= 0; --i) {                       /* pushed as a JSR would: high byte first */
+    for (; i >= 0; --i) { /* pushed as a JSR would: high byte first */
         uint16_t v = (uint16_t)(chain[i] - 1);
-        p((uint16_t)(0x100u | s), (uint8_t)(v >> 8)); s = (uint8_t)(s - 1);
-        p((uint16_t)(0x100u | s), (uint8_t)v);        s = (uint8_t)(s - 1);
+        p((uint16_t)(0x100u | s), (uint8_t)(v >> 8));
+        s = (uint8_t)(s - 1);
+        p((uint16_t)(0x100u | s), (uint8_t)v);
+        s = (uint8_t)(s - 1);
     }
     r.s = s;
     if (a >= 0) r.a = (uint8_t)a;
@@ -439,7 +471,7 @@ static int next_action_hook(uint16_t addr) {
     (void)addr;
     if (!here()) return 0;
     uint16_t at = script_at();
-    if (q(ISCRIPT_OFFSET) == 1) {               /* a script begins (IScripts_Begin): the greeting */
+    if (q(ISCRIPT_OFFSET) == 1) { /* a script begins (IScripts_Begin): the greeting */
         Script s;
         shop.active = 0;
         shop.shown = NONE;
@@ -455,20 +487,26 @@ static int next_action_hook(uint16_t addr) {
     }
     if (!shop.active) return 0;
     bool thanks = at == shop.script.buy + 3 || at == shop.script.sell + 3;
-    if (at == shop.script.base + 3) return 0;   /* the Buy/Sell menu */
-    if (shop.leaving) {                         /* the thank-you, then the end */
+    if (at == shop.script.base + 3) return 0; /* the Buy/Sell menu */
+    if (shop.leaving) {                       /* the thank-you, then the end */
         if (thanks) shop.leaving = THANKING;
         else shop.active = 0;
         return 0;
     }
     if (at == shop.script.buy + 3) {
-        shop.cursor[BUY] = q(MENU_CURSOR_POS); ++bought; shop.traded = 1; to_list(BUY);
+        shop.cursor[BUY] = q(MENU_CURSOR_POS);
+        ++bought;
+        shop.traded = 1;
+        to_list(BUY);
     } else if (at == shop.script.sell + 3) {
-        shop.cursor[SELL] = q(MENU_CURSOR_POS); ++sold; shop.traded = 1; to_list(SELL);
+        shop.cursor[SELL] = q(MENU_CURSOR_POS);
+        ++sold;
+        shop.traded = 1;
+        to_list(SELL);
     } else if (at == shop.script.buy || at == shop.script.sell) {
-        shop.mode = at == shop.script.buy ? BUY : SELL;   /* the menu's choice */
+        shop.mode = at == shop.script.buy ? BUY : SELL; /* the menu's choice */
     } else {
-        shop.active = 0;                         /* not ours any more */
+        shop.active = 0; /* not ours any more */
     }
     return 0;
 }
@@ -497,7 +535,8 @@ static int buy_pick_hook(uint16_t addr) {
 }
 
 static bool dropped_item(const uint8_t drop[], unsigned drops, uint8_t id) {
-    for (unsigned k = 0; k < drops; ++k) if (drop[k] == id) return true;
+    for (unsigned k = 0; k < drops; ++k)
+        if (drop[k] == id) return true;
     return false;
 }
 unsigned fax_shops_without(const uint8_t drop[], unsigned drops, uint8_t items[], uint16_t prices[], unsigned n) {
@@ -543,8 +582,8 @@ static int bought_hook(uint16_t addr) {
 }
 
 static bool list_open(void) {
-    return !q(TEXTBOX_CLOSED) && q(TEXTBOX_X) == LIST_X && q(TEXTBOX_X + 1) == LIST_Y &&
-           q(TEXTBOX_X + 2) == LIST_W && q(TEXTBOX_X + 3) == LIST_H;
+    return !q(TEXTBOX_CLOSED) && q(TEXTBOX_X) == LIST_X && q(TEXTBOX_X + 1) == LIST_Y && q(TEXTBOX_X + 2) == LIST_W &&
+           q(TEXTBOX_X + 3) == LIST_H;
 }
 
 /* IScriptAction_ShowSellMenu, after its own scan: the list is everything
@@ -556,7 +595,7 @@ static int sell_list_hook(uint16_t addr) {
     Offer all[MOST];
     int n = sell_list(all);
     shop.selling = (uint8_t)n;
-    if (shop.page >= pages()) {                 /* the last page sold out: the end of the one before */
+    if (shop.page >= pages()) { /* the last page sold out: the end of the one before */
         shop.page = (uint8_t)(pages() - 1);
         shop.cursor[SELL] = PAGE - 1;
     }
@@ -569,7 +608,7 @@ static int sell_list_hook(uint16_t addr) {
     p(ARG_STRINGS_COUNT, (uint8_t)count);
     if (count) {
         shop.shown = SELL;
-        if (!(shop.lines & 1u << SELL)) {        /* the game goes on to the line, then draws */
+        if (!(shop.lines & 1u << SELL)) { /* the game goes on to the line, then draws */
             shop.lines |= 1u << SELL;
             return 0;
         }
@@ -615,7 +654,7 @@ static int menu_hook(uint16_t addr) {
         p(MENU_CURSOR_POS, (uint8_t)cursor);
     }
     uint8_t pressed = q(JOY1_CHANGED_BUTTON_MASK);
-    if (list != SELL || pages() < 2) return 0;   /* the menu wraps, as it always did */
+    if (list != SELL || pages() < 2) return 0; /* the menu wraps, as it always did */
     int turn = pressed & BUTTON_UP ? (cursor == 0 ? -1 : 0) : pressed & BUTTON_DOWN ? (cursor + 1 >= count ? 1 : 0) : 0;
     if (!turn) return 0;
     shop.page = (uint8_t)((shop.page + pages() + turn) % pages());
@@ -632,7 +671,7 @@ static int final_hook(uint16_t addr) {
     if (!here() || !(in_step(BUY, 3) || in_step(SELL, 3))) return 0;
     Offer all[MOST];
     int list = in_step(BUY, 3) ? BUY : SELL;
-    shop.cursor[list] = q(MENU_CURSOR_POS);     /* the message left it where it was */
+    shop.cursor[list] = q(MENU_CURSOR_POS); /* the message left it where it was */
     shop.selling = (uint8_t)sell_list(all);
     to_list(list == SELL && shop.selling ? SELL : BUY);
     ++messages;
@@ -655,8 +694,14 @@ static int leave(int list) {
     if (up) return go(false, MAYBE_SHOP_DRAW_TEXTBOX, INVOKE_NEXT_ACTION, 0, -1);
     return go(false, INVOKE_NEXT_ACTION, 0, 0, -1);
 }
-static int buy_end_hook(uint16_t addr) { (void)addr; return leave(BUY); }
-static int sell_end_hook(uint16_t addr) { (void)addr; return leave(SELL); }
+static int buy_end_hook(uint16_t addr) {
+    (void)addr;
+    return leave(BUY);
+}
+static int sell_end_hook(uint16_t addr) {
+    (void)addr;
+    return leave(SELL);
+}
 
 /* Maybe_Shop_DrawTextBox's JSR TextBox_Close, in a shop: the dialogue box
  * opens over the list instead, so no frame between them has TextBox_Closed
@@ -672,9 +717,7 @@ static int keep_hook(uint16_t addr) {
 
 /* A list of this conversation is the box up: drawn last, and the box the
  * game opened last (a dialogue box opened over it is not). */
-static bool in_list(void) {
-    return shop.active && shop.shown != NONE && q(ISCRIPT_PORTRAIT_ID) != 0xFF && list_open();
-}
+static bool in_list(void) { return shop.active && shop.shown != NONE && q(ISCRIPT_PORTRAIT_ID) != 0xFF && list_open(); }
 /* The line under the list, or false for none: why A does nothing on the
  * entry under the cursor. The font has no colon or slash (TILE_GLYPHS_START
  * leaves them blank), so the words say it. */
@@ -715,7 +758,10 @@ static bool list_shown(void) {
  * scaled to fit and centered, as Seamless shows a building (fax_speaker.c). */
 static void to_picture(int w, int h, int *x, int *y) {
     int nw = w < 256 ? w : 256, nh = 240 * nw / 256;
-    if (nh > h) { nh = h; nw = 256 * nh / 240; }
+    if (nh > h) {
+        nh = h;
+        nw = 256 * nh / 240;
+    }
     *x = (w - nw) / 2 + *x * nw / 256;
     *y = *y * nh / 240;
 }
@@ -733,7 +779,7 @@ static bool any_covered(void) {
     return false;
 }
 static void cover_prices(uint32_t *px, int w, int h) {
-    enum { PRICE_COL = LIST_X + 13, PRICE_COLS = 5 };   /* Shop_Draw: X + 13, 5 digits, on an entry's second row */
+    enum { PRICE_COL = LIST_X + 13, PRICE_COLS = 5 }; /* Shop_Draw: X + 13, 5 digits, on an entry's second row */
     _Static_assert(sizeof OWNED_LABEL - 1 == PRICE_COLS, "OWNED fills the price's cells");
     unsigned count = q(ARG_STRINGS_COUNT);
     uint32_t inside = cyc_render_color(0);
@@ -774,7 +820,8 @@ const uint32_t *fax_shops_present(const uint32_t *picture, int *w, int *h) {
     if (n > capacity) {
         uint32_t *grown = realloc(canvas, n * sizeof *grown);
         if (!grown) return picture;
-        canvas = grown; capacity = n;
+        canvas = grown;
+        capacity = n;
     }
     memcpy(canvas, from, n * sizeof *canvas);
     cover_prices(canvas, width, height);
@@ -789,19 +836,22 @@ const uint32_t *fax_shops_present(const uint32_t *picture, int *w, int *h) {
         to_picture(width, height, &x, &y);
         fax_text_draw(canvas, width, height, x, y, page, 255);
     }
-    *w = width; *h = height;
+    *w = width;
+    *h = height;
     return canvas;
 }
 
 /* ---- the mod ---- */
 
 static const char *const hook_ids[] = {
-    "faxanadu.shops.next-action", "faxanadu.shops.open", "faxanadu.shops.bought", "faxanadu.shops.sell-list",
-    "faxanadu.shops.sell-pick", "faxanadu.shops.sold", "faxanadu.shops.menu", "faxanadu.shops.final",
-    "faxanadu.shops.buy-pick", "faxanadu.shops.drawing", "faxanadu.shops.buy-end", "faxanadu.shops.sell-end",
-    "faxanadu.shops.keep" };
+    "faxanadu.shops.next-action", "faxanadu.shops.open",    "faxanadu.shops.bought",  "faxanadu.shops.sell-list",
+    "faxanadu.shops.sell-pick",   "faxanadu.shops.sold",    "faxanadu.shops.menu",    "faxanadu.shops.final",
+    "faxanadu.shops.buy-pick",    "faxanadu.shops.drawing", "faxanadu.shops.buy-end", "faxanadu.shops.sell-end",
+    "faxanadu.shops.keep"
+};
 static void hooks(int on) {
-    for (unsigned i = 0; i < sizeof hook_ids / sizeof hook_ids[0]; ++i) nes_mod_set_function_hook_enabled(hook_ids[i], on);
+    for (unsigned i = 0; i < sizeof hook_ids / sizeof hook_ids[0]; ++i)
+        nes_mod_set_function_hook_enabled(hook_ids[i], on);
 }
 static void deactivate(void) {
     enabled = failed = priced = false;
@@ -824,10 +874,21 @@ static int state_get(uint8_t *buf, int cap) {
     if (cap < STATE_LEN) return -1;
     const uint16_t w[4] = { shop.script.base, shop.script.buy, shop.script.sell, shop.script.items };
     buf[0] = STATE_VERSION;
-    buf[1] = shop.active; buf[2] = shop.mode; buf[3] = shop.shown; buf[4] = shop.page;
-    buf[5] = shop.cursor[BUY]; buf[6] = shop.cursor[SELL]; buf[7] = shop.restore; buf[8] = shop.selling;
-    for (int i = 0; i < 4; ++i) { buf[9 + 2 * i] = (uint8_t)w[i]; buf[10 + 2 * i] = (uint8_t)(w[i] >> 8); }
-    buf[17] = shop.lines; buf[18] = shop.traded; buf[19] = shop.leaving;
+    buf[1] = shop.active;
+    buf[2] = shop.mode;
+    buf[3] = shop.shown;
+    buf[4] = shop.page;
+    buf[5] = shop.cursor[BUY];
+    buf[6] = shop.cursor[SELL];
+    buf[7] = shop.restore;
+    buf[8] = shop.selling;
+    for (int i = 0; i < 4; ++i) {
+        buf[9 + 2 * i] = (uint8_t)w[i];
+        buf[10 + 2 * i] = (uint8_t)(w[i] >> 8);
+    }
+    buf[17] = shop.lines;
+    buf[18] = shop.traded;
+    buf[19] = shop.leaving;
     return STATE_LEN;
 }
 static int state_validate(const uint8_t *buf, int len) {
@@ -840,14 +901,22 @@ static int state_validate(const uint8_t *buf, int len) {
 static int state_set(const uint8_t *buf, int len) {
     if (!state_validate(buf, len)) return 0;
     shop = (Session){ .mode = NONE, .shown = NONE };
-    if (!len) return 1;                          /* a state from before Quick shops: no shop under way */
-    shop.active = buf[1]; shop.mode = buf[2]; shop.shown = buf[3]; shop.page = buf[4];
-    shop.cursor[BUY] = buf[5]; shop.cursor[SELL] = buf[6]; shop.restore = buf[7]; shop.selling = buf[8];
+    if (!len) return 1; /* a state from before Quick shops: no shop under way */
+    shop.active = buf[1];
+    shop.mode = buf[2];
+    shop.shown = buf[3];
+    shop.page = buf[4];
+    shop.cursor[BUY] = buf[5];
+    shop.cursor[SELL] = buf[6];
+    shop.restore = buf[7];
+    shop.selling = buf[8];
     uint16_t w[4];
     for (int i = 0; i < 4; ++i) w[i] = (uint16_t)(buf[9 + 2 * i] | buf[10 + 2 * i] << 8);
     shop.script = (Script){ w[0], w[1], w[2], w[3] };
     if (len == STATE_LEN) {
-        shop.lines = buf[17]; shop.traded = buf[18]; shop.leaving = buf[19];
+        shop.lines = buf[17];
+        shop.traded = buf[18];
+        shop.leaving = buf[19];
     } else if (shop.mode <= SELL) {
         shop.lines = (uint8_t)(1u << shop.mode);
     }
@@ -891,13 +960,13 @@ static void shops_state(int id, const char *line) {
              "\"ignored\":%u,\"turned\":%u,\"messages\":%u,\"waits\":%u,\"dropped\":%u,\"thanked\":%u,"
              "\"kept\":%u",
              enabled ? "true" : "false", shop.active ? "true" : "false", step_name(),
-             modes[shop.mode <= SELL ? shop.mode : 2],
-             modes[shop.shown <= NONE ? shop.shown : 2], shop.page, pages(), shop.selling, q(MENU_CURSOR_POS),
-             items, prices, mine, up ? "true" : "false", hinted && up ? "\"" : "", hinted && up ? say : "null",
-             hinted && up ? "\"" : "", up && paged ? "\"" : "", up && paged ? page : "null", up && paged ? "\"" : "",
-             shop.lines & 1u << BUY ? "true" : "false", shop.lines & 1u << SELL ? "true" : "false",
-             shop.traded ? "true" : "false", shop.leaving ? "true" : "false", shop.script.base, opened, bought, sold,
-             refused, ignored, turned, messages, waits, dropped, thanked, boxes_kept);
+             modes[shop.mode <= SELL ? shop.mode : 2], modes[shop.shown <= NONE ? shop.shown : 2], shop.page, pages(),
+             shop.selling, q(MENU_CURSOR_POS), items, prices, mine, up ? "true" : "false", hinted && up ? "\"" : "",
+             hinted && up ? say : "null", hinted && up ? "\"" : "", up && paged ? "\"" : "",
+             up && paged ? page : "null", up && paged ? "\"" : "", shop.lines & 1u << BUY ? "true" : "false",
+             shop.lines & 1u << SELL ? "true" : "false", shop.traded ? "true" : "false",
+             shop.leaving ? "true" : "false", shop.script.base, opened, bought, sold, refused, ignored, turned,
+             messages, waits, dropped, thanked, boxes_kept);
     cyc_tcp_ok(id, fields);
 }
 void fax_shops_tcp_setup(void) {
@@ -908,17 +977,18 @@ void fax_shops_tcp_setup(void) {}
 #endif
 
 NES_MOD_CONSTRUCTOR(register_shops) {
-    static const uint16_t at[] = { INVOKE_NEXT_ACTION, OPEN_SHOP, BOUGHT, SELL_LIST, SELL_PICK, SOLD, MENU_UPDATE,
-                                   FINAL_MESSAGE_END, BUY_PICK, OPEN_SHOP_DRAW, BUY_END, SELL_END,
+    static const uint16_t at[] = { INVOKE_NEXT_ACTION, OPEN_SHOP,         BOUGHT,   SELL_LIST,      SELL_PICK, SOLD,
+                                   MENU_UPDATE,        FINAL_MESSAGE_END, BUY_PICK, OPEN_SHOP_DRAW, BUY_END,   SELL_END,
                                    MAYBE_SHOP_CLOSE };
-    static const NESModFunctionEntryCallback cb[] = { next_action_hook, open_hook, bought_hook, sell_list_hook,
-                                                      sell_pick_hook, sold_hook, menu_hook, final_hook,
-                                                      buy_pick_hook, drawing_hook, buy_end_hook, sell_end_hook,
+    static const NESModFunctionEntryCallback cb[] = { next_action_hook, open_hook,    bought_hook,  sell_list_hook,
+                                                      sell_pick_hook,   sold_hook,    menu_hook,    final_hook,
+                                                      buy_pick_hook,    drawing_hook, buy_end_hook, sell_end_hook,
                                                       keep_hook };
     for (unsigned i = 0; i < sizeof at / sizeof at[0]; ++i)
         if (!nes_mod_register_function_entry_plugin(hook_ids[i], at[i], cb[i])) abort();
     if (!nes_mod_register_reset_callback(deactivate) ||
         !nes_mod_register_activation_plugin("faxanadu.shops", activate) ||
         !nes_mod_register_savestate_hook("faxanadu.shops", state_get, state_set) ||
-        !nes_mod_register_savestate_validator("faxanadu.shops", state_validate)) abort();
+        !nes_mod_register_savestate_validator("faxanadu.shops", state_validate))
+        abort();
 }

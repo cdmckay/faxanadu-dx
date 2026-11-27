@@ -22,16 +22,16 @@
 #include <stdlib.h>
 
 /* Bank 12 */
-#define PLAYER_SET_INITIAL_EXP_AND_GOLD 0x95B1u   /* LDA PlayerTitle, STA NextPlayerTitle, BEQ @_isNovice */
+#define PLAYER_SET_INITIAL_EXP_AND_GOLD 0x95B1u /* LDA PlayerTitle, STA NextPlayerTitle, BEQ @_isNovice */
 /* Fixed bank */
-#define MMC1_POP_BANK  0xF8C6u   /* the far call's trampoline: PLA, TAX, JMP MMC1_UpdateROMBank */
-#define DEATH_RESUME   0xD9A0u   /* Player_HandleDeath's @_afterSetExpGoldFarJump: JSR Screen_FadeToBlack */
-#define START_RESUME   0xFC95u   /* Game_ShowStartScreen's @_afterSetExpGoldFarJump: JMP Player_Spawn */
+#define MMC1_POP_BANK                   0xF8C6u /* the far call's trampoline: PLA, TAX, JMP MMC1_UpdateROMBank */
+#define DEATH_RESUME 0xD9A0u /* Player_HandleDeath's @_afterSetExpGoldFarJump: JSR Screen_FadeToBlack */
+#define START_RESUME 0xFC95u /* Game_ShowStartScreen's @_afterSetExpGoldFarJump: JMP Player_Spawn */
 
 static bool enabled;
-static unsigned kept, passed;    /* deaths whose reset was skipped; calls left to the game */
+static unsigned kept, passed; /* deaths whose reset was skipped; calls left to the game */
 
-static uint16_t stack_word(uint8_t s, unsigned at) {   /* the 6502 stack wraps within page 1 */
+static uint16_t stack_word(uint8_t s, unsigned at) { /* the 6502 stack wraps within page 1 */
     return (uint16_t)(cyc_mod_peek((uint16_t)(0x100u | (uint8_t)(s + at))) |
                       cyc_mod_peek((uint16_t)(0x100u | (uint8_t)(s + at + 1))) << 8);
 }
@@ -52,7 +52,10 @@ static int set_exp_gold_hook(uint16_t addr) {
     (void)addr;
     CycModRegs regs;
     cyc_mod_regs(&regs);
-    if (far_call_resume(regs.s) == DEATH_RESUME) { ++kept; return 1; }
+    if (far_call_resume(regs.s) == DEATH_RESUME) {
+        ++kept;
+        return 1;
+    }
     ++passed;
     return 0;
 }
@@ -88,5 +91,6 @@ void fax_death_tcp_setup(void) {}
 NES_MOD_CONSTRUCTOR(register_death) {
     if (!nes_mod_register_function_entry_plugin(hook_id, PLAYER_SET_INITIAL_EXP_AND_GOLD, set_exp_gold_hook) ||
         !nes_mod_register_reset_callback(deactivate) ||
-        !nes_mod_register_activation_plugin("faxanadu.death-keeps-gold", activate)) abort();
+        !nes_mod_register_activation_plugin("faxanadu.death-keeps-gold", activate))
+        abort();
 }

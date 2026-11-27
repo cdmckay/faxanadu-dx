@@ -4,7 +4,7 @@
  * the host calls these. */
 #include <stdint.h>
 
-void fax_slain_frame_end(void);   /* the end of each machine frame */
+void fax_slain_frame_end(void); /* the end of each machine frame */
 /* The picture to present: `picture` (or, if NULL, the engine's own) with the
  * line in the banner while it shows; otherwise `picture` itself. */
 const uint32_t *fax_slain_present(const uint32_t *picture, int *w, int *h);

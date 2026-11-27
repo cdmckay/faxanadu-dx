@@ -13,7 +13,7 @@ void fax_shops_tcp_setup(void);
  * speaker names; returns the picture to show. */
 const uint32_t *fax_shops_present(const uint32_t *picture, int *w, int *h);
 
-enum { FAX_SHOPS_RED_POTION = 0x90 };   /* the Red Potion as shops list it: the Items' $10, category 4 */
+enum { FAX_SHOPS_RED_POTION = 0x90 }; /* the Red Potion as shops list it: the Items' $10, category 4 */
 
 /* What a shop pays for an item (its full ID, category in the top 3 bits):
  * half what this shop asks for it (`here`, 0 if it does not sell it), else
@@ -34,8 +34,8 @@ bool fax_shops_never_buys(uint8_t id);
 enum { FAX_SHOPS_GEAR = 4, FAX_SHOPS_GEAR_SLOTS = 4 };
 typedef struct {
     uint8_t selected, count, items[8], special;
-    bool elixir_spent;            /* recharging items: it revived him, and waits for a Guru */
-    bool recharging, reusable;    /* recharging items and reusable tools are on */
+    bool elixir_spent;         /* recharging items: it revived him, and waits for a Guru */
+    bool recharging, reusable; /* recharging items and reusable tools are on */
     uint8_t gear_selected[FAX_SHOPS_GEAR], gear_count[FAX_SHOPS_GEAR], gear[FAX_SHOPS_GEAR][FAX_SHOPS_GEAR_SLOTS];
 } FaxShopsHero;
 /* An item (its full ID) that the hero already has, so in a buy list Quick

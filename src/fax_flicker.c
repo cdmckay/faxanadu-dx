@@ -56,12 +56,12 @@
 #include <stdlib.h>
 
 /* RAM */
-#define GAME_INTERRUPTS_HANDLED_LATCH 0x0010u   /* WaitForNextFrame clears it and waits; OnInterrupt sets it */
-#define GAME_NEED_OAM_RESET           0x001Bu   /* nonzero: the NMI copies the shadow OAM even on a lagging frame */
-#define START_RANGE_FLIP 0x80u   /* Sprites_StartSlotRange: $00, or $80 (EOR the slot's byte offset: 32 slots) */
+#define GAME_INTERRUPTS_HANDLED_LATCH 0x0010u /* WaitForNextFrame clears it and waits; OnInterrupt sets it */
+#define GAME_NEED_OAM_RESET           0x001Bu /* nonzero: the NMI copies the shadow OAM even on a lagging frame */
+#define START_RANGE_FLIP 0x80u /* Sprites_StartSlotRange: $00, or $80 (EOR the slot's byte offset: 32 slots) */
 
 static bool enabled;
-static unsigned long kept;   /* frame ends Seamless kept its last capture through, for the TCP command */
+static unsigned long kept; /* frame ends Seamless kept its last capture through, for the TCP command */
 
 unsigned fax_flicker_paint_order(uint8_t start_slot_range, uint8_t order[FAX_FLICKER_SPRITES]) {
     unsigned n = 0;
@@ -76,8 +76,8 @@ unsigned fax_flicker_paint_order(uint8_t start_slot_range, uint8_t order[FAX_FLI
      * front is the last drawn first, every slot once. */
     for (unsigned place = 64; place-- > 0;) {
         unsigned slot = place >> 1 | (place & 1u) << 5;
-        unsigned index = slot ^ flip;             /* where Sprite_Draw's EOR put it this frame */
-        if (index == 0) continue;                 /* the status bar's sprite 0, written there directly */
+        unsigned index = slot ^ flip; /* where Sprite_Draw's EOR put it this frame */
+        if (index == 0) continue;     /* the status bar's sprite 0, written there directly */
         order[n++] = (uint8_t)index;
     }
     return n;
@@ -100,9 +100,10 @@ static void flicker_state(int id, const char *line) {
     cyc_tcp_ok(id, fields);
 }
 void fax_flicker_tcp_setup(void) {
-    cyc_tcp_register("no_flicker_state",
-                     "No sprite flicker: whether on, and the lagging frames Seamless kept its last capture through (kept)",
-                     flicker_state);
+    cyc_tcp_register(
+        "no_flicker_state",
+        "No sprite flicker: whether on, and the lagging frames Seamless kept its last capture through (kept)",
+        flicker_state);
 }
 #else
 void fax_flicker_tcp_setup(void) {}
@@ -110,5 +111,6 @@ void fax_flicker_tcp_setup(void) {}
 
 NES_MOD_CONSTRUCTOR(register_flicker) {
     if (!nes_mod_register_reset_callback(deactivate) ||
-        !nes_mod_register_activation_plugin("faxanadu.no-flicker", activate)) abort();
+        !nes_mod_register_activation_plugin("faxanadu.no-flicker", activate))
+        abort();
 }

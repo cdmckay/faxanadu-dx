@@ -39,29 +39,36 @@
 #include <stdlib.h>
 
 /* Bank 14 */
-#define HANDLE_TOUCH_ITEM     0x88FBu   /* Player_HandleTouchItem: LDA CurrentSprites_Entities,X, JSR Player_PickUp,
-                                           LDX CurrentSpriteIndex, LDA #$FF, STA CurrentSprites_Entities,X */
+/* Player_HandleTouchItem: LDA CurrentSprites_Entities,X, JSR Player_PickUp,
+ * LDX CurrentSpriteIndex, LDA #$FF, STA CurrentSprites_Entities,X */
+#define HANDLE_TOUCH_ITEM    0x88FBu
 /* Bank 15 */
-#define SOUND_PLAY_EFFECT     0xD0E4u   /* STA Temp_SoundIDToPlay, ...: queues sound A, keeps X and Y */
+#define SOUND_PLAY_EFFECT    0xD0E4u /* STA Temp_SoundIDToPlay, ...: queues sound A, keeps X and Y */
 /* RAM */
-#define INTERRUPT_COUNTER     0x001Au   /* +1 each NMI */
-#define ENTITIES              0x02CCu   /* CurrentSprites_Entities, 8 slots */
-#define ITEM_INVENTORY        0x03ADu
-#define SELECTED_ITEM         0x03C1u
-#define NUMBER_OF_ITEMS       0x03C6u
+#define INTERRUPT_COUNTER    0x001Au /* +1 each NMI */
+#define ENTITIES             0x02CCu /* CurrentSprites_Entities, 8 slots */
+#define ITEM_INVENTORY       0x03ADu
+#define SELECTED_ITEM        0x03C1u
+#define NUMBER_OF_ITEMS      0x03C6u
 /* Values */
-#define MAX_ITEMS             8u        /* Player_PickUpItem's CPX #$08 */
-#define SOUND_INVALID_CHOICE  0x0Du
-#define TOUCH_GAP             8u        /* frames without a refused touch that end one */
+#define MAX_ITEMS            8u /* Player_PickUpItem's CPX #$08 */
+#define SOUND_INVALID_CHOICE 0x0Du
+#define TOUCH_GAP            8u /* frames without a refused touch that end one */
 /* Sprite entities, and the Items ID each one's routine adds */
-enum { MATTOCK_FIND = 0x50, WING_BOOTS_FIND = 0x55, HOUR_GLASS_FIND = 0x56, MATTOCK_QUEST_FIND = 0x5B,
-       WING_BOOTS_QUEST_FIND = 0x5C, RED_POTION_FIND = 0x5D };
+enum {
+    MATTOCK_FIND = 0x50,
+    WING_BOOTS_FIND = 0x55,
+    HOUR_GLASS_FIND = 0x56,
+    MATTOCK_QUEST_FIND = 0x5B,
+    WING_BOOTS_QUEST_FIND = 0x5C,
+    RED_POTION_FIND = 0x5D
+};
 enum { ITEM_MATTOCK = 0x09, ITEM_HOUR_GLASS = 0x0D, ITEM_WING_BOOTS = 0x0F, ITEM_RED_POTION = 0x10, ITEM_NONE = 0xFF };
 
 static bool enabled;
-static unsigned refused, beeps;           /* touches skipped, sounds played (outside isolation) */
-static uint8_t last_entity = 0xFF;        /* the last find refused */
-static int latch_slot = -1;               /* the sprite slot of the touch that sounded, and when it last touched */
+static unsigned refused, beeps;    /* touches skipped, sounds played (outside isolation) */
+static uint8_t last_entity = 0xFF; /* the last find refused */
+static int latch_slot = -1;        /* the sprite slot of the touch that sounded, and when it last touched */
 static uint8_t latch_frame;
 
 /* The Items ID a find's routine passes to Player_PickUpItem, or ITEM_NONE for
@@ -69,11 +76,18 @@ static uint8_t latch_frame;
  * timed and instant ones, coins, enemies). */
 static uint8_t find_item(uint8_t entity) {
     switch (entity) {
-    case MATTOCK_FIND: case MATTOCK_QUEST_FIND: return ITEM_MATTOCK;
-    case WING_BOOTS_FIND: case WING_BOOTS_QUEST_FIND: return ITEM_WING_BOOTS;
-    case HOUR_GLASS_FIND: return ITEM_HOUR_GLASS;
-    case RED_POTION_FIND: return ITEM_RED_POTION;
-    default: return ITEM_NONE;
+    case MATTOCK_FIND:
+    case MATTOCK_QUEST_FIND:
+        return ITEM_MATTOCK;
+    case WING_BOOTS_FIND:
+    case WING_BOOTS_QUEST_FIND:
+        return ITEM_WING_BOOTS;
+    case HOUR_GLASS_FIND:
+        return ITEM_HOUR_GLASS;
+    case RED_POTION_FIND:
+        return ITEM_RED_POTION;
+    default:
+        return ITEM_NONE;
     }
 }
 
@@ -159,5 +173,6 @@ void fax_finds_tcp_setup(void) {}
 NES_MOD_CONSTRUCTOR(register_kept_finds) {
     if (!nes_mod_register_function_entry_plugin(touch_id, HANDLE_TOUCH_ITEM, touch_hook) ||
         !nes_mod_register_reset_callback(deactivate) ||
-        !nes_mod_register_activation_plugin("faxanadu.kept-finds", activate)) abort();
+        !nes_mod_register_activation_plugin("faxanadu.kept-finds", activate))
+        abort();
 }

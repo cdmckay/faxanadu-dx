@@ -17,8 +17,8 @@
 #endif
 
 /* Watchdog globals (extern'd by runner's debug_server.c) */
-extern int         g_watchdog_triggered;
-extern uint32_t    g_watchdog_frame;
+extern int g_watchdog_triggered;
+extern uint32_t g_watchdog_frame;
 extern const char *g_watchdog_stack_dump;
 
 static char s_watchdog_stack_buf[2048] = "";
@@ -26,9 +26,7 @@ static char s_watchdog_stack_buf[2048] = "";
 jmp_buf g_watchdog_jmp;
 static clock_t s_frame_start = 0;
 
-void watchdog_frame_start(void) {
-    s_frame_start = clock();
-}
+void watchdog_frame_start(void) { s_frame_start = clock(); }
 
 void watchdog_check(void) {
     /* Tick the VBlank budget on every backward branch so that tight loops
@@ -72,20 +70,17 @@ void watchdog_check(void) {
         for (int i = g_recomp_stack_top - 1; i >= 0; i--) {
             const char *fn = g_recomp_stack[i] ? g_recomp_stack[i] : "(null)";
             fprintf(stderr, "  [%d] %s\n", i, fn);
-            spos += snprintf(s_watchdog_stack_buf + spos,
-                             sizeof(s_watchdog_stack_buf) - spos,
-                             "[%d] %s\\n", i, fn);
+            spos += snprintf(s_watchdog_stack_buf + spos, sizeof(s_watchdog_stack_buf) - spos, "[%d] %s\\n", i, fn);
         }
 #else
         fprintf(stderr, "(no stack tracking compiled in)\n");
-        spos += snprintf(s_watchdog_stack_buf + spos,
-                         sizeof(s_watchdog_stack_buf) - spos,
+        spos += snprintf(s_watchdog_stack_buf + spos, sizeof(s_watchdog_stack_buf) - spos,
                          "(no stack tracking compiled in)");
 #endif
         g_watchdog_stack_dump = s_watchdog_stack_buf;
 
-        fprintf(stderr, "CPU: A=%02X X=%02X Y=%02X S=%02X bank=%d\n",
-                g_cpu.A, g_cpu.X, g_cpu.Y, g_cpu.S, g_current_bank);
+        fprintf(stderr, "CPU: A=%02X X=%02X Y=%02X S=%02X bank=%d\n", g_cpu.A, g_cpu.X, g_cpu.Y, g_cpu.S,
+                g_current_bank);
         fprintf(stderr, "=== forcing VBlank recovery (depth reset) ===\n\n");
     }
 

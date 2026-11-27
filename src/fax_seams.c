@@ -183,192 +183,232 @@
 #include <string.h>
 
 /* Bank 14 */
-#define SPRITES_UPDATE_ALL    0x8000u   /* Sprites_UpdateAll: LDA Sprites_UpdatesPaused, BNE @_spritesLoop, LDA DurationHourGlass */
-#define SPRITES_LOOP          0x800Fu   /* Sprites_UpdateAll's @_spritesLoop, past INC SpriteUpdateCounter: LDX #$07 */
-#define SPRITES_LOOP_DONE     0x8049u   /* Sprites_UpdateAll, past the slots' loop: LDA #$00, STA Sprites_PPUOffset, RTS */
-#define CHECK_SHIELD          0x877Cu   /* Player_CheckShieldHitByMagic: LDA SelectedShield, CMP #$03, BCS RETURN_87CA */
-#define CHECK_MAGIC           0x8ADCu   /* Sprite_CheckHitByCastMagic: LDA CastMagic_Type, CMP #$05, BCS RETURN_8AD7,
-                                           LDX CurrentSpriteIndex */
-#define CAST_WIDTHS           0x8B73u   /* CAST_MAGIC_HIT_WIDTHS: a spell's width, by CastMagic_Type */
-#define CAST_HEIGHTS_HIT      0x8B78u   /* CAST_MAGIC_HIT_HEIGHTS: its height */
-#define PLAYER_CAST_MAGIC     0xBA5Bu   /* Player_CastMagic: LDA CastMagic_Type, BPL CastMagic_RunSpellHandler,
-                                           JSR Player_IsClimbing */
-#define CAST_LEFT_EDGE        0xBCD1u   /* CastMagic_UpdateXPosition moving left, after JSR CastMagic_CheckDirection
-                                           and LDA CastMagic_XPos_Full: CMP #$F0, RTS */
-#define CAST_RIGHT_EDGE       0xBCF2u   /* moving right, after LDX CastMagic_Type, LDA CastMagic_XPos_Full:
-                                           CMP CAST_MAGIC_MAX_SCREEN_WIDTHS,X, RTS */
-#define CAST_MAX_WIDTHS       0xBCF6u   /* CAST_MAGIC_MAX_SCREEN_WIDTHS: $F0 $F0 $E0 $F0 $F0, then
-                                           CastMagic_UpdateYPosition's code, read for the types past 4 */
-#define CAST_CHECK_DIRECTION  0xBD8Fu   /* CastMagic_CheckDirection: TXA, BEQ _Left, DEX, BEQ _Right (X 0 left,
-                                           1 right; 2 and 3, up and down, give 0) */
-#define CAST_MOVE_WIDTHS      0xBD9Du   /* CAST_MAGIC_WIDTHS: a spell's width less 1, by CastMagic_Type (12) */
-#define CAST_HEIGHTS          0xBDA9u   /* CAST_MAGIC_HEIGHTS: its height less 1 (12) */
-#define FLASH_HIT             0xAB44u   /* SpriteBehavior_FlashScreenHitPlayer's damage: LDA #$04, JSR Sound_PlayEffect */
-#define WEAPON_OFF_SCREEN     0xB81Au   /* Player_DrawWeapon: BNE RETURN_B7D5, after STA Maybe_Something_WeaponPosX,
-                                           CMP Screen_Maybe_ScrollXCounter; then the Y and the reach */
-#define FLIER_EDGE            0x842Au   /* Sprite_Maybe_TurnAroundIfAtScreenEdgeHoriz, after JSR Sprite_MoveForwardX:
-                                           LDA CurrentSprites_XPos_Full,X, CMP #$F0, BCC @_returnFalse */
-#define PLACEMENT_BLOCK       0x855Eu   /* Sprites_CheckPlacementInvalidAtY: JSR Area_ConvertPixelsToBlockPos,
-                                           JMP Area_IsBlockImpassableOrLadder (Arg_PixelPosX = X + 0 or 15 by facing) */
-#define MOVE_RIGHT            0x86A7u   /* Sprites_MoveRight: LDX CurrentSprites_HitBoxTypes,Y, LDA CurrentSprites_XPos_Full,Y,
-                                           CLC, ADC SPRITE_HITBOX_WIDTHS,X, STA Arg_PixelPosX, BCC (test), else blocked */
-#define MOVE_LEFT             0x86BDu   /* FUN_PRG14__86bd: LDA CurrentSprites_XPos_Full,Y, CMP #$F1, BCS (blocked),
-                                           STA Arg_PixelPosX, then the test (Sprites_MoveRight__86c6) */
-#define MOVE_VERTICAL         0x873Au   /* CurrentSprite_CanMoveInDirection, up and down: LDA CurrentSprites_XPos_Full,Y,
-                                           STA Arg_PixelPosX, JSR Area_ConvertPixelsToBlockPos, then the hitbox's columns */
-#define OUT_OF_WEAPON_RANGE   0x88CBu   /* Sprites_IsSpriteOutOfWeaponRange: LDA CurrentSprites_Entities,X, ASL A,
-                                           TAY, LDA MAYBE_SPRITE_EXTENTS,Y, CLC, ADC Maybe_WeaponRange_X, STA Temp_00 */
-#define CHECK_HIT_PLAYER      0x890Au   /* CurrentSprite_CheckHitPlayer: LDX CurrentSpriteIndex,
-                                           LDA CurrentSprites_Entities,X, CMP #$FF, BEQ RETURN_8909, JSR ... */
-#define UPDATE_STATE          0x8BD2u   /* CurrentSprite_UpdateState: LDA IScript_PortraitID, BPL @_return, LDX CurrentSpriteIndex */
-#define UPDATE_BEHAVIOR       0xA66Bu   /* Sprites_UpdateBehavior: LDA DurationHourGlass, BMI, LDY CurrentSprites_Entities,X */
-#define SPRITE_EXTENTS        0xB407u   /* MAYBE_SPRITE_EXTENTS: (EX, EY) per entity */
-#define HITBOX_WIDTHS         0xB4D1u   /* SPRITE_HITBOX_WIDTHS: a hitbox type's width less 1 */
-#define HITBOX_HEIGHTS        0xB4D8u   /* SPRITE_HITBOX_HEIGHTS: its height less 1 */
-#define CATEGORIES            0xB544u   /* SPRITE_CATEGORIES_BY_ENTITY */
+/* Sprites_UpdateAll: LDA Sprites_UpdatesPaused, BNE @_spritesLoop, LDA DurationHourGlass */
+#define SPRITES_UPDATE_ALL   0x8000u
+#define SPRITES_LOOP         0x800Fu /* Sprites_UpdateAll's @_spritesLoop, past INC SpriteUpdateCounter: LDX #$07 */
+#define SPRITES_LOOP_DONE    0x8049u /* Sprites_UpdateAll, past the slots' loop: LDA #$00, STA Sprites_PPUOffset, RTS */
+#define CHECK_SHIELD         0x877Cu /* Player_CheckShieldHitByMagic: LDA SelectedShield, CMP #$03, BCS RETURN_87CA */
+/* Sprite_CheckHitByCastMagic: LDA CastMagic_Type, CMP #$05, BCS RETURN_8AD7,
+ * LDX CurrentSpriteIndex */
+#define CHECK_MAGIC          0x8ADCu
+#define CAST_WIDTHS          0x8B73u /* CAST_MAGIC_HIT_WIDTHS: a spell's width, by CastMagic_Type */
+#define CAST_HEIGHTS_HIT     0x8B78u /* CAST_MAGIC_HIT_HEIGHTS: its height */
+/* Player_CastMagic: LDA CastMagic_Type, BPL CastMagic_RunSpellHandler,
+ * JSR Player_IsClimbing */
+#define PLAYER_CAST_MAGIC    0xBA5Bu
+/* CastMagic_UpdateXPosition moving left, after JSR CastMagic_CheckDirection
+ * and LDA CastMagic_XPos_Full: CMP #$F0, RTS */
+#define CAST_LEFT_EDGE       0xBCD1u
+/* moving right, after LDX CastMagic_Type, LDA CastMagic_XPos_Full:
+ * CMP CAST_MAGIC_MAX_SCREEN_WIDTHS,X, RTS */
+#define CAST_RIGHT_EDGE      0xBCF2u
+/* CAST_MAGIC_MAX_SCREEN_WIDTHS: $F0 $F0 $E0 $F0 $F0, then
+ * CastMagic_UpdateYPosition's code, read for the types past 4 */
+#define CAST_MAX_WIDTHS      0xBCF6u
+/* CastMagic_CheckDirection: TXA, BEQ _Left, DEX, BEQ _Right (X 0 left,
+ * 1 right; 2 and 3, up and down, give 0) */
+#define CAST_CHECK_DIRECTION 0xBD8Fu
+#define CAST_MOVE_WIDTHS     0xBD9Du /* CAST_MAGIC_WIDTHS: a spell's width less 1, by CastMagic_Type (12) */
+#define CAST_HEIGHTS         0xBDA9u /* CAST_MAGIC_HEIGHTS: its height less 1 (12) */
+#define FLASH_HIT            0xAB44u /* SpriteBehavior_FlashScreenHitPlayer's damage: LDA #$04, JSR Sound_PlayEffect */
+/* Player_DrawWeapon: BNE RETURN_B7D5, after STA Maybe_Something_WeaponPosX,
+ * CMP Screen_Maybe_ScrollXCounter; then the Y and the reach */
+#define WEAPON_OFF_SCREEN    0xB81Au
+/* Sprite_Maybe_TurnAroundIfAtScreenEdgeHoriz, after JSR Sprite_MoveForwardX:
+ * LDA CurrentSprites_XPos_Full,X, CMP #$F0, BCC @_returnFalse */
+#define FLIER_EDGE           0x842Au
+/* Sprites_CheckPlacementInvalidAtY: JSR Area_ConvertPixelsToBlockPos,
+ * JMP Area_IsBlockImpassableOrLadder (Arg_PixelPosX = X + 0 or 15 by facing) */
+#define PLACEMENT_BLOCK      0x855Eu
+/* Sprites_MoveRight: LDX CurrentSprites_HitBoxTypes,Y, LDA CurrentSprites_XPos_Full,Y,
+ * CLC, ADC SPRITE_HITBOX_WIDTHS,X, STA Arg_PixelPosX, BCC (test), else blocked */
+#define MOVE_RIGHT           0x86A7u
+/* FUN_PRG14__86bd: LDA CurrentSprites_XPos_Full,Y, CMP #$F1, BCS (blocked),
+ * STA Arg_PixelPosX, then the test (Sprites_MoveRight__86c6) */
+#define MOVE_LEFT            0x86BDu
+/* CurrentSprite_CanMoveInDirection, up and down: LDA CurrentSprites_XPos_Full,Y,
+ * STA Arg_PixelPosX, JSR Area_ConvertPixelsToBlockPos, then the hitbox's columns */
+#define MOVE_VERTICAL        0x873Au
+/* Sprites_IsSpriteOutOfWeaponRange: LDA CurrentSprites_Entities,X, ASL A,
+ * TAY, LDA MAYBE_SPRITE_EXTENTS,Y, CLC, ADC Maybe_WeaponRange_X, STA Temp_00 */
+#define OUT_OF_WEAPON_RANGE  0x88CBu
+/* CurrentSprite_CheckHitPlayer: LDX CurrentSpriteIndex,
+ * LDA CurrentSprites_Entities,X, CMP #$FF, BEQ RETURN_8909, JSR ... */
+#define CHECK_HIT_PLAYER     0x890Au
+/* CurrentSprite_UpdateState: LDA IScript_PortraitID, BPL @_return, LDX CurrentSpriteIndex */
+#define UPDATE_STATE         0x8BD2u
+#define UPDATE_BEHAVIOR 0xA66Bu /* Sprites_UpdateBehavior: LDA DurationHourGlass, BMI, LDY CurrentSprites_Entities,X */
+#define SPRITE_EXTENTS  0xB407u /* MAYBE_SPRITE_EXTENTS: (EX, EY) per entity */
+#define HITBOX_WIDTHS   0xB4D1u /* SPRITE_HITBOX_WIDTHS: a hitbox type's width less 1 */
+#define HITBOX_HEIGHTS  0xB4D8u /* SPRITE_HITBOX_HEIGHTS: its height less 1 */
+#define CATEGORIES      0xB544u /* SPRITE_CATEGORIES_BY_ENTITY */
 /* Bank 11 */
-#define AREA_SPRITE_ADDRESSES 0x8210u   /* per area, a pointer to its screens' sprite lists, a word a screen */
+#define AREA_SPRITE_ADDRESSES 0x8210u /* per area, a pointer to its screens' sprite lists, a word a screen */
 /* Bank 15 */
-#define LOAD_SPRITE_INFO      0xC1B4u   /* Screen_LoadSpriteInfo: LDA $0100, PHA, LDX #$0B, JSR MMC1_UpdateROMBank */
-#define CAST_VISIBILITY       0xC315u   /* CastMagic_CalculateVisibility: LDA #$00, STA Temp_MovingSpriteVisibility,
-                                           LDA CastMagic_YPos_Full, STA Arg_PixelPosY */
-#define CHECK_USE_ITEM        0xC478u   /* GameLoop_CheckUseCurrentItem: LDA Player_Flags, AND #$05, BNE; both main
-                                           loops call it right after Player_CastMagic */
-#define SOUND_PLAY_EFFECT     0xD0E4u   /* Sound_PlayEffect: STA Temp_SoundIDToPlay, ...: A the effect; keeps X and Y,
-                                           memory only */
-#define MAIN_LOOP_COUNTDOWN   0xDB68u   /* Game_MainLoop: JSR GameLoop_CountdownItems, after JSR Sprites_UpdateAll */
-#define BLOCK_IMPASSABLE      0xE8D9u   /* BLOCK_PROPERTY_IMPASSABLE_MAP: 1 for a solid block property */
-#define DRAW_STANDARD         0xF0ECu   /* Sprite_Draw_Standard: LDA #$00, STA Temp_Sprites_TileYOffset, TAY */
-#define DRAW_FLIPPED          0xF181u   /* Sprite_Draw_FlippedHoriz: LDA #$00, STA Temp_05, LDY Temp_Sprites_ColsRemaining */
-#define VISIBILITY_MASK       0xF224u   /* DRAW_SPRITE_VISIBILITY_MASK: 1, 2 (standard) */
-#define VISIBILITY_FLIPPED    0xF226u   /* BYTE_ARRAY_PRG15_MIRROR__f226: 2, 1 (flipped) */
-#define TILE_POSITIONS        0xF23Du   /* SPRITE_TILE_BLOCK_POSITIONS: 0, 8, 16 ... */
+#define LOAD_SPRITE_INFO      0xC1B4u /* Screen_LoadSpriteInfo: LDA $0100, PHA, LDX #$0B, JSR MMC1_UpdateROMBank */
+/* CastMagic_CalculateVisibility: LDA #$00, STA Temp_MovingSpriteVisibility,
+ * LDA CastMagic_YPos_Full, STA Arg_PixelPosY */
+#define CAST_VISIBILITY       0xC315u
+/* GameLoop_CheckUseCurrentItem: LDA Player_Flags, AND #$05, BNE; both main
+ * loops call it right after Player_CastMagic */
+#define CHECK_USE_ITEM        0xC478u
+/* Sound_PlayEffect: STA Temp_SoundIDToPlay, ...: A the effect; keeps X and Y,
+ * memory only */
+#define SOUND_PLAY_EFFECT     0xD0E4u
+#define MAIN_LOOP_COUNTDOWN   0xDB68u /* Game_MainLoop: JSR GameLoop_CountdownItems, after JSR Sprites_UpdateAll */
+#define BLOCK_IMPASSABLE      0xE8D9u /* BLOCK_PROPERTY_IMPASSABLE_MAP: 1 for a solid block property */
+#define DRAW_STANDARD         0xF0ECu /* Sprite_Draw_Standard: LDA #$00, STA Temp_Sprites_TileYOffset, TAY */
+#define DRAW_FLIPPED       0xF181u /* Sprite_Draw_FlippedHoriz: LDA #$00, STA Temp_05, LDY Temp_Sprites_ColsRemaining */
+#define VISIBILITY_MASK    0xF224u /* DRAW_SPRITE_VISIBILITY_MASK: 1, 2 (standard) */
+#define VISIBILITY_FLIPPED 0xF226u /* BYTE_ARRAY_PRG15_MIRROR__f226: 2, 1 (flipped) */
+#define TILE_POSITIONS     0xF23Du /* SPRITE_TILE_BLOCK_POSITIONS: 0, 8, 16 ... */
 /* RAM */
-#define TEMP_00               0x0000u   /* the X test's limit, EX + the reach */
-#define TEMP_ADDR_L           0x0002u   /* Temp_Addr_L: the flip's pivot (Sprite_Draw) */
-#define START_SLOT_RANGE      0x001Cu   /* Sprites_StartSlotRange */
-#define SPRITE_SLOT           0x0025u   /* Sprites_SpriteSlot: the next OAM entry, as Sprites_IncNextSpriteSlot counts */
-#define MOVING_VISIBILITY     0x0026u   /* MovingSpriteVisibility */
-#define FLIP_MASK             0x0029u   /* CurrentSprite_FlipMask */
-#define PPU_OFFSET            0x0033u   /* Sprites_PPUOffset */
-#define SLOTS_FULL            0x0039u   /* Sprites_SlotsFull */
-#define READ_ADDR             0x003Au   /* Sprite_TileInfo_ReadAddr_L/_U */
-#define NORM_X                0x003Cu   /* Temp_Sprites_NormXPos */
-#define NORM_Y                0x003Du   /* Temp_Sprites_NormYPos */
-#define OFFSET_X              0x003Eu   /* Sprite_TileInfo_OffsetX: the high byte of a cell's X, 0 on the screen */
-#define OFFSET_Y              0x003Fu   /* Sprite_TileInfo_OffsetY */
-#define COLS                  0x0040u   /* Temp_Sprites_ColsRemaining: columns less 1 */
-#define ROWS                  0x0041u   /* Temp_Sprites_RowsRemaining: rows less 1 */
-#define HERO_X                0x009Eu   /* Player_PosX_Block: his left edge, in the live room */
-#define SCROLL_X              0x009Fu   /* Screen_Maybe_ScrollXCounter: the screen's high byte of X */
-#define HERO_Y                0x00A1u   /* Player_PosY: his top */
-#define PIXEL_X               0x00B5u   /* Arg_PixelPosX */
-#define PIXEL_Y               0x00B6u   /* Arg_PixelPosY */
-#define BLOCKS_RESULT         0x00B7u   /* Blocks_Result: nonzero, blocked */
-#define TEMP_VISIBILITY       0x00B8u   /* Temp_MovingSpriteVisibility */
-#define SLOT_X                0x00BAu   /* CurrentSprites_XPos_Full, 8 slots */
-#define SLOT_Y                0x00C2u   /* CurrentSprites_YPos */
-#define WEAPON_X              0x00CEu   /* PlayerPosXPlus10: the weapon's X, low byte */
-#define WEAPON_X_HIGH         0x00CFu   /* Maybe_Something_WeaponPosX: its high byte */
-#define WEAPON_RANGE_X        0x00D2u   /* Maybe_WeaponRange_X */
-#define CURRENT_ROM_BANK      0x0100u   /* CurrentROMBank */
-#define CAST_TYPE             0x02B3u   /* CastMagic_Type: 0-4 a spell on, 5-11 one after its first hit, $FF none */
-#define CAST_FLAGS            0x02B4u   /* CastMagic_Flags: $40 moving right */
-#define CAST_X                0x02B6u   /* CastMagic_XPos_Full */
-#define CAST_Y                0x02B8u   /* CastMagic_YPos_Full */
-#define SLOT_ARRAYS           0x02BCu   /* CurrentSprites_XPos_Frac ... CurrentSprites_Values: 23 arrays of 8, to $0373 */
-#define ENTITIES              0x02CCu   /* CurrentSprites_Entities */
-#define BEHAVIORS             0x02D4u   /* CurrentSprites_Behaviors: the behaviour running, bit 7 once finished */
-#define FLAGS                 0x02DCu   /* CurrentSprites_Flags: bit 0 facing right, $40 the behaviour under way */
-#define BEHAVIOR_DATA2        0x02ECu   /* CurrentSprites_BehaviorData2 */
-#define HITBOX                0x0304u   /* CurrentSprites_HitBoxTypes */
-#define PPU_OFFSETS           0x032Cu   /* CurrentSprites_PPUOffsets */
-#define HIT_BY_MAGIC          0x0334u   /* CurrentSprites_HitByMagicBehavior: bit 7 set, none */
-#define HIT_COUNTER           0x034Cu   /* CurrentSprites_HitCounter: frames of a weapon's knockback left */
-#define CURRENT_SPRITE_INDEX  0x0378u   /* CurrentSpriteIndex */
-#define SPRITE_X              0x037Fu   /* Something_Maybe_WeaponDistanceX: the caller's copy of the sprite's X */
-#define SHIELD_X              0x039Bu   /* Player_ShieldPositionX: his X plus 0 or 8 (SHIELD_SPRITE_OFFSETS_X), 8 bits */
-#define BOX_LEFT              0x03E2u   /* SpriteBox_Left: Sprite_GetBounds' X plus its table's offset, 8 bits */
-#define BOX_WIDTH             0x03E4u   /* SpriteBox_Width */
-#define SPRITES_PAUSED        0x0426u   /* Sprites_UpdatesPaused: the loop skips every interaction */
-#define PLAYER_IS_DEAD        0x0438u   /* PlayerIsDead */
-#define BLOCK_PROPERTIES      0x043Cu   /* BlockProperties: a nibble per block id */
-#define SCREEN_BUFFER         0x0600u   /* ScreenBuffer: 16 blocks a row */
+#define TEMP_00            0x0000u   /* the X test's limit, EX + the reach */
+#define TEMP_ADDR_L        0x0002u   /* Temp_Addr_L: the flip's pivot (Sprite_Draw) */
+#define START_SLOT_RANGE   0x001Cu   /* Sprites_StartSlotRange */
+#define SPRITE_SLOT        0x0025u   /* Sprites_SpriteSlot: the next OAM entry, as Sprites_IncNextSpriteSlot counts */
+#define MOVING_VISIBILITY  0x0026u   /* MovingSpriteVisibility */
+#define FLIP_MASK          0x0029u   /* CurrentSprite_FlipMask */
+#define PPU_OFFSET         0x0033u   /* Sprites_PPUOffset */
+#define SLOTS_FULL         0x0039u   /* Sprites_SlotsFull */
+#define READ_ADDR          0x003Au   /* Sprite_TileInfo_ReadAddr_L/_U */
+#define NORM_X             0x003Cu   /* Temp_Sprites_NormXPos */
+#define NORM_Y             0x003Du   /* Temp_Sprites_NormYPos */
+#define OFFSET_X           0x003Eu   /* Sprite_TileInfo_OffsetX: the high byte of a cell's X, 0 on the screen */
+#define OFFSET_Y           0x003Fu   /* Sprite_TileInfo_OffsetY */
+#define COLS               0x0040u   /* Temp_Sprites_ColsRemaining: columns less 1 */
+#define ROWS               0x0041u   /* Temp_Sprites_RowsRemaining: rows less 1 */
+#define HERO_X             0x009Eu   /* Player_PosX_Block: his left edge, in the live room */
+#define SCROLL_X           0x009Fu   /* Screen_Maybe_ScrollXCounter: the screen's high byte of X */
+#define HERO_Y             0x00A1u   /* Player_PosY: his top */
+#define PIXEL_X            0x00B5u   /* Arg_PixelPosX */
+#define PIXEL_Y            0x00B6u   /* Arg_PixelPosY */
+#define BLOCKS_RESULT      0x00B7u   /* Blocks_Result: nonzero, blocked */
+#define TEMP_VISIBILITY    0x00B8u   /* Temp_MovingSpriteVisibility */
+#define SLOT_X             0x00BAu   /* CurrentSprites_XPos_Full, 8 slots */
+#define SLOT_Y             0x00C2u   /* CurrentSprites_YPos */
+#define WEAPON_X           0x00CEu   /* PlayerPosXPlus10: the weapon's X, low byte */
+#define WEAPON_X_HIGH      0x00CFu   /* Maybe_Something_WeaponPosX: its high byte */
+#define WEAPON_RANGE_X     0x00D2u   /* Maybe_WeaponRange_X */
+#define CURRENT_ROM_BANK   0x0100u   /* CurrentROMBank */
+#define CAST_TYPE          0x02B3u   /* CastMagic_Type: 0-4 a spell on, 5-11 one after its first hit, $FF none */
+#define CAST_FLAGS         0x02B4u   /* CastMagic_Flags: $40 moving right */
+#define CAST_X             0x02B6u   /* CastMagic_XPos_Full */
+#define CAST_Y             0x02B8u   /* CastMagic_YPos_Full */
+#define SLOT_ARRAYS        0x02BCu   /* CurrentSprites_XPos_Frac ... CurrentSprites_Values: 23 arrays of 8, to $0373 */
+#define ENTITIES           0x02CCu   /* CurrentSprites_Entities */
+#define BEHAVIORS          0x02D4u   /* CurrentSprites_Behaviors: the behaviour running, bit 7 once finished */
+#define FLAGS              0x02DCu   /* CurrentSprites_Flags: bit 0 facing right, $40 the behaviour under way */
+#define BEHAVIOR_DATA2     0x02ECu   /* CurrentSprites_BehaviorData2 */
+#define HITBOX             0x0304u   /* CurrentSprites_HitBoxTypes */
+#define PPU_OFFSETS        0x032Cu   /* CurrentSprites_PPUOffsets */
+#define HIT_BY_MAGIC       0x0334u   /* CurrentSprites_HitByMagicBehavior: bit 7 set, none */
+#define HIT_COUNTER        0x034Cu   /* CurrentSprites_HitCounter: frames of a weapon's knockback left */
+#define CURRENT_SPRITE_INDEX 0x0378u /* CurrentSpriteIndex */
+#define SPRITE_X             0x037Fu /* Something_Maybe_WeaponDistanceX: the caller's copy of the sprite's X */
+#define SHIELD_X             0x039Bu /* Player_ShieldPositionX: his X plus 0 or 8 (SHIELD_SPRITE_OFFSETS_X), 8 bits */
+#define BOX_LEFT             0x03E2u /* SpriteBox_Left: Sprite_GetBounds' X plus its table's offset, 8 bits */
+#define BOX_WIDTH            0x03E4u /* SpriteBox_Width */
+#define SPRITES_PAUSED       0x0426u /* Sprites_UpdatesPaused: the loop skips every interaction */
+#define PLAYER_IS_DEAD       0x0438u /* PlayerIsDead */
+#define BLOCK_PROPERTIES     0x043Cu /* BlockProperties: a nibble per block id */
+#define SCREEN_BUFFER        0x0600u /* ScreenBuffer: 16 blocks a row */
 /* Flags */
 enum { FLAG_C = 0x01, FLAG_Z = 0x02, FLAG_V = 0x40, FLAG_N = 0x80 };
 
 enum {
-    EMPTY = 0xFF, SHOT = 6, BIG = 7, PEOPLE = 2, BREAD_OR_COIN = 1,
-    THROUGH_LEFT = 1, THROUGH_RIGHT = 2,    /* a slot let through its room's side this frame, or straddling it */
-    ROOM_LIMIT = 5,                         /* a room takes no mover once it holds this many (the most a list holds) */
-    PAD = 16,                               /* the view's margin: what an actor draws past its hitbox */
-    VIEW_W = 424, VIEW_H = 208,             /* the view below the status bar */
-    CELLS = 48, ROOMS = 83,
-    LIST_MAX = 16,                          /* entries a list may hold here (the ROM's longest has 5) */
-    REACH = 48,                             /* a visitor's box within this of the hero's (the weapon's offset and reach
+    EMPTY = 0xFF,
+    SHOT = 6,
+    BIG = 7,
+    PEOPLE = 2,
+    BREAD_OR_COIN = 1,
+    THROUGH_LEFT = 1,
+    THROUGH_RIGHT = 2, /* a slot let through its room's side this frame, or straddling it */
+    ROOM_LIMIT = 5,    /* a room takes no mover once it holds this many (the most a list holds) */
+    PAD = 16,          /* the view's margin: what an actor draws past its hitbox */
+    VIEW_W = 424,
+    VIEW_H = 208, /* the view below the status bar */
+    CELLS = 48,
+    ROOMS = 83,
+    LIST_MAX = 16, /* entries a list may hold here (the ROM's longest has 5) */
+    REACH = 48,    /* a visitor's box within this of the hero's (the weapon's offset and reach
                                                are 40 at most) */
-    HERO_W = 16, HERO_H = 32,
-    SLOT_BYTES = 25,                        /* a slot's every byte: X, Y and the 23 arrays */
-    FIRST_KEPT = 4,                         /* of those, the first a visitor takes home: the entity (past the
+    HERO_W = 16,
+    HERO_H = 32,
+    SLOT_BYTES = 25, /* a slot's every byte: X, Y and the 23 arrays */
+    FIRST_KEPT = 4,  /* of those, the first a visitor takes home: the entity (past the
                                                positions and their fractions) */
-    TOUCH_PAD = 11, SHIELD_PAD = 7,         /* what CurrentSprite_CheckHitPlayer and Player_CheckShieldHitByMagic add */
-    SUGATA = 0x18, BEHAVIOR_FLASH = 0x1F, BEHAVIOR_READY = 0x40,
-    HEARD = 8,                              /* a frame's neighbours' sounds kept at most */
-    SPELL = FAX_SEAMS_SPELL,                /* the owner, less 1, of the spell's OAM cells and cells past a side */
-    SPELL_TYPES = 12,                       /* CastMagic_Type's values, each spell and its after-hit kinds */
-    MOVING_RIGHT = 0x40, HIDDEN = 0x10,     /* CastMagic_Flags; CurrentSprites_Flags (Sprites_IsSpriteHidden) */
+    TOUCH_PAD = 11,
+    SHIELD_PAD = 7, /* what CurrentSprite_CheckHitPlayer and Player_CheckShieldHitByMagic add */
+    SUGATA = 0x18,
+    BEHAVIOR_FLASH = 0x1F,
+    BEHAVIOR_READY = 0x40,
+    HEARD = 8,               /* a frame's neighbours' sounds kept at most */
+    SPELL = FAX_SEAMS_SPELL, /* the owner, less 1, of the spell's OAM cells and cells past a side */
+    SPELL_TYPES = 12,        /* CastMagic_Type's values, each spell and its after-hit kinds */
+    MOVING_RIGHT = 0x40,
+    HIDDEN = 0x10, /* CastMagic_Flags; CurrentSprites_Flags (Sprites_IsSpriteHidden) */
 };
 
 /* A room's block in Seamless's record. */
 typedef struct {
-    uint8_t awake;              /* a bit per slot: seen once, so it runs */
-    uint8_t count;              /* cells past the room's sides, in its last finished sprite loop */
-    uint8_t through[8];         /* 0, THROUGH_LEFT or THROUGH_RIGHT */
-    uint8_t tiles[8];           /* 0: the room's own CHR; else 1 + the room whose CHR has the slot's tiles */
-    uint8_t drawn_tiles[8];     /* tiles as they were when the slot was last drawn: the picture's */
-    uint8_t owner[64];          /* per OAM entry: 1 + the slot that drew it, 0 none */
+    uint8_t awake;          /* a bit per slot: seen once, so it runs */
+    uint8_t count;          /* cells past the room's sides, in its last finished sprite loop */
+    uint8_t through[8];     /* 0, THROUGH_LEFT or THROUGH_RIGHT */
+    uint8_t tiles[8];       /* 0: the room's own CHR; else 1 + the room whose CHR has the slot's tiles */
+    uint8_t drawn_tiles[8]; /* tiles as they were when the slot was last drawn: the picture's */
+    uint8_t owner[64];      /* per OAM entry: 1 + the slot that drew it, 0 none */
     FaxSeamsCell cell[CELLS];
-    uint8_t flash;              /* a bit per slot: its Sugata's flash waits for the live game (slice 2) */
+    uint8_t flash; /* a bit per slot: its Sugata's flash waits for the live game (slice 2) */
 } Block;
 _Static_assert(sizeof(Block) <= FAX_WORLD_SEAMS_BYTES, "Seams' block fits Seamless's record");
 
 /* What a sprite loop drew, until Seamless captures the room it ran:
  * [0] the live game's, [1] a neighbour's tick. */
-typedef struct { uint8_t owner[64], count, tiles[8]; FaxSeamsCell cell[CELLS]; } Drawn;
+typedef struct {
+    uint8_t owner[64], count, tiles[8];
+    FaxSeamsCell cell[CELLS];
+} Drawn;
 static Drawn drawn[2];
 static bool looping[2];
-static int loop_room[2] = {-1, -1};
+static int loop_room[2] = { -1, -1 };
 
 static bool enabled;
-static unsigned skipped;                 /* CheckHitPlayer calls skipped in neighbours' ticks */
-static unsigned refused;                 /* weapon matches refused: they hit only by wrapping (live game) */
-static int last_weapon_x = 0x7FFF;       /* the last refused one's weapon X, in 16 bits from the screen's left */
+static unsigned skipped;           /* CheckHitPlayer calls skipped in neighbours' ticks */
+static unsigned refused;           /* weapon matches refused: they hit only by wrapping (live game) */
+static int last_weapon_x = 0x7FFF; /* the last refused one's weapon X, in 16 bits from the screen's left */
 static unsigned last_sprite_x, last_entity = 0xFF;
 /* Slice 1's counts, for the TCP command. */
 static unsigned steps, moves, kept_out, town_edge, removed, woken, frozen, pushed_back;
-static int last_woken[4] = {-1, -1, -1, -1};          /* room, slot, entity, step */
+static int last_woken[4] = { -1, -1, -1, -1 }; /* room, slot, entity, step */
 enum { LOG = 16 };
-static int move_log[LOG][6];                          /* the last moves: from, slot, to, slot, entity, step */
+static int move_log[LOG][6]; /* the last moves: from, slot, to, slot, entity, step */
 
 /* Slice 2: the visitors' pass, while it is under way (open), and the
  * neighbours' sounds. Both are in this feature's record. */
-typedef struct { int8_t room; uint8_t slot, live, flash; int16_t shift; } Visitor;
+typedef struct {
+    int8_t room;
+    uint8_t slot, live, flash;
+    int16_t shift;
+} Visitor;
 static struct {
     uint8_t open, count;
-    uint8_t swapped;            /* a frame ended inside the pass: the machine holds `saved`, and `view` waits */
-    Visitor v[8];               /* each from slot `slot` of `room`, in live slot `live`; its live X is its byte
+    uint8_t swapped;              /* a frame ended inside the pass: the machine holds `saved`, and `view` waits */
+    Visitor v[8];                 /* each from slot `slot` of `room`, in live slot `live`; its live X is its byte
                                    + `shift`; `flash`: Sugata's damage is run for it first */
-    uint8_t saved[8][SLOT_BYTES];   /* the live slots as they were */
-    uint8_t view[8][SLOT_BYTES];    /* the pass's slots, while a frame's end has them out */
+    uint8_t saved[8][SLOT_BYTES]; /* the live slots as they were */
+    uint8_t view[8][SLOT_BYTES];  /* the pass's slots, while a frame's end has them out */
 } pass;
-typedef struct { uint8_t effect, room, slot; } Sound;
-static Sound heard[HEARD], pending[HEARD];            /* this frame's ticks'; to play at the next pass's site */
+typedef struct {
+    uint8_t effect, room, slot;
+} Sound;
+static Sound heard[HEARD], pending[HEARD]; /* this frame's ticks'; to play at the next pass's site */
 static unsigned heard_count, pending_count;
 /* Slice 2's counts, for the TCP command. */
 static unsigned passes, visits, waited, flash_runs, flashes_due, broken;
 static unsigned touch_refused, magic_refused, shield_refused, shield_skipped, weapon_placed, heard_total, played;
-static int visit_log[LOG][6];                         /* the last visits: room, slot, live slot, entity, after, step */
-static int sound_log[HEARD][4];                       /* the last sounds played: room, slot, effect, step */
+static int visit_log[LOG][6];   /* the last visits: room, slot, live slot, entity, after, step */
+static int sound_log[HEARD][4]; /* the last sounds played: room, slot, effect, step */
 static int live_shift(unsigned s);
 
 /* Slice 3: the spell's side, the room it is in less his (-1, 0 or 1), with
@@ -376,12 +416,15 @@ static int live_shift(unsigned s);
  * this feature's record. resync: take the byte as his room's at the next look
  * (a record of version 1). casting: Player_CastMagic is under way, so a draw
  * is the spell's. */
-static struct { int8_t side; uint8_t last, resync, casting; } spell = {0, 0, 1, 0};
-static Drawn spell_drawn;                             /* what the spell drew this frame, for his room's capture */
+static struct {
+    int8_t side;
+    uint8_t last, resync, casting;
+} spell = { 0, 0, 1, 0 };
+static Drawn spell_drawn; /* what the spell drew this frame, for his room's capture */
 /* Slice 3's counts, for the TCP command. */
 static unsigned spell_walls, spell_view_ends, spell_side_ends, spell_crossed, spell_cleared, magic_dormant;
 static unsigned spell_visibility, spell_drawn_abroad;
-static int spell_end[5] = {0, 0, 0, -1, -1};          /* the last end: its X in 16 bits, the edge, why (1 the view,
+static int spell_end[5] = { 0, 0, 0, -1, -1 }; /* the last end: its X in 16 bits, the edge, why (1 the view,
                                                          2 a side with nothing joined, 3 its own rule), step, right */
 static int spell_x16(void);
 static bool dormant(unsigned s);
@@ -426,18 +469,18 @@ static int reach_hook(uint16_t addr) {
     uint8_t reach = cyc_mod_peek(WEAPON_RANGE_X), sprite_x = cyc_mod_peek(SPRITE_X);
     int weapon_x = weapon_x16(cyc_mod_peek(WEAPON_X), cyc_mod_peek(WEAPON_X_HIGH), cyc_mod_peek(SCROLL_X));
     int sprite_x16 = sprite_x + (cyc_mod_isolated() ? 0 : live_shift(regs.x & 7u));
-    if (!wraps(weapon_x, reach, sprite_x16, extent)) return 0;   /* the original decides */
+    if (!wraps(weapon_x, reach, sprite_x16, extent)) return 0; /* the original decides */
     uint8_t limit = (uint8_t)(extent + reach), sum = (uint8_t)(weapon_x + reach);
     uint8_t difference = (uint8_t)(sum - sprite_x), compare = (uint8_t)(difference - limit);
     uint8_t p = (uint8_t)(regs.p & ~(FLAG_C | FLAG_Z | FLAG_V | FLAG_N));
-    if ((sum ^ sprite_x) & (sum ^ difference) & 0x80) p |= FLAG_V;      /* SBC's overflow */
-    if (compare & 0x80) p |= FLAG_N;                                       /* CMP's N; never Z: difference < limit */
+    if ((sum ^ sprite_x) & (sum ^ difference) & 0x80) p |= FLAG_V; /* SBC's overflow */
+    if (compare & 0x80) p |= FLAG_N;                               /* CMP's N; never Z: difference < limit */
     regs.a = difference;
     regs.y = index;
     regs.p = (uint8_t)(p | FLAG_C);
     cyc_mod_poke(TEMP_00, limit);
     cyc_mod_set_regs(&regs);
-    if (!cyc_mod_isolated()) {          /* a neighbour's copy never swings (shadow()), but count only the live game */
+    if (!cyc_mod_isolated()) { /* a neighbour's copy never swings (shadow()), but count only the live game */
         ++refused;
         last_weapon_x = weapon_x;
         last_sprite_x = sprite_x;
@@ -527,7 +570,10 @@ static uint8_t rd(int room, unsigned addr) {
     return ram ? ram[addr & 0x7FF] : 0;
 }
 static void wr(int room, unsigned addr, uint8_t value) {
-    if (here(room)) { cyc_mod_poke((uint16_t)addr, value); return; }
+    if (here(room)) {
+        cyc_mod_poke((uint16_t)addr, value);
+        return;
+    }
     uint8_t *ram = fax_world_room_record(room);
     if (ram) ram[addr & 0x7FF] = value;
 }
@@ -541,7 +587,10 @@ static bool mover(uint8_t e) {
 }
 /* Dormant until seen: the movers, and the big enemies, who stay home. */
 static bool sleeper(uint8_t e) { return mover(e) || category(e) == BIG; }
-static unsigned hitbox(int room, unsigned s) { unsigned h = rd(room, HITBOX + s); return h > 6 ? 6 : h; }
+static unsigned hitbox(int room, unsigned s) {
+    unsigned h = rd(room, HITBOX + s);
+    return h > 6 ? 6 : h;
+}
 static unsigned width_less_1(int room, unsigned s) { return rom14(HITBOX_WIDTHS + hitbox(room, s)); }
 
 /* A slot's X in 16 bits from its room's left edge: past the left side once
@@ -567,7 +616,7 @@ static bool in_view(int room, unsigned s, int pad) {
 /* ScreenBuffer_IsBlockImpassable for the block at `index` of a room: its
  * block id's property nibble, through BLOCK_PROPERTY_IMPASSABLE_MAP. With
  * `ladder`, Area_IsBlockImpassableOrLadder: a ladder (property 2) too. */
-static uint8_t property(int room, unsigned index) {     /* ScreenBuffer_LoadBlockProperty */
+static uint8_t property(int room, unsigned index) { /* ScreenBuffer_LoadBlockProperty */
     uint8_t id = rd(room, SCREEN_BUFFER + (index & 0xFF));
     uint8_t bits = rd(room, BLOCK_PROPERTIES + (id >> 1));
     return id & 1 ? bits >> 4 : bits & 15;
@@ -653,8 +702,14 @@ static bool awake_mover(unsigned s, int *room, Block **b) {
  * town room on one side only), and `to` isn't full. */
 static bool may_enter(int to, int room, unsigned s, bool entering) {
     if (to < 0) return false;
-    if (entering && fax_seams_town(to) != fax_seams_town(room)) { ++town_edge; return false; }
-    if (entering && full(to, room, s)) { ++kept_out; return false; }
+    if (entering && fax_seams_town(to) != fax_seams_town(room)) {
+        ++town_edge;
+        return false;
+    }
+    if (entering && full(to, room, s)) {
+        ++kept_out;
+        return false;
+    }
     return true;
 }
 /* A block test's result as the game's own leaves it: Blocks_Result, the
@@ -675,7 +730,11 @@ static void swap_in(void);
 static int loop_hook(uint16_t addr) {
     (void)addr;
     unsigned c = cyc_mod_isolated();
-    if (!c && pass.open) { ++broken; swap_in(); pass_end(); }   /* never: the pass ends at its own site */
+    if (!c && pass.open) {
+        ++broken;
+        swap_in();
+        pass_end();
+    } /* never: the pass ends at its own site */
     if (!c) fax_world_update_view(), spell.casting = 0;
     looping[c] = true;
     loop_room[c] = running();
@@ -698,7 +757,10 @@ static int behavior_hook(uint16_t addr) {
     Block *b = room >= 0 ? block(room) : NULL;
     unsigned s = cyc_mod_peek(CURRENT_SPRITE_INDEX) & 7;
     uint8_t e = cyc_mod_peek(ENTITIES + s);
-    if (!cyc_mod_isolated() && visitor_of(s) >= 0) { leave(s, -1, -1); return 1; }
+    if (!cyc_mod_isolated() && visitor_of(s) >= 0) {
+        leave(s, -1, -1);
+        return 1;
+    }
     if (!b || (b->awake >> s & 1) || !sleeper(e)) return 0;
     if (in_view(room, s, PAD)) {
         b->awake |= (uint8_t)(1u << s);
@@ -717,7 +779,10 @@ static int state_hook(uint16_t addr) {
     int room = running();
     Block *b = room >= 0 ? block(room) : NULL;
     unsigned s = cyc_mod_peek(CURRENT_SPRITE_INDEX) & 7;
-    if (!cyc_mod_isolated() && visitor_of(s) >= 0) { leave(s, -1, -1); return 1; }
+    if (!cyc_mod_isolated() && visitor_of(s) >= 0) {
+        leave(s, -1, -1);
+        return 1;
+    }
     if (!b || (b->awake >> s & 1) || !sleeper(cyc_mod_peek(ENTITIES + s))) return 0;
     leave(s, -1, -1);
     return 1;
@@ -734,8 +799,8 @@ static int left_hook(uint16_t addr) {
     if (!awake_mover(s, &room, &b)) return 0;
     uint8_t x = cyc_mod_peek(SLOT_X + s), y = cyc_mod_peek(SLOT_Y + s);
     int px = x16_of(b, s, x);
-    if (px == x && x >= 0xF1 && b->through[s] != THROUGH_RIGHT) px = x - 256;   /* wrapped past the left side */
-    if (px >= 0 && px < 0xF1) return 0;                                         /* the original's test */
+    if (px == x && x >= 0xF1 && b->through[s] != THROUGH_RIGHT) px = x - 256; /* wrapped past the left side */
+    if (px >= 0 && px < 0xF1) return 0;                                       /* the original's test */
     int to = room_at(room, px);
     if (!may_enter(to, room, s, px < 0 && b->through[s] != THROUGH_LEFT)) return 0;
     uint8_t result = rows_test(to, ((unsigned)px & 0xFF) >> 4, y, hitbox(room, s));
@@ -754,7 +819,7 @@ static int right_hook(uint16_t addr) {
     if (!awake_mover(s, &room, &b)) return 0;
     uint8_t x = cyc_mod_peek(SLOT_X + s), y = cyc_mod_peek(SLOT_Y + s);
     int left = x16_of(b, s, x), px = left + width_less_1(room, s);
-    if (left >= 0 && px < 256) return 0;                                        /* the original's test */
+    if (left >= 0 && px < 256) return 0; /* the original's test */
     int to = room_at(room, px);
     if (!may_enter(to, room, s, px >= 256 && b->through[s] != THROUGH_RIGHT)) return 0;
     uint8_t result = rows_test(to, ((unsigned)px & 0xFF) >> 4, y, hitbox(room, s));
@@ -776,10 +841,10 @@ static int vertical_hook(uint16_t addr) {
     if (!awake_mover(s, &room, &b)) return 0;
     int left = x16_of(b, s, cyc_mod_peek(SLOT_X + s));
     int ext = width_less_1(room, s);
-    if (left >= 0 && left + ext < 256) return 0;                                /* the original's test */
+    if (left >= 0 && left + ext < 256) return 0; /* the original's test */
     uint8_t py = cyc_mod_peek(PIXEL_Y);
     unsigned row = py & 0xF0u;
-    int c = (left + 256) / 16 - 16;                                             /* floor(left / 16) */
+    int c = (left + 256) / 16 - 16; /* floor(left / 16) */
     uint8_t result = column_cell(room, c, row);
     for (int t = ext; !result && t >= 16; t -= 16) result = column_cell(room, ++c, row);
     if (!result && (left & 15)) result = column_cell(room, ++c, row);
@@ -797,7 +862,7 @@ static int placement_hook(uint16_t addr) {
     Block *b;
     if (!awake_mover(s, &room, &b)) return 0;
     int px = x16_of(b, s, cyc_mod_peek(SLOT_X + s)) + (cyc_mod_peek(FLAGS + s) & 1 ? 15 : 0);
-    if (px >= 0 && px < 256) return 0;                                          /* the original's */
+    if (px >= 0 && px < 256) return 0; /* the original's */
     int to = room_at(room, px);
     if (to < 0) return 0;
     uint8_t py = cyc_mod_peek(PIXEL_Y);
@@ -853,7 +918,7 @@ static void play_draw(Drawn *d, unsigned s, bool flipped) {
     uint8_t flip = cyc_mod_peek(FLIP_MASK), visible = cyc_mod_peek(MOVING_VISIBILITY), ppu = cyc_mod_peek(PPU_OFFSET);
     uint8_t slot = cyc_mod_peek(SPRITE_SLOT), range = cyc_mod_peek(START_SLOT_RANGE), full = cyc_mod_peek(SLOTS_FULL);
     if (cols > 15 || rows > 15) return;
-    if (flipped) {   /* the pivot: X moves by its double less the width, in 16 bits */
+    if (flipped) { /* the pivot: X moves by its double less the width, in 16 bits */
         uint8_t shift = (uint8_t)((cyc_mod_peek(TEMP_ADDR_L) << 1) - (cols + 1) * 8);
         unsigned sum = (unsigned)shift + normx;
         normx = (uint8_t)sum;
@@ -864,21 +929,25 @@ static void play_draw(Drawn *d, unsigned s, bool flipped) {
         for (unsigned k = 0; k <= cols; k++) {
             unsigned tx = flipped ? cols - k : k;
             uint8_t tile = cyc_mod_peek((uint16_t)(addr + y));
-            if (tile == 0xFF) { y += 1; continue; }
+            if (tile == 0xFF) {
+                y += 1;
+                continue;
+            }
             unsigned lo = normx + cyc_mod_peek((uint16_t)(TILE_POSITIONS + tx));
             unsigned hi = offx + (lo >> 8);
             bool fits_x = (hi & 0xFF) == 0;
             unsigned ylo = normy + cyc_mod_peek((uint16_t)(TILE_POSITIONS + row)) + (fits_x ? hi >> 8 : 0);
             bool fits_y = ((offy + (ylo >> 8)) & 0xFF) == 0;
             uint8_t attr = (uint8_t)(cyc_mod_peek((uint16_t)(addr + y + 1)) ^ flip);
-            if (visible & cyc_mod_peek((uint16_t)((flipped ? VISIBILITY_FLIPPED : VISIBILITY_MASK) + (tx & 1)))) attr |= 0x20;
+            if (visible & cyc_mod_peek((uint16_t)((flipped ? VISIBILITY_FLIPPED : VISIBILITY_MASK) + (tx & 1))))
+                attr |= 0x20;
             if (fits_x && fits_y && !full) {
                 d->owner[(((unsigned)slot << 2 ^ range) >> 2) & 63] = (uint8_t)(s + 1);
                 slot ^= 0x20;
                 if (!(slot & 0x20) && ++slot >= 0x20) full = 1;
             } else if (!fits_x && fits_y && d->count < CELLS) {
-                d->cell[d->count++] = (FaxSeamsCell){(int16_t)((int)(int8_t)(uint8_t)hi * 256 + (lo & 0xFF)),
-                                                     (uint8_t)ylo, (uint8_t)(tile + ppu), attr, (uint8_t)s};
+                d->cell[d->count++] = (FaxSeamsCell){ (int16_t)((int)(int8_t)(uint8_t)hi * 256 + (lo & 0xFF)),
+                                                      (uint8_t)ylo, (uint8_t)(tile + ppu), attr, (uint8_t)s };
             }
             y += 2;
         }
@@ -912,7 +981,7 @@ static int draw_hook(uint16_t addr) {
 /* Screen_LoadSpriteInfo in play: a screen loads its list. */
 static int load_hook(uint16_t addr) {
     (void)addr;
-    if (!cyc_mod_isolated()) fax_world_screen_loaded(), spell.side = 0;   /* a spell left on is in the room loaded */
+    if (!cyc_mod_isolated()) fax_world_screen_loaded(), spell.side = 0; /* a spell left on is in the room loaded */
     return 0;
 }
 
@@ -929,7 +998,8 @@ static void move(int from, unsigned s, int side) {
     uint8_t x = rd(from, SLOT_X + s), e = rd(from, ENTITIES + s);
     unsigned ext = width_less_1(from, s);
     Block *bt = to >= 0 ? block(to) : NULL;
-    for (int k = 7; bt && k >= 0 && d < 0; k--) if (rd(to, ENTITIES + (unsigned)k) == EMPTY) d = k;
+    for (int k = 7; bt && k >= 0 && d < 0; k--)
+        if (rd(to, ENTITIES + (unsigned)k) == EMPTY) d = k;
     if (d < 0) {
         wr(from, SLOT_X + s, side ? (uint8_t)((255 - ext) & 0xF0) : 0);
         wr(from, FLAGS + s, (uint8_t)(rd(from, FLAGS + s) ^ 1));
@@ -943,7 +1013,7 @@ static void move(int from, unsigned s, int side) {
     for (unsigned a = SLOT_ARRAYS; a < SLOT_ARRAYS + 23 * 8; a += 8) wr(to, a + u, rd(from, a + s));
     unsigned k = 0;
     while (k < 8 && (k == u || rd(to, ENTITIES + k) != e)) ++k;
-    if (k < 8) {                                       /* its entity's tiles are where that slot's are */
+    if (k < 8) { /* its entity's tiles are where that slot's are */
         wr(to, PPU_OFFSETS + u, rd(to, PPU_OFFSETS + k));
         bt->tiles[u] = bt->tiles[k];
     } else {
@@ -956,8 +1026,8 @@ static void move(int from, unsigned s, int side) {
     bf->through[s] = bf->tiles[s] = 0;
     bf->awake &= (uint8_t)~(1u << s);
     bf->flash &= (uint8_t)~(1u << s);
-    bt->flash &= (uint8_t)~(1u << u);   /* a flash waiting comes back to its damage there, and asks again */
-    int note[6] = {from, (int)s, to, d, e, (int)steps};
+    bt->flash &= (uint8_t)~(1u << u); /* a flash waiting comes back to its damage there, and asks again */
+    int note[6] = { from, (int)s, to, d, e, (int)steps };
     memcpy(move_log[moves++ % LOG], note, sizeof note);
 }
 
@@ -982,7 +1052,7 @@ void fax_seams_step(void) {
                 b->flash &= (uint8_t)~(1u << s);
                 continue;
             }
-            if (view && category(e) == SHOT && !in_view(room, s, PAD)) {   /* out of the view: gone */
+            if (view && category(e) == SHOT && !in_view(room, s, PAD)) { /* out of the view: gone */
                 wr(room, ENTITIES + s, EMPTY);
                 b->through[s] = b->tiles[s] = 0;
                 b->awake &= (uint8_t)~(1u << s);
@@ -998,7 +1068,7 @@ void fax_seams_step(void) {
             } else if (x < 128) {
                 move(room, s, 1);
             } else if (x + width_less_1(room, s) < 256) {
-                b->through[s] = 0;                   /* back inside */
+                b->through[s] = 0; /* back inside */
             }
         }
     }
@@ -1008,7 +1078,8 @@ void fax_seams_step(void) {
 
 static int visitor_of(unsigned s) {
     if (!pass.open) return -1;
-    for (unsigned i = 0; i < pass.count; i++) if (pass.v[i].live == s) return (int)i;
+    for (unsigned i = 0; i < pass.count; i++)
+        if (pass.v[i].live == s) return (int)i;
     return -1;
 }
 /* A live slot's X in 16 bits less its byte: a visitor's from its side, the
@@ -1039,12 +1110,15 @@ int fax_seams_slot_room(unsigned slot) {
     return x < 0 ? fax_world_joined(active, 0) : x >= 256 ? fax_world_joined(active, 1) : active;
 }
 bool fax_seams_hero_x(int *x) {
-    if (!cyc_mod_isolated()) { *x = cyc_mod_peek(HERO_X); return true; }
+    if (!cyc_mod_isolated()) {
+        *x = cyc_mod_peek(HERO_X);
+        return true;
+    }
     int room = fax_world_seams_room(), hx, hy, px, py, ax, ay;
     if (room < 0 || !fax_world_ticking() || !fax_world_hero(&hx, &hy)) return false;
     fax_world_place(room, &px, &py);
     fax_world_place(fax_world_active_room(), &ax, &ay);
-    if (py != ay) return false;                       /* above or below his row: none of slice 2's */
+    if (py != ay) return false; /* above or below his row: none of slice 2's */
     *x = hx - px;
     return true;
 }
@@ -1079,9 +1153,10 @@ static int magic_hook(uint16_t addr) {
     if (cyc_mod_isolated() || type >= 5) return 0;
     unsigned s = cyc_mod_peek(CURRENT_SPRITE_INDEX) & 7u, c = category(cyc_mod_peek((uint16_t)(ENTITIES + s)));
     if (c != 0 && c != BIG) return 0;
-    uint8_t width = rom14(CAST_WIDTHS + type), hb = cyc_mod_peek((uint16_t)(HITBOX + s)), sw = rom14(HITBOX_WIDTHS + hb);
+    uint8_t width = rom14(CAST_WIDTHS + type), hb = cyc_mod_peek((uint16_t)(HITBOX + s)),
+            sw = rom14(HITBOX_WIDTHS + hb);
     int x = fax_seams_x16(s), at = spell_x16();
-    bool wrap = wrapped(at, x, sw, width);                              /* SPRITE_HITBOX_WIDTHS,Y as the game reads it */
+    bool wrap = wrapped(at, x, sw, width); /* SPRITE_HITBOX_WIDTHS,Y as the game reads it */
     if (!wrap) {
         /* The game's own test, which would hit: then only a sleeper not yet seen is refused. */
         uint8_t height = rom14(CAST_HEIGHTS_HIT + type), sh = rom14(HITBOX_HEIGHTS + hb);
@@ -1148,7 +1223,7 @@ static int sound_hook(uint16_t addr) {
     ++heard_total;
     if (room < 0 || cyc_mod_peek((uint16_t)(ENTITIES + s)) == EMPTY || !in_view(room, s, 0) || heard_count >= HEARD)
         return 0;
-    heard[heard_count++] = (Sound){regs.a, (uint8_t)room, (uint8_t)s};
+    heard[heard_count++] = (Sound){ regs.a, (uint8_t)room, (uint8_t)s };
     return 0;
 }
 static void play_pending(void) {
@@ -1160,7 +1235,7 @@ static void play_pending(void) {
         bool ok = cyc_mod_call_commit(SOUND_PLAY_EFFECT, &call);
         cyc_mod_set_regs(&regs);
         if (!ok) continue;
-        int note[4] = {pending[i].room, pending[i].slot, pending[i].effect, (int)steps};
+        int note[4] = { pending[i].room, pending[i].slot, pending[i].effect, (int)steps };
         memcpy(sound_log[played++ % HEARD], note, sizeof note);
     }
     pending_count = 0;
@@ -1181,7 +1256,10 @@ static bool flash_waits(int room, unsigned k) {
            (rd(room, FLAGS + k) & BEHAVIOR_READY);
 }
 
-typedef struct { int room, slot, gap, shift; bool flash; } Candidate;
+typedef struct {
+    int room, slot, gap, shift;
+    bool flash;
+} Candidate;
 
 /* The first arrival at the site: the visitors chosen, put in, and the loop
  * entered (1), or none (0). */
@@ -1203,11 +1281,14 @@ static int pass_begin(void) {
             uint8_t e = rd(nb, ENTITIES + k);
             if (e >= 0x80) continue;
             bool due = b->flash >> k & 1;
-            if (due && !flash_waits(nb, k)) { b->flash &= (uint8_t)~(1u << k); due = false; }
+            if (due && !flash_waits(nb, k)) {
+                b->flash &= (uint8_t)~(1u << k);
+                due = false;
+            }
             unsigned cat = category(e);
             if ((cat != 0 && cat != BREAD_OR_COIN && cat != SHOT && cat != BIG) || rd(nb, HIT_COUNTER + k) ||
                 !(rd(nb, HIT_BY_MAGIC + k) & 0x80))
-                continue;                     /* the loop lets these interact (and moves the rest) */
+                continue; /* the loop lets these interact (and moves the rest) */
             unsigned h = hitbox(nb, k);
             int x = x16(nb, k) + (side ? 256 : -256), y = rd(nb, SLOT_Y + k);
             int w = rom14(HITBOX_WIDTHS + h) + 1, t = rom14(HITBOX_HEIGHTS + h) + 1;
@@ -1215,9 +1296,12 @@ static int pass_begin(void) {
             bool near = g <= REACH && gap(y, t, hy, HERO_H) <= REACH;
             if (!near && spell_on) near = gap(x, w, cx, 32) <= PAD && gap(y, t, cy, 32) <= PAD;
             if (!near && !due) continue;
-            Candidate it = {nb, (int)k, due ? -1 : g, x - rd(nb, SLOT_X + k), due};
+            Candidate it = { nb, (int)k, due ? -1 : g, x - rd(nb, SLOT_X + k), due };
             unsigned at = n++;
-            while (at > 0 && c[at - 1].gap > it.gap) { c[at] = c[at - 1]; at--; }   /* nearest first */
+            while (at > 0 && c[at - 1].gap > it.gap) {
+                c[at] = c[at - 1];
+                at--;
+            } /* nearest first */
             c[at] = it;
         }
     }
@@ -1233,11 +1317,11 @@ static int pass_begin(void) {
     if (!count) return 0;
     for (unsigned s = 0; s < 8; s++) {
         for (unsigned k = 0; k < SLOT_BYTES; k++) pass.saved[s][k] = cyc_mod_peek((uint16_t)byte_at(k, s));
-        if (own[s] != EMPTY) cyc_mod_poke((uint16_t)(ENTITIES + s), EMPTY);   /* the room's own: hidden */
+        if (own[s] != EMPTY) cyc_mod_poke((uint16_t)(ENTITIES + s), EMPTY); /* the room's own: hidden */
     }
     for (unsigned i = 0; i < count; i++) {
         unsigned live = free_slots[i];
-        pass.v[i] = (Visitor){(int8_t)c[i].room, (uint8_t)c[i].slot, (uint8_t)live, c[i].flash, (int16_t)c[i].shift};
+        pass.v[i] = (Visitor){ (int8_t)c[i].room, (uint8_t)c[i].slot, (uint8_t)live, c[i].flash, (int16_t)c[i].shift };
         for (unsigned k = 0; k < SLOT_BYTES; k++)
             cyc_mod_poke((uint16_t)byte_at(k, live), rd(c[i].room, byte_at(k, (unsigned)c[i].slot)));
     }
@@ -1251,11 +1335,13 @@ static int pass_begin(void) {
      * loop. */
     CycModRegs regs;
     cyc_mod_regs(&regs);
-    uint16_t to[3] = {MAIN_LOOP_COUNTDOWN - 1, SPRITES_LOOP - 1, FLASH_HIT - 1};
+    uint16_t to[3] = { MAIN_LOOP_COUNTDOWN - 1, SPRITES_LOOP - 1, FLASH_HIT - 1 };
     unsigned pushes = pass.v[0].flash ? 3 : 2;
     for (unsigned i = 0; i < pushes; i++) {
-        cyc_mod_poke((uint16_t)(0x100u | regs.s), (uint8_t)(to[i] >> 8)); regs.s = (uint8_t)(regs.s - 1);
-        cyc_mod_poke((uint16_t)(0x100u | regs.s), (uint8_t)to[i]);        regs.s = (uint8_t)(regs.s - 1);
+        cyc_mod_poke((uint16_t)(0x100u | regs.s), (uint8_t)(to[i] >> 8));
+        regs.s = (uint8_t)(regs.s - 1);
+        cyc_mod_poke((uint16_t)(0x100u | regs.s), (uint8_t)to[i]);
+        regs.s = (uint8_t)(regs.s - 1);
     }
     if (pass.v[0].flash) {
         Block *b = block(pass.v[0].room);
@@ -1276,7 +1362,7 @@ static void pass_end(void) {
         uint8_t before = rd(v->room, ENTITIES + v->slot), after = cyc_mod_peek((uint16_t)(ENTITIES + v->live));
         for (unsigned k = FIRST_KEPT; k < SLOT_BYTES; k++)
             wr(v->room, byte_at(k, v->slot), cyc_mod_peek((uint16_t)byte_at(k, v->live)));
-        int note[6] = {v->room, v->slot, v->live, before, after, (int)steps};
+        int note[6] = { v->room, v->slot, v->live, before, after, (int)steps };
         memcpy(visit_log[(visits - pass.count + i) % LOG], note, sizeof note);
     }
     for (unsigned s = 0; s < 8; s++)
@@ -1289,7 +1375,11 @@ static void pass_end(void) {
 static int visit_hook(uint16_t addr) {
     (void)addr;
     if (cyc_mod_isolated()) return 0;
-    if (pass.open) { swap_in(); pass_end(); return 0; }
+    if (pass.open) {
+        swap_in();
+        pass_end();
+        return 0;
+    }
     if (running() >= 0) play_pending();
     else pending_count = 0;
     return pass_begin();
@@ -1328,7 +1418,7 @@ static int spell_x16(void) {
     uint8_t b = cyc_mod_peek(CAST_X);
     if (spell.resync) spell.side = 0, spell.last = b, spell.resync = 0;
     int x = spell.side * 256 + spell.last + (int8_t)(uint8_t)(b - spell.last);
-    spell.side = (int8_t)((x + 1024) / 256 - 4);                  /* floor(x / 256) */
+    spell.side = (int8_t)((x + 1024) / 256 - 4); /* floor(x / 256) */
     spell.last = b;
     return x;
 }
@@ -1446,7 +1536,7 @@ static int edge_hook(uint16_t addr) {
     }
     if (why) {
         ++*(why == 1 ? &spell_view_ends : &spell_side_ends);
-        int note[5] = {x, edge, why, (int)steps, right};
+        int note[5] = { x, edge, why, (int)steps, right };
         memcpy(spell_end, note, sizeof note);
     }
     CycModRegs regs;
@@ -1469,7 +1559,7 @@ static int visibility_hook(uint16_t addr) {
     (void)addr;
     uint8_t type = cyc_mod_peek(CAST_TYPE);
     if (type >= SPELL_TYPES || !spell_live()) return 0;
-    int x = spell_x16(), at[2] = {x + 4, x + 12};
+    int x = spell_x16(), at[2] = { x + 4, x + 12 };
     if (at[0] >= 0 && at[1] < 256) return 0;
     uint8_t y = cyc_mod_peek(CAST_Y), v = 0;
     for (unsigned k = 0; k < 2; k++) {
@@ -1486,7 +1576,7 @@ static int visibility_hook(uint16_t addr) {
     leave(cyc_mod_peek(CURRENT_SPRITE_INDEX), v, -1);
     CycModRegs regs;
     cyc_mod_regs(&regs);
-    regs.p = (uint8_t)((regs.p & ~(FLAG_Z | FLAG_N)) | (v ? 0 : FLAG_Z));   /* STA MovingSpriteVisibility's A */
+    regs.p = (uint8_t)((regs.p & ~(FLAG_Z | FLAG_N)) | (v ? 0 : FLAG_Z)); /* STA MovingSpriteVisibility's A */
     cyc_mod_set_regs(&regs);
     ++spell_visibility;
     return 1;
@@ -1494,13 +1584,16 @@ static int visibility_hook(uint16_t addr) {
 
 void fax_seams_adopted(int from, int to) {
     bool on = cyc_mod_peek(CAST_TYPE) < 0x80;
-    if (!enabled) { cyc_mod_poke(CAST_TYPE, 0xFF); return; }   /* the plan's slices off: as Seamless always did */
+    if (!enabled) {
+        cyc_mod_poke(CAST_TYPE, 0xFF);
+        return;
+    } /* the plan's slices off: as Seamless always did */
     spell_x16();
     int fx, fy, tx, ty;
     fax_world_place(from, &fx, &fy);
     fax_world_place(to, &tx, &ty);
     int side = spell.side + (fx - tx) / 256;
-    if (fy != ty || side < -1 || side > 1) {          /* up or down, or too far: it ends, as it did */
+    if (fy != ty || side < -1 || side > 1) { /* up or down, or too far: it ends, as it did */
         cyc_mod_poke(CAST_TYPE, 0xFF);
         spell.side = 0;
         spell_cleared += on;
@@ -1512,9 +1605,12 @@ void fax_seams_adopted(int from, int to) {
 
 /* ---- slice 2: this feature's record ---- */
 
-enum { RECORD_VERSION = 2, RECORD_VISITOR = 6,
-       RECORD_V1 = 5 + 8 * RECORD_VISITOR + 2 * 8 * SLOT_BYTES + HEARD * 3,
-       RECORD = RECORD_V1 + 4 };                       /* version 2: the spell's side, last byte, resync, casting */
+enum {
+    RECORD_VERSION = 2,
+    RECORD_VISITOR = 6,
+    RECORD_V1 = 5 + 8 * RECORD_VISITOR + 2 * 8 * SLOT_BYTES + HEARD * 3,
+    RECORD = RECORD_V1 + 4
+}; /* version 2: the spell's side, last byte, resync, casting */
 static int state_get(uint8_t *buf, int cap) {
     if (!enabled) return 0;
     if (cap < RECORD) return -1;
@@ -1534,7 +1630,8 @@ static int state_get(uint8_t *buf, int cap) {
     p += sizeof pass.saved;
     memcpy(p, pass.view, sizeof pass.view);
     p += sizeof pass.view;
-    for (unsigned i = 0; i < HEARD; i++, p += 3) p[0] = pending[i].effect, p[1] = pending[i].room, p[2] = pending[i].slot;
+    for (unsigned i = 0; i < HEARD; i++, p += 3)
+        p[0] = pending[i].effect, p[1] = pending[i].room, p[2] = pending[i].slot;
     p[0] = (uint8_t)spell.side, p[1] = spell.last, p[2] = spell.resync, p[3] = spell.casting;
     return RECORD;
 }
@@ -1551,8 +1648,8 @@ static int state_validate(const uint8_t *buf, int len) {
     for (unsigned i = 0; i < buf[2]; i++) {
         const uint8_t *p = buf + 5 + i * RECORD_VISITOR;
         int16_t shift = (int16_t)(p[4] | p[5] << 8);
-        if (p[0] >= ROOMS || p[1] > 7 || p[2] > 7 || p[3] > 1 || (shift != -256 && shift != 0 && shift != 256 &&
-                                                                    shift != -512 && shift != 512))
+        if (p[0] >= ROOMS || p[1] > 7 || p[2] > 7 || p[3] > 1 ||
+            (shift != -256 && shift != 0 && shift != 256 && shift != -512 && shift != 512))
             return 0;
     }
     return 1;
@@ -1576,12 +1673,12 @@ static int state_set(const uint8_t *buf, int len) {
     pass.swapped = buf[4];
     const uint8_t *p = buf + 5;
     for (unsigned i = 0; i < 8; i++, p += RECORD_VISITOR)
-        pass.v[i] = (Visitor){(int8_t)p[0], p[1], p[2], p[3], (int16_t)(p[4] | p[5] << 8)};
+        pass.v[i] = (Visitor){ (int8_t)p[0], p[1], p[2], p[3], (int16_t)(p[4] | p[5] << 8) };
     memcpy(pass.saved, p, sizeof pass.saved);
     p += sizeof pass.saved;
     memcpy(pass.view, p, sizeof pass.view);
     p += sizeof pass.view;
-    for (unsigned i = 0; i < HEARD; i++, p += 3) pending[i] = (Sound){p[0], p[1], p[2]};
+    for (unsigned i = 0; i < HEARD; i++, p += 3) pending[i] = (Sound){ p[0], p[1], p[2] };
     if (len == RECORD) spell.side = (int8_t)p[0], spell.last = p[1], spell.resync = p[2], spell.casting = p[3];
     return 1;
 }
@@ -1591,9 +1688,12 @@ static int state_set(const uint8_t *buf, int len) {
 void fax_seams_captured(uint8_t *bytes, int how) {
     Block *b = (Block *)bytes;
     if (!b) return;
-    if (how == FAX_SEAMS_FRESH) { memset(b, 0, sizeof *b); return; }
+    if (how == FAX_SEAMS_FRESH) {
+        memset(b, 0, sizeof *b);
+        return;
+    }
     unsigned c = how == FAX_SEAMS_TICK;
-    if (!c && block(loop_room[0]) != b) {       /* the live loop drew another room: nothing of this one's */
+    if (!c && block(loop_room[0]) != b) { /* the live loop drew another room: nothing of this one's */
         memset(b->owner, 0, sizeof b->owner);
         b->count = 0;
         return;
@@ -1604,7 +1704,8 @@ void fax_seams_captured(uint8_t *bytes, int how) {
     memcpy(b->cell, drawn[c].cell, sizeof b->cell);
     if (c || b != block(fax_world_active_room())) return;
     /* His room's: the spell's draw too, before the sprite loop's. */
-    for (unsigned k = 0; k < 64; k++) if (spell_drawn.owner[k]) b->owner[k] = spell_drawn.owner[k];
+    for (unsigned k = 0; k < 64; k++)
+        if (spell_drawn.owner[k]) b->owner[k] = spell_drawn.owner[k];
     for (unsigned k = 0; k < spell_drawn.count && b->count < CELLS; k++) b->cell[b->count++] = spell_drawn.cell[k];
 }
 unsigned fax_seams_cells(const uint8_t *bytes, const FaxSeamsCell **cells) {
@@ -1625,15 +1726,18 @@ bool fax_seams_valid(const uint8_t *bytes, unsigned rooms) {
     if (b->count > CELLS) return false;
     for (unsigned s = 0; s < 8; s++)
         if (b->through[s] > THROUGH_RIGHT || b->tiles[s] > rooms || b->drawn_tiles[s] > rooms) return false;
-    for (unsigned k = 0; k < 64; k++) if (b->owner[k] > SPELL + 1) return false;
-    for (unsigned k = 0; k < b->count; k++) if (b->cell[k].slot > SPELL) return false;
+    for (unsigned k = 0; k < 64; k++)
+        if (b->owner[k] > SPELL + 1) return false;
+    for (unsigned k = 0; k < b->count; k++)
+        if (b->cell[k].slot > SPELL) return false;
     return true;
 }
 void fax_seams_describe(const uint8_t *bytes, char *out, size_t size) {
     const Block *b = (const Block *)bytes;
     int t[8];
     for (unsigned s = 0; s < 8; s++) t[s] = b->tiles[s] ? b->tiles[s] - 1 : -1;
-    snprintf(out, size, "\"awake\":%u,\"through\":[%u,%u,%u,%u,%u,%u,%u,%u],\"tiles\":[%d,%d,%d,%d,%d,%d,%d,%d],\"cells\":%u,"
+    snprintf(out, size,
+             "\"awake\":%u,\"through\":[%u,%u,%u,%u,%u,%u,%u,%u],\"tiles\":[%d,%d,%d,%d,%d,%d,%d,%d],\"cells\":%u,"
              "\"flash\":%u",
              b->awake, b->through[0], b->through[1], b->through[2], b->through[3], b->through[4], b->through[5],
              b->through[6], b->through[7], t[0], t[1], t[2], t[3], t[4], t[5], t[6], t[7], b->count, b->flash);
@@ -1641,32 +1745,36 @@ void fax_seams_describe(const uint8_t *bytes, char *out, size_t size) {
 
 /* ---- the plugin ---- */
 
-static const struct { const char *id; uint16_t addr; NESModFunctionEntryCallback hook; } hooks[] = {
-    {"faxanadu.seams.reach", OUT_OF_WEAPON_RANGE, reach_hook},
-    {"faxanadu.seams.touch", CHECK_HIT_PLAYER, touch_hook},
-    {"faxanadu.seams.loop", SPRITES_UPDATE_ALL, loop_hook},
-    {"faxanadu.seams.loop-done", SPRITES_LOOP_DONE, loop_done_hook},
-    {"faxanadu.seams.behavior", UPDATE_BEHAVIOR, behavior_hook},
-    {"faxanadu.seams.state", UPDATE_STATE, state_hook},
-    {"faxanadu.seams.left", MOVE_LEFT, left_hook},
-    {"faxanadu.seams.right", MOVE_RIGHT, right_hook},
-    {"faxanadu.seams.vertical", MOVE_VERTICAL, vertical_hook},
-    {"faxanadu.seams.placement", PLACEMENT_BLOCK, placement_hook},
-    {"faxanadu.seams.flier", FLIER_EDGE, flier_hook},
-    {"faxanadu.seams.draw", DRAW_STANDARD, draw_hook},
-    {"faxanadu.seams.draw-flipped", DRAW_FLIPPED, draw_hook},
-    {"faxanadu.seams.load", LOAD_SPRITE_INFO, load_hook},
-    {"faxanadu.seams.visit", MAIN_LOOP_COUNTDOWN, visit_hook},
-    {"faxanadu.seams.magic", CHECK_MAGIC, magic_hook},
-    {"faxanadu.seams.shield", CHECK_SHIELD, shield_hook},
-    {"faxanadu.seams.weapon", WEAPON_OFF_SCREEN, weapon_hook},
-    {"faxanadu.seams.sound", SOUND_PLAY_EFFECT, sound_hook},
-    {"faxanadu.seams.cast", PLAYER_CAST_MAGIC, cast_hook},
-    {"faxanadu.seams.cast-done", CHECK_USE_ITEM, cast_done_hook},
-    {"faxanadu.seams.spell-direction", CAST_CHECK_DIRECTION, direction_hook},
-    {"faxanadu.seams.spell-left", CAST_LEFT_EDGE, edge_hook},
-    {"faxanadu.seams.spell-right", CAST_RIGHT_EDGE, edge_hook},
-    {"faxanadu.seams.spell-visibility", CAST_VISIBILITY, visibility_hook},
+static const struct {
+    const char *id;
+    uint16_t addr;
+    NESModFunctionEntryCallback hook;
+} hooks[] = {
+    { "faxanadu.seams.reach", OUT_OF_WEAPON_RANGE, reach_hook },
+    { "faxanadu.seams.touch", CHECK_HIT_PLAYER, touch_hook },
+    { "faxanadu.seams.loop", SPRITES_UPDATE_ALL, loop_hook },
+    { "faxanadu.seams.loop-done", SPRITES_LOOP_DONE, loop_done_hook },
+    { "faxanadu.seams.behavior", UPDATE_BEHAVIOR, behavior_hook },
+    { "faxanadu.seams.state", UPDATE_STATE, state_hook },
+    { "faxanadu.seams.left", MOVE_LEFT, left_hook },
+    { "faxanadu.seams.right", MOVE_RIGHT, right_hook },
+    { "faxanadu.seams.vertical", MOVE_VERTICAL, vertical_hook },
+    { "faxanadu.seams.placement", PLACEMENT_BLOCK, placement_hook },
+    { "faxanadu.seams.flier", FLIER_EDGE, flier_hook },
+    { "faxanadu.seams.draw", DRAW_STANDARD, draw_hook },
+    { "faxanadu.seams.draw-flipped", DRAW_FLIPPED, draw_hook },
+    { "faxanadu.seams.load", LOAD_SPRITE_INFO, load_hook },
+    { "faxanadu.seams.visit", MAIN_LOOP_COUNTDOWN, visit_hook },
+    { "faxanadu.seams.magic", CHECK_MAGIC, magic_hook },
+    { "faxanadu.seams.shield", CHECK_SHIELD, shield_hook },
+    { "faxanadu.seams.weapon", WEAPON_OFF_SCREEN, weapon_hook },
+    { "faxanadu.seams.sound", SOUND_PLAY_EFFECT, sound_hook },
+    { "faxanadu.seams.cast", PLAYER_CAST_MAGIC, cast_hook },
+    { "faxanadu.seams.cast-done", CHECK_USE_ITEM, cast_done_hook },
+    { "faxanadu.seams.spell-direction", CAST_CHECK_DIRECTION, direction_hook },
+    { "faxanadu.seams.spell-left", CAST_LEFT_EDGE, edge_hook },
+    { "faxanadu.seams.spell-right", CAST_RIGHT_EDGE, edge_hook },
+    { "faxanadu.seams.spell-visibility", CAST_VISIBILITY, visibility_hook },
 };
 enum { HOOKS = sizeof hooks / sizeof hooks[0] };
 
@@ -1707,7 +1815,8 @@ static size_t ring_json(char *out, size_t cap, const int *ring, unsigned n, unsi
     for (unsigned i = count > size ? count - size : 0; i < count && at < cap; i++) {
         const int *m = ring + (i % size) * n;
         at += (size_t)snprintf(out + at, cap - at, "%s[", at ? "," : "");
-        for (unsigned k = 0; k < n && at < cap; k++) at += (size_t)snprintf(out + at, cap - at, "%s%d", k ? "," : "", m[k]);
+        for (unsigned k = 0; k < n && at < cap; k++)
+            at += (size_t)snprintf(out + at, cap - at, "%s%d", k ? "," : "", m[k]);
         if (at < cap) at += (size_t)snprintf(out + at, cap - at, "]");
     }
     return at;
@@ -1722,24 +1831,28 @@ static void seams_state(int id, const char *line) {
     ring_json(log, sizeof log, &move_log[0][0], 6, LOG, moves);
     ring_json(visit, sizeof visit, &visit_log[0][0], 6, LOG, visits);
     ring_json(sound, sizeof sound, &sound_log[0][0], 4, HEARD, played);
-    snprintf(fields, sizeof fields,
-             "\"enabled\":%s,\"skipped\":%u,\"refused\":%u,\"last_weapon_x\":%d,\"last_sprite_x\":%u,\"last_entity\":%u,"
-             "\"steps\":%u,\"moves\":%u,\"kept_out\":%u,\"town_edge\":%u,\"pushed_back\":%u,\"removed\":%u,\"woken\":%u,\"frozen\":%u,"
-             "\"view\":[%d,%d,%s],\"last_woken\":[%d,%d,%d,%d],\"log\":[%s],"
-             "\"passes\":%u,\"visits\":%u,\"waited\":%u,\"visiting\":%s,\"broken\":%u,\"flashes_due\":%u,\"flash_runs\":%u,"
-             "\"touch_refused\":%u,\"magic_refused\":%u,\"shield_refused\":%u,\"shield_skipped\":%u,\"weapon_placed\":%u,"
-             "\"heard\":%u,\"played\":%u,\"pending\":%u,\"visit_log\":[%s],\"sound_log\":[%s],"
-             "\"spell\":[%u,%u,%d,%d],\"spell_walls\":%u,\"spell_view_ends\":%u,\"spell_side_ends\":%u,"
-             "\"spell_end\":[%d,%d,%d,%d,%d],\"spell_crossed\":%u,\"spell_cleared\":%u,\"magic_dormant\":%u,"
-             "\"spell_visibility\":%u,\"spell_drawn_abroad\":%u,\"casting\":%s",
-             enabled ? "true" : "false", skipped, refused, last_weapon_x, last_sprite_x, last_entity, steps, moves,
-             kept_out, town_edge, pushed_back, removed, woken, frozen, vx, vy, view ? "true" : "false", last_woken[0],
-             last_woken[1], last_woken[2], last_woken[3], log, passes, visits, waited, pass.open ? "true" : "false",
-             broken, flashes_due, flash_runs, touch_refused, magic_refused, shield_refused, shield_skipped,
-             weapon_placed, heard_total, played, pending_count, visit, sound, type, byte, x16 >= 256 ? 1 : x16 < 0 ? -1 : 0,
-             x16, spell_walls, spell_view_ends, spell_side_ends, spell_end[0], spell_end[1], spell_end[2], spell_end[3],
-             spell_end[4], spell_crossed, spell_cleared, magic_dormant, spell_visibility, spell_drawn_abroad,
-             spell.casting ? "true" : "false");
+    snprintf(
+        fields, sizeof fields,
+        "\"enabled\":%s,\"skipped\":%u,\"refused\":%u,\"last_weapon_x\":%d,\"last_sprite_x\":%u,\"last_entity\":%u,"
+        "\"steps\":%u,\"moves\":%u,\"kept_out\":%u,\"town_edge\":%u,\"pushed_back\":%u,\"removed\":%u,\"woken\":%u,\"frozen\":%u,"
+        "\"view\":[%d,%d,%s],\"last_woken\":[%d,%d,%d,%d],\"log\":[%s],"
+        "\"passes\":%u,\"visits\":%u,\"waited\":%u,\"visiting\":%s,\"broken\":%u,\"flashes_due\":%u,\"flash_runs\":%u,"
+        "\"touch_refused\":%u,\"magic_refused\":%u,\"shield_refused\":%u,\"shield_skipped\":%u,\"weapon_placed\":%u,"
+        "\"heard\":%u,\"played\":%u,\"pending\":%u,\"visit_log\":[%s],\"sound_log\":[%s],"
+        "\"spell\":[%u,%u,%d,%d],\"spell_walls\":%u,\"spell_view_ends\":%u,\"spell_side_ends\":%u,"
+        "\"spell_end\":[%d,%d,%d,%d,%d],\"spell_crossed\":%u,\"spell_cleared\":%u,\"magic_dormant\":%u,"
+        "\"spell_visibility\":%u,\"spell_drawn_abroad\":%u,\"casting\":%s",
+        enabled ? "true" : "false", skipped, refused, last_weapon_x, last_sprite_x, last_entity, steps, moves, kept_out,
+        town_edge, pushed_back, removed, woken, frozen, vx, vy, view ? "true" : "false", last_woken[0], last_woken[1],
+        last_woken[2], last_woken[3], log, passes, visits, waited, pass.open ? "true" : "false", broken, flashes_due,
+        flash_runs, touch_refused, magic_refused, shield_refused, shield_skipped, weapon_placed, heard_total, played,
+        pending_count, visit, sound, type, byte,
+        x16 >= 256 ? 1
+        : x16 < 0  ? -1
+                   : 0,
+        x16, spell_walls, spell_view_ends, spell_side_ends, spell_end[0], spell_end[1], spell_end[2], spell_end[3],
+        spell_end[4], spell_crossed, spell_cleared, magic_dormant, spell_visibility, spell_drawn_abroad,
+        spell.casting ? "true" : "false");
     cyc_tcp_ok(id, fields);
 }
 void fax_seams_tcp_setup(void) {
@@ -1763,5 +1876,6 @@ NES_MOD_CONSTRUCTOR(register_seams) {
     if (!nes_mod_register_reset_callback(deactivate) ||
         !nes_mod_register_activation_plugin("faxanadu.seams", activate) ||
         !nes_mod_register_savestate_hook("faxanadu.seams", state_get, state_set) ||
-        !nes_mod_register_savestate_validator("faxanadu.seams", state_validate)) abort();
+        !nes_mod_register_savestate_validator("faxanadu.seams", state_validate))
+        abort();
 }

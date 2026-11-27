@@ -38,34 +38,36 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define COYOTE_FRAMES 5u           /* A on the 1st-5th update in the air after walking off still jumps */
-#define BUFFER_FRAMES 6u           /* A in the air jumps on landing if the landing comes within 6 updates */
+#define COYOTE_FRAMES 5u /* A on the 1st-5th update in the air after walking off still jumps */
+#define BUFFER_FRAMES 6u /* A in the air jumps on landing if the landing comes within 6 updates */
 
 /* Bank 15 */
-#define VERT_MOVEMENT     0xE2C8u  /* Player_CheckHandleVertMovement: LDA Player_StatusFlag, BPL. Once per update */
-#define GROUND_CHECK      0xE3B2u  /* Player_HandleVertLadderOrJump's BEQ @_checkAdjacent, after LDA #$03 (the
-                                      game's LDX slip) and JSR Player_CheckIfPassable: Z clear = a block below */
-#define JUMP_CHECK        0xE44Bu  /* Player_UpdateClimbOrJump's BPL Player_ClearJumpingAndHoldingToClimb, after
-                                      LDX Joy1_ChangedButtonMask: N set = A newly pressed */
-#define CHECK_IF_PASSABLE 0xE6C8u  /* Player_CheckIfPassable: X = 0 left, 1 right, 2 up, 3 down; A = 0 passable */
+#define VERT_MOVEMENT     0xE2C8u /* Player_CheckHandleVertMovement: LDA Player_StatusFlag, BPL. Once per update */
+/* Player_HandleVertLadderOrJump's BEQ @_checkAdjacent, after LDA #$03 (the
+ * game's LDX slip) and JSR Player_CheckIfPassable: Z clear = a block below */
+#define GROUND_CHECK      0xE3B2u
+/* Player_UpdateClimbOrJump's BPL Player_ClearJumpingAndHoldingToClimb, after
+ * LDX Joy1_ChangedButtonMask: N set = A newly pressed */
+#define JUMP_CHECK        0xE44Bu
+#define CHECK_IF_PASSABLE 0xE6C8u /* Player_CheckIfPassable: X = 0 left, 1 right, 2 up, 3 down; A = 0 passable */
 /* RAM */
-#define JOY1_CHANGED      0x0019u  /* Joy1_ChangedButtonMask */
-#define AREA              0x0024u  /* Area_CurrentArea */
-#define SCREEN            0x0063u  /* Area_CurrentScreen */
-#define PLAYER_POS_X      0x009Eu  /* Player_PosX_Block */
+#define JOY1_CHANGED      0x0019u /* Joy1_ChangedButtonMask */
+#define AREA              0x0024u /* Area_CurrentArea */
+#define SCREEN            0x0063u /* Area_CurrentScreen */
+#define PLAYER_POS_X      0x009Eu /* Player_PosX_Block */
 #define PLAYER_POS_Y      0x00A1u
 #define PLAYER_FLAGS      0x00A4u
-#define PLAYER_STATUS     0x00A5u  /* Player_StatusFlag */
+#define PLAYER_STATUS     0x00A5u /* Player_StatusFlag */
 #define A_BUTTON          0x80u
-#define JUMPING           0x01u    /* Player_Flags */
+#define JUMPING           0x01u /* Player_Flags */
 #define FALLING_OFF       0x04u
 #define CAN_CLIMB         0x08u
 #define CLIMBING          0x10u
-#define KNOCKBACK         0x02u    /* Player_StatusFlag */
+#define KNOCKBACK         0x02u /* Player_StatusFlag */
 #define WING_BOOTS        0x80u
 #define UP                2u
-#define FALL_STEP         8u       /* @_climbDown: a fall without the Wing Boots, every update */
-#define LOWEST_Y          0xC0u    /* past it a fall step scrolls to the screen below */
+#define FALL_STEP         8u    /* @_climbDown: a fall without the Wing Boots, every update */
+#define LOWEST_Y          0xC0u /* past it a fall step scrolls to the screen below */
 #define P_Z               0x02u
 #define P_N               0x80u
 
@@ -112,8 +114,8 @@ static int tick_hook(uint16_t addr) {
         area = a;
         screen = s;
     }
-    if (!reached_last) armed = false;   /* he jumped or climbed in between */
-    if (fax_block_raised()) {             /* nothing kept while Block is up */
+    if (!reached_last) armed = false; /* he jumped or climbed in between */
+    if (fax_block_raised()) {         /* nothing kept while Block is up */
         if (buffered) ++blocked_presses;
         armed = buffered = false;
     }
@@ -145,13 +147,16 @@ static int ground_hook(uint16_t addr) {
         return 0;
     }
     if (!armed) return 0;
-    if (tick - ground_tick > COYOTE_FRAMES) { armed = false; return 0; }
+    if (tick - ground_tick > COYOTE_FRAMES) {
+        armed = false;
+        return 0;
+    }
     /* In front of a ladder the game catches him itself; at the screen's foot the
      * fall step would scroll down. */
     if (!(peek(JOY1_CHANGED) & A_BUTTON) || (flags & CAN_CLIMB) || y > LOWEST_Y - FALL_STEP) return 0;
     armed = false;
     if (!could_jump_from(ledge_x, ledge_y)) return 0;
-    buffered = false;                    /* this press is the jump */
+    buffered = false; /* this press is the jump */
     cyc_mod_poke(PLAYER_POS_Y, (uint8_t)(y + FALL_STEP));
     regs.a = 1;
     regs.p = (uint8_t)(regs.p & ~P_Z);
@@ -167,7 +172,10 @@ static int jump_hook(uint16_t addr) {
     if (cyc_mod_isolated() || !grounded) return 0;
     CycModRegs regs;
     cyc_mod_regs(&regs);
-    if (regs.x & A_BUTTON) { buffered = false; return 0; }   /* a press of his own */
+    if (regs.x & A_BUTTON) {
+        buffered = false;
+        return 0;
+    } /* a press of his own */
     if (!buffered) return 0;
     buffered = false;
     if (tick - press_tick > BUFFER_FRAMES) return 0;
@@ -218,10 +226,13 @@ static int state_set(const uint8_t *buf, int len) {
 }
 
 static const char *const hook_ids[] = {
-    "faxanadu.forgiving-jumps.tick", "faxanadu.forgiving-jumps.ground", "faxanadu.forgiving-jumps.jump",
+    "faxanadu.forgiving-jumps.tick",
+    "faxanadu.forgiving-jumps.ground",
+    "faxanadu.forgiving-jumps.jump",
 };
 static void hooks(int on) {
-    for (unsigned i = 0; i < sizeof hook_ids / sizeof hook_ids[0]; i++) nes_mod_set_function_hook_enabled(hook_ids[i], on);
+    for (unsigned i = 0; i < sizeof hook_ids / sizeof hook_ids[0]; i++)
+        nes_mod_set_function_hook_enabled(hook_ids[i], on);
 }
 static void deactivate(void) {
     enabled = false;
@@ -262,5 +273,6 @@ NES_MOD_CONSTRUCTOR(register_jumps) {
         !nes_mod_register_savestate_hook("faxanadu.forgiving-jumps", state_get, state_set) ||
         !nes_mod_register_savestate_validator("faxanadu.forgiving-jumps", state_validate) ||
         !nes_mod_register_reset_callback(deactivate) ||
-        !nes_mod_register_activation_plugin("faxanadu.forgiving-jumps", activate)) abort();
+        !nes_mod_register_activation_plugin("faxanadu.forgiving-jumps", activate))
+        abort();
 }

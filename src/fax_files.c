@@ -60,51 +60,69 @@
 #endif
 
 /* RAM */
-#define JOY1_CHANGED        0x0019u   /* Joy1_ChangedButtonMask: buttons newly pressed */
-#define AREA_CURRENT_AREA   0x0024u
-#define AREA_CURRENT_SCREEN 0x0063u
-#define ISCRIPT_ADDR        0x00DBu   /* IScriptOrCHRAddr; the next action is at it + IScriptOffset */
-#define ISCRIPT_OFFSET      0x00DDu
-#define TEXTBOX_CLOSED      0x020Cu   /* 0 while a text box or the menu is open */
-#define TEXTBOX_LINE_SCROLL 0x021Au   /* TextBox_LineScrollOffset: the CHR line block of the box's top row */
-#define EXPERIENCE          0x0390u
-#define GOLD                0x0392u
-#define TEMPLE_SPAWN_POINT  0x0439u   /* with Save files: the temple of the Guru last saved with */
-#define NEXT_PLAYER_TITLE   0x04EDu
-#define START_SCREEN_CHOICE 0x0687u   /* DAT_0687: 0 Start, 1 Continue */
+#define JOY1_CHANGED         0x0019u /* Joy1_ChangedButtonMask: buttons newly pressed */
+#define AREA_CURRENT_AREA    0x0024u
+#define AREA_CURRENT_SCREEN  0x0063u
+#define ISCRIPT_ADDR         0x00DBu /* IScriptOrCHRAddr; the next action is at it + IScriptOffset */
+#define ISCRIPT_OFFSET       0x00DDu
+#define TEXTBOX_CLOSED       0x020Cu /* 0 while a text box or the menu is open */
+#define TEXTBOX_LINE_SCROLL  0x021Au /* TextBox_LineScrollOffset: the CHR line block of the box's top row */
+#define EXPERIENCE           0x0390u
+#define GOLD                 0x0392u
+#define TEMPLE_SPAWN_POINT   0x0439u /* with Save files: the temple of the Guru last saved with */
+#define NEXT_PLAYER_TITLE    0x04EDu
+#define START_SCREEN_CHOICE  0x0687u /* DAT_0687: 0 Start, 1 Continue */
 /* Bank 12 */
-#define START_SCREEN_INPUT   0x9F44u  /* StartScreen_CheckHandleInput: Select toggles the choice, draws the arrow */
-#define ARROW_LOADED         0x9F64u  /* its LDA #$AD, after LDX BYTE_ARRAY_PRG12__9f69,Y and LDY #$7E: the
-                                         arrow's place for UI_DrawPromptInputSymbol, X $34 (START) or $74
-                                         (CONTINUE), Y $7E */
-#define PASSWORD_SCREEN_SHOW 0x909Du  /* PasswordScreen_Show: the mantra screen, then Password_Load */
-#define BUY_SELL_MESSAGE     0x8631u  /* IScriptAction_ShowBuySellMenu: LDA #$10 (this byte), JSR IScripts_LoadAndShowMessage */
-#define GURU_MANTRA          0xA5FEu  /* ISCRIPT_COMMON_GURU_PASSWORD ($A5FC): 03 22, here 14, 00 */
-#define GURU_NEW_RANK_END    0xA602u  /* ISCRIPT_COMMON_GURU_NEW_RANK ($A600): 01 23, here 00 */
-#define EOLIS_GURU_RING_END  0xA0C8u  /* Eolis's Guru with the Ring of Elf ($A0C6): 03 2D, here 00 */
-#define STOCK_END            0xA5FFu  /* an END: where the mantra's script ends */
-#define STEP                 0xAE10u  /* the choice: 0F SAY (menu) or 16 C3 SAY (question); B on the question goes on to + 4 */
-#define OWN_SAY              0xAE15u  /* 03 C3 00, when Guru travel's own is not there */
+#define START_SCREEN_INPUT   0x9F44u /* StartScreen_CheckHandleInput: Select toggles the choice, draws the arrow */
+/* its LDA #$AD, after LDX BYTE_ARRAY_PRG12__9f69,Y and LDY #$7E: the
+ * arrow's place for UI_DrawPromptInputSymbol, X $34 (START) or $74
+ * (CONTINUE), Y $7E */
+#define ARROW_LOADED         0x9F64u
+#define PASSWORD_SCREEN_SHOW 0x909Du /* PasswordScreen_Show: the mantra screen, then Password_Load */
+/* IScriptAction_ShowBuySellMenu: LDA #$10 (this byte), JSR IScripts_LoadAndShowMessage */
+#define BUY_SELL_MESSAGE     0x8631u
+#define GURU_MANTRA          0xA5FEu /* ISCRIPT_COMMON_GURU_PASSWORD ($A5FC): 03 22, here 14, 00 */
+#define GURU_NEW_RANK_END    0xA602u /* ISCRIPT_COMMON_GURU_NEW_RANK ($A600): 01 23, here 00 */
+#define EOLIS_GURU_RING_END  0xA0C8u /* Eolis's Guru with the Ring of Elf ($A0C6): 03 2D, here 00 */
+#define STOCK_END            0xA5FFu /* an END: where the mantra's script ends */
+#define STEP    0xAE10u /* the choice: 0F SAY (menu) or 16 C3 SAY (question); B on the question goes on to + 4 */
+#define OWN_SAY 0xAE15u /* 03 C3 00, when Guru travel's own is not there */
 /* Bank 13: message $C3, Guru travel's line slot (fax_travel.c) */
-#define SLOT_ID  0xC3u
-#define SLOT     0xB45Bu
-#define BUY_SELL_MESSAGE_ID 0x10u     /* "Come here / to buy. / Come here / to sell." */
+#define SLOT_ID 0xC3u
+#define SLOT    0xB45Bu
+#define BUY_SELL_MESSAGE_ID 0x10u /* "Come here / to buy. / Come here / to sell." */
 /* Fixed bank */
-#define START_SPAWN       0xFC95u   /* Game_ShowStartScreen's @_afterSetExpGoldFarJump: JMP Player_Spawn */
-#define SPAWNED           0xDB20u   /* Player_Spawn, after JSR Game_SpawnInTemple: JSR Game_SetupEnterBuilding */
-#define SOUND_PLAY_EFFECT 0xD0E4u   /* Sound_PlayEffect: A = the effect */
-#define CLEAR_SCROLLED    0xF439u   /* TextBox_ClearPasswordSize (from Messages_Load), after STA TextBox_LineScrollOffset */
+#define START_SPAWN         0xFC95u /* Game_ShowStartScreen's @_afterSetExpGoldFarJump: JMP Player_Spawn */
+#define SPAWNED             0xDB20u /* Player_Spawn, after JSR Game_SpawnInTemple: JSR Game_SetupEnterBuilding */
+#define SOUND_PLAY_EFFECT   0xD0E4u /* Sound_PlayEffect: A = the effect */
+#define CLEAR_SCROLLED 0xF439u /* TextBox_ClearPasswordSize (from Messages_Load), after STA TextBox_LineScrollOffset */
 /* Joypad bits */
-enum { BUTTON_A = 0x80, BUTTON_B = 0x40, BUTTON_SELECT = 0x20, BUTTON_START = 0x10, BUTTON_UP = 0x08, BUTTON_DOWN = 0x04,
-       BUTTON_LEFT = 0x02, BUTTON_RIGHT = 0x01 };
+enum {
+    BUTTON_A = 0x80,
+    BUTTON_B = 0x40,
+    BUTTON_SELECT = 0x20,
+    BUTTON_START = 0x10,
+    BUTTON_UP = 0x08,
+    BUTTON_DOWN = 0x04,
+    BUTTON_LEFT = 0x02,
+    BUTTON_RIGHT = 0x01
+};
 /* The original's choices, on tile row 20 (y 160, lit 160-166) of the first
  * nametable, as StartScreen_Draw lays them out: START in columns 8-12,
  * CONTINUE in 16-23, each 12 pixels after its arrow, whose lit rows are 34
  * below the Y UI_DrawPromptInputSymbol is given ($7E). The letters A-Z are
  * tiles $E0-$F9 of the row's pattern table (the text overrides'
  * FAXANADU_1). */
-enum { TITLE_Y = 160, TITLE_ROW = 20, START_COL = 8, CONTINUE_COL = 16, CHOICES_END_COL = 24, TITLE_LETTERS = 0xE0,
-       ARROW_GAP = 12, ARROW_BELOW = TITLE_Y - 0x7E };
+enum {
+    TITLE_Y = 160,
+    TITLE_ROW = 20,
+    START_COL = 8,
+    CONTINUE_COL = 16,
+    CHOICES_END_COL = 24,
+    TITLE_LETTERS = 0xE0,
+    ARROW_GAP = 12,
+    ARROW_BELOW = TITLE_Y - 0x7E
+};
 /* The remaster's: NEW GAME over CONTINUE, 8 letters each, left-aligned and
  * centred in the native picture (x 96-159), in the band between the logo (to
  * y 143) and the notices (from 184): 7 black rows under the logo and 7
@@ -113,22 +131,32 @@ enum { TITLE_Y = 160, TITLE_ROW = 20, START_COL = 8, CONTINUE_COL = 16, CHOICES_
 enum { BAND_Y = 144, MENU_X = 96, NEW_GAME_Y = 151, CONTINUE_Y = 165, ARROW_X = MENU_X - ARROW_GAP };
 enum { SLOT_LEN = 48, BUILDINGS = 4, SOUND_CURSOR = 0x0B };
 /* IScript actions */
-enum { END = 0x00, UNSKIPPABLE_MESSAGE = 0x01, SHOW_MESSAGE = 0x03, SET_SPAWN_POINT = 0x06, BUY_SELL_MENU = 0x0F,
-       MANTRA = 0x14, QUESTION_JUMP_IF_ACCEPTED = 0x16 };
+enum {
+    END = 0x00,
+    UNSKIPPABLE_MESSAGE = 0x01,
+    SHOW_MESSAGE = 0x03,
+    SET_SPAWN_POINT = 0x06,
+    BUY_SELL_MENU = 0x0F,
+    MANTRA = 0x14,
+    QUESTION_JUMP_IF_ACCEPTED = 0x16
+};
 
-static const uint8_t temple_screen[FAX_SAVE_TEMPLES] = {   /* DEST_SCREEN_FOR_TEMPLE_SPAWN */
-    0x02, 0x0B, 0x10, 0x1E, 0x23, 0x2B, 0x33, 0x3C };
+static const uint8_t temple_screen[FAX_SAVE_TEMPLES] = { /* DEST_SCREEN_FOR_TEMPLE_SPAWN */
+                                                         0x02, 0x0B, 0x10, 0x1E, 0x23, 0x2B, 0x33, 0x3C
+};
 
 /* The Guru's lines: 16 columns, 4 lines; '\n' breaks a line. The menu's two
  * choices start on lines 1 and 3, where its cursor points. */
 enum { TEXT_MENU, TEXT_QUESTION, TEXT_SAVED, TEXTS };
-static const char *const guru_text[TEXTS] = {
-    "Remember my\njourney.\nSend me to\nanother Guru.", "Shall I remember\nyour journey?",
-    "I will remember\nyour journey." };
+static const char *const guru_text[TEXTS] = { "Remember my\njourney.\nSend me to\nanother Guru.",
+                                              "Shall I remember\nyour journey?", "I will remember\nyour journey." };
 
 /* Where a Guru offers the choice: the action there and the two before it. */
 typedef enum { AT_NONE, AT_MANTRA, AT_NEW_RANK, AT_EOLIS } Trigger;
-static const struct { uint16_t at; uint8_t stock[3]; } trigger[] = {
+static const struct {
+    uint16_t at;
+    uint8_t stock[3];
+} trigger[] = {
     [AT_MANTRA] = { GURU_MANTRA, { SHOW_MESSAGE, 0x22, MANTRA } },
     [AT_NEW_RANK] = { GURU_NEW_RANK_END, { UNSKIPPABLE_MESSAGE, 0x23, END } },
     [AT_EOLIS] = { EOLIS_GURU_RING_END, { SHOW_MESSAGE, 0x2D, END } },
@@ -141,27 +169,32 @@ typedef enum { GURU_IDLE, GURU_MENU, GURU_QUESTION, GURU_SAVED, GURU_PHASES } Gu
 /* TOP: NEW GAME (cursor 0) and CONTINUE (1). The picks: a file (cursor 0-2).
  * CONFIRM: erase `target` for a new game? */
 typedef enum { TOP, NEW_PICK, CONTINUE_PICK, CONFIRM, MODES } Mode;
-typedef struct { uint8_t mode, cursor, target; } Menu;
+typedef struct {
+    uint8_t mode, cursor, target;
+} Menu;
 typedef enum { STAY, NEW_GAME, CONTINUE } Choice;
-typedef struct { FaxSaveStatus status; FaxSaveProgress p; } Slot;
+typedef struct {
+    FaxSaveStatus status;
+    FaxSaveProgress p;
+} Slot;
 /* A pick's rows: two for each file, a blank, then what it asks. */
 enum { MENU_ROWS = 8, MENU_COLS = 26 };
 
 static bool enabled, failed;
 static Menu menu;
 static Slot slots[FAX_SAVE_FILES];
-static bool title_up;          /* the file select is up: the title's loop has called us */
-static uint8_t seen = 255;     /* frames since the title's loop last called us */
-static int continuing;         /* the file being continued, until it spawns */
+static bool title_up;      /* the file select is up: the title's loop has called us */
+static uint8_t seen = 255; /* frames since the title's loop last called us */
+static int continuing;     /* the file being continued, until it spawns */
 static FaxSaveProgress pending;
-static uint8_t furthest;       /* the furthest temple reached in the file in play */
-static uint8_t guru;           /* GuruPhase */
-static uint16_t say_step;      /* the step that shows the saved line: Guru travel's, or OWN_SAY */
-static bool held;              /* SET_SPAWN_POINT is running: put the spawn point back after it */
+static uint8_t furthest;  /* the furthest temple reached in the file in play */
+static uint8_t guru;      /* GuruPhase */
+static uint16_t say_step; /* the step that shows the saved line: Guru travel's, or OWN_SAY */
+static bool held;         /* SET_SPAWN_POINT is running: put the spawn point back after it */
 static uint8_t held_spawn;
-static bool stepped, own_say, menu_message;   /* overrides of ours that are set */
-static bool keep_rows;         /* our lines are in a box that may have scrolled: keep its rows */
-static uint8_t rows;           /* TextBox_LineScrollOffset as the box's last line left it */
+static bool stepped, own_say, menu_message; /* overrides of ours that are set */
+static bool keep_rows;                      /* our lines are in a box that may have scrolled: keep its rows */
+static uint8_t rows;                        /* TextBox_LineScrollOffset as the box's last line left it */
 static unsigned saves, save_failures;
 static int last_spawn = -1;
 static char title_names[16][10];
@@ -174,12 +207,14 @@ static void scan(void) {
     for (int i = 0; i < FAX_SAVE_FILES; ++i) {
         FaxSaveRecord r;
         slots[i].status = fax_save_file_read(i + 1, &r);
-        if (slots[i].status == FAX_SAVE_OK && !fax_save_progress_get(&r, &slots[i].p)) slots[i].status = FAX_SAVE_MALFORMED;
+        if (slots[i].status == FAX_SAVE_OK && !fax_save_progress_get(&r, &slots[i].p))
+            slots[i].status = FAX_SAVE_MALFORMED;
     }
 }
 /* The first file with `status`, or -1. */
 static int first_file(FaxSaveStatus status) {
-    for (int i = 0; i < FAX_SAVE_FILES; ++i) if (slots[i].status == status) return i;
+    for (int i = 0; i < FAX_SAVE_FILES; ++i)
+        if (slots[i].status == status) return i;
     return -1;
 }
 static bool can_continue(void) { return first_file(FAX_SAVE_OK) >= 0; }
@@ -200,20 +235,34 @@ static Choice menu_press(Menu *m, uint8_t pressed, bool *moved, int *file) {
             if (m->cursor && saved >= 0) *m = (Menu){ CONTINUE_PICK, (uint8_t)saved, 0 };
             else *m = (Menu){ NEW_PICK, (uint8_t)(empty >= 0 ? empty : 0), 0 };
             *moved = true;
-        } else if ((pressed & (BUTTON_SELECT | BUTTON_LEFT | BUTTON_RIGHT | BUTTON_UP | BUTTON_DOWN)) && can_continue()) {
-            m->cursor ^= 1;   /* CONTINUE is grey, and skipped, with no saved file */
+        } else if ((pressed & (BUTTON_SELECT | BUTTON_LEFT | BUTTON_RIGHT | BUTTON_UP | BUTTON_DOWN)) &&
+                   can_continue()) {
+            m->cursor ^= 1; /* CONTINUE is grey, and skipped, with no saved file */
             *moved = true;
         }
         return STAY;
     case NEW_PICK:
-        if (step) { m->cursor = (uint8_t)((m->cursor + step) % FAX_SAVE_FILES); *moved = true; }
-        else if (back) { *m = (Menu){ TOP, 0, 0 }; *moved = true; }
-        else if (go && slots[m->cursor].status == FAX_SAVE_MISSING) { *file = m->cursor + 1; return NEW_GAME; }
-        else if (go) { m->mode = CONFIRM; m->target = m->cursor; *moved = true; }
+        if (step) {
+            m->cursor = (uint8_t)((m->cursor + step) % FAX_SAVE_FILES);
+            *moved = true;
+        } else if (back) {
+            *m = (Menu){ TOP, 0, 0 };
+            *moved = true;
+        } else if (go && slots[m->cursor].status == FAX_SAVE_MISSING) {
+            *file = m->cursor + 1;
+            return NEW_GAME;
+        } else if (go) {
+            m->mode = CONFIRM;
+            m->target = m->cursor;
+            *moved = true;
+        }
         return STAY;
     case CONFIRM:
-        if (back) { m->mode = NEW_PICK; m->cursor = m->target; *moved = true; }
-        else if (go) {
+        if (back) {
+            m->mode = NEW_PICK;
+            m->cursor = m->target;
+            *moved = true;
+        } else if (go) {
             if (!fax_save_file_erase(m->target + 1)) FAX_FILES_LOG("[files] cannot erase file %d\n", m->target + 1);
             scan();
             *file = m->target + 1;
@@ -221,13 +270,22 @@ static Choice menu_press(Menu *m, uint8_t pressed, bool *moved, int *file) {
         }
         return STAY;
     case CONTINUE_PICK:
-        if (step) {   /* to the next saved file, skipping the others */
+        if (step) { /* to the next saved file, skipping the others */
             for (int i = 1; i < FAX_SAVE_FILES; ++i) {
                 int c = (m->cursor + step * i) % FAX_SAVE_FILES;
-                if (slots[c].status == FAX_SAVE_OK) { m->cursor = (uint8_t)c; *moved = true; break; }
+                if (slots[c].status == FAX_SAVE_OK) {
+                    m->cursor = (uint8_t)c;
+                    *moved = true;
+                    break;
+                }
             }
-        } else if (back) { *m = (Menu){ TOP, can_continue(), 0 }; *moved = true; }
-        else if (go && slots[m->cursor].status == FAX_SAVE_OK) { *file = m->cursor + 1; return CONTINUE; }
+        } else if (back) {
+            *m = (Menu){ TOP, can_continue(), 0 };
+            *moved = true;
+        } else if (go && slots[m->cursor].status == FAX_SAVE_OK) {
+            *file = m->cursor + 1;
+            return CONTINUE;
+        }
         return STAY;
     }
     return STAY;
@@ -270,7 +328,8 @@ static void menu_row(const Menu *m, int row, char out[MENU_COLS + 1], bool *curs
         if (part == 0) {
             *cursor = (m->mode == CONFIRM ? m->target : m->cursor) == file;
             if (s->status == FAX_SAVE_OK)
-                snprintf(text, sizeof text, "  %d %-12s %s", file + 1, title_names[s->p.title & 15], fax_save_town(s->p.furthest));
+                snprintf(text, sizeof text, "  %d %-12s %s", file + 1, title_names[s->p.title & 15],
+                         fax_save_town(s->p.furthest));
             else if (s->status == FAX_SAVE_MISSING) snprintf(text, sizeof text, "  %d Empty", file + 1);
             else if (s->status == FAX_SAVE_NEWER) snprintf(text, sizeof text, "  %d From a newer version", file + 1);
             else snprintf(text, sizeof text, "  %d Damaged file", file + 1);
@@ -281,7 +340,7 @@ static void menu_row(const Menu *m, int row, char out[MENU_COLS + 1], bool *curs
         }
     }
     snprintf(out, MENU_COLS + 1, "%s", text);
-    if (*cursor) out[0] = '}';   /* the font's right-pointing triangle */
+    if (*cursor) out[0] = '}'; /* the font's right-pointing triangle */
 }
 
 /* ---- the title ---- */
@@ -320,7 +379,7 @@ static int title_hook(uint16_t addr) {
     if (moved) play_sound(SOUND_CURSOR);
     FaxSaveRecord r;
     if (choice == CONTINUE && (fax_save_file_read(file, &r) != FAX_SAVE_OK || !fax_save_progress_get(&r, &pending))) {
-        scan();   /* it changed on disk since: show what it is now */
+        scan(); /* it changed on disk since: show what it is now */
         choice = STAY;
     }
     if (choice == CONTINUE) {
@@ -340,7 +399,7 @@ static int title_hook(uint16_t addr) {
     }
     cyc_mod_poke(JOY1_CHANGED, mask);
     if (choice == STAY && menu.mode == TOP) {
-        cyc_mod_poke(START_SCREEN_CHOICE, menu.cursor);   /* the arrow's place */
+        cyc_mod_poke(START_SCREEN_CHOICE, menu.cursor); /* the arrow's place */
         return 0;
     }
     return 1;
@@ -449,7 +508,8 @@ static bool serve_own_say(void) {
  * is read as the menu starts, and put back at the end of the frame. */
 static bool serve_menu_message(bool on) {
     menu_message = on;
-    return cyc_mod_set_prg_read_override(prg(12, BUY_SELL_MESSAGE), BUY_SELL_MESSAGE_ID, on ? SLOT_ID : BUY_SELL_MESSAGE_ID);
+    return cyc_mod_set_prg_read_override(prg(12, BUY_SELL_MESSAGE), BUY_SELL_MESSAGE_ID,
+                                         on ? SLOT_ID : BUY_SELL_MESSAGE_ID);
 }
 static void unserve(void) {
     static const uint8_t ff[5] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
@@ -524,7 +584,10 @@ static int scroll_hook(uint16_t addr) {
 static int next_action_hook(uint16_t addr) {
     (void)addr;
     if (!enabled) return 0;
-    if (held) { cyc_mod_poke(TEMPLE_SPAWN_POINT, held_spawn); held = false; }
+    if (held) {
+        cyc_mod_poke(TEMPLE_SPAWN_POINT, held_spawn);
+        held = false;
+    }
     uint16_t at = (uint16_t)((q(ISCRIPT_ADDR) | q(ISCRIPT_ADDR + 1) << 8) + q(ISCRIPT_OFFSET));
     if (failed) {
         if (trigger_at(at) == AT_MANTRA) skip_mantra();
@@ -533,26 +596,29 @@ static int next_action_hook(uint16_t addr) {
     switch (guru) {
     case GURU_MENU:
     case GURU_QUESTION:
-        if (at == say_step) {                                   /* A on "Remember my journey." */
+        if (at == say_step) { /* A on "Remember my journey." */
             save_here();
-            if (!serve_text(TEXT_SAVED)) { fail("cannot supply the Guru's line"); return 0; }
+            if (!serve_text(TEXT_SAVED)) {
+                fail("cannot supply the Guru's line");
+                return 0;
+            }
             guru = GURU_SAVED;
             return 0;
         }
-        if (guru == GURU_MENU && at == STEP + 3) {              /* "Send me to another Guru." */
+        if (guru == GURU_MENU && at == STEP + 3) { /* "Send me to another Guru." */
             uint16_t to = fax_travel_begin(true);
             guru = GURU_IDLE;
             go(to ? to : STOCK_END);
             return 0;
         }
-        if (guru == GURU_QUESTION && at == STEP + 4) {          /* B on the question */
+        if (guru == GURU_QUESTION && at == STEP + 4) { /* B on the question */
             guru = GURU_IDLE;
             go(STOCK_END);
             return 0;
         }
         break;
     case GURU_SAVED:
-        if (at == say_step + 2) {                               /* the saved line was read: travel may offer */
+        if (at == say_step + 2) { /* the saved line was read: travel may offer */
             guru = GURU_IDLE;
             uint16_t to = fax_travel_begin(false);
             if (to) go(to);
@@ -631,8 +697,9 @@ static void title_text(uint32_t *px, int w, int h, int x, int y, const char *s, 
             uint8_t lo = cyc_render_chr((uint16_t)(pattern + r)), hi = cyc_render_chr((uint16_t)(pattern + r + 8));
             for (int c = 0; c < 8; ++c) {
                 int v = (lo >> (7 - c) & 1) | (hi >> (7 - c) & 1) << 1;
-                if (v) plot(px, w, h, x + i * FAX_TEXT_CELL + c, y + r,
-                            cyc_render_color(dim ? MENU_DIM_COLOR : palette * 4 + v));
+                if (v)
+                    plot(px, w, h, x + i * FAX_TEXT_CELL + c, y + r,
+                         cyc_render_color(dim ? MENU_DIM_COLOR : palette * 4 + v));
             }
         }
     }
@@ -640,7 +707,10 @@ static void title_text(uint32_t *px, int w, int h, int x, int y, const char *s, 
 /* Sprites in the original's choices' row: the arrow, when it is beside a line
  * that crosses it. */
 static int in_choices_row(int slot, int x, int y, int *out_x, void *user) {
-    (void)slot; (void)x; (void)out_x; (void)user;
+    (void)slot;
+    (void)x;
+    (void)out_x;
+    (void)user;
     int height = cyc_render_line_sprite16(y < 240 ? y : 239) ? 16 : 8;
     return y < TITLE_Y + FAX_TEXT_CELL && y + height > TITLE_Y;
 }
@@ -649,12 +719,13 @@ static int in_choices_row(int slot, int x, int y, int *out_x, void *user) {
 static void hide_choices(uint32_t *px, int w, int h, int x0) {
     uint32_t black = cyc_render_color(0);
     for (int y = TITLE_Y; y < TITLE_Y + FAX_TEXT_CELL; ++y)
-        for (int x = START_COL * FAX_TEXT_CELL; x < CHOICES_END_COL * FAX_TEXT_CELL; ++x) plot(px, w, h, x0 + x, y, black);
+        for (int x = START_COL * FAX_TEXT_CELL; x < CHOICES_END_COL * FAX_TEXT_CELL; ++x)
+            plot(px, w, h, x0 + x, y, black);
     cyc_render_sprites(px, w, h, x0, NULL, in_choices_row, NULL);
 }
 
 const uint32_t *fax_files_present(const uint32_t *picture, int *w, int *h) {
-    if (!enabled || seen > 1) return picture;   /* the title's loop ran this frame */
+    if (!enabled || seen > 1) return picture; /* the title's loop ran this frame */
     if (menu.mode != TOP && !fax_text_loaded() && !fax_text_load()) return picture;
     int width = 0, height = 0;
     const uint32_t *from = picture;
@@ -665,7 +736,8 @@ const uint32_t *fax_files_present(const uint32_t *picture, int *w, int *h) {
     if (n > capacity) {
         uint32_t *grown = realloc(canvas, n * sizeof *grown);
         if (!grown) return picture;
-        canvas = grown; capacity = n;
+        canvas = grown;
+        capacity = n;
     }
     memcpy(canvas, from, n * sizeof *canvas);
     int x0 = cyc_render_native_origin(width);
@@ -676,7 +748,8 @@ const uint32_t *fax_files_present(const uint32_t *picture, int *w, int *h) {
         hide_choices(canvas, width, height, x0);
         title_text(canvas, width, height, x0 + MENU_X, NEW_GAME_Y, "NEW GAME", false);
         title_text(canvas, width, height, x0 + MENU_X, CONTINUE_Y, "CONTINUE", !can_continue());
-        *w = width; *h = height;
+        *w = width;
+        *h = height;
         return canvas;
     }
     /* A pick: over the original's choices and the notices (y 160-239). The
@@ -696,7 +769,8 @@ const uint32_t *fax_files_present(const uint32_t *picture, int *w, int *h) {
         fax_text_draw_color(canvas, width, height, x + FAX_TEXT_CELL, y + (row + 1) * FAX_TEXT_CELL, text,
                             cyc_render_color(dim ? MENU_DIM_COLOR : MENU_TEXT_COLOR), 255);
     }
-    *w = width; *h = height;
+    *w = width;
+    *h = height;
     return canvas;
 }
 
@@ -715,10 +789,14 @@ void fax_files_power_on(void) {
 }
 void fax_files_frame_end(void) {
     if (seen < 255) ++seen;
-    if (title_up && seen > 30) title_up = false;   /* the title went without a choice (a state was loaded) */
-    if (menu_message) serve_menu_message(false);   /* the menu has read its message ID */
-    if (q(TEXTBOX_CLOSED)) { guru = GURU_IDLE; keep_rows = false; }   /* the box closed: B left, or it ended */
-    else if (keep_rows) rows = q(TEXTBOX_LINE_SCROLL) & 3;
+    if (title_up && seen > 30) title_up = false; /* the title went without a choice (a state was loaded) */
+    if (menu_message) serve_menu_message(false); /* the menu has read its message ID */
+    if (q(TEXTBOX_CLOSED)) {
+        guru = GURU_IDLE;
+        keep_rows = false;
+    } /* the box closed: B left, or it ended */
+    else if (keep_rows)
+        rows = q(TEXTBOX_LINE_SCROLL) & 3;
 }
 
 /* Save states carry the file in play, the title's menu and the Guru's choice,
@@ -728,22 +806,27 @@ void fax_files_frame_end(void) {
 enum { RECORD = 14, VERSION = 2 };
 static int state_get(uint8_t *buf, int cap) {
     if (cap < RECORD) return -1;
-    const uint8_t rec[RECORD] = { VERSION, (uint8_t)fax_save_file(), title_up, menu.mode, menu.cursor, menu.target,
-                                  (uint8_t)continuing, furthest, guru, seen, (uint8_t)say_step,
-                                  (uint8_t)(say_step >> 8), keep_rows, rows };
+    const uint8_t rec[RECORD] = { VERSION,           (uint8_t)fax_save_file(), title_up,  menu.mode, menu.cursor,
+                                  menu.target,       (uint8_t)continuing,      furthest,  guru,      seen,
+                                  (uint8_t)say_step, (uint8_t)(say_step >> 8), keep_rows, rows };
     memcpy(buf, rec, RECORD);
     return RECORD;
 }
 static int state_validate(const uint8_t *buf, int len) {
-    bool menu_ok = buf[0] == VERSION ? buf[3] < MODES && buf[4] < FAX_SAVE_FILES : buf[0] == 1 && buf[3] <= 2 && buf[4] <= 3;
-    return len == 0 || (len == RECORD && menu_ok && buf[1] <= FAX_SAVE_FILES && buf[2] <= 1 && buf[5] < FAX_SAVE_FILES &&
-                        buf[6] <= FAX_SAVE_FILES && buf[7] < FAX_SAVE_TEMPLES && buf[8] < GURU_PHASES &&
-                        buf[12] <= 1 && buf[13] <= 3);
+    bool menu_ok =
+        buf[0] == VERSION ? buf[3] < MODES && buf[4] < FAX_SAVE_FILES : buf[0] == 1 && buf[3] <= 2 && buf[4] <= 3;
+    return len == 0 || (len == RECORD && menu_ok && buf[1] <= FAX_SAVE_FILES && buf[2] <= 1 &&
+                        buf[5] < FAX_SAVE_FILES && buf[6] <= FAX_SAVE_FILES && buf[7] < FAX_SAVE_TEMPLES &&
+                        buf[8] < GURU_PHASES && buf[12] <= 1 && buf[13] <= 3);
 }
 static uint8_t loaded_file;
 static int state_set(const uint8_t *buf, int len) {
     if (!state_validate(buf, len)) return 0;
-    if (!len) { fax_files_power_on(); loaded_file = 0; return 1; }
+    if (!len) {
+        fax_files_power_on();
+        loaded_file = 0;
+        return 1;
+    }
     loaded_file = buf[1];
     title_up = buf[2];
     menu = buf[0] == VERSION ? (Menu){ buf[3], buf[4], buf[5] } : (Menu){ TOP, 0, 0 };
@@ -763,7 +846,7 @@ void fax_files_state_loaded(void) {
     if (!enabled) return;
     fax_save_resume(loaded_file);
     scan();
-    if (menu.mode == TOP && !can_continue()) menu.cursor = 0;   /* the files changed since */
+    if (menu.mode == TOP && !can_continue()) menu.cursor = 0; /* the files changed since */
     if (continuing) {
         FaxSaveRecord r;
         if (fax_save_file_read(continuing, &r) != FAX_SAVE_OK || !fax_save_progress_get(&r, &pending)) continuing = 0;
@@ -779,18 +862,18 @@ void fax_files_state_loaded(void) {
 static void files_state(int id, const char *line_in) {
     (void)line_in;
     char fields[1400];
-    int n = snprintf(fields, sizeof fields,
-                     "\"enabled\":%s,\"file\":%d,\"title\":%s,\"shown\":%s,\"mode\":%u,\"cursor\":%u,\"target\":%u,"
-                     "\"can_continue\":%s,\"continuing\":%d,\"guru\":%u,\"furthest\":%u,\"saves\":%u,\"save_failures\":%u,"
-                     "\"spawn\":%d,\"failed\":%s,\"palette\":[%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u],\"slots\":[",
-                     enabled ? "true" : "false", fax_save_file(), title_up ? "true" : "false",
-                     enabled && seen <= 1 ? "true" : "false", menu.mode, menu.cursor, menu.target,
-                     can_continue() ? "true" : "false", continuing, guru, furthest, saves, save_failures, last_spawn,
-                     failed ? "true" : "false",
-                     cyc_render_palette(0), cyc_render_palette(1), cyc_render_palette(2), cyc_render_palette(3),
-                     cyc_render_palette(4), cyc_render_palette(5), cyc_render_palette(6), cyc_render_palette(7),
-                     cyc_render_palette(8), cyc_render_palette(9), cyc_render_palette(10), cyc_render_palette(11),
-                     cyc_render_palette(12), cyc_render_palette(13), cyc_render_palette(14), cyc_render_palette(15));
+    int n = snprintf(
+        fields, sizeof fields,
+        "\"enabled\":%s,\"file\":%d,\"title\":%s,\"shown\":%s,\"mode\":%u,\"cursor\":%u,\"target\":%u,"
+        "\"can_continue\":%s,\"continuing\":%d,\"guru\":%u,\"furthest\":%u,\"saves\":%u,\"save_failures\":%u,"
+        "\"spawn\":%d,\"failed\":%s,\"palette\":[%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u],\"slots\":[",
+        enabled ? "true" : "false", fax_save_file(), title_up ? "true" : "false",
+        enabled && seen <= 1 ? "true" : "false", menu.mode, menu.cursor, menu.target, can_continue() ? "true" : "false",
+        continuing, guru, furthest, saves, save_failures, last_spawn, failed ? "true" : "false", cyc_render_palette(0),
+        cyc_render_palette(1), cyc_render_palette(2), cyc_render_palette(3), cyc_render_palette(4),
+        cyc_render_palette(5), cyc_render_palette(6), cyc_render_palette(7), cyc_render_palette(8),
+        cyc_render_palette(9), cyc_render_palette(10), cyc_render_palette(11), cyc_render_palette(12),
+        cyc_render_palette(13), cyc_render_palette(14), cyc_render_palette(15));
     for (int i = 0; i < FAX_SAVE_FILES && n > 0 && (size_t)n < sizeof fields; ++i) {
         const Slot *s = &slots[i];
         n += snprintf(fields + n, sizeof fields - (size_t)n,
@@ -817,11 +900,13 @@ void fax_files_tcp_setup(void) {
 void fax_files_tcp_setup(void) {}
 #endif
 
-static const char *const hook_ids[] = {
-    "faxanadu.files.title", "faxanadu.files.arrow", "faxanadu.files.mantra-screen", "faxanadu.files.start-spawn",
-    "faxanadu.files.spawned", "faxanadu.files.next-action", "faxanadu.files.scroll" };
+static const char *const hook_ids[] = { "faxanadu.files.title",         "faxanadu.files.arrow",
+                                        "faxanadu.files.mantra-screen", "faxanadu.files.start-spawn",
+                                        "faxanadu.files.spawned",       "faxanadu.files.next-action",
+                                        "faxanadu.files.scroll" };
 static void hooks(bool on) {
-    for (unsigned i = 0; i < sizeof hook_ids / sizeof hook_ids[0]; ++i) nes_mod_set_function_hook_enabled(hook_ids[i], on);
+    for (unsigned i = 0; i < sizeof hook_ids / sizeof hook_ids[0]; ++i)
+        nes_mod_set_function_hook_enabled(hook_ids[i], on);
 }
 static void deactivate(void) {
     unserve();
@@ -840,12 +925,15 @@ static void activate(void) {
 NES_MOD_CONSTRUCTOR(register_files) {
     if (!nes_mod_register_function_entry_plugin("faxanadu.files.title", START_SCREEN_INPUT, title_hook) ||
         !nes_mod_register_function_entry_plugin("faxanadu.files.arrow", ARROW_LOADED, arrow_hook) ||
-        !nes_mod_register_function_entry_plugin("faxanadu.files.mantra-screen", PASSWORD_SCREEN_SHOW, mantra_screen_hook) ||
+        !nes_mod_register_function_entry_plugin("faxanadu.files.mantra-screen", PASSWORD_SCREEN_SHOW,
+                                                mantra_screen_hook) ||
         !nes_mod_register_function_entry_plugin("faxanadu.files.start-spawn", START_SPAWN, start_spawn_hook) ||
         !nes_mod_register_function_entry_plugin("faxanadu.files.spawned", SPAWNED, spawned_hook) ||
         !nes_mod_register_function_entry_plugin("faxanadu.files.next-action", 0x826e, next_action_hook) ||
         !nes_mod_register_function_entry_plugin("faxanadu.files.scroll", CLEAR_SCROLLED, scroll_hook) ||
-        !nes_mod_register_reset_callback(deactivate) || !nes_mod_register_activation_plugin("faxanadu.save-files", activate) ||
+        !nes_mod_register_reset_callback(deactivate) ||
+        !nes_mod_register_activation_plugin("faxanadu.save-files", activate) ||
         !nes_mod_register_savestate_hook("faxanadu.files", state_get, state_set) ||
-        !nes_mod_register_savestate_validator("faxanadu.files", state_validate)) abort();
+        !nes_mod_register_savestate_validator("faxanadu.files", state_validate))
+        abort();
 }

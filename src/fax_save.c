@@ -25,33 +25,35 @@
 #include <string.h>
 
 /* RAM */
-#define EXPERIENCE         0x0390u   /* 16-bit */
-#define GOLD               0x0392u   /* 24-bit */
+#define EXPERIENCE         0x0390u /* 16-bit */
+#define GOLD               0x0392u /* 24-bit */
 #define SPECIAL_ITEMS      0x042Cu
 #define QUESTS             0x042Du
 #define PLAYER_TITLE       0x0437u
 #define TEMPLE_SPAWN_POINT 0x0439u
 #define NEXT_PLAYER_TITLE  0x04EDu
-#define SELECTED           0x03BDu   /* SelectedWeapon, SelectedArmor, SelectedShield, SelectedMagic, SelectedItem */
-#define COUNTS             0x03C2u   /* NumberOfWeapons ... NumberOfItems */
-static const uint16_t lists[FAX_SAVE_LISTS] = {
-    0x039D, 0x03A1, 0x03A5, 0x03A9, 0x03AD };   /* WeaponInventory ... ItemInventory */
+#define SELECTED           0x03BDu /* SelectedWeapon, SelectedArmor, SelectedShield, SelectedMagic, SelectedItem */
+#define COUNTS             0x03C2u /* NumberOfWeapons ... NumberOfItems */
+static const uint16_t lists[FAX_SAVE_LISTS] = { 0x039D, 0x03A1, 0x03A5, 0x03A9,
+                                                0x03AD }; /* WeaponInventory ... ItemInventory */
 
 const char *const fax_save_list_key[FAX_SAVE_LISTS] = { "weapons", "armor", "shields", "spells", "items" };
-const char *const fax_save_selected_key[FAX_SAVE_LISTS] = {
-    "selected_weapon", "selected_armor", "selected_shield", "selected_spell", "selected_item" };
+const char *const fax_save_selected_key[FAX_SAVE_LISTS] = { "selected_weapon", "selected_armor", "selected_shield",
+                                                            "selected_spell", "selected_item" };
 const uint8_t fax_save_list_max[FAX_SAVE_LISTS] = { 4, 4, 4, 4, 8 };
-static const char *const towns[FAX_SAVE_TEMPLES] = {
-    "Eolis", "Apolune", "Forepaw", "Mascon", "Victim", "Conflate", "Daybreak", "Dartmoor" };
+static const char *const towns[FAX_SAVE_TEMPLES] = { "Eolis",  "Apolune",  "Forepaw",  "Mascon",
+                                                     "Victim", "Conflate", "Daybreak", "Dartmoor" };
 static const char *const core[] = {
-    "version", "title", "next_title", "experience", "gold", "spawn", "furthest", "special_items", "quests",
-    "weapons", "armor", "shields", "spells", "items",
-    "selected_weapon", "selected_armor", "selected_shield", "selected_spell", "selected_item" };
+    "version",         "title",          "next_title",      "experience",     "gold",         "spawn",  "furthest",
+    "special_items",   "quests",         "weapons",         "armor",          "shields",      "spells", "items",
+    "selected_weapon", "selected_armor", "selected_shield", "selected_spell", "selected_item"
+};
 
 const char *fax_save_town(unsigned temple) { return temple < FAX_SAVE_TEMPLES ? towns[temple] : "?"; }
 
 bool fax_save_core_key(const char *key) {
-    for (unsigned i = 0; i < sizeof core / sizeof core[0]; ++i) if (!strcmp(key, core[i])) return true;
+    for (unsigned i = 0; i < sizeof core / sizeof core[0]; ++i)
+        if (!strcmp(key, core[i])) return true;
     return false;
 }
 
@@ -66,12 +68,14 @@ bool fax_save_key_ok(const char *key) {
 }
 bool fax_save_value_ok(const char *value) {
     if (!value || strlen(value) >= FAX_SAVE_VALUE) return false;
-    for (; *value; ++value) if (*value < 0x20 || *value > 0x7E) return false;
+    for (; *value; ++value)
+        if (*value < 0x20 || *value > 0x7E) return false;
     return true;
 }
 
 static int find(const FaxSaveRecord *r, const char *key) {
-    for (int i = 0; i < r->count; ++i) if (!strcmp(r->field[i].key, key)) return i;
+    for (int i = 0; i < r->count; ++i)
+        if (!strcmp(r->field[i].key, key)) return i;
     return -1;
 }
 const char *fax_save_record_get(const FaxSaveRecord *r, const char *key) {
@@ -82,7 +86,8 @@ bool fax_save_record_set(FaxSaveRecord *r, const char *key, const char *value) {
     if (!fax_save_key_ok(key) || (value && !fax_save_value_ok(value))) return false;
     int i = find(r, key);
     if (!value) {
-        if (i >= 0) memmove(&r->field[i], &r->field[i + 1], (size_t)(r->count - i - 1) * sizeof r->field[0]), --r->count;
+        if (i >= 0)
+            memmove(&r->field[i], &r->field[i + 1], (size_t)(r->count - i - 1) * sizeof r->field[0]), --r->count;
         return true;
     }
     if (i < 0) {
@@ -170,7 +175,8 @@ static bool word(const char **s, char *out, size_t cap) {
     while (**s == ' ') ++*s;
     if (!**s) return false;
     size_t n = 0;
-    for (; **s && **s != ' '; ++*s) if (n + 1 < cap) out[n++] = **s;
+    for (; **s && **s != ' '; ++*s)
+        if (n + 1 < cap) out[n++] = **s;
     out[n] = 0;
     return true;
 }
@@ -180,13 +186,19 @@ static bool word(const char **s, char *out, size_t cap) {
 static bool field_number(const FaxSaveRecord *r, const char *key, unsigned long max, unsigned long fallback,
                          unsigned long *out) {
     const char *v = fax_save_record_get(r, key);
-    if (!v) { *out = fallback; return true; }
+    if (!v) {
+        *out = fallback;
+        return true;
+    }
     return number(v, max, out);
 }
 /* An entry or a selection: 0-254; "none" is $FF. */
 static bool field_entry(const char *v, uint8_t *out) {
     unsigned long n;
-    if (!strcmp(v, "none")) { *out = 0xFF; return true; }
+    if (!strcmp(v, "none")) {
+        *out = 0xFF;
+        return true;
+    }
     if (!number(v, 0xFE, &n)) return false;
     *out = (uint8_t)n;
     return true;
@@ -220,7 +232,8 @@ bool fax_save_progress_get(const FaxSaveRecord *r, FaxSaveProgress *p) {
         char t[FAX_SAVE_VALUE];
         while (word(&list, t, sizeof t)) {
             if (p->count[c] >= fax_save_list_max[c] || !field_entry(t, &p->list[c][p->count[c]]) ||
-                p->list[c][p->count[c]] == 0xFF) return false;
+                p->list[c][p->count[c]] == 0xFF)
+                return false;
             ++p->count[c];
         }
     }
@@ -257,7 +270,8 @@ uint8_t fax_save_gurus_parse(const char *text) {
     uint8_t visited = 0;
     char t[FAX_SAVE_VALUE];
     while (text && word(&text, t, sizeof t))
-        for (int i = 0; i < FAX_SAVE_TEMPLES; ++i) if (!strcmp(t, towns[i])) visited |= (uint8_t)(1u << i);
+        for (int i = 0; i < FAX_SAVE_TEMPLES; ++i)
+            if (!strcmp(t, towns[i])) visited |= (uint8_t)(1u << i);
     return visited;
 }
 void fax_save_gurus_format(uint8_t visited, char out[FAX_SAVE_VALUE]) {
@@ -274,8 +288,8 @@ void fax_save_progress_capture(FaxSaveProgress *p, unsigned furthest) {
     p->title = cyc_mod_peek(PLAYER_TITLE) & 15;
     p->next_title = cyc_mod_peek(NEXT_PLAYER_TITLE) & 15;
     p->experience = (uint16_t)(cyc_mod_peek(EXPERIENCE) | cyc_mod_peek(EXPERIENCE + 1) << 8);
-    p->gold = (uint32_t)cyc_mod_peek(GOLD) | (uint32_t)cyc_mod_peek(GOLD + 1) << 8 |
-              (uint32_t)cyc_mod_peek(GOLD + 2) << 16;
+    p->gold =
+        (uint32_t)cyc_mod_peek(GOLD) | (uint32_t)cyc_mod_peek(GOLD + 1) << 8 | (uint32_t)cyc_mod_peek(GOLD + 2) << 16;
     p->spawn = cyc_mod_peek(TEMPLE_SPAWN_POINT) & 7;
     p->furthest = (uint8_t)(furthest < FAX_SAVE_TEMPLES && furthest > p->spawn ? furthest : p->spawn);
     p->special_items = cyc_mod_peek(SPECIAL_ITEMS);
@@ -396,9 +410,7 @@ bool fax_save_enabled(void) { return save_files; }
 int fax_save_file(void) { return save_files ? active : 0; }
 const FaxSaveRecord *fax_save_current(void) { return &current; }
 
-const char *fax_save_get(const char *key) {
-    return fax_save_file() ? fax_save_record_get(&current, key) : NULL;
-}
+const char *fax_save_get(const char *key) { return fax_save_file() ? fax_save_record_get(&current, key) : NULL; }
 bool fax_save_set(const char *key, const char *value) {
     if (!fax_save_file() || !fax_save_key_ok(key) || fax_save_core_key(key)) return false;
     return fax_save_record_set(&current, key, value);

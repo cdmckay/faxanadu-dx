@@ -8,7 +8,9 @@
 #include "../movement/model.h"
 
 enum { FRAMES = 40 };
-typedef struct { Frame f[FRAMES]; } Trace;
+typedef struct {
+    Frame f[FRAMES];
+} Trace;
 
 /* A ladder hanging in the air, rows 3-7, its foot two blocks above the floor. */
 static const char *const HANGING[13] = {
@@ -57,15 +59,14 @@ static void the_original(void) {
     CHECK(off.f[0].x == LADDER_X - 8 && off.f[1].x == LADDER_X - 16 && off.f[2].x == LADDER_X - 24);
     CHECK(!(off.f[1].flags & (F_CAN_CLIMB | F_CLIMBING)));
     CHECK(off.f[FRAMES - 1].y == FLOOR_Y);
-    printf("ok: the original knocks him %d pixels off the ladder, and he falls to the floor\n",
-           LADDER_X - off.f[2].x);
+    printf("ok: the original knocks him %d pixels off the ladder, and he falls to the floor\n", LADDER_X - off.f[2].x);
 }
 
 /* With the fix, on a ladder in the air he keeps his place and his hold, and
  * climbs on once the knockback is over (Up and Down climb during it too). */
 static void holds_on(void) {
-    static const uint8_t holds[] = {F_CAN_CLIMB | F_CLIMBING | F_RIGHT, F_CAN_CLIMB | F_CLIMBING,
-                                    F_CAN_CLIMB | F_RIGHT, F_CAN_CLIMB};   /* climbing, or hanging after a jump */
+    static const uint8_t holds[] = { F_CAN_CLIMB | F_CLIMBING | F_RIGHT, F_CAN_CLIMB | F_CLIMBING,
+                                     F_CAN_CLIMB | F_RIGHT, F_CAN_CLIMB }; /* climbing, or hanging after a jump */
     for (unsigned k = 0; k < sizeof holds; k++) {
         held = 0;
         Trace on = hit(HANGING, true, LADDER_X, 0x50, holds[k], 0, FRAMES);
@@ -73,12 +74,12 @@ static void holds_on(void) {
             CHECK(on.f[i].x == LADDER_X && on.f[i].y == 0x50);
             CHECK(on.f[i].flags == holds[k]);
         }
-        CHECK(held == 3);                                       /* the three updates of knockback */
+        CHECK(held == 3); /* the three updates of knockback */
         on = hit(HANGING, true, LADDER_X, 0x50, holds[k], B_UP, 3);
         CHECK(on.f[FRAMES - 1].y < 0x50 && (on.f[FRAMES - 1].flags & F_CLIMBING));
     }
     Trace on = hit(HANGING, true, LADDER_X, 0x50, F_CAN_CLIMB | F_CLIMBING, B_DOWN, 0);
-    CHECK(on.f[2].x == LADDER_X && on.f[2].y > 0x50);           /* Down climbs during the knockback */
+    CHECK(on.f[2].x == LADDER_X && on.f[2].y > 0x50); /* Down climbs during the knockback */
     printf("ok: with the fix a hit on a ladder in the air leaves him where he was, holding on\n");
 }
 
@@ -101,7 +102,8 @@ static void leaves_alone(void) {
     on = hit(HANGING, true, LADDER_X, 0x50, F_CAN_CLIMB | F_JUMPING | F_RIGHT, 0, FRAMES);
     CHECK(!memcmp(&on.f[0], &off.f[0], sizeof on.f[0]) && on.f[0].x == LADDER_X - 8 && !(on.f[0].flags & F_JUMPING));
     CHECK(off.f[2].x == LADDER_X - 24 && off.f[FRAMES - 1].y == FLOOR_Y);
-    for (int i = 1; i < FRAMES; i++) CHECK(on.f[i].x == on.f[0].x && on.f[i].y == on.f[0].y && (on.f[i].flags & F_CAN_CLIMB));
+    for (int i = 1; i < FRAMES; i++)
+        CHECK(on.f[i].x == on.f[0].x && on.f[i].y == on.f[0].y && (on.f[i].flags & F_CAN_CLIMB));
     CHECK(held == 2);
     printf("ok: on the ground, at a ladder's foot or not, knockback is the game's; in a jump past a ladder, its "
            "first update is, and ends the jump\n");
@@ -111,7 +113,7 @@ static void off_means_off(void) {
     feature(true);
     feature(false);
     for (unsigned i = 0; i < nsites; i++) CHECK(!sites[i].on);
-    CHECK(!save_get && !save_set && !save_validate && !save_id);   /* no save-state record: nothing kept */
+    CHECK(!save_get && !save_set && !save_validate && !save_id); /* no save-state record: nothing kept */
     Trace off = hit(HANGING, false, LADDER_X, 0x50, F_CAN_CLIMB | F_CLIMBING, 0, FRAMES);
     CHECK(off.f[FRAMES - 1].y == FLOOR_Y);
     printf("ok: off, no hook is on; it keeps no save-state record\n");

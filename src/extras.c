@@ -24,13 +24,13 @@
 #include <time.h>
 
 #ifdef _WIN32
-#  define WIN32_LEAN_AND_MEAN
-#  include <windows.h>
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
 #endif
 
 /* ---- Watchdog globals (extern'd by runner's debug_server.c) ---- */
-int         g_watchdog_triggered = 0;
-uint32_t    g_watchdog_frame     = 0;
+int g_watchdog_triggered = 0;
+uint32_t g_watchdog_frame = 0;
 const char *g_watchdog_stack_dump = "";
 
 /* ---- Debug mode ---- */
@@ -41,7 +41,10 @@ static int check_debug_ini(void) {
     char path[512];
     get_exe_relative_path("debug.ini", path, sizeof(path));
     FILE *f = fopen(path, "r");
-    if (f) { fclose(f); return 1; }
+    if (f) {
+        fclose(f);
+        return 1;
+    }
     return 0;
 }
 
@@ -56,39 +59,39 @@ const char *g_rom_path_for_extras = NULL;
 /* FAXANADU_1 — title/menu text.  A=0xE0, space=0x20.  Null-terminated. */
 static uint8_t fax_tile_encode(char ch) {
     if (ch >= 'A' && ch <= 'Z') return (uint8_t)(0xE0 + (ch - 'A'));
-    if (ch == ' ')               return 0x20;
-    return 0xFF;  /* unencodable */
+    if (ch == ' ') return 0x20;
+    return 0xFF; /* unencodable */
 }
 
 /* FAXANADU_DIALOGUE — NPC dialogue text.  Plain ASCII printable characters
  * map to themselves.  Space maps to 0xFD (word space token).  '\n' maps to
  * 0xFC (line break within dialogue box).  Terminated by 0xFF. */
 static uint8_t fax_dialogue_encode(char ch) {
-    if (ch >= 0x21 && ch <= 0x7E) return (uint8_t)ch;  /* printable ASCII */
-    if (ch == ' ')                return 0xFD;           /* word space */
-    if (ch == '\n')               return 0xFC;           /* line break */
-    return 0xFF;  /* unencodable */
+    if (ch >= 0x21 && ch <= 0x7E) return (uint8_t)ch; /* printable ASCII */
+    if (ch == ' ') return 0xFD;                       /* word space */
+    if (ch == '\n') return 0xFC;                      /* line break */
+    return 0xFF;                                      /* unencodable */
 }
 
 /* ASCII — plain null-terminated ASCII (Mantra screen, etc.). */
 static uint8_t ascii_encode(char ch) {
     if (ch >= 0x20 && ch <= 0x7E) return (uint8_t)ch;
-    return 0xFF;  /* unencodable */
+    return 0xFF; /* unencodable */
 }
 
 /* Path to the JSON override table.  Default = CWD-relative so the file lives
  * wherever the user launches the game from.  Override with --text-overrides. */
 static char s_text_overrides_path[512] = "text_overrides.json";
-static int  s_text_overrides_enabled = 0;  /* opt-in via --text-overrides */
+static int s_text_overrides_enabled = 0; /* opt-in via --text-overrides */
 
 static void text_override_setup(void) {
     text_override_init();
 
     /* Register all Faxanadu text encodings.  Each carries its own terminator
      * byte so the override system writes the correct end-of-string marker. */
-    text_override_register_encoding("FAXANADU_1",        fax_tile_encode,     0x00);
+    text_override_register_encoding("FAXANADU_1", fax_tile_encode, 0x00);
     text_override_register_encoding("FAXANADU_DIALOGUE", fax_dialogue_encode, 0xFF);
-    text_override_register_encoding("ASCII",             ascii_encode,        0x00);
+    text_override_register_encoding("ASCII", ascii_encode, 0x00);
 
     /* Load overrides from the JSON table (CWD by default, see --text-overrides).
      * Edit that file while the game runs; changes hot-reload within ~1 second. */
@@ -96,12 +99,12 @@ static void text_override_setup(void) {
 }
 
 /* ---- Password state ---- */
-static const char *s_password          = NULL;
-static int         s_password_injected = 0;
-static int         s_password_from_cli = 0;  /* 1 if --password was given on CLI */
+static const char *s_password = NULL;
+static int s_password_injected = 0;
+static int s_password_from_cli = 0; /* 1 if --password was given on CLI */
 
 /* ---- Auto-load state ---- */
-static char    s_loaded_password[25];   /* password loaded from saves.txt */
+static char s_loaded_password[25]; /* password loaded from saves.txt */
 
 /* Returns the mantra table index (0-63) for a character, or -1 if invalid.
  * Bank12 $8764 table order: A-Z (0-25), a-z (26-51), 0-9 (52-61), ',' (62), '?' (63) */
@@ -142,13 +145,15 @@ static int load_password_from_file(void) {
     if (!f) return 0;
 
     char line[256];
-    if (!fgets(line, sizeof(line), f)) { fclose(f); return 0; }
+    if (!fgets(line, sizeof(line), f)) {
+        fclose(f);
+        return 0;
+    }
     fclose(f);
 
     /* Strip trailing newline/carriage return */
     int len = (int)strlen(line);
-    while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r'))
-        line[--len] = '\0';
+    while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r')) line[--len] = '\0';
 
     if (len == 0 || len > 24) return 0;
 
@@ -182,24 +187,22 @@ static void maybe_inject_password(void) {
     if (len == 0 || len > 24) return;
 
     uint8_t max_len = g_ram[0x665];
-    if (max_len == 0)         return;   /* screen not initialized yet */
-    if (g_ram[0x666] != 0)   return;   /* something already entered */
-    if (g_ram[0x600] != 0xFF) return;  /* first slot not empty */
+    if (max_len == 0) return;         /* screen not initialized yet */
+    if (g_ram[0x666] != 0) return;    /* something already entered */
+    if (g_ram[0x600] != 0xFF) return; /* first slot not empty */
 
     for (int i = 0; i < len; i++) {
         int idx = password_char_to_index(s_password[i]);
         if (idx < 0) {
-            fprintf(stderr, "[Password] Unknown char '%c' at pos %d — aborted\n",
-                    s_password[i], i);
+            fprintf(stderr, "[Password] Unknown char '%c' at pos %d — aborted\n", s_password[i], i);
             return;
         }
         g_ram[0x600 + i] = (uint8_t)idx;
     }
-    for (int i = len; i < (int)max_len; i++)
-        g_ram[0x600 + i] = 0xFF;   /* fill remaining slots with empty sentinel */
+    for (int i = len; i < (int)max_len; i++) g_ram[0x600 + i] = 0xFF; /* fill remaining slots with empty sentinel */
 
-    g_ram[0x664] = (uint8_t)len;   /* cursor: positioned after last entered char */
-    g_ram[0x666] = (uint8_t)len;   /* characters-entered count */
+    g_ram[0x664] = (uint8_t)len; /* cursor: positioned after last entered char */
+    g_ram[0x666] = (uint8_t)len; /* characters-entered count */
 
     /* Queue PPU tile writes so the characters appear on screen.
      * $0500 DMA queue format: [count(1 byte), addr_hi, addr_lo, tile...]
@@ -208,10 +211,10 @@ static void maybe_inject_password(void) {
      * Row 1 (positions 16-31): PPU $2149+(pos-16) */
     for (int i = 0; i < len; i++) {
         uint8_t ppu_lo = (i < 16) ? (0x28 + i) : (0x48 + (i - 16));
-        uint8_t tile   = (uint8_t)s_password[i];   /* ASCII = PPU tile number */
-        uint8_t wp     = g_ram[0x20];
-        g_ram[0x500 + wp++] = 0x01;   /* 1 tile */
-        g_ram[0x500 + wp++] = 0x21;   /* PPU addr hi */
+        uint8_t tile = (uint8_t)s_password[i]; /* ASCII = PPU tile number */
+        uint8_t wp = g_ram[0x20];
+        g_ram[0x500 + wp++] = 0x01; /* 1 tile */
+        g_ram[0x500 + wp++] = 0x21; /* PPU addr hi */
         g_ram[0x500 + wp++] = ppu_lo;
         g_ram[0x500 + wp++] = tile;
         g_ram[0x20] = wp;
@@ -238,7 +241,7 @@ static void maybe_inject_password(void) {
  * ==========================================================================*/
 
 extern uint8_t g_ram[];
-void func_96FE_b12(void);   /* bank-12 mantra encoder: progress RAM -> $04CD bits */
+void func_96FE_b12(void); /* bank-12 mantra encoder: progress RAM -> $04CD bits */
 
 /* Inverse of password_char_to_index: mantra table index (0-63) -> ASCII. */
 static char index_to_char(int idx) {
@@ -261,8 +264,8 @@ static int faxanadu_generate_mantra(char *out, int out_sz) {
     memcpy(save_zp, &g_ram[0x00EC], sizeof(save_zp));
     memcpy(save_sc, &g_ram[0x04C9], sizeof(save_sc));
 
-    runtime_begin_post_nmi();   /* neutralise maybe_trigger_vblank during the call */
-    func_96FE_b12();            /* pack current progress -> $04CD, sets $04CB count */
+    runtime_begin_post_nmi(); /* neutralise maybe_trigger_vblank during the call */
+    func_96FE_b12();          /* pack current progress -> $04CD, sets $04CB count */
     runtime_end_post_nmi();
 
     int count = g_ram[0x04CB];
@@ -270,10 +273,13 @@ static int faxanadu_generate_mantra(char *out, int out_sz) {
     if (count > 0 && count <= 24) {
         for (int c = 0; c < count && len < out_sz - 1; c++) {
             int idx = 0;
-            for (int b = 0; b < 6; b++) {           /* 6 bits, MSB-first (matches $98E9) */
+            for (int b = 0; b < 6; b++) { /* 6 bits, MSB-first (matches $98E9) */
                 int bit = (g_ram[0x04CD + byte_i] >> (7 - bit_i)) & 1;
                 idx = (idx << 1) | bit;
-                if (++bit_i == 8) { bit_i = 0; byte_i++; }
+                if (++bit_i == 8) {
+                    bit_i = 0;
+                    byte_i++;
+                }
             }
             out[len++] = index_to_char(idx);
         }
@@ -286,11 +292,9 @@ static int faxanadu_generate_mantra(char *out, int out_sz) {
 }
 
 /* The mantra sidecar save ("our own SRAM"), exe-relative. */
-static void mantra_save_path(char *out, int max_len) {
-    get_exe_relative_path("faxanadu.srm", out, max_len);
-}
+static void mantra_save_path(char *out, int max_len) { get_exe_relative_path("faxanadu.srm", out, max_len); }
 
-static char s_saved_mantra[25];   /* last mantra written to disk (dirty check) */
+static char s_saved_mantra[25]; /* last mantra written to disk (dirty check) */
 
 static void mantra_save_write(const char *mantra) {
     char path[512];
@@ -314,9 +318,10 @@ static int mantra_save_read(void) {
     fclose(f);
     if (!ok) return 0;
     int len = (int)strlen(line);
-    while (len > 0 && (line[len-1] == '\n' || line[len-1] == '\r')) line[--len] = '\0';
+    while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r')) line[--len] = '\0';
     if (len == 0 || len > 24) return 0;
-    for (int i = 0; i < len; i++) if (password_char_to_index(line[i]) < 0) return 0;
+    for (int i = 0; i < len; i++)
+        if (password_char_to_index(line[i]) < 0) return 0;
     memcpy(s_loaded_password, line, len + 1);
     snprintf(s_saved_mantra, sizeof(s_saved_mantra), "%s", line);
     return 1;
@@ -368,22 +373,21 @@ static int s_auto_capture_enabled = 1;
 
 static void mantra_capture_tick(uint64_t frame_count) {
     if (!s_auto_capture_enabled) return;
-    if ((frame_count % 900) != 0) return;  /* ~every 15 seconds */
+    if ((frame_count % 900) != 0) return; /* ~every 15 seconds */
 
     /* Gameplay gate: any core progress field set => a started game. */
-    if ((g_ram[0x042C] | g_ram[0x042D] | g_ram[0x0437] | g_ram[0x0439]) == 0)
-        return;
+    if ((g_ram[0x042C] | g_ram[0x042D] | g_ram[0x0437] | g_ram[0x0439]) == 0) return;
 
     char mantra[25];
     if (faxanadu_generate_mantra(mantra, sizeof(mantra)) <= 0) return;
-    if (strcmp(mantra, s_saved_mantra) == 0) return;   /* unchanged */
+    if (strcmp(mantra, s_saved_mantra) == 0) return; /* unchanged */
 
     mantra_save_write(mantra);
-    mantra_log_append(mantra);   /* timestamped history for "go back in time" */
+    mantra_log_append(mantra); /* timestamped history for "go back in time" */
     /* Keep it ready for the prefill path too. */
     snprintf(s_loaded_password, sizeof(s_loaded_password), "%s", mantra);
     s_password = s_loaded_password;
-    s_password_injected = 0;   /* allow re-inject on the next password screen */
+    s_password_injected = 0; /* allow re-inject on the next password screen */
 }
 
 /* ---- game_extras.h implementation ---- */
@@ -395,10 +399,10 @@ const char *game_get_name(void) { return "Faxanadu"; }
 /* CHR override — opt-in via --chr-overrides or --chr-dump. */
 static char s_chr_overrides_dir[512] = "tiles";
 static char s_tile_compile_dir[512] = "";
-static int  s_tile_compile = 0;
-static int  s_chr_dump = 0;
-static int  s_chr_enabled = 0;       /* set by --chr-overrides or --chr-dump */
-static int  s_chr_overrides_set = 0; /* explicitly passed --chr-overrides */
+static int s_tile_compile = 0;
+static int s_chr_dump = 0;
+static int s_chr_enabled = 0;       /* set by --chr-overrides or --chr-dump */
+static int s_chr_overrides_set = 0; /* explicitly passed --chr-overrides */
 
 void game_on_init(void) {
     /* --tile-compile: batch convert PNGs to .chr.bin, then exit */
@@ -409,8 +413,7 @@ void game_on_init(void) {
     }
 
     /* Text override plugin — opt-in via --text-overrides */
-    if (s_text_overrides_enabled)
-        text_override_setup();
+    if (s_text_overrides_enabled) text_override_setup();
 
     /* Auto-detect tiles/manifest.json next to exe (like debug.ini) */
     if (!s_chr_enabled) {
@@ -429,10 +432,8 @@ void game_on_init(void) {
     /* Tile override plugin — via CLI or auto-detect */
     if (s_chr_enabled) {
         chr_override_init();
-        if (s_chr_dump)
-            chr_override_set_dump(1);
-        if (s_chr_overrides_set)
-            chr_override_load_manifest(s_chr_overrides_dir);
+        if (s_chr_dump) chr_override_set_dump(1);
+        if (s_chr_overrides_set) chr_override_load_manifest(s_chr_overrides_dir);
     }
 
     s_debug_enabled = check_debug_ini();
@@ -441,15 +442,12 @@ void game_on_init(void) {
         printf("[Debug] debug.ini found — TCP server and verify mode enabled\n");
         debug_server_init(s_tcp_port);
 
-        if (g_run_mode != RUN_MODE_NATIVE && g_rom_path_for_extras) {
-            verify_mode_init(g_rom_path_for_extras);
-        }
+        if (g_run_mode != RUN_MODE_NATIVE && g_rom_path_for_extras) { verify_mode_init(g_rom_path_for_extras); }
     } else if (g_run_mode != RUN_MODE_NATIVE) {
         /* --verify or --emulated implies debug even without ini */
         s_debug_enabled = 1;
         debug_server_init(s_tcp_port);
-        if (g_rom_path_for_extras)
-            verify_mode_init(g_rom_path_for_extras);
+        if (g_rom_path_for_extras) verify_mode_init(g_rom_path_for_extras);
     }
 
     /* Auto-prefill source (unless --password overrides): prefer our persisted
@@ -472,8 +470,7 @@ void game_on_frame(uint64_t frame_count) {
         debug_server_poll();
         debug_server_wait_if_paused();
         int ovr = debug_server_get_input_override();
-        if (ovr >= 0)
-            g_controller1_buttons = (uint8_t)ovr;
+        if (ovr >= 0) g_controller1_buttons = (uint8_t)ovr;
     }
 
     if (s_text_overrides_enabled) {
@@ -481,8 +478,7 @@ void game_on_frame(uint64_t frame_count) {
         text_override_apply();
     }
 
-    if (s_chr_enabled)
-        chr_override_reload_if_changed();
+    if (s_chr_enabled) chr_override_reload_if_changed();
 
     maybe_inject_password();
 }
@@ -491,12 +487,9 @@ void game_post_nmi(uint64_t frame_count) {
     /* Auto-capture the current-progress mantra into our synthetic-SRAM save. */
     mantra_capture_tick(frame_count);
 
-    if (s_chr_enabled)
-        chr_override_frame_end();
+    if (s_chr_enabled) chr_override_frame_end();
 
-    if (s_debug_enabled) {
-        debug_server_record_frame();
-    }
+    if (s_debug_enabled) { debug_server_record_frame(); }
 }
 
 int game_handle_arg(const char *key, const char *val) {
@@ -563,9 +556,7 @@ const char *game_arg_usage(void) {
            "  --emulated          Run purely via FCEUX emulator (no recompiled code)\n";
 }
 
-void game_run_nmi(void) {
-    verify_mode_run_nmi();
-}
+void game_run_nmi(void) { verify_mode_run_nmi(); }
 
 void game_run_main(void) {
     if (g_run_mode == RUN_MODE_EMULATED) {
@@ -573,7 +564,7 @@ void game_run_main(void) {
         /* Nestopia drives the entire execution — its own CPU, PPU, APU. */
         printf("[Emulated] Nestopia driving main loop\n");
 
-        static uint32_t fceux_argb[256 * 240];  /* ARGB framebuffer */
+        static uint32_t fceux_argb[256 * 240]; /* ARGB framebuffer */
 
         extern void runner_present_framebuf(const uint32_t *argb_buf);
 
@@ -584,21 +575,20 @@ void game_run_main(void) {
                 while (SDL_PollEvent(&ev)) {
                     if (ev.type == SDL_QUIT) exit(0);
                     if (ev.type == SDL_KEYDOWN && ev.key.keysym.sym == SDLK_ESCAPE) exit(0);
-                    if (ev.type == SDL_KEYDOWN && ev.key.keysym.sym == SDLK_F5)
-                        g_turbo ^= 1;
+                    if (ev.type == SDL_KEYDOWN && ev.key.keysym.sym == SDLK_F5) g_turbo ^= 1;
                 }
 
                 /* Read keyboard for controller input */
                 const uint8_t *keys = SDL_GetKeyboardState(NULL);
                 uint8_t btn = 0;
-                if (keys[SDL_SCANCODE_Z])      btn |= 0x80;
-                if (keys[SDL_SCANCODE_X])      btn |= 0x40;
-                if (keys[SDL_SCANCODE_TAB])    btn |= 0x20;
+                if (keys[SDL_SCANCODE_Z]) btn |= 0x80;
+                if (keys[SDL_SCANCODE_X]) btn |= 0x40;
+                if (keys[SDL_SCANCODE_TAB]) btn |= 0x20;
                 if (keys[SDL_SCANCODE_RETURN]) btn |= 0x10;
-                if (keys[SDL_SCANCODE_UP])     btn |= 0x08;
-                if (keys[SDL_SCANCODE_DOWN])   btn |= 0x04;
-                if (keys[SDL_SCANCODE_LEFT])   btn |= 0x02;
-                if (keys[SDL_SCANCODE_RIGHT])  btn |= 0x01;
+                if (keys[SDL_SCANCODE_UP]) btn |= 0x08;
+                if (keys[SDL_SCANCODE_DOWN]) btn |= 0x04;
+                if (keys[SDL_SCANCODE_LEFT]) btn |= 0x02;
+                if (keys[SDL_SCANCODE_RIGHT]) btn |= 0x01;
                 g_controller1_buttons = btn;
             }
 
@@ -637,21 +627,26 @@ void game_run_main(void) {
     }
 }
 
-int game_dispatch_override(uint16_t addr) { (void)addr; return 0; }
+int game_dispatch_override(uint16_t addr) {
+    (void)addr;
+    return 0;
+}
 
 uint8_t game_ram_read_hook(uint16_t pc, uint16_t addr, uint8_t val) {
-    (void)pc; (void)addr; return val;
+    (void)pc;
+    (void)addr;
+    return val;
 }
 
 /* ---- Debug server game hooks ---- */
 
 void game_fill_frame_record(void *record) {
     NESFrameRecord *r = (NESFrameRecord *)record;
-    r->game_data[0] = g_ram[0x12];    /* game_mode */
-    r->game_data[1] = g_ram[0xEB];    /* room_id */
-    r->game_data[2] = g_ram[0x0394];  /* player_hp */
-    r->game_data[3] = g_ram[0x035C];  /* player_gold_lo */
-    r->game_data[4] = g_ram[0x035D];  /* player_gold_hi */
+    r->game_data[0] = g_ram[0x12];   /* game_mode */
+    r->game_data[1] = g_ram[0xEB];   /* room_id */
+    r->game_data[2] = g_ram[0x0394]; /* player_hp */
+    r->game_data[3] = g_ram[0x035C]; /* player_gold_lo */
+    r->game_data[4] = g_ram[0x035D]; /* player_gold_hi */
 }
 
 void game_post_render(uint32_t *framebuf) { (void)framebuf; }
@@ -660,19 +655,15 @@ int game_handle_debug_cmd(const char *cmd, int id, const char *json) {
     (void)json;
 
     if (strcmp(cmd, "faxanadu_state") == 0) {
-        debug_server_send_fmt(
-            "{\"id\":%d,\"ok\":true,"
-            "\"game_mode\":\"0x%02X\",\"room\":\"0x%02X\","
-            "\"player_hp\":%d,\"player_max_hp\":%d,"
-            "\"gold\":%d,"
-            "\"scroll_x\":%d,\"scroll_y\":%d,"
-            "\"frame\":%llu}",
-            id,
-            g_ram[0x12], g_ram[0xEB],
-            g_ram[0x0394], g_ram[0x0396],
-            g_ram[0x035C] | (g_ram[0x035D] << 8),
-            g_ppuscroll_x, g_ppuscroll_y,
-            (unsigned long long)g_frame_count);
+        debug_server_send_fmt("{\"id\":%d,\"ok\":true,"
+                              "\"game_mode\":\"0x%02X\",\"room\":\"0x%02X\","
+                              "\"player_hp\":%d,\"player_max_hp\":%d,"
+                              "\"gold\":%d,"
+                              "\"scroll_x\":%d,\"scroll_y\":%d,"
+                              "\"frame\":%llu}",
+                              id, g_ram[0x12], g_ram[0xEB], g_ram[0x0394], g_ram[0x0396],
+                              g_ram[0x035C] | (g_ram[0x035D] << 8), g_ppuscroll_x, g_ppuscroll_y,
+                              (unsigned long long)g_frame_count);
         return 1;
     }
 
@@ -690,14 +681,13 @@ int game_handle_debug_cmd(const char *cmd, int id, const char *json) {
         int first = 1;
         for (int i = 0; i < 16; i++) {
             uint8_t type = g_ram[0x0300 + i];
-            if (type == 0) continue;  /* empty slot */
+            if (type == 0) continue; /* empty slot */
             if (!first) buf[pos++] = ',';
             first = 0;
             pos += snprintf(buf + pos, 128,
-                "{\"slot\":%d,\"type\":\"0x%02X\",\"state\":\"0x%02X\","
-                "\"x\":%d,\"y\":%d}",
-                i, type, g_ram[0x0310 + i],
-                g_ram[0x0320 + i], g_ram[0x0330 + i]);
+                            "{\"slot\":%d,\"type\":\"0x%02X\",\"state\":\"0x%02X\","
+                            "\"x\":%d,\"y\":%d}",
+                            i, type, g_ram[0x0310 + i], g_ram[0x0320 + i], g_ram[0x0330 + i]);
         }
         pos += snprintf(buf + pos, 8, "]}");
         debug_server_send_line(buf);
@@ -711,9 +701,8 @@ int game_handle_debug_cmd(const char *cmd, int id, const char *json) {
     if (strcmp(cmd, "mantra_now") == 0) {
         char m[25];
         int n = faxanadu_generate_mantra(m, sizeof(m));
-        debug_server_send_fmt(
-            "{\"id\":%d,\"ok\":true,\"len\":%d,\"cb\":%d,\"mantra\":\"%s\"}",
-            id, n, g_ram[0x04CB], m);
+        debug_server_send_fmt("{\"id\":%d,\"ok\":true,\"len\":%d,\"cb\":%d,\"mantra\":\"%s\"}", id, n, g_ram[0x04CB],
+                              m);
         return 1;
     }
 

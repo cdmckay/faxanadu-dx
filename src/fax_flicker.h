@@ -5,7 +5,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-enum { FAX_FLICKER_SPRITES = 63 };   /* OAM entries 1-63; 0 is the status bar's sprite 0 */
+enum { FAX_FLICKER_SPRITES = 63 }; /* OAM entries 1-63; 0 is the status bar's sprite 0 */
 
 /* Fill `order` with OAM indices 1-63, each once, back to front: paint them in
  * this order and the last painted is in front. `start_slot_range` is the

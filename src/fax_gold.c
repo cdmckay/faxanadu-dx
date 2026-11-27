@@ -64,44 +64,49 @@
 #include <string.h>
 
 /* Bank 12 */
-#define ADD_GOLD_PAY    0x8531u   /* IScriptAction_AddGold: JSR IScripts_ProgressivelyAddGold, after the two
-                                     IScripts_LoadByte that set Temp_0202/3; then JMP IScripts_InvokeNextAction */
-#define COUNT_PAY       0x8560u   /* IScripts_ProgressivelyAddGold: JSR Player_AddGold, after SBC #$0A from
-                                     Temp_0202/3, LDA #$0A, STA Temp_Int24, LDA #$00, STA Temp_Int24_M; then
-                                     JMP IScripts_ProgressivelyAddGold */
-#define NO_GOLD_SKIP    0x862Au   /* IScriptAction_IfPlayerHasGold, after LDA Gold, ORA Gold_M, ORA Gold_U,
-                                     BNE @_hasGold: JMP IScripts_SkipAddrAndInvoke, only with no gold */
-#define KING_CHECK_GOLD 0xA352u   /* ISCRIPT_EOLIS_KING's CHECK_GOLD address word (0D at $A351, then 5A A3) */
-#define KING_GIFT_END   0xA359u   /* ISCRIPT_EOLIS_KING's END, past ADD_GOLD's word (09 DC 05 at $A356) */
-#define KING_NOTHING_MORE 0xA35Au /* where his CHECK_GOLD jumps with gold: 03 36 (message $36), 00 */
+/* IScriptAction_AddGold: JSR IScripts_ProgressivelyAddGold, after the two
+ * IScripts_LoadByte that set Temp_0202/3; then JMP IScripts_InvokeNextAction */
+#define ADD_GOLD_PAY             0x8531u
+/* IScripts_ProgressivelyAddGold: JSR Player_AddGold, after SBC #$0A from
+ * Temp_0202/3, LDA #$0A, STA Temp_Int24, LDA #$00, STA Temp_Int24_M; then
+ * JMP IScripts_ProgressivelyAddGold */
+#define COUNT_PAY                0x8560u
+/* IScriptAction_IfPlayerHasGold, after LDA Gold, ORA Gold_M, ORA Gold_U,
+ * BNE @_hasGold: JMP IScripts_SkipAddrAndInvoke, only with no gold */
+#define NO_GOLD_SKIP             0x862Au
+#define KING_CHECK_GOLD          0xA352u /* ISCRIPT_EOLIS_KING's CHECK_GOLD address word (0D at $A351, then 5A A3) */
+#define KING_GIFT_END            0xA359u /* ISCRIPT_EOLIS_KING's END, past ADD_GOLD's word (09 DC 05 at $A356) */
+#define KING_NOTHING_MORE        0xA35Au /* where his CHECK_GOLD jumps with gold: 03 36 (message $36), 00 */
 /* Bank 14 */
-#define TOUCH_COIN_ADD  0x8B9Fu   /* Player_HandleTouchCoin, after LDA #$09, JSR Sound_PlayEffect: LDA Gold,
-                                     CLC, ADC CurrentSprites_Values,X, STA Gold, then ADC #0 into Gold_M and
-                                     Gold_U, and JSR UI_DrawGoldValue */
+/* Player_HandleTouchCoin, after LDA #$09, JSR Sound_PlayEffect: LDA Gold,
+ * CLC, ADC CurrentSprites_Values,X, STA Gold, then ADC #0 into Gold_M and
+ * Gold_U, and JSR UI_DrawGoldValue */
+#define TOUCH_COIN_ADD           0x8B9Fu
 /* Fixed bank */
-#define LOAD_MESSAGE_CHAR 0xF4DFu /* TextBox_ShowMessage_LoadMessage, after LDA (Temp_Int24),Y: CMP #$FF,
-                                     BEQ @_endOfMessage, CMP #$FE, ... */
+/* TextBox_ShowMessage_LoadMessage, after LDA (Temp_Int24),Y: CMP #$FF,
+ * BEQ @_endOfMessage, CMP #$FE, ... */
+#define LOAD_MESSAGE_CHAR        0xF4DFu
 /* Bank 13 */
-#define KING_DIGITS     0x8C81u   /* message $35's "1500" ("I shall give you1500 Golds.") */
+#define KING_DIGITS              0x8C81u /* message $35's "1500" ("I shall give you1500 Golds.") */
 /* RAM */
-#define ISCRIPT_ADDR      0x00DBu   /* IScriptOrCHRAddr, 16 bits; IScriptOffset follows */
-#define ISCRIPT_OFFSET    0x00DDu
-#define TEMP_INT24        0x00ECu   /* the message's address, which Y indexes; Player_AddGold's amount, 16 bits */
-#define CURRENT_ROM_BANK  0x0100u
-#define TEMP_0202         0x0202u   /* the amount IScripts_ProgressivelyAddGold has left to pay, 16 bits */
-#define MESSAGE_ID        0x0213u
-#define MESSAGE_PROCESSED_LENGTH 0x0214u   /* the next byte is Message_StartAddr + this */
-#define MESSAGE_START_ADDR 0x0218u   /* 16 bits */
-#define CURRENT_SPRITES_VALUES 0x036Cu
-#define GOLD              0x0392u   /* 24 bits, little-endian */
+#define ISCRIPT_ADDR             0x00DBu /* IScriptOrCHRAddr, 16 bits; IScriptOffset follows */
+#define ISCRIPT_OFFSET           0x00DDu
+#define TEMP_INT24               0x00ECu /* the message's address, which Y indexes; Player_AddGold's amount, 16 bits */
+#define CURRENT_ROM_BANK         0x0100u
+#define TEMP_0202                0x0202u /* the amount IScripts_ProgressivelyAddGold has left to pay, 16 bits */
+#define MESSAGE_ID               0x0213u
+#define MESSAGE_PROCESSED_LENGTH 0x0214u /* the next byte is Message_StartAddr + this */
+#define MESSAGE_START_ADDR       0x0218u /* 16 bits */
+#define CURRENT_SPRITES_VALUES   0x036Cu
+#define GOLD                     0x0392u /* 24 bits, little-endian */
 /* Values */
-#define MESSAGE_KING_EXPOSITION 0x35u
-#define MESSAGE_BANK      13u
-#define KING_STOCK        1500u
-#define KING_GIFT         (2u * KING_STOCK)   /* below $8000, a multiple of 10: the routine pays it exactly */
-#define STOCK_PAY         10u                 /* what IScripts_ProgressivelyAddGold pays a frame */
-#define KING_PAY          (2u * STOCK_PAY)    /* the King's count: KING_GIFT in the frames KING_STOCK takes */
-#define FIELD_GIVEN       "gold.king_given"   /* the file in play's: "yes" once the King has paid, else "no" */
+#define MESSAGE_KING_EXPOSITION  0x35u
+#define MESSAGE_BANK             13u
+#define KING_STOCK               1500u
+#define KING_GIFT                (2u * KING_STOCK) /* below $8000, a multiple of 10: the routine pays it exactly */
+#define STOCK_PAY                10u               /* what IScripts_ProgressivelyAddGold pays a frame */
+#define KING_PAY                 (2u * STOCK_PAY)  /* the King's count: KING_GIFT in the frames KING_STOCK takes */
+#define FIELD_GIVEN              "gold.king_given" /* the file in play's: "yes" once the King has paid, else "no" */
 
 static const char stock_digits[] = "1500", gift_digits[] = "3000";
 _Static_assert(KING_STOCK == 1500u && KING_GIFT == 3000u, "the digits above are the amounts");
@@ -109,14 +114,14 @@ _Static_assert(KING_GIFT % KING_PAY == 0 && KING_GIFT / KING_PAY == KING_STOCK /
                "the King's count pays whole steps, in the original's frames");
 
 static bool enabled;
-static bool given;     /* the King has paid his gift in this game */
-static bool infer;     /* a save state without the record was loaded: fax_gold_loaded() asks the quest log */
+static bool given; /* the King has paid his gift in this game */
+static bool infer; /* a save state without the record was loaded: fax_gold_loaded() asks the quest log */
 typedef struct {
-    unsigned kings, coins, capped, line;   /* outside isolation: gifts doubled, coins, coins held at the
+    unsigned kings, coins, capped, line; /* outside isolation: gifts doubled, coins, coins held at the
                                               cap, digits of the plea served */
-    unsigned king_pays, nothing_more;      /* the King's count's pays of KING_PAY, his CHECK_GOLD sent on */
-    unsigned long coin_gold;               /* what those coins paid, in all */
-    unsigned last_coin;                    /* the last coin's own value */
+    unsigned king_pays, nothing_more;    /* the King's count's pays of KING_PAY, his CHECK_GOLD sent on */
+    unsigned long coin_gold;             /* what those coins paid, in all */
+    unsigned last_coin;                  /* the last coin's own value */
 } Seen;
 static Seen seen;
 
@@ -212,7 +217,7 @@ static int line_hook(uint16_t addr) {
     if (at < KING_DIGITS || at >= KING_DIGITS + sizeof stock_digits - 1) return 0;
     unsigned i = at - KING_DIGITS;
     if (regs.a != (uint8_t)stock_digits[i] || stock_digits[i] == gift_digits[i]) return 0;
-    regs.a = (uint8_t)gift_digits[i];   /* CMP #$FF next sets the flags from it */
+    regs.a = (uint8_t)gift_digits[i]; /* CMP #$FF next sets the flags from it */
     cyc_mod_set_regs(&regs);
     if (!cyc_mod_isolated()) ++seen.line;
     return 0;
@@ -280,7 +285,7 @@ static void hooks(int on) {
 }
 static void deactivate(void) {
     enabled = given = infer = false;
-    seen = (Seen){0};
+    seen = (Seen){ 0 };
     hooks(0);
 }
 static void activate(void) {
@@ -327,6 +332,6 @@ NES_MOD_CONSTRUCTOR(register_gold) {
         !nes_mod_register_reset_callback(deactivate) ||
         !nes_mod_register_activation_plugin("faxanadu.double-gold", activate) ||
         !nes_mod_register_savestate_hook("faxanadu.double-gold", state_get, state_set) ||
-        !nes_mod_register_savestate_validator("faxanadu.double-gold", state_validate) ||
-        !fax_save_listen(on_save)) abort();
+        !nes_mod_register_savestate_validator("faxanadu.double-gold", state_validate) || !fax_save_listen(on_save))
+        abort();
 }

@@ -56,24 +56,26 @@
 #include <stdlib.h>
 
 /* Fixed bank */
-#define IS_BLOCK_IMPASSABLE 0xE87Cu  /* ScreenBuffer_IsBlockImpassable: LDY ScreenBuffer,X, JSR
-                                        Area_GetBlockProperty, TAY, LDA BLOCK_PROPERTY_IMPASSABLE_MAP,Y, RTS */
-#define UPDATE_PLAYER_CALL  0xDB53u  /* Game_MainLoop: JSR GameLoop_UpdatePlayer, after
-                                        JSR Screen_ResetSpritesForGamePlay */
+/* ScreenBuffer_IsBlockImpassable: LDY ScreenBuffer,X, JSR
+ * Area_GetBlockProperty, TAY, LDA BLOCK_PROPERTY_IMPASSABLE_MAP,Y, RTS */
+#define IS_BLOCK_IMPASSABLE 0xE87Cu
+/* Game_MainLoop: JSR GameLoop_UpdatePlayer, after
+ * JSR Screen_ResetSpritesForGamePlay */
+#define UPDATE_PLAYER_CALL  0xDB53u
 /* RAM */
-#define AREA_CURRENT        0x0024u  /* Area_CurrentArea */
-#define SCREEN_CURRENT      0x0063u  /* Area_CurrentScreen */
-#define PLAYER_X            0x009Eu  /* Player_PosX_Block */
-#define PLAYER_Y            0x00A1u  /* Player_PosY */
+#define AREA_CURRENT        0x0024u /* Area_CurrentArea */
+#define SCREEN_CURRENT      0x0063u /* Area_CurrentScreen */
+#define PLAYER_X            0x009Eu /* Player_PosX_Block */
+#define PLAYER_Y            0x00A1u /* Player_PosY */
 /* Values */
 #define AREA_EOLIS          0x00u
-#define EDGE_COLUMN         15u      /* the open column */
-#define FLOOR_ROW           11u      /* Eolis's floor; the column stands solid down to it */
-#define PROPERTY_SOLID      0x01u    /* BLOCK_PROPERTY_IMPASSABLE_MAP[1] = 1 */
-#define WALL_X              224u     /* column 14: past it he overlaps column 15 */
-#define BESIDE_WALL_X       208u     /* column 13, the floor next to the wall */
-#define FLOOR_Y             144u     /* standing on row 11 (Y + 32 = its top) */
-#define BOTTOM_Y            0xC0u    /* Player_SetPosAtBottomEdge */
+#define EDGE_COLUMN         15u   /* the open column */
+#define FLOOR_ROW           11u   /* Eolis's floor; the column stands solid down to it */
+#define PROPERTY_SOLID      0x01u /* BLOCK_PROPERTY_IMPASSABLE_MAP[1] = 1 */
+#define WALL_X              224u  /* column 14: past it he overlaps column 15 */
+#define BESIDE_WALL_X       208u  /* column 13, the floor next to the wall */
+#define FLOOR_Y             144u  /* standing on row 11 (Y + 32 = its top) */
+#define BOTTOM_Y            0xC0u /* Player_SetPosAtBottomEdge */
 #define FLAG_N              0x80u
 #define FLAG_Z              0x02u
 
@@ -96,8 +98,8 @@ bool fax_shaft_rescue(uint8_t area, uint8_t screen, uint8_t x, uint8_t y, uint8_
 }
 
 static bool enabled;
-static unsigned solid, rescued;          /* checks answered solid and heroes put back, outside isolation */
-static uint8_t from_screen = 0xFF, from_x, from_y;   /* the last hero put back: where he was */
+static unsigned solid, rescued;                    /* checks answered solid and heroes put back, outside isolation */
+static uint8_t from_screen = 0xFF, from_x, from_y; /* the last hero put back: where he was */
 
 /* ScreenBuffer_IsBlockImpassable's entry: X is the block's index. */
 static int solid_hook(uint16_t addr) {
@@ -105,8 +107,8 @@ static int solid_hook(uint16_t addr) {
     CycModRegs regs;
     cyc_mod_regs(&regs);
     if (!fax_shaft_solid(cyc_mod_peek(AREA_CURRENT), cyc_mod_peek(SCREEN_CURRENT), regs.x)) return 0;
-    regs.a = 1;                          /* BLOCK_PROPERTY_IMPASSABLE_MAP[PROPERTY_SOLID] */
-    regs.y = PROPERTY_SOLID;             /* the routine's TAY leaves the property in Y */
+    regs.a = 1;              /* BLOCK_PROPERTY_IMPASSABLE_MAP[PROPERTY_SOLID] */
+    regs.y = PROPERTY_SOLID; /* the routine's TAY leaves the property in Y */
     regs.p = (uint8_t)(regs.p & ~(FLAG_N | FLAG_Z));
     cyc_mod_set_regs(&regs);
     if (!cyc_mod_isolated()) ++solid;
@@ -155,8 +157,7 @@ static void shaft_state(int id, const char *line) {
     char fields[160];
     snprintf(fields, sizeof fields,
              "\"enabled\":%s,\"solid\":%u,\"rescued\":%u,\"from_screen\":%u,\"from_x\":%u,\"from_y\":%u",
-             enabled ? "true" : "false", solid, rescued, (unsigned)from_screen, (unsigned)from_x,
-             (unsigned)from_y);
+             enabled ? "true" : "false", solid, rescued, (unsigned)from_screen, (unsigned)from_x, (unsigned)from_y);
     cyc_tcp_ok(id, fields);
 }
 void fax_shaft_tcp_setup(void) {
@@ -173,5 +174,6 @@ NES_MOD_CONSTRUCTOR(register_eolis_shaft) {
     if (!nes_mod_register_function_entry_plugin(hook_ids[0], IS_BLOCK_IMPASSABLE, solid_hook) ||
         !nes_mod_register_function_entry_plugin(hook_ids[1], UPDATE_PLAYER_CALL, rescue_hook) ||
         !nes_mod_register_reset_callback(deactivate) ||
-        !nes_mod_register_activation_plugin("faxanadu.eolis-shaft", activate)) abort();
+        !nes_mod_register_activation_plugin("faxanadu.eolis-shaft", activate))
+        abort();
 }

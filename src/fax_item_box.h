@@ -24,9 +24,12 @@ void fax_item_box_tcp_setup(void);
  * with arms three wide on lines 17-18 and 29-30. Lit, those pixels, and only
  * those, are gold. */
 enum {
-    FAX_ITEM_BOX_OPEN_X = 216, FAX_ITEM_BOX_CLOSE_X = 240, FAX_ITEM_BOX_TILE = 8,   /* the [ and ] tiles, 8 wide */
-    FAX_ITEM_BOX_LINE = 16, FAX_ITEM_BOX_LINES = 16,                                /* the box's lines: 16-31 */
-    FAX_ITEM_BOX_PIXELS = 44,                                                       /* the brackets' white pixels */
+    FAX_ITEM_BOX_OPEN_X = 216,
+    FAX_ITEM_BOX_CLOSE_X = 240,
+    FAX_ITEM_BOX_TILE = 8, /* the [ and ] tiles, 8 wide */
+    FAX_ITEM_BOX_LINE = 16,
+    FAX_ITEM_BOX_LINES = 16,  /* the box's lines: 16-31 */
+    FAX_ITEM_BOX_PIXELS = 44, /* the brackets' white pixels */
 };
 
 /* The box's item is running: `selected` (SelectedItem, the item the box

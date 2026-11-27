@@ -10,13 +10,14 @@
 #
 # Run inside the Nix devShell (direnv, or nix develop). The game build in
 # build-cycle is configured on first use, and a warning in the repo's own C
-# fails it; the unit tests build with AddressSanitizer and UBSan, and
-# clang-tidy lints src/ (docs/C_TOOLING.md). The end-to-end runs fill every
-# hardware thread, so only one suite on the machine runs them at a time:
-# another checkout's suite waits for the lock, then runs. E2E_JOBS=N plays at
-# most N of its runs at once (default: one a thread). Without --quick, the
-# allocation checks, lint, unit tests and the game's smoke run go on beside the
-# end-to-end runs, and print when those end.
+# fails it; the unit tests build with AddressSanitizer and UBSan, clang-tidy
+# lints src/, and the C must be formatted (tools/format.sh; docs/C_TOOLING.md).
+# The end-to-end runs fill every hardware thread, so only one suite on the
+# machine runs them at a time: another checkout's suite waits for the lock,
+# then runs. E2E_JOBS=N plays at most N of its runs at once (default: one a
+# thread). Without --quick, the allocation checks, lint, the format check,
+# unit tests and the game's smoke run go on beside the end-to-end runs, and
+# print when those end.
 set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 ROM="$REPO/Faxanadu (USA).nes"
@@ -27,7 +28,7 @@ while [ $# -gt 0 ]; do
     --rom) ROM="$(realpath "$2")"; shift 2;;
     --quick) QUICK=1; shift;;
     --sanitize) SANITIZED=1; shift;;
-    -h|--help) sed -n '2,19p' "$0"; exit 0;;
+    -h|--help) sed -n '2,20p' "$0"; exit 0;;
     *) echo "unknown arg: $1" >&2; exit 2;;
   esac
 done
@@ -88,6 +89,9 @@ python3 tests/allocations/check_allocations_test.py --rom "$ROM"
 
 echo "== lint"
 JOBS="$JOBS" tools/lint.sh
+
+echo "== format"
+tools/format.sh --check
 
 echo "== unit tests"
 unit travel
@@ -340,7 +344,7 @@ for name in "${names[@]}"; do
 done | sort -n | tee >(awk '{ print $3, $4 }' > "$TIMES") | awk '{ printf "  %6.1f  %5.1f  %s\n", $1 / 1000, $2 / 1000, $4 }'
 checked=$(cat "$OUT/checks.code" 2>/dev/null || echo 1)
 cat "$OUT/checks.log"
-[ "$checked" = 0 ] || echo "== FAILED: the checks above (allocations, lint, unit tests or the game's smoke run)" >&2
+[ "$checked" = 0 ] || echo "== FAILED: the checks above (allocations, lint, format, unit tests or the game's smoke run)" >&2
 [ "$failed" = 0 ] || echo "end-to-end tests failed; screenshots in $OUT/*-e2e*/" >&2
 if [ "$SANITIZED" = 1 ] && [ -n "$(ls -A "$REPORTS")" ]; then
   failed=1

@@ -38,39 +38,42 @@
 
 /* RAM */
 #define AREA_CURRENT_AREA   0x0024u
-#define AREA_CURRENT_SCREEN 0x0063u   /* the building's number, in AREA_BUILDINGS */
-#define TEXTBOX_X           0x0208u   /* TextBox_X, TextBox_Y: the box last opened or closed, in tiles */
+#define AREA_CURRENT_SCREEN 0x0063u /* the building's number, in AREA_BUILDINGS */
+#define TEXTBOX_X           0x0208u /* TextBox_X, TextBox_Y: the box last opened or closed, in tiles */
 #define TEXTBOX_Y           0x0209u
-#define ISCRIPT_PORTRAIT_ID 0x03C7u   /* the entity byte & $7F while a portrait shows; $FF none */
-#define AREA_SAVED_AREA     0x03D5u   /* Game_EnterBuilding: where the hero stood, at the door */
+#define ISCRIPT_PORTRAIT_ID 0x03C7u /* the entity byte & $7F while a portrait shows; $FF none */
+#define AREA_SAVED_AREA     0x03D5u /* Game_EnterBuilding: where the hero stood, at the door */
 #define AREA_SAVED_SCREEN   0x03D6u
 
 /* In tiles of the 256 x 240 picture. */
-enum { PORTRAIT_X = 2, PORTRAIT_Y = 14, PORTRAIT_W = 8, PORTRAIT_H = 10 };   /* TextBox_SetCoordsForPortrait */
-enum { DIALOGUE_X = 10, DIALOGUE_Y = 16, DIALOGUE_W = 20 };   /* TextBox_SetCoordsForNPC, with a portrait */
-enum { HUD_ROWS = 4, TAB_ROWS = 3 };                          /* a tab: its frame around one line */
+enum { PORTRAIT_X = 2, PORTRAIT_Y = 14, PORTRAIT_W = 8, PORTRAIT_H = 10 }; /* TextBox_SetCoordsForPortrait */
+enum { DIALOGUE_X = 10, DIALOGUE_Y = 16, DIALOGUE_W = 20 }; /* TextBox_SetCoordsForNPC, with a portrait */
+enum { HUD_ROWS = 4, TAB_ROWS = 3 };                        /* a tab: its frame around one line */
 /* TextBox_Open's frame corner tiles */
 enum { CORNER_TOP_LEFT = 1, CORNER_TOP_RIGHT = 3, CORNER_BOTTOM_LEFT = 5, CORNER_BOTTOM_RIGHT = 6 };
 
 /* By portrait. The Pink Shirt Guy's and the Smoking Guy's portraits are in
  * the ROM, but no script shows them. */
 static const char *const titles[FAX_PORTRAITS] = {
-    [FAX_PORTRAIT_KING] = "King",                       /* $33 "The King is waiting for you." */
-    [FAX_PORTRAIT_GURU] = "Guru",                       /* $94 "The Guru of Conflate has..." */
-    [FAX_PORTRAIT_MARTIAL_ARTIST] = "Martial Artist",   /* $19 "a martial art lesson" */
-    [FAX_PORTRAIT_MAGICIAN] = "Magician",               /* $15 "I shall give magic", $17 "I'll teach you" */
-    [FAX_PORTRAIT_DOCTOR] = "Doctor",                   /* $45 "Our doctor can help." */
-    [FAX_PORTRAIT_NURSE] = "Nurse",                     /* in the hospitals, beside the Doctor */
-    [FAX_PORTRAIT_MEAT_SALESMAN] = "Meat Seller",       /* $07-$0D "Dried meat to bring energy" */
-    [FAX_PORTRAIT_TOOLS_SALESMAN] = "Tool Seller",      /* $0F "I sell tools." */
-    [FAX_PORTRAIT_KEY_SALESMAN] = "Key Seller",         /* $0E "I sell keys." */
+    [FAX_PORTRAIT_KING] = "King",                     /* $33 "The King is waiting for you." */
+    [FAX_PORTRAIT_GURU] = "Guru",                     /* $94 "The Guru of Conflate has..." */
+    [FAX_PORTRAIT_MARTIAL_ARTIST] = "Martial Artist", /* $19 "a martial art lesson" */
+    [FAX_PORTRAIT_MAGICIAN] = "Magician",             /* $15 "I shall give magic", $17 "I'll teach you" */
+    [FAX_PORTRAIT_DOCTOR] = "Doctor",                 /* $45 "Our doctor can help." */
+    [FAX_PORTRAIT_NURSE] = "Nurse",                   /* in the hospitals, beside the Doctor */
+    [FAX_PORTRAIT_MEAT_SALESMAN] = "Meat Seller",     /* $07-$0D "Dried meat to bring energy" */
+    [FAX_PORTRAIT_TOOLS_SALESMAN] = "Tool Seller",    /* $0F "I sell tools." */
+    [FAX_PORTRAIT_KEY_SALESMAN] = "Key Seller",       /* $0E "I sell keys." */
 };
 
 /* DEST_SCREEN_FOR_TEMPLE_SPAWN: each temple's building, by temple. The
  * Mascon Guru's door opens on the Mist, but he is Mascon's (Guru travel). */
-static const struct { uint8_t building; int8_t zone; } temples[] = {
-    { 0x02, FAX_ZONE_EOLIS }, { 0x0B, FAX_ZONE_APOLUNE }, { 0x10, FAX_ZONE_FOREPAW },
-    { 0x1E, FAX_ZONE_MASCON }, { 0x23, FAX_ZONE_VICTIM }, { 0x2B, FAX_ZONE_CONFLATE },
+static const struct {
+    uint8_t building;
+    int8_t zone;
+} temples[] = {
+    { 0x02, FAX_ZONE_EOLIS },    { 0x0B, FAX_ZONE_APOLUNE },       { 0x10, FAX_ZONE_FOREPAW },
+    { 0x1E, FAX_ZONE_MASCON },   { 0x23, FAX_ZONE_VICTIM },        { 0x2B, FAX_ZONE_CONFLATE },
     { 0x33, FAX_ZONE_DAYBREAK }, { 0x3C, FAX_ZONE_DARTMOOR_TOWN },
 };
 
@@ -115,14 +118,14 @@ static bool portrait_box_shown(void) {
 
 typedef struct {
     char name[FAX_SPEAKER_NAME_MAX + 1];
-    int col, row;   /* the tab's top-left cell */
-    int pad;        /* blank cells either side of the name: 1, or 0 for a name that would not fit */
+    int col, row; /* the tab's top-left cell */
+    int pad;      /* blank cells either side of the name: 1, or 0 for a name that would not fit */
 } Tab;
-static int tab_cols(const Tab *t) { return (int)strlen(t->name) + 2 * t->pad; }   /* inside the frame */
+static int tab_cols(const Tab *t) { return (int)strlen(t->name) + 2 * t->pad; } /* inside the frame */
 
 /* Who is speaking, if anyone, by RAM alone. */
 static bool speaker(char name[FAX_SPEAKER_NAME_MAX + 1]) {
-    if (q(AREA_CURRENT_AREA) != FAX_AREA_BUILDINGS) return false;   /* also the title, where RAM is 0 */
+    if (q(AREA_CURRENT_AREA) != FAX_AREA_BUILDINGS) return false; /* also the title, where RAM is 0 */
     int zone = fax_zone_at(q(AREA_SAVED_AREA), q(AREA_SAVED_SCREEN));
     return fax_speaker_name(q(ISCRIPT_PORTRAIT_ID), q(AREA_CURRENT_SCREEN), zone, name);
 }
@@ -143,7 +146,10 @@ static bool tab_now(Tab *t) {
  * scaled to fit and centered, as Seamless shows a building (fax_world.c). */
 static void to_picture(int w, int h, int *x, int *y) {
     int nw = w < 256 ? w : 256, nh = 240 * nw / 256;
-    if (nh > h) { nh = h; nw = 256 * nh / 240; }
+    if (nh > h) {
+        nh = h;
+        nw = 256 * nh / 240;
+    }
     *x = (w - nw) / 2 + *x * nw / 256;
     *y = *y * nh / 240;
 }
@@ -165,14 +171,16 @@ const uint32_t *fax_speaker_present(const uint32_t *picture, int *w, int *h) {
     if (n > capacity) {
         uint32_t *grown = realloc(canvas, n * sizeof *grown);
         if (!grown) return picture;
-        canvas = grown; capacity = n;
+        canvas = grown;
+        capacity = n;
     }
     memcpy(canvas, from, n * sizeof *canvas);
     int x = tab.col * FAX_TEXT_CELL, y = tab.row * FAX_TEXT_CELL;
     to_picture(width, height, &x, &y);
     fax_text_box(canvas, width, height, x, y, tab_cols(&tab), 1, 255);
     fax_text_draw(canvas, width, height, x + (1 + tab.pad) * FAX_TEXT_CELL, y + FAX_TEXT_CELL, tab.name, 255);
-    *w = width; *h = height;
+    *w = width;
+    *h = height;
     return canvas;
 }
 
@@ -187,11 +195,10 @@ static void speaker_state(int id, const char *line) {
              "\"enabled\":%s,\"font\":%s,\"area\":%u,\"building\":%u,\"portrait\":%u,\"door\":%s%s%s,"
              "\"name\":%s%s%s,\"box\":%s,\"shown\":%s,\"col\":%d,\"row\":%d,\"cols\":%d",
              enabled ? "true" : "false", fax_text_loaded() ? "true" : "false", q(AREA_CURRENT_AREA),
-             q(AREA_CURRENT_SCREEN), q(ISCRIPT_PORTRAIT_ID),
-             door ? "\"" : "", door ? door->name : "null", door ? "\"" : "",
-             named ? "\"" : "", named ? name : "null", named ? "\"" : "",
-             portrait_box_shown() ? "true" : "false", shown ? "true" : "false",
-             shown ? tab.col : -1, shown ? tab.row : -1, shown ? tab_cols(&tab) + 2 : 0);
+             q(AREA_CURRENT_SCREEN), q(ISCRIPT_PORTRAIT_ID), door ? "\"" : "", door ? door->name : "null",
+             door ? "\"" : "", named ? "\"" : "", named ? name : "null", named ? "\"" : "",
+             portrait_box_shown() ? "true" : "false", shown ? "true" : "false", shown ? tab.col : -1,
+             shown ? tab.row : -1, shown ? tab_cols(&tab) + 2 : 0);
     cyc_tcp_ok(id, fields);
 }
 void fax_speaker_tcp_setup(void) {
@@ -207,5 +214,6 @@ static void activate(void) { enabled = true; }
 
 NES_MOD_CONSTRUCTOR(register_speaker_names) {
     if (!nes_mod_register_reset_callback(deactivate) ||
-        !nes_mod_register_activation_plugin("faxanadu.speaker-names", activate)) abort();
+        !nes_mod_register_activation_plugin("faxanadu.speaker-names", activate))
+        abort();
 }

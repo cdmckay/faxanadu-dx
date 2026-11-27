@@ -11,24 +11,31 @@
 #include <string.h>
 
 static unsigned checks;
-#define CHECK(test) do{++checks;if(!(test)){fprintf(stderr,"FAIL line %u: %s\n",__LINE__,#test);exit(1);}}while(0)
+#define CHECK(test)                                                                                                    \
+    do {                                                                                                               \
+        ++checks;                                                                                                      \
+        if (!(test)) {                                                                                                 \
+            fprintf(stderr, "FAIL line %u: %s\n", __LINE__, #test);                                                    \
+            exit(1);                                                                                                   \
+        }                                                                                                              \
+    } while (0)
 
 /* RAM */
-#define SOUND_STATE_COUNTER   0x0127u   /* SoundEffect_State_Counter */
-#define STATUS_FLAG           0x00A5u   /* Player_StatusFlag: $02 knockback */
-#define HP                    0x0431u
+#define SOUND_STATE_COUNTER 0x0127u /* SoundEffect_State_Counter */
+#define STATUS_FLAG         0x00A5u /* Player_StatusFlag: $02 knockback */
+#define HP                  0x0431u
 /* ROM: bank 5's SOUNDEFFECT_MESSAGE_NOISE_LO ($10, $01) and the next routine,
  * SoundEffect_HitEnemy_Setup: LDA #$14 */
-#define MESSAGE_NOISE_LO      0x86D1u
+#define MESSAGE_NOISE_LO    0x86D1u
 static const uint8_t bank5_bytes[] = { 0x10, 0x01, 0xA9, 0x14 };
-#define HOOD_SHOT_DAMAGE      8u        /* SPRITE_ENTITY_DAMAGES[$51] */
+#define HOOD_SHOT_DAMAGE 8u /* SPRITE_ENTITY_DAMAGES[$51] */
 
 /* ---- the machine ---- */
 static uint8_t ram[0x800], bank5[0x4000];
 static unsigned mapped = 5;
 static CycModRegs cpu;
 static bool isolated;
-static int sound_on = -1, shield_on = -1;   /* the hooks' enabled states, as last set */
+static int sound_on = -1, shield_on = -1; /* the hooks' enabled states, as last set */
 
 uint8_t cyc_mod_peek(uint16_t addr) {
     if (addr < 0x2000) return ram[addr & 0x7FF];
@@ -41,7 +48,11 @@ bool cyc_mod_poke(uint16_t addr, uint8_t value) {
     return true;
 }
 void cyc_mod_regs(CycModRegs *out) { *out = cpu; }
-void cyc_mod_set_regs(const CycModRegs *in) { uint16_t pc = cpu.pc; cpu = *in; cpu.pc = pc; }
+void cyc_mod_set_regs(const CycModRegs *in) {
+    uint16_t pc = cpu.pc;
+    cpu = *in;
+    cpu.pc = pc;
+}
 bool cyc_mod_isolated(void) { return isolated; }
 int nes_mod_register_function_entry_plugin(const char *id, uint16_t addr, NESModFunctionEntryCallback cb) {
     return (!strcmp(id, sound_id) && addr == MESSAGE_SOUND_INDEX && cb == message_sound_hook) ||
@@ -57,7 +68,10 @@ int nes_mod_register_reset_callback(NESModActivationCallback cb) { return cb == 
 int nes_mod_register_activation_plugin(const char *id, NESModActivationCallback cb) {
     return !strcmp(id, "faxanadu.small-fixes") && cb == activate;
 }
-void nes_mod_set_local_only(const char *name, int required) { (void)name; (void)required; }
+void nes_mod_set_local_only(const char *name, int required) {
+    (void)name;
+    (void)required;
+}
 
 static void setup(void) {
     memset(ram, 0, sizeof ram);
@@ -80,8 +94,8 @@ static void setup(void) {
 static uint8_t message_tick(bool hooked) {
     mapped = 5;
     cpu.a = ram[SOUND_STATE_COUNTER] & 0x02;
-    if (hooked) CHECK(message_sound_hook(MESSAGE_SOUND_INDEX) == 0);   /* the game goes on */
-    cpu.x = cpu.a;                                                      /* TAX */
+    if (hooked) CHECK(message_sound_hook(MESSAGE_SOUND_INDEX) == 0); /* the game goes on */
+    cpu.x = cpu.a;                                                   /* TAX */
     uint8_t noise_lo = cyc_mod_peek((uint16_t)(MESSAGE_NOISE_LO + cpu.x));
     ram[SOUND_STATE_COUNTER]++;
     return noise_lo;
@@ -98,9 +112,9 @@ static void the_typing_sound(void) {
     setup();
     uint8_t ticks[4];
     character_sound(false, ticks);
-    CHECK(!memcmp(ticks, ((uint8_t[]){ 0x10, 0x10, 0xA9, 0xA9 }), 4));   /* the original: past the table */
+    CHECK(!memcmp(ticks, ((uint8_t[]){ 0x10, 0x10, 0xA9, 0xA9 }), 4)); /* the original: past the table */
     character_sound(true, ticks);
-    CHECK(!memcmp(ticks, ((uint8_t[]){ 0x10, 0x10, 0x01, 0x01 }), 4));   /* the table's own, every two ticks */
+    CHECK(!memcmp(ticks, ((uint8_t[]){ 0x10, 0x10, 0x01, 0x01 }), 4)); /* the table's own, every two ticks */
     CHECK(sounds == 4);
     CHECK(message_sound_index(0) == 0 && message_sound_index(2) == 1);
     /* Only A changes, and isolated machines are fixed too but not counted. */
@@ -116,7 +130,7 @@ static void the_typing_sound(void) {
 
 /* ---- the shield: Ointment and iframes ---- */
 
-static unsigned shield_sounds;   /* sound $0C, played as Player_HandleShieldHitByMagic removes a shot */
+static unsigned shield_sounds; /* sound $0C, played as Player_HandleShieldHitByMagic removes a shot */
 
 /* Player_HandleShieldHitByMagic for the Hood's shot (8 HP), on the machine
  * as it is: JSR Player_HandleHitByMagic, whose entry is the hook site; its

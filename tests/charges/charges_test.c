@@ -11,15 +11,22 @@ static char logged[128];
 #include "fax_charges.c"
 
 static unsigned checks;
-#define CHECK(test) do{++checks;if(!(test)){fprintf(stderr,"FAIL line %u: %s\n",__LINE__,#test);exit(1);}}while(0)
+#define CHECK(test)                                                                                                    \
+    do {                                                                                                               \
+        ++checks;                                                                                                      \
+        if (!(test)) {                                                                                                 \
+            fprintf(stderr, "FAIL line %u: %s\n", __LINE__, #test);                                                    \
+            exit(1);                                                                                                   \
+        }                                                                                                              \
+    } while (0)
 
 /* ---- the machine ---- */
-enum { HUD_X = 92 };                        /* Seamless's status bar band at 424 wide, with the Elixir left of it */
+enum { HUD_X = 92 }; /* Seamless's status bar band at 424 wide, with the Elixir left of it */
 static uint8_t ram[0x800];
 static uint8_t cart[16 * 16384];
 static size_t cart_size = sizeof cart;
 static uint8_t palette_ram[32];
-static uint8_t mask = 0x1E;                 /* PPUMASK: background and sprites on, no emphasis */
+static uint8_t mask = 0x1E; /* PPUMASK: background and sprites on, no emphasis */
 static FaxCharge charge_now[FAX_RECHARGE_ITEMS];
 static bool box_up, hud_up = true;
 static int world_x = HUD_X;
@@ -27,7 +34,9 @@ static uint32_t native[256 * 240];
 static int presents;
 uint32_t hw_palette_argb[512];
 
-FaxCharge fax_recharge_charge(int item) { return item >= 0 && item < FAX_RECHARGE_ITEMS ? charge_now[item] : FAX_CHARGE_NONE; }
+FaxCharge fax_recharge_charge(int item) {
+    return item >= 0 && item < FAX_RECHARGE_ITEMS ? charge_now[item] : FAX_CHARGE_NONE;
+}
 bool fax_text_box_showing(void) { return box_up; }
 bool fax_text_hud_showing(void) { return hud_up; }
 int fax_world_hud_x(int width) { return width <= 256 ? 0 : world_x; }
@@ -36,15 +45,26 @@ size_t cyc_mod_copy_cart_payload(uint8_t *out, size_t capacity) {
     if (out && capacity >= cart_size) memcpy(out, cart, cart_size);
     return cart_size;
 }
-uint8_t cyc_render_line_mask(int y) { CHECK(y >= 16 && y < 32); return mask; }   /* a status bar line */
+uint8_t cyc_render_line_mask(int y) {
+    CHECK(y >= 16 && y < 32);
+    return mask;
+} /* a status bar line */
 uint8_t cyc_render_palette(int e) { return palette_ram[e & 31]; }
-const uint32_t *cyc_render_present(int *w, int *h) { ++presents; *w = 256; *h = 240; return native; }
+const uint32_t *cyc_render_present(int *w, int *h) {
+    ++presents;
+    *w = 256;
+    *h = 240;
+    return native;
+}
 
 static NESModActivationCallback reset_cb, plugin_cb;
 static NESModSavestateGet save_get;
 static NESModSavestateSet save_set;
 static NESModSavestateValidate save_validate;
-int nes_mod_register_reset_callback(NESModActivationCallback cb) { reset_cb = cb; return 1; }
+int nes_mod_register_reset_callback(NESModActivationCallback cb) {
+    reset_cb = cb;
+    return 1;
+}
 int nes_mod_register_activation_plugin(const char *id, NESModActivationCallback cb) {
     CHECK(!strcmp(id, "faxanadu.charges"));
     plugin_cb = cb;
@@ -52,7 +72,8 @@ int nes_mod_register_activation_plugin(const char *id, NESModActivationCallback 
 }
 int nes_mod_register_savestate_hook(const char *id, NESModSavestateGet get, NESModSavestateSet set) {
     CHECK(!strcmp(id, "faxanadu.charges"));
-    save_get = get; save_set = set;
+    save_get = get;
+    save_set = set;
     return 1;
 }
 int nes_mod_register_savestate_validator(const char *id, NESModSavestateValidate v) {
@@ -62,18 +83,20 @@ int nes_mod_register_savestate_validator(const char *id, NESModSavestateValidate
 }
 
 enum { BOOTS = FAX_RECHARGE_BOOTS, GLASS = FAX_RECHARGE_GLASS, ELIXIR = FAX_RECHARGE_ELIXIR };
-enum { W = 424, H = 240, X = HUD_X - 16, TOP = 16 };   /* the Elixir: against the band's left edge, rows 16-31 */
-#define NONE FAX_CHARGE_NONE
-#define READY FAX_CHARGE_READY
-#define USED FAX_CHARGE_USED
-#define BACKDROP 0xFF123456u                /* what Seamless drew there: the black band, or anything */
+enum { W = 424, H = 240, X = HUD_X - 16, TOP = 16 }; /* the Elixir: against the band's left edge, rows 16-31 */
+#define NONE     FAX_CHARGE_NONE
+#define READY    FAX_CHARGE_READY
+#define USED     FAX_CHARGE_USED
+#define BACKDROP 0xFF123456u /* what Seamless drew there: the black band, or anything */
 
 /* Bank 10 as the game has it: ITEM_TILEMAP_INDEXES ($B4E4) gives each item
  * four tile numbers, and each tile is 16 bytes from $8500. The pictures here
  * are made up, a different one for each item, with every pixel value, so a
  * picture drawn is the Elixir's and no other's. */
-static const uint8_t ITEM[3] = { 0x0F, 0x0D, 0x12 };              /* ITEMINVENTORY_WING_BOOTS, _HOUR_GLASS, _ELIXIR */
-static const uint8_t TILE[3][4] = { { 0x22, 0x23, 0x24, 0x25 }, { 0x1A, 0x1B, 0x1C, 0x1D }, { 0x34, 0x35, 0x36, 0x37 } };
+static const uint8_t ITEM[3] = { 0x0F, 0x0D, 0x12 }; /* ITEMINVENTORY_WING_BOOTS, _HOUR_GLASS, _ELIXIR */
+static const uint8_t TILE[3][4] = { { 0x22, 0x23, 0x24, 0x25 },
+                                    { 0x1A, 0x1B, 0x1C, 0x1D },
+                                    { 0x34, 0x35, 0x36, 0x37 } };
 static uint8_t *bank10(void) { return cart + 10 * 16384; }
 static void make_cart(void) {
     memset(cart, 0, sizeof cart);
@@ -95,26 +118,36 @@ static unsigned value_at(int x, int y) {
 static void power_on(bool on) {
     reset_cb();
     memset(ram, 0, sizeof ram);
-    ram[0x038D] = 3;                        /* UI_AttributeDataIndex: Eolis's status bar */
-    static const uint8_t eolis[4] = { 0x0F, 0x1A, 0x16, 0x30 };   /* black, green, pink, white */
+    ram[0x038D] = 3;                                            /* UI_AttributeDataIndex: Eolis's status bar */
+    static const uint8_t eolis[4] = { 0x0F, 0x1A, 0x16, 0x30 }; /* black, green, pink, white */
     for (int p = 0; p < 4; ++p) memcpy(palette_ram + p * 4, eolis, 4);
-    palette_ram[12 + 1] = 0x1A; palette_ram[12 + 2] = 0x16; palette_ram[12 + 3] = 0x30;
+    palette_ram[12 + 1] = 0x1A;
+    palette_ram[12 + 2] = 0x16;
+    palette_ram[12 + 3] = 0x30;
     mask = 0x1E;
     memset(charge_now, 0, sizeof charge_now);
-    box_up = false; hud_up = true; world_x = HUD_X;
+    box_up = false;
+    hud_up = true;
+    world_x = HUD_X;
     loaded = failed = false;
     if (on) plugin_cb();
 }
-static void frame(void) { ++ram[0x1A]; fax_charges_frame_end(); }   /* the NMI's InterruptCounter, then the frame's end */
-static void frames(int n) { while (n--) frame(); }
+static void frame(void) {
+    ++ram[0x1A];
+    fax_charges_frame_end();
+} /* the NMI's InterruptCounter, then the frame's end */
+static void frames(int n) {
+    while (n--) frame();
+}
 
 static uint32_t seamless[W * H];
 static const uint32_t *present(int *w, int *h) {
     for (int i = 0; i < W * H; ++i) seamless[i] = BACKDROP;
-    *w = W; *h = H;
+    *w = W;
+    *h = H;
     return fax_charges_present(seamless, w, h);
 }
-static uint32_t color(uint8_t nes) { return hw_palette_argb[nes] ; }
+static uint32_t color(uint8_t nes) { return hw_palette_argb[nes]; }
 /* The Elixir at x of a picture `px`, W wide: its picture in `inks` (by pixel value), the backdrop where it is clear. */
 static bool drawn_at(const uint32_t *px, int x, const uint32_t inks[4]) {
     for (int y = 0; y < 16; ++y)
@@ -153,7 +186,7 @@ static const uint32_t *grey_inks(void) {
 static void registers(void) {
     CHECK(reset_cb && plugin_cb && save_get && save_set && save_validate);
     power_on(false);
-    CHECK(fax_charges_width() == 0);               /* off: Seamless keeps the status bar centred */
+    CHECK(fax_charges_width() == 0); /* off: Seamless keeps the status bar centred */
     power_on(true);
     CHECK(fax_charges_width() == FAX_CHARGES_ITEM && FAX_CHARGES_ITEM == 16);
 }
@@ -164,12 +197,12 @@ static void greys(void) {
     static const uint8_t blacks[] = { 0x0D, 0x1D, 0x0E, 0x1E, 0x2E, 0x3E, 0x0F, 0x1F, 0x2F, 0x3F };
     for (unsigned i = 0; i < sizeof blacks; ++i) CHECK(fax_charges_grey(blacks[i]) == 0x0F);
     for (uint8_t hue = 1; hue <= 0x0C; ++hue) {
-        CHECK(fax_charges_grey(hue) == 0x2D);              /* dark colors */
-        CHECK(fax_charges_grey(0x10 | hue) == 0x2D);       /* the status bar's green $1A and pink $16 */
+        CHECK(fax_charges_grey(hue) == 0x2D);        /* dark colors */
+        CHECK(fax_charges_grey(0x10 | hue) == 0x2D); /* the status bar's green $1A and pink $16 */
         CHECK(fax_charges_grey(0x20 | hue) == 0x00);
         CHECK(fax_charges_grey(0x30 | hue) == 0x10);
     }
-    CHECK(fax_charges_grey(0x30) == 0x10 && fax_charges_grey(0x20) == 0x10);   /* white: light grey */
+    CHECK(fax_charges_grey(0x30) == 0x10 && fax_charges_grey(0x20) == 0x10); /* white: light grey */
     CHECK(fax_charges_grey(0x10) == 0x00 && fax_charges_grey(0x3D) == 0x00);
     CHECK(fax_charges_grey(0x00) == 0x2D && fax_charges_grey(0x2D) == 0x2D);
 }
@@ -198,7 +231,8 @@ static void the_three_states(void) {
     /* The Wing Boots and the Hour Glass, ready or in use, are never drawn, and change nothing of the Elixir's. */
     for (int boots = NONE; boots <= USED; ++boots)
         for (int glass = NONE; glass <= USED; ++glass) {
-            charge_now[BOOTS] = (FaxCharge)boots; charge_now[GLASS] = (FaxCharge)glass;
+            charge_now[BOOTS] = (FaxCharge)boots;
+            charge_now[GLASS] = (FaxCharge)glass;
             charge_now[ELIXIR] = NONE;
             frame();
             CHECK(untouched(present(&w, &h)));
@@ -212,7 +246,9 @@ static void the_three_states(void) {
     CHECK(grey_inks()[1] == color(0x2D) && grey_inks()[2] == color(0x2D) && grey_inks()[3] == color(0x10));
     /* Another screen's palette (UI_AttributeDataIndex 1). */
     ram[0x038D] = 1;
-    palette_ram[4 + 1] = 0x06; palette_ram[4 + 2] = 0x27; palette_ram[4 + 3] = 0x3C;
+    palette_ram[4 + 1] = 0x06;
+    palette_ram[4 + 2] = 0x27;
+    palette_ram[4 + 3] = 0x3C;
     px = present(&w, &h);
     uint32_t other[4] = { 0, color(0x06), color(0x27), color(0x3C) };
     CHECK(drawn(px, other));
@@ -245,7 +281,9 @@ static void where_it_shows(void) {
     /* No room left of it in a narrower picture (Seamless's atlas of a narrow area, its band centred). */
     static uint32_t narrow[260 * 240];
     for (int i = 0; i < 260 * 240; ++i) narrow[i] = BACKDROP;
-    w = 260; h = 240; world_x = 2;
+    w = 260;
+    h = 240;
+    world_x = 2;
     CHECK(fax_charges_present(narrow, &w, &h) == narrow && elixir_x == -1);
     world_x = HUD_X;
     /* Only beside a status bar that shows: not on the title, nor with the screen off. */
@@ -267,7 +305,11 @@ static void where_it_shows(void) {
     CHECK(t.blink == 0 && t.last == UNKNOWN);
 }
 
-static bool lit_now(void) { int w, h; present(&w, &h); return shown; }
+static bool lit_now(void) {
+    int w, h;
+    present(&w, &h);
+    return shown;
+}
 
 static void blinks_when_used(void) {
     power_on(true);
@@ -286,16 +328,27 @@ static void blinks_when_used(void) {
         frame();
         int w, h;
         const uint32_t *px = present(&w, &h);
-        if (shown) { ++on; CHECK(drawn(px, grey_inks())); }
-        else { ++off; CHECK(untouched(px)); }
+        if (shown) {
+            ++on;
+            CHECK(drawn(px, grey_inks()));
+        } else {
+            ++off;
+            CHECK(untouched(px));
+        }
         CHECK(shown == !(ram[0x1A] & FAX_CHARGES_BLINK_OFF));
     }
-    CHECK(on + off == 300 && on >= 144 && off >= 144 && t.blink == FAX_CHARGES_BLINK);   /* 8 on, 8 off, held */
+    CHECK(on + off == 300 && on >= 144 && off >= 144 && t.blink == FAX_CHARGES_BLINK); /* 8 on, 8 off, held */
     box_up = false;
     int left = 0;
-    while (t.blink) { frame(); ++left; }
+    while (t.blink) {
+        frame();
+        ++left;
+    }
     CHECK(left == FAX_CHARGES_BLINK);
-    for (int n = 0; n < 64; ++n) { frame(); CHECK(lit_now()); }   /* then steady grey */
+    for (int n = 0; n < 64; ++n) {
+        frame();
+        CHECK(lit_now());
+    } /* then steady grey */
     /* Charged again (a Guru): no blink, in its colors at once, even mid-blink. */
     charge_now[ELIXIR] = READY;
     frame();
@@ -334,18 +387,32 @@ static void save_states(void) {
     CHECK(save_validate(rec, n) && save_set(rec, n) && t.blink == FAX_CHARGES_BLINK - 10 && t.last == USED);
     /* Records it refuses: another length or version, a charge or blink out of range. */
     uint8_t bad[7];
-    memcpy(bad, rec, 3); bad[0] = 3;                       CHECK(!save_validate(bad, 3) && !save_set(bad, 3));
-    memcpy(bad, rec, 3); bad[1] = 3;                       CHECK(!save_validate(bad, 3));
-    memcpy(bad, rec, 3); bad[2] = FAX_CHARGES_BLINK + 1;   CHECK(!save_validate(bad, 3));
+    memcpy(bad, rec, 3);
+    bad[0] = 3;
+    CHECK(!save_validate(bad, 3) && !save_set(bad, 3));
+    memcpy(bad, rec, 3);
+    bad[1] = 3;
+    CHECK(!save_validate(bad, 3));
+    memcpy(bad, rec, 3);
+    bad[2] = FAX_CHARGES_BLINK + 1;
+    CHECK(!save_validate(bad, 3));
     CHECK(!save_validate(rec, 2) && !save_validate(rec, 4));
-    memcpy(bad, rec, 3); bad[1] = UNKNOWN;                 CHECK(save_validate(bad, 3));
+    memcpy(bad, rec, 3);
+    bad[1] = UNKNOWN;
+    CHECK(save_validate(bad, 3));
     /* A version 1 record (#115's row: the three items' states, then their
      * blinks, the Wing Boots, the Hour Glass, the Elixir) loads the Elixir's. */
     const uint8_t row[7] = { 1, READY, USED, USED, 0, 40, 30 };
     CHECK(save_validate(row, 7) && save_set(row, 7) && t.last == USED && t.blink == 30);
-    memcpy(bad, row, 7); bad[0] = 2;                       CHECK(!save_validate(bad, 7));
-    memcpy(bad, row, 7); bad[2] = 3;                       CHECK(!save_validate(bad, 7));
-    memcpy(bad, row, 7); bad[4] = FAX_CHARGES_BLINK + 1;   CHECK(!save_validate(bad, 7));
+    memcpy(bad, row, 7);
+    bad[0] = 2;
+    CHECK(!save_validate(bad, 7));
+    memcpy(bad, row, 7);
+    bad[2] = 3;
+    CHECK(!save_validate(bad, 7));
+    memcpy(bad, row, 7);
+    bad[4] = FAX_CHARGES_BLINK + 1;
+    CHECK(!save_validate(bad, 7));
     /* A state saved without the record: nothing blinks, and the next frame
      * only learns where the Elixir stands (spent, it does not start blinking). */
     CHECK(save_validate(NULL, 0) && save_set(NULL, 0));
@@ -357,21 +424,22 @@ static void save_states(void) {
 static void no_picture(void) {
     power_on(true);
     make_cart();
-    cart_size = 10 * 16384;                 /* no bank 10 */
+    cart_size = 10 * 16384; /* no bank 10 */
     charge_now[ELIXIR] = READY;
     int w, h;
     logged[0] = 0;
     CHECK(untouched(present(&w, &h)) && failed && strstr(logged, "cannot read the Elixir's picture"));
     cart_size = sizeof cart;
-    CHECK(untouched(present(&w, &h)));      /* off until the next power-on */
+    CHECK(untouched(present(&w, &h))); /* off until the next power-on */
     power_on(true);
     charge_now[ELIXIR] = READY;
-    for (int k = 0; k < 4; ++k) memset(bank10() + 0x0500 + TILE[ELIXIR][k] * 16, 0, 16);   /* a blank picture: not the game's */
+    for (int k = 0; k < 4; ++k)
+        memset(bank10() + 0x0500 + TILE[ELIXIR][k] * 16, 0, 16); /* a blank picture: not the game's */
     CHECK(untouched(present(&w, &h)) && failed);
 }
 
 int main(void) {
-    for (int i = 0; i < 512; ++i) hw_palette_argb[i] = 0xFF000000u | (uint32_t)i << 8;   /* a color tells its index */
+    for (int i = 0; i < 512; ++i) hw_palette_argb[i] = 0xFF000000u | (uint32_t)i << 8; /* a color tells its index */
     registers();
     greys();
     the_three_states();

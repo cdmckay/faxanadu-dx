@@ -1,8 +1,7 @@
 # clang-format for the repo's own C, src/ and tests/ (docs/C_TOOLING.md):
 # the newer files' style (src/fax_seams.c, src/fax_shops.c), as far as
 # clang-format can follow it. Not the nesrecomp or recomp-ui submodules,
-# which keep their own. Nothing is formatted to it yet, and the gate does
-# not check it.
+# which keep their own. tools/format.sh applies it, and the gate checks it.
 #
 # It changes only whitespace and line breaks (and a macro's line
 # continuations): nothing below sorts, inserts, removes or rewraps a token,

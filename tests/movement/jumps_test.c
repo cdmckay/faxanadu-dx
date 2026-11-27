@@ -10,7 +10,9 @@ static bool block_up;
 bool fax_block_raised(void) { return block_up; }
 
 enum { FRAMES = 120 };
-typedef struct { Frame f[FRAMES]; } Trace;
+typedef struct {
+    Frame f[FRAMES];
+} Trace;
 
 /* A ledge two blocks wide at row 6 (the hero stands on it at Y=64), open air
  * to the right, and the floor at row 12 (Y=160): a 96-pixel drop. */
@@ -65,7 +67,7 @@ static Trace walk_off(const char *const *rows, bool on, const int *presses, uint
     }
     return t;
 }
-static const int NONE[] = {-1};
+static const int NONE[] = { -1 };
 static int first(const Trace *t, bool (*test)(const Frame *)) {
     for (int i = 0; i < FRAMES; i++)
         if (test(&t->f[i])) return i;
@@ -85,21 +87,21 @@ static uint8_t peak(const Trace *t, int from) {
     return top;
 }
 
-static int W;                                    /* the first frame in the air, walking off the ledge */
-static Trace still, best;                        /* no A; and A on the last frame on the ledge, the original's best */
+static int W;             /* the first frame in the air, walking off the ledge */
+static Trace still, best; /* no A; and A on the last frame on the ledge, the original's best */
 
 static void the_original(void) {
     still = walk_off(LEDGE, false, NONE, 0);
     W = first(&still, airborne);
     CHECK(W > 10 && still.f[W - 1].y == 64 && still.f[W].y == 72 && (still.f[W].flags & F_FALLING));
-    CHECK(still.f[W + 11].y == 160 && (still.f[W + 11].flags & F_FALLING));     /* the landing frame */
+    CHECK(still.f[W + 11].y == 160 && (still.f[W + 11].flags & F_FALLING)); /* the landing frame */
     CHECK(still.f[W + 12].y == 160 && !(still.f[W + 12].flags & F_FALLING));
     CHECK(first(&still, jumping) < 0);
-    best = walk_off(LEDGE, false, (int[]){W - 1, -1}, 0);
+    best = walk_off(LEDGE, false, (int[]){ W - 1, -1 }, 0);
     CHECK(first(&best, jumping) == W - 1 && best.f[W - 1].y == 56);
-    CHECK(peak(&best, 0) == 32);                    /* a jump rises 32 pixels */
-    for (int k = 0; k < 12; k++) {               /* one frame late, or more: lost */
-        Trace late = walk_off(LEDGE, false, (int[]){W + k, -1}, 0);
+    CHECK(peak(&best, 0) == 32);   /* a jump rises 32 pixels */
+    for (int k = 0; k < 12; k++) { /* one frame late, or more: lost */
+        Trace late = walk_off(LEDGE, false, (int[]){ W + k, -1 }, 0);
         CHECK(same(&late, &still, 0, FRAMES));
     }
     /* x(t) is the same with or without a jump: no steering in the air */
@@ -108,7 +110,7 @@ static void the_original(void) {
 
 static void coyote_time(void) {
     for (unsigned k = 0; k < COYOTE_FRAMES; k++) {
-        Trace t = walk_off(LEDGE, true, (int[]){W + (int)k, -1}, 0);
+        Trace t = walk_off(LEDGE, true, (int[]){ W + (int)k, -1 }, 0);
         CHECK(coyote_jumps == 1 && buffered_jumps == 0);
         CHECK(same(&t, &still, 0, W + (int)k));
         CHECK(first(&t, jumping) == W + (int)k);
@@ -123,12 +125,12 @@ static void coyote_time(void) {
     }
     /* After the window, he falls as before. This drop is long enough that a
      * press on the next update is outside the buffer too. */
-    Trace t = walk_off(LEDGE, true, (int[]){W + COYOTE_FRAMES, -1}, 0);
+    Trace t = walk_off(LEDGE, true, (int[]){ W + COYOTE_FRAMES, -1 }, 0);
     CHECK(same(&t, &still, 0, FRAMES) && coyote_jumps == 0);
     /* One coyote jump per ledge: a second press in the window does nothing more */
-    Trace twice = walk_off(LEDGE, true, (int[]){W, W + 2, -1}, 0);
+    Trace twice = walk_off(LEDGE, true, (int[]){ W, W + 2, -1 }, 0);
     CHECK(coyote_jumps == 1);
-    Trace once = walk_off(LEDGE, true, (int[]){W, -1}, 0);
+    Trace once = walk_off(LEDGE, true, (int[]){ W, -1 }, 0);
     CHECK(same(&twice, &once, 0, FRAMES));
 }
 
@@ -137,29 +139,29 @@ static void not_from_a_ceiling(void) {
     Trace none = walk_off(LOW_LEDGE, false, NONE, 0);
     int w = first(&none, airborne);
     CHECK(w == W);
-    Trace edge = walk_off(LOW_LEDGE, false, (int[]){w - 1, -1}, 0);
+    Trace edge = walk_off(LOW_LEDGE, false, (int[]){ w - 1, -1 }, 0);
     CHECK(same(&edge, &none, 0, FRAMES));
     unsigned calls = isolated_calls;
     for (unsigned k = 0; k < COYOTE_FRAMES; k++) {
-        Trace t = walk_off(LOW_LEDGE, true, (int[]){w + (int)k, -1}, 0);
+        Trace t = walk_off(LOW_LEDGE, true, (int[]){ w + (int)k, -1 }, 0);
         CHECK(same(&t, &none, 0, FRAMES));
     }
-    CHECK(isolated_calls == calls + COYOTE_FRAMES);   /* asked the game each time, in a scratch copy */
+    CHECK(isolated_calls == calls + COYOTE_FRAMES); /* asked the game each time, in a scratch copy */
     CHECK(!isolated);
 }
 
 static void jump_buffering(void) {
     /* A in the air, 1-6 updates before the first on the ground (W+12), jumps
      * there; the jump is the one the original makes with A pressed then. */
-    Trace on_time = walk_off(LEDGE, false, (int[]){W + 12, -1}, 0);
+    Trace on_time = walk_off(LEDGE, false, (int[]){ W + 12, -1 }, 0);
     CHECK(first(&on_time, jumping) == W + 12);
     for (int j = 1; j <= (int)BUFFER_FRAMES; j++) {
-        Trace t = walk_off(LEDGE, true, (int[]){W + 12 - j, -1}, 0);
+        Trace t = walk_off(LEDGE, true, (int[]){ W + 12 - j, -1 }, 0);
         CHECK(buffered_jumps == 1 && coyote_jumps == 0);
         CHECK(same(&t, &still, 0, W + 12));
         CHECK(same(&t, &on_time, W + 12, FRAMES));
     }
-    Trace early = walk_off(LEDGE, true, (int[]){W + 12 - BUFFER_FRAMES - 1, -1}, 0);
+    Trace early = walk_off(LEDGE, true, (int[]){ W + 12 - BUFFER_FRAMES - 1, -1 }, 0);
     CHECK(same(&early, &still, 0, FRAMES) && buffered_jumps == 0);
 
     /* From a jump on flat ground: the press counts from the jump's last frames. */
@@ -171,12 +173,12 @@ static void jump_buffering(void) {
             feature(on);
             for (int i = 0; i < FRAMES; i++) {
                 uint8_t buttons = 0;
-                if (i == 2) buttons = B_A;                          /* jump */
-                if (i == 2 + 32 - j) buttons = B_A;                 /* he lands on frame 2 + 31 */
+                if (i == 2) buttons = B_A;          /* jump */
+                if (i == 2 + 32 - j) buttons = B_A; /* he lands on frame 2 + 31 */
                 t[on].f[i] = step(buttons);
             }
         }
-        CHECK(t[0].f[33].y == 160 && !(t[0].f[33].flags & F_JUMPING));      /* the landing frame */
+        CHECK(t[0].f[33].y == 160 && !(t[0].f[33].flags & F_JUMPING)); /* the landing frame */
         bool buffered = j >= 1 && j <= (int)BUFFER_FRAMES;
         CHECK(same(&t[0], &t[1], 0, 34));
         CHECK(buffered == !same(&t[0], &t[1], 34, FRAMES));
@@ -191,8 +193,8 @@ static void jump_buffering(void) {
 static void block_takes_the_press(void) {
     load_screen(FLOOR);
     for (int j = 1; j <= (int)BUFFER_FRAMES; j++) {
-        int press = 2 + 32 - j;                                    /* he lands on frame 2 + 31 */
-        const int let_go_at[] = { press + 2, 41 };                 /* one frame up; held past the landing */
+        int press = 2 + 32 - j;                    /* he lands on frame 2 + 31 */
+        const int let_go_at[] = { press + 2, 41 }; /* one frame up; held past the landing */
         for (unsigned k = 0; k < 2; k++) {
             int let_go = let_go_at[k];
             Trace t[2];
@@ -200,10 +202,10 @@ static void block_takes_the_press(void) {
                 place(40, 160);
                 feature(on);
                 for (int i = 0; i < FRAMES; i++) {
-                    block_up = i > press && i < let_go;             /* up from the frame after the press */
+                    block_up = i > press && i < let_go; /* up from the frame after the press */
                     uint8_t buttons = 0;
-                    if (i == 2) buttons = B_A;                      /* jump */
-                    if (i == press) buttons = B_A;                  /* kept: he is in the air */
+                    if (i == 2) buttons = B_A;     /* jump */
+                    if (i == press) buttons = B_A; /* kept: he is in the air */
                     if (i == press + 1) CHECK(!on || buffered);
                     t[on].f[i] = step(buttons);
                 }
@@ -250,8 +252,7 @@ static void ladders(void) {
             CHECK(coyote_jumps == 0);
             if (p > drop && land - p <= (int)BUFFER_FRAMES)
                 CHECK(buffered_jumps == 1 && same(&b, &a, 0, land) && same(&b, &on_time, land, FRAMES));
-            else
-                CHECK(buffered_jumps == 0 && same(&a, &b, 0, FRAMES));
+            else CHECK(buffered_jumps == 0 && same(&a, &b, 0, FRAMES));
         }
     }
 }
@@ -268,7 +269,7 @@ static void wing_boots_and_knockback(void) {
             for (int i = 0; i < FRAMES; i++) t[on].f[i] = step(B_RIGHT | (i >= W + k && i < W + k + 20 ? B_A : 0));
         }
         CHECK(same(&t[0], &t[1], 0, FRAMES));
-        CHECK(t[0].f[W + k + 5].y == t[0].f[W + k + 4].y + 1);       /* hovering */
+        CHECK(t[0].f[W + k + 5].y == t[0].f[W + k + 4].y + 1); /* hovering */
     }
     /* Knocked off the ledge: no coyote time; a press during the knockback does what it did. */
     for (int k = 0; k <= (int)COYOTE_FRAMES; k++) {
@@ -276,12 +277,12 @@ static void wing_boots_and_knockback(void) {
         for (int on = 0; on < 2; on++) {
             load_screen(LEDGE);
             place(52, 64);
-            ram[M_FLAGS] = 0;                                         /* facing left: pushed right */
+            ram[M_FLAGS] = 0; /* facing left: pushed right */
             ram[M_STATUS] = S_KNOCKBACK;
             ram[M_IFRAMES] = 0x3C;
             feature(on);
             for (int i = 0; i < FRAMES; i++) t[on].f[i] = step(i == 1 + k ? B_A : 0);
-            CHECK(t[on].f[0].y == 64 && t[on].f[1].y == 72);           /* off the ledge on the knockback's 2nd frame */
+            CHECK(t[on].f[0].y == 64 && t[on].f[1].y == 72); /* off the ledge on the knockback's 2nd frame */
         }
         CHECK(coyote_jumps == 0);
         if (k < 3) CHECK(same(&t[0], &t[1], 0, FRAMES));
@@ -297,7 +298,7 @@ static void wing_boots_and_knockback(void) {
             ram[M_IFRAMES] = 0x3C;
             feature(on);
             for (int i = 0; i < FRAMES; i++) t[on].f[i] = step(i == k ? B_A : 0);
-            CHECK(t[on].f[2].y == 160);                                 /* down on the knockback's 3rd frame */
+            CHECK(t[on].f[2].y == 160); /* down on the knockback's 3rd frame */
         }
         CHECK(same(&t[0], &t[1], 0, FRAMES) && buffered_jumps == 0);
     }
@@ -327,7 +328,7 @@ static void screen_changes(void) {
 
 static void save_states(void) {
     /* A save state in coyote time carries it: restored, the press still jumps. */
-    Trace want = walk_off(LEDGE, true, (int[]){W + 2, -1}, 0);
+    Trace want = walk_off(LEDGE, true, (int[]){ W + 2, -1 }, 0);
     uint8_t record[64];
     for (int restore = 0; restore < 2; restore++) {
         load_screen(LEDGE);
@@ -337,11 +338,11 @@ static void save_states(void) {
         int len = 0;
         uint8_t machine[sizeof ram];
         for (int i = 0; i < FRAMES; i++) {
-            if (i == W + 1) {                                         /* saved after W, loaded before W+1 */
+            if (i == W + 1) { /* saved after W, loaded before W+1 */
                 len = save_get(record, sizeof record);
                 CHECK(len == STATE_LEN && save_validate(record, len));
                 memcpy(machine, ram, sizeof ram);
-                feature(true);                                        /* another session */
+                feature(true); /* another session */
                 memcpy(ram, machine, sizeof ram);
                 CHECK(save_set(record, restore ? len : 0));
             }
@@ -356,7 +357,7 @@ static void save_states(void) {
 }
 
 static void off_means_off(void) {
-    walk_off(LEDGE, true, (int[]){W + 1, -1}, 0);
+    walk_off(LEDGE, true, (int[]){ W + 1, -1 }, 0);
     CHECK(enabled && coyote_jumps > 0);
     reset_cb();
     CHECK(!enabled && coyote_jumps == 0 && buffered_jumps == 0);
@@ -376,7 +377,6 @@ int main(void) {
     screen_changes();
     save_states();
     off_means_off();
-    printf("jumps_test: %u checks passed (coyote %u frames, buffer %u frames)\n", checks, COYOTE_FRAMES,
-           BUFFER_FRAMES);
+    printf("jumps_test: %u checks passed (coyote %u frames, buffer %u frames)\n", checks, COYOTE_FRAMES, BUFFER_FRAMES);
     return 0;
 }

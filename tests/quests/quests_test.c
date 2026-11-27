@@ -22,7 +22,14 @@
 #include <string.h>
 
 static int failures, checks;
-#define CHECK(c) do { ++checks; if (!(c)) { ++failures; fprintf(stderr, "%s:%d: CHECK(%s) failed\n", __FILE__, __LINE__, #c); } } while (0)
+#define CHECK(c)                                                                                                       \
+    do {                                                                                                               \
+        ++checks;                                                                                                      \
+        if (!(c)) {                                                                                                    \
+            ++failures;                                                                                                \
+            fprintf(stderr, "%s:%d: CHECK(%s) failed\n", __FILE__, __LINE__, #c);                                      \
+        }                                                                                                              \
+    } while (0)
 
 enum { WEAPONS = FAX_QUEST_WEAPONS, ARMOR = FAX_QUEST_ARMOR, SHIELDS = FAX_QUEST_SHIELDS, ITEMS = FAX_QUEST_ITEMS };
 #define BIT(q) (1u << (q))
@@ -31,7 +38,7 @@ static FaxQuestGame new_game(void) {
     FaxQuestGame g;
     memset(&g, 0, sizeof g);
     for (unsigned c = 0; c < FAX_QUEST_LISTS; ++c) g.selected[c] = 0xFF;
-    g.selected[WEAPONS] = 0;     /* the Hand Dagger in hand */
+    g.selected[WEAPONS] = 0; /* the Hand Dagger in hand */
     return g;
 }
 static void give(FaxQuestGame *g, unsigned list, uint8_t id) { g->list[list][g->count[list]++] = id; }
@@ -44,8 +51,12 @@ static void table_fits(void) {
         CHECK(f->name && strlen(f->name) > 0 && strlen(f->name) <= FAX_QUEST_COLS);
         unsigned lines = 1, col = 0;
         for (const char *s = f->objective; *s; ++s) {
-            if (*s == '\n') { ++lines; col = 0; continue; }
-            CHECK(*s >= 0x20 && *s < 0x7F && !strchr("#$%&()*+/:;<=>@[\\]^", *s));   /* glyphs the font has */
+            if (*s == '\n') {
+                ++lines;
+                col = 0;
+                continue;
+            }
+            CHECK(*s >= 0x20 && *s < 0x7F && !strchr("#$%&()*+/:;<=>@[\\]^", *s)); /* glyphs the font has */
             ++col;
             CHECK(col <= FAX_QUEST_COLS);
         }
@@ -57,11 +68,11 @@ static void table_fits(void) {
         for (unsigned r = 0; r < q; ++r) CHECK(strcmp(fax_quests[r].id, f->id) && strcmp(fax_quests[r].name, f->name));
         CHECK(fax_quest_given_by(f->give[0]) & BIT(q));
     }
-    CHECK(fax_quest_given_by(0x35) == BIT(FAX_QUEST_KING));                            /* the King's plea */
-    CHECK(fax_quest_given_by(0x51) == (BIT(FAX_QUEST_BOOTS) | BIT(FAX_QUEST_SKY)));    /* the nurse: both */
-    CHECK(fax_quest_given_by(0xA2) == BIT(FAX_QUEST_EVIL));     /* the Fraternal Guru, as the Demon's Ring's step */
+    CHECK(fax_quest_given_by(0x35) == BIT(FAX_QUEST_KING));                         /* the King's plea */
+    CHECK(fax_quest_given_by(0x51) == (BIT(FAX_QUEST_BOOTS) | BIT(FAX_QUEST_SKY))); /* the nurse: both */
+    CHECK(fax_quest_given_by(0xA2) == BIT(FAX_QUEST_EVIL)); /* the Fraternal Guru, as the Demon's Ring's step */
     CHECK(fax_quest_given_by(0x02) == 0 && fax_quest_given_by(0x36) == BIT(FAX_QUEST_KING));
-    CHECK(fax_quest_given_by(0) == 0 && fax_quest_given_by(0x2B) == 0);   /* chatter: "There are many rings" */
+    CHECK(fax_quest_given_by(0) == 0 && fax_quest_given_by(0x2B) == 0); /* chatter: "There are many rings" */
 }
 
 /* ---- complete ---- */
@@ -70,61 +81,77 @@ static void done_from_state(void) {
     FaxQuestGame g = new_game();
     CHECK(fax_quest_done_all(&g) == 0);
 
-    g.special = 0x80;                                           /* the Ring of Elf */
+    g.special = 0x80; /* the Ring of Elf */
     CHECK(fax_quest_done_all(&g) == BIT(FAX_QUEST_ELF));
 
-    g.quests = 0x01 | 0x02;                                     /* two springs: the King's plea is not done */
-    CHECK(fax_quest_done(FAX_QUEST_TRUNK, &g) && fax_quest_done(FAX_QUEST_SKY, &g) && !fax_quest_done(FAX_QUEST_KING, &g));
-    CHECK(fax_quest_done(FAX_QUEST_BOOTS, &g));                 /* past the Spring of Sky, the boots were had */
+    g.quests = 0x01 | 0x02; /* two springs: the King's plea is not done */
+    CHECK(fax_quest_done(FAX_QUEST_TRUNK, &g) && fax_quest_done(FAX_QUEST_SKY, &g) &&
+          !fax_quest_done(FAX_QUEST_KING, &g));
+    CHECK(fax_quest_done(FAX_QUEST_BOOTS, &g)); /* past the Spring of Sky, the boots were had */
     char line[FAX_QUEST_COLS + 1];
     CHECK(fax_quest_progress(FAX_QUEST_KING, &g, line) && !strcmp(line, "2 of 3 springs"));
     CHECK(!fax_quest_progress(FAX_QUEST_ELF, &g, line));
     g.quests |= 0x04;
     CHECK(fax_quest_done(FAX_QUEST_KING, &g) && fax_quest_done(FAX_QUEST_FIRST, &g));
 
-    g = new_game();                                             /* the Mattock: held, selected, or Ripasheiku's */
+    g = new_game(); /* the Mattock: held, selected, or Ripasheiku's */
     CHECK(!fax_quest_done(FAX_QUEST_MATTOCK, &g));
     give(&g, ITEMS, 0x09);
     CHECK(fax_quest_done(FAX_QUEST_MATTOCK, &g) && !fax_quest_done(FAX_QUEST_WALL, &g));
-    g = new_game(); g.selected[ITEMS] = 0x09;
+    g = new_game();
+    g.selected[ITEMS] = 0x09;
     CHECK(fax_quest_done(FAX_QUEST_MATTOCK, &g));
-    g = new_game(); g.quests = 0x10;
+    g = new_game();
+    g.quests = 0x10;
     CHECK(fax_quest_done(FAX_QUEST_MATTOCK, &g));
-    g = new_game(); g.count[ITEMS] = 0; g.list[ITEMS][0] = 0x09;   /* a stale entry past the count is not held */
+    g = new_game();
+    g.count[ITEMS] = 0;
+    g.list[ITEMS][0] = 0x09; /* a stale entry past the count is not held */
     CHECK(!fax_quest_done(FAX_QUEST_MATTOCK, &g));
-    g = new_game(); g.reached = FAX_REACHED_FOREPAW;            /* past the wall: both, the Mattock used up */
+    g = new_game();
+    g.reached = FAX_REACHED_FOREPAW; /* past the wall: both, the Mattock used up */
     CHECK(fax_quest_done(FAX_QUEST_MATTOCK, &g) && fax_quest_done(FAX_QUEST_WALL, &g));
     CHECK(!fax_quest_done(FAX_QUEST_MASCON, &g));
 
-    g = new_game(); g.quests = 0x08;                            /* Zorugeriru's boots */
+    g = new_game();
+    g.quests = 0x08; /* Zorugeriru's boots */
     CHECK(fax_quest_done(FAX_QUEST_BOOTS, &g));
-    g = new_game(); give(&g, ITEMS, 0x0F);                      /* a pair from Forepaw's shop */
+    g = new_game();
+    give(&g, ITEMS, 0x0F); /* a pair from Forepaw's shop */
     CHECK(fax_quest_done(FAX_QUEST_BOOTS, &g));
 
-    g = new_game(); g.quests = 0x20;                            /* the rock pushed */
+    g = new_game();
+    g.quests = 0x20; /* the rock pushed */
     CHECK(fax_quest_done(FAX_QUEST_MASCON, &g));
-    g = new_game(); g.reached = FAX_REACHED_MIST;
+    g = new_game();
+    g.reached = FAX_REACHED_MIST;
     CHECK(fax_quest_done(FAX_QUEST_MASCON, &g) && !fax_quest_done(FAX_QUEST_POISON, &g));
 
-    g = new_game(); g.special = 0x01;                           /* the Black Onyx: the poison found */
+    g = new_game();
+    g.special = 0x01; /* the Black Onyx: the poison found */
     CHECK(fax_quest_done(FAX_QUEST_POISON, &g) && !fax_quest_done(FAX_QUEST_METEORITE, &g));
-    g.selected[ITEMS] = 0x04;                                   /* the Ace key: the meteorite brought back */
+    g.selected[ITEMS] = 0x04; /* the Ace key: the meteorite brought back */
     CHECK(fax_quest_done(FAX_QUEST_METEORITE, &g));
 
-    g = new_game(); give(&g, ARMOR, 0x03);                      /* the Battle Suit alone */
+    g = new_game();
+    give(&g, ARMOR, 0x03); /* the Battle Suit alone */
     CHECK(!fax_quest_done(FAX_QUEST_GEAR, &g));
-    g.selected[SHIELDS] = 0x03;                                 /* and the Battle Helmet */
+    g.selected[SHIELDS] = 0x03; /* and the Battle Helmet */
     CHECK(fax_quest_done(FAX_QUEST_GEAR, &g) && !fax_quest_done(FAX_QUEST_DWORF, &g));
     g.special = 0x20;
     CHECK(fax_quest_done(FAX_QUEST_DWORF, &g));
 
-    g = new_game(); g.special = 0x04;
+    g = new_game();
+    g.special = 0x04;
     CHECK(fax_quest_done_all(&g) == BIT(FAX_QUEST_CANE));
 
-    g = new_game(); g.selected[WEAPONS] = 0x03;                 /* the Dragon Slayer in hand */
+    g = new_game();
+    g.selected[WEAPONS] = 0x03; /* the Dragon Slayer in hand */
     CHECK(fax_quest_done(FAX_QUEST_SLAYER, &g) && !fax_quest_done(FAX_QUEST_DEMON, &g));
-    g = new_game(); g.special = 0x10;                           /* the Demon's Ring */
-    CHECK(fax_quest_done(FAX_QUEST_DEMON, &g) && fax_quest_done(FAX_QUEST_SLAYER, &g) && !fax_quest_done(FAX_QUEST_EVIL, &g));
+    g = new_game();
+    g.special = 0x10; /* the Demon's Ring */
+    CHECK(fax_quest_done(FAX_QUEST_DEMON, &g) && fax_quest_done(FAX_QUEST_SLAYER, &g) &&
+          !fax_quest_done(FAX_QUEST_EVIL, &g));
     g.reached = FAX_REACHED_ENDING;
     CHECK(fax_quest_done(FAX_QUEST_EVIL, &g));
 }
@@ -229,7 +256,7 @@ static void walks_and_marks(void) {
     CHECK(mark(0x26, &g, 0, 0) == '!' && mark(0x26, &g, BIT(FAX_QUEST_TRUNK), 0) == 0);
     g.special = 0x08;
     CHECK(path_is(0x26, &g, (const uint8_t[]){ 0x59, 0x5A }, 2) && mark(0x26, &g, BIT(FAX_QUEST_TRUNK), 0) == '?');
-    g.quests = 0x01;   /* revived: he sends the hero to Mascon */
+    g.quests = 0x01; /* revived: he sends the hero to Mascon */
     CHECK(path_is(0x26, &g, (const uint8_t[]){ 0x5C }, 1) && mark(0x26, &g, BIT(FAX_QUEST_TRUNK), 0) == '!');
 
     /* Forepaw's nurse, by the springs revived. */
@@ -246,7 +273,7 @@ static void walks_and_marks(void) {
     CHECK(mark(0x46, &g, BIT(FAX_QUEST_METEORITE), 0) == 0);
     g.special = 0x01;
     CHECK(path_is(0x46, &g, (const uint8_t[]){ 0x7E }, 1) && mark(0x46, &g, BIT(FAX_QUEST_METEORITE), 0) == '?');
-    CHECK(mark(0x46, &g, 0, 0) == 0);   /* never given: no step to come back to */
+    CHECK(mark(0x46, &g, 0, 0) == 0); /* never given: no step to come back to */
     give(&g, ITEMS, 0x04);
     CHECK(path_is(0x46, &g, (const uint8_t[]){ 0x7F }, 1) && mark(0x46, &g, BIT(FAX_QUEST_METEORITE), 0) == 0);
 
@@ -271,7 +298,7 @@ static void walks_and_marks(void) {
     /* A shop: its greeting and the buy list's thanks; no marks. */
     g = new_game();
     CHECK(path_is(0x0D, &g, (const uint8_t[]){ 0x0F, 0x02 }, 2) && mark(0x0D, &g, 0, 0) == 0);
-    CHECK(walk(0x98, &g, (uint8_t[FAX_QUEST_PATH]){ 0 }) == 0);   /* past the table */
+    CHECK(walk(0x98, &g, (uint8_t[FAX_QUEST_PATH]){ 0 }) == 0); /* past the table */
 }
 
 int main(int argc, char **argv) {
@@ -282,7 +309,10 @@ int main(int argc, char **argv) {
         static uint8_t rom[16 + 16 * 16384];
         bool ok = f && fread(rom, 1, sizeof rom, f) == sizeof rom;
         if (f) fclose(f);
-        if (!ok) { fprintf(stderr, "cannot read the ROM %s\n", argv[1]); return 2; }
+        if (!ok) {
+            fprintf(stderr, "cannot read the ROM %s\n", argv[1]);
+            return 2;
+        }
         memcpy(bank12, rom + 16 + 12 * 16384, sizeof bank12);
         lines_in_their_scripts();
         walks_and_marks();

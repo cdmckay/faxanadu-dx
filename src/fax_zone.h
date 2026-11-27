@@ -8,14 +8,20 @@
 
 /* Area_CurrentArea: AREA_* in chipx86's DEFS.asm. */
 enum {
-    FAX_AREA_EOLIS, FAX_AREA_TRUNK, FAX_AREA_MIST, FAX_AREA_TOWNS, FAX_AREA_BUILDINGS,
-    FAX_AREA_BRANCH, FAX_AREA_DARTMOOR, FAX_AREA_ZENIS
+    FAX_AREA_EOLIS,
+    FAX_AREA_TRUNK,
+    FAX_AREA_MIST,
+    FAX_AREA_TOWNS,
+    FAX_AREA_BUILDINGS,
+    FAX_AREA_BRANCH,
+    FAX_AREA_DARTMOOR,
+    FAX_AREA_ZENIS
 };
 
 typedef enum { FAX_ZONE_TOWN, FAX_ZONE_REGION, FAX_ZONE_TOWER, FAX_ZONE_CASTLE } FaxZoneKind;
 
 typedef struct {
-    const char *name;   /* as the game's dialogue names it; at most 20 characters */
+    const char *name; /* as the game's dialogue names it; at most 20 characters */
     FaxZoneKind kind;
 } FaxZone;
 
@@ -35,8 +41,8 @@ enum {
     FAX_ZONE_BRANCH,
     FAX_ZONE_CONFLATE,
     FAX_ZONE_DAYBREAK,
-    FAX_ZONE_DARTMOOR,          /* the region, through the door the Ring of Dworf opens */
-    FAX_ZONE_DARTMOOR_TOWN,     /* the town, at its edge; the same name */
+    FAX_ZONE_DARTMOOR,      /* the region, through the door the Ring of Dworf opens */
+    FAX_ZONE_DARTMOOR_TOWN, /* the town, at its edge; the same name */
     FAX_ZONE_CASTLE_OF_FRATERNAL,
     FAX_ZONE_FORTRESS_OF_ZENIS,
     FAX_ZONE_COUNT

@@ -57,19 +57,19 @@
 #include <stdlib.h>
 #include <string.h>
 
-extern uint32_t hw_palette_argb[512];   /* the host's NES colors, emphasis in bits 6-8 */
+extern uint32_t hw_palette_argb[512]; /* the host's NES colors, emphasis in bits 6-8 */
 
 /* RAM */
-#define PLAYER_STATUS_FLAG      0x00A5u   /* bit 7: the Wing Boots fly */
-#define UI_ATTRIBUTE_DATA_INDEX 0x038Du   /* the status bar's and the text box's palette, 0-3 */
-#define SELECTED_ITEM           0x03C1u   /* the item the box shows: ITEMINVENTORY_*, $FF none */
-#define DURATION_HOUR_GLASS     0x042Au   /* seconds left, $FF when not running */
+#define PLAYER_STATUS_FLAG      0x00A5u /* bit 7: the Wing Boots fly */
+#define UI_ATTRIBUTE_DATA_INDEX 0x038Du /* the status bar's and the text box's palette, 0-3 */
+#define SELECTED_ITEM           0x03C1u /* the item the box shows: ITEMINVENTORY_*, $FF none */
+#define DURATION_HOUR_GLASS     0x042Au /* seconds left, $FF when not running */
 
 enum { ITEMINVENTORY_HOUR_GLASS = 0x0D, ITEMINVENTORY_WING_BOOTS = 0x0F, WING_BOOTS_ON = 0x80, NOT_RUNNING = 0x80 };
 /* UI_STATUS_TILES' item box: [ in column 27 and ] in 30, rows 2 (top) and 3 (bottom). */
 enum { OPEN_COL = 27, CLOSE_COL = 30, TOP_ROW = 2, BOTTOM_ROW = 3 };
 enum { TILE_OPEN_TOP = 0x2C, TILE_OPEN_BOTTOM = 0x2D, TILE_CLOSE_TOP = 0x2E, TILE_CLOSE_BOTTOM = 0x2F };
-enum { WHITE = 3, NATIVE_W = 256, BAND = 32 };   /* the text's and brackets' color in the palette; the band's lines */
+enum { WHITE = 3, NATIVE_W = 256, BAND = 32 }; /* the text's and brackets' color in the palette; the band's lines */
 
 static bool enabled;
 static uint32_t *canvas;
@@ -95,9 +95,13 @@ uint8_t fax_item_box_gold(uint8_t white) {
     white &= 0x3F;
     if (black(white)) return 0x0F;
     switch (white >> 4) {
-    case 3: case 2: return 0x27;   /* white: $20 is the NES's white too, a fade's first stage */
-    case 1: return 0x17;
-    default: return 0x07;
+    case 3:
+    case 2:
+        return 0x27; /* white: $20 is the NES's white too, a fade's first stage */
+    case 1:
+        return 0x17;
+    default:
+        return 0x07;
     }
 }
 
@@ -141,18 +145,19 @@ const uint32_t *fax_item_box_present(const uint32_t *picture, int *w, int *h) {
     unsigned palette = q(UI_ATTRIBUTE_DATA_INDEX) & 3u;
     white_nes = (uint8_t)(cyc_render_palette((int)(palette * 4 + WHITE)) & 0x3F);
     gold_nes = fax_item_box_gold(white_nes);
-    if (!running() || black(gold_nes)) return picture;   /* black: a screen faded out, nothing to light */
+    if (!running() || black(gold_nes)) return picture; /* black: a screen faded out, nothing to light */
     size_t n = (size_t)width * (size_t)height;
     if (n > capacity) {
         uint32_t *grown = realloc(canvas, n * sizeof *grown);
         if (!grown) return picture;
-        canvas = grown; capacity = n;
+        canvas = grown;
+        capacity = n;
     }
     memcpy(canvas, from, n * sizeof *canvas);
     for (int y = FAX_ITEM_BOX_LINE; y < FAX_ITEM_BOX_LINE + FAX_ITEM_BOX_LINES; ++y) {
         unsigned mask = cyc_render_line_mask(y);
         uint32_t white = ink(white_nes, mask), gold = ink(gold_nes, mask);
-        if (white == gold) continue;   /* greyscale: no gold to show */
+        if (white == gold) continue; /* greyscale: no gold to show */
         uint32_t *line = canvas + (size_t)y * (size_t)width + (size_t)x;
         for (int c = 0; c < FAX_ITEM_BOX_TILE; ++c) {
             uint32_t *open = &line[FAX_ITEM_BOX_OPEN_X + c], *close = &line[FAX_ITEM_BOX_CLOSE_X + c];
@@ -162,7 +167,8 @@ const uint32_t *fax_item_box_present(const uint32_t *picture, int *w, int *h) {
     }
     if (!pixels) return picture;
     open_x = x + FAX_ITEM_BOX_OPEN_X;
-    *w = width; *h = height;
+    *w = width;
+    *h = height;
     return canvas;
 }
 
@@ -179,9 +185,8 @@ static void item_box_state(int id, const char *line) {
              enabled ? "true" : "false", fax_text_hud_showing() ? "true" : "false", box_showing() ? "true" : "false",
              q(SELECTED_ITEM), q(PLAYER_STATUS_FLAG) & WING_BOOTS_ON ? "true" : "false",
              q(DURATION_HOUR_GLASS) < NOT_RUNNING ? "true" : "false", running() ? "true" : "false",
-             pixels ? "true" : "false", open_x,
-             open_x < 0 ? -1 : open_x + (FAX_ITEM_BOX_CLOSE_X - FAX_ITEM_BOX_OPEN_X), FAX_ITEM_BOX_LINE, pixels,
-             white_nes, gold_nes, (unsigned)(ink(gold_nes, mask) & 0xFFFFFFu));
+             pixels ? "true" : "false", open_x, open_x < 0 ? -1 : open_x + (FAX_ITEM_BOX_CLOSE_X - FAX_ITEM_BOX_OPEN_X),
+             FAX_ITEM_BOX_LINE, pixels, white_nes, gold_nes, (unsigned)(ink(gold_nes, mask) & 0xFFFFFFu));
     cyc_tcp_ok(id, fields);
 }
 void fax_item_box_tcp_setup(void) {

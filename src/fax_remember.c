@@ -42,13 +42,18 @@ bool fax_remembered(const char *file, const char *field) {
 void fax_remember(const char *file, const char *field) {
     char path[1100], temp[1120], kept[1024] = "", text[64];
     if (fax_remembered(file, field) || !cyc_host_saves_enabled() || !sidecar_path(file, path)) return;
-    FILE *f = fopen(path, "r");                       /* the fields already kept, kept */
+    FILE *f = fopen(path, "r"); /* the fields already kept, kept */
     if (f) {
         size_t n = 0;
         while (fgets(text, sizeof text, f)) {
             text[strcspn(text, "\r\n")] = 0;
             size_t len = strlen(text);
-            if (len && n + len + 2 < sizeof kept) { memcpy(kept + n, text, len); n += len; kept[n++] = '\n'; kept[n] = 0; }
+            if (len && n + len + 2 < sizeof kept) {
+                memcpy(kept + n, text, len);
+                n += len;
+                kept[n++] = '\n';
+                kept[n] = 0;
+            }
         }
         fclose(f);
     }
@@ -57,7 +62,10 @@ void fax_remember(const char *file, const char *field) {
     if (!f) return;
     bool ok = fprintf(f, "%s%s\n", kept, field) > 0;
     if (fclose(f) != 0) ok = false;
-    if (!ok) { remove(temp); return; }
+    if (!ok) {
+        remove(temp);
+        return;
+    }
 #ifdef _WIN32
     extern bool faxanadu_replace_file(const char *, const char *);
     if (!faxanadu_replace_file(temp, path)) remove(temp);

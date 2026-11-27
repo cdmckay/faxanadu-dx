@@ -10,16 +10,23 @@
 #include "fax_item_box.c"
 
 static unsigned checks;
-#define CHECK(test) do{++checks;if(!(test)){fprintf(stderr,"FAIL line %u: %s\n",__LINE__,#test);exit(1);}}while(0)
+#define CHECK(test)                                                                                                    \
+    do {                                                                                                               \
+        ++checks;                                                                                                      \
+        if (!(test)) {                                                                                                 \
+            fprintf(stderr, "FAIL line %u: %s\n", __LINE__, #test);                                                    \
+            exit(1);                                                                                                   \
+        }                                                                                                              \
+    } while (0)
 
 /* ---- the machine ---- */
-enum { HUD_X = 92 };                        /* Seamless's status bar band at 424 wide, with the Elixir left of it */
+enum { HUD_X = 92 }; /* Seamless's status bar band at 424 wide, with the Elixir left of it */
 enum { W = 424, H = 240 };
 enum { HOUR_GLASS = 0x0D, WING_BOOTS = 0x0F, MATTOCK = 0x09, NO_ITEM = 0xFF };
 static uint8_t ram[0x800];
 static uint8_t palette_ram[32];
-static uint8_t masks[240];                  /* PPUMASK each line was drawn with */
-static unsigned tiles[30][32];              /* the background tiles the last frame showed */
+static uint8_t masks[240];     /* PPUMASK each line was drawn with */
+static unsigned tiles[30][32]; /* the background tiles the last frame showed */
 static bool hud_up = true;
 static int world_x = HUD_X;
 static uint32_t native[256 * 240];
@@ -32,12 +39,23 @@ unsigned fax_text_shown_tile(int col, int row) {
 }
 int fax_world_hud_x(int width) { return width <= 256 ? 0 : world_x; }
 uint8_t cyc_mod_peek(uint16_t addr) { return addr < 0x2000 ? ram[addr & 0x7FF] : 0; }
-uint8_t cyc_render_line_mask(int y) { CHECK(y >= 0 && y < 32); return masks[y]; }   /* a line of the band */
+uint8_t cyc_render_line_mask(int y) {
+    CHECK(y >= 0 && y < 32);
+    return masks[y];
+} /* a line of the band */
 uint8_t cyc_render_palette(int e) { return palette_ram[e & 31]; }
-const uint32_t *cyc_render_present(int *w, int *h) { ++presents; *w = 256; *h = 240; return native; }
+const uint32_t *cyc_render_present(int *w, int *h) {
+    ++presents;
+    *w = 256;
+    *h = 240;
+    return native;
+}
 
 static NESModActivationCallback reset_cb, plugin_cb;
-int nes_mod_register_reset_callback(NESModActivationCallback cb) { reset_cb = cb; return 1; }
+int nes_mod_register_reset_callback(NESModActivationCallback cb) {
+    reset_cb = cb;
+    return 1;
+}
 int nes_mod_register_activation_plugin(const char *id, NESModActivationCallback cb) {
     CHECK(!strcmp(id, "faxanadu.item-box"));
     plugin_cb = cb;
@@ -68,13 +86,13 @@ static bool other_white(int x, int y) {
  * columns 27 and 30 of rows 2 and 3, and "P:" (fax_text_hud_showing's own
  * check is the model's hud_up). The palette: Eolis's, sub-palette 3 (black,
  * pink, green, white), the others different so the right one is read. */
-static uint8_t drawn_white;                 /* the white the game drew the band in: color 3, unless a test says */
+static uint8_t drawn_white; /* the white the game drew the band in: color 3, unless a test says */
 static void power_on(bool on) {
     reset_cb();
     memset(ram, 0, sizeof ram);
-    ram[0x038D] = 3;                        /* UI_AttributeDataIndex */
-    ram[0x03C1] = NO_ITEM;                  /* SelectedItem */
-    ram[0x042A] = 0xFF;                     /* DurationHourGlass: not running */
+    ram[0x038D] = 3;       /* UI_AttributeDataIndex */
+    ram[0x03C1] = NO_ITEM; /* SelectedItem */
+    ram[0x042A] = 0xFF;    /* DurationHourGlass: not running */
     static const uint8_t hud[4] = { 0x0F, 0x15, 0x19, 0x30 };
     for (int p = 0; p < 4; ++p) {
         palette_ram[p * 4] = 0x0F;
@@ -84,10 +102,14 @@ static void power_on(bool on) {
     }
     memcpy(palette_ram + 12, hud, 4);
     drawn_white = 0xFF;
-    memset(masks, 0x1E, sizeof masks);      /* background and sprites on, no emphasis */
+    memset(masks, 0x1E, sizeof masks); /* background and sprites on, no emphasis */
     memset(tiles, 0, sizeof tiles);
-    tiles[2][27] = 0x2C; tiles[3][27] = 0x2D; tiles[2][30] = 0x2E; tiles[3][30] = 0x2F;
-    hud_up = true; world_x = HUD_X;
+    tiles[2][27] = 0x2C;
+    tiles[3][27] = 0x2D;
+    tiles[2][30] = 0x2E;
+    tiles[3][30] = 0x2F;
+    hud_up = true;
+    world_x = HUD_X;
     if (on) plugin_cb();
 }
 static uint8_t white_now(void) { return drawn_white != 0xFF ? drawn_white : palette_ram[(ram[0x038D] & 3) * 4 + 3]; }
@@ -104,10 +126,14 @@ static uint32_t seamless[W * H];
 static const uint32_t *present(int *w, int *h) {
     for (int y = 0; y < H; ++y)
         for (int x = 0; x < W; ++x) seamless[y * W + x] = scene(x, y, W, world_x);
-    *w = W; *h = H;
+    *w = W;
+    *h = H;
     return fax_item_box_present(seamless, w, h);
 }
-static const uint32_t *present_now(void) { int w, h; return present(&w, &h); }
+static const uint32_t *present_now(void) {
+    int w, h;
+    return present(&w, &h);
+}
 
 /* `px`, made from picture `orig` (`w` wide, the band at x0): the brackets'
  * pixels in `gold`, as each line draws it, and every other pixel as it was. */
@@ -130,7 +156,7 @@ static bool lit(const uint32_t *px) {
 static bool unlit(const uint32_t *px) { return px == seamless && pixels == 0 && open_x == -1; }
 
 static void select_item(uint8_t item) { ram[0x03C1] = item; }
-static void boots(bool on) { ram[0x00A5] = on ? 0x80 | 0x03 : 0x03; }   /* $80 among the other status bits */
+static void boots(bool on) { ram[0x00A5] = on ? 0x80 | 0x03 : 0x03; } /* $80 among the other status bits */
 static void glass(uint8_t seconds) { ram[0x042A] = seconds; }
 
 /* ---- the rules ---- */
@@ -139,24 +165,24 @@ static void test_running(void) {
     /* The box's own item, and only it. */
     CHECK(fax_item_box_running(WING_BOOTS, 0x80, 0xFF));
     CHECK(fax_item_box_running(WING_BOOTS, 0x83, 0xFF));
-    CHECK(!fax_item_box_running(WING_BOOTS, 0x7F, 0xFF));          /* every other status bit: not flying */
-    CHECK(!fax_item_box_running(WING_BOOTS, 0x00, 0x05));          /* the Hour Glass freezing, the boots shown */
+    CHECK(!fax_item_box_running(WING_BOOTS, 0x7F, 0xFF)); /* every other status bit: not flying */
+    CHECK(!fax_item_box_running(WING_BOOTS, 0x00, 0x05)); /* the Hour Glass freezing, the boots shown */
     for (unsigned s = 0; s < 0x80; ++s) CHECK(fax_item_box_running(HOUR_GLASS, 0x00, (uint8_t)s));
-    CHECK(fax_item_box_running(HOUR_GLASS, 0x80, 0x00));          /* LimitItemDurations' 0: still freezing */
-    CHECK(!fax_item_box_running(HOUR_GLASS, 0x80, 0xFF));         /* the boots flying, the Hour Glass shown */
+    CHECK(fax_item_box_running(HOUR_GLASS, 0x80, 0x00));  /* LimitItemDurations' 0: still freezing */
+    CHECK(!fax_item_box_running(HOUR_GLASS, 0x80, 0xFF)); /* the boots flying, the Hour Glass shown */
     CHECK(!fax_item_box_running(HOUR_GLASS, 0x00, 0x80));
     for (unsigned item = 0; item < 0x100; ++item)
         if (item != WING_BOOTS && item != HOUR_GLASS) CHECK(!fax_item_box_running((uint8_t)item, 0xFF, 0x00));
 }
 
 static void test_gold(void) {
-    CHECK(fax_item_box_gold(0x30) == 0x27);   /* every region's white */
-    CHECK(fax_item_box_gold(0x20) == 0x27);   /* a fade's first stage: still white */
+    CHECK(fax_item_box_gold(0x30) == 0x27); /* every region's white */
+    CHECK(fax_item_box_gold(0x20) == 0x27); /* a fade's first stage: still white */
     CHECK(fax_item_box_gold(0x10) == 0x17);
     CHECK(fax_item_box_gold(0x00) == 0x07);
-    CHECK(fax_item_box_gold(0x0F) == 0x0F);   /* black: the fade's end */
+    CHECK(fax_item_box_gold(0x0F) == 0x0F); /* black: the fade's end */
     CHECK(fax_item_box_gold(0x1D) == 0x0F && fax_item_box_gold(0x0D) == 0x0F && fax_item_box_gold(0x3E) == 0x0F);
-    CHECK(fax_item_box_gold(0x70) == 0x27);   /* palette RAM's top bits are not the color's */
+    CHECK(fax_item_box_gold(0x70) == 0x27); /* palette RAM's top bits are not the color's */
 }
 
 static void test_brackets(void) {
@@ -180,28 +206,30 @@ static void test_brackets(void) {
 
 static void test_off(void) {
     power_on(false);
-    select_item(WING_BOOTS); boots(true);
+    select_item(WING_BOOTS);
+    boots(true);
     int w = W, h = H;
     CHECK(fax_item_box_present(seamless, &w, &h) == seamless && !pixels);
     presents = 0;
-    CHECK(fax_item_box_present(NULL, &w, &h) == NULL && presents == 0);   /* the original: nothing asked of the host */
+    CHECK(fax_item_box_present(NULL, &w, &h) == NULL && presents == 0); /* the original: nothing asked of the host */
     power_on(true);
-    select_item(WING_BOOTS); boots(true);
+    select_item(WING_BOOTS);
+    boots(true);
     CHECK(lit(present_now()));
-    reset_cb();                             /* a power-on or reset: off until the plugin activates again */
+    reset_cb(); /* a power-on or reset: off until the plugin activates again */
     CHECK(unlit(present_now()));
 }
 
 static void test_boots(void) {
     power_on(true);
     select_item(WING_BOOTS);
-    CHECK(unlit(present_now()));            /* his, not flying */
+    CHECK(unlit(present_now())); /* his, not flying */
     boots(true);
     CHECK(lit(present_now()) && gold_nes == 0x27 && white_nes == 0x30);
-    boots(false);                           /* the frame the flight ends */
+    boots(false); /* the frame the flight ends */
     CHECK(unlit(present_now()));
     boots(true);
-    select_item(HOUR_GLASS);                /* the Hour Glass shown while the boots fly */
+    select_item(HOUR_GLASS); /* the Hour Glass shown while the boots fly */
     CHECK(unlit(present_now()));
     select_item(NO_ITEM);
     CHECK(unlit(present_now()));
@@ -216,31 +244,32 @@ static void test_glass(void) {
     CHECK(unlit(present_now()));
     glass(15);
     CHECK(lit(present_now()));
-    glass(0);                               /* its last second, or a boss's screen's LimitItemDurations */
+    glass(0); /* its last second, or a boss's screen's LimitItemDurations */
     CHECK(lit(present_now()));
-    glass(0xFF);                            /* the frame it wraps to $FF: the freeze is over */
+    glass(0xFF); /* the frame it wraps to $FF: the freeze is over */
     CHECK(unlit(present_now()));
     glass(12);
-    select_item(WING_BOOTS);                /* the boots shown while the Hour Glass freezes */
+    select_item(WING_BOOTS); /* the boots shown while the Hour Glass freezes */
     CHECK(unlit(present_now()));
-    boots(true);                            /* both running: the boots shown, lit */
+    boots(true); /* both running: the boots shown, lit */
     CHECK(lit(present_now()));
 }
 
 static void test_status_bar(void) {
     power_on(true);
-    select_item(WING_BOOTS); boots(true);
-    hud_up = false;                         /* the title, the ending, the screen off */
+    select_item(WING_BOOTS);
+    boots(true);
+    hud_up = false; /* the title, the ending, the screen off */
     CHECK(unlit(present_now()));
     hud_up = true;
-    tiles[3][30] = 0x00;                    /* the box is not where UI_DrawHUDSprites puts it */
+    tiles[3][30] = 0x00; /* the box is not where UI_DrawHUDSprites puts it */
     CHECK(unlit(present_now()));
     tiles[3][30] = 0x2F;
     CHECK(lit(present_now()));
-    world_x = 84;                           /* the band wherever Seamless put it */
+    world_x = 84; /* the band wherever Seamless put it */
     const uint32_t *px = present_now();
     CHECK(px != seamless && lit_at(px, seamless, W, H, 84, 0x27) && open_x == 84 + 216);
-    world_x = W - 255;                      /* a band that would not fit */
+    world_x = W - 255; /* a band that would not fit */
     CHECK(unlit(present_now()));
     /* The stock 256-wide picture, the engine's own. */
     world_x = HUD_X;
@@ -251,13 +280,15 @@ static void test_status_bar(void) {
     px = fax_item_box_present(NULL, &w, &h);
     CHECK(presents == 1 && w == 256 && h == 240 && px != native && lit_at(px, native, 256, 240, 0, 0x27));
     /* Too short a picture to hold the band. */
-    w = W; h = 31;
+    w = W;
+    h = 31;
     CHECK(fax_item_box_present(seamless, &w, &h) == seamless);
 }
 
 static void test_palette(void) {
     power_on(true);
-    select_item(HOUR_GLASS); glass(7);
+    select_item(HOUR_GLASS);
+    glass(7);
     /* The status bar's sub-palette, UI_AttributeDataIndex's: the white read from it. */
     ram[0x038D] = 2;
     palette_ram[2 * 4 + 3] = 0x30;
@@ -268,27 +299,27 @@ static void test_palette(void) {
     CHECK(lit_at(px, seamless, W, H, HUD_X, 0x17) && gold_nes == 0x17 && pixels == FAX_ITEM_BOX_PIXELS);
     palette_ram[2 * 4 + 3] = 0x00;
     CHECK(lit_at(present_now(), seamless, W, H, HUD_X, 0x07));
-    palette_ram[2 * 4 + 3] = 0x0F;          /* faded to black: the brackets are gone, and nothing is lit */
+    palette_ram[2 * 4 + 3] = 0x0F; /* faded to black: the brackets are gone, and nothing is lit */
     CHECK(unlit(present_now()));
     /* A picture whose brackets are not the palette's white (drawn before the palette changed): left alone. */
     palette_ram[2 * 4 + 3] = 0x30;
     drawn_white = 0x10;
     CHECK(unlit(present_now()));
     drawn_white = 0xFF;
-    ram[0x038D] = 0x83;                     /* only its two low bits */
+    ram[0x038D] = 0x83; /* only its two low bits */
     CHECK(lit(present_now()));
     /* Each line as it was drawn: emphasis on one, greyscale on another (where the gold is $20, a white). */
     masks[20] = 0x1E | 0x20 | 0x80;
     masks[25] = 0x1E | 0x01;
     px = present_now();
     CHECK(lit(px));
-    CHECK(px[20 * W + HUD_X + 220] == hw_palette_argb[0x27 | (0x5 << 6)]);   /* the upright, emphasized */
-    CHECK(px[25 * W + HUD_X + 220] == hw_palette_argb[0x20]);                /* greyscale */
+    CHECK(px[20 * W + HUD_X + 220] == hw_palette_argb[0x27 | (0x5 << 6)]); /* the upright, emphasized */
+    CHECK(px[25 * W + HUD_X + 220] == hw_palette_argb[0x20]);              /* greyscale */
     /* Where the line's gold and white are the same color (greyscale on the NES: $20 and $30), nothing turns. */
     uint32_t keep20 = hw_palette_argb[0x20];
     hw_palette_argb[0x20] = hw_palette_argb[0x30];
     px = present_now();
-    CHECK(px != seamless && pixels == FAX_ITEM_BOX_PIXELS - 2);                /* line 25's upright and ] */
+    CHECK(px != seamless && pixels == FAX_ITEM_BOX_PIXELS - 2); /* line 25's upright and ] */
     CHECK(px[25 * W + HUD_X + 220] == seamless[25 * W + HUD_X + 220]);
     hw_palette_argb[0x20] = keep20;
 }

@@ -26,7 +26,7 @@ extern const uint8_t fax_found_unsold[FAX_FOUND_UNSOLD];
  * until taken. Pure: it holds whether the feature is on or not. */
 typedef enum { FAX_FOUND_AS_IS, FAX_FOUND_GONE, FAX_FOUND_FIXED } FaxFoundSpawn;
 enum { FAX_FOUND_BOOTS = 0x55, FAX_FOUND_GLASS = 0x56 };          /* SpriteBehavior_RandomlyShowItem_55, _51 */
-enum { FAX_FOUND_GLASS_AREA = 2, FAX_FOUND_GLASS_SCREEN = 0x30 };  /* the Mist: the Tower of Suffer's first room */
+enum { FAX_FOUND_GLASS_AREA = 2, FAX_FOUND_GLASS_SCREEN = 0x30 }; /* the Mist: the Tower of Suffer's first room */
 static inline FaxFoundSpawn fax_found_spawn(unsigned area, unsigned screen, unsigned entity) {
     if (entity == FAX_FOUND_BOOTS) return FAX_FOUND_GONE;
     if (entity != FAX_FOUND_GLASS) return FAX_FOUND_AS_IS;

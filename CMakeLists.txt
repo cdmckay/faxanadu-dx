@@ -121,12 +121,6 @@ if(NESRECOMP_BACKEND STREQUAL "cycle")
             list(APPEND FAX_WARNINGS -Werror)
         endif()
         set_source_files_properties(${FAX_OWN_SOURCES} PROPERTIES COMPILE_OPTIONS "${FAX_WARNINGS}")
-        # gcc takes fax_world.c's statements after an if, on its line, for
-        # ones it guards: until that file is formatted (.clang-format), not
-        # there.
-        if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
-            set_property(SOURCE src/fax_world.c APPEND PROPERTY COMPILE_OPTIONS -Wno-misleading-indentation)
-        endif()
     endif()
     # The remaster's features were packages of their own before they became
     # one package (#56), and so was Seamless until it joined it (#110). That

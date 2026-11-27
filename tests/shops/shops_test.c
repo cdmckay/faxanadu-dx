@@ -26,7 +26,14 @@ static char logged[160];
 #include "fax_shops.c"
 
 static unsigned checks;
-#define CHECK(test) do{++checks;if(!(test)){fprintf(stderr,"FAIL line %u: %s\n",__LINE__,#test);exit(1);}}while(0)
+#define CHECK(test)                                                                                                    \
+    do {                                                                                                               \
+        ++checks;                                                                                                      \
+        if (!(test)) {                                                                                                 \
+            fprintf(stderr, "FAIL line %u: %s\n", __LINE__, #test);                                                    \
+            exit(1);                                                                                                   \
+        }                                                                                                              \
+    } while (0)
 
 /* ---- the machine ---- */
 static uint8_t ram[0x800];
@@ -59,24 +66,48 @@ bool cyc_mod_poke(uint16_t addr, uint8_t value) {
     return true;
 }
 void cyc_mod_regs(CycModRegs *out) { *out = cpu; }
-void cyc_mod_set_regs(const CycModRegs *in) { cpu.a = in->a; cpu.x = in->x; cpu.y = in->y; cpu.s = in->s; cpu.p = in->p; }
+void cyc_mod_set_regs(const CycModRegs *in) {
+    cpu.a = in->a;
+    cpu.x = in->x;
+    cpu.y = in->y;
+    cpu.s = in->s;
+    cpu.p = in->p;
+}
 bool cyc_mod_isolated(void) { return isolated; }
 size_t cyc_mod_copy_cart_payload(uint8_t *out, size_t capacity) {
     if (out && capacity >= sizeof cart) memcpy(out, cart, sizeof cart);
     return sizeof cart;
 }
-int cyc_render_line_scroll_x(int y) { (void)y; return 0; }
+int cyc_render_line_scroll_x(int y) {
+    (void)y;
+    return 0;
+}
 int cyc_render_line_scroll_y(int y) { return y; }
 uint8_t cyc_render_nametable(uint16_t a) { return ciram[(a & 0x3FF) | (a & 0x400)]; }
-uint16_t cyc_render_line_bg_table(int y) { (void)y; return 0x1000; }
-uint8_t cyc_render_line_mask(int y) { (void)y; return 0x1E; }   /* fax_text.c's HUD test: rendering on */
+uint16_t cyc_render_line_bg_table(int y) {
+    (void)y;
+    return 0x1000;
+}
+uint8_t cyc_render_line_mask(int y) {
+    (void)y;
+    return 0x1E;
+} /* fax_text.c's HUD test: rendering on */
 uint8_t cyc_render_chr(uint16_t a) { return chr[a & 0x1FFF]; }
 /* Palette entry e as a color whose blue byte is e + 1, so a pixel tells its entry. */
 uint32_t cyc_render_color(int e) { return 0xFF000000u | (uint32_t)((e & 31) + 1); }
-const uint32_t *cyc_render_present(int *w, int *h) { *w = 256; *h = 240; return native; }
+const uint32_t *cyc_render_present(int *w, int *h) {
+    *w = 256;
+    *h = 240;
+    return native;
+}
 
 /* The engine's hook table: registration order, an enabled flag each. */
-typedef struct { const char *id; uint16_t addr; NESModFunctionEntryCallback cb; int on; } Site;
+typedef struct {
+    const char *id;
+    uint16_t addr;
+    NESModFunctionEntryCallback cb;
+    int on;
+} Site;
 static Site sites[16];
 static int site_count;
 int nes_mod_register_function_entry_plugin(const char *id, uint16_t addr, NESModFunctionEntryCallback cb) {
@@ -86,23 +117,33 @@ int nes_mod_register_function_entry_plugin(const char *id, uint16_t addr, NESMod
 }
 int nes_mod_set_function_hook_enabled(const char *id, int on) {
     for (int i = 0; i < site_count; ++i)
-        if (!strcmp(sites[i].id, id)) { sites[i].on = on; return 1; }
+        if (!strcmp(sites[i].id, id)) {
+            sites[i].on = on;
+            return 1;
+        }
     return 0;
 }
 static NESModActivationCallback reset_cb, activate_cb;
-int nes_mod_register_reset_callback(NESModActivationCallback cb) { reset_cb = cb; return 1; }
+int nes_mod_register_reset_callback(NESModActivationCallback cb) {
+    reset_cb = cb;
+    return 1;
+}
 int nes_mod_register_activation_plugin(const char *id, NESModActivationCallback cb) {
     if (strcmp(id, "faxanadu.shops")) return 0;
     activate_cb = cb;
     return 1;
 }
-void nes_mod_set_local_only(const char *name, int required) { (void)name; (void)required; }
+void nes_mod_set_local_only(const char *name, int required) {
+    (void)name;
+    (void)required;
+}
 static NESModSavestateGet save_get;
 static NESModSavestateSet save_set;
 static NESModSavestateValidate save_validate;
 int nes_mod_register_savestate_hook(const char *id, NESModSavestateGet get, NESModSavestateSet set) {
     if (strcmp(id, "faxanadu.shops")) return 0;
-    save_get = get; save_set = set;
+    save_get = get;
+    save_set = set;
     return 1;
 }
 int nes_mod_register_savestate_validator(const char *id, NESModSavestateValidate validate) {
@@ -114,35 +155,95 @@ int nes_mod_register_savestate_validator(const char *id, NESModSavestateValidate
 static unsigned fired;
 static int fire(uint16_t addr) {
     for (int i = 0; i < site_count; ++i)
-        if (sites[i].addr == addr && sites[i].on) { ++fired; if (sites[i].cb(addr)) return 1; }
+        if (sites[i].addr == addr && sites[i].on) {
+            ++fired;
+            if (sites[i].cb(addr)) return 1;
+        }
     return 0;
 }
-static void push(uint8_t v) { ram[0x100 | cpu.s] = v; cpu.s = (uint8_t)(cpu.s - 1); }
-static uint8_t pull(void) { cpu.s = (uint8_t)(cpu.s + 1); return ram[0x100 | cpu.s]; }
-static void jsr(uint16_t last) { push((uint8_t)(last >> 8)); push((uint8_t)last); }   /* the JSR's last byte */
-static uint16_t rts(void) { uint8_t lo = pull(); return (uint16_t)((lo | pull() << 8) + 1); }
+static void push(uint8_t v) {
+    ram[0x100 | cpu.s] = v;
+    cpu.s = (uint8_t)(cpu.s - 1);
+}
+static uint8_t pull(void) {
+    cpu.s = (uint8_t)(cpu.s + 1);
+    return ram[0x100 | cpu.s];
+}
+static void jsr(uint16_t last) {
+    push((uint8_t)(last >> 8));
+    push((uint8_t)last);
+} /* the JSR's last byte */
+static uint16_t rts(void) {
+    uint8_t lo = pull();
+    return (uint16_t)((lo | pull() << 8) + 1);
+}
 
 /* ---- bank 12: the shops, from the disassembly ---- */
-enum { HAND_DAGGER = 0x00, LONG_SWORD = 0x01, GIANT_BLADE = 0x02, DRAGON_SLAYER = 0x03,
-       STUDDED_MAIL = 0x21, FULL_PLATE = 0x22, BATTLE_SUIT = 0x23,
-       SMALL_SHIELD = 0x40, LARGE_SHIELD = 0x41, MAGIC_SHIELD = 0x42, BATTLE_HELMET = 0x43,
-       DELUGE = 0x60, THUNDER = 0x61, FIRE = 0x62, DEATH = 0x63, TILTE = 0x64,
-       RING_OF_ELF = 0x80, KEY_A = 0x84, KEY_K = 0x85, KEY_Q = 0x86, KEY_J = 0x87, KEY_JO = 0x88, MATTOCK = 0x89,
-       MAGICAL_ROD = 0x8A, HOUR_GLASS = 0x8D, WING_BOOTS = 0x8F, RED_POTION = 0x90, POISON = 0x91,
-       ELIXIR = 0x92, PENDANT = 0x93, BLACK_ONYX = 0x94 };
+enum {
+    HAND_DAGGER = 0x00,
+    LONG_SWORD = 0x01,
+    GIANT_BLADE = 0x02,
+    DRAGON_SLAYER = 0x03,
+    STUDDED_MAIL = 0x21,
+    FULL_PLATE = 0x22,
+    BATTLE_SUIT = 0x23,
+    SMALL_SHIELD = 0x40,
+    LARGE_SHIELD = 0x41,
+    MAGIC_SHIELD = 0x42,
+    BATTLE_HELMET = 0x43,
+    DELUGE = 0x60,
+    THUNDER = 0x61,
+    FIRE = 0x62,
+    DEATH = 0x63,
+    TILTE = 0x64,
+    RING_OF_ELF = 0x80,
+    KEY_A = 0x84,
+    KEY_K = 0x85,
+    KEY_Q = 0x86,
+    KEY_J = 0x87,
+    KEY_JO = 0x88,
+    MATTOCK = 0x89,
+    MAGICAL_ROD = 0x8A,
+    HOUR_GLASS = 0x8D,
+    WING_BOOTS = 0x8F,
+    RED_POTION = 0x90,
+    POISON = 0x91,
+    ELIXIR = 0x92,
+    PENDANT = 0x93,
+    BLACK_ONYX = 0x94
+};
 enum { TOOLS = 0x89, KEYS = 0x8A, I_SELL_TOOLS = 0x0F, I_SELL_KEYS = 0x0E };
-typedef struct { uint8_t index; uint16_t script, items; uint8_t portrait; Offer list[5]; } Shop;
+typedef struct {
+    uint8_t index;
+    uint16_t script, items;
+    uint8_t portrait;
+    Offer list[5];
+} Shop;
 static const Shop shops[] = {
     { 13, 0xA37A, 0xA42E, TOOLS, { { HAND_DAGGER, 400 }, { RED_POTION, 160 }, { ELIXIR, 320 }, { DELUGE, 400 } } },
-    { 25, 0xA38C, 0xA43B, TOOLS, { { SMALL_SHIELD, 800 }, { HAND_DAGGER, 500 }, { DELUGE, 500 }, { RED_POTION, 300 } } },
+    { 25,
+      0xA38C,
+      0xA43B,
+      TOOLS,
+      { { SMALL_SHIELD, 800 }, { HAND_DAGGER, 500 }, { DELUGE, 500 }, { RED_POTION, 300 } } },
     { 29, 0xA39E, 0xA448, TOOLS, { { MAGIC_SHIELD, 7600 }, { DEATH, 12500 } } },
-    { 40, 0xA3B0, 0xA44F, TOOLS, { { LONG_SWORD, 1600 }, { STUDDED_MAIL, 2500 }, { SMALL_SHIELD, 1100 },
-                                   { RED_POTION, 400 }, { WING_BOOTS, 2800 } } },
+    { 40,
+      0xA3B0,
+      0xA44F,
+      TOOLS,
+      { { LONG_SWORD, 1600 },
+        { STUDDED_MAIL, 2500 },
+        { SMALL_SHIELD, 1100 },
+        { RED_POTION, 400 },
+        { WING_BOOTS, 2800 } } },
     { 57, 0xA3C2, 0xA45F, TOOLS, { { LARGE_SHIELD, 3500 }, { THUNDER, 1200 }, { MATTOCK, 800 }, { RED_POTION, 600 } } },
     { 60, 0xA3D4, 0xA46C, TOOLS, { { DEATH, 9800 }, { HOUR_GLASS, 5600 }, { ELIXIR, 4300 }, { RED_POTION, 300 } } },
     { 72, 0xA3E6, 0xA479, TOOLS, { { FULL_PLATE, 5200 }, { MATTOCK, 1200 }, { RED_POTION, 800 } } },
-    { 87, 0xA3F8, 0xA483, TOOLS, { { GIANT_BLADE, 8500 }, { MAGIC_SHIELD, 9800 }, { WING_BOOTS, 5500 },
-                                   { RED_POTION, 1000 } } },
+    { 87,
+      0xA3F8,
+      0xA483,
+      TOOLS,
+      { { GIANT_BLADE, 8500 }, { MAGIC_SHIELD, 9800 }, { WING_BOOTS, 5500 }, { RED_POTION, 1000 } } },
     { 102, 0xA40A, 0xA490, TOOLS, { { TILTE, 15000 }, { GIANT_BLADE, 11500 }, { RED_POTION, 1200 } } },
     { 117, 0xA41C, 0xA49A, TOOLS, { { GIANT_BLADE, 13000 }, { RED_POTION, 2000 } } },
     { 12, 0xA4FC, 0xA57A, KEYS, { { KEY_J, 100 } } },
@@ -153,14 +254,20 @@ static const Shop shops[] = {
     { 104, 0xA556, 0xA597, KEYS, { { KEY_K, 1200 }, { KEY_Q, 1000 } } },
     { 119, 0xA568, 0xA59E, KEYS, { { KEY_K, 1300 } } },
 };
-enum { SHOPS = sizeof shops / sizeof shops[0], EOLIS_TOOLS = 0, APOLUNE_TOOLS = 1, FOREPAW_TOOLS = 3,
-       DARTMOOR_TOOLS = 9, EOLIS_KEYS = 10 };
-enum { MEAT_SHOP_INDEX = 11, MEAT_SHOP = 0xA4A2 };   /* a shop of another layout: 88, question, pay, add HP */
+enum {
+    SHOPS = sizeof shops / sizeof shops[0],
+    EOLIS_TOOLS = 0,
+    APOLUNE_TOOLS = 1,
+    FOREPAW_TOOLS = 3,
+    DARTMOOR_TOOLS = 9,
+    EOLIS_KEYS = 10
+};
+enum { MEAT_SHOP_INDEX = 11, MEAT_SHOP = 0xA4A2 }; /* a shop of another layout: 88, question, pay, add HP */
 
 static void rom_put(uint16_t at, const uint8_t *bytes, unsigned n) { memcpy(bank12 + (at - 0x8000), bytes, n); }
 static void build_bank12(void) {
     memset(bank12, 0xFF, sizeof bank12);
-    for (unsigned i = 0; i < ISCRIPTS; ++i) {             /* every other script: a message and an end */
+    for (unsigned i = 0; i < ISCRIPTS; ++i) { /* every other script: a message and an end */
         bank12[ISCRIPT_ADDRS_L - 0x8000 + i] = 0x00;
         bank12[ISCRIPT_ADDRS_U - 0x8000 + i] = 0xB0;
     }
@@ -169,10 +276,12 @@ static void build_bank12(void) {
     for (unsigned k = 0; k < SHOPS; ++k) {
         const Shop *s = &shops[k];
         uint16_t buy = (uint16_t)(s->script + 12), it = s->items;
-        const uint8_t script[] = { s->portrait, SHOW_MESSAGE, s->portrait == TOOLS ? I_SELL_TOOLS : I_SELL_KEYS,
+        const uint8_t script[] = { s->portrait,        SHOW_MESSAGE, s->portrait == TOOLS ? I_SELL_TOOLS : I_SELL_KEYS,
                                    SHOW_BUY_SELL_MENU, (uint8_t)buy, (uint8_t)(buy >> 8),
-                                   SHOW_SELL_MENU, (uint8_t)it, (uint8_t)(it >> 8), SHOW_MESSAGE, 0x02, 0x00,
-                                   OPEN_SHOP_ACTION, (uint8_t)it, (uint8_t)(it >> 8), SHOW_MESSAGE, 0x02, 0x00 };
+                                   SHOW_SELL_MENU,     (uint8_t)it,  (uint8_t)(it >> 8),
+                                   SHOW_MESSAGE,       0x02,         0x00,
+                                   OPEN_SHOP_ACTION,   (uint8_t)it,  (uint8_t)(it >> 8),
+                                   SHOW_MESSAGE,       0x02,         0x00 };
         rom_put(s->script, script, sizeof script);
         for (unsigned j = 0; j < 5 && s->list[j].price; ++j) {
             const uint8_t entry[] = { s->list[j].id, (uint8_t)s->list[j].price, (uint8_t)(s->list[j].price >> 8) };
@@ -189,19 +298,24 @@ static void build_bank12(void) {
 }
 
 /* ---- the hero ---- */
-enum { GOLD = 0x0392, SELECTED = 0x03BD, MESSAGE_ID = 0x0213 };   /* SPECIAL_ITEMS: fax_shops.c's */
+enum { GOLD = 0x0392, SELECTED = 0x03BD, MESSAGE_ID = 0x0213 }; /* SPECIAL_ITEMS: fax_shops.c's */
 static const uint8_t special_ids[8] = { 0x80, 0x81, 0x82, 0x83, 0x92, 0x8A, 0x93, 0x94 };
 static const uint8_t special_bits[8] = { 0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01 };
 static int special(uint8_t id) {
-    for (int i = 0; i < 8; ++i) if (special_ids[i] == id) return i;
+    for (int i = 0; i < 8; ++i)
+        if (special_ids[i] == id) return i;
     return -1;
 }
 static unsigned gold(void) { return ram[GOLD] | ram[GOLD + 1] << 8 | ram[GOLD + 2] << 16; }
-static void set_gold(unsigned g) { ram[GOLD] = (uint8_t)g; ram[GOLD + 1] = (uint8_t)(g >> 8); ram[GOLD + 2] = (uint8_t)(g >> 16); }
+static void set_gold(unsigned g) {
+    ram[GOLD] = (uint8_t)g;
+    ram[GOLD + 1] = (uint8_t)(g >> 8);
+    ram[GOLD + 2] = (uint8_t)(g >> 16);
+}
 static void carry(unsigned g, const uint8_t *ids, unsigned n) {
     for (int c = 0; c < CATEGORIES; ++c) {
         ram[NUMBER_OF_WEAPONS + c] = 0;
-        memset(ram + list_at[c], 0xEE, list_max[c]);       /* stale bytes past the counts */
+        memset(ram + list_at[c], 0xEE, list_max[c]); /* stale bytes past the counts */
         ram[SELECTED + c] = 0xFF;
     }
     ram[SELECTED] = HAND_DAGGER;
@@ -221,22 +335,32 @@ static unsigned count_of(uint8_t id) {
 /* ---- the game: the shop actions, as the disassembly has them ---- */
 static uint8_t inputs[64];
 static unsigned input_count, input_at;
-static uint8_t said[32];                                     /* message IDs, in order */
+static uint8_t said[32]; /* message IDs, in order */
 static unsigned said_count, draws, closes, opens, sounds, stuck;
-static char events[256];                                     /* d: list drawn, c: list closed, o: dialogue box
+static char events[256]; /* d: list drawn, c: list closed, o: dialogue box
                                                                 opened, m: a message */
 static bool done;
 
-static void event(char e) { size_t n = strlen(events); if (n + 1 < sizeof events) events[n] = e, events[n + 1] = 0; }
-static void press(const char *buttons) {                     /* one press per character, a frame each */
+static void event(char e) {
+    size_t n = strlen(events);
+    if (n + 1 < sizeof events) events[n] = e, events[n + 1] = 0;
+}
+static void press(const char *buttons) { /* one press per character, a frame each */
     input_count = input_at = 0;
     for (; *buttons; ++buttons)
-        inputs[input_count++] = *buttons == 'A' ? 0x80 : *buttons == 'B' ? 0x40 : *buttons == 's' ? 0x20 :
-                                *buttons == 'u' ? 0x08 : *buttons == 'd' ? 0x04 : 0;
+        inputs[input_count++] = *buttons == 'A'   ? 0x80
+                                : *buttons == 'B' ? 0x40
+                                : *buttons == 's' ? 0x20
+                                : *buttons == 'u' ? 0x08
+                                : *buttons == 'd' ? 0x04
+                                                  : 0;
 }
 /* The pad, read at the next frame: false when the player has no more presses. */
 static bool next_frame(void) {
-    if (input_at == input_count) { ++stuck; return false; }
+    if (input_at == input_count) {
+        ++stuck;
+        return false;
+    }
     ram[JOY1_CHANGED_BUTTON_MASK] = inputs[input_at++];
     return true;
 }
@@ -247,11 +371,14 @@ static uint8_t load_byte(void) {
     return v;
 }
 static void text_box(uint8_t x, uint8_t y, uint8_t w, uint8_t h) {
-    ram[TEXTBOX_X] = x; ram[TEXTBOX_X + 1] = y; ram[TEXTBOX_X + 2] = w; ram[TEXTBOX_X + 3] = h;
+    ram[TEXTBOX_X] = x;
+    ram[TEXTBOX_X + 1] = y;
+    ram[TEXTBOX_X + 2] = w;
+    ram[TEXTBOX_X + 3] = h;
     ram[TEXTBOX_CLOSED] = 0;
 }
 /* A message typed out, and the button that goes on: true for A. */
-static void say(uint8_t id) {                                /* IScripts_LoadAndShowMessage: no wait */
+static void say(uint8_t id) { /* IScripts_LoadAndShowMessage: no wait */
     said[said_count++ & 31] = id;
     ram[MESSAGE_ID] = id;
     event('m');
@@ -261,19 +388,35 @@ static bool message(uint8_t id) {
     if (!next_frame()) return false;
     return ram[JOY1_CHANGED_BUTTON_MASK] & 0x80;
 }
-static void shop_draw(void) { text_box(LIST_X, LIST_Y, LIST_W, LIST_H); ram[MENU_CURSOR_POS] = 0; ++draws; event('d'); }
-static void close_list(void) { ram[TEXTBOX_CLOSED] = 1; ++closes; event('c'); }   /* TextBox_Close */
-static void open_npc(void) { text_box(10, 16, 20, 8); ++opens; event('o'); }        /* TextBox_OpenForNPC */
-static bool has_already(uint8_t id) {                        /* Shop_GetPlayerHasSelectedItem */
+static void shop_draw(void) {
+    text_box(LIST_X, LIST_Y, LIST_W, LIST_H);
+    ram[MENU_CURSOR_POS] = 0;
+    ++draws;
+    event('d');
+}
+static void close_list(void) {
+    ram[TEXTBOX_CLOSED] = 1;
+    ++closes;
+    event('c');
+} /* TextBox_Close */
+static void open_npc(void) {
+    text_box(10, 16, 20, 8);
+    ++opens;
+    event('o');
+} /* TextBox_OpenForNPC */
+static bool has_already(uint8_t id) { /* Shop_GetPlayerHasSelectedItem */
     int k = special(id);
     if (k >= 0) return ram[SPECIAL_ITEMS] & special_bits[k];
     if (id & 0x80) return false;
     unsigned c = id >> 5;
     return ram[SELECTED + c] == (id & 0x1F) || count_of(id) > 0;
 }
-static void remove_item(uint8_t id) {                        /* Player_RemoveItem */
+static void remove_item(uint8_t id) { /* Player_RemoveItem */
     int k = special(id);
-    if (k >= 0) { ram[SPECIAL_ITEMS] &= (uint8_t)~special_bits[k]; return; }
+    if (k >= 0) {
+        ram[SPECIAL_ITEMS] &= (uint8_t)~special_bits[k];
+        return;
+    }
     unsigned c = id >> 5, n = ram[NUMBER_OF_WEAPONS + c];
     for (unsigned i = 0; i < n; ++i)
         if (ram[list_at[c] + i] == (id & 0x1F)) {
@@ -288,12 +431,15 @@ static unsigned price(unsigned i) { return ram[SHOP_ITEM_COSTS_L + i] | ram[SHOP
  * where the stack is back where it was; or until the player has no more
  * presses (`stuck`), the game left waiting where it was, a list up, say. */
 static void talk(unsigned index) {
-    uint16_t base = (uint16_t)(bank12[ISCRIPT_ADDRS_L - 0x8000 + index] | bank12[ISCRIPT_ADDRS_U - 0x8000 + index] << 8);
+    uint16_t base =
+        (uint16_t)(bank12[ISCRIPT_ADDRS_L - 0x8000 + index] | bank12[ISCRIPT_ADDRS_U - 0x8000 + index] << 8);
     said_count = draws = closes = opens = sounds = stuck = 0;
     events[0] = 0;
     done = false;
     cpu = (CycModRegs){ .s = 0xF0 };
-    ram[ISCRIPT_ADDR] = (uint8_t)base; ram[ISCRIPT_ADDR + 1] = (uint8_t)(base >> 8); ram[ISCRIPT_OFFSET] = 1;
+    ram[ISCRIPT_ADDR] = (uint8_t)base;
+    ram[ISCRIPT_ADDR + 1] = (uint8_t)(base >> 8);
+    ram[ISCRIPT_OFFSET] = 1;
     ram[ISCRIPT_PORTRAIT_ID] = bank12[base - 0x8000] & 0x7F;
     text_box(10, 16, 20, 8);
     uint16_t pc = INVOKE_NEXT_ACTION, items = 0;
@@ -301,45 +447,66 @@ static void talk(unsigned index) {
     for (int steps = 0; !done && steps < 100000; ++steps) {
         switch (pc) {
         case INVOKE_NEXT_ACTION: {
-            if (fire(pc)) { pc = rts(); break; }
+            if (fire(pc)) {
+                pc = rts();
+                break;
+            }
             uint8_t action = load_byte();
-            pc = action == 0x00 ? 0x82B4 : action == SHOW_MESSAGE ? 0x82D8 : action == OPEN_SHOP_ACTION ? OPEN_SHOP :
-                 action == SHOW_BUY_SELL_MENU ? 0x8630 : action == SHOW_SELL_MENU ? 0x8660 : 0x82B4;
+            pc = action == 0x00                 ? 0x82B4
+                 : action == SHOW_MESSAGE       ? 0x82D8
+                 : action == OPEN_SHOP_ACTION   ? OPEN_SHOP
+                 : action == SHOW_BUY_SELL_MENU ? 0x8630
+                 : action == SHOW_SELL_MENU     ? 0x8660
+                                                : 0x82B4;
             break;
         }
-        case 0x82B4:                                         /* IScriptAction_EndScript */
+        case 0x82B4: /* IScriptAction_EndScript */
             ram[ISCRIPT_PORTRAIT_ID] = 0xFF;
             ram[TEXTBOX_CLOSED] = 1;
             done = true;
             break;
-        case 0x82D8: {                                       /* IScriptAction_ShowMessage: B ends the script */
+        case 0x82D8: { /* IScriptAction_ShowMessage: B ends the script */
             uint8_t id = load_byte();
             pc = message(id) ? INVOKE_NEXT_ACTION : 0x82B4;
             break;
         }
-        case 0x8630:                                         /* IScriptAction_ShowBuySellMenu */
+        case 0x8630: /* IScriptAction_ShowBuySellMenu */
             say(0x10);
             ram[ARG_STRINGS_COUNT] = 2;
             ram[MENU_CURSOR_POS] = 0;
             for (;;) {
-                if (!next_frame()) { done = true; break; }
+                if (!next_frame()) {
+                    done = true;
+                    break;
+                }
                 uint8_t m = ram[JOY1_CHANGED_BUTTON_MASK];
                 if (m & 0x0C) ram[MENU_CURSOR_POS] ^= 1;
                 if (m & 0x80) break;
-                if (m & 0x40) { pc = 0x82B4; break; }
+                if (m & 0x40) {
+                    pc = 0x82B4;
+                    break;
+                }
             }
             if (done || pc == 0x82B4) break;
-            if (ram[MENU_CURSOR_POS] == 0) {                 /* IScripts_JumpToNextAddr */
+            if (ram[MENU_CURSOR_POS] == 0) { /* IScripts_JumpToNextAddr */
                 uint8_t lo = load_byte(), hi = load_byte();
-                ram[ISCRIPT_ADDR] = lo; ram[ISCRIPT_ADDR + 1] = hi; ram[ISCRIPT_OFFSET] = 0;
-            } else { load_byte(); load_byte(); }
+                ram[ISCRIPT_ADDR] = lo;
+                ram[ISCRIPT_ADDR + 1] = hi;
+                ram[ISCRIPT_OFFSET] = 0;
+            } else {
+                load_byte();
+                load_byte();
+            }
             pc = INVOKE_NEXT_ACTION;
             break;
         case OPEN_SHOP:
-            if (fire(pc)) { pc = rts(); break; }
+            if (fire(pc)) {
+                pc = rts();
+                break;
+            }
             pc = message(0x14) ? OPEN_SHOP_LIST : BUY_END;
             break;
-        case OPEN_SHOP_LIST: {                               /* the items, Shop_Populate, Shop_Draw */
+        case OPEN_SHOP_LIST: { /* the items, Shop_Populate, Shop_Draw */
             uint8_t lo = load_byte(), hi = load_byte();
             items = (uint16_t)(lo | hi << 8);
             Offer list[PAGE];
@@ -350,73 +517,141 @@ static void talk(unsigned index) {
                 ram[SHOP_ITEM_COSTS_U + i] = (uint8_t)(list[i].price >> 8);
             }
             ram[ARG_STRINGS_COUNT] = (uint8_t)n;
-            CHECK(!fire(OPEN_SHOP_DRAW));                    /* JSR Shop_Draw: only writes the list */
+            CHECK(!fire(OPEN_SHOP_DRAW)); /* JSR Shop_Draw: only writes the list */
             shop_draw();
             pc = BUY_WAIT;
             break;
         }
-        case BUY_WAIT: jsr(0x83FC); pc = 0x84ED; break;   /* JSR IScripts_WaitForMenuInput */
-        case 0x84ED:                                         /* IScripts_WaitForMenuInput: the frame */
-            if (!next_frame()) { done = true; break; }
+        case BUY_WAIT:
+            jsr(0x83FC);
+            pc = 0x84ED;
+            break;   /* JSR IScripts_WaitForMenuInput */
+        case 0x84ED: /* IScripts_WaitForMenuInput: the frame */
+            if (!next_frame()) {
+                done = true;
+                break;
+            }
             pc = MENU_UPDATE;
             break;
         case MENU_UPDATE: {
-            if (fire(pc)) { pc = rts(); break; }
+            if (fire(pc)) {
+                pc = rts();
+                break;
+            }
             uint8_t m = ram[JOY1_CHANGED_BUTTON_MASK], n = ram[ARG_STRINGS_COUNT];
             if (m & 0x08) ram[MENU_CURSOR_POS] = (uint8_t)(ram[MENU_CURSOR_POS] ? ram[MENU_CURSOR_POS] - 1 : n - 1);
-            else if (m & 0x04) ram[MENU_CURSOR_POS] = (uint8_t)(ram[MENU_CURSOR_POS] + 1 == n ? 0 : ram[MENU_CURSOR_POS] + 1);
-            if (m & 0x80) { carry_set = false; pc = rts(); }
-            else if (m & 0x40) { carry_set = true; pc = rts(); }
-            else pc = 0x84ED;
+            else if (m & 0x04)
+                ram[MENU_CURSOR_POS] = (uint8_t)(ram[MENU_CURSOR_POS] + 1 == n ? 0 : ram[MENU_CURSOR_POS] + 1);
+            if (m & 0x80) {
+                carry_set = false;
+                pc = rts();
+            } else if (m & 0x40) {
+                carry_set = true;
+                pc = rts();
+            } else pc = 0x84ED;
             break;
         }
-        case 0x83FD: pc = carry_set ? BUY_END : BUY_PICK; break;  /* OpenShop, after the menu: BCC, JMP EndScript */
-        case BUY_END:                                        /* JMP IScriptAction_EndScript: B */
+        case 0x83FD:
+            pc = carry_set ? BUY_END : BUY_PICK;
+            break;    /* OpenShop, after the menu: BCC, JMP EndScript */
+        case BUY_END: /* JMP IScriptAction_EndScript: B */
         case SELL_END:
-            if (fire(pc)) { pc = rts(); break; }
+            if (fire(pc)) {
+                pc = rts();
+                break;
+            }
             pc = 0x82B4;
             break;
-        case BUY_PICK: {                                     /* A: Shop_GetPlayerHasSelectedItem, ... */
-            if (fire(pc)) { pc = rts(); break; }
+        case BUY_PICK: { /* A: Shop_GetPlayerHasSelectedItem, ... */
+            if (fire(pc)) {
+                pc = rts();
+                break;
+            }
             unsigned x = ram[MENU_CURSOR_POS];
             uint8_t id = ram[DATA_ARRAY + x];
-            if (has_already(id)) { pc = 0x8469; break; }
+            if (has_already(id)) {
+                pc = 0x8469;
+                break;
+            }
             if (special(id) < 0) {
                 unsigned c = id >> 5;
-                if (ram[NUMBER_OF_WEAPONS + c] == list_max[c]) { pc = 0x8469; break; }
+                if (ram[NUMBER_OF_WEAPONS + c] == list_max[c]) {
+                    pc = 0x8469;
+                    break;
+                }
             }
-            if (gold() < price(x)) { jsr(0x8453); pc = MAYBE_SHOP_DRAW_TEXTBOX; break; }
+            if (gold() < price(x)) {
+                jsr(0x8453);
+                pc = MAYBE_SHOP_DRAW_TEXTBOX;
+                break;
+            }
             int k = special(id);
             if (k >= 0) ram[SPECIAL_ITEMS] |= special_bits[k];
-            else { unsigned c = id >> 5; ram[list_at[c] + ram[NUMBER_OF_WEAPONS + c]++] = id & 0x1F; }
-            set_gold(gold() - price(x));                     /* IScripts_ProgressivelySubtractGold */
+            else {
+                unsigned c = id >> 5;
+                ram[list_at[c] + ram[NUMBER_OF_WEAPONS + c]++] = id & 0x1F;
+            }
+            set_gold(gold() - price(x)); /* IScripts_ProgressivelySubtractGold */
             pc = BOUGHT;
             break;
         }
-        case 0x8454: pc = 0x837C; break;                   /* JMP IScripts_ShowNotEnoughMoney */
+        case 0x8454:
+            pc = 0x837C;
+            break; /* JMP IScripts_ShowNotEnoughMoney */
         case BOUGHT:
-            if (fire(pc)) { pc = rts(); break; }
-            jsr(0x8465);                                     /* JSR Maybe_Shop_DrawTextBox */
+            if (fire(pc)) {
+                pc = rts();
+                break;
+            }
+            jsr(0x8465); /* JSR Maybe_Shop_DrawTextBox */
             pc = MAYBE_SHOP_DRAW_TEXTBOX;
             break;
-        case 0x8466: pc = INVOKE_NEXT_ACTION; break;
-        case 0x8469: jsr(0x846B); pc = MAYBE_SHOP_DRAW_TEXTBOX; break;
-        case 0x846C: cpu.a = 0x06; pc = 0x837E; break;     /* LDA #$06, JMP IScripts_ShowFinalMessage */
-        case 0x837C: cpu.a = 0x03; pc = 0x837E; break;     /* IScripts_ShowNotEnoughMoney */
-        case 0x837E: message(cpu.a); pc = FINAL_MESSAGE_END; break;
+        case 0x8466:
+            pc = INVOKE_NEXT_ACTION;
+            break;
+        case 0x8469:
+            jsr(0x846B);
+            pc = MAYBE_SHOP_DRAW_TEXTBOX;
+            break;
+        case 0x846C:
+            cpu.a = 0x06;
+            pc = 0x837E;
+            break; /* LDA #$06, JMP IScripts_ShowFinalMessage */
+        case 0x837C:
+            cpu.a = 0x03;
+            pc = 0x837E;
+            break; /* IScripts_ShowNotEnoughMoney */
+        case 0x837E:
+            message(cpu.a);
+            pc = FINAL_MESSAGE_END;
+            break;
         case FINAL_MESSAGE_END:
-            if (fire(pc)) { pc = rts(); break; }
+            if (fire(pc)) {
+                pc = rts();
+                break;
+            }
             pc = 0x82B4;
             break;
-        case MAYBE_SHOP_DRAW_TEXTBOX: pc = MAYBE_SHOP_CLOSE; break;   /* two frames: no input read */
-        case MAYBE_SHOP_CLOSE:                               /* JSR TextBox_Close */
-            if (fire(pc)) { pc = rts(); break; }
+        case MAYBE_SHOP_DRAW_TEXTBOX:
+            pc = MAYBE_SHOP_CLOSE;
+            break;             /* two frames: no input read */
+        case MAYBE_SHOP_CLOSE: /* JSR TextBox_Close */
+            if (fire(pc)) {
+                pc = rts();
+                break;
+            }
             close_list();
             pc = MAYBE_SHOP_OPEN;
             break;
-        case MAYBE_SHOP_OPEN: open_npc(); pc = rts(); break;   /* JMP TextBox_OpenForNPC */
-        case SOUND_PLAY_EFFECT: sounds += cpu.a == SOUND_CURSOR; pc = rts(); break;
-        case 0x8660: {                                       /* ShowSellMenu: the items, the stock scan */
+        case MAYBE_SHOP_OPEN:
+            open_npc();
+            pc = rts();
+            break; /* JMP TextBox_OpenForNPC */
+        case SOUND_PLAY_EFFECT:
+            sounds += cpu.a == SOUND_CURSOR;
+            pc = rts();
+            break;
+        case 0x8660: { /* ShowSellMenu: the items, the stock scan */
             uint8_t lo = load_byte(), hi = load_byte();
             items = (uint16_t)(lo | hi << 8);
             Offer list[PAGE];
@@ -437,25 +672,46 @@ static void talk(unsigned index) {
             break;
         }
         case SELL_LIST:
-            if (fire(pc)) { pc = rts(); break; }
-            if (!ram[ARG_STRINGS_COUNT]) { cpu.a = 0x12; pc = 0x837E; break; }
+            if (fire(pc)) {
+                pc = rts();
+                break;
+            }
+            if (!ram[ARG_STRINGS_COUNT]) {
+                cpu.a = 0x12;
+                pc = 0x837E;
+                break;
+            }
             pc = message(0x13) ? SELL_DRAW : SELL_END;
             break;
-        case SELL_DRAW: shop_draw(); pc = SELL_WAIT; break;
-        case SELL_WAIT: jsr(0x86DD); pc = 0x84ED; break;
-        case 0x86DE: pc = carry_set ? SELL_END : SELL_PICK; break;
+        case SELL_DRAW:
+            shop_draw();
+            pc = SELL_WAIT;
+            break;
+        case SELL_WAIT:
+            jsr(0x86DD);
+            pc = 0x84ED;
+            break;
+        case 0x86DE:
+            pc = carry_set ? SELL_END : SELL_PICK;
+            break;
         case SELL_PICK: {
-            if (fire(pc)) { pc = rts(); break; }
+            if (fire(pc)) {
+                pc = rts();
+                break;
+            }
             unsigned x = ram[MENU_CURSOR_POS];
             unsigned amount = price(x);
             remove_item(ram[DATA_ARRAY + x]);
-            set_gold(gold() + amount);                       /* IScripts_ProgressivelyAddGold */
+            set_gold(gold() + amount); /* IScripts_ProgressivelyAddGold */
             pc = SOLD;
             break;
         }
         case SOLD:
-            if (fire(pc)) { pc = rts(); break; }
-            close_list();                                    /* JSR TextBox_Close, JSR TextBox_OpenForNPC */
+            if (fire(pc)) {
+                pc = rts();
+                break;
+            }
+            close_list(); /* JSR TextBox_Close, JSR TextBox_OpenForNPC */
             open_npc();
             pc = INVOKE_NEXT_ACTION;
             break;
@@ -465,11 +721,15 @@ static void talk(unsigned index) {
         }
     }
     CHECK(done);
-    if (stuck) return;                                       /* the player stopped: the game waits, mid-routine */
-    if (cpu.s != 0xF0) fprintf(stderr, "talk(%u): S=%02X events=%s said=%u stuck=%u\n", index, cpu.s, events, said_count, stuck);
-    CHECK(cpu.s == 0xF0);                                    /* every jump kept the stack where the game's would */
+    if (stuck) return; /* the player stopped: the game waits, mid-routine */
+    if (cpu.s != 0xF0)
+        fprintf(stderr, "talk(%u): S=%02X events=%s said=%u stuck=%u\n", index, cpu.s, events, said_count, stuck);
+    CHECK(cpu.s == 0xF0); /* every jump kept the stack where the game's would */
 }
-static void on(bool shops_on) { reset_cb(); if (shops_on) activate_cb(); }
+static void on(bool shops_on) {
+    reset_cb();
+    if (shops_on) activate_cb();
+}
 static bool listed(const uint8_t *ids, const uint16_t *prices, unsigned n) {
     if (ram[ARG_STRINGS_COUNT] != n) return false;
     for (unsigned i = 0; i < n; ++i)
@@ -492,20 +752,21 @@ static void prices(void) {
     CHECK(fax_shops_sell_price(RED_POTION, 160, 160) == 80);
     CHECK(fax_shops_sell_price(RED_POTION, 2000, 160) == 80);
     CHECK(fax_shops_sell_price(RED_POTION, 0, 160) == 80);
-    CHECK(fax_shops_sell_price(RED_POTION, 0, 165) == 80);   /* the gold counts by 10s */
-    CHECK(fax_shops_sell_price(RED_POTION, 300, 0) == 150);  /* no lowest (no shop's): this shop's half */
-    CHECK(fax_shops_sell_price(POISON, 0, 0) == 100);        /* the Items' next: no such rule */
+    CHECK(fax_shops_sell_price(RED_POTION, 0, 165) == 80);  /* the gold counts by 10s */
+    CHECK(fax_shops_sell_price(RED_POTION, 300, 0) == 150); /* no lowest (no shop's): this shop's half */
+    CHECK(fax_shops_sell_price(POISON, 0, 0) == 100);       /* the Items' next: no such rule */
     /* Never: the last fight's gear, and every SpecialItems bit. */
-    static const uint8_t never[] = { DRAGON_SLAYER, BATTLE_SUIT, BATTLE_HELMET, 0x80, 0x81, 0x82, 0x83,
-                                     MAGICAL_ROD, ELIXIR, PENDANT, BLACK_ONYX };
+    static const uint8_t never[] = { DRAGON_SLAYER, BATTLE_SUIT, BATTLE_HELMET, 0x80,    0x81,      0x82,
+                                     0x83,          MAGICAL_ROD, ELIXIR,        PENDANT, BLACK_ONYX };
     for (unsigned i = 0; i < sizeof never; ++i) {
         CHECK(fax_shops_never_buys(never[i]));
         CHECK(fax_shops_sell_price(never[i], 320, 320) == 0);
     }
     for (int k = 0; k < 8; ++k) CHECK(fax_shops_never_buys(special_ids[k]));
-    static const uint8_t sells[] = { HAND_DAGGER, LONG_SWORD, GIANT_BLADE, 0x20, STUDDED_MAIL, FULL_PLATE, SMALL_SHIELD,
-                                     LARGE_SHIELD, MAGIC_SHIELD, DELUGE, THUNDER, FIRE, DEATH, TILTE, KEY_A, KEY_K,
-                                     KEY_Q, KEY_J, KEY_JO, MATTOCK, HOUR_GLASS, WING_BOOTS, RED_POTION, POISON };
+    static const uint8_t sells[] = { HAND_DAGGER,  LONG_SWORD,   GIANT_BLADE,  0x20,       STUDDED_MAIL, FULL_PLATE,
+                                     SMALL_SHIELD, LARGE_SHIELD, MAGIC_SHIELD, DELUGE,     THUNDER,      FIRE,
+                                     DEATH,        TILTE,        KEY_A,        KEY_K,      KEY_Q,        KEY_J,
+                                     KEY_JO,       MATTOCK,      HOUR_GLASS,   WING_BOOTS, RED_POTION,   POISON };
     for (unsigned i = 0; i < sizeof sells; ++i) CHECK(!fax_shops_never_buys(sells[i]));
 
     /* The lowest prices, read from the shops' scripts. */
@@ -515,12 +776,13 @@ static void prices(void) {
     CHECK(lowest[GIANT_BLADE] == 8500 && lowest[MATTOCK] == 800 && lowest[WING_BOOTS] == 2800);
     CHECK(lowest[DEATH] == 9800 && lowest[MAGIC_SHIELD] == 7600 && lowest[ELIXIR] == 320);
     CHECK(!lowest[KEY_A] && !lowest[KEY_JO] && !lowest[FIRE] && !lowest[DRAGON_SLAYER] && !lowest[POISON]);
-    CHECK(!lowest[0x00 + 0x20]);                                      /* the Leather Armor: no shop */
+    CHECK(!lowest[0x00 + 0x20]); /* the Leather Armor: no shop */
     /* Every shop's script is found, and nothing else. */
     int found = 0;
     for (int i = 0; i < ISCRIPTS; ++i) {
         Script s;
-        found += shop_script((uint16_t)(bank12[ISCRIPT_ADDRS_L - 0x8000 + i] | bank12[ISCRIPT_ADDRS_U - 0x8000 + i] << 8), &s);
+        found += shop_script(
+            (uint16_t)(bank12[ISCRIPT_ADDRS_L - 0x8000 + i] | bank12[ISCRIPT_ADDRS_U - 0x8000 + i] << 8), &s);
     }
     CHECK(found == SHOPS);
 
@@ -541,15 +803,18 @@ static void prices(void) {
                 uint16_t pay = fax_shops_sell_price(id, here, lowest[id]);
                 CHECK(pay % 10 == 0);
                 if (id < KEY_A || id > KEY_JO) CHECK(pay < shops[t].list[j].price);
-                if (id == RED_POTION) { CHECK(pay == 80); ++potions; }
+                if (id == RED_POTION) {
+                    CHECK(pay == 80);
+                    ++potions;
+                }
             }
-    CHECK(potions == SHOPS * 9);                                      /* nine tool shops sell one */
+    CHECK(potions == SHOPS * 9); /* nine tool shops sell one */
 }
 
 /* The presses to a list: A on the greeting, the Buy/Sell menu's choice (A on
  * Buy, Down and A on Sell), A on the list's line. B leaves a list; after a
  * purchase or a sale, A on "Thank you for shopping." then ends it. */
-#define TO_BUY "AAA"
+#define TO_BUY  "AAA"
 #define TO_SELL "AdAA"
 
 static void the_conversation(void) {
@@ -560,8 +825,9 @@ static void the_conversation(void) {
     press(TO_BUY "B");
     talk(shops[EOLIS_TOOLS].index);
     CHECK(said_count == 3 && said[0] == I_SELL_TOOLS && said[1] == 0x10 && said[2] == 0x14);
-    CHECK(!strcmp(events, "mmmd") && input_at == 4 && !stuck && thanked == 0);   /* no close, no box after */
-    CHECK(listed((const uint8_t[]){ HAND_DAGGER, RED_POTION, ELIXIR, DELUGE }, (const uint16_t[]){ 400, 160, 320, 400 }, 4));
+    CHECK(!strcmp(events, "mmmd") && input_at == 4 && !stuck && thanked == 0); /* no close, no box after */
+    CHECK(listed((const uint8_t[]){ HAND_DAGGER, RED_POTION, ELIXIR, DELUGE }, (const uint16_t[]){ 400, 160, 320, 400 },
+                 4));
     CHECK(ram[ISCRIPT_PORTRAIT_ID] == 0xFF && gold() == 700 && !shop.traded);
     /* Every shop, the key shops too, with its own greeting. */
     for (unsigned k = 0; k < SHOPS; ++k) {
@@ -652,25 +918,31 @@ static void the_games_checks(void) {
 /* fax_shops_owned, on plain values: each item, held or selected, with the
  * feature that keeps it on or off. */
 static void ownership(void) {
-    FaxShopsHero none = { .selected = 0xFF, .recharging = true, .reusable = true,
-                          .gear_selected = { 0xFF, 0xFF, 0xFF, 0xFF } };
+    FaxShopsHero none = {
+        .selected = 0xFF, .recharging = true, .reusable = true, .gear_selected = { 0xFF, 0xFF, 0xFF, 0xFF }
+    };
     static const uint8_t kept[] = { WING_BOOTS, HOUR_GLASS, KEY_A, KEY_K, KEY_Q, KEY_J, KEY_JO, MATTOCK };
     for (unsigned k = 0; k < sizeof kept; ++k) {
         uint8_t id = kept[k];
         bool by_recharge = id == WING_BOOTS || id == HOUR_GLASS;
         FaxShopsHero h = none;
-        CHECK(!fax_shops_owned(id, &h));                            /* not his */
-        h.items[0] = RED_POTION & 0x1F; h.items[1] = id & 0x1F; h.count = 2;
-        CHECK(fax_shops_owned(id, &h));                             /* in his list */
+        CHECK(!fax_shops_owned(id, &h)); /* not his */
+        h.items[0] = RED_POTION & 0x1F;
+        h.items[1] = id & 0x1F;
+        h.count = 2;
+        CHECK(fax_shops_owned(id, &h)); /* in his list */
         h.count = 1;
-        CHECK(!fax_shops_owned(id, &h));                            /* a stale byte past the count */
-        h = none; h.selected = id & 0x1F;
-        CHECK(fax_shops_owned(id, &h));                             /* selected, in no list */
-        if (by_recharge) h.recharging = false; else h.reusable = false;
-        CHECK(!fax_shops_owned(id, &h));                            /* used up without its feature */
-        if (by_recharge) h.reusable = false, h.recharging = true; else h.recharging = false, h.reusable = true;
-        CHECK(fax_shops_owned(id, &h));                             /* the other feature does not matter */
-        CHECK(!fax_shops_owned((uint8_t)(id & 0x1F), &h));          /* the same ID in the Weapons: no */
+        CHECK(!fax_shops_owned(id, &h)); /* a stale byte past the count */
+        h = none;
+        h.selected = id & 0x1F;
+        CHECK(fax_shops_owned(id, &h)); /* selected, in no list */
+        if (by_recharge) h.recharging = false;
+        else h.reusable = false;
+        CHECK(!fax_shops_owned(id, &h)); /* used up without its feature */
+        if (by_recharge) h.reusable = false, h.recharging = true;
+        else h.recharging = false, h.reusable = true;
+        CHECK(fax_shops_owned(id, &h));                    /* the other feature does not matter */
+        CHECK(!fax_shops_owned((uint8_t)(id & 0x1F), &h)); /* the same ID in the Weapons: no */
     }
     /* The Elixir: charged (its SpecialItems bit) or spent, whatever is on. */
     FaxShopsHero h = none;
@@ -679,17 +951,22 @@ static void ownership(void) {
     CHECK(fax_shops_owned(ELIXIR, &h));
     h.recharging = h.reusable = false;
     CHECK(fax_shops_owned(ELIXIR, &h));
-    h = none; h.elixir_spent = true;
+    h = none;
+    h.elixir_spent = true;
     CHECK(fax_shops_owned(ELIXIR, &h));
-    h = none; h.special = 0xF7;                                     /* every other bit */
+    h = none;
+    h.special = 0xF7; /* every other bit */
     CHECK(!fax_shops_owned(ELIXIR, &h));
     /* Anything else never is: a Red Potion or the Poison held, the other
      * special items, and gear he does not have (gear()). */
-    static const uint8_t never[] = { RED_POTION, POISON, HAND_DAGGER, LONG_SWORD, STUDDED_MAIL, SMALL_SHIELD,
-                                     DELUGE, DEATH, RING_OF_ELF, MAGICAL_ROD, PENDANT, BLACK_ONYX };
+    static const uint8_t never[] = { RED_POTION, POISON, HAND_DAGGER, LONG_SWORD,  STUDDED_MAIL, SMALL_SHIELD,
+                                     DELUGE,     DEATH,  RING_OF_ELF, MAGICAL_ROD, PENDANT,      BLACK_ONYX };
     for (unsigned k = 0; k < sizeof never; ++k) {
         h = none;
-        h.selected = never[k] & 0x1F; h.items[0] = never[k] & 0x1F; h.count = 1; h.special = 0xFF;
+        h.selected = never[k] & 0x1F;
+        h.items[0] = never[k] & 0x1F;
+        h.count = 1;
+        h.special = 0xFF;
         CHECK(!fax_shops_owned(never[k], &h));
     }
 }
@@ -703,25 +980,29 @@ static void not_for_sale(void) {
     for (unsigned k = 0; k < sizeof kept; ++k) {
         uint8_t id = kept[k];
         FaxShopsHero h = none;
-        h.items[0] = RED_POTION & 0x1F; h.items[1] = id & 0x1F; h.count = 2;
-        CHECK(fax_shops_not_for_sale(id, &h));                      /* his for good */
-        CHECK(!fax_shops_not_for_sale(RED_POTION, &h));             /* the potion beside it sells */
-        if (id == WING_BOOTS || id == HOUR_GLASS) h.recharging = false; else h.reusable = false;
-        CHECK(!fax_shops_not_for_sale(id, &h));                     /* used up without its feature: it sells */
+        h.items[0] = RED_POTION & 0x1F;
+        h.items[1] = id & 0x1F;
+        h.count = 2;
+        CHECK(fax_shops_not_for_sale(id, &h));          /* his for good */
+        CHECK(!fax_shops_not_for_sale(RED_POTION, &h)); /* the potion beside it sells */
+        if (id == WING_BOOTS || id == HOUR_GLASS) h.recharging = false;
+        else h.reusable = false;
+        CHECK(!fax_shops_not_for_sale(id, &h)); /* used up without its feature: it sells */
     }
     /* What no shop buys, whatever the hero has and whatever is on. */
-    static const uint8_t never[] = { DRAGON_SLAYER, BATTLE_SUIT, BATTLE_HELMET, 0x80, 0x81, 0x82, 0x83,
-                                     MAGICAL_ROD, ELIXIR, PENDANT, BLACK_ONYX };
+    static const uint8_t never[] = { DRAGON_SLAYER, BATTLE_SUIT, BATTLE_HELMET, 0x80,    0x81,      0x82,
+                                     0x83,          MAGICAL_ROD, ELIXIR,        PENDANT, BLACK_ONYX };
     for (unsigned k = 0; k < sizeof never; ++k) {
         FaxShopsHero h = { .selected = 0xFF };
         CHECK(fax_shops_not_for_sale(never[k], &h));
     }
     /* The rest sells: potions, the Poison, weapons, armor, shields and spells. */
-    static const uint8_t sells[] = { RED_POTION, POISON, HAND_DAGGER, LONG_SWORD, STUDDED_MAIL, SMALL_SHIELD,
-                                     DELUGE, DEATH };
+    static const uint8_t sells[] = { RED_POTION,   POISON,       HAND_DAGGER, LONG_SWORD,
+                                     STUDDED_MAIL, SMALL_SHIELD, DELUGE,      DEATH };
     for (unsigned k = 0; k < sizeof sells; ++k) {
         FaxShopsHero h = none;
-        h.items[0] = sells[k] & 0x1F; h.count = 1;
+        h.items[0] = sells[k] & 0x1F;
+        h.count = 1;
         CHECK(!fax_shops_not_for_sale(sells[k], &h));
     }
 }
@@ -730,29 +1011,32 @@ static void not_for_sale(void) {
  * owned (#165): a second copy does nothing. Sold, it is not; a different
  * piece never is; and it still sells. */
 static void gear(void) {
-    FaxShopsHero none = { .selected = 0xFF, .recharging = true, .reusable = true,
-                          .gear_selected = { 0xFF, 0xFF, 0xFF, 0xFF } };
-    static const uint8_t each[] = { HAND_DAGGER, GIANT_BLADE, STUDDED_MAIL, FULL_PLATE, SMALL_SHIELD, MAGIC_SHIELD,
-                                    DELUGE, TILTE };
+    FaxShopsHero none = {
+        .selected = 0xFF, .recharging = true, .reusable = true, .gear_selected = { 0xFF, 0xFF, 0xFF, 0xFF }
+    };
+    static const uint8_t each[] = { HAND_DAGGER,  GIANT_BLADE,  STUDDED_MAIL, FULL_PLATE,
+                                    SMALL_SHIELD, MAGIC_SHIELD, DELUGE,       TILTE };
     for (unsigned k = 0; k < sizeof each; ++k) {
         uint8_t id = each[k], c = id >> 5, entry = id & 0x1F, other = (uint8_t)(entry ^ 1);
         FaxShopsHero h = none;
-        CHECK(!fax_shops_owned(id, &h));                            /* neither */
+        CHECK(!fax_shops_owned(id, &h)); /* neither */
         h.gear_selected[c] = entry;
-        CHECK(fax_shops_owned(id, &h));                             /* equipped, in no list */
-        CHECK(!fax_shops_owned((uint8_t)(c << 5 | other), &h));     /* a different piece: for sale */
+        CHECK(fax_shops_owned(id, &h));                         /* equipped, in no list */
+        CHECK(!fax_shops_owned((uint8_t)(c << 5 | other), &h)); /* a different piece: for sale */
         for (unsigned d = 0; d < 4; ++d)
-            if (d != c) CHECK(!fax_shops_owned((uint8_t)(d << 5 | entry), &h));   /* another kind's same entry */
-        CHECK(!fax_shops_owned((uint8_t)(0x80 | entry), &h));       /* the Items' same entry */
+            if (d != c) CHECK(!fax_shops_owned((uint8_t)(d << 5 | entry), &h)); /* another kind's same entry */
+        CHECK(!fax_shops_owned((uint8_t)(0x80 | entry), &h));                   /* the Items' same entry */
         h = none;
-        h.gear[c][0] = other; h.gear[c][1] = entry; h.gear_count[c] = 2;
-        CHECK(fax_shops_owned(id, &h));                             /* carried, in its list */
-        h.gear_count[c] = 1;
-        CHECK(!fax_shops_owned(id, &h));                            /* just sold: a stale byte past the count */
+        h.gear[c][0] = other;
+        h.gear[c][1] = entry;
         h.gear_count[c] = 2;
-        CHECK(!fax_shops_not_for_sale(id, &h));                     /* owned, and still for sale */
+        CHECK(fax_shops_owned(id, &h)); /* carried, in its list */
+        h.gear_count[c] = 1;
+        CHECK(!fax_shops_owned(id, &h)); /* just sold: a stale byte past the count */
+        h.gear_count[c] = 2;
+        CHECK(!fax_shops_not_for_sale(id, &h)); /* owned, and still for sale */
         h.reusable = h.recharging = false;
-        CHECK(fax_shops_owned(id, &h));                             /* whatever keeps items */
+        CHECK(fax_shops_owned(id, &h)); /* whatever keeps items */
     }
 
     /* In a shop. Eolis's: Hand Dagger, Red Potion, Elixir, Deluge. The Giant
@@ -767,7 +1051,8 @@ static void gear(void) {
     CHECK(bought == 2 && ignored == 2 && said_count == 4 && said[3] == 0x02 && messages == 0);
     /* Sell the dagger: then it buys again, at Eolis's 400. */
     on(true);
-    press(TO_SELL "AB" "A");
+    press(TO_SELL "AB"
+                  "A");
     talk(shops[EOLIS_TOOLS].index);
     CHECK(gold() == 1200 + 200 && count_of(HAND_DAGGER) == 0 && sold == 1);
     press(TO_BUY "ABA");
@@ -776,7 +1061,8 @@ static void gear(void) {
     /* A duplicate bought before this change still sells: two Long Swords. */
     on(true);
     carry(0, (const uint8_t[]){ LONG_SWORD, LONG_SWORD }, 2);
-    press(TO_SELL "AA" "AABA");                                     /* the last: nothing to sell, then buying */
+    press(TO_SELL "AA"
+                  "AABA"); /* the last: nothing to sell, then buying */
     talk(shops[EOLIS_TOOLS].index);
     CHECK(gold() == 800 + 800 && count_of(LONG_SWORD) == 0 && refused == 0 && !stuck);
     /* Consumables stay buyable as often as there is room: three Red Potions. */
@@ -804,7 +1090,7 @@ static void owned_rows(void) {
     talk(shops[FOREPAW_TOOLS].index);
     CHECK(!stuck && input_at == 13 && said_count == 4 && said[3] == 0x02);
     CHECK(gold() == 9000 - 2800 - 400 && count_of(WING_BOOTS) == 1 && count_of(RED_POTION) == 2);
-    CHECK(bought == 2 && ignored == 1 && !strcmp(events, "mmmdddom"));  /* drawn, redrawn after each purchase, left */
+    CHECK(bought == 2 && ignored == 1 && !strcmp(events, "mmmdddom")); /* drawn, redrawn after each purchase, left */
     CHECK(ram[ARG_STRINGS_COUNT] == 5 && ram[DATA_ARRAY + BOOTS_ROW] == WING_BOOTS && price(BOOTS_ROW) == 2800);
     /* Back again, the boots selected (in no list): the same row, the same price, owned. */
     on(true);
@@ -833,7 +1119,7 @@ static void owned_rows(void) {
     press(TO_BUY "dAdAdABA");
     talk(shops[AFTER_MASCON].index);
     CHECK(gold() == 20000 - 300 && count_of(HOUR_GLASS) == 1 && count_of(RED_POTION) == 1);
-    CHECK(!(ram[SPECIAL_ITEMS] & 0x08) && ignored == 2 && said_count == 4 && !stuck);   /* buying never charges it */
+    CHECK(!(ram[SPECIAL_ITEMS] & 0x08) && ignored == 2 && said_count == 4 && !stuck); /* buying never charges it */
     spent = false;
     /* Neither: both sell. */
     on(true);
@@ -900,8 +1186,8 @@ static void owned_rows(void) {
 
 static void selling(void) {
     on(true);
-    static const uint8_t carried[] = { DRAGON_SLAYER, LONG_SWORD, KEY_J, KEY_A, WING_BOOTS, POISON, RED_POTION,
-                                       RED_POTION };
+    static const uint8_t carried[] = { DRAGON_SLAYER, LONG_SWORD, KEY_J,      KEY_A,
+                                       WING_BOOTS,    POISON,     RED_POTION, RED_POTION };
     carry(100, carried, sizeof carried);
     /* The sell list: the Items first as the original lists them (from the
      * last), then the weapons. The Poison no shop sells: 100. The Wing Boots
@@ -909,8 +1195,9 @@ static void selling(void) {
     press(TO_SELL "B");
     talk(shops[EOLIS_TOOLS].index);
     CHECK(said_count == 3 && said[2] == 0x13 && !strcmp(events, "mmmd") && !stuck);
-    CHECK(listed((const uint8_t[]){ RED_POTION, RED_POTION, POISON, WING_BOOTS, KEY_A, KEY_J, LONG_SWORD, DRAGON_SLAYER },
-                 (const uint16_t[]){ 80, 80, 100, 0, 0, 0, 800, 0 }, 8));
+    CHECK(
+        listed((const uint8_t[]){ RED_POTION, RED_POTION, POISON, WING_BOOTS, KEY_A, KEY_J, LONG_SWORD, DRAGON_SLAYER },
+               (const uint16_t[]){ 80, 80, 100, 0, 0, 0, 800, 0 }, 8));
     /* Sell the Poison (no shop's: 100) and a Red Potion (this shop's: 80), in
      * a row, the list drawn again after each, its line not said again; B, the
      * dialogue box over the list, and the thanks. */
@@ -937,8 +1224,9 @@ static void selling(void) {
     carry(100, carried, sizeof carried);
     press(TO_SELL "B");
     talk(shops[EOLIS_TOOLS].index);
-    CHECK(listed((const uint8_t[]){ RED_POTION, RED_POTION, POISON, WING_BOOTS, KEY_A, KEY_J, LONG_SWORD, DRAGON_SLAYER },
-                 (const uint16_t[]){ 80, 80, 100, 1400, 100, 50, 800, 0 }, 8));
+    CHECK(
+        listed((const uint8_t[]){ RED_POTION, RED_POTION, POISON, WING_BOOTS, KEY_A, KEY_J, LONG_SWORD, DRAGON_SLAYER },
+               (const uint16_t[]){ 80, 80, 100, 1400, 100, 50, 800, 0 }, 8));
     press(TO_SELL "dddddABA");
     talk(shops[EOLIS_TOOLS].index);
     CHECK(gold() == 150 && count_of(KEY_J) == 0 && refused == 0 && !stuck);
@@ -957,7 +1245,8 @@ static void selling(void) {
     /* A special item that somehow sits in a list is never sold, so its
      * SpecialItems bit (Player_RemoveItem clears that) stays. */
     carry(0, NULL, 0);
-    ram[list_at[ITEMS]] = ELIXIR & 0x1F; ram[NUMBER_OF_WEAPONS + ITEMS] = 1;
+    ram[list_at[ITEMS]] = ELIXIR & 0x1F;
+    ram[NUMBER_OF_WEAPONS + ITEMS] = 1;
     ram[SPECIAL_ITEMS] = 0x08;
     press(TO_SELL "AB");
     talk(shops[EOLIS_TOOLS].index);
@@ -976,7 +1265,8 @@ static void leaving(void) {
      * you like?" and buying; a purchase, B, the thanks. */
     on(true);
     carry(500, NULL, 0);
-    press("AdAA" "AdABA");
+    press("AdAA"
+          "AdABA");
     talk(shops[EOLIS_TOOLS].index);
     CHECK(said_count == 5 && said[2] == 0x12 && said[3] == 0x14 && said[4] == 0x02);
     CHECK(!strcmp(events, "mmmmddom") && gold() == 500 - 160 && !stuck);
@@ -1006,8 +1296,8 @@ static void leaving(void) {
 
 static void pages_of_eight(void) {
     on(true);
-    static const uint8_t carried[] = { KEY_J, KEY_Q, KEY_K, MATTOCK, RED_POTION, RED_POTION, KEY_A, RED_POTION,
-                                       LONG_SWORD, GIANT_BLADE, DRAGON_SLAYER };
+    static const uint8_t carried[] = { KEY_J, KEY_Q,      KEY_K,      MATTOCK,     RED_POTION,   RED_POTION,
+                                       KEY_A, RED_POTION, LONG_SWORD, GIANT_BLADE, DRAGON_SLAYER };
     carry(0, carried, sizeof carried);
     press(TO_SELL "B");
     talk(shops[EOLIS_TOOLS].index);
@@ -1024,11 +1314,13 @@ static void pages_of_eight(void) {
     talk(shops[EOLIS_TOOLS].index);
     CHECK(gold() == 800 && count_of(LONG_SWORD) == 0 && shop.page == 1 && !stuck);
     /* Sell the last of a page: back to the end of the page before. */
-    static const uint8_t nine[] = { KEY_J, KEY_Q, KEY_K, MATTOCK, RED_POTION, RED_POTION, KEY_A, RED_POTION, LONG_SWORD };
+    static const uint8_t nine[] = {
+        KEY_J, KEY_Q, KEY_K, MATTOCK, RED_POTION, RED_POTION, KEY_A, RED_POTION, LONG_SWORD
+    };
     carry(0, nine, sizeof nine);
-    press(TO_SELL "uAs");                                         /* Select: nothing, a frame in the list */
+    press(TO_SELL "uAs"); /* Select: nothing, a frame in the list */
     talk(shops[EOLIS_TOOLS].index);
-    CHECK(gold() == 800 && shop.page == 0 && ram[MENU_CURSOR_POS] == 7 && stuck);   /* left waiting in the list */
+    CHECK(gold() == 800 && shop.page == 0 && ram[MENU_CURSOR_POS] == 7 && stuck); /* left waiting in the list */
 }
 
 static void off(void) {
@@ -1055,7 +1347,8 @@ static void off(void) {
     /* Dartmoor's tool shop buys a Red Potion for half its own 2000, as the
      * original does. */
     carry(0, (const uint8_t[]){ RED_POTION }, 1);
-    press("AdAAA" "A");
+    press("AdAAA"
+          "A");
     talk(shops[DARTMOOR_TOOLS].index);
     CHECK(gold() == 1000 && count_of(RED_POTION) == 0 && said[said_count - 1] == 0x02 && !stuck);
     on(true);
@@ -1067,7 +1360,7 @@ static void off(void) {
 static void red_potions(void) {
     unsigned selling = 0;
     for (unsigned k = 0; k < SHOPS; ++k) {
-        on(true);                                                    /* the counts from 0 */
+        on(true); /* the counts from 0 */
         unsigned row = 5;
         for (unsigned j = 0; j < 5 && shops[k].list[j].price; ++j)
             if (shops[k].list[j].id == RED_POTION) row = j;
@@ -1103,12 +1396,12 @@ static void red_potions(void) {
 static void found_items(void) {
     /* On plain values: every entry of the three goes, the rest keep their order. */
     static const uint8_t drops[] = { WING_BOOTS, HOUR_GLASS, ELIXIR };
-    uint8_t ids[] = { DEATH, HOUR_GLASS, ELIXIR, RED_POTION, ELIXIR };    /* the shop after Mascon's, an Elixir more */
+    uint8_t ids[] = { DEATH, HOUR_GLASS, ELIXIR, RED_POTION, ELIXIR }; /* the shop after Mascon's, an Elixir more */
     uint16_t costs[] = { 9800, 5600, 4300, 300, 320 };
     CHECK(fax_shops_without(drops, 3, ids, costs, 5) == 2 && ids[0] == DEATH && ids[1] == RED_POTION);
     CHECK(costs[0] == 9800 && costs[1] == 300);
     CHECK(fax_shops_without(drops, 3, ids, costs, 2) == 2 && fax_shops_without(drops, 3, ids, costs, 0) == 0);
-    CHECK(fax_shops_without(drops, 0, ids, costs, 2) == 2 && ids[1] == RED_POTION);   /* nothing to drop */
+    CHECK(fax_shops_without(drops, 0, ids, costs, 2) == 2 && ids[1] == RED_POTION); /* nothing to drop */
 
     on(true);
     found_on = true;
@@ -1158,7 +1451,8 @@ static void found_items(void) {
     carry(700, NULL, 0);
     press("AAAB");
     talk(shops[EOLIS_TOOLS].index);
-    CHECK(listed((const uint8_t[]){ HAND_DAGGER, RED_POTION, ELIXIR, DELUGE }, (const uint16_t[]){ 400, 160, 320, 400 }, 4));
+    CHECK(listed((const uint8_t[]){ HAND_DAGGER, RED_POTION, ELIXIR, DELUGE }, (const uint16_t[]){ 400, 160, 320, 400 },
+                 4));
     found_on = false;
     on(true);
 }
@@ -1187,14 +1481,15 @@ static void isolated_and_saved(void) {
     CHECK(save_validate(NULL, 0) && save_set(NULL, 0) && !shop.active);
     /* One saved before #163 (version 1: no lines, trade or leaving) goes on
      * in the list it was in, its line said. */
-    buf[0] = 1;                                                     /* the state saved above, as version 1 */
+    buf[0] = 1; /* the state saved above, as version 1 */
     CHECK(save_validate(buf, STATE_V1_LEN) && save_set(buf, STATE_V1_LEN));
     CHECK(shop.active && shop.mode == BUY && shop.lines == 1u << BUY && !shop.traded && !shop.leaving);
-    CHECK(!save_validate(buf, STATE_LEN));                            /* version 1 is 17 bytes */
+    CHECK(!save_validate(buf, STATE_LEN)); /* version 1 is 17 bytes */
     buf[0] = STATE_VERSION;
     buf[2] = 7;
     CHECK(!save_validate(buf, n) && !save_set(buf, n));
-    buf[2] = BUY; buf[17] = 4;
+    buf[2] = BUY;
+    buf[17] = 4;
     CHECK(!save_validate(buf, n));
     CHECK(save_get(buf, 4) < 0);
 }
@@ -1216,15 +1511,15 @@ static bool lit(const uint32_t *px, int col, int row) {
 }
 static void the_hint(void) {
     on(true);
-    for (int ch = 0x21; ch < 0x80; ++ch) cart[13 * 16384 + (ch - 0x20) * 8] = 0x80;   /* a pixel each */
+    for (int ch = 0x21; ch < 0x80; ++ch) cart[13 * 16384 + (ch - 0x20) * 8] = 0x80; /* a pixel each */
     for (int i = 0; i < 256 * 240; ++i) native[i] = 0xFF123456u;
     char line[HINT_COLS + 1], page[HINT_COLS + 1];
     int w = 256, h = 240;
 
-    static const uint8_t carried[] = { RED_POTION, KEY_J, KEY_Q, KEY_K, MATTOCK, RED_POTION, KEY_A, RED_POTION,
-                                       LONG_SWORD, DRAGON_SLAYER };
+    static const uint8_t carried[] = { RED_POTION, KEY_J, KEY_Q,      KEY_K,      MATTOCK,
+                                       RED_POTION, KEY_A, RED_POTION, LONG_SWORD, DRAGON_SLAYER };
     carry(0, carried, sizeof carried);
-    ram[0x03BD] = GIANT_BLADE;                                /* in hand: nothing Eolis sells is his */
+    ram[0x03BD] = GIANT_BLADE; /* in hand: nothing Eolis sells is his */
     frame_list(true);
     /* B: the script has ended, nothing is drawn. */
     press(TO_BUY "B");
@@ -1244,20 +1539,20 @@ static void the_hint(void) {
     talk(shops[EOLIS_TOOLS].index);
     CHECK(!hint(line) && page_label(page) && !strcmp(page, "1 of 2"));
     frame_list(false);
-    CHECK(fax_shops_present(NULL, &w, &h) == NULL);           /* the list's frame is not up yet: unchanged */
+    CHECK(fax_shops_present(NULL, &w, &h) == NULL); /* the list's frame is not up yet: unchanged */
     frame_list(true);
     const uint32_t *px = fax_shops_present(NULL, &w, &h);
     CHECK(px != native && w == 256 && h == 240);
     CHECK(lit(px, HINT_COL + HINT_COLS - 1, PAGE_ROW) && lit(px, HINT_COL + HINT_COLS - 6, PAGE_ROW) &&
           !lit(px, HINT_COL + HINT_COLS - 7, PAGE_ROW));
-    CHECK(!lit(px, HINT_COL, HINT_ROW));                      /* no hint */
+    CHECK(!lit(px, HINT_COL, HINT_ROW)); /* no hint */
     /* The first page, from the last of the Items: Red Potion, the A key, ...
      * On the A key, his for good: "Not for sale", and no price. */
     CHECK(ram[DATA_ARRAY + 1] == KEY_A && price(1) == 0 && ram[DATA_ARRAY + 3] == MATTOCK && price(3) == 0);
     uint32_t inside = cyc_render_color(0);
     for (int x = (LIST_X + 13) * 8; x < (LIST_X + 18) * 8; ++x) {
-        CHECK(px[(LIST_Y + 5) * 8 * 256 + x] == inside);                  /* the A key's price cells */
-        CHECK(px[(LIST_Y + 3) * 8 * 256 + x] == native[0]);               /* the Red Potion's: as drawn */
+        CHECK(px[(LIST_Y + 5) * 8 * 256 + x] == inside);    /* the A key's price cells */
+        CHECK(px[(LIST_Y + 3) * 8 * 256 + x] == native[0]); /* the Red Potion's: as drawn */
     }
     ram[MENU_CURSOR_POS] = 1;
     CHECK(hint(line) && !strcmp(line, "Not for sale"));
@@ -1279,7 +1574,7 @@ static void the_hint(void) {
     CHECK(hint(line) && !strcmp(line, "Not for sale") && page_label(page) && !strcmp(page, "2 of 2"));
     px = fax_shops_present(NULL, &w, &h);
     for (int x = (LIST_X + 13) * 8; x < (LIST_X + 18) * 8; ++x) CHECK(px[(LIST_Y + 3) * 8 * 256 + x] == inside);
-    CHECK(px[(LIST_Y + 5) * 8 * 256 + (LIST_X + 13) * 8] == native[0]);   /* the Long Sword's price: untouched */
+    CHECK(px[(LIST_Y + 5) * 8 * 256 + (LIST_X + 13) * 8] == native[0]); /* the Long Sword's price: untouched */
     ram[MENU_CURSOR_POS] = 1;
     CHECK(!hint(line));
 
@@ -1297,9 +1592,9 @@ static void the_hint(void) {
     int boots = (LIST_Y + 3 + 2 * 4) * 8 * 256, potion = (LIST_Y + 3 + 2 * 3) * 8 * 256;
     for (int c = 0; c < 5; ++c) {
         int x = (LIST_X + 13 + c) * 8;
-        CHECK(px[boots + x] != inside && px[boots + x] != native[0]);   /* each letter's one pixel */
+        CHECK(px[boots + x] != inside && px[boots + x] != native[0]); /* each letter's one pixel */
         CHECK(px[boots + 256 + x + 1] == inside && px[boots + 7 * 256 + x + 7] == inside);
-        CHECK(px[potion + x] == native[0]);                              /* the Red Potion's price: as drawn */
+        CHECK(px[potion + x] == native[0]); /* the Red Potion's price: as drawn */
     }
     CHECK(px[boots + (LIST_X + 12) * 8 + 7] == native[0] && px[boots + (LIST_X + 18) * 8] == native[0]);
     CHECK(lit(px, HINT_COL, HINT_ROW) && lit(px, HINT_COL + 12, HINT_ROW) && !lit(px, HINT_COL + 13, HINT_ROW));
@@ -1316,12 +1611,12 @@ static void the_hint(void) {
      * price, as the Dragon Slayer; the Red Potion under them sells. */
     press(TO_SELL);
     talk(shops[FOREPAW_TOOLS].index);
-    CHECK(ram[DATA_ARRAY] == WING_BOOTS && ram[DATA_ARRAY + 1] == RED_POTION);   /* the Items from the last */
+    CHECK(ram[DATA_ARRAY] == WING_BOOTS && ram[DATA_ARRAY + 1] == RED_POTION); /* the Items from the last */
     ram[MENU_CURSOR_POS] = 0;
     CHECK(hint(line) && !strcmp(line, "Not for sale"));
     px = fax_shops_present(NULL, &w, &h);
     for (int x = (LIST_X + 13) * 8; x < (LIST_X + 18) * 8; ++x)
-        for (int r = 0; r < 8; ++r) CHECK(px[((LIST_Y + 3) * 8 + r) * 256 + x] == inside);   /* no OWNED either */
+        for (int r = 0; r < 8; ++r) CHECK(px[((LIST_Y + 3) * 8 + r) * 256 + x] == inside); /* no OWNED either */
     CHECK(px[(LIST_Y + 5) * 8 * 256 + (LIST_X + 13) * 8] == native[0]);
     ram[MENU_CURSOR_POS] = 1;
     CHECK(!hint(line));
@@ -1329,12 +1624,14 @@ static void the_hint(void) {
     ram[MENU_CURSOR_POS] = 0;
     static uint32_t wide[424 * 240];
     for (int i = 0; i < 424 * 240; ++i) wide[i] = 0xFF654321u;
-    w = 424; h = 240;
+    w = 424;
+    h = 240;
     px = fax_shops_present(wide, &w, &h);
     CHECK(px != wide && w == 424 && px[(HINT_ROW * 8) * 424 + 84 + HINT_COL * 8] != wide[0]);
     /* Off: nothing. */
     on(false);
-    w = 256; h = 240;
+    w = 256;
+    h = 240;
     CHECK(fax_shops_present(NULL, &w, &h) == NULL);
 }
 

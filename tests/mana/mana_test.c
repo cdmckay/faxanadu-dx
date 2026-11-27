@@ -15,36 +15,55 @@
 #include "fax_mana.c"
 
 static unsigned checks;
-#define CHECK(test) do{++checks;if(!(test)){fprintf(stderr,"FAIL line %u: %s\n",__LINE__,#test);exit(1);}}while(0)
+#define CHECK(test)                                                                                                    \
+    do {                                                                                                               \
+        ++checks;                                                                                                      \
+        if (!(test)) {                                                                                                 \
+            fprintf(stderr, "FAIL line %u: %s\n", __LINE__, #test);                                                    \
+            exit(1);                                                                                                   \
+        }                                                                                                              \
+    } while (0)
 
 /* ---- the machine ---- */
 static uint8_t ram[0x800];
-static uint8_t rom[0x8000];                  /* $8000-$FFFF: bank 14's two tables, and the JSRs at the waits */
+static uint8_t rom[0x8000]; /* $8000-$FFFF: bank 14's two tables, and the JSRs at the waits */
 static CycModRegs cpu;
-static bool isolated, refuse;               /* refuse: the next committed call fails */
-static unsigned calls, mp_drawn, hp_drawn;  /* committed calls run; bars queued */
-static int bar_mp = -1, bar_hp = -1;        /* the values the bars were last queued with */
+static bool isolated, refuse;              /* refuse: the next committed call fails */
+static unsigned calls, mp_drawn, hp_drawn; /* committed calls run; bars queued */
+static int bar_mp = -1, bar_hp = -1;       /* the values the bars were last queued with */
 
-#define MP          ram[0x39A]
-#define HP          ram[0x431]
-#define SCREEN_READY ram[0x0E]              /* Screen_ReadyState: 0 once loaded */
-#define INTERRUPTS  ram[0x13]               /* Game_InterruptHandlersEnabled */
-#define SCROLLING   ram[0x54]               /* Screen_ScrollDirection: $FF not scrolling */
-#define READ        ram[0x1F]               /* PPUBuffer_ReadOffset */
-#define WRITE       ram[0x20]               /* PPUBuffer_WriteOffset */
-#define ENTITIES    0x2CC                   /* CurrentSprites_Entities, 8 slots */
-#define DEATH       0x13                    /* the death effect a kill leaves in the slot */
+#define MP           ram[0x39A]
+#define HP           ram[0x431]
+#define SCREEN_READY ram[0x0E] /* Screen_ReadyState: 0 once loaded */
+#define INTERRUPTS   ram[0x13] /* Game_InterruptHandlersEnabled */
+#define SCROLLING    ram[0x54] /* Screen_ScrollDirection: $FF not scrolling */
+#define READ         ram[0x1F] /* PPUBuffer_ReadOffset */
+#define WRITE        ram[0x20] /* PPUBuffer_WriteOffset */
+#define ENTITIES     0x2CC     /* CurrentSprites_Entities, 8 slots */
+#define DEATH        0x13      /* the death effect a kill leaves in the slot */
 
 /* Entities, and what bank 14's tables give each (ENEMY_EXPERIENCE at $B60E,
  * SPRITE_CATEGORIES_BY_ENTITY at $B544). */
 enum {
-    ROCK = 0x03,          /* Zorugeriru's falling rock: an enemy's category, no experience */
-    HORNET = 0x07, ISHIISU = 0x0F, ROKUSUTAHN = 0x11, CHARRON = 0x15, SUGATA = 0x18, GRIMLOCK = 0x19,
-    WOLFMAN = 0x21, MONODRON = 0x2A, RIPASHEIKU = 0x2D, ZORADOHNA = 0x2E, KING_GRIEVE = 0x32, ZOZURA = 0x47,
+    ROCK = 0x03, /* Zorugeriru's falling rock: an enemy's category, no experience */
+    HORNET = 0x07,
+    ISHIISU = 0x0F,
+    ROKUSUTAHN = 0x11,
+    CHARRON = 0x15,
+    SUGATA = 0x18,
+    GRIMLOCK = 0x19,
+    WOLFMAN = 0x21,
+    MONODRON = 0x2A,
+    RIPASHEIKU = 0x2D,
+    ZORADOHNA = 0x2E,
+    KING_GRIEVE = 0x32,
+    ZOZURA = 0x47,
 };
-static const struct { uint8_t entity, experience, category; } TABLE[] = {
-    { ROCK, 0, 0 }, { HORNET, 25, 0 }, { ISHIISU, 10, 0 }, { ROKUSUTAHN, 120, 7 }, { CHARRON, 65, 0 },
-    { SUGATA, 13, 0 }, { GRIMLOCK, 58, 0 }, { WOLFMAN, 49, 0 }, { MONODRON, 20, 0 }, { RIPASHEIKU, 90, 7 },
+static const struct {
+    uint8_t entity, experience, category;
+} TABLE[] = {
+    { ROCK, 0, 0 },        { HORNET, 25, 0 },     { ISHIISU, 10, 0 }, { ROKUSUTAHN, 120, 7 }, { CHARRON, 65, 0 },
+    { SUGATA, 13, 0 },     { GRIMLOCK, 58, 0 },   { WOLFMAN, 49, 0 }, { MONODRON, 20, 0 },    { RIPASHEIKU, 90, 7 },
     { ZORADOHNA, 158, 7 }, { KING_GRIEVE, 0, 7 }, { ZOZURA, 30, 0 },
 };
 static void load_tables(void) {
@@ -71,13 +90,20 @@ bool cyc_mod_poke(uint16_t addr, uint8_t value) {
     return true;
 }
 void cyc_mod_regs(CycModRegs *out) { *out = cpu; }
-void cyc_mod_set_regs(const CycModRegs *in) { uint16_t pc = cpu.pc; cpu = *in; cpu.pc = pc; }
+void cyc_mod_set_regs(const CycModRegs *in) {
+    uint16_t pc = cpu.pc;
+    cpu = *in;
+    cpu.pc = pc;
+}
 bool cyc_mod_isolated(void) { return isolated; }
-static bool taught;                          /* the Magician's lesson, learned */
+static bool taught; /* the Magician's lesson, learned */
 bool fax_lesson_learned(void) { return taught; }
 
 /* PPUBuffer_HasCapacity: ReadOffset - WriteOffset is 0 (empty) or at least $24. */
-static bool has_capacity(uint8_t write) { uint8_t room = (uint8_t)(READ - write); return room == 0 || room >= 0x24; }
+static bool has_capacity(uint8_t write) {
+    uint8_t room = (uint8_t)(READ - write);
+    return room == 0 || room >= 0x24;
+}
 /* Player_SetMP ($FA85), A the MP: capped at 80, stored; UI_DrawPlayerHP
  * ($C0BD): Player_HP_U, capped at 80, stored. Then UI_SetHUDBarValue draws
  * the bar: the tiles (3 + width + 1 bytes) and the partial tile's pattern
@@ -85,11 +111,14 @@ static bool has_capacity(uint8_t write) { uint8_t room = (uint8_t)(READ - write)
  * committed call: all or nothing. */
 bool cyc_mod_call_commit(uint16_t routine, CycModRegs *regs) {
     CHECK(routine == 0xFA85 || routine == 0xC0BD);
-    CHECK(regs->s == cpu.s);                 /* JSRs from where the CPU is */
+    CHECK(regs->s == cpu.s); /* JSRs from where the CPU is */
     ++calls;
-    if (refuse) { refuse = false; return false; }
+    if (refuse) {
+        refuse = false;
+        return false;
+    }
     uint8_t w = WRITE;
-    if (!has_capacity(w)) return false;      /* spins until its cycle budget runs out */
+    if (!has_capacity(w)) return false; /* spins until its cycle budget runs out */
     w = (uint8_t)(w + 3 + ram[0x4EE] + 1);
     if (!has_capacity(w)) return false;
     w = (uint8_t)(w + 3 + 16);
@@ -103,8 +132,11 @@ bool cyc_mod_call_commit(uint16_t routine, CycModRegs *regs) {
         bar_hp = HP;
         ++hp_drawn;
     }
-    regs->a = 0x10; regs->x = w; regs->y = 0x08; regs->p = 0x26;   /* what the routine leaves */
-    cyc_mod_set_regs(regs);                  /* the engine: they become the CPU's */
+    regs->a = 0x10;
+    regs->x = w;
+    regs->y = 0x08;
+    regs->p = 0x26;         /* what the routine leaves */
+    cyc_mod_set_regs(regs); /* the engine: they become the CPU's */
     return true;
 }
 
@@ -115,7 +147,9 @@ static NESModFunctionEntryCallback site_cb;
 static int site_on;
 int nes_mod_register_function_entry_plugin(const char *id, uint16_t addr, NESModFunctionEntryCallback cb) {
     CHECK(!site_cb);
-    site_id = id; site_addr = addr; site_cb = cb;
+    site_id = id;
+    site_addr = addr;
+    site_cb = cb;
     return 1;
 }
 int nes_mod_set_function_hook_enabled(const char *id, int on) {
@@ -127,9 +161,13 @@ static const char *local_only;
 void nes_mod_set_local_only(const char *name, int required) { local_only = required ? name : NULL; }
 static NESModActivationCallback reset_cb, plugin_cb;
 static const char *plugin_id;
-int nes_mod_register_reset_callback(NESModActivationCallback cb) { reset_cb = cb; return 1; }
+int nes_mod_register_reset_callback(NESModActivationCallback cb) {
+    reset_cb = cb;
+    return 1;
+}
 int nes_mod_register_activation_plugin(const char *id, NESModActivationCallback cb) {
-    plugin_id = id; plugin_cb = cb;
+    plugin_id = id;
+    plugin_cb = cb;
     return 1;
 }
 static NESModSavestateGet save_get;
@@ -137,7 +175,8 @@ static NESModSavestateSet save_set;
 static NESModSavestateValidate save_validate;
 int nes_mod_register_savestate_hook(const char *id, NESModSavestateGet get, NESModSavestateSet set) {
     if (strcmp(id, "faxanadu.mana-refill")) return 0;
-    save_get = get; save_set = set;
+    save_get = get;
+    save_set = set;
     return 1;
 }
 int nes_mod_register_savestate_validator(const char *id, NESModSavestateValidate validate) {
@@ -156,7 +195,7 @@ static unsigned experience;
 static void kill(unsigned slot, uint8_t entity) {
     ram[ENTITIES + slot] = entity;
     cpu.x = (uint8_t)slot;
-    if (site_on) CHECK(site_cb(site_addr) == 0);   /* it only observes */
+    if (site_on) CHECK(site_cb(site_addr) == 0); /* it only observes */
     experience += rom[0xB60E - 0x8000 + entity];
     ram[ENTITIES + slot] = DEATH;
 }
@@ -168,36 +207,62 @@ static void at(uint8_t s, uint16_t pushed) {
     ram[0x100 | (uint8_t)(s + 2)] = (uint8_t)(pushed >> 8);
 }
 typedef enum {
-    PLAYING,       /* Game_MainLoop ($DB45: TXS with $FF) in WaitForNextFrame from $DB4D */
-    PAUSE,         /* GameLoop_CheckPauseGame's loop: JSR WaitForNextFrame at $E036, under the JSR at $DB74 */
-    TEXT,          /* a script's text box, waiting on its frames in bank 12 */
-    LAG,           /* a pass still in Sprites_UpdateAll (JSR at $DB65) as the frame ends */
-    SCROLL,        /* Game_MainLoop's scroll loop: JSR WaitForNextFrame at $DBC4, scrolling */
-    LOADING,       /* waiting at the loop's top with a screen not yet loaded, the interrupt handlers off */
+    PLAYING, /* Game_MainLoop ($DB45: TXS with $FF) in WaitForNextFrame from $DB4D */
+    PAUSE,   /* GameLoop_CheckPauseGame's loop: JSR WaitForNextFrame at $E036, under the JSR at $DB74 */
+    TEXT,    /* a script's text box, waiting on its frames in bank 12 */
+    LAG,     /* a pass still in Sprites_UpdateAll (JSR at $DB65) as the frame ends */
+    SCROLL,  /* Game_MainLoop's scroll loop: JSR WaitForNextFrame at $DBC4, scrolling */
+    LOADING, /* waiting at the loop's top with a screen not yet loaded, the interrupt handlers off */
 } Where;
 static void frame_ends(Where where) {
-    SCREEN_READY = 0; INTERRUPTS = 1; SCROLLING = 0xFF;
+    SCREEN_READY = 0;
+    INTERRUPTS = 1;
+    SCROLLING = 0xFF;
     switch (where) {
-    case PLAYING: at(0xFD, 0xDB4F); break;
-    case PAUSE:   ram[0x1FE] = 0x76; ram[0x1FF] = 0xDB; at(0xFB, 0xE038); break;
-    case TEXT:    at(0xF7, 0x8A12); break;
-    case LAG:     at(0xFD, 0xDB67); break;
-    case SCROLL:  at(0xFD, 0xDBC6); SCROLLING = 1; break;
-    case LOADING: at(0xFD, 0xDB4F); SCREEN_READY = 2; INTERRUPTS = 0; break;
+    case PLAYING:
+        at(0xFD, 0xDB4F);
+        break;
+    case PAUSE:
+        ram[0x1FE] = 0x76;
+        ram[0x1FF] = 0xDB;
+        at(0xFB, 0xE038);
+        break;
+    case TEXT:
+        at(0xF7, 0x8A12);
+        break;
+    case LAG:
+        at(0xFD, 0xDB67);
+        break;
+    case SCROLL:
+        at(0xFD, 0xDBC6);
+        SCROLLING = 1;
+        break;
+    case LOADING:
+        at(0xFD, 0xDB4F);
+        SCREEN_READY = 2;
+        INTERRUPTS = 0;
+        break;
     }
     fax_mana_frame_end();
 }
 /* The NMI that starts each frame sends the PPU buffer. */
 static void nmi(void) { READ = WRITE; }
-static void frames(Where where, unsigned n) { for (unsigned i = 0; i < n; ++i) { nmi(); frame_ends(where); } }
+static void frames(Where where, unsigned n) {
+    for (unsigned i = 0; i < n; ++i) {
+        nmi();
+        frame_ends(where);
+    }
+}
 /* Player_ReduceMP, in a pass of the main loop: the spell's cost, if MP covers it. */
-static void cast(uint8_t cost) { if (MP >= cost) MP = (uint8_t)(MP - cost); }
+static void cast(uint8_t cost) {
+    if (MP >= cost) MP = (uint8_t)(MP - cost);
+}
 
 static void fresh_as(uint8_t mp, bool learned) {
     reset_cb();
     plugin_cb();
     memset(ram, 0, sizeof ram);
-    ram[0x4EE] = 10;                         /* UI_MPAndHPBarWidth, as UI_DrawHUDSprites sets it */
+    ram[0x4EE] = 10; /* UI_MPAndHPBarWidth, as UI_DrawHUDSprites sets it */
     MP = mp;
     HP = 80;
     calls = mp_drawn = hp_drawn = experience = 0;
@@ -230,35 +295,41 @@ static void registers(void) {
 
 /* experience² / 256, at least 1; a boss 40; doubled by the lesson. */
 static void per_kill_amounts(void) {
-    static const struct { uint8_t entity; int mp; } want[] = {
-        { ISHIISU, 1 },        /* 10: 100 / 256 is 0, so the least */
-        { SUGATA, 1 },         /* 13 */
-        { MONODRON, 1 },       /* 20: 400 / 256 */
-        { HORNET, 2 },         /* 25: 625 / 256 */
-        { ZOZURA, 3 },         /* 30: 900 / 256 */
-        { WOLFMAN, 9 },        /* 49: 2401 / 256 */
-        { GRIMLOCK, 13 },      /* 58: 3364 / 256 */
-        { CHARRON, 16 },       /* 65: 4225 / 256, a Tilte */
-        { ROCK, 1 },           /* no experience: still a kill */
-        { ROKUSUTAHN, 40 }, { RIPASHEIKU, 40 }, { ZORADOHNA, 40 },   /* bosses, whatever their experience */
-        { KING_GRIEVE, 40 },   /* a boss with none */
+    static const struct {
+        uint8_t entity;
+        int mp;
+    } want[] = {
+        { ISHIISU, 1 },                                             /* 10: 100 / 256 is 0, so the least */
+        { SUGATA, 1 },                                              /* 13 */
+        { MONODRON, 1 },                                            /* 20: 400 / 256 */
+        { HORNET, 2 },                                              /* 25: 625 / 256 */
+        { ZOZURA, 3 },                                              /* 30: 900 / 256 */
+        { WOLFMAN, 9 },                                             /* 49: 2401 / 256 */
+        { GRIMLOCK, 13 },                                           /* 58: 3364 / 256 */
+        { CHARRON, 16 },                                            /* 65: 4225 / 256, a Tilte */
+        { ROCK, 1 },                                                /* no experience: still a kill */
+        { ROKUSUTAHN, 40 },  { RIPASHEIKU, 40 }, { ZORADOHNA, 40 }, /* bosses, whatever their experience */
+        { KING_GRIEVE, 40 },                                        /* a boss with none */
     };
     for (unsigned i = 0; i < sizeof want / sizeof want[0]; ++i) {
         CHECK(gives(want[i].entity, false, 0) == want[i].mp);
         CHECK(seen.kills == 1 && seen.entity == want[i].entity && seen.mp == want[i].mp && seen.gained == seen.mp);
         CHECK(seen.bosses == (want[i].mp == BOSS_MP));
-        CHECK(gives(want[i].entity, true, 0) == 2 * want[i].mp);   /* the lesson: twice */
+        CHECK(gives(want[i].entity, true, 0) == 2 * want[i].mp); /* the lesson: twice */
     }
     /* The early fights and the mid-game ones the numbers were tuned for. */
     fresh(0);
-    kill(7, MONODRON); kill(6, ZOZURA);      /* the Trunk's screen 3 */
-    CHECK(MP == 4);                          /* two Deluges */
+    kill(7, MONODRON);
+    kill(6, ZOZURA); /* the Trunk's screen 3 */
+    CHECK(MP == 4);  /* two Deluges */
     fresh(0);
-    kill(7, MONODRON); kill(6, MONODRON);    /* its screens 1 and 5 */
-    CHECK(MP == 2);                          /* one */
+    kill(7, MONODRON);
+    kill(6, MONODRON); /* its screens 1 and 5 */
+    CHECK(MP == 2);    /* one */
     fresh(0);
-    kill(7, GRIMLOCK); kill(6, HORNET);      /* a screen of the Mist */
-    CHECK(MP == 15);                         /* about a Tilte */
+    kill(7, GRIMLOCK);
+    kill(6, HORNET); /* a screen of the Mist */
+    CHECK(MP == 15); /* about a Tilte */
 }
 
 /* A kill's MP is in RAM at once, so a cast or a drain that frame has it; its
@@ -268,17 +339,21 @@ static void a_kill_gives_mp_at_once(void) {
     nmi();
     kill(7, ZOZURA);
     CHECK(MP == 13 && experience == 30 && bars == BAR_MP && calls == 0);
-    cast(2);                                 /* Deluge in the same pass */
+    cast(2); /* Deluge in the same pass */
     CHECK(MP == 11);
-    cpu.a = 0x00; cpu.x = 0x44; cpu.y = 0x55; cpu.p = 0x02;   /* WaitForNextFrame: LDA latch gave 0, Z set */
+    cpu.a = 0x00;
+    cpu.x = 0x44;
+    cpu.y = 0x55;
+    cpu.p = 0x02; /* WaitForNextFrame: LDA latch gave 0, Z set */
     frame_ends(PLAYING);
     CHECK(MP == 11 && bar_mp == 11 && mp_drawn == 1 && hp_drawn == 0 && bars == 0);
     CHECK(cpu.a == 0x00 && cpu.x == 0x44 && cpu.y == 0x55 && cpu.p == 0x02 && cpu.s == 0xFD);
     frames(PLAYING, 100);
-    CHECK(calls == 1);                       /* nothing more to draw */
+    CHECK(calls == 1); /* nothing more to draw */
     /* Two kills in a frame: both, and one bar. */
     nmi();
-    kill(6, ZOZURA); kill(7, MONODRON);
+    kill(6, ZOZURA);
+    kill(7, MONODRON);
     frame_ends(PLAYING);
     CHECK(MP == 15 && seen.kills == 3 && mp_drawn == 2 && bar_mp == 15);
 }
@@ -295,7 +370,7 @@ static void the_cap(void) {
     frames(PLAYING, 10);
     CHECK(mp_drawn == 1);
     fresh_as(30, true);
-    kill(7, RIPASHEIKU);                     /* a boss, taught: 80, the whole bar */
+    kill(7, RIPASHEIKU); /* a boss, taught: 80, the whole bar */
     CHECK(MP == 80 && seen.mp == 80 && seen.bosses == 1);
 }
 
@@ -305,10 +380,12 @@ static void no_refill_over_time(void) {
     static const bool learned[] = { false, true };
     for (unsigned i = 0; i < 2; ++i) {
         fresh_as(40, learned[i]);
-        nmi(); cast(2); frame_ends(PLAYING);
+        nmi();
+        cast(2);
+        frame_ends(PLAYING);
         frames(PLAYING, 10000);
         CHECK(MP == 38 && calls == 0);
-        fresh_as(0, learned[i]);             /* a new game: Game_Start leaves MP at 0 */
+        fresh_as(0, learned[i]); /* a new game: Game_Start leaves MP at 0 */
         frames(PLAYING, 10000);
         CHECK(MP == 0 && calls == 0);
     }
@@ -350,10 +427,11 @@ static void the_bar_waits_for_room(void) {
     /* Room for the tiles, not then for the pattern: the next frame that has. */
     fresh(10);
     kill(7, ZOZURA);
-    READ = 0x10; WRITE = (uint8_t)(READ - 49);
+    READ = 0x10;
+    WRITE = (uint8_t)(READ - 49);
     frame_ends(PLAYING);
     CHECK(calls == 0 && seen.deferred == 1 && bars == BAR_MP);
-    WRITE = (uint8_t)(READ - 50);            /* just enough */
+    WRITE = (uint8_t)(READ - 50); /* just enough */
     frame_ends(PLAYING);
     CHECK(mp_drawn == 1 && bars == 0 && WRITE == (uint8_t)(READ - 50 + 33));
     /* A call that fails anyway draws nothing, and it tries again. */
@@ -370,8 +448,8 @@ static void the_bar_waits_for_room(void) {
 static void a_guru_fills_hp_and_mp(void) {
     fresh(5);
     HP = 20;
-    ram[0x432] = 0x80;                       /* half an HP: the game's own fills leave the 256ths */
-    cpu.s = 0xF3;                            /* between two of the interpreter's actions */
+    ram[0x432] = 0x80; /* half an HP: the game's own fills leave the 256ths */
+    cpu.s = 0xF3;      /* between two of the interpreter's actions */
     fax_mana_guru();
     CHECK(HP == 80 && MP == 80 && ram[0x432] == 0x80 && bar_hp == 80 && bar_mp == 80 && bars == 0);
     CHECK(hp_drawn == 1 && mp_drawn == 1 && seen.restores == 1 && WRITE == 66);
@@ -387,12 +465,13 @@ static void a_guru_fills_hp_and_mp(void) {
     fresh(5);
     HP = 20;
     nmi();
-    READ = 0x10; WRITE = (uint8_t)(READ - 60);   /* room for one bar, not two */
+    READ = 0x10;
+    WRITE = (uint8_t)(READ - 60); /* room for one bar, not two */
     fax_mana_guru();
     CHECK(HP == 80 && MP == 80 && hp_drawn == 1 && mp_drawn == 0 && bars == BAR_MP);
-    frame_ends(TEXT);                        /* his box, still full: the NMI has not sent it yet */
+    frame_ends(TEXT); /* his box, still full: the NMI has not sent it yet */
     CHECK(mp_drawn == 0 && seen.deferred == 1);
-    frames(TEXT, 1);                         /* a frame into his words */
+    frames(TEXT, 1); /* a frame into his words */
     CHECK(mp_drawn == 1 && bar_mp == 80 && bars == 0);
     /* The lesson changes nothing here. */
     fresh_as(5, true);
@@ -415,8 +494,12 @@ static void save_states(void) {
     CHECK(mp_drawn == 2 && bars == 0);
     /* Bad records are refused. */
     uint8_t bad[RECORD];
-    memcpy(bad, buf, RECORD); bad[0] = 3;             CHECK(!save_validate(bad, RECORD) && save_set(bad, RECORD) == 0);
-    memcpy(bad, buf, RECORD); bad[1] = BARS + 1;      CHECK(!save_validate(bad, RECORD));
+    memcpy(bad, buf, RECORD);
+    bad[0] = 3;
+    CHECK(!save_validate(bad, RECORD) && save_set(bad, RECORD) == 0);
+    memcpy(bad, buf, RECORD);
+    bad[1] = BARS + 1;
+    CHECK(!save_validate(bad, RECORD));
     CHECK(!save_validate(buf, 3) && save_validate(buf, RECORD));
     /* #98's refill (version 1): it loads, with nothing to draw, and no MP comes back. */
     uint8_t v1[4] = { 1, 1, 50, 1 };
@@ -437,7 +520,7 @@ static void save_states(void) {
  * (experience). Isolated (Seamless's simulation of another room): nothing. */
 static void off_and_isolated_do_nothing(void) {
     fresh(10);
-    reset_cb();                              /* no activation follows */
+    reset_cb(); /* no activation follows */
     HP = 20;
     kill(7, ZOZURA);
     fax_mana_killed(SUGATA);

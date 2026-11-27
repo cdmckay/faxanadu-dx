@@ -31,17 +31,18 @@
 #include <stdlib.h>
 
 /* Bank 15 */
-#define HANDLE_KNOCKBACK  0xE153u  /* Player_HandleKnockback: LDA Player_Flags, AND #$40, PHA, EOR #$40,
-                                      STA Player_Flags, JSR Player_KnockbackHoriz */
-#define CHECK_IF_PASSABLE 0xE6C8u  /* Player_CheckIfPassable: X = 0 left, 1 right, 2 up, 3 down; A = 0 passable */
+/* Player_HandleKnockback: LDA Player_Flags, AND #$40, PHA, EOR #$40,
+ * STA Player_Flags, JSR Player_KnockbackHoriz */
+#define HANDLE_KNOCKBACK  0xE153u
+#define CHECK_IF_PASSABLE 0xE6C8u /* Player_CheckIfPassable: X = 0 left, 1 right, 2 up, 3 down; A = 0 passable */
 /* RAM */
 #define PLAYER_FLAGS      0x00A4u
-#define JUMPING           0x01u    /* Player_Flags */
+#define JUMPING           0x01u /* Player_Flags */
 #define CAN_CLIMB         0x08u
 #define DOWN              3u
 
 static bool enabled;
-static unsigned held;              /* knockback updates skipped on a ladder */
+static unsigned held; /* knockback updates skipped on a ladder */
 
 /* Whether the block under his feet is passable, by the game's own check. */
 static bool in_the_air(void) {
@@ -93,5 +94,6 @@ void fax_ladder_hold_tcp_setup(void) {}
 NES_MOD_CONSTRUCTOR(register_ladder_hold) {
     if (!nes_mod_register_function_entry_plugin(hook_id, HANDLE_KNOCKBACK, knockback_hook) ||
         !nes_mod_register_reset_callback(deactivate) ||
-        !nes_mod_register_activation_plugin("faxanadu.ladder-hold", activate)) abort();
+        !nes_mod_register_activation_plugin("faxanadu.ladder-hold", activate))
+        abort();
 }

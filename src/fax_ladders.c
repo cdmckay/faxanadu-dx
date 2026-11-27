@@ -48,31 +48,33 @@
 #include <stdlib.h>
 
 /* Bank 15 */
-#define CLIMB_UP_BRANCH   0xE30Cu  /* Player_CheckHandleClimbUp's BNE @_return, after LDA Player_Flags,
-                                      AND #$DA, STA Player_Flags, LDX #$02, JSR Player_CheckIfPassable:
-                                      Z clear = a block over his head */
-#define FOUNTAIN_EVENT    0xEF69u  /* ScreenEvents_HandlePathToMasconEvent: LDA Quests, AND #$20, BEQ */
-#define CHECK_IF_ON_LADDER 0xE752u /* Player_CheckIfOnLadder: sets or clears can climb from the blocks at
-                                      his head and feet; clears climbing with it */
+/* Player_CheckHandleClimbUp's BNE @_return, after LDA Player_Flags,
+ * AND #$DA, STA Player_Flags, LDX #$02, JSR Player_CheckIfPassable:
+ * Z clear = a block over his head */
+#define CLIMB_UP_BRANCH    0xE30Cu
+#define FOUNTAIN_EVENT     0xEF69u /* ScreenEvents_HandlePathToMasconEvent: LDA Quests, AND #$20, BEQ */
+/* Player_CheckIfOnLadder: sets or clears can climb from the blocks at
+ * his head and feet; clears climbing with it */
+#define CHECK_IF_ON_LADDER 0xE752u
 /* RAM */
-#define JOY1_BUTTONS      0x0016u  /* Joy1_ButtonMask */
-#define AREA              0x0024u  /* Area_CurrentArea */
-#define SCREEN            0x0063u  /* Area_CurrentScreen */
-#define PLAYER_POS_Y      0x00A1u
-#define PLAYER_FLAGS      0x00A4u
-#define PLAYER_STATUS     0x00A5u  /* Player_StatusFlag */
-#define SPECIAL_EVENT     0x042Eu  /* CurrentScreen_SpecialEventID */
-#define A_BUTTON          0x80u
-#define CAN_CLIMB         0x08u    /* Player_Flags */
-#define CLIMBING          0x10u
-#define WING_BOOTS        0x80u    /* Player_StatusFlag */
-#define TRUNK             1u
-#define FOUNTAIN_SCREEN   0x28u    /* Trunk $28, the dried fountain and the gate to the Mist */
-#define NO_EVENT          0xFFu
-#define P_Z               0x02u
+#define JOY1_BUTTONS       0x0016u /* Joy1_ButtonMask */
+#define AREA               0x0024u /* Area_CurrentArea */
+#define SCREEN             0x0063u /* Area_CurrentScreen */
+#define PLAYER_POS_Y       0x00A1u
+#define PLAYER_FLAGS       0x00A4u
+#define PLAYER_STATUS      0x00A5u /* Player_StatusFlag */
+#define SPECIAL_EVENT      0x042Eu /* CurrentScreen_SpecialEventID */
+#define A_BUTTON           0x80u
+#define CAN_CLIMB          0x08u /* Player_Flags */
+#define CLIMBING           0x10u
+#define WING_BOOTS         0x80u /* Player_StatusFlag */
+#define TRUNK              1u
+#define FOUNTAIN_SCREEN    0x28u /* Trunk $28, the dried fountain and the gate to the Mist */
+#define NO_EVENT           0xFFu
+#define P_Z                0x02u
 
 static bool enabled;
-static unsigned tops, events;      /* climbs stopped at a top; fountain events kept off another screen */
+static unsigned tops, events; /* climbs stopped at a top; fountain events kept off another screen */
 
 static uint8_t peek(uint16_t addr) { return cyc_mod_peek(addr); }
 
@@ -95,8 +97,8 @@ static int climb_up_hook(uint16_t addr) {
     if (cyc_mod_isolated()) return 0;
     CycModRegs regs;
     cyc_mod_regs(&regs);
-    if (!(regs.p & P_Z)) return 0;                                         /* a block above: the game stops him */
-    if ((peek(PLAYER_STATUS) & WING_BOOTS) && (peek(JOY1_BUTTONS) & A_BUTTON)) return 0;   /* flying */
+    if (!(regs.p & P_Z)) return 0; /* a block above: the game stops him */
+    if ((peek(PLAYER_STATUS) & WING_BOOTS) && (peek(JOY1_BUTTONS) & A_BUTTON)) return 0; /* flying */
     uint8_t y = peek(PLAYER_POS_Y);
     if (y == 0 || on_ladder_at((uint8_t)(y - 1))) return 0;
     cyc_mod_poke(PLAYER_FLAGS, (uint8_t)(peek(PLAYER_FLAGS) & ~CLIMBING));
@@ -116,9 +118,10 @@ static int fountain_hook(uint16_t addr) {
     return 1;
 }
 
-static const char *const hook_ids[] = {"faxanadu.ladder-fixes.climb-top", "faxanadu.ladder-fixes.fountain"};
+static const char *const hook_ids[] = { "faxanadu.ladder-fixes.climb-top", "faxanadu.ladder-fixes.fountain" };
 static void hooks(int on) {
-    for (unsigned i = 0; i < sizeof hook_ids / sizeof hook_ids[0]; i++) nes_mod_set_function_hook_enabled(hook_ids[i], on);
+    for (unsigned i = 0; i < sizeof hook_ids / sizeof hook_ids[0]; i++)
+        nes_mod_set_function_hook_enabled(hook_ids[i], on);
 }
 static void deactivate(void) {
     enabled = false;
@@ -140,8 +143,10 @@ static void ladders_state(int id, const char *line) {
     cyc_tcp_ok(id, fields);
 }
 void fax_ladders_tcp_setup(void) {
-    cyc_tcp_register("ladders_state", "Ladder fixes: climbs stopped at a ladder's top, fountain events kept off "
-                                      "another screen", ladders_state);
+    cyc_tcp_register("ladders_state",
+                     "Ladder fixes: climbs stopped at a ladder's top, fountain events kept off "
+                     "another screen",
+                     ladders_state);
 }
 #else
 void fax_ladders_tcp_setup(void) {}
@@ -151,5 +156,6 @@ NES_MOD_CONSTRUCTOR(register_ladders) {
     if (!nes_mod_register_function_entry_plugin(hook_ids[0], CLIMB_UP_BRANCH, climb_up_hook) ||
         !nes_mod_register_function_entry_plugin(hook_ids[1], FOUNTAIN_EVENT, fountain_hook) ||
         !nes_mod_register_reset_callback(deactivate) ||
-        !nes_mod_register_activation_plugin("faxanadu.ladder-fixes", activate)) abort();
+        !nes_mod_register_activation_plugin("faxanadu.ladder-fixes", activate))
+        abort();
 }

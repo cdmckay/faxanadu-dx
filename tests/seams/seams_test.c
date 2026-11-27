@@ -28,24 +28,31 @@
 #include <string.h>
 
 static unsigned checks;
-#define CHECK(test) do{++checks;if(!(test)){fprintf(stderr,"FAIL line %u: %s\n",__LINE__,#test);exit(1);}}while(0)
+#define CHECK(test)                                                                                                    \
+    do {                                                                                                               \
+        ++checks;                                                                                                      \
+        if (!(test)) {                                                                                                 \
+            fprintf(stderr, "FAIL line %u: %s\n", __LINE__, #test);                                                    \
+            exit(1);                                                                                                   \
+        }                                                                                                              \
+    } while (0)
 
-#define WEAPON_Y          0x00D0u   /* Maybe_Something_WeaponPosY */
-#define WEAPON_RANGE_Y    0x00D3u   /* Maybe_WeaponRange_Y */
-#define SPRITE_Y          0x0380u   /* Something_Maybe_WeaponDistanceY */
-#define SPRITE_EXTENTS_Y  0xB408u   /* MAYBE_SPRITE_EXTENTS_1_ */
-#define INTERNAL_STATES   0x02FCu   /* CurrentSprites_InternalBehaviorStates: a death keeps the entity there */
-#define HP_               0x0344u   /* CurrentSprites_HP */
+#define WEAPON_Y         0x00D0u /* Maybe_Something_WeaponPosY */
+#define WEAPON_RANGE_Y   0x00D3u /* Maybe_WeaponRange_Y */
+#define SPRITE_Y         0x0380u /* Something_Maybe_WeaponDistanceY */
+#define SPRITE_EXTENTS_Y 0xB408u /* MAYBE_SPRITE_EXTENTS_1_ */
+#define INTERNAL_STATES  0x02FCu /* CurrentSprites_InternalBehaviorStates: a death keeps the entity there */
+#define HP_              0x0344u /* CurrentSprites_HP */
 enum { ZOZURA = 0x47, COIN = 0x02, KING_GRIEVE = 0x3C, SLOT = 7 };
 enum { FIREBALL = 0x0A, WALKING_MAN = 0x34, MAN = 0x3D, ROKUSUTAHN = 0x11 };
-enum { DAGGER_X = 0x08, DAGGER_Y = 0x04, SWORD_X = 0x10, SWORD_Y = 0x08 };   /* MAYBE_WEAPON_RANGES */
+enum { DAGGER_X = 0x08, DAGGER_Y = 0x04, SWORD_X = 0x10, SWORD_Y = 0x08 }; /* MAYBE_WEAPON_RANGES */
 
 /* ---- the machine ---- */
 static uint8_t ram[0x800], bank11[0x4000], bank14[0x4000], bank15[0x4000];
 static CycModRegs cpu;
-static int reach_on = -1, touch_on = -1;        /* the slice 0 hooks' enabled states, as last set */
+static int reach_on = -1, touch_on = -1; /* the slice 0 hooks' enabled states, as last set */
 static int hooks_on[HOOKS];
-static bool isolated, ticking;                   /* an isolated scope; Seamless's neighbour tick inside it */
+static bool isolated, ticking; /* an isolated scope; Seamless's neighbour tick inside it */
 
 uint8_t cyc_mod_peek(uint16_t addr) {
     if (addr < 0x2000) return ram[addr & 0x7FF];
@@ -70,14 +77,20 @@ int nes_mod_set_function_hook_enabled(const char *id, int on) {
     if (!strcmp(id, "faxanadu.seams.reach")) reach_on = on;
     if (!strcmp(id, "faxanadu.seams.touch")) touch_on = on;
     for (unsigned i = 0; i < HOOKS; i++)
-        if (!strcmp(id, hooks[i].id)) { hooks_on[i] = on; return 1; }
+        if (!strcmp(id, hooks[i].id)) {
+            hooks_on[i] = on;
+            return 1;
+        }
     return 0;
 }
 int nes_mod_register_reset_callback(NESModActivationCallback cb) { return cb == deactivate; }
 int nes_mod_register_activation_plugin(const char *id, NESModActivationCallback cb) {
     return !strcmp(id, "faxanadu.seams") && cb == activate;
 }
-void nes_mod_set_local_only(const char *name, int required) { (void)name; (void)required; }
+void nes_mod_set_local_only(const char *name, int required) {
+    (void)name;
+    (void)required;
+}
 static NESModSavestateGet record_get;
 static NESModSavestateSet record_set;
 static NESModSavestateValidate record_validate;
@@ -118,14 +131,17 @@ int fax_world_joined(int r, int side) {
 }
 uint8_t *fax_world_seams_block(int r) { return r >= 0 && r < ROOMS ? blocks[r] : NULL; }
 uint8_t *fax_world_room_record(int r) { return r >= 0 && r < ROOMS ? records[r] : NULL; }
-static int place_y[ROOMS];                       /* rows of rooms: all in one but where a test moves one */
-void fax_world_place(int r, int *x, int *y) { *x = place_x[r] * 256; *y = place_y[r] * 208; }
+static int place_y[ROOMS]; /* rows of rooms: all in one but where a test moves one */
+void fax_world_place(int r, int *x, int *y) {
+    *x = place_x[r] * 256;
+    *y = place_y[r] * 208;
+}
 bool fax_world_view(int *x, int *y) {
     if (!view_ok) return false;
     *x = view_x, *y = view_y;
     return true;
 }
-static int hero_wx, hero_wy;                     /* the hero's place, in world pixels */
+static int hero_wx, hero_wy; /* the hero's place, in world pixels */
 bool fax_world_hero(int *x, int *y) {
     if (!view_ok) return false;
     *x = hero_wx, *y = hero_wy;
@@ -134,7 +150,10 @@ bool fax_world_hero(int *x, int *y) {
 void fax_world_update_view(void) {}
 void fax_world_screen_loaded(void) { ++loads; }
 uint8_t fax_world_rom(unsigned bank, unsigned addr) {
-    return bank == 11 ? bank11[addr & 0x3FFF] : bank == 14 ? bank14[addr & 0x3FFF] : bank == 15 ? bank15[addr & 0x3FFF] : 0;
+    return bank == 11   ? bank11[addr & 0x3FFF]
+           : bank == 14 ? bank14[addr & 0x3FFF]
+           : bank == 15 ? bank15[addr & 0x3FFF]
+                        : 0;
 }
 
 static uint8_t rom(uint16_t addr) { return bank14[addr - 0x8000]; }
@@ -144,7 +163,7 @@ static void compare(uint8_t a, uint8_t m) {
     uint8_t r = (uint8_t)(a - m);
     cpu.p = (uint8_t)((cpu.p & ~(FLAG_C | FLAG_Z | FLAG_N)) | (a >= m ? FLAG_C : 0) | (r ? 0 : FLAG_Z) | (r & FLAG_N));
 }
-static uint8_t subtract(uint8_t a, uint8_t m) {        /* SEC, SBC */
+static uint8_t subtract(uint8_t a, uint8_t m) { /* SEC, SBC */
     uint8_t r = (uint8_t)(a - m);
     compare(a, m);
     cpu.p = (uint8_t)((cpu.p & ~FLAG_V) | (((a ^ m) & (a ^ r) & 0x80) ? FLAG_V : 0));
@@ -156,20 +175,20 @@ static uint8_t subtract(uint8_t a, uint8_t m) {        /* SEC, SBC */
  * when in range (C clear on return, which the caller's BCC takes). */
 static bool in_range(uint8_t x, bool hooked) {
     cpu.x = x;
-    if (hooked && reach_on == 1 && reach_hook(OUT_OF_WEAPON_RANGE)) return !(cpu.p & FLAG_C);   /* handled: RTS */
-    cpu.a = ram[ENTITIES + x];                                   /* LDA CurrentSprites_Entities,X */
-    cpu.a = (uint8_t)(cpu.a << 1);                               /* ASL A */
-    cpu.y = cpu.a;                                               /* TAY */
-    ram[TEMP_00] = (uint8_t)(rom((uint16_t)(SPRITE_EXTENTS + cpu.y)) + ram[WEAPON_RANGE_X]);   /* LDA, CLC, ADC, STA */
-    cpu.a = (uint8_t)(ram[WEAPON_X] + ram[WEAPON_RANGE_X]);      /* LDA PlayerPosXPlus10, CLC, ADC */
-    cpu.a = subtract(cpu.a, ram[SPRITE_X]);                      /* SEC, SBC Something_Maybe_WeaponDistanceX */
-    compare(cpu.a, ram[TEMP_00]);                                /* CMP Temp_00 */
-    if (cpu.p & FLAG_C) return false;                            /* BCS @_return */
+    if (hooked && reach_on == 1 && reach_hook(OUT_OF_WEAPON_RANGE)) return !(cpu.p & FLAG_C); /* handled: RTS */
+    cpu.a = ram[ENTITIES + x];     /* LDA CurrentSprites_Entities,X */
+    cpu.a = (uint8_t)(cpu.a << 1); /* ASL A */
+    cpu.y = cpu.a;                 /* TAY */
+    ram[TEMP_00] = (uint8_t)(rom((uint16_t)(SPRITE_EXTENTS + cpu.y)) + ram[WEAPON_RANGE_X]); /* LDA, CLC, ADC, STA */
+    cpu.a = (uint8_t)(ram[WEAPON_X] + ram[WEAPON_RANGE_X]); /* LDA PlayerPosXPlus10, CLC, ADC */
+    cpu.a = subtract(cpu.a, ram[SPRITE_X]);                 /* SEC, SBC Something_Maybe_WeaponDistanceX */
+    compare(cpu.a, ram[TEMP_00]);                           /* CMP Temp_00 */
+    if (cpu.p & FLAG_C) return false;                       /* BCS @_return */
     ram[TEMP_00] = (uint8_t)(rom((uint16_t)(SPRITE_EXTENTS_Y + cpu.y)) + ram[WEAPON_RANGE_Y]);
     cpu.a = (uint8_t)(ram[WEAPON_Y] + ram[WEAPON_RANGE_Y]);
     cpu.a = subtract(cpu.a, ram[SPRITE_Y]);
     compare(cpu.a, ram[TEMP_00]);
-    return !(cpu.p & FLAG_C);                                    /* BCS @_return, @_return: RTS */
+    return !(cpu.p & FLAG_C); /* BCS @_return, @_return: RTS */
 }
 
 /* A sprite of `entity` in SLOT at (sx, sy), and the weapon at x16 (from the
@@ -199,13 +218,13 @@ static bool overlaps(uint8_t entity, int sx, int sy, int x16, int wy, int reach_
 static void setup(void) {
     memset(ram, 0, sizeof ram);
     memset(bank14, 0xFF, sizeof bank14);
-    for (unsigned e = 0; e < 0x66; e++) {                        /* 16 by 16 unless set below */
+    for (unsigned e = 0; e < 0x66; e++) { /* 16 by 16 unless set below */
         bank14[SPRITE_EXTENTS - 0x8000 + e * 2] = 0x10;
         bank14[SPRITE_EXTENTS - 0x8000 + e * 2 + 1] = 0x10;
     }
     bank14[SPRITE_EXTENTS - 0x8000 + COIN * 2] = bank14[SPRITE_EXTENTS - 0x8000 + COIN * 2 + 1] = 0x08;
-    bank14[SPRITE_EXTENTS - 0x8000 + KING_GRIEVE * 2] = 0x40;   /* 64 by 16 */
-    cpu = (CycModRegs){.a = 0x5A, .x = SLOT, .y = 0x33, .s = 0xF0, .p = 0x24};
+    bank14[SPRITE_EXTENTS - 0x8000 + KING_GRIEVE * 2] = 0x40; /* 64 by 16 */
+    cpu = (CycModRegs){ .a = 0x5A, .x = SLOT, .y = 0x33, .s = 0xF0, .p = 0x24 };
     isolated = ticking = false;
     deactivate();
     activate();
@@ -224,7 +243,7 @@ static void the_original_wraps(void) {
     CHECK(in_range(SLOT, false));
     place(ZOZURA, 236, 160, 4 - 24, 152, SWORD_X, SWORD_Y, 0);
     CHECK(ram[WEAPON_X] == 236 && in_range(SLOT, false));
-    CHECK(!overlaps(ZOZURA, 236, 160, 4 - 24, 152, SWORD_X, SWORD_Y));   /* 232 pixels apart */
+    CHECK(!overlaps(ZOZURA, 236, 160, 4 - 24, 152, SWORD_X, SWORD_Y)); /* 232 pixels apart */
 }
 
 static void the_ghost_hit_is_refused(void) {
@@ -259,11 +278,11 @@ static void real_hits_are_the_originals(void) {
     setup();
     place(ZOZURA, 100, 160, 120 - 16, 152, SWORD_X, SWORD_Y, 0);
     CHECK(in_range(SLOT, true) && refused == 0);
-    place(ZOZURA, 0, 160, 4 - 16, 152, SWORD_X, SWORD_Y, 0);   /* -12: the box covers -12 to 4 */
+    place(ZOZURA, 0, 160, 4 - 16, 152, SWORD_X, SWORD_Y, 0); /* -12: the box covers -12 to 4 */
     CHECK(overlaps(ZOZURA, 0, 160, -12, 152, SWORD_X, SWORD_Y) && in_range(SLOT, true) && refused == 0);
-    place(ZOZURA, 240, 160, 250, 152, SWORD_X, SWORD_Y, 0);   /* facing right at the right edge */
+    place(ZOZURA, 240, 160, 250, 152, SWORD_X, SWORD_Y, 0); /* facing right at the right edge */
     CHECK(in_range(SLOT, true) && refused == 0);
-    place(ZOZURA, 100, 100, 120 - 16, 152, SWORD_X, SWORD_Y, 0);   /* too high: the Y test, untouched */
+    place(ZOZURA, 100, 100, 120 - 16, 152, SWORD_X, SWORD_Y, 0); /* too high: the Y test, untouched */
     CHECK(!in_range(SLOT, true) && !in_range(SLOT, false) && refused == 0);
 }
 
@@ -274,8 +293,8 @@ static void every_place_against_the_true_box(void) {
      * the game hits exactly when the boxes meet; unhooked, it also hits a
      * screen away, and only then do the two differ. */
     setup();
-    static const uint8_t reaches[][2] = {{DAGGER_X, DAGGER_Y}, {SWORD_X, SWORD_Y}};
-    static const uint8_t entities[] = {ZOZURA, COIN, KING_GRIEVE};
+    static const uint8_t reaches[][2] = { { DAGGER_X, DAGGER_Y }, { SWORD_X, SWORD_Y } };
+    static const uint8_t entities[] = { ZOZURA, COIN, KING_GRIEVE };
     unsigned ghosts = 0;
     for (unsigned r = 0; r < 2; r++)
         for (unsigned e = 0; e < sizeof entities; e++)
@@ -285,12 +304,12 @@ static void every_place_against_the_true_box(void) {
                     bool truth = overlaps(entities[e], sx, 150, x16, 152, reaches[r][0], reaches[r][1]);
                     bool stock = in_range(SLOT, false), fixed = in_range(SLOT, true);
                     if (fixed != truth) {
-                        fprintf(stderr, "x16 %d sx %d entity %u reach %u: fixed %d truth %d\n", x16, sx,
-                                entities[e], reaches[r][0], fixed, truth);
+                        fprintf(stderr, "x16 %d sx %d entity %u reach %u: fixed %d truth %d\n", x16, sx, entities[e],
+                                reaches[r][0], fixed, truth);
                         CHECK(false);
                     }
                     if (stock != fixed) {
-                        CHECK(stock && !fixed && (sx - x16 > 128 || x16 - sx > 128));   /* a screen away */
+                        CHECK(stock && !fixed && (sx - x16 > 128 || x16 - sx > 128)); /* a screen away */
                         ++ghosts;
                     }
                 }
@@ -310,11 +329,11 @@ static void copies_touch_nothing(void) {
      * registers untouched. */
     setup();
     ram[CURRENT_SPRITE_INDEX] = 3;
-    cpu = (CycModRegs){.a = 0x11, .x = 0x80, .y = 0x22, .s = 0xF0, .p = 0x24 | FLAG_N};
+    cpu = (CycModRegs){ .a = 0x11, .x = 0x80, .y = 0x22, .s = 0xF0, .p = 0x24 | FLAG_N };
     CycModRegs before = cpu;
-    CHECK(touch_hook(CHECK_HIT_PLAYER) == 0 && !memcmp(&before, &cpu, sizeof cpu));   /* the live game */
+    CHECK(touch_hook(CHECK_HIT_PLAYER) == 0 && !memcmp(&before, &cpu, sizeof cpu)); /* the live game */
     isolated = true;
-    CHECK(touch_hook(CHECK_HIT_PLAYER) == 0 && !memcmp(&before, &cpu, sizeof cpu));   /* another isolated call */
+    CHECK(touch_hook(CHECK_HIT_PLAYER) == 0 && !memcmp(&before, &cpu, sizeof cpu)); /* another isolated call */
     ticking = true;
     CHECK(touch_hook(CHECK_HIT_PLAYER) == 1);
     CHECK(cpu.x == 3 && cpu.a == 0x11 && cpu.y == 0x22 && cpu.s == 0xF0 && !(cpu.p & (FLAG_N | FLAG_Z)));
@@ -330,7 +349,7 @@ static void off_means_off(void) {
     CHECK(!in_range(SLOT, true) && refused == 1);
     deactivate();
     CHECK(reach_on == 0 && touch_on == 0 && !enabled && refused == 0 && skipped == 0 && last_entity == 0xFF);
-    CHECK(in_range(SLOT, true));                                 /* the hook is off: the original's ghost hit */
+    CHECK(in_range(SLOT, true)); /* the hook is off: the original's ghost hit */
 }
 
 /* ==== slice 1 ==== */
@@ -346,11 +365,11 @@ static void world(void) {
     memset(blocks, 0, sizeof blocks);
     memset(live_room, 0, sizeof live_room);
     memset(bank15, 0, sizeof bank15);
-    static const uint8_t widths[] = {15, 15, 31, 31, 31, 63, 47}, heights[] = {15, 31, 47, 63, 31, 31, 79};
-    static const uint8_t impassable[] = {0, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0};
+    static const uint8_t widths[] = { 15, 15, 31, 31, 31, 63, 47 }, heights[] = { 15, 31, 47, 63, 31, 31, 79 };
+    static const uint8_t impassable[] = { 0, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0 };
     memcpy(bank14 + (HITBOX_WIDTHS - 0x8000), widths, sizeof widths);
     memcpy(bank14 + (HITBOX_HEIGHTS - 0x8000), heights, sizeof heights);
-    memset(bank14 + (CATEGORIES - 0x8000), 5, 0x66);             /* items, unless set below */
+    memset(bank14 + (CATEGORIES - 0x8000), 5, 0x66); /* items, unless set below */
     bank14[CATEGORIES - 0x8000 + ZOZURA] = 0;
     bank14[CATEGORIES - 0x8000 + COIN] = 1;
     bank14[CATEGORIES - 0x8000 + FIREBALL] = 6;
@@ -361,7 +380,7 @@ static void world(void) {
     for (unsigned i = 0; i < 16; i++) bank15[TILE_POSITIONS - 0xC000 + i] = (uint8_t)(i * 8);
     bank15[VISIBILITY_MASK - 0xC000] = 1, bank15[VISIBILITY_MASK - 0xC000 + 1] = 2;
     bank15[VISIBILITY_FLIPPED - 0xC000] = 2, bank15[VISIBILITY_FLIPPED - 0xC000 + 1] = 1;
-    int ids[3] = {LEFT_ROOM, LIVE, RIGHT_ROOM};
+    int ids[3] = { LEFT_ROOM, LIVE, RIGHT_ROOM };
     for (int i = 0; i < 3; i++) {
         int r = ids[i];
         live_room[r] = true;
@@ -369,20 +388,23 @@ static void world(void) {
         edge[r][0] = i > 0 ? ids[i - 1] : -1;
         edge[r][1] = i < 2 ? ids[i + 1] : -1;
         memset(records[r] + ENTITIES, EMPTY, 8);
-        records[r][BLOCK_PROPERTIES] = 0x10;                     /* id 0 air, id 1 solid */
-        records[r][BLOCK_PROPERTIES + 1] = 0x02;                 /* id 2 a ladder */
+        records[r][BLOCK_PROPERTIES] = 0x10;     /* id 0 air, id 1 solid */
+        records[r][BLOCK_PROPERTIES + 1] = 0x02; /* id 2 a ladder */
     }
     edge[LEFT_ROOM][0] = edge[RIGHT_ROOM][1] = -1;
     memcpy(ram, records[LIVE], sizeof ram);
     active_room = LIVE, tick_room = -1, area_now = FAX_AREA_TRUNK;
     isolated = ticking = false;
-    view_ok = true, view_x = -84, view_y = 0;                    /* the hero at room 4's x 120 */
-    cpu = (CycModRegs){.a = 0, .x = 0, .y = 0, .s = 0xF0, .p = 0x24};
+    view_ok = true, view_x = -84, view_y = 0; /* the hero at room 4's x 120 */
+    cpu = (CycModRegs){ .a = 0, .x = 0, .y = 0, .s = 0xF0, .p = 0x24 };
 }
 /* Run `room`'s sprite loop: the live game's for room 4, else its tick on
  * the copy (the machine holds the room's RAM); and back. */
 static void run(int room) {
-    if (room == LIVE) { isolated = ticking = false; return; }
+    if (room == LIVE) {
+        isolated = ticking = false;
+        return;
+    }
     memcpy(records[active_room], ram, sizeof ram);
     memcpy(ram, records[room], sizeof ram);
     isolated = ticking = true, tick_room = room;
@@ -414,20 +436,26 @@ static bool truly(int room, int px, int py, bool ladder) {
 /* Any solid block among the rows [y, y + ext] at column px, or the columns
  * [x, x + ext] at row y. */
 static bool any_down(int room, int px, int y, int ext) {
-    for (int t = y; t <= y + ext; t++) if (truly(room, px, t, false)) return true;
+    for (int t = y; t <= y + ext; t++)
+        if (truly(room, px, t, false)) return true;
     return false;
 }
 static bool any_across(int room, int x, int py, int ext) {
-    for (int t = x; t <= x + ext; t++) if (truly(room, t, py, false)) return true;
+    for (int t = x; t <= x + ext; t++)
+        if (truly(room, t, py, false)) return true;
     return false;
 }
 static unsigned rand_state = 1;
-static unsigned next_rand(void) { rand_state = rand_state * 1103515245u + 12345u; return rand_state >> 16; }
+static unsigned next_rand(void) {
+    rand_state = rand_state * 1103515245u + 12345u;
+    return rand_state >> 16;
+}
 static void scatter(int room, int col) {
     for (int row = 0; row < 13; row++) block_at(room, col, row, next_rand() % 3 == 0 ? SOLID : AIR);
 }
 static int test_hook(int (*hook)(uint16_t), unsigned s, bool by_x) {
-    if (by_x) cpu.x = (uint8_t)s; else cpu.y = (uint8_t)s;
+    if (by_x) cpu.x = (uint8_t)s;
+    else cpu.y = (uint8_t)s;
     ram[BLOCKS_RESULT] = 0xEE;
     return hook(0);
 }
@@ -498,8 +526,8 @@ static void walls_stay_walls(void) {
     put(LIVE, SLOT, ROKUSUTAHN, 250, 160, true, true);
     CHECK(test_hook(right_hook, SLOT, false) == 0);
     put(LIVE, SLOT, WALKING_MAN, 250, 160, true, true);
-    CHECK(test_hook(right_hook, SLOT, false) == 1);                 /* a person who walks goes */
-    view_ok = false;                                                 /* the live machine holds another room */
+    CHECK(test_hook(right_hook, SLOT, false) == 1); /* a person who walks goes */
+    view_ok = false;                                /* the live machine holds another room */
     CHECK(test_hook(right_hook, SLOT, false) == 0);
 }
 
@@ -515,9 +543,9 @@ static void a_full_room_is_a_wall(void) {
     CHECK(test_hook(right_hook, SLOT, false) == 1 && blk(LIVE)->through[SLOT] == THROUGH_RIGHT);
     blk(LIVE)->through[SLOT] = 0;
     live_room[2] = true, edge[RIGHT_ROOM][1] = 2, edge[2][0] = RIGHT_ROOM;
-    blk(2)->through[0] = THROUGH_LEFT;                               /* on its way into room 3 from its right */
+    blk(2)->through[0] = THROUGH_LEFT; /* on its way into room 3 from its right */
     CHECK(test_hook(right_hook, SLOT, false) == 0 && kept_out == 2);
-    blk(LIVE)->through[SLOT] = THROUGH_RIGHT;                        /* already through: not entering */
+    blk(LIVE)->through[SLOT] = THROUGH_RIGHT; /* already through: not entering */
     CHECK(test_hook(right_hook, SLOT, false) == 1);
     /* The flier's edge the same. */
     blk(LIVE)->through[SLOT] = 0;
@@ -577,7 +605,7 @@ static void dormant_until_seen(void) {
     ram[CURRENT_SPRITE_INDEX] = SLOT;
     CHECK(behavior_hook(UPDATE_BEHAVIOR) == 1 && cpu.x == SLOT && state_hook(UPDATE_STATE) == 1);
     CHECK(frozen == 1 && !blk(LEFT_ROOM)->awake);
-    view_x = -156 + 16 + PAD;                                        /* its right edge, padded: just short */
+    view_x = -156 + 16 + PAD; /* its right edge, padded: just short */
     CHECK(behavior_hook(UPDATE_BEHAVIOR) == 1);
     view_x -= 1;
     CHECK(behavior_hook(UPDATE_BEHAVIOR) == 0 && (blk(LEFT_ROOM)->awake >> SLOT & 1) && woken == 1);
@@ -605,8 +633,12 @@ static void drawn_where_it_lies(void) {
                 world();
                 unsigned rows = 1, s = 5;
                 uint16_t data = DATA;
-                for (unsigned i = 0, at = 0; i < (rows + 1) * (cols + 1); i++) {   /* a tile and attributes a cell, $FF one empty */
-                    if (i == 1) { bank14[data - 0x8000 + at++] = 0xFF; continue; }
+                for (unsigned i = 0, at = 0; i < (rows + 1) * (cols + 1);
+                     i++) { /* a tile and attributes a cell, $FF one empty */
+                    if (i == 1) {
+                        bank14[data - 0x8000 + at++] = 0xFF;
+                        continue;
+                    }
                     bank14[data - 0x8000 + at++] = (uint8_t)(0x10 + i);
                     bank14[data - 0x8000 + at++] = (uint8_t)(i & 3);
                 }
@@ -634,7 +666,8 @@ static void drawn_where_it_lies(void) {
                             ++owned;
                         } else {
                             CHECK(n < d.count && d.cell[n].x == x && d.cell[n].y == 120 + row * 8);
-                            CHECK(d.cell[n].tile == (uint8_t)(0x10 + i + 0x40) && d.cell[n].attr == attr && d.cell[n].slot == s);
+                            CHECK(d.cell[n].tile == (uint8_t)(0x10 + i + 0x40) && d.cell[n].attr == attr &&
+                                  d.cell[n].slot == s);
                             ++n;
                         }
                     }
@@ -653,7 +686,8 @@ static void drawn_a_screen_over(void) {
     put(LIVE, SLOT, ZOZURA, 250, 120, false, true);
     blk(LIVE)->through[SLOT] = THROUGH_LEFT;
     ram[CURRENT_SPRITE_INDEX] = SLOT;
-    bank14[DATA - 0x8000] = 0x20, bank14[DATA - 0x8000 + 1] = 0, bank14[DATA - 0x8000 + 2] = 0x21, bank14[DATA - 0x8000 + 3] = 0;
+    bank14[DATA - 0x8000] = 0x20, bank14[DATA - 0x8000 + 1] = 0, bank14[DATA - 0x8000 + 2] = 0x21,
+                  bank14[DATA - 0x8000 + 3] = 0;
     ram[COLS] = 1, ram[ROWS] = 0, ram[NORM_X] = 250, ram[OFFSET_X] = 0, ram[NORM_Y] = 152, ram[OFFSET_Y] = 0;
     ram[READ_ADDR] = (uint8_t)DATA, ram[READ_ADDR + 1] = DATA >> 8, ram[SPRITE_SLOT] = 0, ram[START_SLOT_RANGE] = 0;
     CHECK(draw_hook(DRAW_STANDARD) == 0 && ram[OFFSET_X] == 0xFF);
@@ -661,7 +695,8 @@ static void drawn_a_screen_over(void) {
     loop_done_hook(SPRITES_LOOP_DONE);
     fax_seams_captured(blocks[LIVE], FAX_SEAMS_LIVE);
     const FaxSeamsCell *cells;
-    CHECK(fax_seams_cells(blocks[LIVE], &cells) == 1 && cells[0].x == -6 && fax_seams_oam_slot(blocks[LIVE], 0) == SLOT);
+    CHECK(fax_seams_cells(blocks[LIVE], &cells) == 1 && cells[0].x == -6 &&
+          fax_seams_oam_slot(blocks[LIVE], 0) == SLOT);
     /* Outside a sprite loop (the hero's own draws), nothing. */
     ram[OFFSET_X] = 0;
     CHECK(draw_hook(DRAW_STANDARD) == 0 && ram[OFFSET_X] == 0);
@@ -697,12 +732,12 @@ static void moves_between_frames(void) {
     CHECK(ram[ENTITIES + 3] == EMPTY && r5[ENTITIES + 7] == ZOZURA && r5[SLOT_X + 7] == 250);
     CHECK(r5[PPU_OFFSETS + 7] == 0x5C && blk(LEFT_ROOM)->tiles[7] == LIVE + 1);
     CHECK(blk(LEFT_ROOM)->through[7] == THROUGH_RIGHT);
-    CHECK(fax_seams_slot_tiles(blocks[LEFT_ROOM], 7) == -1);         /* the picture's: not drawn there yet */
+    CHECK(fax_seams_slot_tiles(blocks[LEFT_ROOM], 7) == -1); /* the picture's: not drawn there yet */
     /* Back home it takes its own room's tiles again, through room 5's
      * right side: room 4's tiles, no mark needed. */
     r5[SLOT_X + 7] = 1;
     fax_seams_step();
-    CHECK(r5[ENTITIES + 7] == EMPTY && ram[ENTITIES + 5] == ZOZURA && ram[SLOT_X + 5] == 1);   /* its highest free slot */
+    CHECK(r5[ENTITIES + 7] == EMPTY && ram[ENTITIES + 5] == ZOZURA && ram[SLOT_X + 5] == 1); /* its highest free slot */
     CHECK(ram[PPU_OFFSETS + 5] == 0x5C && blk(LIVE)->tiles[5] == 0 && !blk(LIVE)->through[5]);
     /* Nowhere to go (every slot of room 4 taken): back inside, turned round. */
     for (unsigned k = 0; k < 8; k++) ram[ENTITIES + k] = ZOZURA;
@@ -745,7 +780,7 @@ static void blocks_and_the_record(void) {
     CHECK(fax_seams_valid(blocks[RIGHT_ROOM], ROOMS));
     blk(RIGHT_ROOM)->through[0] = 3;
     CHECK(!fax_seams_valid(blocks[RIGHT_ROOM], ROOMS));
-    blk(RIGHT_ROOM)->through[0] = 0, blk(RIGHT_ROOM)->owner[9] = 9;    /* the spell's (slice 3) */
+    blk(RIGHT_ROOM)->through[0] = 0, blk(RIGHT_ROOM)->owner[9] = 9; /* the spell's (slice 3) */
     CHECK(fax_seams_valid(blocks[RIGHT_ROOM], ROOMS));
     blk(RIGHT_ROOM)->owner[9] = 10;
     CHECK(!fax_seams_valid(blocks[RIGHT_ROOM], ROOMS));
@@ -769,22 +804,39 @@ enum { NURSE = 0x44, WOMAN = 0x45, GUARD = 0x42, MONODRON = 0x2A, TRIGGER = 0x4F
  * the screens named below; the categories the ROM gives their entities. */
 static void lists(void) {
     memset(bank11, 0xFF, sizeof bank11);
-    static const uint8_t eolis[9][5] = {
-        {TRIGGER, 0x04, EMPTY}, {WALKING_MAN, 0x9C, EMPTY}, {WOMAN, 0x97, EMPTY}, {MAN, 0x84, EMPTY},
-        {ZOZURA, 0xA9, ZOZURA, 0xA4, EMPTY}, {ZOZURA, 0xAB, ZOZURA, 0xA5, EMPTY}, {NURSE, 0x93, EMPTY},
-        {GUARD, 0x9A, EMPTY}, {MONODRON, 0x9C, EMPTY}};
-    static const uint8_t towns[14][3] = {
-        {WOMAN, 0, EMPTY}, {WALKING_MAN, 0, EMPTY}, {NURSE, 0, EMPTY}, {WALKING_MAN, 0, EMPTY},
-        {WALKING_MAN, 0, EMPTY}, {EMPTY}, {WOMAN, 0, EMPTY}, {EMPTY}, {GUARD, 0, EMPTY}, {WALKING_MAN, 0, EMPTY},
-        {0x41, 0, EMPTY}, {EMPTY}, {EMPTY}, {EMPTY}};
+    static const uint8_t eolis[9][5] = { { TRIGGER, 0x04, EMPTY },
+                                         { WALKING_MAN, 0x9C, EMPTY },
+                                         { WOMAN, 0x97, EMPTY },
+                                         { MAN, 0x84, EMPTY },
+                                         { ZOZURA, 0xA9, ZOZURA, 0xA4, EMPTY },
+                                         { ZOZURA, 0xAB, ZOZURA, 0xA5, EMPTY },
+                                         { NURSE, 0x93, EMPTY },
+                                         { GUARD, 0x9A, EMPTY },
+                                         { MONODRON, 0x9C, EMPTY } };
+    static const uint8_t towns[14][3] = { { WOMAN, 0, EMPTY },
+                                          { WALKING_MAN, 0, EMPTY },
+                                          { NURSE, 0, EMPTY },
+                                          { WALKING_MAN, 0, EMPTY },
+                                          { WALKING_MAN, 0, EMPTY },
+                                          { EMPTY },
+                                          { WOMAN, 0, EMPTY },
+                                          { EMPTY },
+                                          { GUARD, 0, EMPTY },
+                                          { WALKING_MAN, 0, EMPTY },
+                                          { 0x41, 0, EMPTY },
+                                          { EMPTY },
+                                          { EMPTY },
+                                          { EMPTY } };
     unsigned at = 0x9000;
-    for (unsigned a = 0; a < 8; a++) {                       /* a list of 0x40 screens an area, each an empty list */
+    for (unsigned a = 0; a < 8; a++) { /* a list of 0x40 screens an area, each an empty list */
         unsigned base = 0x8400 + a * 0x80;
         bank11[0x0210 + 2 * a] = (uint8_t)base, bank11[0x0210 + 2 * a + 1] = (uint8_t)(base >> 8);
         for (unsigned sc = 0; sc < 0x40; sc++, at += 12) {
             bank11[base - 0x8000 + 2 * sc] = (uint8_t)at, bank11[base - 0x8000 + 2 * sc + 1] = (uint8_t)(at >> 8);
-            const uint8_t *l = a == FAX_AREA_EOLIS && sc < 9 ? eolis[sc] : a == FAX_AREA_TOWNS && sc < 14 ? towns[sc] : NULL;
-            static const uint8_t spring[] = {DWARF, 0x9C, SPRING, 0x5C, EMPTY};
+            const uint8_t *l = a == FAX_AREA_EOLIS && sc < 9    ? eolis[sc]
+                               : a == FAX_AREA_TOWNS && sc < 14 ? towns[sc]
+                                                                : NULL;
+            static const uint8_t spring[] = { DWARF, 0x9C, SPRING, 0x5C, EMPTY };
             if (a == FAX_AREA_TRUNK && sc == 0x25) l = spring;
             for (unsigned k = 0; l && k < 5; k++) {
                 bank11[at - 0x8000 + k] = l[k];
@@ -805,7 +857,7 @@ static void what_a_town_room_is(void) {
     /* Eolis: its town's screens and the King's, not the Zozuras' path, the
      * Monodron's by the way out, or the gate's (no zone). */
     area_now = FAX_AREA_EOLIS;
-    static const bool eolis[9] = {false, true, true, true, false, false, true, true, false};
+    static const bool eolis[9] = { false, true, true, true, false, false, true, true, false };
     for (int sc = 0; sc < 9; sc++) CHECK(fax_seams_town(sc) == eolis[sc]);
     /* Every screen of the towns, those with no one listed too. */
     area_now = FAX_AREA_TOWNS;
@@ -835,7 +887,7 @@ static void towns_stay_safe(void) {
             unsigned before = town_edge;
             CHECK(test_hook(right_hook, SLOT, false) == 0 && ram[BLOCKS_RESULT] == 0xEE);
             CHECK(!blk(LIVE)->through[SLOT] && town_edge == before + 1 && kept_out == 0);
-            put(LIVE, SLOT, ZOZURA, (uint8_t)x, (uint8_t)y, false, true);   /* wrapped past x 0 */
+            put(LIVE, SLOT, ZOZURA, (uint8_t)x, (uint8_t)y, false, true); /* wrapped past x 0 */
             CHECK(test_hook(left_hook, SLOT, false) == 1 && blk(LIVE)->through[SLOT] == THROUGH_LEFT);
             blk(LIVE)->through[SLOT] = 0;
         }
@@ -847,7 +899,7 @@ static void towns_stay_safe(void) {
      * Zozura in room 4's copy, the same. */
     memcpy(records[LIVE], ram, sizeof ram);
     active_room = RIGHT_ROOM;
-    isolated = ticking = true, tick_room = LIVE;                     /* room 4's tick: the machine holds its RAM */
+    isolated = ticking = true, tick_room = LIVE; /* room 4's tick: the machine holds its RAM */
     put(LIVE, SLOT, ZOZURA, 245, 160, true, true);
     before = town_edge;
     CHECK(test_hook(right_hook, SLOT, false) == 0 && town_edge == before + 1 && !blk(LIVE)->through[SLOT]);
@@ -889,7 +941,8 @@ enum { SUGATA_E = 0x18, DEATH_E = 0x13, BREAD = 0x01, ITEM = 0x5A };
  * no magic hit, hitbox 0 (16 by 16). */
 static void fill(int room, unsigned s, uint8_t entity, uint8_t x, uint8_t y) {
     uint8_t *m = mem(room);
-    for (unsigned k = 0; k < SLOT_BYTES; k++) m[byte_at(k, s)] = (uint8_t)(0x40 + s * 3 + k);   /* every byte told apart */
+    for (unsigned k = 0; k < SLOT_BYTES; k++)
+        m[byte_at(k, s)] = (uint8_t)(0x40 + s * 3 + k); /* every byte told apart */
     m[ENTITIES + s] = entity, m[SLOT_X + s] = x, m[SLOT_Y + s] = y, m[HITBOX + s] = 0;
     m[HIT_COUNTER + s] = 0, m[HIT_BY_MAGIC + s] = 0xFF, m[FLAGS + s] = 0;
 }
@@ -906,7 +959,9 @@ static void fight(uint8_t hx) {
     view_x = hx + 8 - VIEW_W / 2;
     committed = 0;
 }
-static uint16_t stack_word(uint8_t at) { return (uint16_t)(ram[0x100 | (uint8_t)(at + 1)] | ram[0x100 | (uint8_t)(at + 2)] << 8); }
+static uint16_t stack_word(uint8_t at) {
+    return (uint16_t)(ram[0x100 | (uint8_t)(at + 1)] | ram[0x100 | (uint8_t)(at + 2)] << 8);
+}
 
 /* The game's 8-bit overlap test, with the hook at its entry: CurrentSprite_CheckHitPlayer's X test. */
 static bool touches(uint8_t hero, uint8_t left, uint8_t width) {
@@ -960,7 +1015,7 @@ static void shields_and_spells_told_apart(void) {
     fill(LIVE, SLOT, FIREBALL, 4, 150);
     ram[CURRENT_SPRITE_INDEX] = SLOT, ram[BOX_LEFT] = 4, ram[BOX_WIDTH] = 7;
     CHECK(shield_hook(CHECK_SHIELD) == 1 && shield_refused == 1 && cpu.x == SLOT);
-    blk(LIVE)->through[SLOT] = THROUGH_RIGHT;                         /* straddling into room 3: the live 260 */
+    blk(LIVE)->through[SLOT] = THROUGH_RIGHT; /* straddling into room 3: the live 260 */
     CHECK(shield_hook(CHECK_SHIELD) == 0 && shield_refused == 1);
     /* Not a shot: the original's (it returns before its test). */
     ram[ENTITIES + SLOT] = ZOZURA;
@@ -994,7 +1049,7 @@ static void shields_and_spells_told_apart(void) {
      * live game only. */
     cpu.p = 0x24;
     CHECK(weapon_hook(WEAPON_OFF_SCREEN) == 0 && (cpu.p & FLAG_Z) && weapon_placed == 1);
-    CHECK(weapon_hook(WEAPON_OFF_SCREEN) == 0 && weapon_placed == 1);             /* on it: as it was */
+    CHECK(weapon_hook(WEAPON_OFF_SCREEN) == 0 && weapon_placed == 1); /* on it: as it was */
     cpu.p = 0x24, isolated = true;
     CHECK(weapon_hook(WEAPON_OFF_SCREEN) == 0 && !(cpu.p & FLAG_Z));
     isolated = false;
@@ -1034,7 +1089,7 @@ static void the_visitors_pass(void) {
         CHECK(ram[byte_at(k, 5)] == records[LEFT_ROOM][byte_at(k, 2)]);
     }
     CHECK(fax_seams_x16(6) == 250 - 256 && fax_seams_x16(5) == 230 - 256 && fax_seams_slot_room(6) == LEFT_ROOM);
-    ram[CURRENT_SPRITE_INDEX] = 6, ram[BOX_LEFT] = 250 + 4;              /* a coin's box, 4 right of its X */
+    ram[CURRENT_SPRITE_INDEX] = 6, ram[BOX_LEFT] = 250 + 4; /* a coin's box, 4 right of its X */
     CHECK(fax_seams_box_left() == -2);
     /* Their behaviour and draw never run in the live game. */
     ram[CURRENT_SPRITE_INDEX] = 5;
@@ -1062,7 +1117,7 @@ static void the_visitors_pass(void) {
     for (unsigned k = 0; k < SLOT_BYTES; k++)
         if (byte_at(k, 2) != ENTITIES + 2 && byte_at(k, 2) != HP_ + 2 && byte_at(k, 2) != INTERNAL_STATES + 2)
             CHECK(records[LEFT_ROOM][byte_at(k, 2)] == room5_before[byte_at(k, 2)]);
-    CHECK(!memcmp(records[LEFT_ROOM] + ENTITIES + 4, room5_before + ENTITIES + 4, 1));   /* the far one untouched */
+    CHECK(!memcmp(records[LEFT_ROOM] + ENTITIES + 4, room5_before + ENTITIES + 4, 1)); /* the far one untouched */
     for (unsigned s = 0; s < 8; s++)
         for (unsigned k = 0; k < SLOT_BYTES; k++) CHECK(ram[byte_at(k, s)] == live_before[byte_at(k, s)]);
     CHECK(visit_log[0][0] == LEFT_ROOM && visit_log[0][1] == 3 && visit_log[0][3] == COIN && visit_log[0][4] == EMPTY);
@@ -1070,7 +1125,7 @@ static void the_visitors_pass(void) {
     /* Nobody in reach: no pass. */
     fight(140);
     fill(LEFT_ROOM, 2, ZOZURA, 230, 160);
-    CHECK(arrive() == 0 && !pass.open && passes == 0);               /* (world() starts the counts over) */
+    CHECK(arrive() == 0 && !pass.open && passes == 0); /* (world() starts the counts over) */
 }
 
 static void who_visits(void) {
@@ -1078,8 +1133,10 @@ static void who_visits(void) {
     /* In reach but knocked back (a hit counter), hit by a spell, a person,
      * an item, an effect: the loop lets none interact. A big enemy and bread
      * go. */
-    fill(LEFT_ROOM, 0, ZOZURA, 240, 160); mem(LEFT_ROOM)[HIT_COUNTER] = 5;
-    fill(LEFT_ROOM, 1, ZOZURA, 240, 160); mem(LEFT_ROOM)[HIT_BY_MAGIC + 1] = 0;
+    fill(LEFT_ROOM, 0, ZOZURA, 240, 160);
+    mem(LEFT_ROOM)[HIT_COUNTER] = 5;
+    fill(LEFT_ROOM, 1, ZOZURA, 240, 160);
+    mem(LEFT_ROOM)[HIT_BY_MAGIC + 1] = 0;
     fill(LEFT_ROOM, 2, WALKING_MAN, 240, 160);
     fill(LEFT_ROOM, 3, ITEM, 244, 160);
     fill(LEFT_ROOM, 4, DEATH_E, 244, 160);
@@ -1104,13 +1161,14 @@ static void who_visits(void) {
     /* One free: the nearest only. */
     ram[ENTITIES + 3] = EMPTY;
     fill(LEFT_ROOM, 1, ZOZURA, 200, 160);
-    fill(RIGHT_ROOM, 0, ZOZURA, 0, 160);                 /* the live 256: far off */
+    fill(RIGHT_ROOM, 0, ZOZURA, 0, 160); /* the live 256: far off */
     CHECK(arrive() == 1 && pass.count == 1 && pass.v[0].slot == 0 && pass.v[0].live == 3 && waited == 2);
     arrive();
     /* From the right: the live X 256 on. */
     fight(240);
     fill(RIGHT_ROOM, 0, ZOZURA, 6, 160);
-    CHECK(arrive() == 1 && pass.v[0].room == RIGHT_ROOM && pass.v[0].shift == 256 && fax_seams_x16(pass.v[0].live) == 262);
+    CHECK(arrive() == 1 && pass.v[0].room == RIGHT_ROOM && pass.v[0].shift == 256 &&
+          fax_seams_x16(pass.v[0].live) == 262);
     CHECK(fax_seams_slot_room(pass.v[0].live) == RIGHT_ROOM);
     arrive();
     /* Paused, dead, another bank, no view, or a copy: no pass. */
@@ -1141,14 +1199,14 @@ static void sugatas_flash(void) {
     ram[BEHAVIORS + 2] = BEHAVIOR_FLASH, ram[FLAGS + 2] = BEHAVIOR_READY;
     ram[CURRENT_SPRITE_INDEX] = 2;
     int hx;
-    CHECK(fax_seams_hero_x(&hx) && hx == 4 + 256);                    /* his true place, in room 5's pixels */
+    CHECK(fax_seams_hero_x(&hx) && hx == 4 + 256); /* his true place, in room 5's pixels */
     CHECK(fax_seams_flash() && (blk(LEFT_ROOM)->flash & 4) && flashes_due == 1);
     CHECK(fax_seams_flash() && flashes_due == 1);
     done(LEFT_ROOM);
     /* The next pass takes it first, wherever it is, and enters the damage
      * for it: three returns, the damage's on top, and CurrentSpriteIndex and
      * X its live slot. */
-    fill(LEFT_ROOM, 5, ZOZURA, 250, 160);                              /* nearer, but the flash goes first */
+    fill(LEFT_ROOM, 5, ZOZURA, 250, 160); /* nearer, but the flash goes first */
     cpu.s = 0xFF;
     CHECK(arrive() == 1 && pass.v[0].flash && pass.v[0].slot == 2 && flash_runs == 1);
     CHECK(cpu.s == 0xF9 && stack_word(0xF9) == FLASH_HIT - 1 && stack_word(0xFB) == SPRITES_LOOP - 1);
@@ -1168,7 +1226,7 @@ static void sugatas_flash(void) {
     ram[CURRENT_SPRITE_INDEX] = 2;
     CHECK(!fax_seams_flash());
     edge[LIVE][0] = LEFT_ROOM;
-    place_y[LEFT_ROOM] = 1;                                            /* below his row */
+    place_y[LEFT_ROOM] = 1; /* below his row */
     CHECK(!fax_seams_hero_x(&hx));
     place_y[LEFT_ROOM] = 0;
     done(LEFT_ROOM);
@@ -1183,10 +1241,11 @@ static void a_neighbours_sounds(void) {
      * and the next pass's site plays them with the game's Sound_PlayEffect. */
     fight(4);
     run(LEFT_ROOM);
-    fill(LEFT_ROOM, 1, COIN, 100, 160);                                /* the world's -156: in the view, out of reach */
-    fill(LEFT_ROOM, 6, ZOZURA, 10, 160);                               /* room 5's x 10: the world's -246, out */
+    fill(LEFT_ROOM, 1, COIN, 100, 160);  /* the world's -156: in the view, out of reach */
+    fill(LEFT_ROOM, 6, ZOZURA, 10, 160); /* room 5's x 10: the world's -246, out */
     ram[CURRENT_SPRITE_INDEX] = 1, cpu.a = 0x10;
-    CHECK(sound_hook(SOUND_PLAY_EFFECT) == 0 && heard_count == 1 && heard[0].effect == 0x10 && heard[0].room == LEFT_ROOM);
+    CHECK(sound_hook(SOUND_PLAY_EFFECT) == 0 && heard_count == 1 && heard[0].effect == 0x10 &&
+          heard[0].room == LEFT_ROOM);
     ram[CURRENT_SPRITE_INDEX] = 6;
     CHECK(sound_hook(SOUND_PLAY_EFFECT) == 0 && heard_count == 1 && heard_total == 2);
     done(LEFT_ROOM);
@@ -1232,7 +1291,7 @@ static void the_record_mid_pass(void) {
     CHECK(!record_validate(rec, n) && !record_validate(rec, n - 1));
     rec[5] = LEFT_ROOM, rec[0] = 7;
     CHECK(!record_validate(rec, n));
-    rec[0] = RECORD_VERSION, rec[1] = 0, rec[4] = 1;                 /* out of the pass, but swapped */
+    rec[0] = RECORD_VERSION, rec[1] = 0, rec[4] = 1; /* out of the pass, but swapped */
     CHECK(!record_validate(rec, n));
     CHECK(record_validate(NULL, 0) && record_set(NULL, 0) && !fax_seams_visiting());
     /* A frame that ends inside the pass: between frames the machine shows
@@ -1245,18 +1304,18 @@ static void the_record_mid_pass(void) {
     memcpy(live_before, ram, sizeof ram);
     CHECK(arrive() == 1);
     unsigned live = pass.v[0].live;
-    ram[HP_ + live] = 4;                                             /* hit in the pass */
+    ram[HP_ + live] = 4; /* hit in the pass */
     uint8_t during[0x800];
     memcpy(during, ram, sizeof ram);
     fax_seams_frame_end();
     for (unsigned s = 0; s < 8; s++)
         for (unsigned k = 0; k < SLOT_BYTES; k++) CHECK(ram[byte_at(k, s)] == live_before[byte_at(k, s)]);
     CHECK(ram[ENTITIES + 7] == ZOZURA && pass.swapped && fax_seams_visiting());
-    fax_seams_frame_end();                                           /* twice: still the same */
+    fax_seams_frame_end(); /* twice: still the same */
     CHECK(ram[ENTITIES + 7] == ZOZURA);
     n = record_get(rec, sizeof rec);
     clear_pass();
-    CHECK(record_set(rec, n) && pass.swapped);                       /* a state saved then, loaded */
+    CHECK(record_set(rec, n) && pass.swapped); /* a state saved then, loaded */
     fax_seams_frame_begin();
     CHECK(!memcmp(ram, during, sizeof ram) && !pass.swapped);
     fax_seams_frame_begin();
@@ -1265,7 +1324,7 @@ static void the_record_mid_pass(void) {
     for (unsigned s = 0; s < 8; s++)
         for (unsigned k = 0; k < SLOT_BYTES; k++) CHECK(ram[byte_at(k, s)] == live_before[byte_at(k, s)]);
     fax_seams_frame_end();
-    fax_seams_frame_begin();                                         /* no pass: nothing */
+    fax_seams_frame_begin(); /* no pass: nothing */
     CHECK(!pass.swapped);
     /* The live loop's start finds no pass open; if it ever did, it ends it. */
     arrive();
@@ -1277,7 +1336,6 @@ static void the_record_mid_pass(void) {
     CHECK(!fax_seams_visiting() && record_get(rec, sizeof rec) == 0);
 }
 
-
 /* ==== slice 3: the spell flies on ==== */
 
 enum { DELUGE = 0, THUNDER = 1, FIRE_SPELL = 2, THUNDER_HIT = 6, FIRE_HIT = 7, SPELL_Y = 152, FOREGROUND = 3 };
@@ -1288,16 +1346,16 @@ enum { DELUGE = 0, THUNDER = 1, FIRE_SPELL = 2, THUNDER_HIT = 6, FIRE_HIT = 7, S
  * hit boxes, CAST_MAGIC_HIT_WIDTHS and _HEIGHTS. */
 static void spell_world(uint8_t hx) {
     fight(hx);
-    static const uint8_t max[] = {0xF0, 0xF0, 0xE0, 0xF0, 0xF0, 0xAD, 0xB4, 0x02, 0x30, 0x1E, 0xAD, 0xB7};
-    static const uint8_t widths[] = {15, 15, 31, 15, 15, 15, 15, 31, 15, 15, 15, 15};
-    static const uint8_t heights[] = {15, 31, 15, 15, 15, 15, 31, 15, 15, 15, 15, 15};
-    static const uint8_t hit_w[] = {11, 11, 27, 11, 11}, hit_h[] = {11, 27, 11, 11, 11};
+    static const uint8_t max[] = { 0xF0, 0xF0, 0xE0, 0xF0, 0xF0, 0xAD, 0xB4, 0x02, 0x30, 0x1E, 0xAD, 0xB7 };
+    static const uint8_t widths[] = { 15, 15, 31, 15, 15, 15, 15, 31, 15, 15, 15, 15 };
+    static const uint8_t heights[] = { 15, 31, 15, 15, 15, 15, 31, 15, 15, 15, 15, 15 };
+    static const uint8_t hit_w[] = { 11, 11, 27, 11, 11 }, hit_h[] = { 11, 27, 11, 11, 11 };
     memcpy(bank14 + (CAST_MAX_WIDTHS - 0x8000), max, sizeof max);
     memcpy(bank14 + (CAST_MOVE_WIDTHS - 0x8000), widths, sizeof widths);
     memcpy(bank14 + (CAST_HEIGHTS - 0x8000), heights, sizeof heights);
     memcpy(bank14 + (CAST_WIDTHS - 0x8000), hit_w, sizeof hit_w);
     memcpy(bank14 + (CAST_HEIGHTS_HIT - 0x8000), hit_h, sizeof hit_h);
-    for (int r = RIGHT_ROOM; r <= LEFT_ROOM; r++) mem(r)[BLOCK_PROPERTIES + 1] = 0x42;   /* id 3 a foreground (4) */
+    for (int r = RIGHT_ROOM; r <= LEFT_ROOM; r++) mem(r)[BLOCK_PROPERTIES + 1] = 0x42; /* id 3 a foreground (4) */
 }
 /* Player_CastMagic's entry with no spell on, then the cast: `type` from his
  * X (the ADC's carry clear), moving right or left. */
@@ -1316,11 +1374,17 @@ static uint8_t live_solid(unsigned index) {
 static void check_direction(bool hooked) {
     if (hooked && direction_hook(CAST_CHECK_DIRECTION)) return;
     uint8_t type = ram[CAST_TYPE];
-    if (cpu.x > 1) { ram[BLOCKS_RESULT] = 0; return; }             /* up and down */
+    if (cpu.x > 1) {
+        ram[BLOCKS_RESULT] = 0;
+        return;
+    } /* up and down */
     unsigned px = ram[CAST_X] + (cpu.x ? rom((uint16_t)(CAST_MOVE_WIDTHS + type)) : 0);
     ram[PIXEL_X] = (uint8_t)px;
-    if (cpu.x ? px > 255 : px >= 0xF0) { ram[BLOCKS_RESULT] = 1; return; }   /* CastMagic_SetShouldDisperse */
-    ram[PIXEL_Y] = ram[CAST_Y];                                    /* _CheckImpassable */
+    if (cpu.x ? px > 255 : px >= 0xF0) {
+        ram[BLOCKS_RESULT] = 1;
+        return;
+    } /* CastMagic_SetShouldDisperse */
+    ram[PIXEL_Y] = ram[CAST_Y]; /* _CheckImpassable */
     unsigned x = (ram[PIXEL_Y] & 0xF0u) | (ram[PIXEL_X] >> 4);
     uint8_t r = live_solid(x);
     if (!r && rom((uint16_t)(CAST_HEIGHTS + type)) >= 0x10) r = live_solid(x = (x + 16) & 0xFF);
@@ -1346,8 +1410,14 @@ static bool update_x(uint8_t delta, bool hooked) {
  * Thunder's and Death's go through). */
 enum { FLYING, OFF, WALL };
 static int fly(uint8_t delta, bool walls, bool hooked) {
-    if (update_x(delta, hooked)) { ram[CAST_TYPE] = 0xFF; return OFF; }
-    if (walls && ram[BLOCKS_RESULT]) { ram[CAST_TYPE] = 0xFF; return WALL; }
+    if (update_x(delta, hooked)) {
+        ram[CAST_TYPE] = 0xFF;
+        return OFF;
+    }
+    if (walls && ram[BLOCKS_RESULT]) {
+        ram[CAST_TYPE] = 0xFF;
+        return WALL;
+    }
     return FLYING;
 }
 /* The truth, in the joined world: a spell `w` wide (less 1) at x (from room
@@ -1379,7 +1449,7 @@ static void the_spells_side(void) {
     }
     ram[HERO_X] = 255;
     cast(DELUGE, true);
-    ram[CAST_X] = 0;                                                  /* 255 + 0 + C */
+    ram[CAST_X] = 0; /* 255 + 0 + C */
     CHECK(spell_x16() == 256 && spell.side == 1);
     ram[CAST_X] = 3;
     CHECK(spell_x16() == 259);
@@ -1389,7 +1459,7 @@ static void the_spells_side(void) {
     CHECK(spell.casting && cast_done_hook(CHECK_USE_ITEM) == 0 && !spell.casting);
     ram[CAST_TYPE] = 0;
     cast_hook(PLAYER_CAST_MAGIC);
-    CHECK(spell.casting && spell.side == 1);                          /* on: its side kept */
+    CHECK(spell.casting && spell.side == 1); /* on: its side kept */
     loop_hook(SPRITES_UPDATE_ALL);
     CHECK(!spell.casting);
     isolated = true;
@@ -1405,7 +1475,7 @@ static void every_flight_against_the_truth(void) {
      * wall in one column of room 5, 4 or 3 or none, and room 5 or 3 not
      * joined (or both, an arena): frame by frame the game's flight, hooked,
      * is the truth's, and its X in 16 bits is where it truly is. */
-    static const uint8_t types[] = {DELUGE, FIRE_SPELL, THUNDER}, deltas[] = {3, 4, 2};
+    static const uint8_t types[] = { DELUGE, FIRE_SPELL, THUNDER }, deltas[] = { 3, 4, 2 };
     unsigned flights = 0, walls_hit = 0, abroad = 0;
     for (int joined = 0; joined < 4; joined++)
         for (int hx = 0; hx < 256; hx += 7)
@@ -1415,8 +1485,8 @@ static void every_flight_against_the_truth(void) {
                         spell_world((uint8_t)hx);
                         if (joined & 1) edge[LIVE][0] = -1;
                         if (joined & 2) edge[LIVE][1] = -1;
-                        if (joined == 3) view_x = (0 + 256 - VIEW_W) / 2;   /* an arena: centred */
-                        else if (joined == 1) view_x = view_x < 0 ? 0 : view_x;   /* clamped to the rooms */
+                        if (joined == 3) view_x = (0 + 256 - VIEW_W) / 2;       /* an arena: centred */
+                        else if (joined == 1) view_x = view_x < 0 ? 0 : view_x; /* clamped to the rooms */
                         else if (joined == 2) view_x = view_x + VIEW_W > 256 ? 256 - VIEW_W : view_x;
                         if (wall >= 0) {
                             int room = wall < 16 ? LEFT_ROOM : wall < 32 ? LIVE : RIGHT_ROOM;
@@ -1433,14 +1503,16 @@ static void every_flight_against_the_truth(void) {
                             abroad += outcome == FLYING && (x < 0 || x >= 256);
                             int expected = truth(x, w, h, right, walls);
                             if (outcome != expected || spell_x16() != x) {
-                                fprintf(stderr, "joined %d hx %d %s type %u wall %d frame %d x %d: game %d truth %d x16 %d\n",
+                                fprintf(stderr,
+                                        "joined %d hx %d %s type %u wall %d frame %d x %d: game %d truth %d x16 %d\n",
                                         joined, hx, right ? "right" : "left", type, wall, f, x, outcome, expected,
                                         spell_x16());
                                 CHECK(false);
                             }
                         }
-                        if (outcome == FLYING) fprintf(stderr, "never ended: joined %d hx %d %s type %u wall %d x %d\n",
-                                                       joined, hx, right ? "right" : "left", type, wall, x);
+                        if (outcome == FLYING)
+                            fprintf(stderr, "never ended: joined %d hx %d %s type %u wall %d x %d\n", joined, hx,
+                                    right ? "right" : "left", type, wall, x);
                         CHECK(outcome != FLYING);
                         ++flights;
                         walls_hit += outcome == WALL;
@@ -1513,7 +1585,7 @@ static void its_own_rules(void) {
     view_ok = true, isolated = true;
     CHECK(direction_hook(CAST_CHECK_DIRECTION) == 0 && edge_hook(CAST_LEFT_EDGE) == 0);
     isolated = false;
-    cpu.x = 2;                                                        /* up and down: the original's 0 */
+    cpu.x = 2; /* up and down: the original's 0 */
     CHECK(direction_hook(CAST_CHECK_DIRECTION) == 0);
 }
 
@@ -1531,11 +1603,11 @@ static void spells_told_apart_and_dormant(void) {
     CHECK(magic_hook(CHECK_MAGIC) == 1 && magic_refused == 1 && magic_dormant == 0 && (cpu.p & FLAG_C));
     fill(LEFT_ROOM, 2, ZOZURA, 246, 150);
     blk(LEFT_ROOM)->awake = 1u << 2;
-    fill(LIVE, SLOT, ZOZURA, 100, 150);                               /* his own, far off */
+    fill(LIVE, SLOT, ZOZURA, 100, 150); /* his own, far off */
     CHECK(arrive() == 1 && pass.count == 1 && pass.v[0].room == LEFT_ROOM);
     unsigned live = pass.v[0].live;
     ram[CURRENT_SPRITE_INDEX] = (uint8_t)live;
-    CHECK(fax_seams_x16(live) == -10 && magic_hook(CHECK_MAGIC) == 0);   /* the game's hit */
+    CHECK(fax_seams_x16(live) == -10 && magic_hook(CHECK_MAGIC) == 0); /* the game's hit */
     /* The same visitor never seen: refused, counted, as the X test's failure. */
     blk(LEFT_ROOM)->awake = 0;
     CHECK(magic_hook(CHECK_MAGIC) == 1 && magic_dormant == 1 && (cpu.p & FLAG_C) && cpu.x == live);
@@ -1585,7 +1657,8 @@ static void drawn_on_its_side(void) {
     spell_world(40);
     cast(DELUGE, false);
     for (int x = 39; x >= -6; x -= 3) ram[CAST_X] = (uint8_t)x, spell_x16();
-    bank14[DATA - 0x8000] = 0x20, bank14[DATA - 0x8000 + 1] = 0, bank14[DATA - 0x8000 + 2] = 0x21, bank14[DATA - 0x8000 + 3] = 0;
+    bank14[DATA - 0x8000] = 0x20, bank14[DATA - 0x8000 + 1] = 0, bank14[DATA - 0x8000 + 2] = 0x21,
+                  bank14[DATA - 0x8000 + 3] = 0;
     ram[COLS] = 1, ram[ROWS] = 0, ram[NORM_X] = 250, ram[OFFSET_X] = 0, ram[NORM_Y] = 152, ram[OFFSET_Y] = 0;
     ram[READ_ADDR] = (uint8_t)DATA, ram[READ_ADDR + 1] = DATA >> 8, ram[SPRITE_SLOT] = 0, ram[START_SLOT_RANGE] = 0;
     ram[FLIP_MASK] = 0, ram[MOVING_VISIBILITY] = 0, ram[SLOTS_FULL] = 0;
@@ -1593,7 +1666,7 @@ static void drawn_on_its_side(void) {
     CHECK(spell_drawn.count == 1 && spell_drawn.cell[0].x == -6 && spell_drawn.cell[0].slot == SPELL);
     CHECK(spell_drawn.owner[0] == SPELL + 1);
     cast_done_hook(CHECK_USE_ITEM);
-    loop_hook(SPRITES_UPDATE_ALL);                                    /* the sprite loop draws a Zozura after it */
+    loop_hook(SPRITES_UPDATE_ALL); /* the sprite loop draws a Zozura after it */
     put(LIVE, 3, ZOZURA, 100, 120, false, true);
     ram[CURRENT_SPRITE_INDEX] = 3, ram[OFFSET_X] = 0, ram[NORM_X] = 100, ram[SPRITE_SLOT] = 1;
     draw_hook(DRAW_STANDARD);
@@ -1609,7 +1682,8 @@ static void drawn_on_its_side(void) {
     /* In his room the draw is left where it is, but still the spell's. */
     spell_world(40);
     cast(DELUGE, false);
-    bank14[DATA - 0x8000] = 0x20, bank14[DATA - 0x8000 + 1] = 0, bank14[DATA - 0x8000 + 2] = 0x21, bank14[DATA - 0x8000 + 3] = 0;
+    bank14[DATA - 0x8000] = 0x20, bank14[DATA - 0x8000 + 1] = 0, bank14[DATA - 0x8000 + 2] = 0x21,
+                  bank14[DATA - 0x8000 + 3] = 0;
     ram[CAST_X] = 30, ram[NORM_X] = 30, ram[OFFSET_X] = 0;
     ram[READ_ADDR] = (uint8_t)DATA, ram[READ_ADDR + 1] = DATA >> 8, ram[COLS] = 1, ram[ROWS] = 0, ram[NORM_Y] = 152;
     CHECK(draw_hook(DRAW_STANDARD) == 0 && ram[OFFSET_X] == 0 && spell_drawn.count == 0);
@@ -1625,7 +1699,8 @@ static void its_visibility(void) {
     block_at(LEFT_ROOM, 5, 9, FOREGROUND);
     cast(DELUGE, false);
     for (int x = 38; x >= -175; x -= 3) ram[CAST_X] = (uint8_t)x, spell_x16();
-    CHECK(spell_x16() == -175 && visibility_hook(CAST_VISIBILITY) == 1 && ram[MOVING_VISIBILITY] == 3 && ram[TEMP_VISIBILITY] == 3);
+    CHECK(spell_x16() == -175 && visibility_hook(CAST_VISIBILITY) == 1 && ram[MOVING_VISIBILITY] == 3 &&
+          ram[TEMP_VISIBILITY] == 3);
     CHECK(ram[PIXEL_X] == (uint8_t)(-163) && ram[PIXEL_Y] == SPELL_Y && cpu.a == 3);
     for (int x = -175; x >= -187; x -= 3) ram[CAST_X] = (uint8_t)x, spell_x16();
     CHECK(spell_x16() == -187 && visibility_hook(CAST_VISIBILITY) == 1 && ram[MOVING_VISIBILITY] == 2);
@@ -1634,13 +1709,13 @@ static void its_visibility(void) {
     /* Only 4 counts on the right (the routine's BNE), 9 and $0D on the left too. */
     spell_world(40);
     cast(DELUGE, false);
-    for (int x = 37; x >= -20; x -= 3) ram[CAST_X] = (uint8_t)x, spell_x16();   /* -20: pixels -16 and -8 */
-    mem(LEFT_ROOM)[BLOCK_PROPERTIES + 2] = 0x90;                      /* id 5 property 9 */
+    for (int x = 37; x >= -20; x -= 3) ram[CAST_X] = (uint8_t)x, spell_x16(); /* -20: pixels -16 and -8 */
+    mem(LEFT_ROOM)[BLOCK_PROPERTIES + 2] = 0x90;                              /* id 5 property 9 */
     block_at(LEFT_ROOM, 15, 9, 5);
     CHECK(visibility_hook(CAST_VISIBILITY) == 1 && ram[MOVING_VISIBILITY] == 1);
     block_at(LEFT_ROOM, 15, 9, AIR), block_at(LEFT_ROOM, 14, 9, 5);
     CHECK(visibility_hook(CAST_VISIBILITY) == 1 && ram[MOVING_VISIBILITY] == 0);
-    ram[CAST_X] = 20;                                                 /* back in his room: the original's */
+    ram[CAST_X] = 20; /* back in his room: the original's */
     spell.side = 0, spell.last = 20;
     CHECK(visibility_hook(CAST_VISIBILITY) == 0);
 }
@@ -1663,7 +1738,7 @@ static void a_crossing_keeps_it(void) {
     cast(DELUGE, false);
     fax_seams_adopted(LIVE, RIGHT_ROOM);
     CHECK(spell.side == -1 && spell_x16() == 250 - 256 && ram[CAST_TYPE] == DELUGE);
-    place_y[RIGHT_ROOM] = 1;                                          /* below his: a ladder down */
+    place_y[RIGHT_ROOM] = 1; /* below his: a ladder down */
     spell_world(250);
     cast(DELUGE, false);
     fax_seams_adopted(LIVE, RIGHT_ROOM);
@@ -1696,11 +1771,11 @@ static void the_record_keeps_its_side(void) {
     clear_spell();
     CHECK(record_set(rec, n) && spell.side == -1 && spell.last == (uint8_t)-41 && spell.casting && !spell.resync);
     CHECK(spell_x16() == -41);
-    rec[RECORD_V1] = 2;                                               /* side 2: never written */
+    rec[RECORD_V1] = 2; /* side 2: never written */
     CHECK(!record_validate(rec, n));
     rec[RECORD_V1] = 0xFF, rec[RECORD_V1 + 3] = 2;
     CHECK(!record_validate(rec, n));
-    rec[RECORD_V1 + 3] = 1, rec[0] = 1;                               /* version 1 at version 2's length */
+    rec[RECORD_V1 + 3] = 1, rec[0] = 1; /* version 1 at version 2's length */
     CHECK(!record_validate(rec, n));
     CHECK(record_validate(rec, RECORD_V1) && record_set(rec, RECORD_V1));
     CHECK(spell.resync && spell.side == 0 && !spell.casting);

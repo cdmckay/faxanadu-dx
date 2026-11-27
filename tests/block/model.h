@@ -12,11 +12,18 @@
 #include <stdlib.h>
 
 extern unsigned checks;
-#define CHECK(test) do{++checks;if(!(test)){fprintf(stderr,"FAIL %s:%u: %s\n",__FILE__,__LINE__,#test);exit(1);}}while(0)
+#define CHECK(test)                                                                                                    \
+    do {                                                                                                               \
+        ++checks;                                                                                                      \
+        if (!(test)) {                                                                                                 \
+            fprintf(stderr, "FAIL %s:%u: %s\n", __FILE__, __LINE__, #test);                                            \
+            exit(1);                                                                                                   \
+        }                                                                                                              \
+    } while (0)
 
 extern uint8_t ram[0x800];
-extern uint8_t rom[16][0x4000];     /* banks 12-14 are used; $8000-$BFFF of the mapped one */
-extern unsigned mapped;             /* the bank at $8000 (14 in the main loop, 12 in scripts) */
+extern uint8_t rom[16][0x4000]; /* banks 12-14 are used; $8000-$BFFF of the mapped one */
+extern unsigned mapped;         /* the bank at $8000 (14 in the main loop, 12 in scripts) */
 extern CycModRegs cpu;
 extern bool isolated_scope, saves_on;
 
@@ -43,14 +50,15 @@ void model_routine(uint16_t addr, ModelCode code);
  * code goes on. When one did, whatever it made the RTS go to runs first
  * (model routines), then the routine has returned. */
 bool sites(uint16_t addr, uint16_t back, const char *const *ids, unsigned n);
-#define MODEL_BACK 0xFFF0u   /* where a routine's RTS goes, when it does not matter */
-#define SITES_FROM(addr, back, ...) sites((addr), (back), (const char *const[]){ __VA_ARGS__ }, \
-                                          sizeof((const char *const[]){ __VA_ARGS__ }) / sizeof(const char *))
+#define MODEL_BACK 0xFFF0u /* where a routine's RTS goes, when it does not matter */
+#define SITES_FROM(addr, back, ...)                                                                                    \
+    sites((addr), (back), (const char *const[]){ __VA_ARGS__ },                                                        \
+          sizeof((const char *const[]){ __VA_ARGS__ }) / sizeof(const char *))
 #define SITES(addr, ...) SITES_FROM((addr), MODEL_BACK, __VA_ARGS__)
 bool hook_enabled(const char *id);
 
 /* Mods activate and deactivate as the host does. */
-void model_reset(void);       /* every reset callback */
+void model_reset(void); /* every reset callback */
 void model_activate(const char *plugin);
 
 /* The mod's save-state record. */

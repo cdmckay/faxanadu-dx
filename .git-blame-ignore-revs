@@ -1,0 +1,8 @@
+# Commits that only move comments or change formatting. git blame skips them
+# once told to (docs/C_TOOLING.md); GitHub's blame view reads this file itself:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# The #define comments clang-format cannot keep beside them, moved above (#193)
+4a49107dc685e3c8bb79bbde1233889989b48955
+# The repo's C formatted with clang-format (#193)
+0c28afc060c233e4f2b25ad3a4867604ea25cd8e

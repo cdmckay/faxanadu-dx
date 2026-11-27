@@ -16,24 +16,24 @@ static int box_shift;
 int fax_seams_box_left(void) { return ram[SPRITE_BOX_LEFT] + box_shift; }
 
 /* RAM the model's game code uses */
-#define HP_U                 0x0431u
-#define INVINCIBILITY        0x00ADu
-#define STATUS_FLAG          0x00A5u   /* $02: knockback */
-#define DURATION_OINTMENT    0x0427u
-#define POS_Y                0x00A1u
-#define SPRITE_X             0x00BAu
-#define SPRITE_Y             0x00C2u
-#define ENTITIES             0x02CCu
-#define SPRITE_FLAGS         0x02DCu
-#define SPRITE_BOX_TOP       0x03E3u
-#define SPRITE_BOX_HEIGHT    0x03E5u
-#define SHIELD_X             0x039Bu
-#define SHIELD_Y             0x039Cu
-#define BEHAVIOR_DATA2       0x02ECu
-#define BEHAVIORS            0x02D4u
-#define TEMP_0201            0x0201u
-#define PORTRAIT             0x03C7u   /* IScript_PortraitID: $FF, none */
-#define ARG_DRAW_SPRITE_POS_X 0x0027u  /* where Sprite_Draw draws */
+#define HP_U                  0x0431u
+#define INVINCIBILITY         0x00ADu
+#define STATUS_FLAG           0x00A5u /* $02: knockback */
+#define DURATION_OINTMENT     0x0427u
+#define POS_Y                 0x00A1u
+#define SPRITE_X              0x00BAu
+#define SPRITE_Y              0x00C2u
+#define ENTITIES              0x02CCu
+#define SPRITE_FLAGS          0x02DCu
+#define SPRITE_BOX_TOP        0x03E3u
+#define SPRITE_BOX_HEIGHT     0x03E5u
+#define SHIELD_X              0x039Bu
+#define SHIELD_Y              0x039Cu
+#define BEHAVIOR_DATA2        0x02ECu
+#define BEHAVIORS             0x02D4u
+#define TEMP_0201             0x0201u
+#define PORTRAIT              0x03C7u /* IScript_PortraitID: $FF, none */
+#define ARG_DRAW_SPRITE_POS_X 0x0027u /* where Sprite_Draw draws */
 #define ARG_DRAW_SPRITE_POS_Y 0x0028u
 enum { MAGIC_SPRITE = 0x51, MAGIC_DAMAGE = 8, CATEGORY_MAGIC = 6, SLOT = 3 };
 enum { SMALL, LARGE, MAGIC_SHIELD, HELMET, NONE = 0xFF };
@@ -41,7 +41,7 @@ enum { A = 0x80, B = 0x40, SELECT = 0x20, START = 0x10, UP = 0x08, DOWN = 0x04, 
 
 /* ---- the game's code around the sites ---- */
 
-static void damage_hero(uint8_t hp) {           /* Player_SetDamagedBySprite and Player_ReduceHP */
+static void damage_hero(uint8_t hp) { /* Player_SetDamagedBySprite and Player_ReduceHP */
     ram[INVINCIBILITY] = 0x3C;
     ram[STATUS_FLAG] |= 0x02;
     ram[HP_U] = ram[HP_U] > hp ? (uint8_t)(ram[HP_U] - hp) : 0;
@@ -50,8 +50,8 @@ static void damage_hero(uint8_t hp) {           /* Player_SetDamagedBySprite and
 /* Player_HandleHitByMagic ($87DC): the damage the shield lets through. */
 static void handle_hit_by_magic(void) {
     if (!SITES(PLAYER_HANDLE_HIT_BY_MAGIC, "faxanadu.block.shield-hit")) return;
-    uint8_t damage = MAGIC_DAMAGE;                         /* SPRITE_ENTITY_DAMAGES,Y */
-    for (int y = ram[SELECTED_SHIELD]; y >= 0; --y) damage >>= 1;   /* LSR, DEY, BPL */
+    uint8_t damage = MAGIC_DAMAGE;                                /* SPRITE_ENTITY_DAMAGES,Y */
+    for (int y = ram[SELECTED_SHIELD]; y >= 0; --y) damage >>= 1; /* LSR, DEY, BPL */
     if (damage) damage_hero(damage);
 }
 /* Player_HandleShieldHitByMagic after its JSR ($87CE): the shot is gone. */
@@ -61,7 +61,7 @@ static void shield_stops_magic(void) {
     CycModRegs r = cpu;
     cyc_mod_call_commit(SOUND_PLAY_EFFECT, &r);
 }
-static void handle_shield_hit_by_magic(void) {        /* $87CB */
+static void handle_shield_hit_by_magic(void) { /* $87CB */
     handle_hit_by_magic();
     shield_stops_magic();
 }
@@ -70,7 +70,7 @@ static void handle_touch_enemy_magic(void) {
     if (!SITES(PLAYER_HANDLE_TOUCH_ENEMY_MAGIC, "faxanadu.block.touch-magic")) return;
     if (ram[INVINCIBILITY]) return;
     if (!(ram[DURATION_OINTMENT] & 0x80)) return;
-    cpu.a = 0x04;                                          /* Player_HandleTouchEnemy: sound 4, full damage */
+    cpu.a = 0x04; /* Player_HandleTouchEnemy: sound 4, full damage */
     CycModRegs r = cpu;
     cyc_mod_call_commit(SOUND_PLAY_EFFECT, &r);
     damage_hero(MAGIC_DAMAGE);
@@ -80,7 +80,7 @@ static void handle_touch_enemy_magic(void) {
 /* ---- the hero's sprites: Game_MainLoop's Screen_ResetSpritesForGamePlay,
  * Player_DrawShield, Player_DrawBody and Player_DrawWeapon ---- */
 
-static uint8_t pose;                                       /* Maybe_Player_CalcAnimFrame: 0-3 upright, 4-6 a swing, 7 a ladder */
+static uint8_t pose; /* Maybe_Player_CalcAnimFrame: 0-3 upright, 4-6 a swing, 7 a ladder */
 static const uint8_t SHIELD_SPRITE_OFFSETS_X[16] = { 0, 8, 0, 8, 0, 8, 0, 8, 0, 8, 0, 8, 8, 0, 0, 0 };
 enum { HUD = 32, NOT_DRAWN = 0xF8, BODY_TILE = 0x00, SHIELD_TILE = 0x30, OTHER = 0x77 };
 
@@ -122,14 +122,20 @@ static void draw_body(void) {
  * then the shield, the body and the weapon (none drawn: it is not swung). */
 static void draw_hero(void) {
     for (unsigned i = 4; i < 256; i += 4) ram[SHADOW_OAM + i] = NOT_DRAWN;
-    ram[SHADOW_OAM] = 23; ram[SHADOW_OAM + 1] = OTHER; ram[SHADOW_OAM + 2] = 3; ram[SHADOW_OAM + 3] = 8;
+    ram[SHADOW_OAM] = 23;
+    ram[SHADOW_OAM + 1] = OTHER;
+    ram[SHADOW_OAM + 2] = 3;
+    ram[SHADOW_OAM + 3] = 8;
     ram[SPRITES_SPRITE_SLOT] = 1;
     draw_shield();
     draw_body();
     CHECK(SITES(DRAW_WEAPON, "faxanadu.block.draw-weapon"));
 }
 /* The drawn sprites with this tile: where, and in which palette. */
-typedef struct { unsigned n; uint8_t x, y, palette[8]; } Drawn;
+typedef struct {
+    unsigned n;
+    uint8_t x, y, palette[8];
+} Drawn;
 static Drawn drawn(uint8_t tile) {
     Drawn d = { 0, 0xFF, 0xFF, { 0 } };
     for (unsigned i = 0; i < 256; i += 4) {
@@ -143,7 +149,8 @@ static Drawn drawn(uint8_t tile) {
     return d;
 }
 static bool all_in(const Drawn *d, uint8_t palette) {
-    for (unsigned i = 0; i < d->n && i < 8; ++i) if (d->palette[i] != palette) return false;
+    for (unsigned i = 0; i < d->n && i < 8; ++i)
+        if (d->palette[i] != palette) return false;
     return d->n > 0;
 }
 
@@ -155,9 +162,11 @@ static void sprite_loop(void) {
     draw_hero();
     ram[CURRENT_SPRITE_INDEX] = SLOT;
     if (ram[ENTITIES + SLOT] == 0xFF) return;
-    ram[SPRITE_BOX_LEFT] = ram[SPRITE_X + SLOT]; ram[SPRITE_BOX_TOP] = ram[SPRITE_Y + SLOT];
-    ram[SPRITE_BOX_WIDTH] = 15; ram[SPRITE_BOX_HEIGHT] = 15;
-    bool swinging = ram[PLAYER_FLAGS] & 0x80;              /* animation frames 4-6 */
+    ram[SPRITE_BOX_LEFT] = ram[SPRITE_X + SLOT];
+    ram[SPRITE_BOX_TOP] = ram[SPRITE_Y + SLOT];
+    ram[SPRITE_BOX_WIDTH] = 15;
+    ram[SPRITE_BOX_HEIGHT] = 15;
+    bool swinging = ram[PLAYER_FLAGS] & 0x80; /* animation frames 4-6 */
     if (ram[SELECTED_SHIELD] < 3 && !swinging) {
         uint8_t w = (uint8_t)(ram[SPRITE_BOX_WIDTH] + 7), h = (uint8_t)(ram[SPRITE_BOX_HEIGHT] + 0x0F);
         if ((uint8_t)(ram[SHIELD_X] + 7 - ram[SPRITE_BOX_LEFT]) < w &&
@@ -178,19 +187,24 @@ static void frame(uint8_t pad, bool main_loop_runs) {
     uint8_t buttons[2] = { pad, 0 };
     fax_block_input(buttons);
     latched = buttons[0];
-    if (main_loop_runs)                                    /* the JSR at $DB68 pushes $DB6A */
+    if (main_loop_runs) /* the JSR at $DB68 pushes $DB6A */
         CHECK(SITES_FROM(GAME_LOOP_COUNTDOWN_ITEMS, MAIN_LOOP_COUNTDOWN_PUSHED + 1, "faxanadu.block.main-loop"));
     fax_block_frame_end();
 }
 
 /* The hero at x=100 on the floor facing right, a shot coming at him. */
 static void scene(uint8_t shield, bool facing_right, int dx, int dy) {
-    ram[PLAYER_POS_X] = 100; ram[POS_Y] = 144;
+    ram[PLAYER_POS_X] = 100;
+    ram[POS_Y] = 144;
     ram[PLAYER_FLAGS] = facing_right ? FACING_RIGHT : 0;
     ram[SELECTED_SHIELD] = shield;
-    ram[HP_U] = 80; ram[INVINCIBILITY] = 0; ram[STATUS_FLAG] = 0; ram[DURATION_OINTMENT] = 0xFF;
+    ram[HP_U] = 80;
+    ram[INVINCIBILITY] = 0;
+    ram[STATUS_FLAG] = 0;
+    ram[DURATION_OINTMENT] = 0xFF;
     ram[ENTITIES + SLOT] = MAGIC_SPRITE;
-    ram[SPRITE_X + SLOT] = (uint8_t)(100 + dx); ram[SPRITE_Y + SLOT] = (uint8_t)(144 + dy);
+    ram[SPRITE_X + SLOT] = (uint8_t)(100 + dx);
+    ram[SPRITE_Y + SLOT] = (uint8_t)(144 + dy);
     ram[PORTRAIT] = 0xFF;
     pose = ram[PLAYER_FLAGS] & 0x80 ? 4 : 0;
     sound_count = 0;
@@ -219,14 +233,14 @@ static void the_rules(void) {
     /* Across a seam: a shot in the room to his left, its box at x -10 (its
      * byte 246), is in front of him facing left, at x 2. */
     CHECK(from_the_front(2, false, -10, 15) && !from_the_front(2, true, -10, 15));
-    CHECK(!from_the_front(2, false, 246, 15));                 /* the byte alone would put it behind him */
+    CHECK(!from_the_front(2, false, 246, 15)); /* the byte alone would put it behind him */
     /* The tutorial's line, word-wrapped to 16 columns and at most 4 rows. */
     char out[80];
     CHECK(wrap("V", out) && !strcmp(out, "Hold V to raise\nyour shield\nagainst magic."));
     CHECK(wrap("B", out) && !strcmp(out, "Hold B to raise\nyour shield\nagainst magic."));
     CHECK(wrap("LEFT SHIFT", out) && !strcmp(out, "Hold LEFT SHIFT\nto raise your\nshield against\nmagic."));
     CHECK(wrap("RT", out) && !strcmp(out, "Hold RT to raise\nyour shield\nagainst magic."));
-    CHECK(!wrap("KEYPAD ENTER", out));                         /* 5 rows: compose() falls back to "Block" */
+    CHECK(!wrap("KEYPAD ENTER", out)); /* 5 rows: compose() falls back to "Block" */
     CHECK(wrap("Block", out) && !strcmp(out, "Hold Block to\nraise your\nshield against\nmagic."));
     uint8_t bytes[FAX_TRAVEL_SLOT_LEN];
     CHECK(encode("Hold V\nto", bytes));
@@ -241,20 +255,20 @@ static void it_stands_still(void) {
     fresh();
     scene(SMALL, true, 60, 0);
     frame(RIGHT, true);
-    CHECK(latched == RIGHT);                                   /* walking, Block not held */
+    CHECK(latched == RIGHT); /* walking, Block not held */
     hold(true);
     CHECK(fax_block_raised());
     frame(RIGHT | A | B | UP | DOWN | LEFT | START | SELECT, true);
-    CHECK(latched == (START | SELECT));                        /* no walking, jumping, swinging or climbing */
+    CHECK(latched == (START | SELECT)); /* no walking, jumping, swinging or climbing */
     CHECK(stood == 1);
     /* Without a pass of the main loop in the last frame (a text box, a menu,
      * a screen change), the buttons are the player's. */
     frame(A, false);
-    CHECK(latched == 0);                                       /* the last frame was in play */
+    CHECK(latched == 0); /* the last frame was in play */
     frame(A, false);
     CHECK(latched == A);
     frame(A, true);
-    CHECK(latched == A);                                       /* this frame's input came before the pass */
+    CHECK(latched == A); /* this frame's input came before the pass */
     frame(A, true);
     CHECK(latched == 0);
     /* Played from somewhere else than Game_MainLoop (the ending): not in play. */
@@ -282,7 +296,7 @@ static void it_stands_still(void) {
     CHECK(latched == RIGHT);
     hold(true);
     isolated_scope = true;
-    CHECK(!fax_block_raised());                                /* never inside Seamless's isolated rooms */
+    CHECK(!fax_block_raised()); /* never inside Seamless's isolated rooms */
     isolated_scope = false;
     model_reset();
     CHECK(!fax_block_raised() && !hook_enabled("faxanadu.block.flash"));
@@ -341,7 +355,7 @@ static void magic_on_the_hero(void) {
 static void not_from_behind(void) {
     fresh();
     hold(true);
-    scene(SMALL, false, 10, 0);                 /* facing left, the shot comes from the right */
+    scene(SMALL, false, 10, 0); /* facing left, the shot comes from the right */
     sprite_loop();
     CHECK(ram[HP_U] == 72 && last_sound() == 0x04 && magic_blocked == 0 && shield_saved == 0);
     /* No shield: Block does nothing. */
@@ -532,7 +546,7 @@ static void a_glint_as_block_goes_up(void) {
 /* ---- Sugata's flash, without Sugata's flash's feature ---- */
 
 static unsigned finished;
-static void flash_finish(void) {                /* $AB60: LDX CurrentSpriteIndex, JMP Sprite_FinishBehavior */
+static void flash_finish(void) { /* $AB60: LDX CurrentSpriteIndex, JMP Sprite_FinishBehavior */
     cpu.x = ram[CURRENT_SPRITE_INDEX];
     ram[BEHAVIORS + cpu.x] |= 0x80;
     ++finished;
@@ -555,7 +569,7 @@ static void the_flash_is_blocked_from_anywhere(void) {
         scene(SMALL, side, 0, 0);
         finished = 0;
         flash_damage();
-        CHECK(ram[HP_U] == 70 && finished == 1 && last_sound() == 0x04);   /* the game's flash */
+        CHECK(ram[HP_U] == 70 && finished == 1 && last_sound() == 0x04); /* the game's flash */
     }
     hold(true);
     for (uint8_t shield = SMALL; shield <= MAGIC_SHIELD; ++shield)
@@ -581,7 +595,7 @@ static void the_flash_is_blocked_from_anywhere(void) {
  * IScripts_InvokeNextAction reads the action at IScriptOrCHRAddr +
  * IScriptOffset; $03 shows a message (B on it ends the script), $00 ends.
  * Every end is IScriptAction_EndScript. Returns the messages shown. */
-#define SHOP_SCRIPT 0xA390u     /* in the model's bank 12: 03 $02 ("Thank you for shopping"), 00 */
+#define SHOP_SCRIPT 0xA390u /* in the model's bank 12: 03 $02 ("Thank you for shopping"), 00 */
 static uint8_t shown[8];
 static unsigned shown_count;
 static bool box_open, dismiss;
@@ -593,12 +607,19 @@ static void invoke_next_action(void) {
     for (;;) {
         uint16_t at = next_at();
         uint8_t action = rom_read(12, at);
-        if (action == 0x00) { end_script(); return; }
+        if (action == 0x00) {
+            end_script();
+            return;
+        }
         CHECK(action == 0x03);
         uint8_t message = rom_read(12, (uint16_t)(at + 1));
         ram[ISCRIPT_OFFSET] = (uint8_t)(ram[ISCRIPT_OFFSET] + 2);
         shown[shown_count++] = message;
-        if (dismiss) { dismiss = false; end_script(); return; }   /* B: straight to EndScript */
+        if (dismiss) {
+            dismiss = false;
+            end_script();
+            return;
+        } /* B: straight to EndScript */
     }
 }
 static void end_script(void) {
@@ -612,12 +633,14 @@ static void buy(uint8_t shield, bool b_on_thanks) {
     shown_count = 0;
     ram[SHIELD_INVENTORY + ram[NUMBER_OF_SHIELDS]] = shield;
     ram[NUMBER_OF_SHIELDS]++;
-    ram[ISCRIPT_ADDR] = (uint8_t)SHOP_SCRIPT; ram[ISCRIPT_ADDR + 1] = SHOP_SCRIPT >> 8; ram[ISCRIPT_OFFSET] = 0;
+    ram[ISCRIPT_ADDR] = (uint8_t)SHOP_SCRIPT;
+    ram[ISCRIPT_ADDR + 1] = SHOP_SCRIPT >> 8;
+    ram[ISCRIPT_OFFSET] = 0;
     dismiss = b_on_thanks;
     invoke_next_action();
     CHECK(!box_open);
     mapped = 14;
-    frame(0, true);                         /* the main loop goes on */
+    frame(0, true); /* the main loop goes on */
 }
 /* Message $C3, as Messages_Load would find it in bank 13. */
 static void message_c3(char *out) {
@@ -633,9 +656,11 @@ static void shop_fresh(void) {
     model_routine(ISCRIPTS_INVOKE_NEXT_ACTION, invoke_next_action);
     memset(rom[12], 0xFF, sizeof rom[12]);
     memset(rom[13], 0xFF, sizeof rom[13]);
-    rom[12][SHOP_SCRIPT - 0x8000] = 0x03; rom[12][SHOP_SCRIPT - 0x8000 + 1] = 0x02; rom[12][SHOP_SCRIPT - 0x8000 + 2] = 0x00;
+    rom[12][SHOP_SCRIPT - 0x8000] = 0x03;
+    rom[12][SHOP_SCRIPT - 0x8000 + 1] = 0x02;
+    rom[12][SHOP_SCRIPT - 0x8000 + 2] = 0x00;
     ram[SELECTED_SHIELD] = NONE;
-    frame(0, true);                         /* in play, owning no shield */
+    frame(0, true); /* in play, owning no shield */
 }
 
 static void the_first_shield_teaches_once(void) {
@@ -643,13 +668,13 @@ static void the_first_shield_teaches_once(void) {
     shop_fresh();
     CHECK(!owned && !taught);
     buy(SMALL, false);
-    CHECK(shown_count == 2 && shown[0] == 0x02 && shown[1] == FAX_TRAVEL_SLOT_ID);   /* thanks, then the line */
+    CHECK(shown_count == 2 && shown[0] == 0x02 && shown[1] == FAX_TRAVEL_SLOT_ID); /* thanks, then the line */
     message_c3(text);
     CHECK(!strcmp(text, "Hold V to raise\nyour shield\nagainst magic."));
     CHECK(rom_read(12, FAX_TRAVEL_SAY) == 0x03 && rom_read(12, FAX_TRAVEL_SAY + 1) == 0xC3 &&
           rom_read(12, FAX_TRAVEL_SAY + 2) == 0x00);
     CHECK(taught && tutorials == 1 && phase == QUIET && owned);
-    CHECK(overrides_used() == 3 + FAX_TRAVEL_SLOT_LEN);       /* exactly Guru travel's SAY step and slot */
+    CHECK(overrides_used() == 3 + FAX_TRAVEL_SLOT_LEN); /* exactly Guru travel's SAY step and slot */
     /* Another shield: the thanks alone. */
     buy(LARGE, false);
     CHECK(shown_count == 1 && tutorials == 1);
@@ -668,10 +693,15 @@ static void b_on_the_thanks_still_teaches(void) {
     /* B on our line ends the script too. */
     shop_fresh();
     mapped = 12;
-    ram[SHIELD_INVENTORY] = SMALL; ram[NUMBER_OF_SHIELDS] = 1;
-    ram[ISCRIPT_ADDR] = (uint8_t)SHOP_SCRIPT; ram[ISCRIPT_ADDR + 1] = SHOP_SCRIPT >> 8; ram[ISCRIPT_OFFSET] = 2;
-    box_open = true; shown_count = 0; dismiss = true;
-    end_script();                               /* the shop's END: our line, dismissed with B */
+    ram[SHIELD_INVENTORY] = SMALL;
+    ram[NUMBER_OF_SHIELDS] = 1;
+    ram[ISCRIPT_ADDR] = (uint8_t)SHOP_SCRIPT;
+    ram[ISCRIPT_ADDR + 1] = SHOP_SCRIPT >> 8;
+    ram[ISCRIPT_OFFSET] = 2;
+    box_open = true;
+    shown_count = 0;
+    dismiss = true;
+    end_script(); /* the shop's END: our line, dismissed with B */
     CHECK(!box_open && shown_count == 1 && shown[0] == FAX_TRAVEL_SLOT_ID && phase == QUIET && tutorials == 1);
     mapped = 14;
     /* Whatever happened in a script, a main-loop pass after it is quiet. */
@@ -683,7 +713,8 @@ static void b_on_the_thanks_still_teaches(void) {
 static void not_for_a_shield_already_owned(void) {
     /* The hero owned the Large Shield before the script: no line. */
     shop_fresh();
-    ram[SHIELD_INVENTORY] = LARGE; ram[NUMBER_OF_SHIELDS] = 1;
+    ram[SHIELD_INVENTORY] = LARGE;
+    ram[NUMBER_OF_SHIELDS] = 1;
     frame(0, true);
     buy(SMALL, false);
     CHECK(shown_count == 1 && tutorials == 0 && !taught);
@@ -695,14 +726,18 @@ static void not_for_a_shield_already_owned(void) {
     CHECK(tutorials == 0);
     /* Owning the Battle Helmet counts: a shield after it teaches nothing. */
     shop_fresh();
-    ram[SHIELD_INVENTORY] = HELMET; ram[NUMBER_OF_SHIELDS] = 1;
+    ram[SHIELD_INVENTORY] = HELMET;
+    ram[NUMBER_OF_SHIELDS] = 1;
     frame(0, true);
     buy(SMALL, false);
     CHECK(shown_count == 1 && tutorials == 0);
     /* Scripts that give nothing: nothing. */
     shop_fresh();
-    mapped = 12; box_open = true;
-    ram[ISCRIPT_ADDR] = (uint8_t)SHOP_SCRIPT; ram[ISCRIPT_ADDR + 1] = SHOP_SCRIPT >> 8; ram[ISCRIPT_OFFSET] = 0;
+    mapped = 12;
+    box_open = true;
+    ram[ISCRIPT_ADDR] = (uint8_t)SHOP_SCRIPT;
+    ram[ISCRIPT_ADDR + 1] = SHOP_SCRIPT >> 8;
+    ram[ISCRIPT_OFFSET] = 0;
     invoke_next_action();
     mapped = 14;
     CHECK(!box_open && tutorials == 0);
@@ -720,8 +755,9 @@ static void pick_up_battle_helmet(void) {
     mapped = 12;
     box_open = true;
     shown_count = 0;
-    ram[ISCRIPT_ADDR] = (uint8_t)ISCRIPT_GOT_BATTLE_HELMET; ram[ISCRIPT_ADDR + 1] = ISCRIPT_GOT_BATTLE_HELMET >> 8;
-    ram[ISCRIPT_OFFSET] = 1;                 /* after the entity byte */
+    ram[ISCRIPT_ADDR] = (uint8_t)ISCRIPT_GOT_BATTLE_HELMET;
+    ram[ISCRIPT_ADDR + 1] = ISCRIPT_GOT_BATTLE_HELMET >> 8;
+    ram[ISCRIPT_OFFSET] = 1; /* after the entity byte */
     invoke_next_action();
     CHECK(!box_open);
     mapped = 14;
@@ -734,7 +770,7 @@ static void the_battle_helmet_teaches_too(void) {
     char text[80];
     /* Picked up as the first shield-slot item: the line follows the game's. */
     shop_fresh();
-    rom[12][ISCRIPT_GOT_BATTLE_HELMET - 0x8000 + 1] = 0x03;   /* shown here as SHOW_MESSAGE */
+    rom[12][ISCRIPT_GOT_BATTLE_HELMET - 0x8000 + 1] = 0x03; /* shown here as SHOW_MESSAGE */
     rom[12][ISCRIPT_GOT_BATTLE_HELMET - 0x8000 + 2] = GOT_HELMET_MESSAGE;
     rom[12][ISCRIPT_GOT_BATTLE_HELMET - 0x8000 + 3] = 0x00;
     pick_up_battle_helmet();
@@ -746,7 +782,8 @@ static void the_battle_helmet_teaches_too(void) {
     rom[12][ISCRIPT_GOT_BATTLE_HELMET - 0x8000 + 1] = 0x03;
     rom[12][ISCRIPT_GOT_BATTLE_HELMET - 0x8000 + 2] = GOT_HELMET_MESSAGE;
     rom[12][ISCRIPT_GOT_BATTLE_HELMET - 0x8000 + 3] = 0x00;
-    ram[SHIELD_INVENTORY] = SMALL; ram[NUMBER_OF_SHIELDS] = 1;
+    ram[SHIELD_INVENTORY] = SMALL;
+    ram[NUMBER_OF_SHIELDS] = 1;
     frame(0, true);
     pick_up_battle_helmet();
     CHECK(shown_count == 1 && tutorials == 0);
@@ -796,12 +833,14 @@ static void save_states(void) {
     CHECK(model_state_get("faxanadu.block", rec, 2) == -1);
     /* Saved while the line shows (in the middle of the shop's script)... */
     buy(SMALL, false);
-    phase = SAYING; owned = false;
+    phase = SAYING;
+    owned = false;
     CHECK(model_state_get("faxanadu.block", rec, sizeof rec) == 3 && rec[2] == SAYING);
     /* ... and loaded after Guru travel wrote its own line into the slot. */
     for (unsigned i = 0; i < FAX_TRAVEL_SLOT_LEN; ++i)
         cyc_mod_set_prg_read_override(13u * 0x4000u + (FAX_TRAVEL_SLOT - 0x8000u + i), 0xFF, i < 4 ? 'G' : 0xFF);
-    phase = QUIET; owned = true;
+    phase = QUIET;
+    owned = true;
     CHECK(model_state_set("faxanadu.block", rec, 3));
     CHECK(phase == SAYING && !owned);
     fax_block_loaded();

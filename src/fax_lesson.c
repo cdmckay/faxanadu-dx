@@ -67,36 +67,40 @@
 #include <string.h>
 
 /* Bank 12 */
-#define ISCRIPTS_INVOKE_NEXT_ACTION 0x826Eu  /* JSR IScripts_LoadByte: the action at IScriptOrCHRAddr + IScriptOffset */
-#define SUBTRACT_PAY        0x8347u  /* IScripts_ProgressivelySubtractGold: JSR Player_SubtractGold, after SBC #$0A
-                                        from Temp_0202/3, LDA #$0A, STA Temp_Int24, LDA #$00, STA Temp_Int24_M;
-                                        then JMP IScripts_ProgressivelySubtractGold */
-#define SPEND_GOLD_CHECK    0x8367u  /* IScriptAction_SpendGold, after the two IScripts_LoadByte and STA Temp_0202/3:
-                                        LDA Temp_0202, STA Temp_Int24, LDA Temp_0203, STA Temp_Int24_M,
-                                        JSR IScripts_CheckEnoughMoney, BCC IScripts_ShowNotEnoughMoney */
-#define MAGICIAN            0xA35Du  /* ISCRIPT_EOLIS_MARTIAL_ARTS_MAGIC_SHOP: 83 (the Magician's portrait), ... */
-#define MAGICIAN_ASKS       0xA35Eu  /* 02 15: "I shall give magic for 200 Golds.", a question */
-#define MAGICIAN_PAY_OFFSET 3u       /* $A360: 05 C8 00, pay 200 */
-#define MAGICIAN_GIVES      0xA363u  /* 0A 28: ADD_MP 40; then 01 16 ("Watch your remaining power level."), 00 */
-#define HALL_MAGICIAN       0xA368u  /* ISCRIPT_AFTER_VICTIM_MAGIC_SHOP: 83, 12 62 A377 (Fire held: $A377,
-                                        03 18 00), 02 17, 05 B8 0B (pay 3000), 07 62, 01 79, 00 */
-#define HALL_GIVES_FIRE     0xA372u  /* 07 62: ADD_ITEM Fire, his pay step done */
-#define SAY                 FAX_TRAVEL_SAY   /* $AE00: 03 C3 00, show the slot, then END */
-#define ASK                 FAX_TRAVEL_ASK   /* $AE03: 16 C3 00 AE, ask the slot: A jumps to SAY, B goes on */
+#define ISCRIPTS_INVOKE_NEXT_ACTION 0x826Eu /* JSR IScripts_LoadByte: the action at IScriptOrCHRAddr + IScriptOffset */
+/* IScripts_ProgressivelySubtractGold: JSR Player_SubtractGold, after SBC #$0A
+ * from Temp_0202/3, LDA #$0A, STA Temp_Int24, LDA #$00, STA Temp_Int24_M;
+ * then JMP IScripts_ProgressivelySubtractGold */
+#define SUBTRACT_PAY                0x8347u
+/* IScriptAction_SpendGold, after the two IScripts_LoadByte and STA Temp_0202/3:
+ * LDA Temp_0202, STA Temp_Int24, LDA Temp_0203, STA Temp_Int24_M,
+ * JSR IScripts_CheckEnoughMoney, BCC IScripts_ShowNotEnoughMoney */
+#define SPEND_GOLD_CHECK            0x8367u
+#define MAGICIAN            0xA35Du /* ISCRIPT_EOLIS_MARTIAL_ARTS_MAGIC_SHOP: 83 (the Magician's portrait), ... */
+#define MAGICIAN_ASKS       0xA35Eu /* 02 15: "I shall give magic for 200 Golds.", a question */
+#define MAGICIAN_PAY_OFFSET 3u      /* $A360: 05 C8 00, pay 200 */
+#define MAGICIAN_GIVES      0xA363u /* 0A 28: ADD_MP 40; then 01 16 ("Watch your remaining power level."), 00 */
+/* ISCRIPT_AFTER_VICTIM_MAGIC_SHOP: 83, 12 62 A377 (Fire held: $A377,
+ * 03 18 00), 02 17, 05 B8 0B (pay 3000), 07 62, 01 79, 00 */
+#define HALL_MAGICIAN       0xA368u
+#define HALL_GIVES_FIRE     0xA372u        /* 07 62: ADD_ITEM Fire, his pay step done */
+#define SAY                 FAX_TRAVEL_SAY /* $AE00: 03 C3 00, show the slot, then END */
+#define ASK                 FAX_TRAVEL_ASK /* $AE03: 16 C3 00 AE, ask the slot: A jumps to SAY, B goes on */
 /* Bank 13 */
-#define SLOT                FAX_TRAVEL_SLOT  /* $B45B: message $C3, the line slot */
+#define SLOT                FAX_TRAVEL_SLOT /* $B45B: message $C3, the line slot */
 /* RAM */
-#define ISCRIPT_ADDR        0x00DBu  /* IScriptOrCHRAddr, 16 bits; IScriptOffset follows */
+#define ISCRIPT_ADDR        0x00DBu /* IScriptOrCHRAddr, 16 bits; IScriptOffset follows */
 #define ISCRIPT_OFFSET      0x00DDu
-#define TEMP_INT24          0x00ECu  /* Player_SubtractGold's amount, 16 bits */
-#define TEMP_0202           0x0202u  /* the amount being paid, 16 bits, as IScriptAction_SpendGold read it; then
-                                        what IScripts_ProgressivelySubtractGold has left to take */
-#define GOLD                0x0392u  /* 24 bits, little-endian */
-#define MAGIC_INVENTORY     0x03A9u  /* the spells listed, 4 at most */
-#define SELECTED_MAGIC      0x03C0u  /* the spell in hand, $FF none */
+#define TEMP_INT24          0x00ECu /* Player_SubtractGold's amount, 16 bits */
+/* the amount being paid, 16 bits, as IScriptAction_SpendGold read it; then
+ * what IScripts_ProgressivelySubtractGold has left to take */
+#define TEMP_0202           0x0202u
+#define GOLD                0x0392u /* 24 bits, little-endian */
+#define MAGIC_INVENTORY     0x03A9u /* the spells listed, 4 at most */
+#define SELECTED_MAGIC      0x03C0u /* the spell in hand, $FF none */
 #define NUMBER_OF_MAGIC     0x03C5u
 /* Values */
-#define MAGIC_FIRE          2u       /* SELECTEDMAGIC_FIRE: Fire's entry in the spells (MAGIC_FIRE, $62, as an item) */
+#define MAGIC_FIRE          2u /* SELECTEDMAGIC_FIRE: Fire's entry in the spells (MAGIC_FIRE, $62, as an item) */
 #define MAGIC_SLOTS         4u
 /* IScript actions */
 enum { END = 0x00, SHOW_MESSAGE = 0x03, ASK_JUMP_IF_ACCEPTED = 0x16 };
@@ -126,7 +130,9 @@ _Static_assert(PAY % STOCK_PAY == 0 && PAY > STOCK_PAY, "a count in the game's s
  * price: a version 1 state taken with it up asks this price. */
 enum { LINE_NONE, LINE_PRICE, LINE_TAUGHT, LINE_NOTHING_MORE, LINE_TEACHES, LINE_NOT_READY, LINES };
 
-typedef struct { uint8_t learned, phase, line, studied; } Lesson;
+typedef struct {
+    uint8_t learned, phase, line, studied;
+} Lesson;
 
 /* ---- whom he teaches ---- */
 
@@ -138,9 +144,12 @@ typedef struct { uint8_t learned, phase, line, studied; } Lesson;
 static bool ready(const Lesson *l) { return l->studied; }
 
 #define PRICE_FORMAT "It will cost\n%u Golds."
-static const char *const line_text[LINES] = {
-    "", PRICE_FORMAT, "Your magic will\nnow return\nfaster.", "I have nothing\nmore to teach\nyou.",
-    "I can teach you\nto recover magic\nfaster.", NOT_READY_TEXT };
+static const char *const line_text[LINES] = { "",
+                                              PRICE_FORMAT,
+                                              "Your magic will\nnow return\nfaster.",
+                                              "I have nothing\nmore to teach\nyou.",
+                                              "I can teach you\nto recover magic\nfaster.",
+                                              NOT_READY_TEXT };
 
 /* The conversation: what he teaches up, its END next (TELLING), his price up
  * (ASKING, A or B next), his pay step running (PAYING), or a last line of his
@@ -150,17 +159,22 @@ enum { IDLE, ASKING, PAYING, SAYING, TELLING, PHASES };
 
 /* Where a step leaves the interpreter: the script and offset it goes to (or
  * none), and the line for the slot. */
-typedef struct { bool go; uint16_t script; uint8_t offset; int line; } Steer;
+typedef struct {
+    bool go;
+    uint16_t script;
+    uint8_t offset;
+    int line;
+} Steer;
 
 static bool enabled, failed;
-static bool infer;   /* a save state without the studied byte was loaded: fax_lesson_loaded() asks the spells */
+static bool infer; /* a save state without the studied byte was loaded: fax_lesson_loaded() asks the spells */
 static Lesson lesson;
 typedef struct {
-    unsigned told, not_ready, offers, declined, short_of_gold, taught, nothing_more;   /* his lines and answers */
-    unsigned pays;            /* turns of his count that took PAY */
-    unsigned fire_given;      /* the magic hall's Magician's script reaching the step that gives Fire */
+    unsigned told, not_ready, offers, declined, short_of_gold, taught, nothing_more; /* his lines and answers */
+    unsigned pays;       /* turns of his count that took PAY */
+    unsigned fire_given; /* the magic hall's Magician's script reaching the step that gives Fire */
 } Seen;
-static Seen seen;                                                     /* for TCP */
+static Seen seen; /* for TCP */
 
 /* ---- the rules, on plain values ---- */
 
@@ -177,19 +191,19 @@ static Steer jump(Lesson *l, uint8_t phase, uint16_t script, uint8_t offset) {
 }
 /* The next action is at `at`, in the script at `base`. */
 static Steer steer(Lesson *l, uint16_t base, uint16_t at) {
-    if (base == MAGICIAN && at == MAGICIAN_ASKS)                 /* he begins */
+    if (base == MAGICIAN && at == MAGICIAN_ASKS) /* he begins */
         return l->learned ? show(l, SAYING, SAY, LINE_NOTHING_MORE) : show(l, TELLING, SAY, LINE_TEACHES);
-    if (l->phase == TELLING && at == SAY + 2)                    /* A on what he teaches: who he teaches */
+    if (l->phase == TELLING && at == SAY + 2) /* A on what he teaches: who he teaches */
         return ready(l) ? show(l, ASKING, ASK, LINE_PRICE) : show(l, SAYING, SAY, LINE_NOT_READY);
-    if (l->phase == ASKING && at == SAY)                         /* A on the price: his own pay step */
+    if (l->phase == ASKING && at == SAY) /* A on the price: his own pay step */
         return jump(l, PAYING, MAGICIAN, MAGICIAN_PAY_OFFSET);
-    if (l->phase == ASKING && at == ASK + 4)                     /* B on the price: the SAY step's END */
+    if (l->phase == ASKING && at == ASK + 4) /* B on the price: the SAY step's END */
         return jump(l, IDLE, SAY, 2);
-    if (l->phase == PAYING && base == MAGICIAN && at == MAGICIAN_GIVES) {   /* paid */
+    if (l->phase == PAYING && base == MAGICIAN && at == MAGICIAN_GIVES) { /* paid */
         l->learned = 1;
         return show(l, SAYING, SAY, LINE_TAUGHT);
     }
-    if (l->phase == SAYING && at == SAY + 2) l->phase = IDLE, l->line = LINE_NONE;   /* read: its END runs */
+    if (l->phase == SAYING && at == SAY + 2) l->phase = IDLE, l->line = LINE_NONE; /* read: its END runs */
     return (Steer){ false, 0, 0, LINE_NONE };
 }
 
@@ -272,25 +286,36 @@ static int next_action_hook(uint16_t addr) {
     if (cyc_mod_isolated()) return 0;
     if (q(ISCRIPT_OFFSET) == 1) lesson.phase = IDLE, lesson.line = LINE_NONE;
     uint16_t base = word(ISCRIPT_ADDR), at = script_at();
-    if (base == HALL_MAGICIAN && at == HALL_GIVES_FIRE) {          /* the magic hall: paid, Fire next */
+    if (base == HALL_MAGICIAN && at == HALL_GIVES_FIRE) { /* the magic hall: paid, Fire next */
         lesson.studied = 1;
         ++seen.fire_given;
     }
-    if (failed) return 0;                                           /* he sells his MP */
+    if (failed) return 0; /* he sells his MP */
     uint8_t was = lesson.phase;
     Steer s = steer(&lesson, base, at);
-    if (s.line != LINE_NONE && !serve(s.line)) {     /* the stock script goes on; paid, he has learned */
+    if (s.line != LINE_NONE && !serve(s.line)) { /* the stock script goes on; paid, he has learned */
         fail();
         return 0;
     }
     if (s.go) go(s.script, s.offset);
     switch (s.line) {
-    case LINE_TEACHES: ++seen.told; break;
-    case LINE_NOT_READY: ++seen.not_ready; break;
-    case LINE_PRICE: ++seen.offers; break;
-    case LINE_TAUGHT: ++seen.taught; break;
-    case LINE_NOTHING_MORE: ++seen.nothing_more; break;
-    default: if (was == ASKING && lesson.phase == IDLE) ++seen.declined;
+    case LINE_TEACHES:
+        ++seen.told;
+        break;
+    case LINE_NOT_READY:
+        ++seen.not_ready;
+        break;
+    case LINE_PRICE:
+        ++seen.offers;
+        break;
+    case LINE_TAUGHT:
+        ++seen.taught;
+        break;
+    case LINE_NOTHING_MORE:
+        ++seen.nothing_more;
+        break;
+    default:
+        if (was == ASKING && lesson.phase == IDLE) ++seen.declined;
     }
     return 0;
 }
@@ -329,8 +354,8 @@ bool fax_lesson_studied(void) { return enabled && lesson.studied; }
 
 /* ---- the file in play (Save files, fax_save.h) ---- */
 
-#define FIELD_LEARNED "lesson.learned"   /* "yes", or no field */
-#define FIELD_STUDIED "lesson.studied"   /* "yes" or "no", at every save; no field: a file from before it */
+#define FIELD_LEARNED "lesson.learned" /* "yes", or no field */
+#define FIELD_STUDIED "lesson.studied" /* "yes" or "no", at every save; no field: a file from before it */
 
 /* Fire in the file's spells, in hand or listed: a file from before
  * lesson.studied has studied if so (one that sold Fire since cannot tell). */
@@ -384,10 +409,14 @@ static int state_validate(const uint8_t *buf, int len) {
     if (!(v1 || v2) || buf[1] > 1 || (v2 && buf[4] > 1)) return 0;
     if (buf[2] >= (v1 ? TELLING : PHASES) || buf[3] >= (v1 ? LINE_TEACHES : LINES)) return 0;
     switch (buf[2]) {
-    case TELLING: return buf[3] == LINE_TEACHES;
-    case ASKING: return buf[3] == LINE_PRICE;
-    case SAYING: return buf[3] == LINE_TAUGHT || buf[3] == LINE_NOTHING_MORE || buf[3] == LINE_NOT_READY;
-    default: return buf[3] == LINE_NONE;
+    case TELLING:
+        return buf[3] == LINE_TEACHES;
+    case ASKING:
+        return buf[3] == LINE_PRICE;
+    case SAYING:
+        return buf[3] == LINE_TAUGHT || buf[3] == LINE_NOTHING_MORE || buf[3] == LINE_NOT_READY;
+    default:
+        return buf[3] == LINE_NONE;
     }
 }
 /* Length 0 (a state from before the feature): not learned. Without the
@@ -414,7 +443,8 @@ void fax_lesson_loaded(void) {
 
 static const char *const hook_ids[] = { "faxanadu.lesson.next-action", "faxanadu.lesson.price", "faxanadu.lesson.pay" };
 static void hooks(bool on) {
-    for (unsigned i = 0; i < sizeof hook_ids / sizeof hook_ids[0]; ++i) nes_mod_set_function_hook_enabled(hook_ids[i], on);
+    for (unsigned i = 0; i < sizeof hook_ids / sizeof hook_ids[0]; ++i)
+        nes_mod_set_function_hook_enabled(hook_ids[i], on);
 }
 static void deactivate(void) {
     enabled = failed = infer = false;
@@ -441,9 +471,9 @@ static void lesson_state(int id, const char *line) {
              "\"told\":%u,\"not_ready\":%u,\"offers\":%u,\"declined\":%u,\"short\":%u,\"taught\":%u,"
              "\"nothing_more\":%u,\"pays\":%u,\"fire_given\":%u,\"failed\":%s",
              enabled ? "true" : "false", fax_lesson_learned() ? "true" : "false",
-             fax_lesson_studied() ? "true" : "false", PRICE, PAY, lesson.phase, lesson.line, seen.told,
-             seen.not_ready, seen.offers, seen.declined, seen.short_of_gold, seen.taught, seen.nothing_more,
-             seen.pays, seen.fire_given, failed ? "true" : "false");
+             fax_lesson_studied() ? "true" : "false", PRICE, PAY, lesson.phase, lesson.line, seen.told, seen.not_ready,
+             seen.offers, seen.declined, seen.short_of_gold, seen.taught, seen.nothing_more, seen.pays, seen.fire_given,
+             failed ? "true" : "false");
     cyc_tcp_ok(id, fields);
 }
 void fax_lesson_tcp_setup(void) {

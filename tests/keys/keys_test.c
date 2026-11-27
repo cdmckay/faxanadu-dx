@@ -8,7 +8,14 @@
 #include <string.h>
 
 static unsigned checks;
-#define CHECK(test) do{++checks;if(!(test)){fprintf(stderr,"FAIL line %u: %s\n",__LINE__,#test);exit(1);}}while(0)
+#define CHECK(test)                                                                                                    \
+    do {                                                                                                               \
+        ++checks;                                                                                                      \
+        if (!(test)) {                                                                                                 \
+            fprintf(stderr, "FAIL line %u: %s\n", __LINE__, #test);                                                    \
+            exit(1);                                                                                                   \
+        }                                                                                                              \
+    } while (0)
 
 /* ---- the machine ---- */
 static uint8_t ram[0x800];
@@ -23,10 +30,15 @@ bool cyc_mod_poke(uint16_t addr, uint8_t value) {
 void cyc_mod_regs(CycModRegs *out) { *out = cpu; }
 
 /* The engine's hook table: registration order, an enabled flag each. */
-typedef struct { const char *id; uint16_t addr; NESModFunctionEntryCallback cb; int on; } Site;
+typedef struct {
+    const char *id;
+    uint16_t addr;
+    NESModFunctionEntryCallback cb;
+    int on;
+} Site;
 static Site sites[8];
 static int site_count;
-static bool reversed;            /* fire sites at one address last-registered first */
+static bool reversed; /* fire sites at one address last-registered first */
 int nes_mod_register_function_entry_plugin(const char *id, uint16_t addr, NESModFunctionEntryCallback cb) {
     if (site_count == 8) return 0;
     sites[site_count++] = (Site){ id, addr, cb, 0 };
@@ -34,25 +46,36 @@ int nes_mod_register_function_entry_plugin(const char *id, uint16_t addr, NESMod
 }
 int nes_mod_set_function_hook_enabled(const char *id, int on) {
     for (int i = 0; i < site_count; ++i)
-        if (!strcmp(sites[i].id, id)) { sites[i].on = on; return 1; }
+        if (!strcmp(sites[i].id, id)) {
+            sites[i].on = on;
+            return 1;
+        }
     return 0;
 }
 static NESModActivationCallback reset_cb, plugin_cb[2];
 static const char *plugin_id[2];
 static int plugin_count;
-int nes_mod_register_reset_callback(NESModActivationCallback cb) { reset_cb = cb; return 1; }
-int nes_mod_register_activation_plugin(const char *id, NESModActivationCallback cb) {
-    if (plugin_count == 2) return 0;
-    plugin_id[plugin_count] = id; plugin_cb[plugin_count++] = cb;
+int nes_mod_register_reset_callback(NESModActivationCallback cb) {
+    reset_cb = cb;
     return 1;
 }
-void nes_mod_set_local_only(const char *name, int required) { (void)name; (void)required; }
+int nes_mod_register_activation_plugin(const char *id, NESModActivationCallback cb) {
+    if (plugin_count == 2) return 0;
+    plugin_id[plugin_count] = id;
+    plugin_cb[plugin_count++] = cb;
+    return 1;
+}
+void nes_mod_set_local_only(const char *name, int required) {
+    (void)name;
+    (void)required;
+}
 static NESModSavestateGet save_get;
 static NESModSavestateSet save_set;
 static NESModSavestateValidate save_validate;
 int nes_mod_register_savestate_hook(const char *id, NESModSavestateGet get, NESModSavestateSet set) {
     if (strcmp(id, "faxanadu.keys")) return 0;
-    save_get = get; save_set = set;
+    save_get = get;
+    save_set = set;
     return 1;
 }
 int nes_mod_register_savestate_validator(const char *id, NESModSavestateValidate validate) {
@@ -70,35 +93,46 @@ static int fire(uint16_t addr) {
     }
     return 0;
 }
-static void push(uint8_t v) { ram[0x100 | cpu.s] = v; cpu.s = (uint8_t)(cpu.s - 1); }
-static uint8_t pull(void) { cpu.s = (uint8_t)(cpu.s + 1); return ram[0x100 | cpu.s]; }
-static void jsr(uint16_t at) { uint16_t last = (uint16_t)(at + 2); push((uint8_t)(last >> 8)); push((uint8_t)last); }
-static uint16_t rts(void) { uint8_t lo = pull(); return (uint16_t)((lo | pull() << 8) + 1); }
+static void push(uint8_t v) {
+    ram[0x100 | cpu.s] = v;
+    cpu.s = (uint8_t)(cpu.s - 1);
+}
+static uint8_t pull(void) {
+    cpu.s = (uint8_t)(cpu.s + 1);
+    return ram[0x100 | cpu.s];
+}
+static void jsr(uint16_t at) {
+    uint16_t last = (uint16_t)(at + 2);
+    push((uint8_t)(last >> 8));
+    push((uint8_t)last);
+}
+static uint16_t rts(void) {
+    uint8_t lo = pull();
+    return (uint16_t)((lo | pull() << 8) + 1);
+}
 
 /* ---- the game, as the disassembly has it ---- */
 enum { RED_POTION = 0x10, WING_BOOTS = 0x0F, HOUR_GLASS = 0x0D, KEY_K = 0x05, KEY_J = 0x07, KEY_JO = 0x08 };
 enum { DOOR_J = 4, RING_OF_ELF = 6 };
-static int picture;              /* the item the HUD's picture tiles show, NO_ITEM when blank */
-static int message;              /* the last script the door or item ran */
+static int picture; /* the item the HUD's picture tiles show, NO_ITEM when blank */
+static int message; /* the last script the door or item ran */
 enum { SCRIPT_USED_KEY = 0x84, SCRIPT_USED_MATTOCK = 0x81, SCRIPT_KEY_MARK = 0x02, SCRIPT_RING_MARK = 0x7F };
 
 static uint8_t selected(void) { return ram[SELECTED_ITEM]; }
 static unsigned count(void) { return ram[NUMBER_OF_ITEMS]; }
 static void give(const uint8_t *items, unsigned n, uint8_t selection) {
-    memset(ram + ITEM_INVENTORY, 0xEE, 16);      /* stale bytes past the count */
+    memset(ram + ITEM_INVENTORY, 0xEE, 16); /* stale bytes past the count */
     memcpy(ram + ITEM_INVENTORY, items, n);
     ram[NUMBER_OF_ITEMS] = (uint8_t)n;
     ram[SELECTED_ITEM] = selection;
     picture = selection;
 }
-static bool holds(const uint8_t *items, unsigned n) {
-    return count() == n && !memcmp(ram + ITEM_INVENTORY, items, n);
-}
+static bool holds(const uint8_t *items, unsigned n) { return count() == n && !memcmp(ram + ITEM_INVENTORY, items, n); }
 
 /* UI_ClearSelectedItemPic, entered by the JSR at `from`. */
 static void clear_picture(uint16_t from) {
     jsr(from);
-    if (!fire(UI_CLEAR_SELECTED_ITEM_PIC)) picture = NO_ITEM;   /* its four tiles of 0 */
+    if (!fire(UI_CLEAR_SELECTED_ITEM_PIC)) picture = NO_ITEM; /* its four tiles of 0 */
     CHECK(rts() == from + 3);
 }
 /* Player_CheckHandleEnterDoor at a locked door: JSR Game_RunDoorRequirementHandler
@@ -108,18 +142,18 @@ static bool press_up_at_door(uint8_t requirement) {
     ram[CURRENT_DOOR_KEY_REQUIREMENT] = requirement;
     message = 0;
     jsr(0xE539);
-    fire(GAME_RUN_DOOR_REQUIREMENT_HANDLER);                     /* it never handles */
+    fire(GAME_RUN_DOOR_REQUIREMENT_HANDLER); /* it never handles */
     if (requirement >= DOOR_A_KEY && requirement <= DOOR_JO_KEY) {
-        if (selected() == ITEM_KEY_A + requirement - DOOR_A_KEY) {   /* LDA SelectedItem, CMP #key, BEQ */
-            message = SCRIPT_USED_KEY;                           /* Game_UnlockDoorWithUsableItem */
+        if (selected() == ITEM_KEY_A + requirement - DOOR_A_KEY) { /* LDA SelectedItem, CMP #key, BEQ */
+            message = SCRIPT_USED_KEY;                             /* Game_UnlockDoorWithUsableItem */
             ram[SELECTED_ITEM] = NO_ITEM;
             clear_picture(UNLOCK_CLEARS_PICTURE);
-            ram[CURRENT_DOOR_KEY_REQUIREMENT] = 0;               /* Game_UnlockDoor */
+            ram[CURRENT_DOOR_KEY_REQUIREMENT] = 0; /* Game_UnlockDoor */
         } else {
             message = requirement == DOOR_J ? SCRIPT_KEY_MARK : 0x7E;
         }
     } else if (requirement >= RING_OF_ELF) {
-        message = SCRIPT_RING_MARK;                              /* no ring in these tests */
+        message = SCRIPT_RING_MARK; /* no ring in these tests */
     }
     CHECK(rts() == 0xE53C && cpu.s == 0xF0);
     return ram[CURRENT_DOOR_KEY_REQUIREMENT] == 0;
@@ -141,7 +175,7 @@ static void use_item(uint16_t clear_call, int script) {
 }
 #define USE_MATTOCK() use_item(MATTOCK_CLEARS_ITEM, SCRIPT_USED_MATTOCK)
 
-static void play(bool auto_keys, bool reusable) {   /* a launch with these toggles */
+static void play(bool auto_keys, bool reusable) { /* a launch with these toggles */
     reset_cb();
     if (auto_keys) plugin_cb[0]();
     if (reusable) plugin_cb[1]();
@@ -168,18 +202,19 @@ static void inventory_lookup(void) {
     give(items, 4, NO_ITEM);
     CHECK(inventory_find(RED_POTION) == 0 && inventory_find(KEY_J) == 2 && inventory_find(WING_BOOTS) == 3);
     CHECK(inventory_find(KEY_JO) == -1);
-    CHECK(inventory_find(0xEE) == -1);                           /* stale bytes are not items */
+    CHECK(inventory_find(0xEE) == -1); /* stale bytes are not items */
     ram[NUMBER_OF_ITEMS] = 0;
     CHECK(inventory_find(RED_POTION) == -1);
     memset(ram + ITEM_INVENTORY, KEY_J, 16);
     ram[ITEM_INVENTORY + 8] = KEY_JO;
-    ram[NUMBER_OF_ITEMS] = 12;                                   /* the game holds 8 at most */
+    ram[NUMBER_OF_ITEMS] = 12; /* the game holds 8 at most */
     CHECK(inventory_find(KEY_JO) == -1 && inventory_find(KEY_J) == 0);
     give(items, 4, NO_ITEM);
     inventory_remove(1);
     const uint8_t left[] = { RED_POTION, KEY_J, WING_BOOTS };
     CHECK(holds(left, 3));
-    inventory_remove(-1); inventory_remove(3);
+    inventory_remove(-1);
+    inventory_remove(3);
     CHECK(holds(left, 3));
     for (uint8_t need = 0; need <= 8; ++need) {
         ram[CURRENT_DOOR_KEY_REQUIREMENT] = need;
@@ -192,12 +227,12 @@ static void auto_keys_alone(void) {
     const uint8_t items[] = { RED_POTION, KEY_J, WING_BOOTS };
     give(items, 3, ITEM_MATTOCK);
     CHECK(press_up_at_door(DOOR_J));
-    CHECK(message == SCRIPT_USED_KEY);                           /* the game's own message */
+    CHECK(message == SCRIPT_USED_KEY); /* the game's own message */
     const uint8_t used[] = { RED_POTION, WING_BOOTS };
-    CHECK(holds(used, 2));                                       /* the key is used up */
+    CHECK(holds(used, 2));                                        /* the key is used up */
     CHECK(selected() == ITEM_MATTOCK && picture == ITEM_MATTOCK); /* the selection is as it was */
     CHECK(!lend.active && auto_opened == 1 && keys_kept == 0);
-    CHECK(!press_up_at_door(DOOR_J));                            /* no key left */
+    CHECK(!press_up_at_door(DOOR_J)); /* no key left */
     CHECK(message == SCRIPT_KEY_MARK && holds(used, 2) && selected() == ITEM_MATTOCK);
     /* Nothing selected before, nothing after. */
     const uint8_t one[] = { KEY_J };
@@ -219,12 +254,12 @@ static void auto_keys_alone(void) {
 static void both_on(void) {
     for (int order = 0; order < 2; ++order) {
         play(true, true);
-        reversed = order;                                        /* either site may fire first */
+        reversed = order; /* either site may fire first */
         const uint8_t items[] = { RED_POTION, KEY_J, WING_BOOTS };
         give(items, 3, ITEM_MATTOCK);
         CHECK(press_up_at_door(DOOR_J) && message == SCRIPT_USED_KEY);
         CHECK(holds(items, 3) && selected() == ITEM_MATTOCK && picture == ITEM_MATTOCK);
-        CHECK(press_up_at_door(DOOR_J) && holds(items, 3) && selected() == ITEM_MATTOCK);  /* the same key again */
+        CHECK(press_up_at_door(DOOR_J) && holds(items, 3) && selected() == ITEM_MATTOCK); /* the same key again */
         CHECK(auto_opened == 2 && keys_kept == 2 && !lend.active);
         /* Selected by hand, it stays selected. */
         give(items, 3, KEY_J);
@@ -270,7 +305,7 @@ static void rings_untouched(void) {
         CHECK(!press_up_at_door(ring) && message == SCRIPT_RING_MARK);
         CHECK(!lend.active && selected() == ITEM_MATTOCK && holds(items, 1));
     }
-    CHECK(press_up_at_door(0) && !lend.active && selected() == ITEM_MATTOCK);  /* no lock at all */
+    CHECK(press_up_at_door(0) && !lend.active && selected() == ITEM_MATTOCK); /* no lock at all */
 }
 
 static void mattock_kept_and_consumables_used(void) {
@@ -281,8 +316,13 @@ static void mattock_kept_and_consumables_used(void) {
     CHECK(message == SCRIPT_USED_MATTOCK && selected() == ITEM_MATTOCK && picture == ITEM_MATTOCK);
     USE_MATTOCK();
     CHECK(selected() == ITEM_MATTOCK && mattock_kept == 2 && holds(items, 1));
-    const struct { uint16_t call; uint8_t item; } used_up[] = {
-        { 0xC53B, RED_POTION }, { 0xC581, WING_BOOTS }, { 0xC5D0, HOUR_GLASS },   /* Player_Use{RedPotion,WingBoots,HourGlass} */
+    const struct {
+        uint16_t call;
+        uint8_t item;
+    } used_up[] = {
+        { 0xC53B, RED_POTION },
+        { 0xC581, WING_BOOTS },
+        { 0xC5D0, HOUR_GLASS }, /* Player_Use{RedPotion,WingBoots,HourGlass} */
     };
     for (unsigned i = 0; i < 3; ++i) {
         give(items, 1, used_up[i].item);
@@ -302,19 +342,21 @@ static void other_callers_untouched(void) {
     play(true, false);
     lend = (Lend){ true, KEY_J, ITEM_MATTOCK };
     ram[CURRENT_DOOR_KEY_REQUIREMENT] = DOOR_J;
-    ram[SELECTED_ITEM] = RED_POTION; picture = RED_POTION;
+    ram[SELECTED_ITEM] = RED_POTION;
+    picture = RED_POTION;
     use_item(0xC53B, 0);
     CHECK(selected() == NO_ITEM && picture == NO_ITEM && lend.active);
     /* A lend for another door is left to the game. */
     const uint8_t items[] = { KEY_K };
     give(items, 1, KEY_J);
     lend = (Lend){ true, KEY_K, ITEM_MATTOCK };
-    CHECK(press_up_at_door(DOOR_J) && !lend.active);             /* the door hook clears it first */
+    CHECK(press_up_at_door(DOOR_J) && !lend.active); /* the door hook clears it first */
     lend = (Lend){ true, KEY_K, ITEM_MATTOCK };
     cpu.s = 0xF0;
     ram[CURRENT_DOOR_KEY_REQUIREMENT] = DOOR_J;
-    ram[SELECTED_ITEM] = NO_ITEM; picture = KEY_J;
-    clear_picture(UNLOCK_CLEARS_PICTURE);                        /* reached without the door hook */
+    ram[SELECTED_ITEM] = NO_ITEM;
+    picture = KEY_J;
+    clear_picture(UNLOCK_CLEARS_PICTURE); /* reached without the door hook */
     CHECK(!lend.active && selected() == NO_ITEM && picture == NO_ITEM && holds(items, 1));
 }
 
@@ -332,7 +374,7 @@ static void save_states(void) {
     CHECK(n == 3 && save_validate(buf, n));
     lend = (Lend){ 0 };
     CHECK(save_set(buf, n) && lend.active && lend.key == KEY_J && lend.prev == ITEM_MATTOCK);
-    ram[SELECTED_ITEM] = NO_ITEM;                                /* the rest of the door */
+    ram[SELECTED_ITEM] = NO_ITEM; /* the rest of the door */
     clear_picture(UNLOCK_CLEARS_PICTURE);
     const uint8_t used[] = { RED_POTION };
     CHECK(holds(used, 1) && selected() == ITEM_MATTOCK && picture == ITEM_MATTOCK);
@@ -347,7 +389,8 @@ static void save_states(void) {
 
 static void off_means_off(void) {
     play(true, true);
-    lend = (Lend){ true, KEY_J, 0 }; auto_opened = keys_kept = mattock_kept = 3;
+    lend = (Lend){ true, KEY_J, 0 };
+    auto_opened = keys_kept = mattock_kept = 3;
     deactivate();
     CHECK(!auto_on && !reuse_on && !lend.active && auto_opened + keys_kept + mattock_kept == 0);
     for (int i = 0; i < site_count; ++i) CHECK(!sites[i].on);

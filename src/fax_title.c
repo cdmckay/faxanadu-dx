@@ -37,22 +37,25 @@
 #endif
 
 /* Fixed bank */
-#define TITLE_LOOP 0xFC7Au   /* Game_ShowStartScreen's @_afterCheckHandleInputFarJump: LDA Joy1_ChangedButtonMask */
+#define TITLE_LOOP 0xFC7Au /* Game_ShowStartScreen's @_afterCheckHandleInputFarJump: LDA Joy1_ChangedButtonMask */
 
 static const char WORD[] = "DX";
 enum {
-    NATIVE_W = 256, NATIVE_H = 240,
-    LOGO_LEFT = 16, LOGO_W = 224,   /* the logo and its border: tiles 2-29 of rows 2-17 (StartScreen_Draw, $2042) */
-    WORD_Y = 116,                   /* on the logo, just under FAXANADU's letters: lit on 116-122 */
-    WORD_W = 16, WORD_H = 8,        /* two cells of the font */
-    WORD_COLOR = 3,                 /* palette RAM: the logo's palette ($0F $05 $18 $38), its light yellow */
-    OUTLINE_COLOR = 0,              /* the backdrop, $0F: the title's black */
+    NATIVE_W = 256,
+    NATIVE_H = 240,
+    LOGO_LEFT = 16,
+    LOGO_W = 224, /* the logo and its border: tiles 2-29 of rows 2-17 (StartScreen_Draw, $2042) */
+    WORD_Y = 116, /* on the logo, just under FAXANADU's letters: lit on 116-122 */
+    WORD_W = 16,
+    WORD_H = 8,        /* two cells of the font */
+    WORD_COLOR = 3,    /* palette RAM: the logo's palette ($0F $05 $18 $38), its light yellow */
+    OUTLINE_COLOR = 0, /* the backdrop, $0F: the title's black */
 };
 
 static bool enabled, failed;
-static uint8_t seen = 255;          /* frames since the title's loop last ran */
-static unsigned shown_frames;       /* presents with the word, since power-on */
-static int drawn_x = -1, drawn_y = -1, drawn_w;   /* where the last present put it, and the picture's width */
+static uint8_t seen = 255;                      /* frames since the title's loop last ran */
+static unsigned shown_frames;                   /* presents with the word, since power-on */
+static int drawn_x = -1, drawn_y = -1, drawn_w; /* where the last present put it, and the picture's width */
 static uint32_t *canvas;
 static size_t capacity;
 
@@ -128,15 +131,19 @@ const uint32_t *fax_title_present(const uint32_t *picture, int *w, int *h) {
     if (n > capacity) {
         uint32_t *grown = realloc(canvas, n * sizeof *grown);
         if (!grown) return picture;
-        canvas = grown; capacity = n;
+        canvas = grown;
+        capacity = n;
     }
     memcpy(canvas, from, n * sizeof *canvas);
     int x, y;
     word_at(width, &x, &y);
     draw_word(canvas, width, height, x, y);
     ++shown_frames;
-    drawn_x = x; drawn_y = y; drawn_w = width;
-    *w = width; *h = height;
+    drawn_x = x;
+    drawn_y = y;
+    drawn_w = width;
+    *w = width;
+    *h = height;
     return canvas;
 }
 
@@ -149,12 +156,10 @@ static int state_get(uint8_t *buf, int cap) {
     buf[1] = seen;
     return RECORD;
 }
-static int state_validate(const uint8_t *buf, int len) {
-    return len == 0 || (len == RECORD && buf[0] == VERSION);
-}
+static int state_validate(const uint8_t *buf, int len) { return len == 0 || (len == RECORD && buf[0] == VERSION); }
 static int state_set(const uint8_t *buf, int len) {
     if (!state_validate(buf, len)) return 0;
-    seen = len ? buf[1] : 255;   /* saved without the feature: wait for the loop */
+    seen = len ? buf[1] : 255; /* saved without the feature: wait for the loop */
     return 1;
 }
 
@@ -181,7 +186,8 @@ static void deactivate(void) {
     enabled = failed = false;
     seen = 255;
     shown_frames = 0;
-    drawn_x = drawn_y = -1; drawn_w = 0;
+    drawn_x = drawn_y = -1;
+    drawn_w = 0;
     nes_mod_set_function_hook_enabled("faxanadu.title-remastered.loop", 0);
 }
 static void activate(void) {
@@ -196,5 +202,6 @@ NES_MOD_CONSTRUCTOR(register_title) {
         !nes_mod_register_reset_callback(deactivate) ||
         !nes_mod_register_activation_plugin("faxanadu.title-remastered", activate) ||
         !nes_mod_register_savestate_hook("faxanadu.title-remastered", state_get, state_set) ||
-        !nes_mod_register_savestate_validator("faxanadu.title-remastered", state_validate)) abort();
+        !nes_mod_register_savestate_validator("faxanadu.title-remastered", state_validate))
+        abort();
 }

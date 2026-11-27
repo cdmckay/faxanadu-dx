@@ -46,17 +46,17 @@
 #define FAX_SPELL_COST_LOG(...) fprintf(stderr, __VA_ARGS__)
 #endif
 
-extern uint32_t hw_palette_argb[512];   /* the host's NES colors, emphasis in bits 6-8 */
+extern uint32_t hw_palette_argb[512]; /* the host's NES colors, emphasis in bits 6-8 */
 
 /* Bank 14 */
-#define MAGIC_COSTS 0xB7A9u             /* 2, 4, 6, 10, 16: what Player_ReduceMP takes, by SelectedMagic */
+#define MAGIC_COSTS             0xB7A9u /* 2, 4, 6, 10, 16: what Player_ReduceMP takes, by SelectedMagic */
 /* RAM */
-#define PLAYER_MP               0x039Au   /* at most 80 */
-#define SELECTED_MAGIC          0x03C0u   /* 0 Deluge, 1 Thunder, 2 Fire, 3 Death, 4 Tilte; $FF none */
-#define UI_ATTRIBUTE_DATA_INDEX 0x038Du   /* the status bar's and the text box's palette, 0-3 */
-#define UI_BAR_WIDTH            0x04EEu   /* UI_MPAndHPBarWidth: 10 tiles, set by UI_DrawHUDSprites */
+#define PLAYER_MP               0x039Au /* at most 80 */
+#define SELECTED_MAGIC          0x03C0u /* 0 Deluge, 1 Thunder, 2 Fire, 3 Death, 4 Tilte; $FF none */
+#define UI_ATTRIBUTE_DATA_INDEX 0x038Du /* the status bar's and the text box's palette, 0-3 */
+#define UI_BAR_WIDTH            0x04EEu /* UI_MPAndHPBarWidth: 10 tiles, set by UI_DrawHUDSprites */
 
-enum { MAGIC_BANK = 14, BANK_SIZE = 16384, FILL = 2 };   /* the Magic bar's fill is pixel value 2 (its planes swapped) */
+enum { MAGIC_BANK = 14, BANK_SIZE = 16384, FILL = 2 }; /* the Magic bar's fill is pixel value 2 (its planes swapped) */
 
 static bool enabled, failed, loaded;
 static uint8_t costs[FAX_SPELL_COST_SPELLS];
@@ -93,7 +93,7 @@ uint8_t fax_spell_cost_lighter(uint8_t c) {
 }
 uint8_t fax_spell_cost_darker(uint8_t c) {
     c &= 0x3F;
-    if (black(c) || c < 0x10) return 0x0F;   /* Screen_SetFadeOutPalette: under $10 is black */
+    if (black(c) || c < 0x10) return 0x0F; /* Screen_SetFadeOutPalette: under $10 is black */
     c = (uint8_t)(c - 0x10);
     return black(c) ? 0x0F : c;
 }
@@ -109,7 +109,7 @@ static bool load_costs(void) {
     if (ok) memcpy(costs, payload + MAGIC_BANK * BANK_SIZE + (MAGIC_COSTS - 0x8000u), sizeof costs);
     free(payload);
     for (int i = 0; ok && i < FAX_SPELL_COST_SPELLS; ++i) ok = costs[i] && (i == 0 || costs[i] > costs[i - 1]);
-    return ok;   /* the game's are 2, 4, 6, 10, 16: anything else is not its cart */
+    return ok; /* the game's are 2, 4, 6, 10, 16: anything else is not its cart */
 }
 
 /* An NES color as the status bar's lines were drawn: their emphasis and greyscale. */
@@ -127,7 +127,8 @@ const uint32_t *fax_spell_cost_present(const uint32_t *picture, int *w, int *h) 
     const uint32_t *from = picture;
     if (from) width = *w, height = *h;
     else from = cyc_render_present(&width, &height);
-    if (!from || height < FAX_SPELL_COST_FILL_TOP + FAX_SPELL_COST_FILL_LINES || !fax_text_hud_showing()) return picture;
+    if (!from || height < FAX_SPELL_COST_FILL_TOP + FAX_SPELL_COST_FILL_LINES || !fax_text_hud_showing())
+        return picture;
     if (!loaded && !(loaded = load_costs())) {
         FAX_SPELL_COST_LOG("[spell-cost] cannot read MAGIC_COSTS; the M: bar's cost is off\n");
         failed = true;
@@ -152,7 +153,8 @@ const uint32_t *fax_spell_cost_present(const uint32_t *picture, int *w, int *h) 
     if (n > capacity) {
         uint32_t *grown = realloc(canvas, n * sizeof *grown);
         if (!grown) return picture;
-        canvas = grown; capacity = n;
+        canvas = grown;
+        capacity = n;
     }
     memcpy(canvas, from, n * sizeof *canvas);
     for (int r = 0; r < FAX_SPELL_COST_FILL_LINES; ++r) {
@@ -161,7 +163,8 @@ const uint32_t *fax_spell_cost_present(const uint32_t *picture, int *w, int *h) 
             if (line[i] == fill) line[i] = shade, shown = true;
     }
     if (!shown) return picture;
-    *w = width; *h = height;
+    *w = width;
+    *h = height;
     return canvas;
 }
 
