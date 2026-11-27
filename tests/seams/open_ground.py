@@ -3,7 +3,13 @@
     python3 tests/seams/open_ground.py --build build-cycle --rom "Faxanadu (USA).nes" --out /tmp/open-ground
 
 The game runs uncapped and the script waits on the game's own frames, never
-on the clock, on a reserved TCP port.
+on the clock, on a reserved TCP port. The fireball's parts (shot, full) play
+it headless from their save state, frame exact, as polls over TCP can step
+over frames on a loaded machine (#211): each frame's CPU RAM (room 4's
+slots, the live game's), a state saved after each frame (room 5's record)
+and Seamless's per-frame trace (NESRECOMP_WORLD_TRACE: the view). The live
+game plays the same frames for Seams' counts, read in one batch with the
+load, before its first frame, and once the fireball is gone.
 
 The parts start from fixtures (external prerequisites, not coverage,
 tests/e2e/fax_e2e.py): eolis-zozuras (Eolis screen 4 as its two Zozuras crawl
@@ -44,13 +50,15 @@ touches off the hero where monsters come for him.
    facing the hero after he passes him, out again (1 to 2).
 4. shot: an enemy's fireball (entity $0A, as Sprite_CastMagic makes it)
    flying left from room 4's x 60, the hero at x 200: it goes through the
-   seam into room 5 (a move 4 to 5) and flies on, its X falling, until it
-   is wholly out of the view by 16 pixels, when Seams removes it, never
-   before.
+   seam into room 5 (a move 4 to 5, the live game's the same as the
+   headless run's) and flies on, its X falling, until it is wholly out of
+   the view by 16 pixels, when Seams removes it: on every frame in room 5
+   its box meets the view, and on the frame it is gone, at the X its
+   removal left, it doesn't.
 5. full: the same fireball with room 5 holding 4 actors (its Zozuras and two
    more, out of the view): it crosses. With 5: it doesn't (Seams counts it
    kept out), and the game removes it at room 4's edge, as the original's
-   wall does.
+   wall does: its last frame there is at x 4 or less.
 6. straddle: a Zozura in room 5 at its x 250, awake and through its right
    side, straddling the seam: the picture differs from the same frame
    without it on both sides of the seam, in its rows, and room 5 holds
@@ -84,9 +92,11 @@ import subprocess
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "movement"))
 import fax_e2e  # noqa: E402
-from fax_e2e import (Game, batch, chunks, dissolve, fixture, frame, page_through, parse_args, ram,  # noqa: E402
+from fax_e2e import (batch, chunks, dissolve, fixture, frame, page_through, parse_args, ram,  # noqa: E402
                      tcp, until, wait)
+from play import Game  # noqa: E402  (fax_e2e's, with headless runs)
 from seams_lose_nothing import hw_ram, spawn  # noqa: E402
 
 AREA, SCREEN, HERO_X = 0x24, 0x63, 0x9E                              # Area_CurrentArea, _CurrentScreen, Player_PosX_Block
@@ -100,6 +110,7 @@ THROUGH_RIGHT = 2
 VIEW_W, PAD, ROOM_W, HUD = 424, 16, 256, 32                       # the view, its margin, a room, the status bar
 PARTS = ("dormant", "follow", "walker", "shot", "full", "straddle", "load", "person", "town-people", "save-load")
 EDGE = 240                                                           # the most a 16-wide hitbox's X reaches in a room
+SHOT_FRAMES, SHOT_CHUNK = 300, 60                                    # flight(): frames at most, saves a run
 
 
 @fax_e2e.recipe("seams-town-words", parent="eolis-town")
@@ -401,52 +412,101 @@ def main():
             print(f"ok: room 2's walking woman walks into his room 1 ({moved(WOMAN, 2, 1)[0]}), and the walking man "
                   f"in and out again ({moved(WALKING_MAN, 2, 1)[0]}, {moved(WALKING_MAN, 1, 2)[0]})")
 
-        def shoot(case, extra):
+        def flight(case, path, places):
+            """The fireball's place on every frame played headless from
+            `path`, from the first, until the first frame it is in neither
+            room 4 nor 5: a (room, X, whether its box meets the view, slot)
+            a frame, and (that frame, the room and slot it was last in, the
+            X its removal left there, whether that box meets the view).
+            `places` gives each room's place (fax_world_room's xy). Frame
+            exact however loaded the machine is: room 4's slots from each
+            frame's RAM (the live game's), room 5's from a state saved after
+            each frame (its record), the view from Seamless's trace;
+            SHOT_CHUNK frames a run, each from `path`, since a save is over a
+            megabyte."""
+            def place(slots, view, n, k):
+                """Slot k's X in room n, and whether its box meets the view."""
+                reply = {"xy": places[n], "x": [slots[n][SPRITE_X + j] for j in range(8)]}
+                return slots[n][SPRITE_X + k], world_box(reply, k, view)[1]
+
+            path_xs, last = [], None
+            for first in range(0, SHOT_FRAMES, SHOT_CHUNK):
+                saves = [(f, out / f"{case}-{f:03d}.cycstate") for f in range(first, first + SHOT_CHUNK)]
+                rams, rows = game.play(path, [], first + SHOT_CHUNK, game.mods("mods-on"), saves=saves)
+                gone = None
+                for f, p in saves:
+                    if gone is None:
+                        slots = {4: rams[f], 5: Record(p.read_bytes()).ram(5)}
+                        view = (rows[f]["view_x"], rows[f]["view_y"])
+                        at = [(n, k) for n in (5, 4) for k in range(8) if slots[n][ENTITIES + k] == FIREBALL]
+                        if at:
+                            last = at[0]
+                            path_xs.append((last[0], *place(slots, view, *last), last[1]))
+                        else:
+                            assert last, "the fireball in room 4 at first"
+                            gone = (f, *last, *place(slots, view, *last))
+                    p.unlink()
+                if gone:
+                    return path_xs, gone
+            raise AssertionError(f"the fireball never went: {path_xs[-5:]}")
+
+        def shoot(case, extra, picture=None):
             """The fireball from room 4's x 60, the hero at x 200; room 5
-            with `extra` more Zozuras (out of the view). Returns the moves
-            and counts once it is gone."""
+            with `extra` more Zozuras (out of the view). Its path is
+            flight()'s, played headless; the live game plays the same frames
+            for Seams' counts, read with the load (one batch: before its first
+            frame) and again once flight()'s frames have run, the fireball
+            gone there too. With `picture`, a name: also the picture on its
+            first frame in room 5, headless, as the window presents it.
+            Returns the counts before and after, the path, and where it went
+            (flight()'s)."""
             edits = {}
             for k, x in zip(range(extra), (20, 40, 60)):
                 spawn(image, edits, record.base(5), k, ZOZURA, x, floor_y)
             writes = {HERO_X: 200, **kit, **no_live_zozuras}
             fireball(writes, 60)
-            start(case, "eolis-zozuras", writes, edits)
-            s0, path_xs = seams(), []
-            end = frame() + 300
-            while frame() < end:
-                r4, r5_, s = batch(("fax_world_room", dict(room=4)), ("fax_world_room", dict(room=5)), ("seams_state", {}))
-                in4, in5 = slot_of(r4, FIREBALL), slot_of(r5_, FIREBALL)
-                if in5:
-                    box, meets = world_box(r5_, in5[0], s["view"])
-                    if case == "shot" and not any(p[0] == 5 for p in path_xs):
-                        game.shot("shot-across")
-                    path_xs.append((5, r5_["x"][in5[0]], meets))
-                elif in4:
-                    path_xs.append((4, r4["x"][in4[0]], True))
-                else:
-                    return s0, s, path_xs
-            raise AssertionError(f"the fireball never went: {path_xs[-5:]}")
+            path = edited(case, zozuras, writes, edits)
+            if not game.running():
+                game.launch(at="eolis-zozuras")
+            _, s0, r4, r5_ = batch(("load_state", dict(path=str(path))), ("seams_state", {}),
+                                   ("fax_world_room", dict(room=4)), ("fax_world_room", dict(room=5)))
+            path_xs, gone = flight(case, path, {4: r4["xy"], 5: r5_["xy"]})
+            wait(gone[0] + 1)
+            s, r4, r5_ = batch(("seams_state", {}), ("fax_world_room", dict(room=4)), ("fax_world_room", dict(room=5)))
+            assert FIREBALL not in r4["entities"] + r5_["entities"], ("gone in the live game too", r4, r5_)
+            if picture:
+                first5 = next(f for f, p in enumerate(path_xs) if p[0] == 5)
+                png = out / f"{len(game.shots):02d}-{picture}.png"
+                game.play(path, [], first5 + 1, game.mods("mods-on"), picture=png)
+                game.shots.append(png.name)
+            return s0, s, path_xs, gone
 
         if args.wants("shot"):
-            s0, s, path_xs = shoot("shot", 0)
+            s0, s, path_xs, gone = shoot("shot", 0, picture="shot-across")
             crossed = [m for m in s["log"][-max(1, s["moves"] - s0["moves"]):] if m[4] == FIREBALL and (m[0], m[2]) == (4, 5)]
             in5 = [p for p in path_xs if p[0] == 5]
             assert crossed and in5, (crossed, path_xs)
             assert all(a[1] > b[1] for a, b in zip(in5, in5[1:]) if a[1] != b[1]), ("flying on left", in5)
             assert s["removed"] == s0["removed"] + 1, (s0["removed"], s["removed"])
             assert in5[-1][1] <= 236, ("gone only out of the view", in5[-1])
-            print(f"ok: the fireball goes through the seam into room 5 (move {crossed[0]}), flies on to room 5's "
-                  f"x {in5[-1][1]}, and is removed once wholly out of the view")
+            last4 = [p for p in path_xs if p[0] == 4][-1]
+            assert crossed[0][:4] == [4, last4[3], 5, in5[0][3]], ("the live game's move is the run's", crossed, last4,
+                                                                   in5[0])
+            assert all(p[2] for p in in5) and gone[1] == 5 and not gone[4], ("in the view until it goes", in5[-1], gone)
+            print(f"ok: the fireball goes through the seam into room 5 (move {crossed[0]}, frame "
+                  f"{path_xs.index(in5[0])}), flies on to room 5's x {in5[-1][1]} (frame {gone[0] - 1}), and is "
+                  f"removed on the next, wholly out of the view at its x {gone[3]}")
 
         if args.wants("full"):
-            s0, s, path_xs = shoot("full-4", 2)
+            s0, s, path_xs, _ = shoot("full-4", 2)
             assert any(p[0] == 5 for p in path_xs), ("with 4 actors in room 5 it crosses", path_xs)
-            s0, s, path_xs = shoot("full-5", 3)
+            s0, s, path_xs, gone = shoot("full-5", 3)
             assert not any(p[0] == 5 for p in path_xs), ("with 5 it doesn't", path_xs)
             assert s["kept_out"] > s0["kept_out"] and s["removed"] == s0["removed"], (s0, s)
             assert path_xs[-1][1] <= 4, ("the game removes it at room 4's edge", path_xs[-3:])
             print(f"ok: room 5 with 4 actors takes the fireball; with 5 its seam is a wall: kept out "
-                  f"{s['kept_out'] - s0['kept_out']} times, gone at room 4's x {path_xs[-1][1]}")
+                  f"{s['kept_out'] - s0['kept_out']} times, gone at room 4's x {path_xs[-1][1]} "
+                  f"(frame {gone[0] - 1}, its last)")
 
         if args.wants("straddle"):
             base5 = record.base(5)
