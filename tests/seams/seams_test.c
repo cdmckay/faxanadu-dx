@@ -149,6 +149,11 @@ bool fax_world_hero(int *x, int *y) {
 }
 void fax_world_update_view(void) {}
 void fax_world_screen_loaded(void) { ++loads; }
+static void (*seamless_fixup)(uint8_t, uint8_t, uint8_t *); /* the room fixup Seams set with Seamless (slice 7) */
+void fax_world_set_room_fixup(void (*fixup)(uint8_t, uint8_t, uint8_t *), bool on) {
+    if (on) seamless_fixup = fixup;
+    else if (seamless_fixup == fixup) seamless_fixup = NULL;
+}
 uint8_t fax_world_rom(unsigned bank, unsigned addr) {
     return bank == 11   ? bank11[addr & 0x3FFF]
            : bank == 14 ? bank14[addr & 0x3FFF]
@@ -2520,6 +2525,97 @@ static void minions_drop_on_him(void) {
     CHECK(zorugeriru_hook(ZORUGERIRU_DROP) == 0 && placing_count == 0);
 }
 
+/* ==== slice 7 ==== */
+
+/* ScreenEvents_HandlePathToMasconEvent ($EF69) with Quests $20, played as the
+ * disassembly has it on a room's RAM: LDA #$FF, STA
+ * CurrentScreen_SpecialEventID; LDA #$56, STA PathToMascon_FountainCoverPos;
+ * LDX #$00, JMP Game_OpenPathToMascon ($D6F5): the cover's two blocks
+ * cleared (each LDX/LDA/STA ScreenBuffer,X, the second at the cover + $10),
+ * the cover moved by GAME_LADDER_TO_MASCON_BLOCK_OFFSETS,X, the stone put
+ * there, the 30 frames skipped (Quests $20: BNE @_clearCoverings), the stone
+ * cleared there; then Game_DropLadderToMascon ($D76E): Quests ORed with $20
+ * on Trunk's $28 (Area_Region 1), and the ladder block at
+ * PathToMascon_LadderPos ($22), down a row a block, 7 blocks. Area_SetBlocks
+ * draws each block; only ScreenBuffer is the room's. */
+static void path_to_mascon_event(uint8_t *room, uint8_t region, uint8_t screen) {
+    uint8_t *buffer = room + SCREEN_BUFFER;
+    room[SPECIAL_EVENT] = 0xFF;
+    uint8_t cover = 0x56, x = 0;
+    buffer[cover] = bank15[0xD768 - 0xC000];
+    buffer[(uint8_t)(cover + 0x10)] = bank15[0xD769 - 0xC000];
+    cover = (uint8_t)(bank15[0xD76C - 0xC000 + x] + cover);
+    buffer[cover] = bank15[0xD76A - 0xC000];
+    buffer[(uint8_t)(cover + 0x10)] = bank15[0xD76B - 0xC000];
+    uint8_t left = 7, at = 0x22;
+    buffer[cover] = bank15[0xD768 - 0xC000];
+    buffer[(uint8_t)(cover + 0x10)] = bank15[0xD769 - 0xC000];
+    if (region == 1 && screen == 0x28) room[QUESTS] |= 0x20;
+    do {
+        buffer[at] = bank15[0xD7AF - 0xC000];
+        at = (uint8_t)(at + 0x10);
+    } while (--left);
+}
+
+static void the_fountains_ladder(void) {
+    setup();
+    /* Bank 15's tables as the ROM has them: air $42 twice, the stone $88
+     * twice, the offsets $01 and $FF, the ladder block $20. */
+    static const uint8_t tables[] = { 0x42, 0x42, 0x88, 0x88, 0x01, 0xFF };
+    memcpy(bank15 + (0xD768 - 0xC000), tables, sizeof tables);
+    bank15[0xD7AF - 0xC000] = 0x20;
+    /* Seamless gets the fixup while Seams is on. */
+    deactivate();
+    CHECK(!seamless_fixup);
+    activate();
+    CHECK(seamless_fixup == fountain_fixup);
+    /* Trunk $28 as decoded with its list loaded: a ScreenBuffer of other
+     * blocks, the stone at $56 and $66, its event 0 (the path to Mascon). */
+    uint8_t room[0x800], before[0x800], want[0x800];
+    for (unsigned i = 0; i < sizeof room; i++) room[i] = (uint8_t)(i * 7 + 3);
+    for (unsigned i = 0; i < 0xD0; i++) room[SCREEN_BUFFER + i] = (uint8_t)(0x10 + i % 0x30);
+    room[SCREEN_BUFFER + 0x56] = room[SCREEN_BUFFER + 0x66] = 0x88;
+    room[SPECIAL_EVENT] = 0;
+    /* The path open: every block the event writes, as it writes it, and its
+     * event cleared; nothing else of the room's RAM. */
+    room[QUESTS] = 0x27;
+    memcpy(before, room, sizeof room);
+    memcpy(want, room, sizeof room);
+    path_to_mascon_event(want, 1, 0x28);
+    fountains = 0;
+    seamless_fixup(FAX_AREA_TRUNK, 0x28, room);
+    CHECK(!memcmp(room, want, sizeof room) && fountains == 1);
+    CHECK(room[SCREEN_BUFFER + 0x56] == 0x42 && room[SCREEN_BUFFER + 0x66] == 0x42 &&
+          room[SCREEN_BUFFER + 0x57] == 0x42 && room[SCREEN_BUFFER + 0x67] == 0x42 && room[SPECIAL_EVENT] == 0xFF);
+    for (unsigned row = 2; row <= 8; row++) CHECK(room[SCREEN_BUFFER + row * 16 + 2] == 0x20);
+    unsigned changed = 0;
+    for (unsigned i = 0; i < sizeof room; i++) changed += room[i] != before[i];
+    CHECK(changed == 4 + 7 + 1); /* the stone's four blocks, the ladder's seven, the event */
+    /* Again (a decode, then the list's load): the same. */
+    seamless_fixup(FAX_AREA_TRUNK, 0x28, room);
+    CHECK(!memcmp(room, want, sizeof room));
+    /* The path not open (the first time, pushed in his room): nothing. Nor
+     * another screen of the Trunk, nor $28 of another area. */
+    static const struct {
+        uint8_t area, screen, quests;
+    } untouched[] = { { FAX_AREA_TRUNK, 0x28, 0x07 },
+                      { FAX_AREA_TRUNK, 0x28, 0x00 },
+                      { FAX_AREA_TRUNK, 0x27, 0x27 },
+                      { FAX_AREA_MIST, 0x28, 0x27 },
+                      { FAX_AREA_BRANCH, 0x28, 0x27 } };
+    for (unsigned k = 0; k < sizeof untouched / sizeof untouched[0]; k++) {
+        memcpy(room, before, sizeof room);
+        room[QUESTS] = untouched[k].quests;
+        memcpy(want, room, sizeof room);
+        seamless_fixup(untouched[k].area, untouched[k].screen, room);
+        CHECK(!memcmp(room, want, sizeof room));
+    }
+    CHECK(fountains == 2);
+    deactivate();
+    CHECK(!seamless_fixup && fountains == 0);
+    activate();
+}
+
 int main(void) {
     the_original_wraps();
     the_ghost_hit_is_refused();
@@ -2577,6 +2673,7 @@ int main(void) {
     placed_by_his_true_place();
     magman_in_his_room();
     minions_drop_on_him();
+    the_fountains_ladder();
     printf("seams_test: %u checks passed\n", checks);
     return 0;
 }

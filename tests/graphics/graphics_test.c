@@ -48,7 +48,10 @@ void cyc_mod_set_regs(const CycModRegs *in) {
     cpu.pc = pc;
 }
 bool cyc_mod_isolated(void) { return isolated; }
-void fax_world_set_room_fixup(void (*fixup)(uint8_t, uint8_t, uint8_t *)) { seamless_fixup = fixup; }
+void fax_world_set_room_fixup(void (*fixup)(uint8_t, uint8_t, uint8_t *), bool on) {
+    if (on) seamless_fixup = fixup;
+    else if (seamless_fixup == fixup) seamless_fixup = NULL;
+}
 static const uint16_t SITES[HOOKS] = { DRAW_TILE,         DRAW_ATTRIBUTE, FLIPPED_TILE,
                                        FLIPPED_ATTRIBUTE, TITLE_WRITE,    SCREEN_LOADED };
 static NESModFunctionEntryCallback registered[HOOKS];

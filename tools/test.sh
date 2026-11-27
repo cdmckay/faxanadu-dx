@@ -292,6 +292,7 @@ E2E=(
   "spells       tests/seams/spells.py --parts"
   "vertical     tests/seams/vertical.py --parts"
   "sees-him     tests/seams/sees_him.py --parts"
+  "loose-ends   tests/seams/loose_ends.py --parts"
   "punches      tests/punches/punches.py"
   "vsync        tests/vsync/vsync_default.py"
 )

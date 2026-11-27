@@ -2050,6 +2050,32 @@ callers store a new entity at `CurrentSprites_Entities,Y` and `JMP` there:
   its wrap is not the same: `Screen_NextTransitionState` starts the fade to
   black when it reaches `$50` (`Screen_FadeOutStage` set to 0), so a death
   skipped past it never runs that fade before the Guru's words.
+- **What the death draws, frame by frame** (checked headless on Eolis's room
+  1, #166's slice 7). Each pass of the loop runs
+  `Screen_ResetSpritesForGamePlay` (`$CB47`: sprite 0 back in OAM entry 0,
+  the hero's cells from entry 1), `Screen_NextTransitionState`,
+  `Player_DrawBody` (`$EBEE`) and `Player_DrawDeathAnimation` (`$D9D6`).
+  The last draws nothing: once `Screen_TransitionCounter` reaches 16 it
+  queues PPU command `$FA` (`PPUBuffer_DrawCommand_RemoveVerticalLines`) a
+  frame, which rubs a vertical line out of the hero's tiles in CHR
+  (`DEATH_ANIMATION_DRAW_ADDR_LOWER`, `$00`-`$70`), 8 lines a phase
+  (`Player_DeathAnimationPhase`), waiting for `InterruptCounter`'s next
+  multiple of 4 between phases, 8 phases (frames 30 to 100 or so). So the
+  dissolve is in the tiles, not in which cells are drawn: `Player_DrawBody`
+  puts the same cells every frame (their order alternating, the flicker's),
+  and `Sprite_Draw` skips a cell past the screen's right edge as always, so
+  at x 241-255 his right half is not drawn at all. The death's first 17
+  frames or so (`PlayerDeath_ResetSelectedItemState`, `Player_DrawSprite`'s
+  tiles, `Screen_ClearSprites`) show no hero: the shadow OAM is cleared, and
+  the picture (which shows the OAM a frame after the game writes it) has
+  none until the loop's first pass. From `$50` the palette fades to black in
+  4 steps a few frames apart, sprites with it; once the counter wraps,
+  `Screen_ReadyState` (`$0E`) goes `$FF` and the Guru's script runs. **In
+  Seamless** the picture through a death is the game's own over his room, so
+  Seamless paints the cells past his room's edge itself (`player_edge()`,
+  since slice 7): the pose the picture shows (`cyc_render_oam`), redrawn by
+  `Player_DrawBody` at a place where nothing is clipped, in the live CHR and
+  palette.
 - **The NES manual names no enemy.** The USA instruction booklet (27 pages,
   archive.org's `NESManuals` scan) names places, items and titles: of what
   hurts, only the Poison ("The hero's power will decrease by a fixed
@@ -3939,13 +3965,27 @@ frame:
   entry while its two Sir Gawaines are on the screen, `$40` and two OAM
   entries once they are gone). So a find there shows once its screen's
   enemies are dead, and the hero cannot pick up one he cannot see.
+  **The count's rule.** Nothing but `Screen_Is3Of4Visits` writes the count
+  (`Game_Init` clears RAM's page 4 at power-on), and no load, death, spawn
+  or area change resets it. A find's first frame runs once each time its
+  screen's sprites load, so the count moves once each time a screen with a
+  one-in-four find is entered, by a scroll or a door, and screens without
+  one never move it. Checked with the remaster off: out of Eolis's meat shop
+  onto Trunk `$0B` (its door edited) with the count at 2, it stayed 2 until
+  he walked into `$0C` (3: its Red Potion, `$5D`, gone), and walking back
+  into `$0B` and into `$0C` again moved it again (0: the potion there).
   **In Seamless** a room first met as a neighbour decides on its copy's
-  first frame, against the live count, and the copy's change to it is thrown
-  away; the live game never runs that frame for a room it adopts. So no
-  seam moves the count, and such a find shows only when it happens to be 3.
-  Checked out of Eolis's meat shop onto Trunk `$0B`, its door edited: with
-  the count at 0, `$0C`'s Red Potion (`$5D`, slot 7) was gone at once; at 3
-  it stayed; the count was unchanged both times (SEAMLESS-COMBAT.md).
+  first frame, and until slice 7 the copy's change to the count was thrown
+  away and the live game never ran that frame for a room it adopted, so no
+  seam moved the count and such a find showed only when it happened to be
+  3. Since slice 7 Seamless carries the copy's count to the live game after
+  its tick, so meeting a room counts the one visit that entering its screen
+  counts in the original. A room met keeps its find (there or gone) until a
+  load starts it afresh, so walking out of it and back in counts nothing
+  more: on Trunk `$1F` with the count at 2, `$1D` (up and left) was met as
+  he arrived (3: its Ointment, `$60`, gone) and `$21` as he walked into
+  `$20` (0: its Red Potion there), and walking back and forth moved it no
+  more (SEAMLESS-COMBAT.md, slice 7).
 - Held state: `$49` Black Onyx (`SpecialItems` `$01`), `$4A` Pendant (`$02`),
   `$57` Magical Rod (`$04`) and `$5C` Zorugeriru's Wing Boots (`Quests` `$08`)
   remove themselves once set; `$5B` Ripasheiku's Mattock too (`Quests` `$10`),
@@ -4874,6 +4914,26 @@ flights on MP):
 - `Game_DropLadderToMascon` checks for the Trunk region (`Area_Region` 1) and
   screen `$28` before setting `Quests` `$20`; that is the only guard, and it
   does not stop the blocks.
+- **The first opening, frame by frame** (checked headless, with the remaster
+  on and off alike). The stone is pushed from the fountain's top, his top at
+  row 5 (y 80) beside column 6: `Player_CheckPushingBlock` counts
+  `BlockPushCounter` (`$D7`) while he holds Left or Right into a block of
+  property 6 with the Ring of Ruby and `Quests & 7`, plays sound `$0F` at
+  `$3F`, and at `$60` (frame 95 of holding Left) enters
+  `Game_OpenPathToMascon` with X the way he pushes: Right 0 (`+1`), Left 1
+  (`$FF`, to `$55` and `$65`). The stone stands there 30 frames, clears with
+  `Quests` `$20` (frame 125), and the ladder's blocks follow 8 frames later,
+  4 apart (frames 133-153: `$32` to `$82`; `$22` is a ladder in `$28`'s own
+  data already). He stands still from the push to the last block.
+- **In Seamless** (since #166's slice 7) a room Seamless decodes itself, as
+  it decodes Trunk `$28` from `$27` after an area load, gets the event's
+  blocks and its event cleared while `Quests` `$20` is set (Seams' room
+  fixup, `fountain_fixup`): `$27`'s view shows the fountain without its
+  stone, and crossing into `$28` runs nothing. Before, `$28` showed its
+  stone from `$27`, and the event ran as he crossed. The first opening is
+  the live game's, in his room, and the original's. A load straight into
+  `$28` (the Mist's door on its ledge) is the game's own, and its event
+  plays the ladder's drop as in the original.
 
 ## Sprites and tile slots (banks 7 and 8)
 
@@ -5652,7 +5712,24 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   frame by frame*) in byte 30. It gives Seams the hero's true place
   (`fax_world_hero()`), and waits with its step while Seams' pass is open.
   TCP `fax_world_room` shows a room's slots: entity, X, Y, HP and hit
-  counter.
+  counter. **Room fixups** (`fax_world_set_room_fixup`, a list of up to 4
+  since #166's slice 7): each runs on a room Seamless decodes itself, once
+  `Area_LoadBlocks` has filled its `ScreenBuffer` (`decode()`) and again
+  once its list has started its actors (`initialize()`, with
+  `CurrentScreen_SpecialEventID`): the graphics fixes' Tower of Fortress
+  floor and Seams' fountain's ladder. **One-in-four items** (slice 7): after
+  a neighbour's tick, `tick_room` writes the copy's
+  `Screen_TrackedVisitCount` (`$043A`) to the live game when it changed, so a
+  find's first frame there counts (*Items in the world*). **A death at a
+  seam** (slice 7): through a death the picture is the game's own over his
+  room, and `player_edge()` paints the hero's cells past its edge, the pose
+  the picture shows (`cyc_render_oam`: the last frame of play's, none while
+  the death sets up, then the dissolve's), drawn by `Player_DrawBody` at a
+  scratch place in an isolated machine, in the live CHR and palette, behind
+  the foreground of the room each pixel lies in by his true place's
+  visibility (the scratch place's two blocks `Player_CalculateVisibility`
+  reads given his place's). In play the redraw is the room capture's pose as
+  before; neither paints sprite 0 (OAM entry 0).
   **The view shows only rooms** (#166's slice 4, `fax_camera.c`): the
   camera is a function of the map and the hero's place, kept by nothing,
   that keeps the 424x208 below the status bar off places of the map with
@@ -5757,7 +5834,16 @@ one of them since #110, so the remaster always plays in its 424x240 view.
   captured: `fax_seams_captured()`) move it there, into the room it lies in,
   hiding the cells its tick drew; Magman's in his room puts it past a side,
   marked, where the game's X would wrap (*Seams: actors across rooms*).
-  Nothing new in either record. Slice 0, seams
+  Nothing new in either record. Slice 7, loose ends: a room fixup
+  (`fountain_fixup`, set with Seamless's `fax_world_set_room_fixup` while
+  on), which gives Trunk `$28` decoded with `Quests` `$20` the blocks the
+  path to Mascon's screen event writes (`ScreenBuffer` `$56`, `$66`, `$57`,
+  `$67` air; `$22`-`$82` the ladder; from bank 15's tables) and clears its
+  `CurrentScreen_SpecialEventID` (*Screen events and the fountain's
+  ladder*); its count is `seams_state`'s `fountains`. The other two loose
+  ends are Seamless's (*Features and what they use*, Seamless: the visit
+  count after a tick, the hero past the edge in a death). No new hook, and
+  nothing new in either record. Slice 0, seams
   lose nothing, is two hooks in bank 14's sprite loop:
   - `CurrentSprite_CheckHitPlayer`'s entry (`$890A`) returns at once in a
     neighbouring room's tick, with X the current slot as its first `LDX
@@ -6711,8 +6797,8 @@ one of them since #110, so the remaster always plays in its 424x240 view.
     the current screen and before anything draws or collides with it, Trunk
     `$2D`'s `ScreenBuffer[$B3]` goes from `$63` to `$08`. Seamless decodes its
     rooms in isolated calls, where hooks do not run, so it calls the fix's
-    `fax_world_set_room_fixup` callback on each room it decodes
-    (`decode()`, `initialize()`); the fix sets it while on.
+    room fixup on each room it decodes (`decode()`, `initialize()`); the fix
+    sets it with `fax_world_set_room_fixup` while on (Seams sets another).
   The hooks keep no state, so they run in Seamless's isolated rooms too (a
   neighbour's Myconid is fixed). TCP `graphics_fix_state` counts what each fix
   changed outside them. Seamless's redraw of the hero past a room's edge runs

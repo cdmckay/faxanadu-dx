@@ -1,7 +1,9 @@
 #pragma once
 /* Seams (fax_seams.c, #166): slice 0, seams lose nothing; slice 1, seams
  * are open ground; slice 2, fights across a seam; slice 3, the spell flies
- * on; slice 5, all of it one above the other. It registers its own hooks
+ * on; slice 5, all of it one above the other; slice 6, what a neighbouring
+ * room sees of him; slice 7, the fountain's ladder from afar (a room fixup
+ * it sets with Seamless). It registers its own hooks
  * and save-state record; the host adds its TCP command, Seamless
  * (fax_world.c) calls the rest, and the features that hit or are hit ask it
  * where a slot is. Each room's state is a block of FAX_WORLD_SEAMS_BYTES that

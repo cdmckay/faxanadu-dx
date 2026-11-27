@@ -1,9 +1,9 @@
 # Seamless's seams: the plan for one big world
 
-Issue #166. A plan, built a slice at a time: slices 0 to 6 are in the
-game. Where building slices 1 to 6 found the plan wrong, the plan below says
-what was built, and "Slice 1, as built" to "Slice 6, as built" list the
-changes.
+Issue #166. A plan, built a slice at a time: slices 0 to 7, all of it, are
+in the game. Where building slices 1 to 7 found the plan wrong, the plan
+below says what was built, and "Slice 1, as built" to "Slice 7, as built"
+list the changes.
 
 **The goal**, as Cameron put it: "it should just feel like 1 big world." A
 player should never be able to tell where one room ends and the next begins.
@@ -44,8 +44,9 @@ lost at a seam, no ghost hit) is done: #177. Slice 1 (#178, seams are open
 ground, mechanism 1) is done too, and so are slice 2 (#187, fights across a
 seam, mechanism 2), slice 3 (#188, the spell flies on, mechanism 3),
 slice 4 (#194, the view shows only rooms, mechanism 4), slice 5 (#201,
-mechanisms 1 to 3 one above the other) and slice 6 (#214, what a
-neighbouring room sees of him, mechanism 5).
+mechanisms 1 to 3 one above the other), slice 6 (#214, what a
+neighbouring room sees of him, mechanism 5) and slice 7 (#215, the loose
+ends, 6).
 
 ## How Seamless runs a neighbouring room today
 
@@ -219,16 +220,16 @@ Checked in hidden games where marked; the scripts were throwaway, on
   `Sprite_Maybe_TurnAroundIfAtScreenEdgeHoriz` (`$8427`) finds it at the
   screen's edge. So a fireball that misses him vanishes at the seam behind
   him, at most 212 pixels away, and a neighbour's shot at him vanishes at the
-  seam in front. **Slice 1.**
+  seam in front. **Slice 1 (done).**
 - **A sprite drawn past its room's edge is cut at the seam.**
   `Sprite_Draw_Standard` (`$F0EC`) and `Sprite_Draw_FlippedHoriz` (`$F181`)
   skip a cell that does not fit on the 256-pixel screen. The Maskman, Sir
   Gawaine and the Wolfman draw up to 16 pixels left of their origin, and King
   Grieve 8: by a room's left edge, that part is missing. Every actor that
   crosses a seam would straddle it for a few frames, cut the same way.
-  **Slice 1.**
+  **Slice 1 (done).**
 - **The projected hero is clamped to the room's edge.** Four effects:
-  neighbours' monsters pile at the seam (above; **slice 1**); behaviours that
+  neighbours' monsters pile at the seam (above; **slice 1, done**); behaviours that
   measure his distance act as if he stood at the seam (**slice 6, done**);
   Nash and Magman, who place themselves beside him, appear by the seam, or
   for Magman, whose X wraps, at the far side of the room, and so does a
@@ -255,7 +256,7 @@ Checked in hidden games where marked; the scripts were throwaway, on
   or a zone respawn after a death (`fax_respawn.c`, in the same area), loads
   its room fresh from its list, but Seamless keeps every other room's record:
   the room he arrives in has its monsters back, the next one has whatever he
-  left (kills, a pile at the seam, a drop). **Slice 1.**
+  left (kills, a pile at the seam, a drop). **Slice 1 (done).**
 - **One-in-four items in a room first met as a neighbour hardly ever show.**
   The Mattock (`$50`), Red Potion (`$5D`), Poison (`$5E`), Glove (`$5F`) and
   Ointment (`$60`) decide on their first frame, with `Screen_Is3Of4Visits`
@@ -266,18 +267,19 @@ Checked in hidden games where marked; the scripts were throwaway, on
   meat shop onto Trunk `$0B`, its door edited: with the count at 0, `$0C`'s
   Red Potion was gone from its slot at once; at 3 it stayed; the count was
   unchanged both times (checked). Not a seam's look, but a seam's doing.
-  **Slice 7.**
+  **Slice 7 (done).**
 - **The fountain's ladder from afar.** After an area load with the path to
   Mascon open (`Quests` `$20`), Trunk `$28` is decoded from ROM: seen from
   `$27`, its fountain has the stone and no ladder. Only when he crosses does
   `ScreenEvents_HandlePathToMasconEvent` (`$EF69`) clear the stone and drop
-  the ladder, a block every 4 frames, the game standing still. **Slice 7.**
+  the ladder, a block every 4 frames, the game standing still. **Slice 7
+  (done).**
 - **A death at a seam.** `Player_HandleDeath` (`$D8EC`) clears every sprite
   (`Screen_ClearSprites`) and draws only the hero dissolving, and Seamless
   then shows the game's own picture over his room, without `player_edge()`.
   A hero who dies at x 241-255 is cut at the seam for the dissolve's 256
   frames. Everyone else vanishing is the original's, in every room alike.
-  **Slice 7.**
+  **Slice 7 (done).**
 
 **Checked, and not tells:**
 
@@ -731,16 +733,18 @@ function of his place and the map, which `fax_world_present` and
 
 - **One-in-four items count a room met as a neighbour.** After a copy's
   tick, its change to `Screen_TrackedVisitCount` carries to the live game,
-  so meeting a room counts one visit, until a load refreshes it.
+  so meeting a room counts one visit; the room keeps its find, there or
+  gone, until a load starts it afresh.
 - **The fountain's ladder from afar.** A room fixup
   (`fax_world_set_room_fixup`, which grows from one function to a list:
-  the graphics fixes use it) writes the moved stone and the ladder into
-  `$28`'s decoded blocks and clears its event while `Quests` `$20` is set,
-  so `$27` shows the ladder and nothing runs as he crosses.
+  the graphics fixes use it) writes the blocks the path's event leaves
+  (the stone gone, the ladder) into `$28`'s decoded blocks and clears its
+  event while `Quests` `$20` is set, so `$27` shows the fountain without
+  its stone and nothing runs as he crosses.
 - **A death at a seam.** Seamless paints his cells past the edge in a death
-  too: slice 1's lists from `Player_DrawBody` (`$EBEE`) and
-  `Player_DrawDeathAnimation` (`$D9D6`), or `player_edge()`'s isolated
-  redraw with those two.
+  too, with `player_edge()`'s isolated redraw: `Player_DrawBody`
+  (`$EBEE`) alone, since `Player_DrawDeathAnimation` (`$D9D6`) draws no
+  cell (it rubs lines out of his tiles in CHR), in the live CHR.
 
 ### Why not the alternatives
 
@@ -899,7 +903,7 @@ twice its estimate (see "What it costs").
 | 4. The view shows only rooms (**done**, #194) | The camera keeps the view over rooms, gliding where its limits change; through a seam one above the other it follows him over both rows' rooms, black only where the two share his column alone | Walking the Tower of Trunk from `$10`, and a Mist stretch with an empty corner: on no frame does the view lie over an empty place (`fax_world`'s camera against `fax_world_room`'s places), and it moves a few pixels a frame at most (`tests/world/only_rooms.py`, headless, every frame); down `$10`'s ladder, black only while he straddles the seam; every real map walked a pixel at a time (`tests/world/camera_test.c`) | Medium: estimated at 150 lines, built in about 190 lines of C (`fax_camera.c` a third comments, and `fax_world.c`'s side) and 660 of tests |
 | 5. One above the other (**done**, #201) | Slices 1-3 across seams one above the other: Y converted, fliers and fallers, drawn whole up and down, his true Y for the rooms above and below | A Hornet follows him down a Trunk ladder (`tests/seams/vertical.py`); his sword hits one across a seam above (on the Mist's `$10`, at the top of a jump); a Hornet straddling the seam is drawn whole; a dormant Hornet above wakes on the frame the view comes within 16 pixels of it, and not before; one flying up moves into the room above; a Zozura falls into the room below and lands; a save mid-crossing replays alike in two fresh games | Medium: estimated at 250 lines, built in about 470 lines of C (`fax_seams.c` half comments) and 850 of tests |
 | 6. What a neighbouring room sees of him (**done**, #214) | His true distance in a copy; Nash, Magman and a Zorugeriru's minion beside his true place | An Ishiisu across a seam waits until he is within its 32 pixels (`tests/seams/sees_him.py`, headless, as all here); a Fire Giant across one waits while he is 80 pixels away and charges at 28; Nash reappears beside him, in his room; Magmen from beside and above appear in front of him in his room, and his own room's goes past its side into the room there instead of wrapping round; a Zorugeriru's minion drops at his X in his room; a save before Nash's return replays alike in two fresh games | Small: estimated at 120 lines, built in about 330 lines of C (`fax_seams.c` half comments) and 720 of tests |
-| 7. Loose ends | One-in-four items count a room met as a neighbour; the fountain's ladder from afar; a death at a seam drawn whole | Rooms of one-in-four items met in turn move the count, and one item in four shows; from `$27` with `Quests` `$20`, `$28` has its ladder and nothing runs as he crosses; a death at x 248 dissolves whole across the seam | Small, about 90 |
+| 7. Loose ends (**done**, #215) | One-in-four items count a room met as a neighbour; the fountain's ladder from afar; a death at a seam drawn whole | Rooms of one-in-four items met in turn move the count, a visit each and once, and one item in four shows, where the original counts each entry (`tests/seams/loose_ends.py`, headless); from `$27` with `Quests` `$20`, `$28` has its ladder and nothing runs as he crosses, and the first opening plays frame for frame as the original's; a death at x 248 dissolves whole across the seam, pixel for pixel the same death's in his room, facing either way; a save before each replays alike in two fresh games | Small: estimated at 90 lines, built in about 240 lines of C (half comments) and 500 of tests |
 
 Slice 1 goes first because waiting at invisible lines is what a player sees
 most, in every town and most fights, and because it makes the fighting
@@ -1224,6 +1228,74 @@ One PR. Where the plan changed:
   a Wolfman of `$20` coming into his room (4 actors in the live game against
   master's 2); from a save with them there already, both builds play alike,
   3.516 against 3.525. The hooks themselves are within noise.
+
+### Slice 7, as built (#215)
+
+One PR, the three loose ends. Where the plan changed:
+
+- **The count's rule, checked.** `Screen_Is3Of4Visits` is the only writer
+  of `Screen_TrackedVisitCount`, and nothing resets it but power-on
+  (`Game_Init` clears RAM's page 4): no load, death or area change. A find's
+  first frame runs once each time its screen's sprites load, so the
+  original counts a visit each time a screen with a find is entered (with
+  the remaster off, walking into Trunk `$0C` twice moved it twice). In
+  Seamless a room spawns once until a load forgets it, so its find decides
+  once, in the room's first tick: `tick_room` (Seamless's own, not Seams')
+  carries the copy's count to the live game after that tick, when it
+  changed, so the next copy and the live game count on from it. Meeting a
+  room counts a visit, as entering its screen does; walking out and back in
+  counts nothing more, the find staying as it was (taken, there or gone),
+  which is the one big world's rule and not the original's. Out of the meat
+  shop onto Trunk `$20` with the count at 0-3, `$21`'s Red Potion was met
+  as a neighbour, the count went up by one, once, and the potion lay there
+  only from 3; onto `$1F`, `$1D`'s Ointment (up and left) and then `$21`'s
+  potion were met in turn, a visit each, and walking back and forth moved
+  the count no more.
+- **The fountain: the event's blocks.** With the quest done the event
+  moves the stone a block right and clears it there too, so the fixup
+  writes air at `$56`, `$66`, `$57` and `$67` and the ladder at `$22`-`$82`
+  (the event's writes, in order, from bank 15's tables), and `$FF` for the
+  event. Seams sets it (`fountain_fixup`); the list holds 4. It runs twice a
+  room, at the decode and once its list is loaded (which sets the event).
+  From `$27` the view reaches `$28`'s x 52 at most, so what shows from afar is the
+  fountain without its stone; the ladder, in column 2, comes into view just
+  past the seam, there already. The first opening (in `$28`, the live game's)
+  plays every frame as the original's: pushed 96 frames, the stone aside 30,
+  then the ladder's blocks 4 frames apart, him standing still. A load
+  straight into `$28` (the Mist's door on its ledge) is the game's own, and
+  plays the event's drop as the original does.
+- **The death: one routine, and the pose the picture shows.**
+  `Player_DrawDeathAnimation` draws no cell: it queues PPU command `$FA`,
+  which rubs lines out of his tiles in CHR. So the redraw is
+  `Screen_ResetSpritesForGamePlay` and `Player_DrawBody`, from the live
+  machine, painted in the live CHR and palette. The death's first 17 frames
+  or so show no hero at all (the sprites are cleared until the dissolve's
+  loop draws him, and the picture shows the OAM a frame after the game
+  writes it), so Seamless paints the pose the frame's picture holds
+  (`cyc_render_oam`): the last frame of play's on the death's first frame,
+  none while the death sets up, the death's after. Painted pixels past the
+  edge are behind the foreground of the room they lie in, by his true
+  place's visibility (the scratch place's two blocks that
+  `Player_CalculateVisibility` reads are given his place's). On the way:
+  `player_edge()` painted sprite 0 (OAM entry 0) too, wherever its shift put
+  it; it no longer does, in play either.
+- **Tests and tools.** `seams_state` counts `fountains` (fixups applied).
+  The death is checked on the picture: the pixels of a death at x 248 that
+  differ from a death at x 120, against those of the death at x 120, at
+  frames before the dissolve's loop draws him, whole, dissolving and
+  fading, facing either way; on master his half past the seam was the
+  background.
+- **Record**: nothing new in either.
+- **Cost.** Headless, 2,400 frames standing (3,000 in Eolis), this build
+  against master's, the median of 5, from the same saves: Trunk's `$27`
+  beside the fountain's `$28` 3.033 against 3.078 ms of CPU a frame; Trunk's
+  `$20` beside `$21`'s one-in-four Red Potion 3.361 against 3.395; Eolis's
+  town 3.113 against 3.146. Within noise (this build a little ahead in every
+  run, the two built from different trees): the count is a byte compared
+  after a tick. Through a death at the seam the picture takes 0.18 ms to
+  compose against master's 0.14 (`fax_world`'s `render_ms`, the median of
+  120 frames in a hidden window), the redraw and the CHR read, and only
+  while he dies by an edge.
 
 Boss rooms are covered by `tests/world/boss_arenas.py`, which every slice
 runs, with a check that no mover or visitor comes from an arena: the moves'

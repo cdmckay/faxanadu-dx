@@ -62,6 +62,12 @@ rom = []
 # Its camera (src/fax_camera.c, #166's slice 4) has no hooks, no ROM and no
 # state: a function of the map and the hero's place, reading the rooms'
 # records and BLOCK_PROPERTY_IMPASSABLE_MAP ($E8D9) through Seamless.
+# Since #166's slice 7 it writes the live Screen_TrackedVisitCount ($043A)
+# between frames, after a neighbour's tick moved its copy's (a one-in-four
+# find's first frame), and its room fixups are a list (the graphics fixes'
+# and Seams'). Its redraw of the hero past his room's edge, in an isolated
+# machine, also runs through a death (Player_DrawBody, $EBEE), writing two
+# ScreenBuffer blocks of that copy only. No new hook.
 
 [[shared_site]]
 addr = 0xE016   # GameLoop_CheckShowPlayerMenu
@@ -817,7 +823,8 @@ rom = []
 # Falling pose changes which pose is drawn and Block's glint rewrites OAM
 # palettes after Player_DrawBody, both before or after these reads, never the
 # bytes these change. No ROM, no read overrides, no state. Seamless decodes
-# its rooms through fax_world_set_room_fixup, which this feature sets.
+# its rooms through its room fixups, one of which this feature sets with
+# fax_world_set_room_fixup (Seams sets another).
 
 [[feature]]
 id = "no-flicker"
@@ -1160,6 +1167,12 @@ rom = []
 # slots, every byte, into the room his true place lies in, as a move does,
 # and clear the shadow OAM entries their room's tick drew for them ($0700,
 # in the room's record). Nothing new in either record.
+# Slice 7, loose ends, adds no hook: a Seamless room fixup (set with
+# fax_world_set_room_fixup while on) writes, in the room record of Trunk $28
+# decoded with Quests $20, the ScreenBuffer blocks the path to Mascon's
+# screen event writes ($56, $66, $57, $67 and $22-$82, from bank 15's
+# MASCON_FOUNTAIN_BLOCK_* and DROP_LADDER_TO_MASCON_LADDER_BLOCK) and
+# CurrentScreen_SpecialEventID $FF. Nothing new in either record.
 
 [[feature]]
 id = "punches"

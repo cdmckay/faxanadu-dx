@@ -224,6 +224,20 @@
  *     original's); with a room joined there that may take it, it is put past
  *     the side instead, marked through it, and moves there between frames.
  *
+ * Slice 7, loose ends. Three, two of them Seamless's own (fax_world.c):
+ *
+ *   - **One-in-four items count a room met as a neighbour.** A find's first
+ *     frame (Screen_Is3Of4Visits, $A529) runs in its room's first tick, on a
+ *     copy, and Seamless carries the copy's Screen_TrackedVisitCount to the
+ *     live game after it (tick_room).
+ *   - **The fountain's ladder from afar.** A room fixup here
+ *     (fountain_fixup, through fax_world_set_room_fixup): Trunk $28 decoded
+ *     while the path to Mascon is open gets the blocks the path's screen
+ *     event writes, and its event cleared, so $27 shows the ladder and
+ *     nothing runs as he crosses.
+ *   - **A death at a seam.** Seamless paints the dissolving hero's cells past
+ *     his room's edge (player_edge()).
+ *
  * Each room's state is a block in Seamless's record (version 6); the pass,
  * the sounds still to play and the spell's side are this feature's own
  * record (version 2), since a frame can end inside the pass (the main loop
@@ -357,6 +371,14 @@
 #define SOUND_PLAY_EFFECT     0xD0E4u
 #define MAIN_LOOP_COUNTDOWN   0xDB68u /* Game_MainLoop: JSR GameLoop_CountdownItems, after JSR Sprites_UpdateAll */
 #define BLOCK_IMPASSABLE      0xE8D9u /* BLOCK_PROPERTY_IMPASSABLE_MAP: 1 for a solid block property */
+/* Slice 7: the path to Mascon's tables (Game_OpenPathToMascon, $D6F5, and
+ * Game_DropLadderToMascon, $D76E) */
+#define FOUNTAIN_AIR_1        0xD768u /* MASCON_FOUNTAIN_BLOCK_1_AIR: $42 */
+#define FOUNTAIN_AIR_2        0xD769u /* MASCON_FOUNTAIN_BLOCK_2_AIR: $42 */
+#define FOUNTAIN_STONE_1      0xD76Au /* MASCON_FOUNTAIN_BLOCK_1_STONE: $88 */
+#define FOUNTAIN_STONE_2      0xD76Bu /* MASCON_FOUNTAIN_BLOCK_2_STONE: $88 */
+#define FOUNTAIN_OFFSETS      0xD76Cu /* GAME_LADDER_TO_MASCON_BLOCK_OFFSETS: $01, $FF */
+#define FOUNTAIN_LADDER       0xD7AFu /* DROP_LADDER_TO_MASCON_LADDER_BLOCK: $20 */
 #define DRAW_STANDARD         0xF0ECu /* Sprite_Draw_Standard: LDA #$00, STA Temp_Sprites_TileYOffset, TAY */
 #define DRAW_FLIPPED       0xF181u /* Sprite_Draw_FlippedHoriz: LDA #$00, STA Temp_05, LDY Temp_Sprites_ColsRemaining */
 #define VISIBILITY_MASK    0xF224u /* DRAW_SPRITE_VISIBILITY_MASK: 1, 2 (standard) */
@@ -411,6 +433,8 @@
 #define BOX_LEFT             0x03E2u /* SpriteBox_Left: Sprite_GetBounds' X plus its table's offset, 8 bits */
 #define BOX_WIDTH            0x03E4u /* SpriteBox_Width */
 #define SPRITES_PAUSED       0x0426u /* Sprites_UpdatesPaused: the loop skips every interaction */
+#define QUESTS               0x042Du /* Quests: $20 the path to Mascon open */
+#define SPECIAL_EVENT        0x042Eu /* CurrentScreen_SpecialEventID: $FF none */
 #define PLAYER_IS_DEAD       0x0438u /* PlayerIsDead */
 #define BLOCK_PROPERTIES     0x043Cu /* BlockProperties: a nibble per block id */
 #define SCREEN_BUFFER        0x0600u /* ScreenBuffer: 16 blocks a row */
@@ -461,6 +485,13 @@ enum {
     NASH_SIDE = 0x20,  /* how far beside him Nash goes (SpriteBehavior_Nash's ADC and SBC #$20) */
     UNDER = 16,        /* a Zorugeriru drops its minion 16 to his left when he is under it (its X to X + 15) */
     PLACES = 8,        /* placements a step takes at most (slice 6) */
+    /* Slice 7: the fountain's screen, where the path to Mascon opens */
+    FOUNTAIN_SCREEN = 0x28,      /* Trunk $28, the one screen whose list has event 0 */
+    QUEST_PATH_TO_MASCON = 0x20, /* Quests */
+    NO_EVENT = 0xFF,             /* CurrentScreen_SpecialEventID */
+    FOUNTAIN_COVER = 0x56,       /* the stone's top block (the event's LDA #$56, STA PathToMascon_FountainCoverPos) */
+    FOUNTAIN_LADDER_TOP = 0x22,  /* Game_OpenPathToMascon's LDA #$22, STA PathToMascon_LadderPos */
+    FOUNTAIN_LADDER_BLOCKS = 7,  /* its LDA #$07, STA PathToMascon_LadderBlocksRemaining */
 };
 
 /* A room's block in Seamless's record. */
@@ -563,6 +594,9 @@ static unsigned placing_count;
  * live game) and those that stayed where the game put them. */
 static unsigned distances, places, place_kept;
 static int place_log[LOG][6]; /* the last placements: from, slot, to, slot, entity, step */
+/* Slice 7's count, for the TCP command: fountains given their ladder (fountain_fixup). */
+static unsigned fountains;
+static void fountain_fixup(uint8_t area, uint8_t screen, uint8_t *ram);
 
 /* ---- slice 0 ---- */
 
@@ -2280,6 +2314,39 @@ static int state_set(const uint8_t *buf, int len) {
     return 1;
 }
 
+/* ---- slice 7: the fountain's ladder from afar ---- */
+
+/* Seamless's room fixup (fax_world_set_room_fixup): Trunk $28 decoded from
+ * the ROM while the path to Mascon is open (Quests $20) gets what the path's
+ * screen event writes on the first main-loop pass of every visit after the
+ * first: ScreenEvents_HandlePathToMasconEvent ($EF69) puts the cover at $56
+ * and jumps to Game_OpenPathToMascon ($D6F5) with X 0, which clears the stone
+ * (two blocks, the second a row down), moves it a block right
+ * (GAME_LADDER_TO_MASCON_BLOCK_OFFSETS, X 0), puts it there and, the quest
+ * done, clears it at once; then Game_DropLadderToMascon ($D76E) puts the
+ * ladder block in column 2 of rows 2-8. Each from the ROM's tables, in that
+ * order, into the room's ScreenBuffer; and the event is cleared, as the
+ * handler clears it, so it never runs when he crosses: $27 shows the ladder,
+ * and walking in neither stops the game for its 28 frames nor plays its
+ * sound. Without the quest (the first time) nothing changes: the stone is
+ * pushed in $28, the live game's own, and the original's event plays. */
+static void fountain_fixup(uint8_t area, uint8_t screen, uint8_t *ram) {
+    if (area != FAX_AREA_TRUNK || screen != FOUNTAIN_SCREEN || !(ram[QUESTS] & QUEST_PATH_TO_MASCON)) return;
+    uint8_t *blocks = ram + SCREEN_BUFFER;
+    uint8_t cover = FOUNTAIN_COVER;
+    blocks[cover] = rom15(FOUNTAIN_AIR_1);
+    blocks[(uint8_t)(cover + 0x10)] = rom15(FOUNTAIN_AIR_2);
+    cover = (uint8_t)(cover + rom15(FOUNTAIN_OFFSETS + 0));
+    blocks[cover] = rom15(FOUNTAIN_STONE_1);
+    blocks[(uint8_t)(cover + 0x10)] = rom15(FOUNTAIN_STONE_2);
+    blocks[cover] = rom15(FOUNTAIN_AIR_1);
+    blocks[(uint8_t)(cover + 0x10)] = rom15(FOUNTAIN_AIR_2);
+    uint8_t at = FOUNTAIN_LADDER_TOP;
+    for (unsigned n = FOUNTAIN_LADDER_BLOCKS; n; n--, at = (uint8_t)(at + 0x10)) blocks[at] = rom15(FOUNTAIN_LADDER);
+    ram[SPECIAL_EVENT] = NO_EVENT;
+    ++fountains;
+}
+
 /* ---- what Seamless asks ---- */
 
 void fax_seams_captured(uint8_t *bytes, int how) {
@@ -2415,11 +2482,14 @@ static void deactivate(void) {
     placing_count = 0;
     distances = places = place_kept = 0;
     memset(place_log, 0, sizeof place_log);
+    fountains = 0;
     for (unsigned i = 0; i < HOOKS; i++) nes_mod_set_function_hook_enabled(hooks[i].id, 0);
+    fax_world_set_room_fixup(fountain_fixup, false);
 }
 static void activate(void) {
     enabled = true;
     for (unsigned i = 0; i < HOOKS; i++) nes_mod_set_function_hook_enabled(hooks[i].id, 1);
+    fax_world_set_room_fixup(fountain_fixup, true);
     nes_mod_set_local_only("Seams", 1);
 }
 
@@ -2460,7 +2530,7 @@ static void seams_state(int id, const char *line) {
         "\"spell_end\":[%d,%d,%d,%d,%d],\"spell_crossed\":%u,\"spell_cleared\":%u,\"magic_dormant\":%u,"
         "\"spell_visibility\":%u,\"spell_drawn_abroad\":%u,\"casting\":%s,"
         "\"moves_up\":%u,\"moves_down\":%u,\"fell_on\":%u,"
-        "\"distances\":%u,\"places\":%u,\"place_kept\":%u,\"place_log\":[%s]",
+        "\"distances\":%u,\"places\":%u,\"place_kept\":%u,\"place_log\":[%s],\"fountains\":%u",
         enabled ? "true" : "false", skipped, refused, last_weapon_x, last_sprite_x, last_entity, steps, moves, kept_out,
         town_edge, pushed_back, removed, woken, frozen, vx, vy, view ? "true" : "false", last_woken[0], last_woken[1],
         last_woken[2], last_woken[3], log, passes, visits, waited, pass.open ? "true" : "false", broken, flashes_due,
@@ -2471,7 +2541,8 @@ static void seams_state(int id, const char *line) {
                    : 0,
         x16, spell_walls, spell_view_ends, spell_side_ends, spell_end[0], spell_end[1], spell_end[2], spell_end[3],
         spell_end[4], spell_crossed, spell_cleared, magic_dormant, spell_visibility, spell_drawn_abroad,
-        spell.casting ? "true" : "false", moves_up, moves_down, fell_on, distances, places, place_kept, placed);
+        spell.casting ? "true" : "false", moves_up, moves_down, fell_on, distances, places, place_kept, placed,
+        fountains);
     cyc_tcp_ok(id, fields);
 }
 void fax_seams_tcp_setup(void) {
@@ -2484,7 +2555,8 @@ void fax_seams_tcp_setup(void) {
                      "(type, X byte, side, X in 16 bits), its walls across a seam, its ends at the view's edge and at "
                      "a side, the last end, crossings kept, dormant sleepers it was kept from; moves up and down, "
                      "falls carried on into a room below; distances to him answered from his true place, actors "
-                     "placed by it and kept where the game put them, the last placements",
+                     "placed by it and kept where the game put them, the last placements; fountains given their ladder "
+                     "from afar",
                      seams_state);
 }
 #else

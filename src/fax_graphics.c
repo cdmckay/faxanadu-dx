@@ -212,12 +212,12 @@ static void deactivate(void) {
     enabled = false;
     for (unsigned i = 0; i < FAX_GFX_FIXES; ++i) applied[i] = 0;
     set_hooks(0);
-    fax_world_set_room_fixup(NULL);
+    fax_world_set_room_fixup(room_fixup, false);
 }
 static void activate(void) {
     enabled = true;
     set_hooks(1);
-    fax_world_set_room_fixup(room_fixup);
+    fax_world_set_room_fixup(room_fixup, true);
     nes_mod_set_local_only("Graphics fixes", 1);
 }
 
