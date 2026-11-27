@@ -68,7 +68,7 @@ line, and "Quest complete" when it is done: the King's plea for the
 fountain's water, the Ring of Elf, the Mattock and the wall, the three
 springs, the path to Mascon, the meteorite, the Battle Suit, the rings of
 Dworf and the Demon, and the Evil One, 17 in all. Chatter stays chatter.
-Press L, or the left trigger on a controller, and the game pauses on your
+Press L, or the left stick on a controller, and the game pauses on your
 quests, the music playing on: the ones under way with what to do, then the
 ones done. Your file keeps them. The Select menu lists QUESTS at its top, so
 you can open the log from there too.
@@ -162,9 +162,13 @@ opens it too. The game holds still underneath, but the music plays on.
   you off it.
 - **Zone names.** Entering a different town, region, tower or castle shows its
   name below the status bar for about two seconds.
+- **Run.** Hold Left Shift, or the left trigger on a controller, to run, half
+  again as fast as you walk. On the ground only: a jump keeps the walk's
+  speed, so running reaches no gap or ledge sooner, and ladders and Wing
+  Boots flight are as they were.
 - **A modern controller layout.** Start opens the Select menu and closes it,
-  Back opens the map, the left trigger the quest log, B backs out of menus
-  and text, and every action has a button of its own (see Controls).
+  Back opens the map, the left stick's press the quest log, B backs out of
+  menus and text, and every action has a button of its own (see Controls).
   Nothing pauses the game but the screens that hold it anyway. A
   Nintendo-layout pad is read by where its buttons sit, so the lower one
   jumps, as on any other.
@@ -288,9 +292,10 @@ The remaster also fixes these bugs in the original game:
 | Use item (in play) | S | B |
 | Back out of menus and text | X | B or X |
 | Block (hold, with a shield) | V | Right trigger |
+| Run (hold) | Left Shift | Left trigger |
 | Select menu | Enter | Start |
 | Map | M | Back |
-| Quest log | L | Left trigger |
+| Quest log | L | Left stick (press) |
 | Rewind | F8 | Left shoulder |
 | Fast-forward (hold) | Tab | Right shoulder |
 | Menu (save states, rewind, controls, quit) | Escape | Right stick (press) |
@@ -320,16 +325,18 @@ and CONTINUE, A or Start chooses, and B goes back from the list of files; in
 a shop, Select switches between buying and selling. With the remaster off,
 the pad is the original's: Start pauses, and Back opens the Select menu.
 
-The launcher's Controls page remaps them, the remaster's five buttons after
+The launcher's Controls page remaps them, the remaster's six buttons after
 the shortcuts. They are also in the `[Game]` section of `config.ini`, next to
-the game: `MagicKey`, `UseItemKey`, `BlockKey`, `MapKey` and `QuestLogKey` (a
-key name, like `V` or `Left Shift`), and `MagicButton`, `UseItemButton`,
-`BlockButton`, `MapButton` and `QuestLogButton` (a controller button, like
-`b` or `leftshoulder`, or a trigger, like `lefttrigger+`). `none` unbinds
-one. Pick ones nothing else uses. A `config.ini` from an earlier version
-moves to this layout the first time you start, except for any binding you
-changed; a new default that would land on a button you gave something else
-is left unbound instead, for you to place.
+the game: `MagicKey`, `UseItemKey`, `BlockKey`, `RunKey`, `MapKey` and
+`QuestLogKey` (a key name, like `V` or `Left Shift`), and `MagicButton`,
+`UseItemButton`, `BlockButton`, `RunButton`, `MapButton` and `QuestLogButton`
+(a controller button, like `b` or `leftstick`, or a trigger, like
+`lefttrigger+`). `none` unbinds one. Pick ones nothing else uses. A
+`config.ini` from an earlier version moves to this layout the first time you
+start, except for any binding you changed: the left trigger goes from the
+quest log to Run, and the quest log to the left stick. A new default that
+would land on a button or key you gave something else is left unbound
+instead, for you to place.
 
 ## Save files
 
