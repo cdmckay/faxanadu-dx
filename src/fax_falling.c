@@ -34,10 +34,12 @@
 
 /* Bank 15 */
 #define GET_BODY_FRAME  0xECACu   /* Player_GetBodySpriteFrameOffset: LDA Player_Flags, LSR A, BCC */
-#define SET_FALLING     0xE3D1u   /* Player_HandleVertLadderOrJump's @_setFalling: LDA Player_Flags,
-                                     ORA #PLAYER_FALLING_OFF. Every frame in the air without jumping */
-#define CAP_FALL        0xE423u   /* @_checkCapFall's BEQ @_return, after JSR Player_CheckIfPassable
-                                     (down) following the fall step. Z clear: he landed */
+/* Player_HandleVertLadderOrJump's @_setFalling: LDA Player_Flags,
+ * ORA #PLAYER_FALLING_OFF. Every frame in the air without jumping */
+#define SET_FALLING     0xE3D1u
+/* @_checkCapFall's BEQ @_return, after JSR Player_CheckIfPassable
+ * (down) following the fall step. Z clear: he landed */
+#define CAP_FALL        0xE423u
 /* Bank 14 */
 #define CALC_ANIM_FRAME 0xB927u   /* Maybe_Player_CalcAnimFrame, the same rule for the weapon and shield */
 /* RAM */

@@ -31,8 +31,9 @@
 #include <stdlib.h>
 
 /* Bank 15 */
-#define HANDLE_KNOCKBACK  0xE153u  /* Player_HandleKnockback: LDA Player_Flags, AND #$40, PHA, EOR #$40,
-                                      STA Player_Flags, JSR Player_KnockbackHoriz */
+/* Player_HandleKnockback: LDA Player_Flags, AND #$40, PHA, EOR #$40,
+ * STA Player_Flags, JSR Player_KnockbackHoriz */
+#define HANDLE_KNOCKBACK  0xE153u
 #define CHECK_IF_PASSABLE 0xE6C8u  /* Player_CheckIfPassable: X = 0 left, 1 right, 2 up, 3 down; A = 0 passable */
 /* RAM */
 #define PLAYER_FLAGS      0x00A4u

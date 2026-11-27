@@ -48,12 +48,14 @@
 #include <stdlib.h>
 
 /* Bank 15 */
-#define CLIMB_UP_BRANCH   0xE30Cu  /* Player_CheckHandleClimbUp's BNE @_return, after LDA Player_Flags,
-                                      AND #$DA, STA Player_Flags, LDX #$02, JSR Player_CheckIfPassable:
-                                      Z clear = a block over his head */
+/* Player_CheckHandleClimbUp's BNE @_return, after LDA Player_Flags,
+ * AND #$DA, STA Player_Flags, LDX #$02, JSR Player_CheckIfPassable:
+ * Z clear = a block over his head */
+#define CLIMB_UP_BRANCH   0xE30Cu
 #define FOUNTAIN_EVENT    0xEF69u  /* ScreenEvents_HandlePathToMasconEvent: LDA Quests, AND #$20, BEQ */
-#define CHECK_IF_ON_LADDER 0xE752u /* Player_CheckIfOnLadder: sets or clears can climb from the blocks at
-                                      his head and feet; clears climbing with it */
+/* Player_CheckIfOnLadder: sets or clears can climb from the blocks at
+ * his head and feet; clears climbing with it */
+#define CHECK_IF_ON_LADDER 0xE752u
 /* RAM */
 #define JOY1_BUTTONS      0x0016u  /* Joy1_ButtonMask */
 #define AREA              0x0024u  /* Area_CurrentArea */

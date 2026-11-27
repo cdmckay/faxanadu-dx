@@ -166,27 +166,36 @@
 /* Fixed bank */
 #define PLAYER_USE_ELIXIR       0xC4CAu  /* LDA SpecialItems, AND #$F7, STA SpecialItems: Player_ReduceHP's revive */
 #define PLAYER_USE_WING_BOOTS   0xC579u  /* LDA #$83, JSR MMC1_LoadBankAndJump: the "used Wing Boots" script */
-#define BOOTS_USED              0xC581u  /* @_afterFarJump, after the script: JSR Player_ClearSelectedItem, then
-                                            LDA #$1A, JSR Sound_PlayEffect */
-#define WING_BOOTS_SET_FLIGHT   0xC592u  /* STA DurationWingBoots, after LDA TITLE_TO_WINGBOOTS_DURATION,X;
-                                            then JSR UI_DrawTimeValue draws A */
-#define BOOTS_SECOND            0xC5A8u  /* Game_DecWingBootsDuration, running, after it sets Player_StatusFlag's $80:
-                                            LDA InterruptCounter, AND #$3F, BNE @_return (not the game's second) */
-#define BOOTS_SECOND_DEC        0xC5AEu  /* DEC DurationWingBoots, LDA, BMI @_wingBootsDone ("... is gone"), else
-                                            JMP UI_DrawTimeValue */
-#define BOOTS_GONE              0xC5BFu  /* @_wingBootsDone, Player_StatusFlag's $80 cleared: LDA #$96, JSR
-                                            MMC1_LoadBankAndJump, "The power of the Wing Boots is gone.", then RTS */
+/* @_afterFarJump, after the script: JSR Player_ClearSelectedItem, then
+ * LDA #$1A, JSR Sound_PlayEffect */
+#define BOOTS_USED              0xC581u
+/* STA DurationWingBoots, after LDA TITLE_TO_WINGBOOTS_DURATION,X;
+ * then JSR UI_DrawTimeValue draws A */
+#define WING_BOOTS_SET_FLIGHT   0xC592u
+/* Game_DecWingBootsDuration, running, after it sets Player_StatusFlag's $80:
+ * LDA InterruptCounter, AND #$3F, BNE @_return (not the game's second) */
+#define BOOTS_SECOND            0xC5A8u
+/* DEC DurationWingBoots, LDA, BMI @_wingBootsDone ("... is gone"), else
+ * JMP UI_DrawTimeValue */
+#define BOOTS_SECOND_DEC        0xC5AEu
+/* @_wingBootsDone, Player_StatusFlag's $80 cleared: LDA #$96, JSR
+ * MMC1_LoadBankAndJump, "The power of the Wing Boots is gone.", then RTS */
+#define BOOTS_GONE              0xC5BFu
 #define PLAYER_USE_HOUR_GLASS   0xC5C8u  /* LDA #$82, JSR MMC1_LoadBankAndJump: the "used Hour Glass" script */
-#define GLASS_USED              0xC5D0u  /* @_afterFarJump, after the script: JSR Player_ClearSelectedItem, then
-                                            LDA #$1A, JSR Sound_PlayEffect */
+/* @_afterFarJump, after the script: JSR Player_ClearSelectedItem, then
+ * LDA #$1A, JSR Sound_PlayEffect */
+#define GLASS_USED              0xC5D0u
 #define HOUR_GLASS_COST         0xC5D8u  /* LSR Player_HP_U, ROR Player_HP_L: the original's half of HP */
 #define HOUR_GLASS_DRAW_HP      0xC5DEu  /* JSR UI_DrawPlayerHP, then LDA #$0F, STA DurationHourGlass, the music */
-#define GLASS_SECOND            0xC5F0u  /* Game_DecHourGlassDuration, running: LDA InterruptCounter, AND #$3F,
-                                            BNE @_return */
-#define GLASS_SECOND_DEC        0xC5F6u  /* DEC DurationHourGlass, BPL @_return, else "... is gone" and
-                                            Areas_DefaultMusic */
-#define GLASS_GONE              0xC5FBu  /* it wrapped: LDA #$97, JSR MMC1_LoadBankAndJump, "The power of the Hour
-                                            Glass is gone." */
+/* Game_DecHourGlassDuration, running: LDA InterruptCounter, AND #$3F,
+ * BNE @_return */
+#define GLASS_SECOND            0xC5F0u
+/* DEC DurationHourGlass, BPL @_return, else "... is gone" and
+ * Areas_DefaultMusic */
+#define GLASS_SECOND_DEC        0xC5F6u
+/* it wrapped: LDA #$97, JSR MMC1_LoadBankAndJump, "The power of the Hour
+ * Glass is gone." */
+#define GLASS_GONE              0xC5FBu
 #define GLASS_GONE_MUSIC        0xC603u  /* @_afterFarJump: LDA Areas_DefaultMusic, STA Music_Current, RTS */
 #define GAME_CLEAR_TIMED_ITEMS  0xC6AFu  /* LDA #$FF, STA DurationGlove, ...: from Game_Start and Player_Spawn */
 #define GAME_LOOP_COUNTDOWN     0xC88Fu  /* GameLoop_CountdownItems: JSR Game_DecHourGlassDuration, ... */
@@ -235,8 +244,9 @@
 #define PPU_BUFFER_ROOM         0x24u    /* PPUBuffer_HasCapacity: at least 36 bytes free, or empty */
 #define BAR_COMMAND             3u       /* a PPU buffer command's length and address */
 #define MAX_ITEMS               8
-#define ISCRIPT_SET_SPAWN_POINT 0x06u    /* 06 temple: each temple Guru's first action (Conflate's after a
-                                            CHECK_FOR_ITEM); CHECK_UPDATE_PLAYER_TITLE follows it */
+/* 06 temple: each temple Guru's first action (Conflate's after a
+ * CHECK_FOR_ITEM); CHECK_UPDATE_PLAYER_TITLE follows it */
+#define ISCRIPT_SET_SPAWN_POINT 0x06u
 #define ISCRIPT_SHOW_MESSAGE    0x03u
 #define SHOW_MESSAGE_LEN        2u       /* 01 or 03, and the message */
 #define ISCRIPT_END             0x00u

@@ -68,18 +68,21 @@
 
 /* Bank 12 */
 #define ISCRIPTS_INVOKE_NEXT_ACTION 0x826Eu  /* JSR IScripts_LoadByte: the action at IScriptOrCHRAddr + IScriptOffset */
-#define SUBTRACT_PAY        0x8347u  /* IScripts_ProgressivelySubtractGold: JSR Player_SubtractGold, after SBC #$0A
-                                        from Temp_0202/3, LDA #$0A, STA Temp_Int24, LDA #$00, STA Temp_Int24_M;
-                                        then JMP IScripts_ProgressivelySubtractGold */
-#define SPEND_GOLD_CHECK    0x8367u  /* IScriptAction_SpendGold, after the two IScripts_LoadByte and STA Temp_0202/3:
-                                        LDA Temp_0202, STA Temp_Int24, LDA Temp_0203, STA Temp_Int24_M,
-                                        JSR IScripts_CheckEnoughMoney, BCC IScripts_ShowNotEnoughMoney */
+/* IScripts_ProgressivelySubtractGold: JSR Player_SubtractGold, after SBC #$0A
+ * from Temp_0202/3, LDA #$0A, STA Temp_Int24, LDA #$00, STA Temp_Int24_M;
+ * then JMP IScripts_ProgressivelySubtractGold */
+#define SUBTRACT_PAY        0x8347u
+/* IScriptAction_SpendGold, after the two IScripts_LoadByte and STA Temp_0202/3:
+ * LDA Temp_0202, STA Temp_Int24, LDA Temp_0203, STA Temp_Int24_M,
+ * JSR IScripts_CheckEnoughMoney, BCC IScripts_ShowNotEnoughMoney */
+#define SPEND_GOLD_CHECK    0x8367u
 #define MAGICIAN            0xA35Du  /* ISCRIPT_EOLIS_MARTIAL_ARTS_MAGIC_SHOP: 83 (the Magician's portrait), ... */
 #define MAGICIAN_ASKS       0xA35Eu  /* 02 15: "I shall give magic for 200 Golds.", a question */
 #define MAGICIAN_PAY_OFFSET 3u       /* $A360: 05 C8 00, pay 200 */
 #define MAGICIAN_GIVES      0xA363u  /* 0A 28: ADD_MP 40; then 01 16 ("Watch your remaining power level."), 00 */
-#define HALL_MAGICIAN       0xA368u  /* ISCRIPT_AFTER_VICTIM_MAGIC_SHOP: 83, 12 62 A377 (Fire held: $A377,
-                                        03 18 00), 02 17, 05 B8 0B (pay 3000), 07 62, 01 79, 00 */
+/* ISCRIPT_AFTER_VICTIM_MAGIC_SHOP: 83, 12 62 A377 (Fire held: $A377,
+ * 03 18 00), 02 17, 05 B8 0B (pay 3000), 07 62, 01 79, 00 */
+#define HALL_MAGICIAN       0xA368u
 #define HALL_GIVES_FIRE     0xA372u  /* 07 62: ADD_ITEM Fire, his pay step done */
 #define SAY                 FAX_TRAVEL_SAY   /* $AE00: 03 C3 00, show the slot, then END */
 #define ASK                 FAX_TRAVEL_ASK   /* $AE03: 16 C3 00 AE, ask the slot: A jumps to SAY, B goes on */
@@ -89,8 +92,9 @@
 #define ISCRIPT_ADDR        0x00DBu  /* IScriptOrCHRAddr, 16 bits; IScriptOffset follows */
 #define ISCRIPT_OFFSET      0x00DDu
 #define TEMP_INT24          0x00ECu  /* Player_SubtractGold's amount, 16 bits */
-#define TEMP_0202           0x0202u  /* the amount being paid, 16 bits, as IScriptAction_SpendGold read it; then
-                                        what IScripts_ProgressivelySubtractGold has left to take */
+/* the amount being paid, 16 bits, as IScriptAction_SpendGold read it; then
+ * what IScripts_ProgressivelySubtractGold has left to take */
+#define TEMP_0202           0x0202u
 #define GOLD                0x0392u  /* 24 bits, little-endian */
 #define MAGIC_INVENTORY     0x03A9u  /* the spells listed, 4 at most */
 #define SELECTED_MAGIC      0x03C0u  /* the spell in hand, $FF none */

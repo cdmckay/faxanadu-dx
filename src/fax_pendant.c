@@ -30,8 +30,9 @@
 #include <stdlib.h>
 
 /* Bank 14 */
-#define CHECK_GLOVE      0x8884u   /* Player_HitSpriteWithWeapon's @_checkGlove: LDA DurationGlove,
-                                      BMI @_updateSpriteHP. Y holds Player_CurWeapon (LDY at $886C) */
+/* Player_HitSpriteWithWeapon's @_checkGlove: LDA DurationGlove,
+ * BMI @_updateSpriteHP. Y holds Player_CurWeapon (LDY at $886C) */
+#define CHECK_GLOVE      0x8884u
 #define WEAPON_STRENGTHS 0xB7A5u   /* Hand Dagger 4, Long Sword 8, Giant Blade 12, Dragon Slayer 16 */
 /* RAM */
 #define TEMP_00          0x0000u   /* Temp_00: the hit's damage, so far */

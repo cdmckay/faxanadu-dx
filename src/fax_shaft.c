@@ -56,10 +56,12 @@
 #include <stdlib.h>
 
 /* Fixed bank */
-#define IS_BLOCK_IMPASSABLE 0xE87Cu  /* ScreenBuffer_IsBlockImpassable: LDY ScreenBuffer,X, JSR
-                                        Area_GetBlockProperty, TAY, LDA BLOCK_PROPERTY_IMPASSABLE_MAP,Y, RTS */
-#define UPDATE_PLAYER_CALL  0xDB53u  /* Game_MainLoop: JSR GameLoop_UpdatePlayer, after
-                                        JSR Screen_ResetSpritesForGamePlay */
+/* ScreenBuffer_IsBlockImpassable: LDY ScreenBuffer,X, JSR
+ * Area_GetBlockProperty, TAY, LDA BLOCK_PROPERTY_IMPASSABLE_MAP,Y, RTS */
+#define IS_BLOCK_IMPASSABLE 0xE87Cu
+/* Game_MainLoop: JSR GameLoop_UpdatePlayer, after
+ * JSR Screen_ResetSpritesForGamePlay */
+#define UPDATE_PLAYER_CALL  0xDB53u
 /* RAM */
 #define AREA_CURRENT        0x0024u  /* Area_CurrentArea */
 #define SCREEN_CURRENT      0x0063u  /* Area_CurrentScreen */

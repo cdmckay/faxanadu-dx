@@ -64,37 +64,45 @@
 #define SHIELD_INVENTORY      0x03A5u   /* the shields not in hand, NumberOfShields of them */
 #define SELECTED_SHIELD       0x03BFu   /* 0 Small, 1 Large, 2 Magic Shield, 3 Battle Helmet, $FF none */
 #define NUMBER_OF_SHIELDS     0x03C4u
-#define SPRITE_BOX_LEFT       0x03E2u   /* Sprite_GetBounds: the current sprite's box, this frame (8 bits;
-                                              fax_seams_box_left() gives it in 16) */
+/* Sprite_GetBounds: the current sprite's box, this frame (8 bits;
+ * fax_seams_box_left() gives it in 16) */
+#define SPRITE_BOX_LEFT       0x03E2u
 #define SPRITE_BOX_WIDTH      0x03E4u
 #define PLAYER_IS_DEAD        0x0438u
 #define SPRITES_START_SLOT_RANGE 0x001Cu   /* Sprite_Draw writes slot * 4 EOR it */
 #define SPRITES_SPRITE_SLOT   0x0025u   /* the next sprite slot Sprite_Draw writes */
 #define SHADOW_OAM            0x0700u   /* SPRITE_0_RANGE_1_START: Y, tile, attributes (palette in bits 0-1), X */
 /* Bank 14 */
-#define PLAYER_HANDLE_HIT_BY_MAGIC      0x87DCu  /* LDX CurrentSpriteIndex, LDY CurrentSprites_Entities,X,
-                                                    LDA SPRITE_ENTITY_DAMAGES,Y, LDY SelectedShield */
-#define SHIELD_STOPS_MAGIC              0x87CEu  /* Player_HandleShieldHitByMagic after JSR Player_HandleHitByMagic:
-                                                    LDX CurrentSpriteIndex, LDA #$FF, STA CurrentSprites_Entities,X,
-                                                    LDA #$0C, JSR Sound_PlayEffect, RTS */
-#define PLAYER_HANDLE_TOUCH_ENEMY_MAGIC 0x8999u  /* LDA Player_InvincibilityPhase, BNE RETURN_89AD,
-                                                    LDA DurationOintment, BPL RETURN_89AD */
-#define FLASH_HIT                       0xAB44u  /* SpriteBehavior_FlashScreenHitPlayer, greyscale just cleared:
-                                                    LDA #$04, JSR Sound_PlayEffect, iframes, knockback, 10 HP */
+/* LDX CurrentSpriteIndex, LDY CurrentSprites_Entities,X,
+ * LDA SPRITE_ENTITY_DAMAGES,Y, LDY SelectedShield */
+#define PLAYER_HANDLE_HIT_BY_MAGIC      0x87DCu
+/* Player_HandleShieldHitByMagic after JSR Player_HandleHitByMagic:
+ * LDX CurrentSpriteIndex, LDA #$FF, STA CurrentSprites_Entities,X,
+ * LDA #$0C, JSR Sound_PlayEffect, RTS */
+#define SHIELD_STOPS_MAGIC              0x87CEu
+/* LDA Player_InvincibilityPhase, BNE RETURN_89AD,
+ * LDA DurationOintment, BPL RETURN_89AD */
+#define PLAYER_HANDLE_TOUCH_ENEMY_MAGIC 0x8999u
+/* SpriteBehavior_FlashScreenHitPlayer, greyscale just cleared:
+ * LDA #$04, JSR Sound_PlayEffect, iframes, knockback, 10 HP */
+#define FLASH_HIT                       0xAB44u
 #define FLASH_FINISH                    0xAB60u  /* LDX CurrentSpriteIndex, JMP Sprite_FinishBehavior */
-#define DRAW_WEAPON                     0xB7D6u  /* Player_DrawWeapon: LDA IScript_PortraitID, BPL return. The main
-                                                    loops and Game_DrawScreenInFrozenState call it right after
-                                                    Player_DrawBody */
+/* Player_DrawWeapon: LDA IScript_PortraitID, BPL return. The main
+ * loops and Game_DrawScreenInFrozenState call it right after
+ * Player_DrawBody */
+#define DRAW_WEAPON                     0xB7D6u
 /* Bank 12 */
 #define ISCRIPTS_INVOKE_NEXT_ACTION     0x826Eu  /* reads the action at IScriptOrCHRAddr + IScriptOffset */
 #define ISCRIPT_ACTION_END_SCRIPT       0x82B4u  /* JSR IScripts_UpdatePortraitAnimation, LDA Temp_0201: close the box */
-#define ISCRIPT_GOT_BATTLE_HELMET       0xA698u  /* IScript $8C, from Player_PickUpBattleHelmet before it adds the
-                                                    helmet: GENERIC, SHOW_UNSKIPPABLE_MESSAGE $B6, END */
+/* IScript $8C, from Player_PickUpBattleHelmet before it adds the
+ * helmet: GENERIC, SHOW_UNSKIPPABLE_MESSAGE $B6, END */
+#define ISCRIPT_GOT_BATTLE_HELMET       0xA698u
 /* Fixed bank */
 #define DRAW_BODY                       0xEBEEu  /* Player_DrawBody: LDA IScript_PortraitID, BMI, RTS */
 #define GAME_LOOP_COUNTDOWN_ITEMS       0xC88Fu  /* JSR, JSR, JSR, JMP: the timed items */
-#define MAIN_LOOP_COUNTDOWN_PUSHED      0xDB6Au  /* Game_MainLoop's JSR GameLoop_CountdownItems ($DB68), after
-                                                    Sprites_UpdateAll: a pass of the main loop got this far */
+/* Game_MainLoop's JSR GameLoop_CountdownItems ($DB68), after
+ * Sprites_UpdateAll: a pass of the main loop got this far */
+#define MAIN_LOOP_COUNTDOWN_PUSHED      0xDB6Au
 #define SOUND_PLAY_EFFECT               0xD0E4u  /* A: the sound. Keeps X and Y; memory only */
 #define SOUND_SHIELD                    0x0Cu    /* what Player_HandleShieldHitByMagic plays */
 /* Values */

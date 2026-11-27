@@ -42,12 +42,14 @@
 #include <stdlib.h>
 
 /* Bank 5 */
-#define MESSAGE_SOUND_INDEX     0x86B2u   /* SoundEffect_Message_OnTick: TAX, after LDA SoundEffect_State_Counter,
-                                             AND #$02; then LDA SOUNDEFFECT_MESSAGE_NOISE_LO,X, STA NOISE_LO */
+/* SoundEffect_Message_OnTick: TAX, after LDA SoundEffect_State_Counter,
+ * AND #$02; then LDA SOUNDEFFECT_MESSAGE_NOISE_LO,X, STA NOISE_LO */
+#define MESSAGE_SOUND_INDEX     0x86B2u
 /* Bank 14 */
-#define HANDLE_HIT_BY_MAGIC     0x87DCu   /* Player_HandleHitByMagic: LDX CurrentSpriteIndex,
-                                             LDY CurrentSprites_Entities,X, LDA SPRITE_ENTITY_DAMAGES,Y,
-                                             LDY SelectedShield, the shift, then damage and knockback */
+/* Player_HandleHitByMagic: LDX CurrentSpriteIndex,
+ * LDY CurrentSprites_Entities,X, LDA SPRITE_ENTITY_DAMAGES,Y,
+ * LDY SelectedShield, the shift, then damage and knockback */
+#define HANDLE_HIT_BY_MAGIC     0x87DCu
 /* RAM */
 #define INVINCIBILITY_PHASE      0x00ADu  /* Player_InvincibilityPhase: $3C on a hit, counted down each frame */
 #define DURATION_OINTMENT        0x0427u  /* bit 7 clear while the Ointment lasts; $FF none */

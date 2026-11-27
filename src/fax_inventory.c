@@ -35,11 +35,13 @@
 #include <stdlib.h>
 
 /* Fixed bank */
-#define SUIT_CAP    0xC6FAu   /* Player_PickUpBattleSuit: CPX #$04, after LDX NumberOfWeapons (the bug);
-                                 then BCC @_addItem, LDX #$03, LDA #$03, STA ArmorInventory,X, INX,
-                                 STX NumberOfArmors */
-#define SLAYER_CAP  0xC73Au   /* Player_PickUpDragonSlayer: CPX #$04, after LDX NumberOfArmors (the bug);
-                                 then the same with WeaponInventory and NumberOfWeapons */
+/* Player_PickUpBattleSuit: CPX #$04, after LDX NumberOfWeapons (the bug);
+ * then BCC @_addItem, LDX #$03, LDA #$03, STA ArmorInventory,X, INX,
+ * STX NumberOfArmors */
+#define SUIT_CAP    0xC6FAu
+/* Player_PickUpDragonSlayer: CPX #$04, after LDX NumberOfArmors (the bug);
+ * then the same with WeaponInventory and NumberOfWeapons */
+#define SLAYER_CAP  0xC73Au
 /* RAM */
 #define NUMBER_OF_WEAPONS 0x03C2u
 #define NUMBER_OF_ARMORS  0x03C3u

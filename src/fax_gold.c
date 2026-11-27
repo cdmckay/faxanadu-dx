@@ -64,23 +64,28 @@
 #include <string.h>
 
 /* Bank 12 */
-#define ADD_GOLD_PAY    0x8531u   /* IScriptAction_AddGold: JSR IScripts_ProgressivelyAddGold, after the two
-                                     IScripts_LoadByte that set Temp_0202/3; then JMP IScripts_InvokeNextAction */
-#define COUNT_PAY       0x8560u   /* IScripts_ProgressivelyAddGold: JSR Player_AddGold, after SBC #$0A from
-                                     Temp_0202/3, LDA #$0A, STA Temp_Int24, LDA #$00, STA Temp_Int24_M; then
-                                     JMP IScripts_ProgressivelyAddGold */
-#define NO_GOLD_SKIP    0x862Au   /* IScriptAction_IfPlayerHasGold, after LDA Gold, ORA Gold_M, ORA Gold_U,
-                                     BNE @_hasGold: JMP IScripts_SkipAddrAndInvoke, only with no gold */
+/* IScriptAction_AddGold: JSR IScripts_ProgressivelyAddGold, after the two
+ * IScripts_LoadByte that set Temp_0202/3; then JMP IScripts_InvokeNextAction */
+#define ADD_GOLD_PAY    0x8531u
+/* IScripts_ProgressivelyAddGold: JSR Player_AddGold, after SBC #$0A from
+ * Temp_0202/3, LDA #$0A, STA Temp_Int24, LDA #$00, STA Temp_Int24_M; then
+ * JMP IScripts_ProgressivelyAddGold */
+#define COUNT_PAY       0x8560u
+/* IScriptAction_IfPlayerHasGold, after LDA Gold, ORA Gold_M, ORA Gold_U,
+ * BNE @_hasGold: JMP IScripts_SkipAddrAndInvoke, only with no gold */
+#define NO_GOLD_SKIP    0x862Au
 #define KING_CHECK_GOLD 0xA352u   /* ISCRIPT_EOLIS_KING's CHECK_GOLD address word (0D at $A351, then 5A A3) */
 #define KING_GIFT_END   0xA359u   /* ISCRIPT_EOLIS_KING's END, past ADD_GOLD's word (09 DC 05 at $A356) */
 #define KING_NOTHING_MORE 0xA35Au /* where his CHECK_GOLD jumps with gold: 03 36 (message $36), 00 */
 /* Bank 14 */
-#define TOUCH_COIN_ADD  0x8B9Fu   /* Player_HandleTouchCoin, after LDA #$09, JSR Sound_PlayEffect: LDA Gold,
-                                     CLC, ADC CurrentSprites_Values,X, STA Gold, then ADC #0 into Gold_M and
-                                     Gold_U, and JSR UI_DrawGoldValue */
+/* Player_HandleTouchCoin, after LDA #$09, JSR Sound_PlayEffect: LDA Gold,
+ * CLC, ADC CurrentSprites_Values,X, STA Gold, then ADC #0 into Gold_M and
+ * Gold_U, and JSR UI_DrawGoldValue */
+#define TOUCH_COIN_ADD  0x8B9Fu
 /* Fixed bank */
-#define LOAD_MESSAGE_CHAR 0xF4DFu /* TextBox_ShowMessage_LoadMessage, after LDA (Temp_Int24),Y: CMP #$FF,
-                                     BEQ @_endOfMessage, CMP #$FE, ... */
+/* TextBox_ShowMessage_LoadMessage, after LDA (Temp_Int24),Y: CMP #$FF,
+ * BEQ @_endOfMessage, CMP #$FE, ... */
+#define LOAD_MESSAGE_CHAR 0xF4DFu
 /* Bank 13 */
 #define KING_DIGITS     0x8C81u   /* message $35's "1500" ("I shall give you1500 Golds.") */
 /* RAM */

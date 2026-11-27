@@ -69,15 +69,18 @@
 #define PLAYER_HP_U          0x0431u   /* whole HP, at most 80; Player_HP_L ($0432) the 256ths */
 #define BAR_WIDTH            0x04EEu   /* UI_MPAndHPBarWidth: 10 tiles, set by UI_DrawHUDSprites */
 /* Bank 14 */
-#define ADD_EXPERIENCE       0x8B87u   /* Player_AddExperienceFromSprite: LDY CurrentSprites_Entities,X,
-                                          LDA ENEMY_EXPERIENCE,Y, STA Temp_Int24, ..., JSR Player_UpdateExperience;
-                                          from both kills, before the death's sound or effect */
+/* Player_AddExperienceFromSprite: LDY CurrentSprites_Entities,X,
+ * LDA ENEMY_EXPERIENCE,Y, STA Temp_Int24, ..., JSR Player_UpdateExperience;
+ * from both kills, before the death's sound or effect */
+#define ADD_EXPERIENCE       0x8B87u
 #define SPRITE_CATEGORIES    0xB544u   /* SPRITE_CATEGORIES_BY_ENTITY: 0 an enemy, 7 a boss, ... */
-#define ENEMY_EXPERIENCE     0xB60Eu   /* experience by entity: 10-65 for an enemy, 75-158 for a boss (0 for the
-                                          last two) */
+/* experience by entity: 10-65 for an enemy, 75-158 for a boss (0 for the
+ * last two) */
+#define ENEMY_EXPERIENCE     0xB60Eu
 /* Fixed bank */
-#define UI_DRAW_PLAYER_HP    0xC0BDu   /* LDA Player_HP_U, JMP UI_DrawPlayerHPValue: caps at 80, stores, then
-                                          UI_SetHUDBarValue with Y = 0 draws the Power bar */
+/* LDA Player_HP_U, JMP UI_DrawPlayerHPValue: caps at 80, stores, then
+ * UI_SetHUDBarValue with Y = 0 draws the Power bar */
+#define UI_DRAW_PLAYER_HP    0xC0BDu
 #define PLAYER_SET_MP        0xFA85u   /* CMP #$51, BCC, LDA #$50, STA Player_MP, LDY #$01: draws the Magic bar */
 #define WAIT_FOR_NEXT_FRAME  0xCA25u   /* LDA #$00, STA Game_InterruptsHandledLatch, then LDA, BEQ until the NMI */
 /* Values */

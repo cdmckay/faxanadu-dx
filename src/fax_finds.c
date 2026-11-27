@@ -39,8 +39,9 @@
 #include <stdlib.h>
 
 /* Bank 14 */
-#define HANDLE_TOUCH_ITEM     0x88FBu   /* Player_HandleTouchItem: LDA CurrentSprites_Entities,X, JSR Player_PickUp,
-                                           LDX CurrentSpriteIndex, LDA #$FF, STA CurrentSprites_Entities,X */
+/* Player_HandleTouchItem: LDA CurrentSprites_Entities,X, JSR Player_PickUp,
+ * LDX CurrentSpriteIndex, LDA #$FF, STA CurrentSprites_Entities,X */
+#define HANDLE_TOUCH_ITEM     0x88FBu
 /* Bank 15 */
 #define SOUND_PLAY_EFFECT     0xD0E4u   /* STA Temp_SoundIDToPlay, ...: queues sound A, keeps X and Y */
 /* RAM */

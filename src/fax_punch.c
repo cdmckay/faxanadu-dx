@@ -54,14 +54,17 @@
 
 /* Bank 14 */
 #define DRAW_NO_WEAPON   0xB7DEu   /* Player_DrawWeapon's BMI RETURN_B7D5, after LDA Player_CurWeapon ($B7DB) */
-#define HIT_NO_WEAPON    0x8817u   /* Player_HitSpriteWithWeapon's BMI RETURN_87CA, after LDA Player_CurWeapon
-                                      ($8814). Falling through: LDX CurrentSpriteIndex, LDY ..., LDA
-                                      SPRITE_CATEGORIES_BY_ENTITY,Y */
-#define GLOVE_STORE      0x888Fu   /* STA Temp_00, after LDA Temp_00, CLC, ADC WEAPON_TO_GLOVE_STRENGTH,Y ($8889).
-                                      Then @_updateSpriteHP ($8891): LDA CurrentSprites_HP,X, SEC, SBC Temp_00 */
+/* Player_HitSpriteWithWeapon's BMI RETURN_87CA, after LDA Player_CurWeapon
+ * ($8814). Falling through: LDX CurrentSpriteIndex, LDY ..., LDA
+ * SPRITE_CATEGORIES_BY_ENTITY,Y */
+#define HIT_NO_WEAPON    0x8817u
+/* STA Temp_00, after LDA Temp_00, CLC, ADC WEAPON_TO_GLOVE_STRENGTH,Y ($8889).
+ * Then @_updateSpriteHP ($8891): LDA CurrentSprites_HP,X, SEC, SBC Temp_00 */
+#define GLOVE_STORE      0x888Fu
 #define WEAPON_RANGES    0xB897u   /* MAYBE_WEAPON_RANGES: (X, Y) per weapon, the Hand Dagger's first: 08 04 */
-#define WEAPON_X_TABLES  0xB89Fu   /* PTR_ARRAY_PRG14__b89f: per weapon, without and with a shield, the X offset
-                                      by pose and facing (left, right). The dagger's: $B8AF, $B8BF */
+/* PTR_ARRAY_PRG14__b89f: per weapon, without and with a shield, the X offset
+ * by pose and facing (left, right). The dagger's: $B8AF, $B8BF */
+#define WEAPON_X_TABLES  0xB89Fu
 #define WEAPON_Y_TABLES  0xB90Fu   /* PTR_ARRAY_PRG14__b90f: per weapon, the Y offset by pose. The dagger's: $B917 */
 #define ATTACK_POSES     0xB97Bu   /* BYTE_ARRAY_PRG14__b97b: the poses of a swing's phases, 4 5 6 */
 /* RAM */

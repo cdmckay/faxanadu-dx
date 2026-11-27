@@ -48,7 +48,8 @@
 extern uint32_t hw_palette_argb[512];   /* the host's NES colors, emphasis in bits 6-8 */
 
 /* Bank 10 */
-#define ITEM_TILEMAP_INDEXES 0xB4E4u    /* four tile numbers an item, by ITEMINVENTORY_* (TextBox_LoadItemSourceTiles' table for Items) */
+/* four tile numbers an item, by ITEMINVENTORY_* (TextBox_LoadItemSourceTiles' table for Items) */
+#define ITEM_TILEMAP_INDEXES 0xB4E4u
 #define ITEM_TILES           0x8500u    /* the items' pictures, 16 bytes a tile (UI_Maybe_GetItemSpritePPUTileAddr) */
 #define ITEMINVENTORY_ELIXIR 0x12u
 /* RAM */

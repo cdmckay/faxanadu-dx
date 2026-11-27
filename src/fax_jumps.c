@@ -43,10 +43,12 @@
 
 /* Bank 15 */
 #define VERT_MOVEMENT     0xE2C8u  /* Player_CheckHandleVertMovement: LDA Player_StatusFlag, BPL. Once per update */
-#define GROUND_CHECK      0xE3B2u  /* Player_HandleVertLadderOrJump's BEQ @_checkAdjacent, after LDA #$03 (the
-                                      game's LDX slip) and JSR Player_CheckIfPassable: Z clear = a block below */
-#define JUMP_CHECK        0xE44Bu  /* Player_UpdateClimbOrJump's BPL Player_ClearJumpingAndHoldingToClimb, after
-                                      LDX Joy1_ChangedButtonMask: N set = A newly pressed */
+/* Player_HandleVertLadderOrJump's BEQ @_checkAdjacent, after LDA #$03 (the
+ * game's LDX slip) and JSR Player_CheckIfPassable: Z clear = a block below */
+#define GROUND_CHECK      0xE3B2u
+/* Player_UpdateClimbOrJump's BPL Player_ClearJumpingAndHoldingToClimb, after
+ * LDX Joy1_ChangedButtonMask: N set = A newly pressed */
+#define JUMP_CHECK        0xE44Bu
 #define CHECK_IF_PASSABLE 0xE6C8u  /* Player_CheckIfPassable: X = 0 left, 1 right, 2 up, 3 down; A = 0 passable */
 /* RAM */
 #define JOY1_CHANGED      0x0019u  /* Joy1_ChangedButtonMask */

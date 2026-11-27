@@ -33,9 +33,10 @@
 #define PLAYER_CAST_MAGIC 0xBA5Bu   /* LDA CastMagic_Type, BPL CastMagic_RunSpellHandler, JSR Player_IsClimbing */
 /* Fixed bank */
 #define GAME_LOOP_CHECK_USE_CURRENT_ITEM 0xC478u   /* LDA Player_Flags, AND #$05, BNE GameLoop_UseItem_Return */
-#define MAIN_LOOP_CAST_PUSHED 0xDB61u   /* Game_MainLoop's JSR Player_CastMagic ($DB5F) pushes the address of its
-                                           last byte. EndGame_MainLoop's ($DC0B), which plays scripted buttons,
-                                           pushes $DC0D. */
+/* Game_MainLoop's JSR Player_CastMagic ($DB5F) pushes the address of its
+ * last byte. EndGame_MainLoop's ($DC0B), which plays scripted buttons,
+ * pushes $DC0D. */
+#define MAIN_LOOP_CAST_PUSHED 0xDB61u
 
 /* The defaults as SDL numbers them: SDL_SCANCODE_C, and SDL_CONTROLLER_BUTTON_Y
  * in the host's binding encoding (cyc_input.h CYC_PAD_BUTTON: 1 + the button). */

@@ -50,20 +50,26 @@
 #include <string.h>
 
 /* Bank 12 */
-#define MENU_OPEN          0x8AB1u  /* PlayerMenu_Show: LDA #$18, JSR Sound_PlayEffect, JSR TextBox_Open, after
-                                       LDA #$0E, STA TextBox_Height (and X 2, Y 6, width 10) */
-#define MENU_ROWS          0x8ADAu  /* PlayerMenu_Show: JSR PlayerMenu_DrawStringLines, after Temp_Int24 =
-                                       PLAYER_TOP_MENU_ITEM_STRINGS and DataArray 0-5 = 0-5 */
-#define MENU_INPUT_LOOP    0x8ADDu  /* @_inputLoop: JSR WaitForNextFrame, ..., JSR Menu_UpdateAndDraw, A to
-                                       @_loadMenuIDs, B to JMP TextBox_Close ($8AED) */
-#define MENU_CHOOSE        0x8AF0u  /* @_loadMenuIDs: LDX Menu_CursorPos, CPX #$05, BNE PlayerMenu_ShowSubmenu,
-                                       JMP PlayerMenu_ShowStatusMenu */
+/* PlayerMenu_Show: LDA #$18, JSR Sound_PlayEffect, JSR TextBox_Open, after
+ * LDA #$0E, STA TextBox_Height (and X 2, Y 6, width 10) */
+#define MENU_OPEN          0x8AB1u
+/* PlayerMenu_Show: JSR PlayerMenu_DrawStringLines, after Temp_Int24 =
+ * PLAYER_TOP_MENU_ITEM_STRINGS and DataArray 0-5 = 0-5 */
+#define MENU_ROWS          0x8ADAu
+/* @_inputLoop: JSR WaitForNextFrame, ..., JSR Menu_UpdateAndDraw, A to
+ * @_loadMenuIDs, B to JMP TextBox_Close ($8AED) */
+#define MENU_INPUT_LOOP    0x8ADDu
+/* @_loadMenuIDs: LDX Menu_CursorPos, CPX #$05, BNE PlayerMenu_ShowSubmenu,
+ * JMP PlayerMenu_ShowStatusMenu */
+#define MENU_CHOOSE        0x8AF0u
 #define DRAW_LENGTH        0x8E9Du  /* UI_DrawString: STA Temp_Int24_U, after LDA (Temp_Int24),Y (the length) */
-#define DRAW_LETTER        0x8EA5u  /* UI_DrawString's @_drawLoop: JSR Strings_ASCIIToIndex, after
-                                       LDA (Temp_Int24),Y (a letter); it begins CMP #$20 */
+/* UI_DrawString's @_drawLoop: JSR Strings_ASCIIToIndex, after
+ * LDA (Temp_Int24),Y (a letter); it begins CMP #$20 */
+#define DRAW_LETTER        0x8EA5u
 #define TEXTBOX_CLOSE      0x9002u  /* TextBox_Close: the box at TextBox_X/Y/Width/Height, put back */
-#define TOP_MENU_STRINGS   0x8873u  /* PLAYER_TOP_MENU_ITEM_STRINGS: WEAPON ... PLAYER, 16 bytes a row; the
-                                       PLAYER page's PLAYER_STATUS_MENU_STRINGS follow at $88D3 */
+/* PLAYER_TOP_MENU_ITEM_STRINGS: WEAPON ... PLAYER, 16 bytes a row; the
+ * PLAYER page's PLAYER_STATUS_MENU_STRINGS follow at $88D3 */
+#define TOP_MENU_STRINGS   0x8873u
 /* Bank 15 */
 #define SOUND_PLAY_EFFECT  0xD0E4u  /* A the sound; keeps X and Y */
 /* RAM */

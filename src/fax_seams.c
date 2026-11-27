@@ -183,44 +183,60 @@
 #include <string.h>
 
 /* Bank 14 */
-#define SPRITES_UPDATE_ALL    0x8000u   /* Sprites_UpdateAll: LDA Sprites_UpdatesPaused, BNE @_spritesLoop, LDA DurationHourGlass */
+/* Sprites_UpdateAll: LDA Sprites_UpdatesPaused, BNE @_spritesLoop, LDA DurationHourGlass */
+#define SPRITES_UPDATE_ALL    0x8000u
 #define SPRITES_LOOP          0x800Fu   /* Sprites_UpdateAll's @_spritesLoop, past INC SpriteUpdateCounter: LDX #$07 */
 #define SPRITES_LOOP_DONE     0x8049u   /* Sprites_UpdateAll, past the slots' loop: LDA #$00, STA Sprites_PPUOffset, RTS */
 #define CHECK_SHIELD          0x877Cu   /* Player_CheckShieldHitByMagic: LDA SelectedShield, CMP #$03, BCS RETURN_87CA */
-#define CHECK_MAGIC           0x8ADCu   /* Sprite_CheckHitByCastMagic: LDA CastMagic_Type, CMP #$05, BCS RETURN_8AD7,
-                                           LDX CurrentSpriteIndex */
+/* Sprite_CheckHitByCastMagic: LDA CastMagic_Type, CMP #$05, BCS RETURN_8AD7,
+ * LDX CurrentSpriteIndex */
+#define CHECK_MAGIC           0x8ADCu
 #define CAST_WIDTHS           0x8B73u   /* CAST_MAGIC_HIT_WIDTHS: a spell's width, by CastMagic_Type */
 #define CAST_HEIGHTS_HIT      0x8B78u   /* CAST_MAGIC_HIT_HEIGHTS: its height */
-#define PLAYER_CAST_MAGIC     0xBA5Bu   /* Player_CastMagic: LDA CastMagic_Type, BPL CastMagic_RunSpellHandler,
-                                           JSR Player_IsClimbing */
-#define CAST_LEFT_EDGE        0xBCD1u   /* CastMagic_UpdateXPosition moving left, after JSR CastMagic_CheckDirection
-                                           and LDA CastMagic_XPos_Full: CMP #$F0, RTS */
-#define CAST_RIGHT_EDGE       0xBCF2u   /* moving right, after LDX CastMagic_Type, LDA CastMagic_XPos_Full:
-                                           CMP CAST_MAGIC_MAX_SCREEN_WIDTHS,X, RTS */
-#define CAST_MAX_WIDTHS       0xBCF6u   /* CAST_MAGIC_MAX_SCREEN_WIDTHS: $F0 $F0 $E0 $F0 $F0, then
-                                           CastMagic_UpdateYPosition's code, read for the types past 4 */
-#define CAST_CHECK_DIRECTION  0xBD8Fu   /* CastMagic_CheckDirection: TXA, BEQ _Left, DEX, BEQ _Right (X 0 left,
-                                           1 right; 2 and 3, up and down, give 0) */
+/* Player_CastMagic: LDA CastMagic_Type, BPL CastMagic_RunSpellHandler,
+ * JSR Player_IsClimbing */
+#define PLAYER_CAST_MAGIC     0xBA5Bu
+/* CastMagic_UpdateXPosition moving left, after JSR CastMagic_CheckDirection
+ * and LDA CastMagic_XPos_Full: CMP #$F0, RTS */
+#define CAST_LEFT_EDGE        0xBCD1u
+/* moving right, after LDX CastMagic_Type, LDA CastMagic_XPos_Full:
+ * CMP CAST_MAGIC_MAX_SCREEN_WIDTHS,X, RTS */
+#define CAST_RIGHT_EDGE       0xBCF2u
+/* CAST_MAGIC_MAX_SCREEN_WIDTHS: $F0 $F0 $E0 $F0 $F0, then
+ * CastMagic_UpdateYPosition's code, read for the types past 4 */
+#define CAST_MAX_WIDTHS       0xBCF6u
+/* CastMagic_CheckDirection: TXA, BEQ _Left, DEX, BEQ _Right (X 0 left,
+ * 1 right; 2 and 3, up and down, give 0) */
+#define CAST_CHECK_DIRECTION  0xBD8Fu
 #define CAST_MOVE_WIDTHS      0xBD9Du   /* CAST_MAGIC_WIDTHS: a spell's width less 1, by CastMagic_Type (12) */
 #define CAST_HEIGHTS          0xBDA9u   /* CAST_MAGIC_HEIGHTS: its height less 1 (12) */
 #define FLASH_HIT             0xAB44u   /* SpriteBehavior_FlashScreenHitPlayer's damage: LDA #$04, JSR Sound_PlayEffect */
-#define WEAPON_OFF_SCREEN     0xB81Au   /* Player_DrawWeapon: BNE RETURN_B7D5, after STA Maybe_Something_WeaponPosX,
-                                           CMP Screen_Maybe_ScrollXCounter; then the Y and the reach */
-#define FLIER_EDGE            0x842Au   /* Sprite_Maybe_TurnAroundIfAtScreenEdgeHoriz, after JSR Sprite_MoveForwardX:
-                                           LDA CurrentSprites_XPos_Full,X, CMP #$F0, BCC @_returnFalse */
-#define PLACEMENT_BLOCK       0x855Eu   /* Sprites_CheckPlacementInvalidAtY: JSR Area_ConvertPixelsToBlockPos,
-                                           JMP Area_IsBlockImpassableOrLadder (Arg_PixelPosX = X + 0 or 15 by facing) */
-#define MOVE_RIGHT            0x86A7u   /* Sprites_MoveRight: LDX CurrentSprites_HitBoxTypes,Y, LDA CurrentSprites_XPos_Full,Y,
-                                           CLC, ADC SPRITE_HITBOX_WIDTHS,X, STA Arg_PixelPosX, BCC (test), else blocked */
-#define MOVE_LEFT             0x86BDu   /* FUN_PRG14__86bd: LDA CurrentSprites_XPos_Full,Y, CMP #$F1, BCS (blocked),
-                                           STA Arg_PixelPosX, then the test (Sprites_MoveRight__86c6) */
-#define MOVE_VERTICAL         0x873Au   /* CurrentSprite_CanMoveInDirection, up and down: LDA CurrentSprites_XPos_Full,Y,
-                                           STA Arg_PixelPosX, JSR Area_ConvertPixelsToBlockPos, then the hitbox's columns */
-#define OUT_OF_WEAPON_RANGE   0x88CBu   /* Sprites_IsSpriteOutOfWeaponRange: LDA CurrentSprites_Entities,X, ASL A,
-                                           TAY, LDA MAYBE_SPRITE_EXTENTS,Y, CLC, ADC Maybe_WeaponRange_X, STA Temp_00 */
-#define CHECK_HIT_PLAYER      0x890Au   /* CurrentSprite_CheckHitPlayer: LDX CurrentSpriteIndex,
-                                           LDA CurrentSprites_Entities,X, CMP #$FF, BEQ RETURN_8909, JSR ... */
-#define UPDATE_STATE          0x8BD2u   /* CurrentSprite_UpdateState: LDA IScript_PortraitID, BPL @_return, LDX CurrentSpriteIndex */
+/* Player_DrawWeapon: BNE RETURN_B7D5, after STA Maybe_Something_WeaponPosX,
+ * CMP Screen_Maybe_ScrollXCounter; then the Y and the reach */
+#define WEAPON_OFF_SCREEN     0xB81Au
+/* Sprite_Maybe_TurnAroundIfAtScreenEdgeHoriz, after JSR Sprite_MoveForwardX:
+ * LDA CurrentSprites_XPos_Full,X, CMP #$F0, BCC @_returnFalse */
+#define FLIER_EDGE            0x842Au
+/* Sprites_CheckPlacementInvalidAtY: JSR Area_ConvertPixelsToBlockPos,
+ * JMP Area_IsBlockImpassableOrLadder (Arg_PixelPosX = X + 0 or 15 by facing) */
+#define PLACEMENT_BLOCK       0x855Eu
+/* Sprites_MoveRight: LDX CurrentSprites_HitBoxTypes,Y, LDA CurrentSprites_XPos_Full,Y,
+ * CLC, ADC SPRITE_HITBOX_WIDTHS,X, STA Arg_PixelPosX, BCC (test), else blocked */
+#define MOVE_RIGHT            0x86A7u
+/* FUN_PRG14__86bd: LDA CurrentSprites_XPos_Full,Y, CMP #$F1, BCS (blocked),
+ * STA Arg_PixelPosX, then the test (Sprites_MoveRight__86c6) */
+#define MOVE_LEFT             0x86BDu
+/* CurrentSprite_CanMoveInDirection, up and down: LDA CurrentSprites_XPos_Full,Y,
+ * STA Arg_PixelPosX, JSR Area_ConvertPixelsToBlockPos, then the hitbox's columns */
+#define MOVE_VERTICAL         0x873Au
+/* Sprites_IsSpriteOutOfWeaponRange: LDA CurrentSprites_Entities,X, ASL A,
+ * TAY, LDA MAYBE_SPRITE_EXTENTS,Y, CLC, ADC Maybe_WeaponRange_X, STA Temp_00 */
+#define OUT_OF_WEAPON_RANGE   0x88CBu
+/* CurrentSprite_CheckHitPlayer: LDX CurrentSpriteIndex,
+ * LDA CurrentSprites_Entities,X, CMP #$FF, BEQ RETURN_8909, JSR ... */
+#define CHECK_HIT_PLAYER      0x890Au
+/* CurrentSprite_UpdateState: LDA IScript_PortraitID, BPL @_return, LDX CurrentSpriteIndex */
+#define UPDATE_STATE          0x8BD2u
 #define UPDATE_BEHAVIOR       0xA66Bu   /* Sprites_UpdateBehavior: LDA DurationHourGlass, BMI, LDY CurrentSprites_Entities,X */
 #define SPRITE_EXTENTS        0xB407u   /* MAYBE_SPRITE_EXTENTS: (EX, EY) per entity */
 #define HITBOX_WIDTHS         0xB4D1u   /* SPRITE_HITBOX_WIDTHS: a hitbox type's width less 1 */
@@ -230,12 +246,15 @@
 #define AREA_SPRITE_ADDRESSES 0x8210u   /* per area, a pointer to its screens' sprite lists, a word a screen */
 /* Bank 15 */
 #define LOAD_SPRITE_INFO      0xC1B4u   /* Screen_LoadSpriteInfo: LDA $0100, PHA, LDX #$0B, JSR MMC1_UpdateROMBank */
-#define CAST_VISIBILITY       0xC315u   /* CastMagic_CalculateVisibility: LDA #$00, STA Temp_MovingSpriteVisibility,
-                                           LDA CastMagic_YPos_Full, STA Arg_PixelPosY */
-#define CHECK_USE_ITEM        0xC478u   /* GameLoop_CheckUseCurrentItem: LDA Player_Flags, AND #$05, BNE; both main
-                                           loops call it right after Player_CastMagic */
-#define SOUND_PLAY_EFFECT     0xD0E4u   /* Sound_PlayEffect: STA Temp_SoundIDToPlay, ...: A the effect; keeps X and Y,
-                                           memory only */
+/* CastMagic_CalculateVisibility: LDA #$00, STA Temp_MovingSpriteVisibility,
+ * LDA CastMagic_YPos_Full, STA Arg_PixelPosY */
+#define CAST_VISIBILITY       0xC315u
+/* GameLoop_CheckUseCurrentItem: LDA Player_Flags, AND #$05, BNE; both main
+ * loops call it right after Player_CastMagic */
+#define CHECK_USE_ITEM        0xC478u
+/* Sound_PlayEffect: STA Temp_SoundIDToPlay, ...: A the effect; keeps X and Y,
+ * memory only */
+#define SOUND_PLAY_EFFECT     0xD0E4u
 #define MAIN_LOOP_COUNTDOWN   0xDB68u   /* Game_MainLoop: JSR GameLoop_CountdownItems, after JSR Sprites_UpdateAll */
 #define BLOCK_IMPASSABLE      0xE8D9u   /* BLOCK_PROPERTY_IMPASSABLE_MAP: 1 for a solid block property */
 #define DRAW_STANDARD         0xF0ECu   /* Sprite_Draw_Standard: LDA #$00, STA Temp_Sprites_TileYOffset, TAY */

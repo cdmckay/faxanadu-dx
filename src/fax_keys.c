@@ -48,10 +48,12 @@
 #define GAME_RUN_DOOR_REQUIREMENT_HANDLER 0xEB2Fu  /* LDA CurrentDoor_KeyRequirement, BEQ RETURN_EB3E, ASL A */
 #define UI_CLEAR_SELECTED_ITEM_PIC        0xC8DCu  /* LDA #$13, STA PPU_TargetAddr_U: blank the HUD's item picture */
 #define PLAYER_CLEAR_SELECTED_ITEM        0xC4BFu  /* PHA, LDA #$FF, STA SelectedItem, JSR UI_ClearSelectedItemPic */
-#define UNLOCK_CLEARS_PICTURE             0xEBDEu  /* Game_UnlockDoorWithUsableItem: JSR UI_ClearSelectedItemPic,
-                                                      after the "used key" script and STA SelectedItem #$FF */
-#define MATTOCK_CLEARS_ITEM               0xC64Cu  /* Player_UseMattock: JSR Player_ClearSelectedItem,
-                                                      after the "used Mattock" script */
+/* Game_UnlockDoorWithUsableItem: JSR UI_ClearSelectedItemPic,
+ * after the "used key" script and STA SelectedItem #$FF */
+#define UNLOCK_CLEARS_PICTURE             0xEBDEu
+/* Player_UseMattock: JSR Player_ClearSelectedItem,
+ * after the "used Mattock" script */
+#define MATTOCK_CLEARS_ITEM               0xC64Cu
 /* RAM */
 #define ITEM_INVENTORY               0x03ADu   /* the unselected items, NumberOfItems of them */
 #define SELECTED_ITEM                0x03C1u   /* $FF for none */

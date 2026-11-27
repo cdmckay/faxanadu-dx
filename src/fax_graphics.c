@@ -44,15 +44,18 @@
 #include <stdlib.h>
 
 /* Fixed bank */
-#define DRAW_TILE         0xF131u  /* Sprite_Draw_Standard: CLC, ADC Sprites_PPUOffset after
-                                      LDA (Sprite_TileInfo_ReadAddr_L),Y, the cell's tile slot */
-#define DRAW_ATTRIBUTE    0xF13Bu  /* Sprite_Draw_Standard: EOR CurrentSprite_FlipMask after
-                                      LDA (Sprite_TileInfo_ReadAddr_L),Y, the cell's attribute */
+/* Sprite_Draw_Standard: CLC, ADC Sprites_PPUOffset after
+ * LDA (Sprite_TileInfo_ReadAddr_L),Y, the cell's tile slot */
+#define DRAW_TILE         0xF131u
+/* Sprite_Draw_Standard: EOR CurrentSprite_FlipMask after
+ * LDA (Sprite_TileInfo_ReadAddr_L),Y, the cell's attribute */
+#define DRAW_ATTRIBUTE    0xF13Bu
 #define FLIPPED_TILE      0xF1E5u  /* Sprite_Draw_FlippedHoriz: the same two */
 #define FLIPPED_ATTRIBUTE 0xF1EFu
 #define TITLE_WRITE       0xF8B7u  /* PPU_WriteTilesFromCHRRAM: STA PPUDATA after LDA (IScriptOrCHRAddr),Y */
-#define SCREEN_LOADED     0xD1BEu  /* Area_LoadScrollData: JSR MMC1_RestorePrevROMBank, right after
-                                      LDA Area_CurrentScreen, JSR Area_LoadBlocks */
+/* Area_LoadScrollData: JSR MMC1_RestorePrevROMBank, right after
+ * LDA Area_CurrentScreen, JSR Area_LoadBlocks */
+#define SCREEN_LOADED     0xD1BEu
 /* RAM */
 #define TILEINFO_READ_L   0x003Au  /* Sprite_TileInfo_ReadAddr_L/_U: the cell bytes, past the header */
 #define TILEINFO_READ_U   0x003Bu

@@ -43,10 +43,12 @@
 
 /* Fixed bank */
 #define SCREEN_SETUP_NEW   0xDD13u   /* Screen_SetupNew: JSR Player_DrawSpriteImmediately. Every screen load */
-#define DEATH_FADE         0xD9A0u   /* Player_HandleDeath's @_afterSetExpGoldFarJump: JSR Screen_FadeToBlack,
-                                        after the death script and Player_SetInitialExpAndGold */
-#define SPAWN_IN_TEMPLE    0xDB1Du   /* Player_Spawn's JSR Game_SpawnInTemple; then JSR Game_SetupEnterBuilding,
-                                        JMP Game_MainLoop */
+/* Player_HandleDeath's @_afterSetExpGoldFarJump: JSR Screen_FadeToBlack,
+ * after the death script and Player_SetInitialExpAndGold */
+#define DEATH_FADE         0xD9A0u
+/* Player_Spawn's JSR Game_SpawnInTemple; then JSR Game_SetupEnterBuilding,
+ * JMP Game_MainLoop */
+#define SPAWN_IN_TEMPLE    0xDB1Du
 #define SPAWNED            0xDB20u   /* Player_Spawn's JSR Game_SetupEnterBuilding (Save files saves here) */
 #define SETUP_ENTER_BUILDING 0xDAAFu /* Game_SetupEnterBuilding: JSR PPU_WaitUntilFlushed */
 #define SETUP_EXIT_BUILDING 0xDABEu  /* Game_SetupExitBuilding: Game_ExitBuilding, Screen_ResetForGamePlay, ... RTS */

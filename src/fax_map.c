@@ -81,8 +81,9 @@ extern uint32_t hw_palette_argb[512];   /* the host's NES colors, emphasis in bi
 /* RAM */
 #define SCREEN_READY_STATE      0x000Eu   /* 0 once a screen is set up */
 #define INTERRUPT_HANDLERS_ON   0x0013u   /* Game_InterruptHandlersEnabled */
-#define JOY1_CHANGED            0x0019u   /* newly pressed: A $80, B $40, Select $20, Start $10, Up $08, Down $04,
-                                             Left $02, Right $01 */
+/* newly pressed: A $80, B $40, Select $20, Start $10, Up $08, Down $04,
+ * Left $02, Right $01 */
+#define JOY1_CHANGED            0x0019u
 #define AREA_CURRENT_AREA       0x0024u
 #define SCREEN_SCROLL_DIRECTION 0x0054u   /* $FF unless scrolling to the next screen */
 #define AREA_CURRENT_SCREEN     0x0063u

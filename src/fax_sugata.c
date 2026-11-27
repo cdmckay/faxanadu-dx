@@ -83,21 +83,25 @@ enum { SLOTS = 8, FLASH_SHOWN = 8, BLINK = 4, HUD = 32, ROOM_H = 208, ROOMS = 83
 #define CURRENT_SPRITES_ENTITIES        0x02CCu
 #define CURRENT_SPRITES_BEHAVIORS       0x02D4u   /* the behavior running; bit 7 once it has finished */
 #define CURRENT_SPRITES_BEHAVIOR_DATA2  0x02ECu   /* the flash's countdown: 2, then 1, and the damage at 0 */
-#define CURRENT_SPRITES_FLAGS           0x02DCu   /* $40: the behavior is under way (Sprite_SetBehaviorReady);
-                                                     $01: facing right */
+/* $40: the behavior is under way (Sprite_SetBehaviorReady);
+ * $01: facing right */
+#define CURRENT_SPRITES_FLAGS           0x02DCu
 #define CURRENT_SPRITES_HIT_BY_MAGIC    0x0334u   /* the knockback a spell gave it, $FF for none */
 #define CURRENT_SPRITES_HIT_BY_MAGIC_IFRAMES 0x033Cu
 #define CURRENT_SPRITE_INDEX            0x0378u
 #define SELECTED_SHIELD                 0x03BFu
 #define DURATION_OINTMENT               0x0427u   /* bit 7 clear while the Ointment lasts; $FF none */
 /* Bank 14 */
-#define REDUCE_ENEMY_HP   0x81FDu   /* Player_HitEnemyWithMagic's @_reduceEnemyHP: HP - Temp_00; on a kill,
-                                       Sugata's greyscale clear, experience, sound 3 and the death effect */
-#define INVISIBLE_DRAW    0x8C98u   /* SpriteUpdateHandler_Invisible: LDA #0, STA Sprites_PPUOffset,
-                                       STA MovingSpriteVisibility, RTS */
+/* Player_HitEnemyWithMagic's @_reduceEnemyHP: HP - Temp_00; on a kill,
+ * Sugata's greyscale clear, experience, sound 3 and the death effect */
+#define REDUCE_ENEMY_HP   0x81FDu
+/* SpriteUpdateHandler_Invisible: LDA #0, STA Sprites_PPUOffset,
+ * STA MovingSpriteVisibility, RTS */
+#define INVISIBLE_DRAW    0x8C98u
 #define SUGATA_DRAW       0x929Fu   /* SpriteUpdateHandler_Enemy_Sugata: JSR CurrentSprite_UpdateFlipMask */
-#define FLASH_BEHAVIOR    0xAB26u   /* SpriteBehavior_FlashScreenHitPlayer: JSR Sprite_IsBehaviorNotReady,
-                                       BNE $AB39, LDA #$02, STA CurrentSprites_BehaviorData2,X */
+/* SpriteBehavior_FlashScreenHitPlayer: JSR Sprite_IsBehaviorNotReady,
+ * BNE $AB39, LDA #$02, STA CurrentSprites_BehaviorData2,X */
+#define FLASH_BEHAVIOR    0xAB26u
 #define FLASH_GREYSCALE   0xAB36u   /* JSR Sprite_SetBehaviorReady, after LDA PPU_Mask, ORA #$01, STA PPU_Mask */
 #define FLASH_HIT         0xAB44u   /* LDA #$04, JSR Sound_PlayEffect: the damage, greyscale just cleared */
 #define FLASH_FINISH      0xAB60u   /* LDX CurrentSpriteIndex, JMP Sprite_FinishBehavior */

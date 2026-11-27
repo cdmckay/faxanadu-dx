@@ -54,8 +54,9 @@
 #include <string.h>
 
 /* RAM */
-#define INTERRUPTS_HANDLED_LATCH   0x0010u   /* Game_InterruptsHandledLatch: WaitForNextFrame stores 0, the NMI that
-                                                reads the pad 1; an NMI that finds it 1 reads nothing (a lag frame) */
+/* Game_InterruptsHandledLatch: WaitForNextFrame stores 0, the NMI that
+ * reads the pad 1; an NMI that finds it 1 reads nothing (a lag frame) */
+#define INTERRUPTS_HANDLED_LATCH   0x0010u
 #define INTERRUPT_HANDLERS_ENABLED 0x0013u   /* Game_InterruptHandlersEnabled: 0, the NMI does none of its work */
 #define JOY1_BUTTON_MASK   0x0016u   /* held: A $80, B $40, Select $20, Start $10, Up $08, Down $04, Left $02, Right $01 */
 #define JOY1_CHANGED_BUTTON_MASK 0x0019u   /* newly pressed: held now and not at the read before */
@@ -74,11 +75,13 @@
 #define CHECK_IN_THE_AIR 0xC47Au
 #define CHECK_DOWN       0xC480u
 #define CHECK_B          0xC487u
-#define MAIN_LOOP_ITEM_PUSHED 0xDB64u   /* Game_MainLoop's JSR GameLoop_CheckUseCurrentItem ($DB62) pushes the
-                                           address of its last byte; EndGame_MainLoop's ($DC0E), which plays
-                                           scripted buttons, pushes $DC10 */
-#define MAIN_LOOP_CAST 0xDB5Fu   /* Game_MainLoop: JSR Player_CastMagic, JSR GameLoop_CheckUseCurrentItem, after
-                                    GameLoop_UpdatePlayer and the hero's three sprites */
+/* Game_MainLoop's JSR GameLoop_CheckUseCurrentItem ($DB62) pushes the
+ * address of its last byte; EndGame_MainLoop's ($DC0E), which plays
+ * scripted buttons, pushes $DC10 */
+#define MAIN_LOOP_ITEM_PUSHED 0xDB64u
+/* Game_MainLoop: JSR Player_CastMagic, JSR GameLoop_CheckUseCurrentItem, after
+ * GameLoop_UpdatePlayer and the hero's three sprites */
+#define MAIN_LOOP_CAST 0xDB5Fu
 #define WAIT_FOR_NEXT_FRAME     0xCA25u   /* LDA #$00, STA Game_InterruptsHandledLatch, $CA29 @_loop: LDA it, */
 #define WAIT_FOR_NEXT_FRAME_RTS 0xCA2Du   /* BEQ @_loop, $CA2D RTS */
 #define MENU_BANK 12u

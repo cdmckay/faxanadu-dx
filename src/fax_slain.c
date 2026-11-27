@@ -49,8 +49,9 @@
 #define POISON_RESUME      0xC860u   /* Player_PickUpPoison's LDX CurrentSpriteIndex, after its JSR Player_ReduceHP */
 /* Bank 14 */
 #define SPRITE_RESET_STATE 0xA202u   /* Sprite_Maybe_ResetState: TXA, PHA. X the spawner, Y the slot spawned */
-#define FLASH_RESUME       0xAB60u   /* SpriteBehavior_FlashScreenHitPlayer's LDX CurrentSpriteIndex, after its JSR
-                                        Player_ReduceHP */
+/* SpriteBehavior_FlashScreenHitPlayer's LDX CurrentSpriteIndex, after its JSR
+ * Player_ReduceHP */
+#define FLASH_RESUME       0xAB60u
 /* RAM */
 #define SPRITE_ENTITIES    0x02CCu   /* CurrentSprites_Entities: 8 slots, $FF empty */
 #define CURRENT_SPRITE     0x0378u   /* CurrentSpriteIndex */

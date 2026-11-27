@@ -37,8 +37,9 @@ enum { TEMPLES = 8, SLOT_LEN = FAX_TRAVEL_SLOT_LEN };
 /* Fixed bank */
 #define SCREEN_FADE_TO_BLACK    0xDA2Fu
 #define GAME_INIT_STATE_SPAWN   0xDA7Du
-#define PLAYER_SPAWN_IN_TEMPLE  0xDB1Du   /* Player_Spawn's JSR Game_SpawnInTemple; then
-                                             JSR Game_SetupEnterBuilding, JMP Game_MainLoop */
+/* Player_Spawn's JSR Game_SpawnInTemple; then
+ * JSR Game_SetupEnterBuilding, JMP Game_MainLoop */
+#define PLAYER_SPAWN_IN_TEMPLE  0xDB1Du
 /* Bank 12: where the Gurus' scripts end, and two steps of ours in unused ROM. */
 #define GURU_PASSWORD_END   0xA5FFu   /* ISCRIPT_COMMON_GURU_PASSWORD: 03 22, 14, here 00 */
 #define GURU_NEW_RANK_END   0xA602u   /* ISCRIPT_COMMON_GURU_NEW_RANK: 01 23, here 00 */

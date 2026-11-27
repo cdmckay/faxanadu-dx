@@ -40,8 +40,9 @@
 /* Fixed bank. TextBox_ShowNextChar ($F466): LDA CurrentROMBank, PHA, LDX #13,
  * JSR MMC1_UpdateROMBank, INC TextBox_Timer, LDA #1, STA TextBox_PlayTextSound,
  * JSR TextBox_ShowNextChar_IfReady, which nothing else calls. */
-#define TEXTBOX_SHOW_NEXT_CHAR_IF_READY 0xF491u   /* LDA MessageID, BEQ, LDA TextBox_MessagePaused, BNE,
-                                                     LDA TextBox_Timer, AND #3, BNE: return unless ready */
+/* LDA MessageID, BEQ, LDA TextBox_MessagePaused, BNE,
+ * LDA TextBox_Timer, AND #3, BNE: return unless ready */
+#define TEXTBOX_SHOW_NEXT_CHAR_IF_READY 0xF491u
 
 static bool enabled;
 static unsigned long fast;           /* frames sped up, for the TCP command */

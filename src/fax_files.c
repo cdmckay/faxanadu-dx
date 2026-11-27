@@ -74,11 +74,13 @@
 #define START_SCREEN_CHOICE 0x0687u   /* DAT_0687: 0 Start, 1 Continue */
 /* Bank 12 */
 #define START_SCREEN_INPUT   0x9F44u  /* StartScreen_CheckHandleInput: Select toggles the choice, draws the arrow */
-#define ARROW_LOADED         0x9F64u  /* its LDA #$AD, after LDX BYTE_ARRAY_PRG12__9f69,Y and LDY #$7E: the
-                                         arrow's place for UI_DrawPromptInputSymbol, X $34 (START) or $74
-                                         (CONTINUE), Y $7E */
+/* its LDA #$AD, after LDX BYTE_ARRAY_PRG12__9f69,Y and LDY #$7E: the
+ * arrow's place for UI_DrawPromptInputSymbol, X $34 (START) or $74
+ * (CONTINUE), Y $7E */
+#define ARROW_LOADED         0x9F64u
 #define PASSWORD_SCREEN_SHOW 0x909Du  /* PasswordScreen_Show: the mantra screen, then Password_Load */
-#define BUY_SELL_MESSAGE     0x8631u  /* IScriptAction_ShowBuySellMenu: LDA #$10 (this byte), JSR IScripts_LoadAndShowMessage */
+/* IScriptAction_ShowBuySellMenu: LDA #$10 (this byte), JSR IScripts_LoadAndShowMessage */
+#define BUY_SELL_MESSAGE     0x8631u
 #define GURU_MANTRA          0xA5FEu  /* ISCRIPT_COMMON_GURU_PASSWORD ($A5FC): 03 22, here 14, 00 */
 #define GURU_NEW_RANK_END    0xA602u  /* ISCRIPT_COMMON_GURU_NEW_RANK ($A600): 01 23, here 00 */
 #define EOLIS_GURU_RING_END  0xA0C8u  /* Eolis's Guru with the Ring of Elf ($A0C6): 03 2D, here 00 */

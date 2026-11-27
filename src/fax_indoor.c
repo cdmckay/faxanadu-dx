@@ -45,15 +45,18 @@
 #include <stdlib.h>
 
 /* Bank 15 */
-#define ENTER_BUILDING    0xDE0Bu  /* Game_EnterBuilding's LDA Areas_DefaultMusic, after LDA #$FF,
-                                      STA Player_CurWeapon at $DE06 */
-#define SET_WEAPON_CHECK  0xEDF1u  /* Player_SetWeapon's BEQ @_cannotEquip, after LDA Area_CurrentArea,
-                                      CMP #$04. Falling through: PLA, STA SelectedWeapon,
-                                      STA Player_CurWeapon, JSR Player_DrawSprite */
+/* Game_EnterBuilding's LDA Areas_DefaultMusic, after LDA #$FF,
+ * STA Player_CurWeapon at $DE06 */
+#define ENTER_BUILDING    0xDE0Bu
+/* Player_SetWeapon's BEQ @_cannotEquip, after LDA Area_CurrentArea,
+ * CMP #$04. Falling through: PLA, STA SelectedWeapon,
+ * STA Player_CurWeapon, JSR Player_DrawSprite */
+#define SET_WEAPON_CHECK  0xEDF1u
 /* Bank 12 */
-#define MENU_CHECK        0x8B88u  /* PlayerMenu_HandleInventoryMenuInput's BEQ PlayerMenu_HandleInvalidChoice,
-                                      after LDA Area_CurrentArea, CMP #$04 at @_hasInput ($8B83). Falling
-                                      through: LDA PlayerMenu_SelectedInventory and the outdoor checks */
+/* PlayerMenu_HandleInventoryMenuInput's BEQ PlayerMenu_HandleInvalidChoice,
+ * after LDA Area_CurrentArea, CMP #$04 at @_hasInput ($8B83). Falling
+ * through: LDA PlayerMenu_SelectedInventory and the outdoor checks */
+#define MENU_CHECK        0x8B88u
 /* RAM */
 #define AREA              0x0024u  /* Area_CurrentArea: 4 in a building */
 #define SELECTED_WEAPON   0x03BDu

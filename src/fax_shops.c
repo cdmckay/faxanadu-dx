@@ -128,8 +128,9 @@
 #define SHOP_ITEM_COSTS_L   0x0228u
 #define SHOP_ITEM_COSTS_U   0x0230u
 #define ITEM_INVENTORY      0x03ADu   /* the Items list, NumberOfItems entries */
-#define SELECTED_WEAPON     0x03BDu   /* then armor, shields, spells, items: each kind's equipped entry,
-                                         in no list; $FF for none */
+/* then armor, shields, spells, items: each kind's equipped entry,
+ * in no list; $FF for none */
+#define SELECTED_WEAPON     0x03BDu
 #define SELECTED_ITEM       0x03C1u   /* the Items' selection, in no list; $FF for none */
 #define NUMBER_OF_WEAPONS   0x03C2u   /* then armor, shields, spells, items */
 #define NUMBER_OF_ITEMS     0x03C6u
@@ -144,20 +145,24 @@
 #define BUY_WAIT            0x83FAu   /* ... JSR IScripts_WaitForMenuInput, BCC to BUY_PICK, JMP EndScript */
 #define BUY_END             0x83FFu   /* ... @_endScript: JMP IScriptAction_EndScript, on B in the list or the line */
 #define BUY_PICK            0x8402u   /* ... A: JSR Shop_GetPlayerHasSelectedItem, the room, the gold, the item */
-#define BOUGHT              0x8463u   /* ... after Player_AddToInventory and the gold: JSR Maybe_Shop_DrawTextBox,
-                                         JMP IScripts_InvokeNextAction */
+/* ... after Player_AddToInventory and the gold: JSR Maybe_Shop_DrawTextBox,
+ * JMP IScripts_InvokeNextAction */
+#define BOUGHT              0x8463u
 #define MAYBE_SHOP_DRAW_TEXTBOX 0x8471u  /* two frames, then closes the list and opens the dialogue box again */
 #define MAYBE_SHOP_CLOSE    0x8477u   /* ... JSR TextBox_Close */
 #define MAYBE_SHOP_OPEN     0x847Au   /* ... JMP TextBox_OpenForNPC */
-#define MENU_UPDATE         0x84F0u   /* IScripts_WaitForMenuInput, after the frame: JSR Menu_UpdateAndDraw,
-                                         LDA Joy1_ChangedButtonMask */
-#define SELL_LIST           0x86BCu   /* IScriptAction_ShowSellMenu after its scan: LDA Arg_StringsCount, BNE,
-                                         LDA #$12, JMP IScripts_ShowFinalMessage */
+/* IScripts_WaitForMenuInput, after the frame: JSR Menu_UpdateAndDraw,
+ * LDA Joy1_ChangedButtonMask */
+#define MENU_UPDATE         0x84F0u
+/* IScriptAction_ShowSellMenu after its scan: LDA Arg_StringsCount, BNE,
+ * LDA #$12, JMP IScripts_ShowFinalMessage */
+#define SELL_LIST           0x86BCu
 #define SELL_DRAW           0x86D8u   /* ... after "Which one would like to sell?": JSR Shop_Draw */
 #define SELL_WAIT           0x86DBu   /* ... JSR IScripts_WaitForMenuInput */
 #define SELL_PICK           0x86E0u   /* ... A: LDX Menu_CursorPos, the price, the item, JSR Player_RemoveItem */
-#define SOLD                0x86F8u   /* ... after the gold: JSR TextBox_Close, JSR TextBox_OpenForNPC, JMP
-                                         IScripts_InvokeNextAction */
+/* ... after the gold: JSR TextBox_Close, JSR TextBox_OpenForNPC, JMP
+ * IScripts_InvokeNextAction */
+#define SOLD                0x86F8u
 #define SELL_END            0x8701u   /* ... @_endScript: JMP IScriptAction_EndScript, on B in the list or the line */
 #define ISCRIPT_ADDRS_L     0x9F6Bu   /* every script's address, low bytes, then high bytes */
 #define ISCRIPT_ADDRS_U     0xA003u
