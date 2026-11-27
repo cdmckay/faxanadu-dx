@@ -26,8 +26,12 @@ its state's: the shadow OAM Seamless composes from, or the PPU's OAM.
    their lines. With the remaster on, every sprite's pixels show; with it off,
    the NES draws 8 a line, and some go missing.
 3. fire: Fire cast in the town, with the remaster on. The game draws it 2
-   frames in 4 (CastMagic_FinishHandler_Fire, by design), and the pictures
-   show it on those frames and not on the others: its flicker stays.
+   frames in 4 (CastMagic_FinishHandler_Fire, by design: while
+   InterruptCounter has bit 1), in either of its two frames (bit 2), and the
+   pictures show it on those frames and not on the others: its flicker
+   stays. Which frames those are is the fixture's InterruptCounter, which
+   the recipes' TCP play leaves at any phase (#196), so the check holds at
+   every phase.
 """
 from pathlib import Path
 import sys
@@ -44,13 +48,15 @@ HUD, ROOM_W, ROOM_H = 32, 256, 208
 # RAM
 START_SLOT_RANGE, SHADOW_OAM, HERO_X = 0x1C, 0x700, 0x9E           # Sprites_StartSlotRange, Player_PosX_Block
 INTERRUPTS_HANDLED_LATCH, NEED_OAM_RESET = 0x10, 0x1B               # Game_InterruptsHandledLatch, Game_NeedOAMReset
+INTERRUPT_COUNTER = 0x1A                                            # InterruptCounter: +1 each NMI
 ENTITIES, SPRITE_X, SPRITE_Y = 0x2CC, 0xBA, 0xC2                    # CurrentSprites_Entities, _XPos_Full, _YPos
 SLOT_ARRAYS = [SPRITE_X, SPRITE_Y] + list(range(0x2BC, 0x36D, 8))   # every per-slot sprite array, 8 slots each
 MAGIC, NUMBER_OF_SPELLS, SELECTED_MAGIC, CAST_MAGIC_TYPE, MP = 0x3A9, 0x3C5, 0x3C0, 0x2B3, 0x39A
 VILLAGER, FIRE, NONE = 7, 2, 0xFF                                   # the town's villager's slot
 BEHIND = 0x20                                                       # OAM attribute: behind the background
 HERO_TILES = range(0x40)                                            # the hero's CHR slots ($0000-$03FF)
-FIRE_TILES = (0x7C, 0x7D, 0x7E, 0x66)                               # its two frames' cells, palette 0
+FIRE_TILES = (0x65, 0x66, 0x7A, 0x7B,                               # its first frame's 8 cells, palette 0
+              0x7C, 0x7D, 0x7E)                                     # its second's 6 (Graphics fixes' $7E)
 
 
 class Frame:
@@ -258,14 +264,21 @@ def fire(game, saved, origin):
         hero = [oam[i * 4 + 3] for i in range(1, 64) if oam[i * 4] < 0xEF and oam[i * 4 + 1] in HERO_TILES]
         return all(abs(s[4] - x) >= 24 for s in flame(oam) for x in hero)
     oams = [ram[SHADOW_OAM:SHADOW_OAM + 256] for ram in rams]
-    drawn = [len(flame(oam)) == 6 for oam in oams]
+    drawn = [bool(flame(oam)) for oam in oams]
     flying = [f for f, ram in enumerate(rams) if ram[CAST_MAGIC_TYPE] == FIRE]
     assert flying, "the Fire is cast"
-    # Four frames in its flight, two with it drawn and two without, from one
-    # it is drawn on, clear of the hero.
-    start = next(f for f in flying if drawn[f] and clear(oams[f]) and clear(oams[f + 2]) and
-                 all(g in flying for g in range(f, f + 4)))
-    assert sum(drawn[start:start + 4]) == 2, drawn[start:start + 4]
+    # Four frames in its flight, from one it is drawn on, clear of the hero:
+    # it is drawn on the two with InterruptCounter's bit 1 set, whole, in the
+    # frame bit 2 picks (8 cells, or 6), and not on the other two. Which two
+    # depends on the fixture's phase (#196: counting only the second frame,
+    # the test saw it 2 frames in 8, and failed at one phase in 8).
+    start = next(f for f in flying if drawn[f] and all(g in flying and clear(oams[g]) for g in range(f, f + 4)))
+    window = range(start, start + 4)
+    counter = [rams[f][INTERRUPT_COUNTER] for f in window]
+    assert [drawn[f] for f in window] == [bool(c & 2) for c in counter], (counter, [drawn[f] for f in window])
+    assert all(len(flame(oams[f])) == (6 if c & 4 else 8) for f, c in zip(window, counter) if drawn[f]), \
+        [len(flame(oams[f])) for f in window]
+    assert sum(drawn[f] for f in window) == 2, [drawn[f] for f in window]
     frames = []
     for pair in (start + 1, start + 3):                             # frames 1-based: frame f is run f + 1
         frames += two_frames(game, state, origin, "fire", schedule=cast, first=pair)
@@ -281,8 +294,9 @@ def fire(game, saved, origin):
             alike = sum(frame.at(p) == colors[v] for p, v in seen.items())
             assert alike <= len(seen) // 4, f"{alike} of {len(seen)} pixels still the Fire's"
             print(f"{frame.picture.name}: no Fire in OAM, and none where it was ({alike} of {len(seen)} alike)")
-    assert [bool(flame(f.ram[SHADOW_OAM:SHADOW_OAM + 256])) for f in frames] == drawn[start:start + 4]
-    print("ok: the Fire still flickers, 2 frames in 4, as the game draws it")
+    assert [bool(flame(f.ram[SHADOW_OAM:SHADOW_OAM + 256])) for f in frames] == [drawn[f] for f in window]
+    print(f"ok: the Fire still flickers, 2 frames in 4, as the game draws it "
+          f"(InterruptCounter ${counter[0]:02X}-${counter[-1]:02X})")
 
 
 def main():
